@@ -80,6 +80,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/field/field.h
     src/cfdx/core/field/storage.h
     src/cfdx/core/boundary/boundary_field.h
+    src/cfdx/core/numerics/interpolation.h
+    src/cfdx/core/numerics/gradient.h
+    src/cfdx/core/numerics/divergence.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -195,4 +198,18 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_interpolation PRIVATE cfdx_core)
     target_include_directories(test_interpolation PRIVATE tests)
     add_test(NAME interpolation COMMAND test_interpolation)
+
+    add_executable(test_gradient
+        tests/unit/test_gradient.cpp
+    )
+    target_link_libraries(test_gradient PRIVATE cfdx_core)
+    target_include_directories(test_gradient PRIVATE tests)
+    add_test(NAME gradient COMMAND test_gradient)
+
+    add_executable(test_divergence
+        tests/unit/test_divergence.cpp
+    )
+    target_link_libraries(test_divergence PRIVATE cfdx_core)
+    target_include_directories(test_divergence PRIVATE tests)
+    add_test(NAME divergence COMMAND test_divergence)
 endif()
