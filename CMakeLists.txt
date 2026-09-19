@@ -83,6 +83,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
     src/cfdx/core/numerics/divergence.h
+    src/cfdx/core/numerics/laplacian.h
+    src/cfdx/core/numerics/flux.h
+    src/cfdx/core/numerics/integrate.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -212,4 +215,25 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_divergence PRIVATE cfdx_core)
     target_include_directories(test_divergence PRIVATE tests)
     add_test(NAME divergence COMMAND test_divergence)
+
+    add_executable(test_laplacian
+        tests/unit/test_laplacian.cpp
+    )
+    target_link_libraries(test_laplacian PRIVATE cfdx_core)
+    target_include_directories(test_laplacian PRIVATE tests)
+    add_test(NAME laplacian COMMAND test_laplacian)
+
+    add_executable(test_flux
+        tests/unit/test_flux.cpp
+    )
+    target_link_libraries(test_flux PRIVATE cfdx_core)
+    target_include_directories(test_flux PRIVATE tests)
+    add_test(NAME flux COMMAND test_flux)
+
+    add_executable(test_integrate
+        tests/unit/test_integrate.cpp
+    )
+    target_link_libraries(test_integrate PRIVATE cfdx_core)
+    target_include_directories(test_integrate PRIVATE tests)
+    add_test(NAME integrate COMMAND test_integrate)
 endif()
