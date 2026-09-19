@@ -1,0 +1,135 @@
+# CFDX — Roadmap
+
+Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
+
+## Phase 0 — Repository Bootstrap
+
+- [x] Repository GitHub créé (https://github.com/stevendaix/cfdx_dev)
+- [x] Spécification v0.7 commitée
+- [x] docs/development créés (ROADMAP, BACKLOG, DECISIONS, AGENT_STATE)
+- [x] Arborescence source créée (src/cfdx/...)
+- [ ] Système de build (CMake)
+- [ ] HDF5 statique construit (third_party/hdf5)
+- [ ] pybind11 installé
+- [ ] Tests unitaires de base
+
+## M0.1 — Mesh topology
+
+- [ ] M0.1-T01 Point storage
+- [ ] M0.1-T02 Face CSR connectivity
+- [ ] M0.1-T03 Owner/neighbour storage
+- [ ] M0.1-T04 Cell CSR connectivity
+- [ ] M0.1-T05 Boundary patches
+- [ ] M0.1-T06 Topology validation
+
+## M0.2 — Geometry
+
+- [ ] M0.2-T01 Face geometry (centre, area, Sf, normal)
+- [ ] M0.2-T02 Cell geometry (centre, volume)
+- [ ] M0.2-T03 Skewness
+- [ ] M0.2-T04 Non-orthogonality
+
+## M0.3 — Mesh quality
+
+- [ ] M0.3-T01 Mesh validator (topology + geometry + quality + conservation)
+
+## M0.4 — Fields
+
+- [ ] M0.4-T01 Field<T, Location> template
+- [ ] M0.4-T02 Field metadata
+- [ ] M0.4-T03 StorageHandle (Host/Device/WorkingSet)
+
+## M0.5 — Boundary fields
+
+- [ ] M0.5-T01 BoundaryField / PatchField
+
+## M0.6 — Interpolation
+
+- [ ] M0.6-T01 Cell→Face interpolation (linear, upwind)
+
+## M0.7 — FVM operators
+
+- [ ] M0.7-T01 Gauss gradient
+- [ ] M0.7-T02 Divergence
+- [ ] M0.7-T03 Laplacian (orthogonal + non-orthogonal corrected)
+- [ ] M0.7-T04 Flux
+- [ ] M0.7-T05 Surface/Volume integrate
+
+## M0.8 — Linear algebra
+
+- [ ] M0.8-T01 SparseMatrix (CSR)
+- [ ] M0.8-T02 Vector
+- [ ] M0.8-T03 LinearSystem
+- [ ] M0.8-T04 CG solver
+- [ ] M0.8-T05 BiCGStab solver
+- [ ] M0.8-T06 GMRES solver
+- [ ] M0.8-T07 Preconditioners (Jacobi, Gauss-Seidel, ILU)
+
+## M0.9 — HDF5
+
+- [ ] M0.9-T01 HDF5 writer (mesh, fields, meta)
+- [ ] M0.9-T02 HDF5 reader
+- [ ] M0.9-T03 Round-trip validation
+- [ ] M0.9-T04 Hash computation
+
+## M0.10 — Import/export
+
+- [ ] M0.10-T01 OpenFOAM importer
+- [ ] M0.10-T02 Gmsh importer
+- [ ] M0.10-T03 meshio importer
+- [ ] M0.10-T04 CFDX case writer
+
+## M0.11 — MPI
+
+- [ ] M0.11-T01 Domain decomposition
+- [ ] M0.11-T02 Ghost cells
+- [ ] M0.11-T03 Halo exchange
+
+## M0.12 — Execution abstraction
+
+- [ ] M0.12-T01 CPU backend
+- [ ] M0.12-T02 ExecutionPolicy enum
+- [ ] M0.12-T03 Memory planner
+
+## M1 — Incompressible laminar
+
+- [ ] Navier-Stokes
+- [ ] Continuity
+- [ ] Pressure-velocity coupling
+- [ ] SIMPLE / SIMPLEC / PISO / PIMPLE
+- [ ] Rhie-Chow
+
+## M2 — Turbulence
+
+- [ ] RANS (k-epsilon, k-omega, SST)
+- [ ] LES / DES
+
+## M3 — Thermal / CHT
+
+- [ ] Energy equation
+- [ ] Conduction / convection
+- [ ] Conjugate heat transfer
+
+## M4 — Radiation
+
+- [ ] Surface radiation
+- [ ] Participating media
+- [ ] View factors / DOM / P1
+
+## M5 — VOF
+
+- [ ] Volume fraction
+- [ ] Interface reconstruction
+- [ ] Surface tension / contact angle
+- [ ] Compressive schemes
+
+## M6 — Dynamic mesh
+
+- [ ] Mesh motion / deformation
+- [ ] Remeshing
+- [ ] Topology changes
+
+## M7 — FSI
+
+- [ ] Fluid-structure interface
+- [ ] Partitioned / monolithic coupling
