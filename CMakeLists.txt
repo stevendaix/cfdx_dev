@@ -188,4 +188,11 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_boundary_field PRIVATE cfdx_core)
     target_include_directories(test_boundary_field PRIVATE tests)
     add_test(NAME boundary_field COMMAND test_boundary_field)
+
+    add_executable(test_interpolation
+        tests/unit/test_interpolation.cpp
+    )
+    target_link_libraries(test_interpolation PRIVATE cfdx_core)
+    target_include_directories(test_interpolation PRIVATE tests)
+    add_test(NAME interpolation COMMAND test_interpolation)
 endif()
