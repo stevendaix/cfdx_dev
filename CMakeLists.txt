@@ -61,6 +61,9 @@ set(CFDX_CORE_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
     src/cfdx/core/geometry/cell_geometry.cpp
     src/cfdx/core/geometry/mesh_quality.cpp
+    src/cfdx/core/geometry/mesh_validator.cpp
+    src/cfdx/core/field/field.cpp
+    src/cfdx/core/field/storage.cpp
 )
 
 set(CFDX_CORE_HEADERS
@@ -73,6 +76,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/geometry/face_geometry.h
     src/cfdx/core/geometry/cell_geometry.h
     src/cfdx/core/geometry/mesh_quality.h
+    src/cfdx/core/geometry/mesh_validator.h
+    src/cfdx/core/field/field.h
+    src/cfdx/core/field/storage.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -160,4 +166,18 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_mesh_quality PRIVATE cfdx_core)
     target_include_directories(test_mesh_quality PRIVATE tests)
     add_test(NAME mesh_quality COMMAND test_mesh_quality)
+
+    add_executable(test_field
+        tests/unit/test_field.cpp
+    )
+    target_link_libraries(test_field PRIVATE cfdx_core)
+    target_include_directories(test_field PRIVATE tests)
+    add_test(NAME field COMMAND test_field)
+
+    add_executable(test_field_storage
+        tests/unit/test_field_storage.cpp
+    )
+    target_link_libraries(test_field_storage PRIVATE cfdx_core)
+    target_include_directories(test_field_storage PRIVATE tests)
+    add_test(NAME field_storage COMMAND test_field_storage)
 endif()
