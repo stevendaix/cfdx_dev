@@ -55,11 +55,18 @@ endif()
 set(CFDX_CORE_SOURCES
     src/cfdx/core/mesh/point.cpp
     src/cfdx/core/mesh/face.cpp
+    src/cfdx/core/mesh/ownership.cpp
+    src/cfdx/core/mesh/cell.cpp
+    src/cfdx/core/mesh/mesh.cpp
 )
 
 set(CFDX_CORE_HEADERS
     src/cfdx/core/mesh/point.h
     src/cfdx/core/mesh/face.h
+    src/cfdx/core/mesh/ownership.h
+    src/cfdx/core/mesh/cell.h
+    src/cfdx/core/mesh/boundary.h
+    src/cfdx/core/mesh/mesh.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -98,4 +105,32 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_face PRIVATE cfdx_core)
     target_include_directories(test_face PRIVATE tests)
     add_test(NAME face COMMAND test_face)
+
+    add_executable(test_ownership
+        tests/unit/test_ownership.cpp
+    )
+    target_link_libraries(test_ownership PRIVATE cfdx_core)
+    target_include_directories(test_ownership PRIVATE tests)
+    add_test(NAME ownership COMMAND test_ownership)
+
+    add_executable(test_cell
+        tests/unit/test_cell.cpp
+    )
+    target_link_libraries(test_cell PRIVATE cfdx_core)
+    target_include_directories(test_cell PRIVATE tests)
+    add_test(NAME cell COMMAND test_cell)
+
+    add_executable(test_boundary
+        tests/unit/test_boundary.cpp
+    )
+    target_link_libraries(test_boundary PRIVATE cfdx_core)
+    target_include_directories(test_boundary PRIVATE tests)
+    add_test(NAME boundary COMMAND test_boundary)
+
+    add_executable(test_mesh
+        tests/unit/test_mesh.cpp
+    )
+    target_link_libraries(test_mesh PRIVATE cfdx_core)
+    target_include_directories(test_mesh PRIVATE tests)
+    add_test(NAME mesh COMMAND test_mesh)
 endif()
