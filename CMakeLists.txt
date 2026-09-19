@@ -58,6 +58,8 @@ set(CFDX_CORE_SOURCES
     src/cfdx/core/mesh/ownership.cpp
     src/cfdx/core/mesh/cell.cpp
     src/cfdx/core/mesh/mesh.cpp
+    src/cfdx/core/geometry/face_geometry.cpp
+    src/cfdx/core/geometry/cell_geometry.cpp
 )
 
 set(CFDX_CORE_HEADERS
@@ -67,6 +69,8 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/mesh/cell.h
     src/cfdx/core/mesh/boundary.h
     src/cfdx/core/mesh/mesh.h
+    src/cfdx/core/geometry/face_geometry.h
+    src/cfdx/core/geometry/cell_geometry.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -133,4 +137,18 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_mesh PRIVATE cfdx_core)
     target_include_directories(test_mesh PRIVATE tests)
     add_test(NAME mesh COMMAND test_mesh)
+
+    add_executable(test_face_geometry
+        tests/numerical/test_face_geometry.cpp
+    )
+    target_link_libraries(test_face_geometry PRIVATE cfdx_core)
+    target_include_directories(test_face_geometry PRIVATE tests)
+    add_test(NAME face_geometry COMMAND test_face_geometry)
+
+    add_executable(test_cell_geometry
+        tests/numerical/test_cell_geometry.cpp
+    )
+    target_link_libraries(test_cell_geometry PRIVATE cfdx_core)
+    target_include_directories(test_cell_geometry PRIVATE tests)
+    add_test(NAME cell_geometry COMMAND test_cell_geometry)
 endif()
