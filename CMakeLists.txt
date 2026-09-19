@@ -54,10 +54,12 @@ endif()
 # ---------------------------------------------------------------------------
 set(CFDX_CORE_SOURCES
     src/cfdx/core/mesh/point.cpp
+    src/cfdx/core/mesh/face.cpp
 )
 
 set(CFDX_CORE_HEADERS
     src/cfdx/core/mesh/point.h
+    src/cfdx/core/mesh/face.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -89,4 +91,11 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_point PRIVATE cfdx_core)
     target_include_directories(test_point PRIVATE tests)
     add_test(NAME point COMMAND test_point)
+
+    add_executable(test_face
+        tests/unit/test_face.cpp
+    )
+    target_link_libraries(test_face PRIVATE cfdx_core)
+    target_include_directories(test_face PRIVATE tests)
+    add_test(NAME face COMMAND test_face)
 endif()
