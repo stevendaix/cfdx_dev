@@ -1,4 +1,4 @@
-// M0.1-T06 — Mesh topology + validator
+// M0.1-T06 — Mesh topology + topological validator
 //
 // Spécification CFDX v0.7 §9, §19 :
 //   Le Mesh regroupe les données fondamentales :
@@ -6,10 +6,8 @@
 //     face_owner, face_neighbour, cell_faces, cell_faces_offsets,
 //     boundary patches
 //
-//   Le Mesh Validator vérifie :
-//     Topologie : indices valides, pas de faces orphelines,
-//                 cohérence owner/neighbour, cohérence cellules/faces,
-//                 doublons, patches valides.
+//   Validation complète (géométrie + qualité + conservation) :
+//     cfdx::core::validate_mesh()  — voir mesh_validator.h
 
 #pragma once
 
@@ -35,11 +33,23 @@ struct MeshStats {
     std::size_t n_patches = 0;
 };
 
+struct TopoValidation {
+    bool ok = true;
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+
+    void add_error(const std::string& msg) {
+        ok = false;
+        errors.push_back(msg);
+    }
+    void add_warning(const std::string& msg) {
+        warnings.push_back(msg);
+    }
+};
+
 class Mesh {
 public:
     Mesh() = default;
-
-    // --- Accès aux composants ---
 
     PointCloud& points() { return points_; }
     const PointCloud& points() const { return points_; }
@@ -57,8 +67,6 @@ public:
     const BoundaryPatches& boundary() const { return boundary_; }
     void set_boundary(const BoundaryPatches& bp) { boundary_ = bp; }
 
-    // --- Dimensions ---
-
     std::size_t n_points() const noexcept { return points_.size(); }
     std::size_t n_faces() const noexcept { return faces_.n_faces(); }
     std::size_t n_cells() const noexcept { return cells_.n_cells(); }
@@ -74,70 +82,46 @@ public:
         return s;
     }
 
-    // --- Validation complète (§19) ---
+    // --- Validation topologique (§19) ---
+    TopoValidation topo_validate() const {
+        TopoValidation result;
 
-    struct ValidationResult {
-        bool ok = true;
-        std::vector<std::string> errors;
-        std::vector<std::string> warnings;
-
-        void add_error(const std::string& msg) {
-            ok = false;
-            errors.push_back(msg);
-        }
-        void add_warning(const std::string& msg) {
-            warnings.push_back(msg);
-        }
-    };
-
-    ValidationResult validate() const {
-        ValidationResult result;
-
-        // 1. Dimensions cohérentes
         if (ownership_.size() != faces_.n_faces()) {
             result.add_error("owner/neighbour size mismatch: " +
                              std::to_string(ownership_.size()) + " vs " +
                              std::to_string(faces_.n_faces()) + " faces");
         }
 
-        // 2. Validité des points (NaN/Inf)
         if (!points_.is_valid()) {
             result.add_error("points contain NaN or Inf values");
         }
 
-        // 3. Cohérence des offsets CSR (faces)
         if (!faces_.is_consistent()) {
             result.add_error("face CSR offsets inconsistent");
         }
 
-        // 4. Validité des indices de sommets
         if (!faces_.indices_valid(n_points())) {
             result.add_error("face vertex indices out of range");
         }
 
-        // 5. Cohérence owner/neighbour
         if (!ownership_.is_consistent(n_cells())) {
             result.add_error("owner/neighbour inconsistent with cell count");
         }
 
-        // 6. Cohérence des offsets CSR (cells)
         if (!cells_.is_consistent()) {
             result.add_error("cell CSR offsets inconsistent");
         }
 
-        // 7. Validité des face_ids dans cellules
         if (!cells_.face_ids_valid(n_faces())) {
             result.add_error("cell face ids out of range");
         }
 
-        // 8. Validité des patches
         if (!boundary_.is_consistent(n_faces())) {
             result.add_error("boundary patches inconsistent (overlap or out-of-range)");
         }
 
-        // 9. Chaque face interne doit être référencée par 2 cellules,
-        //    chaque face de frontière par 1. On vérifie le total des références
-        //    de cellules contre la somme attendue.
+        // Chaque face interne doit être référencée par 2 cellules,
+        // chaque face de frontière par 1.
         const std::size_t expected_refs =
             ownership_.n_internal_faces() * 2 + ownership_.n_boundary_faces() * 1;
         if (cells_.n_face_refs() != expected_refs) {
@@ -150,7 +134,6 @@ public:
     }
 
     // --- Nettoyage ---
-
     void clear() {
         points_.clear();
         faces_.clear();

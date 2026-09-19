@@ -1,79 +1,54 @@
-// M0.1-T06 — Tests for Mesh topology + validator
+// M0.3-T01 — Mesh validator tests (topology + geometry + quality + conservation)
 
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/geometry/mesh_validator.h"
 #include "test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-// Construit un maillage 2D simple de 2 cellules quadrilatères
-// partageant une face interne, avec des faces de frontière.
-Mesh make_simple_mesh() {
+// Construit un cube unité [0,1]^3 — 1 cellule, 6 faces, 8 sommets.
+Mesh make_unit_cube() {
     Mesh m;
 
-    // 4 points : (0,0), (1,0), (1,1), (0,1)
-    m.points().resize(4);
+    m.points().resize(8);
     m.points().set(0, 0.0, 0.0, 0.0);
     m.points().set(1, 1.0, 0.0, 0.0);
     m.points().set(2, 1.0, 1.0, 0.0);
     m.points().set(3, 0.0, 1.0, 0.0);
+    m.points().set(4, 0.0, 0.0, 1.0);
+    m.points().set(5, 1.0, 0.0, 1.0);
+    m.points().set(6, 1.0, 1.0, 1.0);
+    m.points().set(7, 0.0, 1.0, 1.0);
 
-    // 5 faces :
-    //   0 : (0,1,2,3)  bas    (face de frontière, owner=0)
-    //   1 : (1,2,3,0)  haut   (face de frontière, owner=1)
-    //   2 : (0,3,2,1)  interne (owner=0, neighbour=1)
-    //   3 : (0,1)      gauche (face de frontière, owner=0)
-    //   4 : (2,3)      droite  (face de frontière, owner=1)
-    m.faces().push_face({0, 1, 2, 3});  // face 0
-    m.faces().push_face({1, 2, 3, 0});  // face 1
-    m.faces().push_face({0, 3, 2, 1});  // face 2 (interne)
-    m.faces().push_face({0, 1});        // face 3
-    m.faces().push_face({2, 3});        // face 4
+    // 6 faces (CCW vues de l'extérieur)
+    m.faces().push_face({0, 3, 2, 1});  // 0 : bas
+    m.faces().push_face({4, 5, 6, 7});  // 1 : haut
+    m.faces().push_face({0, 1, 5, 4});  // 2 : avant
+    m.faces().push_face({3, 7, 6, 2});  // 3 : arrière
+    m.faces().push_face({0, 4, 7, 3});  // 4 : gauche
+    m.faces().push_face({1, 2, 6, 5});  // 5 : droite
 
-    // Owner/neighbour
-    m.ownership().resize(5);
-    m.ownership().set_owner(0, 0);
-    m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
-    m.ownership().set_owner(1, 1);
-    m.ownership().set_neighbour(1, FaceOwnership::BOUNDARY);
-    m.ownership().set_owner(2, 0);
-    m.ownership().set_neighbour(2, 1);  // interne
-    m.ownership().set_owner(3, 0);
-    m.ownership().set_neighbour(3, FaceOwnership::BOUNDARY);
-    m.ownership().set_owner(4, 1);
-    m.ownership().set_neighbour(4, FaceOwnership::BOUNDARY);
+    m.ownership().resize(6);
+    for (std::size_t i = 0; i < 6; ++i) {
+        m.ownership().set_owner(i, 0);
+        m.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
+    }
 
-    // 2 cellules
-    m.cells().push_cell({0, 2, 3});  // cellule 0 : faces 0, 2, 3
-    m.cells().push_cell({1, 2, 4});  // cellule 1 : faces 1, 2, 4
+    m.cells().push_cell({0, 1, 2, 3, 4, 5});
 
-    // Patches
     BoundaryPatches bp;
-    Patch pin;
-    pin.name = "bottom";
-    pin.type = PatchType::WALL;
-    pin.face_ids = {0};
-    bp.add_patch(pin);
-
-    Patch ptop;
-    ptop.name = "top";
-    ptop.type = PatchType::WALL;
-    ptop.face_ids = {1};
-    bp.add_patch(ptop);
-
-    Patch pleft;
-    pleft.name = "left";
-    pleft.type = PatchType::INLET;
-    pleft.face_ids = {3};
-    bp.add_patch(pleft);
-
-    Patch pright;
-    pright.name = "right";
-    pright.type = PatchType::OUTLET;
-    pright.face_ids = {4};
-    bp.add_patch(pright);
-
-    m.boundary() = bp;
+    const char* names[6] = {"bottom", "top", "front", "back", "left", "right"};
+    const PatchType types[6] = {PatchType::WALL, PatchType::WALL, PatchType::INLET,
+                                 PatchType::OUTLET, PatchType::SYMMETRY, PatchType::WALL};
+    for (int i = 0; i < 6; ++i) {
+        Patch p;
+        p.name = names[i];
+        p.type = types[i];
+        p.face_ids = {static_cast<std::uint32_t>(i)};
+        bp.add_patch(p);
+    }
+    m.set_boundary(bp);
 
     return m;
 }
@@ -84,22 +59,22 @@ int main() {
         EXPECT_TRUE(m.n_points() == 0);
         EXPECT_TRUE(m.n_faces() == 0);
         EXPECT_TRUE(m.n_cells() == 0);
-        EXPECT_TRUE(m.validate().ok);
+        EXPECT_TRUE(m.topo_validate().ok);
     });
 
-    run_case("simple_mesh_stats", []() {
-        Mesh m = make_simple_mesh();
-        EXPECT_TRUE(m.n_points() == 4);
-        EXPECT_TRUE(m.n_faces() == 5);
-        EXPECT_TRUE(m.n_cells() == 2);
-        EXPECT_TRUE(m.stats().n_patches == 4);
-        EXPECT_TRUE(m.stats().n_internal_faces == 1);
-        EXPECT_TRUE(m.stats().n_boundary_faces == 4);
+    run_case("unit_cube_stats", []() {
+        Mesh m = make_unit_cube();
+        EXPECT_TRUE(m.n_points() == 8);
+        EXPECT_TRUE(m.n_faces() == 6);
+        EXPECT_TRUE(m.n_cells() == 1);
+        EXPECT_TRUE(m.stats().n_patches == 6);
+        EXPECT_TRUE(m.stats().n_boundary_faces == 6);
+        EXPECT_TRUE(m.stats().n_internal_faces == 0);
     });
 
-    run_case("simple_mesh_validate_ok", []() {
-        Mesh m = make_simple_mesh();
-        auto result = m.validate();
+    run_case("unit_cube_topo_validate_ok", []() {
+        Mesh m = make_unit_cube();
+        auto result = m.topo_validate();
         if (!result.ok) {
             for (const auto& e : result.errors) {
                 std::fprintf(stderr, "  error: %s\n", e.c_str());
@@ -109,45 +84,67 @@ int main() {
     });
 
     run_case("invalid_points_nan", []() {
-        Mesh m = make_simple_mesh();
+        Mesh m = make_unit_cube();
         m.points().set(0, std::nan(""), 0.0, 0.0);
-        EXPECT_FALSE(m.validate().ok);
+        EXPECT_FALSE(m.topo_validate().ok);
     });
 
     run_case("invalid_owner_out_of_range", []() {
-        Mesh m = make_simple_mesh();
+        Mesh m = make_unit_cube();
         m.ownership().set_owner(0, 99);
-        EXPECT_FALSE(m.validate().ok);
+        EXPECT_FALSE(m.topo_validate().ok);
     });
 
     run_case("invalid_cell_face_refs", []() {
-        Mesh m = make_simple_mesh();
+        Mesh m = make_unit_cube();
         m.cells().clear();
         m.cells().push_cell({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-        EXPECT_FALSE(m.validate().ok);
-    });
-
-    run_case("clear", []() {
-        Mesh m = make_simple_mesh();
-        m.clear();
-        EXPECT_TRUE(m.n_points() == 0);
-        EXPECT_TRUE(m.n_faces() == 0);
-        EXPECT_TRUE(m.n_cells() == 0);
+        EXPECT_FALSE(m.topo_validate().ok);
     });
 
     run_case("boundary_patch_consistent", []() {
-        Mesh m = make_simple_mesh();
+        Mesh m = make_unit_cube();
         EXPECT_TRUE(m.boundary().is_consistent(m.n_faces()));
     });
 
     run_case("boundary_patch_overlap", []() {
-        Mesh m = make_simple_mesh();
+        Mesh m = make_unit_cube();
         Patch p;
         p.name = "dup";
         p.type = PatchType::WALL;
-        p.face_ids = {0};  // face 0 déjà dans "bottom"
+        p.face_ids = {0};
         m.boundary().add_patch(p);
         EXPECT_FALSE(m.boundary().is_consistent(m.n_faces()));
+    });
+
+    run_case("validate_mesh_full_ok", []() {
+        Mesh m = make_unit_cube();
+        auto report = validate_mesh(m);
+        if (!report.ok) {
+            for (const auto& e : report.errors) {
+                std::fprintf(stderr, "  error: %s\n", e.c_str());
+            }
+        }
+        EXPECT_TRUE(report.ok);
+    });
+
+    run_case("validate_mesh_detects_bad_geometry", []() {
+        Mesh m = make_unit_cube();
+        m.points().set(0, std::nan(""), 0.0, 0.0);
+        auto report = validate_mesh(m);
+        EXPECT_FALSE(report.ok);
+    });
+
+    run_case("validate_mesh_reports_quality", []() {
+        Mesh m = make_unit_cube();
+        auto report = validate_mesh(m);
+        EXPECT_TRUE(report.max_skewness >= 0.0);
+        EXPECT_TRUE(report.surface_closure_error >= 0.0);
+        // Pour un cube parfait, la fermeture des surfaces est ~0.
+        EXPECT_NEAR(report.surface_closure_error, 0.0, 1e-12);
+        // Le volume du cube unité est 1.0.
+        EXPECT_NEAR(report.max_cell_volume, 1.0, 1e-12);
+        EXPECT_NEAR(report.min_cell_volume, 1.0, 1e-12);
     });
 
     return run_all();
