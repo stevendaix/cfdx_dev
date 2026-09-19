@@ -77,7 +77,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/geometry/cell_geometry.h
     src/cfdx/core/geometry/mesh_quality.h
     src/cfdx/core/geometry/mesh_validator.h
-    src/cfdx/core/field/field.h
+src/cfdx/core/field/field.h
     src/cfdx/core/field/storage.h
     src/cfdx/core/boundary/boundary_field.h
     src/cfdx/core/numerics/interpolation.h
@@ -86,6 +86,11 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/laplacian.h
     src/cfdx/core/numerics/flux.h
     src/cfdx/core/numerics/integrate.h
+    src/cfdx/core/linalg/sparse_matrix.h
+    src/cfdx/core/linalg/vector.h
+    src/cfdx/core/linalg/linear_system.h
+    src/cfdx/core/linalg/cg_solver.h
+    src/cfdx/core/linalg/bicgstab_solver.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -236,4 +241,32 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_integrate PRIVATE cfdx_core)
     target_include_directories(test_integrate PRIVATE tests)
     add_test(NAME integrate COMMAND test_integrate)
+
+    add_executable(test_sparse_matrix
+        tests/unit/test_sparse_matrix.cpp
+    )
+    target_link_libraries(test_sparse_matrix PRIVATE cfdx_core)
+    target_include_directories(test_sparse_matrix PRIVATE tests)
+    add_test(NAME sparse_matrix COMMAND test_sparse_matrix)
+
+    add_executable(test_vector
+        tests/unit/test_vector.cpp
+    )
+    target_link_libraries(test_vector PRIVATE cfdx_core)
+    target_include_directories(test_vector PRIVATE tests)
+    add_test(NAME vector COMMAND test_vector)
+
+    add_executable(test_cg_solver
+        tests/unit/test_cg_solver.cpp
+    )
+    target_link_libraries(test_cg_solver PRIVATE cfdx_core)
+    target_include_directories(test_cg_solver PRIVATE tests)
+    add_test(NAME cg_solver COMMAND test_cg_solver)
+
+    add_executable(test_bicgstab_solver
+        tests/unit/test_bicgstab_solver.cpp
+    )
+    target_link_libraries(test_bicgstab_solver PRIVATE cfdx_core)
+    target_include_directories(test_bicgstab_solver PRIVATE tests)
+    add_test(NAME bicgstab_solver COMMAND test_bicgstab_solver)
 endif()
