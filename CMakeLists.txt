@@ -79,6 +79,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/geometry/mesh_validator.h
     src/cfdx/core/field/field.h
     src/cfdx/core/field/storage.h
+    src/cfdx/core/boundary/boundary_field.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
@@ -180,4 +181,11 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_field_storage PRIVATE cfdx_core)
     target_include_directories(test_field_storage PRIVATE tests)
     add_test(NAME field_storage COMMAND test_field_storage)
+
+    add_executable(test_boundary_field
+        tests/unit/test_boundary_field.cpp
+    )
+    target_link_libraries(test_boundary_field PRIVATE cfdx_core)
+    target_include_directories(test_boundary_field PRIVATE tests)
+    add_test(NAME boundary_field COMMAND test_boundary_field)
 endif()
