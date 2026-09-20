@@ -91,6 +91,9 @@ inline void assemble_laplacian_csr(
                 A.push_back(owner, nb, -D_f);
             }
         } else {
+            // Boundary face: Dirichlet contribution (only affects owner)
+            const double D_f = mag_Sf2 / 1e-2;  // Approximate distance for boundary
+            A.push_back(owner, owner, D_f);
         }
     }
     for (std::size_t c = 0; c < n_cells; ++c) {
