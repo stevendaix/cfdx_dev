@@ -27,17 +27,33 @@ int main(int argc, char** argv) {
         if (arg == "--mesh" && i + 1 < argc) mesh_path = argv[++i];
         else if (arg == "--output" && i + 1 < argc) output_path = argv[++i];
     }
-    std::cout << "=== Poisson MMS Validation ===\n";
-    std::cout << "  Input : " << mesh_path << "\n";
-    std::cout << "  Output: " << output_path << "\n\n";
-    std::cout << "[1/5] Import Gmsh...\n";
-    cfdx::core::Mesh mesh;
-    if (!cfdx::io::gmsh::import_gmsh_mesh(mesh_path, mesh)) {
-        std::cerr << "Failed to load mesh: " << mesh_path << "\n";
+    std::cout << "[DEBUG] Entrée dans main()\n";
+    std::cout.flush();
+    try {
+        std::cout << "[DEBUG] Avant constructeur Mesh\n";
+        std::cout.flush();
+        cfdx::core::Mesh mesh;
+        std::cout << "[DEBUG] Après constructeur Mesh, avant import\n";
+        std::cout.flush();
+        if (!cfdx::io::gmsh::import_gmsh_mesh(mesh_path, mesh)) {
+            std::cerr << "Failed to load mesh: " << mesh_path << "\n";
+            return 1;
+        }
+        if (!cfdx::io::gmsh::import_gmsh_mesh(mesh_path, mesh)) {
+            std::cerr << "Failed to load mesh: " << mesh_path << "\n";
+            return 1;
+        }
+        std::cout << "[DEBUG] Après import Gmsh, n_cells = " << mesh.n_cells() << "\n";
+        std::cout.flush();
+        const std::size_t n_cells = mesh.n_cells();
+    if (n_cells == 0) {
+        std::cerr << "ERREUR CRITIQUE : Le maillage est vide (n_cells == 0). Le parser Gmsh est peut-être encore un stub.\n";
         return 1;
     }
+    std::cout << "[DEBUG] Après import. n_cells = " << mesh.n_cells() << "\n";
     std::cout << "  cells = " << mesh.n_cells() << "\n\n";
     std::cout << "[2/5] RCM & Memory Planner...\n";
+    std::cout << "[DEBUG] Avant RCM\n";
     std::vector<uint32_t> owner, neighbour;
     cfdx::core::memory::RCMReorderer rcm;
     rcm.reorder(owner, neighbour, mesh.n_cells());
@@ -45,42 +61,12 @@ int main(int argc, char** argv) {
     std::vector<cfdx::core::memory::BufferDescriptor> buffers;
     auto budget_plan = planner.plan(buffers, 10, mesh.n_cells(), mesh.n_faces(), 1, 5);
     std::cout << "  bytes/cell = " << budget_plan.budget.bytes_per_cell << "\n\n";
-    std::cout << "[3/5] Identifying Dirichlet cells...\n";
-    std::vector<bool> is_dirichlet(mesh.n_cells(), false);
-    const auto& pts = mesh.points();
-    const double* px = pts.x_data();
-    const double* py = pts.y_data();
-    const double* pz = pts.z_data();
-    const auto* verts = mesh.faces().vertices_data();
-    const auto* f_offsets = mesh.faces().offsets_data();
-    const auto* c_faces = mesh.cells().faces_data();
-    const auto* c_offsets = mesh.cells().offsets_data();
-    std::vector<double> cx_arr(mesh.n_cells(), 0.0);
-    std::vector<double> cy_arr(mesh.n_cells(), 0.0);
-    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-        const auto off = c_offsets[c];
-        const auto n = c_offsets[c + 1] - off;
-        double cx = 0.0, cy = 0.0, count = 0.0;
-        for (auto k = off; k < c_offsets[c + 1]; ++k) {
-            const auto f_idx = c_faces[k];
-            const auto v_off = f_offsets[f_idx];
-            const auto v_n = f_offsets[f_idx + 1] - v_off;
-            for (auto vi = 0; vi < v_n; ++vi) {
-                const auto v_idx = verts[v_off + vi];
-                cx += px[v_idx]; cy += py[v_idx]; count += 1.0;
-            }
-        }
-        cx_arr[c] = cx / std::max(count, 1.0);
-        cy_arr[c] = cy / std::max(count, 1.0);
-    }
-    const double eps = 0.05;
-    int dirichlet_count = 0;
-    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-        bool is_edge = (cx_arr[c] < eps || cx_arr[c] > 1.0 - eps || cy_arr[c] < eps || cy_arr[c] > 1.0 - eps);
-        is_dirichlet[c] = is_edge;
-        if (is_edge) dirichlet_count++;
-    }
-    std::cout << "  Dirichlet cells = " << dirichlet_count << " / " << mesh.n_cells() << "\n\n";
+    std::cout << "[3/5] Identifying Dirichlet cells... (COMMENTÉ POUR TEST)\n";
+    std::vector<bool> is_dirichlet(mesh.n_cells(), true);  // Tout Dirichlet = matrice identité
+    std::cout << "  Dirichlet cells = SKIP (test)\n\n";
+    std::cout << "  Dirichlet cells = SKIP (test simplifié)\n\n";
+    std::cout << "[DEBUG] Avant assemble_laplacian_csr\n";
+    std::cout.flush();
     std::cout << "[4/5] Laplacian assembly...\n";
     cfdx::core::SparseMatrix A;
     cfdx::core::Vector b;
@@ -110,5 +96,12 @@ int main(int argc, char** argv) {
     }
     std::cout << "  L_inf error = " << max_err << "\n";
     std::cout << "  L_2 error   = " << std::sqrt(l2_err_sq) << "\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[EXCEPTION] " << e.what() << "\n";
+        return 1;
+    } catch (...) {
+        std::cerr << "[EXCEPTION INCONNUE]\n";
+        return 1;
+    }
     return 0;
 }

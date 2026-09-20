@@ -8,7 +8,10 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace cfdx::io::gmsh;
+namespace cfdx {
+namespace io {
+namespace gmsh {
+
 using namespace cfdx::core;
 
 // Helper: read all nodes from $Nodes ... $EndNodes section
@@ -145,6 +148,21 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
         parseElements(elements_content, mesh, points_map);
     }
 
+    // ======================================================================
+    // TOPOLOGIE FVM : construction des faces, owner/neighbour, cell CSR
+    // ======================================================================
+    std::map<std::vector<uint32_t>, std::pair<std::size_t, std::size_t>> face_map;
+    std::size_t face_idx_count = 0;
+
+    // Pour chaque cellule brute (triangle/quad), générer les faces
+    // (Simplification : utiliser directement les nodes de la cellule)
+    for (std::size_t c = 0; c < mesh.cells().n_cells(); ++c) {
+        // Récupérer les nodes de cette cellule depuis le parser interne
+        // Note : dans cette version stub, on reconstruit à partir de point_index_map
+        // et des données brutes du parser. Dans la version finale, cela utilisera
+        // directement mesh.cells().faces().
+    }
+
     return mesh.n_cells() > 0 || mesh.n_points() > 0;
 }
 
@@ -160,3 +178,7 @@ bool import_gmsh_vector(const std::string&, const std::string&, void*) {
 // ============================================
 // Section $PhysicalNames / $PhysicalGroups added to cavity.msh
 // Next: map element tags -> boundary patches for CFDX Mesh
+
+} // namespace gmsh
+} // namespace io
+} // namespace cfdx

@@ -13,6 +13,20 @@ inline void assemble_laplacian_csr(
     const std::vector<bool>& is_dirichlet_cell) {
     const std::size_t n_cells = mesh.n_cells();
     const std::size_t n_faces = mesh.n_faces();
+
+    if (n_cells == 0 || n_faces == 0) {
+        throw std::runtime_error("assemble_laplacian_csr: mesh is empty (n_cells=" + std::to_string(n_cells) + ", n_faces=" + std::to_string(n_faces) + ")");
+    }
+    if (mesh.cells().offsets_data() == nullptr || mesh.cells().n_cells() != n_cells) {
+        throw std::runtime_error("assemble_laplacian_csr: cell connectivity is invalid or incomplete (stub?). Expected n_cells=" + std::to_string(n_cells));
+    }
+    if (mesh.ownership().size() != n_faces) {
+        throw std::runtime_error("assemble_laplacian_csr: ownership size mismatch. Expected " + std::to_string(n_faces) + ", got " + std::to_string(mesh.ownership().size()));
+    }
+    if (is_dirichlet_cell.size() != n_cells) {
+        throw std::runtime_error("assemble_laplacian_csr: is_dirichlet_cell size mismatch. Expected " + std::to_string(n_cells) + ", got " + std::to_string(is_dirichlet_cell.size()));
+    }
+
     A = SparseMatrix(n_cells, n_cells);
     b = Vector(n_cells, 0.0);
     const PointCloud& pts = mesh.points();
