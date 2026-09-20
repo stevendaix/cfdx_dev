@@ -1,7 +1,7 @@
 // M0.4-T01 — Tests for Field<T, Location>
 
 #include "cfdx/core/field/field.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

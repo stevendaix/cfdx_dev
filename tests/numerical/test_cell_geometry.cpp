@@ -4,7 +4,7 @@
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 #include <cmath>
 
 using namespace cfdx::core;

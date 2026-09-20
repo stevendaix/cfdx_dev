@@ -1,7 +1,7 @@
 // M0.2-T03/T04 — Tests for mesh quality metrics
 
 #include "cfdx/core/geometry/mesh_quality.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 #include <cmath>
 
 using namespace cfdx::core;

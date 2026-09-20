@@ -8,68 +8,68 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] Spécification v0.7 commitée
 - [x] docs/development créés (ROADMAP, BACKLOG, DECISIONS, AGENT_STATE)
 - [x] Arborescence source créée (src/cfdx/...)
-- [ ] Système de build (CMake)
-- [ ] HDF5 statique construit (third_party/hdf5)
-- [ ] pybind11 installé
-- [ ] Tests unitaires de base
+- [x] Système de build (CMake)
+- [x] HDF5 statique construit (third_party/hdf5)
+- [x] pybind11 installé
+- [x] Tests unitaires de base
 
 ## M0.1 — Mesh topology
 
-- [ ] M0.1-T01 Point storage
-- [ ] M0.1-T02 Face CSR connectivity
-- [ ] M0.1-T03 Owner/neighbour storage
-- [ ] M0.1-T04 Cell CSR connectivity
-- [ ] M0.1-T05 Boundary patches
-- [ ] M0.1-T06 Topology validation
+- [x] M0.1-T01 Point storage
+- [x] M0.1-T02 Face CSR connectivity
+- [x] M0.1-T03 Owner/neighbour storage
+- [x] M0.1-T04 Cell CSR connectivity
+- [x] M0.1-T05 Boundary patches
+- [x] M0.1-T06 Topology validation
 
 ## M0.2 — Geometry
 
-- [ ] M0.2-T01 Face geometry (centre, area, Sf, normal)
-- [ ] M0.2-T02 Cell geometry (centre, volume)
-- [ ] M0.2-T03 Skewness
-- [ ] M0.2-T04 Non-orthogonality
+- [x] M0.2-T01 Face geometry (centre, area, Sf, normal)
+- [x] M0.2-T02 Cell geometry (centre, volume)
+- [x] M0.2-T03 Skewness
+- [x] M0.2-T04 Non-orthogonality
 
 ## M0.3 — Mesh quality
 
-- [ ] M0.3-T01 Mesh validator (topology + geometry + quality + conservation)
+- [x] M0.3-T01 Mesh validator (topology + geometry + quality + conservation)
 
 ## M0.4 — Fields
 
-- [ ] M0.4-T01 Field<T, Location> template
-- [ ] M0.4-T02 Field metadata
-- [ ] M0.4-T03 StorageHandle (Host/Device/WorkingSet)
+- [x] M0.4-T01 Field<T, Location> template
+- [x] M0.4-T02 Field metadata
+- [x] M0.4-T03 StorageHandle (Host/Device/WorkingSet)
 
 ## M0.5 — Boundary fields
 
-- [ ] M0.5-T01 BoundaryField / PatchField
+- [x] M0.5-T01 BoundaryField / PatchField
 
 ## M0.6 — Interpolation
 
-- [ ] M0.6-T01 Cell→Face interpolation (linear, upwind)
+- [x] M0.6-T01 Cell→Face interpolation (linear, upwind, limited)
 
 ## M0.7 — FVM operators
 
-- [ ] M0.7-T01 Gauss gradient
-- [ ] M0.7-T02 Divergence
-- [ ] M0.7-T03 Laplacian (orthogonal + non-orthogonal corrected)
-- [ ] M0.7-T04 Flux
-- [ ] M0.7-T05 Surface/Volume integrate
+- [x] M0.7-T01 Gauss gradient
+- [x] M0.7-T02 Divergence
+- [x] M0.7-T03 Laplacian (orthogonal + non-orthogonal corrected)
+- [x] M0.7-T04 Flux
+- [x] M0.7-T05 Surface/Volume integrate
 
 ## M0.8 — Linear algebra
 
-- [ ] M0.8-T01 SparseMatrix (CSR)
-- [ ] M0.8-T02 Vector
-- [ ] M0.8-T03 LinearSystem
-- [ ] M0.8-T04 CG solver
-- [ ] M0.8-T05 BiCGStab solver
+- [x] M0.8-T01 SparseMatrix (CSR)
+- [x] M0.8-T02 Vector
+- [x] M0.8-T03 LinearSystem
+- [x] M0.8-T04 CG solver
+- [x] M0.8-T05 BiCGStab solver
 - [ ] M0.8-T06 GMRES solver
 - [ ] M0.8-T07 Preconditioners (Jacobi, Gauss-Seidel, ILU)
 
 ## M0.9 — HDF5
 
-- [ ] M0.9-T01 HDF5 writer (mesh, fields, meta)
-- [ ] M0.9-T02 HDF5 reader
-- [ ] M0.9-T03 Round-trip validation
+- [x] M0.9-T01 HDF5 writer (mesh, fields, meta)
+- [x] M0.9-T02 HDF5 reader
+- [x] M0.9-T03 Round-trip validation
 - [ ] M0.9-T04 Hash computation
 
 ## M0.10 — Import/export

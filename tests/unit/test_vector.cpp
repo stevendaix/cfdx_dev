@@ -1,7 +1,7 @@
 // M0.8-T02 — Tests for Vector
 
 #include "cfdx/core/linalg/vector.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

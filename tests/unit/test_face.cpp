@@ -1,7 +1,7 @@
 // M0.1-T02 — Tests for FaceConnectivity (CSR)
 
 #include "cfdx/core/mesh/face.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

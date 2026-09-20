@@ -2,7 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/field/storage.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

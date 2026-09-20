@@ -3,7 +3,7 @@
 
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

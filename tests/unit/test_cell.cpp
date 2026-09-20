@@ -1,7 +1,7 @@
 // M0.1-T04 — Tests for CellConnectivity
 
 #include "cfdx/core/mesh/cell.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

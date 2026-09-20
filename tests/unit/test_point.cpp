@@ -2,7 +2,7 @@
 // Spécification CFDX v0.7 §10, §18, §19
 
 #include "cfdx/core/mesh/point.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 #include <cmath>
 #include <limits>
 

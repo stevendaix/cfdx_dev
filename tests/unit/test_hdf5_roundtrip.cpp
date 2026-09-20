@@ -3,7 +3,7 @@
 #include "cfdx/io/hdf5/hdf5_writer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/core/mesh/mesh.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 #include <cstdio>
 #include <string>
 

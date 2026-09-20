@@ -2,7 +2,7 @@
 
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/mesh_validator.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

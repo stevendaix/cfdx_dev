@@ -4,7 +4,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
 #include "cfdx/core/numerics/flux.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

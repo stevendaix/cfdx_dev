@@ -1,7 +1,7 @@
 // M0.1-T05 — Tests for BoundaryPatches
 
 #include "cfdx/core/mesh/boundary.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

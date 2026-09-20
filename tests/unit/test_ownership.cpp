@@ -1,7 +1,7 @@
 // M0.1-T03 — Tests for FaceOwnership
 
 #include "cfdx/core/mesh/ownership.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;

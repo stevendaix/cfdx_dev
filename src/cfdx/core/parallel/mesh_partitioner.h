@@ -6,6 +6,7 @@
 #pragma once
 
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/parallel/mpi_utils.h"
 #include <vector>
 #include <cstddef>
@@ -20,9 +21,9 @@ namespace parallel {
 
 // Partition result: cell -> rank mapping
 struct Partition {
-    std::vector<int> cell_rank;    // size = n_cells, value = rank
-    std::vector<int> face_owner_rank;  // size = n_faces, value = owner rank
-    std::vector<int> face_ghost_rank;  // size = n_faces, value = ghost rank (or -1)
+    std::vector<int> cell_rank;           // size = n_cells, value = rank
+    std::vector<int> face_owner_rank;     // size = n_faces, value = owner rank
+    std::vector<int> face_ghost_rank;     // size = n_faces, value = ghost rank (or -1)
     int n_parts = 0;
 };
 

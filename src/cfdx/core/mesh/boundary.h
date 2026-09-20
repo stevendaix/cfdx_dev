@@ -14,6 +14,7 @@
 #pragma once
 
 #include "index_types.h"
+#include "ownership.h"
 #include <vector>
 #include <string>
 #include <cstddef>
@@ -23,6 +24,8 @@
 
 namespace cfdx {
 namespace core {
+
+class Mesh;  // Forward declaration
 
 enum class PatchType : std::uint8_t {
     WALL = 0,
@@ -137,6 +140,12 @@ public:
         }
         return true;
     }
+
+    // Vérifie la cohérence complète des patches avec la topologie du maillage (§19).
+    // Invariant : union(all patch faces) == all faces where neighbour == -1
+    //             intersection(patches) = ∅
+    //             internal faces (neighbour >= 0) must not be in any patch
+    bool is_consistent_with_mesh(const Mesh& m) const;
 
     // Nombre total de faces de frontière (somme des patches).
     std::size_t n_boundary_faces() const {

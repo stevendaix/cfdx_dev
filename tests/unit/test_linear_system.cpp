@@ -2,7 +2,7 @@
 #include "cfdx/core/linalg/linear_system.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
-#include "test_harness.h"
+#include "common/test_harness.h"
 #include <cstdio>
 
 using namespace cfdx::core;

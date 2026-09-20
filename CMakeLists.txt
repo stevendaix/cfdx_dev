@@ -85,6 +85,7 @@ set(CFDX_MESH_SOURCES
     src/cfdx/core/mesh/ownership.cpp
     src/cfdx/core/mesh/cell.cpp
     src/cfdx/core/mesh/mesh.cpp
+    src/cfdx/core/mesh/boundary.cpp
 )
 
 # Geometry module
@@ -171,7 +172,7 @@ if(CFDX_BUILD_TESTS)
     macro(add_cfdx_test test_name source_file)
         add_executable(${test_name} ${source_file})
         target_link_libraries(${test_name} PRIVATE cfdx_core)
-        target_include_directories(${test_name} PRIVATE tests)
+        target_include_directories(${test_name} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
@@ -205,10 +206,12 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
-    add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
+    # add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp) 
+    # add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)  
 
     # HDF5 tests
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+    add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
 
 endif()

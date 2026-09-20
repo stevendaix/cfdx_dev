@@ -122,7 +122,7 @@ inline Field<double, Location::CELL> compute_laplacian(
         cell_volume[c] = cg.volume;
     }
 
-    // 4. Interpolation du gradient vers les faces (linéaire).
+// 4. Interpolation du gradient vers les faces (linéaire).
     //    (∇φ)_f = 0.5 * ((∇φ)_owner + (∇φ)_neighbour)
     //    Pour les faces de frontière : (∇φ)_f = (∇φ)_owner.
     std::vector<Vec3> face_grad(n_faces);
@@ -152,7 +152,7 @@ inline Field<double, Location::CELL> compute_laplacian(
     //      - si c est le owner, Sf est vers l'extérieur → contribution = (∇φ)_f · Sf
     //      - si c est le voisin, Sf est vers l'intérieur → contribution = (∇φ)_f · (−Sf)
     //
-    //    Pour une face de frontière, c est le owner → contribution = (∇φ)_f · Sf
+//    Pour une face de frontière, c est le owner → contribution = (∇φ)_f · Sf
     double* l = lap.component_data(0);
 
     for (std::size_t c = 0; c < n_cells; ++c) {

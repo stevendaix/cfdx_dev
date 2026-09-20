@@ -120,6 +120,11 @@ public:
         if (!boundary_.is_consistent(n_faces())) {
             result.add_error("boundary patches inconsistent (overlap or out-of-range)");
         }
+        
+        // Vérifier la cohérence complète patches <-> topologie (§19)
+        if (!boundary_.is_consistent_with_mesh(*this)) {
+            result.add_error("boundary patches do not match mesh topology (orphan or internal faces in patches)");
+        }
 
         // Chaque face interne doit être référencée par 2 cellules,
         // chaque face de frontière par 1.
