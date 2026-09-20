@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/steven/cfdx_dev/build_san/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
