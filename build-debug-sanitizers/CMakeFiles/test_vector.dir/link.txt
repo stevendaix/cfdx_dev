@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_vector.dir/tests/unit/test_vector.cpp.o -o test_vector  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

@@ -118,6 +118,8 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/hdf5/hdf5_writer.cpp
     src/cfdx/io/hdf5/hdf5_reader.cpp
     src/cfdx/io/vtu/vtu_writer.cpp
+    src/cfdx/io/openfoam/openfoam_importer.cpp
+    src/cfdx/io/gmsh/gmsh_importer.cpp
 )
 
 set(CFDX_PHYSICS_SOURCES
