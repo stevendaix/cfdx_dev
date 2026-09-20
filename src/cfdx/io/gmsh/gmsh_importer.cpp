@@ -62,6 +62,54 @@ static bool parseElements(const std::string& content,
     return true;
 }
 
+// Helper: parse $PhysicalNames section
+static std::map<uint32_t, std::string> parsePhysicalNames(const std::string& content) {
+    std::map<uint32_t, std::string> physical_names;
+    std::istringstream stream(content);
+    std::string line;
+    bool in_section = false;
+    while (std::getline(stream, line)) {
+        if (line.find("$PhysicalNames") != std::string::npos) { in_section = true; continue; }
+        if (line.find("$EndPhysicalNames") != std::string::npos) { in_section = false; break; }
+        if (!in_section) continue;
+        std::istringstream ls(line);
+        uint32_t dim, tag;
+        std::string name_quoted;
+        ls >> dim >> tag;
+        std::getline(ls, name_quoted);  // rest of line including quotes
+        // Trim quotes and whitespace
+        size_t start = name_quoted.find('"');
+        size_t end = name_quoted.rfind('"');
+        std::string name = (start != std::string::npos && end != std::string::npos && end > start)
+            ? name_quoted.substr(start + 1, end - start - 1) : "";
+        physical_names[tag] = name;
+    }
+    return physical_names;
+}
+
+// Helper: parse $PhysicalGroups section
+static std::map<uint32_t, std::vector<uint32_t>> parsePhysicalGroups(const std::string& content) {
+    std::map<uint32_t, std::vector<uint32_t>> groups;
+    std::istringstream stream(content);
+    std::string line;
+    bool in_section = false;
+    while (std::getline(stream, line)) {
+        if (line.find("$PhysicalGroups") != std::string::npos) { in_section = true; continue; }
+        if (line.find("$EndPhysicalGroups") != std::string::npos) { in_section = false; break; }
+        if (!in_section) continue;
+        std::istringstream ls(line);
+        uint32_t dim, tag, num_entities;
+        ls >> dim >> tag >> num_entities;
+        uint32_t entity;
+        std::vector<uint32_t> entities;
+        while (ls >> entity) {
+            entities.push_back(entity);
+        }
+        groups[tag] = entities;
+    }
+    return groups;
+}
+
 bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
     std::ifstream file(filename);
     if (!file.is_open()) return false;
