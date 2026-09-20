@@ -94,8 +94,10 @@ set(CFDX_IMPORTER_SOURCES
     src/cfdx/core/importers/gmsh_importer.cpp
 )
 
-add_executable(opensfoam_importer src/cfdx/core/importers/opensfoam_importer.cpp)
-add_executable(gmsh_importer src/cfdx/core/importers/gmsh_importer.cpp)
+# Memory sources
+set(CFDX_MEMORY_SOURCES
+    src/cfdx/core/memory/memory_planner.cpp
+)
 
 # Geometry module
 set(CFDX_GEOMETRY_SOURCES
@@ -132,6 +134,8 @@ set(CFDX_CORE_SOURCES
     ${CFDX_FIELD_SOURCES}
     ${CFDX_IO_SOURCES}
     ${CFDX_PHYSICS_SOURCES}
+    ${CFDX_IMPORTER_SOURCES}
+    ${CFDX_MEMORY_SOURCES}
 )
 
 # Headers (for IDE visibility, not compiled)

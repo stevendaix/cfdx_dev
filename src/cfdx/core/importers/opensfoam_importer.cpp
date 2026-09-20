@@ -3,6 +3,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include <iostream>
 #include <fstream>
 
