@@ -77,11 +77,12 @@ int main(int argc, char** argv) {
 
     if (has_boundary_patches) {
         // Utiliser $PhysicalNames / $PhysicalGroups du maillage Gmsh
-        // Les patches "left", "right", "bottom", "top", "wall" sont des frontières Dirichlet
+        // Les patches nommés "left", "right", "bottom", "top" sont Dirichlet (MMS)
+        std::cout << "  PhysicalNames/PhysicalGroups détectés : " << boundary_patches.n_patches() << " patches\n";
         for (std::size_t p = 0; p < boundary_patches.n_patches(); ++p) {
             const auto& patch = boundary_patches.patch(p);
-            const std::string& name = patch.name;
-            std::cout << "  Patch (Dirichlet): " << name << " (faces=" << patch.size() << ")\n";
+            const std::string& patch_name = patch.name;  // .name est un attribut public (string)
+            std::cout << "  Patch: [" << p << "] name="" << patch_name << "" (faces=" << patch.size() << ")\n";
             // Marquer toutes les cellules adjacentes aux faces du patch comme Dirichlet
             for (auto f_id : patch.face_ids) {
                 std::size_t f = static_cast<std::size_t>(f_id);
