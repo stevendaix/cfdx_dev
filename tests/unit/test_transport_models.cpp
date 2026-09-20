@@ -14,7 +14,7 @@ using namespace cfdx::testing;
 int main() {
     run_case("ideal_gas_density", []() {
         IdealGasEOS eos;
-        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 300.0, 101325.0});
+        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 717.5, 300.0, 101325.0});
         double rho = eos.density(101325.0, 300.0);
         double expected = 101325.0 / (287.058 * 300.0);
         EXPECT_NEAR(rho, expected, 1e-6);
@@ -22,7 +22,7 @@ int main() {
 
     run_case("ideal_gas_enthalpy", []() {
         IdealGasEOS eos;
-        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 300.0, 101325.0});
+        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 717.5, 300.0, 101325.0});
         double h = eos.enthalpy(101325.0, 300.0);
         double expected = 1004.5 * (300.0 - 300.0); // At T_ref => h = 0
         EXPECT_NEAR(h, expected, 1e-6);
@@ -30,7 +30,7 @@ int main() {
 
     run_case("ideal_gas_speed_of_sound", []() {
         IdealGasEOS eos;
-        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 300.0, 101325.0});
+        eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 717.5, 300.0, 101325.0});
         double cs = eos.speed_of_sound(101325.0, 300.0);
         double expected = std::sqrt(1.4 * 287.058 * 300.0);
         EXPECT_NEAR(cs, expected, 0.1);
