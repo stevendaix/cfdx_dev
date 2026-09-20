@@ -1,0 +1,27 @@
+test_point 2 0.00123211
+test_face 2 0.00088063
+test_ownership 2 0.00117968
+test_cell 2 0.000676958
+test_boundary 2 0.00075966
+test_mesh 2 0.00122325
+test_field 2 0.000714055
+test_field_storage 2 0.000642545
+test_boundary_field 2 0.000689263
+test_interpolation 2 0.000999293
+test_gradient 2 0.00196577
+test_divergence 2 0.00211735
+test_flux 2 0.000898011
+test_integrate 2 0.00083338
+test_sparse_matrix 2 0.000625433
+test_vector 2 0.000757052
+test_linear_system 2 0.000818041
+test_cg_solver 2 0.000695365
+test_bicgstab_solver 2 0.00167684
+test_laplacian 2 0.000880494
+test_face_geometry 2 0.000784862
+test_cell_geometry 2 0.000712037
+test_mesh_quality 2 0.00110205
+test_hdf5_writer 2 0.00317047
+test_hdf5_roundtrip 2 0.00352548
+test_field_roundtrip 2 0.00248303
+---

@@ -106,6 +106,7 @@ set(CFDX_FIELD_SOURCES
 set(CFDX_IO_SOURCES
     src/cfdx/io/hdf5/hdf5_writer.cpp
     src/cfdx/io/hdf5/hdf5_reader.cpp
+    src/cfdx/io/vtu/vtu_writer.cpp
 )
 
 set(CFDX_CORE_SOURCES
@@ -143,6 +144,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/bicgstab_solver.h
     src/cfdx/io/hdf5/hdf5_writer.h
     src/cfdx/io/hdf5/hdf5_reader.h
+    src/cfdx/io/vtu/vtu_writer.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})

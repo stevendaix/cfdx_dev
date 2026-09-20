@@ -54,6 +54,7 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] M0.7-T03 Laplacian (orthogonal + non-orthogonal corrected)
 - [x] M0.7-T04 Flux
 - [x] M0.7-T05 Surface/Volume integrate
+- [ ] M0.7-T06 Source term linearization (Su + Sp*φ)
 
 ## M0.8 — Linear algebra
 
@@ -62,15 +63,19 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] M0.8-T03 LinearSystem
 - [x] M0.8-T04 CG solver
 - [x] M0.8-T05 BiCGStab solver
-- [ ] M0.8-T06 GMRES solver
-- [ ] M0.8-T07 Preconditioners (Jacobi, Gauss-Seidel, ILU)
+- [ ] M0.8-T06 GMRES(m) solver (restarted)
+- [ ] M0.8-T07 Preconditioners: Jacobi, Red-Black Gauss-Seidel, ILU(0)
+- [ ] M0.8-T08 AMG wrapper (Hypre/ML) ← CRITIQUE pour Poisson
+- [ ] M0.8-T09 Block preconditioners (Schur complement for coupled systems)
+- [ ] M0.8-T10 Matrix-free operator evaluation (prep for M0.12 GPU/large-scale)
 
-## M0.9 — HDF5
+## M0.9 — HDF5 / Export
 
 - [x] M0.9-T01 HDF5 writer (mesh, fields, meta)
 - [x] M0.9-T02 HDF5 reader
 - [x] M0.9-T03 Round-trip validation
 - [ ] M0.9-T04 Hash computation
+- [x] M0.9-T05 Lightweight VTU writer (XML, no VTK dependency)
 
 ## M0.10 — Import/export
 
@@ -90,6 +95,24 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [ ] M0.12-T01 CPU backend
 - [ ] M0.12-T02 ExecutionPolicy enum
 - [ ] M0.12-T03 Memory planner
+
+## M0.13 — Temporal Discretization
+
+- [ ] M0.13-T01 Time integration schemes (Euler implicit/explicit, Crank-Nicolson, BDF2)
+- [ ] M0.13-T02 Local time stepping (steady-state acceleration)
+- [ ] M0.13-T03 Adaptive time step control (CFL-based)
+
+## M0.14 — Thermodynamics & Transport Properties
+
+- [ ] M0.14-T01 Equation of State (Incompressible constant, Ideal Gas)
+- [ ] M0.14-T02 Transport models (Constant, Sutherland viscosity, Fourier conduction)
+- [ ] M0.14-T03 Basic multi-component mixture (for future scalars)
+
+## M0.15 — Diagnostics & Execution Monitoring
+
+- [ ] M0.15-T01 Logging system (spdlog integration)
+- [ ] M0.15-T02 Residual monitor & convergence criteria (L2/Linf norms)
+- [ ] M0.15-T03 Performance profiling hooks (timers for bottlenecks)
 
 ## M1 — Incompressible laminar
 
@@ -133,3 +156,19 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 
 - [ ] Fluid-structure interface
 - [ ] Partitioned / monolithic coupling
+
+## M8 — Reacting Flows / Combustion
+
+- [ ] Species transport
+- [ ] Finite-rate chemistry
+- [ ] Flame models
+
+## M9 — Discrete Phase Model (DPM)
+
+- [ ] Lagrangian particle tracking
+- [ ] One/two-way coupling
+
+## M10 — Optimization / Adjoint
+
+- [ ] Discrete adjoint differentiation
+- [ ] Shape optimization

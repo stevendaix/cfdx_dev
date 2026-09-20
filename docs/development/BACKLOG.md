@@ -1,6 +1,6 @@
 # CFDX — Backlog
 
-Dernière mise à jour : 2026-09-19
+Dernière mise à jour : 2026-09-20
 
 ## PLANNED
 
@@ -27,17 +27,22 @@ Dernière mise à jour : 2026-09-19
 | M0.7-T03 | Laplacian | M0.7-T01 | DONE |
 | M0.7-T04 | Flux | M0.4-T01 | DONE |
 | M0.7-T05 | Surface/Volume integrate | M0.4-T01 | DONE |
+| M0.7-T06 | Source term linearization (Su + Sp*φ) | M0.7-T01..T05 | PLANNED |
 | M0.8-T01 | SparseMatrix CSR | — | DONE |
 | M0.8-T02 | Vector | M0.8-T01 | DONE |
 | M0.8-T03 | LinearSystem | M0.8-T01, M0.8-T02 | DONE |
 | M0.8-T04 | CG solver | M0.8-T03 | DONE |
 | M0.8-T05 | BiCGStab solver | M0.8-T03 | DONE |
-| M0.8-T06 | GMRES solver | M0.8-T03 | PLANNED |
-| M0.8-T07 | Preconditioners | M0.8-T03 | PLANNED |
+| M0.8-T06 | GMRES(m) solver (restarted) | M0.8-T03 | PLANNED |
+| M0.8-T07 | Preconditioners: Jacobi, Red-Black GS, ILU(0) | M0.8-T03 | PLANNED |
+| M0.8-T08 | AMG wrapper (Hypre/ML) | M0.8-T03 | PLANNED |
+| M0.8-T09 | Block preconditioners (Schur complement) | M0.8-T08 | PLANNED |
+| M0.8-T10 | Matrix-free operator evaluation | M0.8-T03 | PLANNED |
 | M0.9-T01 | HDF5 writer | M0.1-T01..T06, M0.4-T01 | DONE |
 | M0.9-T02 | HDF5 reader | M0.9-T01 | DONE |
 | M0.9-T03 | Round-trip validation | M0.9-T01, M0.9-T02 | DONE |
 | M0.9-T04 | Hash computation | M0.1-T01..T06 | PLANNED |
+| M0.9-T05 | Lightweight VTU writer (XML, no VTK) | M0.1-T01..T06 | DONE |
 | M0.10-T01 | OpenFOAM importer | M0.1-T01..T06 | PLANNED |
 | M0.10-T02 | Gmsh importer | M0.1-T01..T06 | PLANNED |
 | M0.10-T03 | meshio importer | M0.1-T01..T06 | PLANNED |
@@ -48,10 +53,19 @@ Dernière mise à jour : 2026-09-19
 | M0.12-T01 | CPU backend | M0.4-T01, M0.7-T01..T05 | PLANNED |
 | M0.12-T02 | ExecutionPolicy enum | — | PLANNED |
 | M0.12-T03 | Memory planner | M0.4-T01 | PLANNED |
+| M0.13-T01 | Time integration schemes (Euler, Crank-Nicolson, BDF2) | M0.7 | PLANNED |
+| M0.13-T02 | Local time stepping | M0.13-T01 | PLANNED |
+| M0.13-T03 | Adaptive time step control (CFL) | M0.13-T01 | PLANNED |
+| M0.14-T01 | Equation of State (Incompressible, Ideal Gas) | M0.4 | PLANNED |
+| M0.14-T02 | Transport models (Constant, Sutherland) | M0.14-T01 | PLANNED |
+| M0.14-T03 | Multi-component mixture | M0.14-T01 | PLANNED |
+| M0.15-T01 | Logging system (spdlog) | — | PLANNED |
+| M0.15-T02 | Residual monitor & convergence criteria | M0.8 | PLANNED |
+| M0.15-T03 | Performance profiling hooks | — | PLANNED |
 
 ## IN_PROGRESS
 
-- M0.9-T02 (HDF5 reader) — bug de mémoire dans le lecteur (buffer d'attribut trop petit). En cours de débogage.
+- Aucune
 
 ## BLOCKED
 
@@ -67,4 +81,5 @@ Dernière mise à jour : 2026-09-19
 - M0.6 (Interpolation) — commit `2240cd6`
 - M0.7 (FVM operators) — commit `e68d3b8`
 - M0.8 (Linear algebra) — commit `cdf76d4`
-- M0.9-T01 (HDF5 writer) — non commité
+- M0.9-T01..T03 (HDF5) — DONE
+- M0.9-T05 (VTU writer) — DONE
