@@ -1,3 +1,4 @@
+#include "cfdx/core/field/field.h"
 #include "gmsh_importer.h"
 #include "cfdx/core/mesh/mesh.h"
 #include <fstream>
@@ -12,7 +13,7 @@ using namespace cfdx::core;
 
 // Helper: read all nodes from $Nodes ... $EndNodes section
 static bool parseNodes(const std::string& content,
-                        std::map<uint32_t, Vec3<double>>& points_map) {
+                        std::map<uint32_t, cfdx::core::Vec3>& points_map) {
     std::istringstream stream(content);
     std::string line;
     bool in_nodes = false;
@@ -26,7 +27,7 @@ static bool parseNodes(const std::string& content,
         uint32_t id;
         double x, y, z;
         ls >> id >> x >> y >> z;
-        points_map[id] = Vec3<double>(x, y, z);
+        points_map[id] = cfdx::core::Vec3(x, y, z);
     }
     return !points_map.empty();
 }
@@ -35,7 +36,7 @@ static bool parseNodes(const std::string& content,
 // Simplified: triangulate elements, build owner/neighbour for each face
 static bool parseElements(const std::string& content,
                             Mesh& mesh,
-                            const std::map<uint32_t, Vec3<double>>& points_map) {
+                            const std::map<uint32_t, cfdx::core::Vec3>& points_map) {
     std::istringstream stream(content);
     std::string line;
     bool in_elements = false;
@@ -118,7 +119,7 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
     buffer << file.rdbuf();
     std::string full = buffer.str();
 
-    std::map<uint32_t, Vec3<double>> points_map;
+    std::map<uint32_t, cfdx::core::Vec3> points_map;
     // Find Nodes section in full file
     size_t nodes_start = full.find("$Nodes");
     size_t nodes_end = full.find("$EndNodes");
@@ -144,14 +145,14 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
         parseElements(elements_content, mesh, points_map);
     }
 
-    return mesh.numCells() > 0 || mesh.n_points() > 0;
+    return mesh.n_cells() > 0 || mesh.n_points() > 0;
 }
 
 bool import_gmsh_scalar(const std::string&, const std::string&, ScalarCellField&) {
     return false;  // Stub
 }
-bool import_gmsh_vector(const std::string&, const std::string&, VectorCellField&) {
-    return false;  // Stub
+bool import_gmsh_vector(const std::string&, const std::string&, void*) {
+    return false;  // Stub — requires VectorCellField definition
 }
 
 // ============================================
