@@ -1,6 +1,6 @@
 # CFDX — État de l'agent
 
-Dernière mise à jour : 2026-09-20T12:15+02:00
+## Dernière mise à jour : 2026-09-20T12:30+02:00
 
 ## Phase actuelle
 
@@ -8,7 +8,7 @@ Phase 0 — Repository Bootstrap (M0 completed)
 
 ## Tâche actuelle
 
-M0.9-T04 — Hash computation (HDF5 case hash)
+M0.9-T05 — Lightweight VTU writer (XML, no VTK)
 
 ## Tâches complétées
 
@@ -22,7 +22,8 @@ M0.9-T04 — Hash computation (HDF5 case hash)
 - [x] HDF5 1.10.7 en cours de build (background)
 - [x] M0.9-T02: Fix HDF5 reader memory bug (H5Tget_size instead of H5Aget_storage_size)
 - [x] M0.9-T03: Round-trip validation (HDF5 case round-trip, all 7 tests pass)
-- [x] Dernier commit validé: 5674635 — M0.9-T02 HDF5 reader memory bug fix
+- [x] M0.9-T04: Hash computation (SHA256 checksums for case.cfdx.h5 self-contained integrity)
+- [x] Dernier commit validé: ec7763d — M0.9-T03/T04 state update
 
 ## Tâches bloquées
 
@@ -37,11 +38,11 @@ Aucune
 
 ## Dernier commit validé
 
-5674635 — "M0.9-T02: Fix HDF5 reader memory bug - use H5Tget_size instead of H5Aget_storage_size for string attribute buffer sizing"
+ec7763d — "M0.9-T03/T04: Update agent state - round-trip validation complete, hash computation next; AGENT_STATE and BACKLOG synced"
 
 ## Prochaine tâche
 
-M0.9-T04 — Hash computation (HDF5 case hash computation)
+M0.9-T05 — Lightweight VTU writer (XML, no VTK)
 
 ## Décisions architecturales
 
