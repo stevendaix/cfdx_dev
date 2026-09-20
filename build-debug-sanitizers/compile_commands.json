@@ -76,6 +76,16 @@
 },
 {
   "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/gmsh/gmsh_importer.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/io/gmsh/gmsh_importer.cpp"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
   "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/importers/opensfoam_importer.cpp",
   "file": "/home/steven/cfdx_dev/src/cfdx/core/importers/opensfoam_importer.cpp"
 },
@@ -248,5 +258,10 @@
   "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
   "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/test_plan_complet.dir/tests/unit/test_plan_complet.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_plan_complet.cpp",
   "file": "/home/steven/cfdx_dev/tests/unit/test_plan_complet.cpp"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/test_validation_simple.dir/tests/unit/test_validation_simple.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_validation_simple.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_validation_simple.cpp"
 }
 ]

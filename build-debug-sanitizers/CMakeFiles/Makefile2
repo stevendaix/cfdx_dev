@@ -96,6 +96,7 @@ all: CMakeFiles/test_hdf5_roundtrip.dir/all
 all: CMakeFiles/test_field_roundtrip.dir/all
 all: CMakeFiles/test_memory_planner_validation.dir/all
 all: CMakeFiles/test_plan_complet.dir/all
+all: CMakeFiles/test_validation_simple.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -136,6 +137,7 @@ clean: CMakeFiles/test_hdf5_roundtrip.dir/clean
 clean: CMakeFiles/test_field_roundtrip.dir/clean
 clean: CMakeFiles/test_memory_planner_validation.dir/clean
 clean: CMakeFiles/test_plan_complet.dir/clean
+clean: CMakeFiles/test_validation_simple.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -145,12 +147,12 @@ clean: CMakeFiles/test_plan_complet.dir/clean
 CMakeFiles/cfdx_core.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/cfdx_core.dir/build.make CMakeFiles/cfdx_core.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/cfdx_core.dir/build.make CMakeFiles/cfdx_core.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19 "Built target cfdx_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Built target cfdx_core"
 .PHONY : CMakeFiles/cfdx_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/cfdx_core.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 19
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/cfdx_core.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/cfdx_core.dir/rule
@@ -171,12 +173,12 @@ CMakeFiles/cfdx_core.dir/clean:
 CMakeFiles/test_point.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_point.dir/build.make CMakeFiles/test_point.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_point.dir/build.make CMakeFiles/test_point.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=74,75 "Built target test_point"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=76,77 "Built target test_point"
 .PHONY : CMakeFiles/test_point.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_point.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_point.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_point.dir/rule
@@ -197,12 +199,12 @@ CMakeFiles/test_point.dir/clean:
 CMakeFiles/test_face.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_face.dir/build.make CMakeFiles/test_face.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_face.dir/build.make CMakeFiles/test_face.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=34,35 "Built target test_face"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=36,37 "Built target test_face"
 .PHONY : CMakeFiles/test_face.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_face.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_face.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_face.dir/rule
@@ -223,12 +225,12 @@ CMakeFiles/test_face.dir/clean:
 CMakeFiles/test_ownership.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_ownership.dir/build.make CMakeFiles/test_ownership.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_ownership.dir/build.make CMakeFiles/test_ownership.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=70,71 "Built target test_ownership"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=72,73 "Built target test_ownership"
 .PHONY : CMakeFiles/test_ownership.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_ownership.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_ownership.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_ownership.dir/rule
@@ -249,12 +251,12 @@ CMakeFiles/test_ownership.dir/clean:
 CMakeFiles/test_cell.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cell.dir/build.make CMakeFiles/test_cell.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cell.dir/build.make CMakeFiles/test_cell.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=26,27 "Built target test_cell"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=28,29 "Built target test_cell"
 .PHONY : CMakeFiles/test_cell.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cell.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cell.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_cell.dir/rule
@@ -275,12 +277,12 @@ CMakeFiles/test_cell.dir/clean:
 CMakeFiles/test_boundary.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_boundary.dir/build.make CMakeFiles/test_boundary.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_boundary.dir/build.make CMakeFiles/test_boundary.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=22,23 "Built target test_boundary"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=24,25 "Built target test_boundary"
 .PHONY : CMakeFiles/test_boundary.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_boundary.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_boundary.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_boundary.dir/rule
@@ -301,12 +303,12 @@ CMakeFiles/test_boundary.dir/clean:
 CMakeFiles/test_mesh.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mesh.dir/build.make CMakeFiles/test_mesh.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mesh.dir/build.make CMakeFiles/test_mesh.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=64,65 "Built target test_mesh"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=66,67 "Built target test_mesh"
 .PHONY : CMakeFiles/test_mesh.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_mesh.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_mesh.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_mesh.dir/rule
@@ -327,12 +329,12 @@ CMakeFiles/test_mesh.dir/clean:
 CMakeFiles/test_field.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field.dir/build.make CMakeFiles/test_field.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field.dir/build.make CMakeFiles/test_field.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=38,39 "Built target test_field"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=40,41 "Built target test_field"
 .PHONY : CMakeFiles/test_field.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_field.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_field.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_field.dir/rule
@@ -353,12 +355,12 @@ CMakeFiles/test_field.dir/clean:
 CMakeFiles/test_field_storage.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field_storage.dir/build.make CMakeFiles/test_field_storage.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field_storage.dir/build.make CMakeFiles/test_field_storage.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=42,43 "Built target test_field_storage"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=44,45 "Built target test_field_storage"
 .PHONY : CMakeFiles/test_field_storage.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_field_storage.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_field_storage.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_field_storage.dir/rule
@@ -379,12 +381,12 @@ CMakeFiles/test_field_storage.dir/clean:
 CMakeFiles/test_boundary_field.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_boundary_field.dir/build.make CMakeFiles/test_boundary_field.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_boundary_field.dir/build.make CMakeFiles/test_boundary_field.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=24,25 "Built target test_boundary_field"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=26,27 "Built target test_boundary_field"
 .PHONY : CMakeFiles/test_boundary_field.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_boundary_field.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_boundary_field.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_boundary_field.dir/rule
@@ -405,12 +407,12 @@ CMakeFiles/test_boundary_field.dir/clean:
 CMakeFiles/test_interpolation.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_interpolation.dir/build.make CMakeFiles/test_interpolation.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_interpolation.dir/build.make CMakeFiles/test_interpolation.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=56,57 "Built target test_interpolation"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=58,59 "Built target test_interpolation"
 .PHONY : CMakeFiles/test_interpolation.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_interpolation.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_interpolation.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_interpolation.dir/rule
@@ -431,12 +433,12 @@ CMakeFiles/test_interpolation.dir/clean:
 CMakeFiles/test_gradient.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradient.dir/build.make CMakeFiles/test_gradient.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradient.dir/build.make CMakeFiles/test_gradient.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=48,49 "Built target test_gradient"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=50,51 "Built target test_gradient"
 .PHONY : CMakeFiles/test_gradient.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_gradient.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_gradient.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_gradient.dir/rule
@@ -457,12 +459,12 @@ CMakeFiles/test_gradient.dir/clean:
 CMakeFiles/test_divergence.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_divergence.dir/build.make CMakeFiles/test_divergence.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_divergence.dir/build.make CMakeFiles/test_divergence.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=32,33 "Built target test_divergence"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=34,35 "Built target test_divergence"
 .PHONY : CMakeFiles/test_divergence.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_divergence.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_divergence.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_divergence.dir/rule
@@ -483,12 +485,12 @@ CMakeFiles/test_divergence.dir/clean:
 CMakeFiles/test_flux.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_flux.dir/build.make CMakeFiles/test_flux.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_flux.dir/build.make CMakeFiles/test_flux.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=44,45 "Built target test_flux"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=46,47 "Built target test_flux"
 .PHONY : CMakeFiles/test_flux.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_flux.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_flux.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_flux.dir/rule
@@ -509,12 +511,12 @@ CMakeFiles/test_flux.dir/clean:
 CMakeFiles/test_integrate.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integrate.dir/build.make CMakeFiles/test_integrate.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integrate.dir/build.make CMakeFiles/test_integrate.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=54,55 "Built target test_integrate"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=56,57 "Built target test_integrate"
 .PHONY : CMakeFiles/test_integrate.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_integrate.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_integrate.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_integrate.dir/rule
@@ -535,12 +537,12 @@ CMakeFiles/test_integrate.dir/clean:
 CMakeFiles/test_sparse_matrix.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_sparse_matrix.dir/build.make CMakeFiles/test_sparse_matrix.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_sparse_matrix.dir/build.make CMakeFiles/test_sparse_matrix.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=78,79 "Built target test_sparse_matrix"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=80,81 "Built target test_sparse_matrix"
 .PHONY : CMakeFiles/test_sparse_matrix.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_sparse_matrix.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_sparse_matrix.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_sparse_matrix.dir/rule
@@ -561,12 +563,12 @@ CMakeFiles/test_sparse_matrix.dir/clean:
 CMakeFiles/test_vector.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_vector.dir/build.make CMakeFiles/test_vector.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_vector.dir/build.make CMakeFiles/test_vector.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=82,83 "Built target test_vector"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=86,87 "Built target test_vector"
 .PHONY : CMakeFiles/test_vector.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_vector.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_vector.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_vector.dir/rule
@@ -587,12 +589,12 @@ CMakeFiles/test_vector.dir/clean:
 CMakeFiles/test_linear_system.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_linear_system.dir/build.make CMakeFiles/test_linear_system.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_linear_system.dir/build.make CMakeFiles/test_linear_system.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=60,61 "Built target test_linear_system"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=62,63 "Built target test_linear_system"
 .PHONY : CMakeFiles/test_linear_system.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_linear_system.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_linear_system.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_linear_system.dir/rule
@@ -613,12 +615,12 @@ CMakeFiles/test_linear_system.dir/clean:
 CMakeFiles/test_cg_solver.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cg_solver.dir/build.make CMakeFiles/test_cg_solver.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cg_solver.dir/build.make CMakeFiles/test_cg_solver.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=30,31 "Built target test_cg_solver"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=32,33 "Built target test_cg_solver"
 .PHONY : CMakeFiles/test_cg_solver.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cg_solver.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cg_solver.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_cg_solver.dir/rule
@@ -639,12 +641,12 @@ CMakeFiles/test_cg_solver.dir/clean:
 CMakeFiles/test_bicgstab_solver.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bicgstab_solver.dir/build.make CMakeFiles/test_bicgstab_solver.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_bicgstab_solver.dir/build.make CMakeFiles/test_bicgstab_solver.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=20,21 "Built target test_bicgstab_solver"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=22,23 "Built target test_bicgstab_solver"
 .PHONY : CMakeFiles/test_bicgstab_solver.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_bicgstab_solver.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_bicgstab_solver.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_bicgstab_solver.dir/rule
@@ -665,12 +667,12 @@ CMakeFiles/test_bicgstab_solver.dir/clean:
 CMakeFiles/test_laplacian.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_laplacian.dir/build.make CMakeFiles/test_laplacian.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_laplacian.dir/build.make CMakeFiles/test_laplacian.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=58,59 "Built target test_laplacian"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=60,61 "Built target test_laplacian"
 .PHONY : CMakeFiles/test_laplacian.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_laplacian.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_laplacian.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_laplacian.dir/rule
@@ -691,12 +693,12 @@ CMakeFiles/test_laplacian.dir/clean:
 CMakeFiles/test_face_geometry.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_face_geometry.dir/build.make CMakeFiles/test_face_geometry.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_face_geometry.dir/build.make CMakeFiles/test_face_geometry.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=36,37 "Built target test_face_geometry"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=38,39 "Built target test_face_geometry"
 .PHONY : CMakeFiles/test_face_geometry.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_face_geometry.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_face_geometry.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_face_geometry.dir/rule
@@ -717,12 +719,12 @@ CMakeFiles/test_face_geometry.dir/clean:
 CMakeFiles/test_cell_geometry.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cell_geometry.dir/build.make CMakeFiles/test_cell_geometry.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cell_geometry.dir/build.make CMakeFiles/test_cell_geometry.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=28,29 "Built target test_cell_geometry"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=30,31 "Built target test_cell_geometry"
 .PHONY : CMakeFiles/test_cell_geometry.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cell_geometry.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cell_geometry.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_cell_geometry.dir/rule
@@ -743,12 +745,12 @@ CMakeFiles/test_cell_geometry.dir/clean:
 CMakeFiles/test_mesh_quality.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mesh_quality.dir/build.make CMakeFiles/test_mesh_quality.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mesh_quality.dir/build.make CMakeFiles/test_mesh_quality.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=66,67 "Built target test_mesh_quality"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=68,69 "Built target test_mesh_quality"
 .PHONY : CMakeFiles/test_mesh_quality.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_mesh_quality.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_mesh_quality.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_mesh_quality.dir/rule
@@ -769,12 +771,12 @@ CMakeFiles/test_mesh_quality.dir/clean:
 CMakeFiles/test_source_term.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_source_term.dir/build.make CMakeFiles/test_source_term.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_source_term.dir/build.make CMakeFiles/test_source_term.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=76,77 "Built target test_source_term"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=78,79 "Built target test_source_term"
 .PHONY : CMakeFiles/test_source_term.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_source_term.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_source_term.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_source_term.dir/rule
@@ -795,12 +797,12 @@ CMakeFiles/test_source_term.dir/clean:
 CMakeFiles/test_geometry_cache.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_geometry_cache.dir/build.make CMakeFiles/test_geometry_cache.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_geometry_cache.dir/build.make CMakeFiles/test_geometry_cache.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=46,47 "Built target test_geometry_cache"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=48,49 "Built target test_geometry_cache"
 .PHONY : CMakeFiles/test_geometry_cache.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_geometry_cache.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_geometry_cache.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_geometry_cache.dir/rule
@@ -821,12 +823,12 @@ CMakeFiles/test_geometry_cache.dir/clean:
 CMakeFiles/test_mpi_partition.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=68,69 "Built target test_mpi_partition"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=70,71 "Built target test_mpi_partition"
 .PHONY : CMakeFiles/test_mpi_partition.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_mpi_partition.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_mpi_partition.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_mpi_partition.dir/rule
@@ -847,12 +849,12 @@ CMakeFiles/test_mpi_partition.dir/clean:
 CMakeFiles/test_transport_models.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_transport_models.dir/build.make CMakeFiles/test_transport_models.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_transport_models.dir/build.make CMakeFiles/test_transport_models.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=80,81 "Built target test_transport_models"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=82,83 "Built target test_transport_models"
 .PHONY : CMakeFiles/test_transport_models.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_transport_models.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_transport_models.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_transport_models.dir/rule
@@ -873,12 +875,12 @@ CMakeFiles/test_transport_models.dir/clean:
 CMakeFiles/test_hdf5_writer.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_hdf5_writer.dir/build.make CMakeFiles/test_hdf5_writer.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_hdf5_writer.dir/build.make CMakeFiles/test_hdf5_writer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=52,53 "Built target test_hdf5_writer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=54,55 "Built target test_hdf5_writer"
 .PHONY : CMakeFiles/test_hdf5_writer.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_hdf5_writer.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_hdf5_writer.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_hdf5_writer.dir/rule
@@ -899,12 +901,12 @@ CMakeFiles/test_hdf5_writer.dir/clean:
 CMakeFiles/test_hdf5_roundtrip.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_hdf5_roundtrip.dir/build.make CMakeFiles/test_hdf5_roundtrip.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_hdf5_roundtrip.dir/build.make CMakeFiles/test_hdf5_roundtrip.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=50,51 "Built target test_hdf5_roundtrip"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=52,53 "Built target test_hdf5_roundtrip"
 .PHONY : CMakeFiles/test_hdf5_roundtrip.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_hdf5_roundtrip.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_hdf5_roundtrip.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_hdf5_roundtrip.dir/rule
@@ -925,12 +927,12 @@ CMakeFiles/test_hdf5_roundtrip.dir/clean:
 CMakeFiles/test_field_roundtrip.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field_roundtrip.dir/build.make CMakeFiles/test_field_roundtrip.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_field_roundtrip.dir/build.make CMakeFiles/test_field_roundtrip.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=40,41 "Built target test_field_roundtrip"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=42,43 "Built target test_field_roundtrip"
 .PHONY : CMakeFiles/test_field_roundtrip.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_field_roundtrip.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_field_roundtrip.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_field_roundtrip.dir/rule
@@ -951,12 +953,12 @@ CMakeFiles/test_field_roundtrip.dir/clean:
 CMakeFiles/test_memory_planner_validation.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_memory_planner_validation.dir/build.make CMakeFiles/test_memory_planner_validation.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_memory_planner_validation.dir/build.make CMakeFiles/test_memory_planner_validation.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=62,63 "Built target test_memory_planner_validation"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=64,65 "Built target test_memory_planner_validation"
 .PHONY : CMakeFiles/test_memory_planner_validation.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_memory_planner_validation.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_memory_planner_validation.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_memory_planner_validation.dir/rule
@@ -977,12 +979,12 @@ CMakeFiles/test_memory_planner_validation.dir/clean:
 CMakeFiles/test_plan_complet.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_plan_complet.dir/build.make CMakeFiles/test_plan_complet.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_plan_complet.dir/build.make CMakeFiles/test_plan_complet.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=72,73 "Built target test_plan_complet"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=74,75 "Built target test_plan_complet"
 .PHONY : CMakeFiles/test_plan_complet.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_plan_complet.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 21
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_plan_complet.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
 .PHONY : CMakeFiles/test_plan_complet.dir/rule
@@ -995,6 +997,32 @@ test_plan_complet: CMakeFiles/test_plan_complet.dir/rule
 CMakeFiles/test_plan_complet.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_plan_complet.dir/build.make CMakeFiles/test_plan_complet.dir/clean
 .PHONY : CMakeFiles/test_plan_complet.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_validation_simple.dir
+
+# All Build rule for target.
+CMakeFiles/test_validation_simple.dir/all: CMakeFiles/cfdx_core.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=84,85 "Built target test_validation_simple"
+.PHONY : CMakeFiles/test_validation_simple.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_validation_simple.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 23
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_validation_simple.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles 0
+.PHONY : CMakeFiles/test_validation_simple.dir/rule
+
+# Convenience name for target.
+test_validation_simple: CMakeFiles/test_validation_simple.dir/rule
+.PHONY : test_validation_simple
+
+# clean rule for target.
+CMakeFiles/test_validation_simple.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/clean
+.PHONY : CMakeFiles/test_validation_simple.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

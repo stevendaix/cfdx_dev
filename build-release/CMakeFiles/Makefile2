@@ -96,6 +96,7 @@ all: CMakeFiles/test_hdf5_roundtrip.dir/all
 all: CMakeFiles/test_field_roundtrip.dir/all
 all: CMakeFiles/test_memory_planner_validation.dir/all
 all: CMakeFiles/test_plan_complet.dir/all
+all: CMakeFiles/test_validation_simple.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -136,6 +137,7 @@ clean: CMakeFiles/test_hdf5_roundtrip.dir/clean
 clean: CMakeFiles/test_field_roundtrip.dir/clean
 clean: CMakeFiles/test_memory_planner_validation.dir/clean
 clean: CMakeFiles/test_plan_complet.dir/clean
+clean: CMakeFiles/test_validation_simple.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -561,7 +563,7 @@ CMakeFiles/test_sparse_matrix.dir/clean:
 CMakeFiles/test_vector.dir/all: CMakeFiles/cfdx_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_vector.dir/build.make CMakeFiles/test_vector.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_vector.dir/build.make CMakeFiles/test_vector.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-release/CMakeFiles --progress-num=84,85 "Built target test_vector"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-release/CMakeFiles --progress-num=86,87 "Built target test_vector"
 .PHONY : CMakeFiles/test_vector.dir/all
 
 # Build rule for subdir invocation for target.
@@ -995,6 +997,32 @@ test_plan_complet: CMakeFiles/test_plan_complet.dir/rule
 CMakeFiles/test_plan_complet.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_plan_complet.dir/build.make CMakeFiles/test_plan_complet.dir/clean
 .PHONY : CMakeFiles/test_plan_complet.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_validation_simple.dir
+
+# All Build rule for target.
+CMakeFiles/test_validation_simple.dir/all: CMakeFiles/cfdx_core.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/steven/cfdx_dev/build-release/CMakeFiles --progress-num=84,85 "Built target test_validation_simple"
+.PHONY : CMakeFiles/test_validation_simple.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_validation_simple.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-release/CMakeFiles 23
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_validation_simple.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/steven/cfdx_dev/build-release/CMakeFiles 0
+.PHONY : CMakeFiles/test_validation_simple.dir/rule
+
+# Convenience name for target.
+test_validation_simple: CMakeFiles/test_validation_simple.dir/rule
+.PHONY : test_validation_simple
+
+# clean rule for target.
+CMakeFiles/test_validation_simple.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/clean
+.PHONY : CMakeFiles/test_validation_simple.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

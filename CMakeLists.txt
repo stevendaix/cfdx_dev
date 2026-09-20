@@ -254,4 +254,7 @@ if(CFDX_BUILD_TESTS)
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
 
+    # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
+    add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
+
 endif()

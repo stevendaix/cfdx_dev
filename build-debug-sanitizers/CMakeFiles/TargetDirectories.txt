@@ -31,6 +31,7 @@
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_field_roundtrip.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_memory_planner_validation.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_plan_complet.dir
+/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_validation_simple.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/edit_cache.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/rebuild_cache.dir

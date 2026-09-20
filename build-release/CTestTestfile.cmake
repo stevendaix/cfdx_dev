@@ -68,3 +68,5 @@ add_test(test_memory_planner_validation "/home/steven/cfdx_dev/build-release/tes
 set_tests_properties(test_memory_planner_validation PROPERTIES  _BACKTRACE_TRIPLES "/home/steven/cfdx_dev/CMakeLists.txt;207;add_test;/home/steven/cfdx_dev/CMakeLists.txt;252;add_cfdx_test;/home/steven/cfdx_dev/CMakeLists.txt;0;")
 add_test(test_plan_complet "/home/steven/cfdx_dev/build-release/test_plan_complet")
 set_tests_properties(test_plan_complet PROPERTIES  _BACKTRACE_TRIPLES "/home/steven/cfdx_dev/CMakeLists.txt;207;add_test;/home/steven/cfdx_dev/CMakeLists.txt;255;add_cfdx_test;/home/steven/cfdx_dev/CMakeLists.txt;0;")
+add_test(test_validation_simple "/home/steven/cfdx_dev/build-release/test_validation_simple")
+set_tests_properties(test_validation_simple PROPERTIES  _BACKTRACE_TRIPLES "/home/steven/cfdx_dev/CMakeLists.txt;207;add_test;/home/steven/cfdx_dev/CMakeLists.txt;258;add_cfdx_test;/home/steven/cfdx_dev/CMakeLists.txt;0;")

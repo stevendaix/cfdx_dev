@@ -555,6 +555,19 @@ test_plan_complet/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_plan_complet.dir/build.make CMakeFiles/test_plan_complet.dir/build
 .PHONY : test_plan_complet/fast
 
+#=============================================================================
+# Target rules for targets named test_validation_simple
+
+# Build rule for target.
+test_validation_simple: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_validation_simple
+.PHONY : test_validation_simple
+
+# fast build rule for target.
+test_validation_simple/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/build
+.PHONY : test_validation_simple/fast
+
 src/cfdx/core/field/field.o: src/cfdx/core/field/field.cpp.o
 .PHONY : src/cfdx/core/field/field.o
 
@@ -1779,6 +1792,30 @@ tests/unit/test_transport_models.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_transport_models.dir/build.make CMakeFiles/test_transport_models.dir/tests/unit/test_transport_models.cpp.s
 .PHONY : tests/unit/test_transport_models.cpp.s
 
+tests/unit/test_validation_simple.o: tests/unit/test_validation_simple.cpp.o
+.PHONY : tests/unit/test_validation_simple.o
+
+# target to build an object file
+tests/unit/test_validation_simple.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/tests/unit/test_validation_simple.cpp.o
+.PHONY : tests/unit/test_validation_simple.cpp.o
+
+tests/unit/test_validation_simple.i: tests/unit/test_validation_simple.cpp.i
+.PHONY : tests/unit/test_validation_simple.i
+
+# target to preprocess a source file
+tests/unit/test_validation_simple.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/tests/unit/test_validation_simple.cpp.i
+.PHONY : tests/unit/test_validation_simple.cpp.i
+
+tests/unit/test_validation_simple.s: tests/unit/test_validation_simple.cpp.s
+.PHONY : tests/unit/test_validation_simple.s
+
+# target to generate assembly for a file
+tests/unit/test_validation_simple.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_validation_simple.dir/build.make CMakeFiles/test_validation_simple.dir/tests/unit/test_validation_simple.cpp.s
+.PHONY : tests/unit/test_validation_simple.cpp.s
+
 tests/unit/test_vector.o: tests/unit/test_vector.cpp.o
 .PHONY : tests/unit/test_vector.o
 
@@ -1844,6 +1881,7 @@ help:
 	@echo "... test_source_term"
 	@echo "... test_sparse_matrix"
 	@echo "... test_transport_models"
+	@echo "... test_validation_simple"
 	@echo "... test_vector"
 	@echo "... src/cfdx/core/field/field.o"
 	@echo "... src/cfdx/core/field/field.i"
@@ -1998,6 +2036,9 @@ help:
 	@echo "... tests/unit/test_transport_models.o"
 	@echo "... tests/unit/test_transport_models.i"
 	@echo "... tests/unit/test_transport_models.s"
+	@echo "... tests/unit/test_validation_simple.o"
+	@echo "... tests/unit/test_validation_simple.i"
+	@echo "... tests/unit/test_validation_simple.s"
 	@echo "... tests/unit/test_vector.o"
 	@echo "... tests/unit/test_vector.i"
 	@echo "... tests/unit/test_vector.s"

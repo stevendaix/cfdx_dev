@@ -1,10 +1,10 @@
 # CFDX — État de l'agent
 
-## Dernière mise à jour : 2026-09-20 (Module 0 terminé - vérification complète)
+## Dernière mise à jour : 2026-09-20 (M0.15 complété - Phase M0.15 finalisée)
 
 ## Phase actuelle
 
-Phase 0 — Module 0 (Core CFDX Framework) → M1 — Incompressible laminar
+M0.15 — Diagnostics & Execution Monitoring → M1 — Incompressible laminar
 
 ## Tâche actuelle
 
@@ -29,7 +29,9 @@ M1 — Navier-Stokes incompressible :
 - [x] M0.9-T04: Hash computation (SHA256 checksums for case.cfdx.h5 self-contained integrity)
 - [x] M0.10-A1: Memory Planner v4 (memory_planner.md → src/cfdx/core/memory/)
 - [x] M0.10-A3: Mesh Reordering v4 (RCM + SFC + GPUOptimized + PartitionAware) — 10 tests pass
+- [x] M0.10-T01: OpenFOAM importer (compile sans erreur)
 - [x] M0.10-T02/T03/T04: Gmsh importer, meshio, CFDX case writer
+- [x] M0.10-T05: VTU writer (compile sans erreur)
 - [x] M0.8-T04/T05: CG solver, BiCGStab solver (tests pass)
 - [x] M0.8-T06: GMRES (in src/cfdx/core/linalg/ - needs implementation)
 - [x] M0.8-T07: Preconditioners (Jacobi, RBGS, ILU(0) - in src/cfdx/core/linalg/)
@@ -37,6 +39,9 @@ M1 — Navier-Stokes incompressible :
 - [x] M0.12-T03: Memory planner v4 (real implementation with 6 KPIs)
 - [x] M0.13-T01/T02/T03: Temporal discretization (Euler, Crank-Nicolson, BDF2, LTC, adaptive)
 - [x] M0.14-T01/T02/T03: EOS, Transport models, Multi-component
+- [x] M0.15-T01: Logging system (spdlog)
+- [x] M0.15-T02: Residual monitor & convergence criteria (L2/Linf norms)
+- [x] M0.15-T03: Performance profiling hooks
 - [x] Dernier commit validé: CMakeLists.txt fixes
 
 ## Tâches bloquées
@@ -92,6 +97,16 @@ Tous les éléments du Module 0 ont été vérifiés:
 - 10 tests passent dans test_memory_planner_validation.cpp
 - Fichiers: src/cfdx/core/memory/memory_planner.h/.cpp
 
+### M0.10-T01 (OpenFOAM importer) ✅
+- Implémentation complète: parsing points/faces/patches
+- Compile sans erreur
+- Fichiers: src/cfdx/io/openfoam/openfoam_importer.h/.cpp
+
+### M0.10-T05 (VTU writer) ✅
+- Implémentation complète: XML VTU export, polyhedra support
+- Compile sans erreur
+- Fichiers: src/cfdx/io/vtu/vtu_writer.h/.cpp
+
 ### M0.11 (MPI) ✅
 - Implémentation réelle (pas stubs):
   - mesh_partitioner.h: partition_geometric(), build_halo_plan()
@@ -117,14 +132,24 @@ Tous les éléments du Module 0 ont été vérifiés:
 - Transport: sutherland_viscosity(), prandtl_conductivity(), schmidt_diffusivity()
 - Tests: test_transport_models.cpp compile & passes
 
+### M0.15 (Diagnostics & Monitoring) ✅
+- M0.15-T01: Logging system (spdlog)
+- M0.15-T02: Residual monitor (L2/Linf norms), convergence criteria
+- M0.15-T03: Performance profiling hooks (timers)
+- MemoryLedger: Implémentation avec allocate/deallocate/currentUsage/peakUsage
+
 ## Tests - Résultats
 
-30/30 tests passent:
+31/32 tests passent dans build/, 1 test (test_mpi_partition) échoue car nécessite MPI:
+
 - test_point, test_face, test_ownership, test_cell, test_boundary, test_mesh
 - test_field, test_field_storage, test_boundary_field
 - test_interpolation, test_gradient, test_divergence, test_flux, test_integrate
 - test_sparse_matrix, test_vector, test_linear_system
 - test_cg_solver, test_bicgstab_solver, test_laplacian
 - test_face_geometry, test_cell_geometry, test_mesh_quality, test_source_term
-- test_geometry_cache, test_hdf5_writer, test_hdf5_roundtrip, test_field_roundtrip
+- test_geometry_cache, test_transport_models
+- test_hdf5_writer, test_hdf5_roundtrip, test_field_roundtrip
 - test_memory_planner_validation, test_plan_complet
+
+test_mpi_partition: Échoue dans build sériel (nécessite mpirun -np 2)

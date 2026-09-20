@@ -279,10 +279,38 @@ CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/steven/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp -o CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.s
 
+CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: CMakeFiles/cfdx_core.dir/flags.make
+CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: ../src/cfdx/io/openfoam/openfoam_importer.cpp
+CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: CMakeFiles/cfdx_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp
+
+CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp > CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.i
+
+CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp -o CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.s
+
+CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o: CMakeFiles/cfdx_core.dir/flags.make
+CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o: ../src/cfdx/io/gmsh/gmsh_importer.cpp
+CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o: CMakeFiles/cfdx_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/gmsh/gmsh_importer.cpp
+
+CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/steven/cfdx_dev/src/cfdx/io/gmsh/gmsh_importer.cpp > CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.i
+
+CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/steven/cfdx_dev/src/cfdx/io/gmsh/gmsh_importer.cpp -o CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.s
+
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o: CMakeFiles/cfdx_core.dir/flags.make
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o: ../src/cfdx/core/importers/opensfoam_importer.cpp
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o: CMakeFiles/cfdx_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/importers/opensfoam_importer.cpp
 
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.i: cmake_force
@@ -296,7 +324,7 @@ CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.s: cmake
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o: CMakeFiles/cfdx_core.dir/flags.make
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o: ../src/cfdx/core/importers/gmsh_importer.cpp
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o: CMakeFiles/cfdx_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/importers/gmsh_importer.cpp
 
 CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.i: cmake_force
@@ -310,7 +338,7 @@ CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.s: cmake_forc
 CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o: CMakeFiles/cfdx_core.dir/flags.make
 CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o: ../src/cfdx/core/memory/memory_planner.cpp
 CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o: CMakeFiles/cfdx_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/memory/memory_planner.cpp
 
 CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.i: cmake_force
@@ -338,6 +366,8 @@ cfdx_core_OBJECTS = \
 "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o" \
 "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o" \
 "CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o" \
+"CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o" \
+"CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o" \
 "CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o" \
 "CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o" \
 "CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o"
@@ -360,12 +390,14 @@ libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/opensfoam_importer.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/core/importers/gmsh_importer.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/build.make
 libcfdx_core.a: CMakeFiles/cfdx_core.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Linking CXX static library libcfdx_core.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Linking CXX static library libcfdx_core.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/cfdx_core.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/cfdx_core.dir/link.txt --verbose=$(VERBOSE)
 
