@@ -1,14 +1,14 @@
 # CFDX — État de l'agent
 
-Dernière mise à jour : 2026-09-19T10:15+02:00
+Dernière mise à jour : 2026-09-20T12:15+02:00
 
 ## Phase actuelle
 
-Phase 0 — Repository Bootstrap
+Phase 0 — Repository Bootstrap (M0 completed)
 
 ## Tâche actuelle
 
-Aucune (démarrage)
+M0.9-T04 — Hash computation (HDF5 case hash)
 
 ## Tâches complétées
 
@@ -20,6 +20,9 @@ Aucune (démarrage)
 - [x] Arborescence source créée (src/cfdx/...)
 - [x] pybind11 installé (3.1.0)
 - [x] HDF5 1.10.7 en cours de build (background)
+- [x] M0.9-T02: Fix HDF5 reader memory bug (H5Tget_size instead of H5Aget_storage_size)
+- [x] M0.9-T03: Round-trip validation (HDF5 case round-trip, all 7 tests pass)
+- [x] Dernier commit validé: 5674635 — M0.9-T02 HDF5 reader memory bug fix
 
 ## Tâches bloquées
 
@@ -34,11 +37,11 @@ Aucune
 
 ## Dernier commit validé
 
-da93ef9 — "Add spec guide, task tracker and full checklist"
+5674635 — "M0.9-T02: Fix HDF5 reader memory bug - use H5Tget_size instead of H5Aget_storage_size for string attribute buffer sizing"
 
 ## Prochaine tâche
 
-M0.1-T01 — Point storage (src/cfdx/core/mesh/point.h)
+M0.9-T04 — Hash computation (HDF5 case hash computation)
 
 ## Décisions architecturales
 
