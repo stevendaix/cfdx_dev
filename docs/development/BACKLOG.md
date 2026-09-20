@@ -53,7 +53,7 @@ Dernière mise à jour : 2026-09-20
 | M0.11-T03 | Halo exchange | M0.11-T02 | DONE |
 | M0.12-T01 | CPU backend | M0.4-T01, M0.7-T01..T05 | DONE |
 | M0.12-T02 | ExecutionPolicy enum | — | DONE |
-| M0.12-T03 | Memory planner | M0.4-T01 | PLANNED |
+| M0.12-T03 | Memory planner | M0.4-T01 | DONE |
 | M0.13-T01 | Time integration schemes (Euler, Crank-Nicolson, BDF2) | M0.7 | DONE |
 | M0.13-T02 | Local time stepping | M0.13-T01 | DONE |
 | M0.13-T03 | Adaptive time step control (CFL) | M0.13-T01 | DONE |

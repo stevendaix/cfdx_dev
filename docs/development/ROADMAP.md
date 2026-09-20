@@ -64,8 +64,8 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] M0.8-T04 CG solver
 - [x] M0.8-T05 BiCGStab solver
 - [ ] M0.8-T06 GMRES(m) solver (restarted)
-- [ ] M0.8-T07 Preconditioners: Jacobi, Red-Black Gauss-Seidel, ILU(0)
-- [ ] M0.8-T08 AMG wrapper (Hypre/ML) ← CRITIQUE pour Poisson
+- [x] M0.8-T07 Preconditioners: Jacobi, Red-Black Gauss-Seidel, ILU(0)
+- [x] M0.8-T08 AMG wrapper (Hypre/ML) ← CRITIQUE pour Poisson
 - [ ] M0.8-T09 Block preconditioners (Schur complement for coupled systems)
 - [ ] M0.8-T10 Matrix-free operator evaluation (prep for M0.12 GPU/large-scale)
 
@@ -84,14 +84,16 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 
 - [x] M0.10-T01 OpenFOAM importer
 - [x] M0.10-T02 Gmsh importer
-- [ ] M0.10-T03 meshio importer
-- [ ] M0.10-T04 CFDX case writer
+- [ ] M0.10-T03 meshio importer (directory exists, skeleton only)
+- [ ] M0.10-T04 CFDX case writer (skeleton only)
+- [x] M0.10-A1 Memory Planner v4 (lifetime + reuse + budget + ledger)
+- [x] M0.10-A3 Mesh Reordering v4 (RCM + SFC + GPUOptimized + PartitionAware)
 
 ## M0.11 — MPI
 
-- [x] M0.11-T01 Domain decomposition (stub)
-- [x] M0.11-T02 Ghost cells (stub)
-- [x] M0.11-T03 Halo exchange (stub)
+- [x] M0.11-T01 Domain decomposition (real implementation)
+- [x] M0.11-T02 Ghost cells (real implementation)
+- [x] M0.11-T03 Halo exchange (real implementation)
 
 ## M0.12 — Execution abstraction
 

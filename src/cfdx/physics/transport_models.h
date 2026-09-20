@@ -7,13 +7,15 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/field/storage.h"
 #include <cstddef>
 #include <cmath>
 
 namespace cfdx {
 namespace physics {
 
-// Constantes pour l'air (Sutherland)
+using cfdx::core::Location;
+using cfdx::core::Field;
 struct SutherlandParams {
     double mu0 = 1.716e-5;   // Viscosité de référence [Pa.s] à T0
     double T0 = 273.15;      // Température de référence [K]

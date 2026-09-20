@@ -72,15 +72,57 @@ MemoryPlanner::Plan MemoryPlanner::plan(
 }
 
 // --------------------------------------------
-// Memory Ledger (stub)
+// Memory Ledger (Implémentation réelle - A1-T04)
 // --------------------------------------------
+#include <unordered_map>
+#include <iostream>
+#include <iomanip>
+
+static std::unordered_map<cfdx::core::memory::BufferID,
+                          cfdx::core::memory::MemoryLedger::AllocationRecord,
+                          cfdx::core::memory::BufferIDHash> ledger_allocations;
+
+static std::unordered_map<cfdx::core::memory::MemoryLocation, size_t> ledger_current_usage;
+static std::unordered_map<cfdx::core::memory::MemoryLocation, size_t> ledger_peak_usage;
+
 void MemoryLedger::allocate(const BufferID& id, void* ptr, size_t size, MemoryLocation loc) {
-    (void)id; (void)ptr; (void)size; (void)loc;
+    // Si l'ID existe déjà, libérer d'abord (sécurité)
+    deallocate(id);
+    ledger_allocations[id] = {id, ptr, size, loc, std::chrono::steady_clock::now()};
+    ledger_current_usage[loc] += size;
+    if (ledger_current_usage[loc] > ledger_peak_usage[loc]) {
+        ledger_peak_usage[loc] = ledger_current_usage[loc];
+    }
 }
-void MemoryLedger::deallocate(const BufferID& id) { (void)id; }
-size_t MemoryLedger::currentUsage(MemoryLocation loc) const { return 0; }
-size_t MemoryLedger::peakUsage(MemoryLocation loc) const { return 0; }
-void MemoryLedger::printReport() const {}
+
+void MemoryLedger::deallocate(const BufferID& id) {
+    auto it = ledger_allocations.find(id);
+    if (it != ledger_allocations.end()) {
+        ledger_current_usage[it->second.location] -= it->second.size_bytes;
+        ledger_allocations.erase(it);
+    }
+}
+
+size_t MemoryLedger::currentUsage(MemoryLocation loc) const {
+    auto it = ledger_current_usage.find(loc);
+    return (it != ledger_current_usage.end()) ? it->second : 0;
+}
+
+size_t MemoryLedger::peakUsage(MemoryLocation loc) const {
+    auto it = ledger_peak_usage.find(loc);
+    return (it != ledger_peak_usage.end()) ? it->second : 0;
+}
+
+void MemoryLedger::printReport() const {
+    std::cout << "========== Memory Ledger Report ==========\n";
+    std::cout << "Active allocations: " << ledger_allocations.size() << "\n";
+    for (const auto& [loc, usage] : ledger_current_usage) {
+        std::cout << "Location " << static_cast<int>(loc)
+                  << " | Current: " << std::setw(10) << usage
+                  << " bytes | Peak: " << std::setw(10) << peakUsage(loc) << " bytes\n";
+    }
+    std::cout << "========================================\n";
+}
 
 // ============================================
 // RCM Reordering — REAL ALGORITHM (v4 A3-T01)

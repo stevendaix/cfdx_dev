@@ -22,11 +22,15 @@
 #include <cstddef>
 #include <vector>
 #include <string>
+#include <memory>
 #include <stdexcept>
 #include <cmath>
 
 namespace cfdx {
 namespace physics {
+
+using cfdx::core::Location;
+using cfdx::core::Field;
 
 enum class EquationOfStateType : std::uint8_t {
     INCOMPRESSIBLE = 0,
@@ -136,7 +140,7 @@ public:
     }
 
     double internal_energy(double /*p*/, double T) const override {
-        return params_.Cv * (T - params_.T_ref);
+        return params_.Cp * (T - params_.T_ref);  // Incompressible: Cp approximates Cv
     }
 
     double total_energy(double /*p*/, double T, double u_mag2) const override {

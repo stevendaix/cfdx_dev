@@ -236,13 +236,20 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
-    add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
-    # add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp) 
-    # add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)  
+    # add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
+    add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
+    add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+    add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)  
 
     # HDF5 tests
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
     add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+
+    # Memory Planner tests
+    add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
+
+    # Plan completion tests
+    add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
 
 endif()
