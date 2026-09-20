@@ -1,6 +1,6 @@
 # CFDX — État de l'agent
 
-## Dernière mise à jour : 2026-09-20T12:30+02:00
+## Dernière mise à jour : 2026-09-20 (Memory Planner v4 applied)
 
 ## Phase actuelle
 
@@ -8,7 +8,7 @@ Phase 0 — Repository Bootstrap (M0 completed)
 
 ## Tâche actuelle
 
-M0.10-A1 — Memory Planner v4 (lifetime/reuse/ledger/reordering) — DONE + M0.10-T02 Gmsh import
+M0.10-T02 — Gmsh importer (XML .msh via meshio) + Memory Planner v4 intégration (budget/reordering)
 
 ## Tâches complétées
 
@@ -43,7 +43,7 @@ ec7763d — "M0.9-T03/T04: Update agent state - round-trip validation complete, 
 
 ## Prochaine tâche
 
-M0.10-T01 — OpenFOAM importer (src/cfdx/io/openfoam/openfoam_importer.h/.cpp)
+M0.10-T02 — Gmsh importer + Memory Planner v4 budget/reordering tests
 
 ## Décisions architecturales
 
