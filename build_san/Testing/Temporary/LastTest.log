@@ -1,0 +1,867 @@
+Start testing: Sep 20 14:37 CEST
+----------------------------------------------------------
+1/27 Testing: test_point
+1/27 Test: test_point
+Command: "/home/steven/cfdx_dev/build_san/test_point"
+Directory: /home/steven/cfdx_dev/build_san
+"test_point" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 9 test cases...
+  PASS: default_empty
+  PASS: explicit_size
+  PASS: set_get
+  PASS: index_out_of_range
+  PASS: resize
+  PASS: bulk_access
+  PASS: valid_finite
+  PASS: invalid_nan
+  PASS: invalid_inf
+
+Results: 9 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_point" end time: Sep 20 14:37 CEST
+"test_point" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/27 Testing: test_face
+2/27 Test: test_face
+Command: "/home/steven/cfdx_dev/build_san/test_face"
+Directory: /home/steven/cfdx_dev/build_san
+"test_face" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 8 test cases...
+  PASS: empty
+  PASS: push_single_face
+  PASS: push_multiple_faces
+  PASS: indices_valid
+  PASS: face_index_out_of_range
+  PASS: reserve
+  PASS: bulk_data_access
+  PASS: clear
+
+Results: 8 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_face" end time: Sep 20 14:37 CEST
+"test_face" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/27 Testing: test_ownership
+3/27 Test: test_ownership
+Command: "/home/steven/cfdx_dev/build_san/test_ownership"
+Directory: /home/steven/cfdx_dev/build_san
+"test_ownership" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 10 test cases...
+  PASS: default_empty
+  PASS: explicit_size_boundary_default
+  PASS: set_owner_neighbour
+  PASS: consistent_internal
+  PASS: inconsistent_owner_out_of_range
+  PASS: inconsistent_self_connect
+  PASS: index_out_of_range
+  PASS: bulk_data_access
+  PASS: resize
+  PASS: clear
+
+Results: 10 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_ownership" end time: Sep 20 14:37 CEST
+"test_ownership" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/27 Testing: test_cell
+4/27 Test: test_cell
+Command: "/home/steven/cfdx_dev/build_san/test_cell"
+Directory: /home/steven/cfdx_dev/build_san
+"test_cell" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 8 test cases...
+  PASS: empty
+  PASS: push_single_cell
+  PASS: push_multiple_cells
+  PASS: face_ids_valid
+  PASS: cell_index_out_of_range
+  PASS: reserve
+  PASS: bulk_data_access
+  PASS: clear
+
+Results: 8 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_cell" end time: Sep 20 14:37 CEST
+"test_cell" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/27 Testing: test_boundary
+5/27 Test: test_boundary
+Command: "/home/steven/cfdx_dev/build_san/test_boundary"
+Directory: /home/steven/cfdx_dev/build_san
+"test_boundary" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 11 test cases...
+  PASS: default_empty
+  PASS: add_patch
+  PASS: duplicate_patch_name
+  PASS: patch_with_faces
+  PASS: consistent
+  PASS: inconsistent_overlap
+  PASS: inconsistent_out_of_range
+  PASS: remove_patch
+  PASS: metadata
+  PASS: patch_type_from_string
+  PASS: index_out_of_range
+
+Results: 11 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_boundary" end time: Sep 20 14:37 CEST
+"test_boundary" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/27 Testing: test_mesh
+6/27 Test: test_mesh
+Command: "/home/steven/cfdx_dev/build_san/test_mesh"
+Directory: /home/steven/cfdx_dev/build_san
+"test_mesh" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 11 test cases...
+  PASS: default_empty
+  PASS: unit_cube_stats
+  PASS: unit_cube_topo_validate_ok
+  PASS: invalid_points_nan
+  PASS: invalid_owner_out_of_range
+  PASS: invalid_cell_face_refs
+  PASS: boundary_patch_consistent
+  PASS: boundary_patch_overlap
+  PASS: validate_mesh_full_ok
+  PASS: validate_mesh_detects_bad_geometry
+  PASS: validate_mesh_reports_quality
+
+Results: 11 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_mesh" end time: Sep 20 14:37 CEST
+"test_mesh" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/27 Testing: test_field
+7/27 Test: test_field
+Command: "/home/steven/cfdx_dev/build_san/test_field"
+Directory: /home/steven/cfdx_dev/build_san
+"test_field" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 12 test cases...
+  PASS: default_empty
+  PASS: explicit_size_scalar
+  PASS: set_get_scalar
+  PASS: fill
+  PASS: index_out_of_range
+  PASS: metadata
+  PASS: valid_finite
+  PASS: invalid_nan
+  PASS: resize
+  PASS: clear
+  PASS: bulk_data_access
+  PASS: location_from_string
+
+Results: 12 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_field" end time: Sep 20 14:37 CEST
+"test_field" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/27 Testing: test_field_storage
+8/27 Test: test_field_storage
+Command: "/home/steven/cfdx_dev/build_san/test_field_storage"
+Directory: /home/steven/cfdx_dev/build_san
+"test_field_storage" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 10 test cases...
+  PASS: field_metadata_default
+  PASS: field_metadata_modifiable
+  PASS: storage_default_host_only
+  PASS: storage_resize
+  PASS: storage_clear
+  PASS: storage_mark_host_dirty
+  PASS: storage_mark_device_dirty
+  PASS: storage_to_string
+  PASS: location_to_string
+  PASS: host_storage_data_access
+
+Results: 10 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_field_storage" end time: Sep 20 14:37 CEST
+"test_field_storage" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/27 Testing: test_boundary_field
+9/27 Test: test_boundary_field
+Command: "/home/steven/cfdx_dev/build_san/test_boundary_field"
+Directory: /home/steven/cfdx_dev/build_san
+"test_boundary_field" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 15 test cases...
+  PASS: patchfield_default
+  PASS: patchfield_explicit
+  PASS: patchfield_set_get
+  PASS: patchfield_fill
+  PASS: patchfield_index_out_of_range
+  PASS: boundaryfield_default_empty
+  PASS: boundaryfield_add_patch
+  PASS: boundaryfield_duplicate_patch
+  PASS: boundaryfield_find
+  PASS: boundaryfield_init_from_patches
+  PASS: boundaryfield_consistent
+  PASS: boundaryfield_inconsistent_size
+  PASS: boundaryfield_remove_patch
+  PASS: boundaryfield_clear
+  PASS: boundaryfield_patch_data_access
+
+Results: 15 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_boundary_field" end time: Sep 20 14:37 CEST
+"test_boundary_field" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/27 Testing: test_interpolation
+10/27 Test: test_interpolation
+Command: "/home/steven/cfdx_dev/build_san/test_interpolation"
+Directory: /home/steven/cfdx_dev/build_san
+"test_interpolation" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 9 test cases...
+  PASS: interpolate_upwind_scalar
+  PASS: interpolate_linear_scalar
+  PASS: interpolate_limited_scalar
+  PASS: interpolate_limited_clamps
+  PASS: interpolate_vector_dim3
+  PASS: interpolate_metadata
+  PASS: interp_scheme_from_string
+  PASS: interpolate_empty_mesh
+  PASS: interpolate_owner_out_of_range
+
+Results: 9 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_interpolation" end time: Sep 20 14:37 CEST
+"test_interpolation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/27 Testing: test_gradient
+11/27 Test: test_gradient
+Command: "/home/steven/cfdx_dev/build_san/test_gradient"
+Directory: /home/steven/cfdx_dev/build_san
+"test_gradient" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 6 test cases...
+  PASS: gradient_dimension3
+  PASS: gradient_constant_field
+  PASS: gradient_size_mismatch
+  PASS: gradient_vector_field_rejected
+  PASS: gradient_metadata
+  PASS: gradient_empty_mesh
+
+Results: 6 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_gradient" end time: Sep 20 14:37 CEST
+"test_gradient" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/27 Testing: test_divergence
+12/27 Test: test_divergence
+Command: "/home/steven/cfdx_dev/build_san/test_divergence"
+Directory: /home/steven/cfdx_dev/build_san
+"test_divergence" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 7 test cases...
+  PASS: divergence_dimension1
+  PASS: divergence_zero_flux
+  PASS: divergence_constant_flux
+  PASS: divergence_size_mismatch
+  PASS: divergence_vector_field_rejected
+  PASS: divergence_metadata
+  PASS: divergence_empty_mesh
+
+Results: 7 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_divergence" end time: Sep 20 14:37 CEST
+"test_divergence" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/27 Testing: test_flux
+13/27 Test: test_flux
+Command: "/home/steven/cfdx_dev/build_san/test_flux"
+Directory: /home/steven/cfdx_dev/build_san
+"test_flux" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 7 test cases...
+  PASS: flux_dimension1
+  PASS: flux_zero_velocity
+  PASS: flux_uniform_x
+  PASS: flux_size_mismatch
+  PASS: flux_wrong_dimension
+  PASS: flux_metadata
+  PASS: flux_empty_mesh
+
+Results: 7 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_flux" end time: Sep 20 14:37 CEST
+"test_flux" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/27 Testing: test_integrate
+14/27 Test: test_integrate
+Command: "/home/steven/cfdx_dev/build_san/test_integrate"
+Directory: /home/steven/cfdx_dev/build_san
+"test_integrate" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 10 test cases...
+  PASS: surface_integrate_dimension3
+  PASS: surface_integrate_zero
+  PASS: surface_integrate_constant
+  PASS: surface_integrate_size_mismatch
+  PASS: surface_integrate_metadata
+  PASS: volume_integrate_unit_cube
+  PASS: volume_integrate_constant
+  PASS: volume_integrate_size_mismatch
+  PASS: volume_integrate_vector_rejected
+  PASS: volume_integrate_empty_mesh
+
+Results: 10 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_integrate" end time: Sep 20 14:37 CEST
+"test_integrate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/27 Testing: test_sparse_matrix
+15/27 Test: test_sparse_matrix
+Command: "/home/steven/cfdx_dev/build_san/test_sparse_matrix"
+Directory: /home/steven/cfdx_dev/build_san
+"test_sparse_matrix" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 9 test cases...
+  PASS: sparse_matrix_default
+  PASS: sparse_matrix_explicit
+  PASS: sparse_matrix_push_back
+  PASS: sparse_matrix_consistent
+  PASS: sparse_matrix_row_out_of_range
+  PASS: sparse_matrix_col_out_of_range
+  PASS: sparse_matrix_matvec
+  PASS: sparse_matrix_matvec_transpose
+  PASS: sparse_matrix_clear
+
+Results: 9 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_sparse_matrix" end time: Sep 20 14:37 CEST
+"test_sparse_matrix" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/27 Testing: test_vector
+16/27 Test: test_vector
+Command: "/home/steven/cfdx_dev/build_san/test_vector"
+Directory: /home/steven/cfdx_dev/build_san
+"test_vector" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 17 test cases...
+  PASS: vector_default
+  PASS: vector_explicit
+  PASS: vector_set_get
+  PASS: vector_index_out_of_range
+  PASS: vector_fill
+  PASS: vector_norm1
+  PASS: vector_norm2
+  PASS: vector_norm_inf
+  PASS: vector_dot
+  PASS: vector_dot_dimension_mismatch
+  PASS: vector_add
+  PASS: vector_subtract
+  PASS: vector_scale
+  PASS: vector_is_valid
+  PASS: vector_is_invalid_nan
+  PASS: vector_resize
+  PASS: vector_clear
+
+Results: 17 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_vector" end time: Sep 20 14:37 CEST
+"test_vector" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/27 Testing: test_linear_system
+17/27 Test: test_linear_system
+Command: "/home/steven/cfdx_dev/build_san/test_linear_system"
+Directory: /home/steven/cfdx_dev/build_san
+"test_linear_system" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 4 test cases...
+  PASS: linear_system_construct
+  PASS: linear_system_resize_vectors
+  PASS: linear_system_set_get
+  PASS: linear_system_matvec
+
+Results: 4 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_linear_system" end time: Sep 20 14:37 CEST
+"test_linear_system" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/27 Testing: test_cg_solver
+18/27 Test: test_cg_solver
+Command: "/home/steven/cfdx_dev/build_san/test_cg_solver"
+Directory: /home/steven/cfdx_dev/build_san
+"test_cg_solver" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 6 test cases...
+  PASS: cg_solve_diagonal
+  PASS: cg_solve_poisson_1d
+  PASS: cg_already_converged
+  PASS: cg_max_iter_reached
+  PASS: cg_not_applicable_non_square
+  PASS: cg_dimension_mismatch
+
+Results: 6 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_cg_solver" end time: Sep 20 14:37 CEST
+"test_cg_solver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/27 Testing: test_bicgstab_solver
+19/27 Test: test_bicgstab_solver
+Command: "/home/steven/cfdx_dev/build_san/test_bicgstab_solver"
+Directory: /home/steven/cfdx_dev/build_san
+"test_bicgstab_solver" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 5 test cases...
+  PASS: bicgstab_solve_diagonal
+  PASS: bicgstab_solve_non_symmetric
+  PASS: bicgstab_already_converged
+  PASS: bicgstab_max_iter_reached
+  PASS: bicgstab_dimension_mismatch
+
+Results: 5 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_bicgstab_solver" end time: Sep 20 14:37 CEST
+"test_bicgstab_solver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/27 Testing: test_laplacian
+20/27 Test: test_laplacian
+Command: "/home/steven/cfdx_dev/build_san/test_laplacian"
+Directory: /home/steven/cfdx_dev/build_san
+"test_laplacian" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 7 test cases...
+  PASS: laplacian_dimension1
+  PASS: laplacian_constant_field
+  PASS: laplacian_size_mismatch
+  PASS: laplacian_vector_field_rejected
+  PASS: laplacian_metadata
+  PASS: laplacian_empty_mesh
+  PASS: laplacian_scheme_from_string
+
+Results: 7 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_laplacian" end time: Sep 20 14:37 CEST
+"test_laplacian" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/27 Testing: test_face_geometry
+21/27 Test: test_face_geometry
+Command: "/home/steven/cfdx_dev/build_san/test_face_geometry"
+Directory: /home/steven/cfdx_dev/build_san
+"test_face_geometry" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 8 test cases...
+  PASS: square_area
+  PASS: square_Sf_normal_z
+  PASS: square_centre
+  PASS: triangle_area
+  PASS: reversed_orientation_flips_Sf
+  PASS: pentagon_area
+  PASS: closure_invariant
+  PASS: too_few_vertices
+
+Results: 8 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_face_geometry" end time: Sep 20 14:37 CEST
+"test_face_geometry" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/27 Testing: test_cell_geometry
+22/27 Test: test_cell_geometry
+Command: "/home/steven/cfdx_dev/build_san/test_cell_geometry"
+Directory: /home/steven/cfdx_dev/build_san
+"test_cell_geometry" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 5 test cases...
+  PASS: cube_volume
+  PASS: cube_centre
+  PASS: cube_closure_invariant
+  PASS: tetrahedron_volume
+  PASS: empty_cell_throws
+
+Results: 5 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_cell_geometry" end time: Sep 20 14:37 CEST
+"test_cell_geometry" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/27 Testing: test_mesh_quality
+23/27 Test: test_mesh_quality
+Command: "/home/steven/cfdx_dev/build_san/test_mesh_quality"
+Directory: /home/steven/cfdx_dev/build_san
+"test_mesh_quality" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 6 test cases...
+  PASS: orthogonal_face_zero_non_orthogonality
+  PASS: skewed_face_nonzero_skewness
+  PASS: 45_degree_non_orthogonality
+  PASS: zero_distance_safe
+  PASS: zero_area_safe
+  PASS: skewness_bounded_0_1
+
+Results: 6 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_mesh_quality" end time: Sep 20 14:37 CEST
+"test_mesh_quality" time elapsed: 00:00:00
+----------------------------------------------------------
+
+24/27 Testing: test_source_term
+24/27 Test: test_source_term
+Command: "/home/steven/cfdx_dev/build_san/test_source_term"
+Directory: /home/steven/cfdx_dev/build_san
+"test_source_term" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 10 test cases...
+  PASS: constant_source
+  PASS: linear_source
+  PASS: decay_source
+  PASS: exponential_source
+  PASS: power_source
+  PASS: linearize_source_general
+  PASS: update_linearization
+  PASS: spatial_source
+  PASS: apply_to_cell
+  PASS: source_term_copy_constructor
+
+Results: 10 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_source_term" end time: Sep 20 14:37 CEST
+"test_source_term" time elapsed: 00:00:00
+----------------------------------------------------------
+
+25/27 Testing: test_hdf5_writer
+25/27 Test: test_hdf5_writer
+Command: "/home/steven/cfdx_dev/build_san/test_hdf5_writer"
+Directory: /home/steven/cfdx_dev/build_san
+"test_hdf5_writer" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 4 test cases...
+  PASS: write_mesh_hdf5_creates_file
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5Dio.c line 335 in H5Dwrite(): can't write data
+    major: Dataset
+    minor: Write failed
+  #001: H5Dio.c line 721 in H5D__write(): no output buffer
+    major: Invalid arguments to routine
+    minor: Bad value
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5Dio.c line 335 in H5Dwrite(): can't write data
+    major: Dataset
+    minor: Write failed
+  #001: H5Dio.c line 721 in H5D__write(): no output buffer
+    major: Invalid arguments to routine
+    minor: Bad value
+  PASS: write_mesh_hdf5_empty_mesh
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: write_field_hdf5_creates_file
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: write_field_hdf5_metadata
+
+Results: 4 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_hdf5_writer" end time: Sep 20 14:37 CEST
+"test_hdf5_writer" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/27 Testing: test_hdf5_roundtrip
+26/27 Test: test_hdf5_roundtrip
+Command: "/home/steven/cfdx_dev/build_san/test_hdf5_roundtrip"
+Directory: /home/steven/cfdx_dev/build_san
+"test_hdf5_roundtrip" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 7 test cases...
+  PASS: roundtrip_mesh_points
+  PASS: roundtrip_mesh_topology
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: roundtrip_field_values
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: roundtrip_field_metadata
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5Dio.c line 335 in H5Dwrite(): can't write data
+    major: Dataset
+    minor: Write failed
+  #001: H5Dio.c line 721 in H5D__write(): no output buffer
+    major: Invalid arguments to routine
+    minor: Bad value
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5Dio.c line 335 in H5Dwrite(): can't write data
+    major: Dataset
+    minor: Write failed
+  #001: H5Dio.c line 721 in H5D__write(): no output buffer
+    major: Invalid arguments to routine
+    minor: Bad value
+  PASS: roundtrip_empty_mesh
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5F.c line 429 in H5Fopen(): unable to open file
+    major: File accessibility
+    minor: Unable to open file
+  #001: H5Fint.c line 1644 in H5F_open(): unable to open file: time = Sun Sep 20 14:37:13 2026
+, name = '/tmp/cfdx_nonexistent_file.h5', tent_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+  #002: H5FD.c line 741 in H5FD_open(): open failed
+    major: Virtual File Layer
+    minor: Unable to initialize object
+  #003: H5FDsec2.c line 360 in H5FD__sec2_open(): unable to open file: name = '/tmp/cfdx_nonexistent_file.h5', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+  PASS: read_mesh_hdf5_missing_file
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: read_field_hdf5_missing_group
+
+Results: 7 passed, 0 failed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_hdf5_roundtrip" end time: Sep 20 14:37 CEST
+"test_hdf5_roundtrip" time elapsed: 00:00:00
+----------------------------------------------------------
+
+27/27 Testing: test_field_roundtrip
+27/27 Test: test_field_roundtrip
+Command: "/home/steven/cfdx_dev/build_san/test_field_roundtrip"
+Directory: /home/steven/cfdx_dev/build_san
+"test_field_roundtrip" start time: Sep 20 14:37 CEST
+Output:
+----------------------------------------------------------
+Running 1 test cases...
+HDF5-DIAG: Error detected in HDF5 (1.10.7) thread 0:
+  #000: H5G.c line 463 in H5Gopen2(): unable to open group
+    major: Symbol table
+    minor: Can't open object
+  #001: H5Gint.c line 280 in H5G__open_name(): group not found
+    major: Symbol table
+    minor: Object not found
+  #002: H5Gloc.c line 420 in H5G_loc_find(): can't find object
+    major: Symbol table
+    minor: Object not found
+  #003: H5Gtraverse.c line 848 in H5G_traverse(): internal path traversal failed
+    major: Symbol table
+    minor: Object not found
+  #004: H5Gtraverse.c line 624 in H5G__traverse_real(): traversal operator failed
+    major: Symbol table
+    minor: Callback failed
+  #005: H5Gloc.c line 376 in H5G__loc_find_cb(): object 'fields' doesn't exist
+    major: Symbol table
+    minor: Object not found
+  PASS: field_write_read_roundtrip
+
+Results: 1 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_field_roundtrip" end time: Sep 20 14:37 CEST
+"test_field_roundtrip" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 20 14:37 CEST

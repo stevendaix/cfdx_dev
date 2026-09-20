@@ -1,0 +1,254 @@
+[
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/point.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/point.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/face.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/face.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/ownership.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/ownership.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/cell.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/cell.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/mesh.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/mesh.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/mesh/boundary.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/mesh/boundary.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/geometry/face_geometry.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/geometry/face_geometry.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/geometry/cell_geometry.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/geometry/cell_geometry.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/geometry/mesh_quality.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/geometry/mesh_quality.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/geometry/mesh_validator.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/geometry/mesh_validator.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/field/field.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/field/field.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o -c /home/steven/cfdx_dev/src/cfdx/core/field/storage.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/core/field/storage.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_writer.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_writer.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_reader.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_reader.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o -c /home/steven/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp",
+  "file": "/home/steven/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp",
+  "output": "CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_point.dir/tests/unit/test_point.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_point.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_point.cpp",
+  "output": "CMakeFiles/test_point.dir/tests/unit/test_point.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_face.dir/tests/unit/test_face.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_face.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_face.cpp",
+  "output": "CMakeFiles/test_face.dir/tests/unit/test_face.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_ownership.dir/tests/unit/test_ownership.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_ownership.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_ownership.cpp",
+  "output": "CMakeFiles/test_ownership.dir/tests/unit/test_ownership.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_cell.dir/tests/unit/test_cell.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_cell.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_cell.cpp",
+  "output": "CMakeFiles/test_cell.dir/tests/unit/test_cell.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_boundary.dir/tests/unit/test_boundary.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_boundary.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_boundary.cpp",
+  "output": "CMakeFiles/test_boundary.dir/tests/unit/test_boundary.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_mesh.dir/tests/unit/test_mesh.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_mesh.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_mesh.cpp",
+  "output": "CMakeFiles/test_mesh.dir/tests/unit/test_mesh.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_field.dir/tests/unit/test_field.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_field.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_field.cpp",
+  "output": "CMakeFiles/test_field.dir/tests/unit/test_field.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_field_storage.dir/tests/unit/test_field_storage.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_field_storage.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_field_storage.cpp",
+  "output": "CMakeFiles/test_field_storage.dir/tests/unit/test_field_storage.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_boundary_field.dir/tests/unit/test_boundary_field.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_boundary_field.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_boundary_field.cpp",
+  "output": "CMakeFiles/test_boundary_field.dir/tests/unit/test_boundary_field.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_interpolation.dir/tests/unit/test_interpolation.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_interpolation.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_interpolation.cpp",
+  "output": "CMakeFiles/test_interpolation.dir/tests/unit/test_interpolation.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_gradient.dir/tests/unit/test_gradient.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_gradient.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_gradient.cpp",
+  "output": "CMakeFiles/test_gradient.dir/tests/unit/test_gradient.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_divergence.dir/tests/unit/test_divergence.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_divergence.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_divergence.cpp",
+  "output": "CMakeFiles/test_divergence.dir/tests/unit/test_divergence.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_flux.dir/tests/unit/test_flux.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_flux.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_flux.cpp",
+  "output": "CMakeFiles/test_flux.dir/tests/unit/test_flux.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_integrate.dir/tests/unit/test_integrate.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_integrate.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_integrate.cpp",
+  "output": "CMakeFiles/test_integrate.dir/tests/unit/test_integrate.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_sparse_matrix.dir/tests/unit/test_sparse_matrix.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_sparse_matrix.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_sparse_matrix.cpp",
+  "output": "CMakeFiles/test_sparse_matrix.dir/tests/unit/test_sparse_matrix.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_vector.dir/tests/unit/test_vector.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_vector.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_vector.cpp",
+  "output": "CMakeFiles/test_vector.dir/tests/unit/test_vector.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_linear_system.dir/tests/unit/test_linear_system.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_linear_system.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_linear_system.cpp",
+  "output": "CMakeFiles/test_linear_system.dir/tests/unit/test_linear_system.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_cg_solver.dir/tests/unit/test_cg_solver.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_cg_solver.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_cg_solver.cpp",
+  "output": "CMakeFiles/test_cg_solver.dir/tests/unit/test_cg_solver.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_bicgstab_solver.dir/tests/unit/test_bicgstab_solver.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_bicgstab_solver.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_bicgstab_solver.cpp",
+  "output": "CMakeFiles/test_bicgstab_solver.dir/tests/unit/test_bicgstab_solver.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_laplacian.dir/tests/unit/test_laplacian.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_laplacian.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_laplacian.cpp",
+  "output": "CMakeFiles/test_laplacian.dir/tests/unit/test_laplacian.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_face_geometry.dir/tests/numerical/test_face_geometry.cpp.o -c /home/steven/cfdx_dev/tests/numerical/test_face_geometry.cpp",
+  "file": "/home/steven/cfdx_dev/tests/numerical/test_face_geometry.cpp",
+  "output": "CMakeFiles/test_face_geometry.dir/tests/numerical/test_face_geometry.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_cell_geometry.dir/tests/numerical/test_cell_geometry.cpp.o -c /home/steven/cfdx_dev/tests/numerical/test_cell_geometry.cpp",
+  "file": "/home/steven/cfdx_dev/tests/numerical/test_cell_geometry.cpp",
+  "output": "CMakeFiles/test_cell_geometry.dir/tests/numerical/test_cell_geometry.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_mesh_quality.dir/tests/numerical/test_mesh_quality.cpp.o -c /home/steven/cfdx_dev/tests/numerical/test_mesh_quality.cpp",
+  "file": "/home/steven/cfdx_dev/tests/numerical/test_mesh_quality.cpp",
+  "output": "CMakeFiles/test_mesh_quality.dir/tests/numerical/test_mesh_quality.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_source_term.dir/tests/numerical/test_source_term.cpp.o -c /home/steven/cfdx_dev/tests/numerical/test_source_term.cpp",
+  "file": "/home/steven/cfdx_dev/tests/numerical/test_source_term.cpp",
+  "output": "CMakeFiles/test_source_term.dir/tests/numerical/test_source_term.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_hdf5_writer.dir/tests/unit/test_hdf5_writer.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_hdf5_writer.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_hdf5_writer.cpp",
+  "output": "CMakeFiles/test_hdf5_writer.dir/tests/unit/test_hdf5_writer.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_hdf5_roundtrip.dir/tests/unit/test_hdf5_roundtrip.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_hdf5_roundtrip.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_hdf5_roundtrip.cpp",
+  "output": "CMakeFiles/test_hdf5_roundtrip.dir/tests/unit/test_hdf5_roundtrip.cpp.o"
+},
+{
+  "directory": "/home/steven/cfdx_dev/build_san",
+  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -o CMakeFiles/test_field_roundtrip.dir/tests/unit/test_field_roundtrip.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_field_roundtrip.cpp",
+  "file": "/home/steven/cfdx_dev/tests/unit/test_field_roundtrip.cpp",
+  "output": "CMakeFiles/test_field_roundtrip.dir/tests/unit/test_field_roundtrip.cpp.o"
+}
+]

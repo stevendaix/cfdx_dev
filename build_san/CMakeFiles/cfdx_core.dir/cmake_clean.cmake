@@ -1,0 +1,39 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o.d"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o"
+  "CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o.d"
+  "libcfdx_core.a"
+  "libcfdx_core.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/cfdx_core.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

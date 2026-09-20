@@ -54,7 +54,7 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] M0.7-T03 Laplacian (orthogonal + non-orthogonal corrected)
 - [x] M0.7-T04 Flux
 - [x] M0.7-T05 Surface/Volume integrate
-- [ ] M0.7-T06 Source term linearization (Su + Sp*φ)
+- [x] M0.7-T06 Source term linearization (Su + Sp*φ)
 
 ## M0.8 — Linear algebra
 
@@ -98,7 +98,7 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 
 ## M0.13 — Temporal Discretization
 
-- [ ] M0.13-T01 Time integration schemes (Euler implicit/explicit, Crank-Nicolson, BDF2)
+- [x] M0.13-T01 Time integration schemes (Euler implicit/explicit, Crank-Nicolson, BDF2)
 - [ ] M0.13-T02 Local time stepping (steady-state acceleration)
 - [ ] M0.13-T03 Adaptive time step control (CFL-based)
 

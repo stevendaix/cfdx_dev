@@ -137,6 +137,8 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/laplacian.h
     src/cfdx/core/numerics/flux.h
     src/cfdx/core/numerics/integrate.h
+    src/cfdx/core/numerics/source_term.h
+    src/cfdx/core/numerics/temporal.h
     src/cfdx/core/linalg/sparse_matrix.h
     src/cfdx/core/linalg/vector.h
     src/cfdx/core/linalg/linear_system.h
@@ -208,6 +210,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
+    add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     # add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp) 
     # add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)  
 
