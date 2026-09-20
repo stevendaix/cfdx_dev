@@ -88,6 +88,15 @@ set(CFDX_MESH_SOURCES
     src/cfdx/core/mesh/boundary.cpp
 )
 
+# Importers module
+set(CFDX_IMPORTER_SOURCES
+    src/cfdx/core/importers/opensfoam_importer.cpp
+    src/cfdx/core/importers/gmsh_importer.cpp
+)
+
+add_executable(opensfoam_importer src/cfdx/core/importers/opensfoam_importer.cpp)
+add_executable(gmsh_importer src/cfdx/core/importers/gmsh_importer.cpp)
+
 # Geometry module
 set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp

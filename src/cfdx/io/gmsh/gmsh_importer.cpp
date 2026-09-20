@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 #include <map>
-#include <set>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace cfdx {
 namespace io {
@@ -116,52 +116,190 @@ static std::map<uint32_t, std::vector<uint32_t>> parsePhysicalGroups(const std::
 
 bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
     std::ifstream file(filename);
-    if (!file.is_open()) return false;
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string full = buffer.str();
-
-    std::map<uint32_t, cfdx::core::Vec3> points_map;
-    // Find Nodes section in full file
-    size_t nodes_start = full.find("$Nodes");
-    size_t nodes_end = full.find("$EndNodes");
-    size_t elements_start = full.find("$Elements");
-    size_t elements_end = full.find("$EndElements");
-
-    if (nodes_start != std::string::npos && nodes_end != std::string::npos) {
-        std::string nodes_content = full.substr(nodes_start, nodes_end - nodes_start);
-        parseNodes(nodes_content, points_map);
+    if (!file.is_open()) {
+        std::cerr << "Cannot open file: " << filename << "\n";
+        return false;
     }
 
-    mesh.points().resize(points_map.size());
-    std::map<uint32_t, uint32_t> point_index_map;  // Gmsh node ID -> CFDX index
-    uint32_t idx = 0;
-    for (const auto& kv : points_map) {
-        mesh.points().set(idx, kv.second.x, kv.second.y, kv.second.z);
-        point_index_map[kv.first] = idx;
-        idx++;
+    // ============================================================
+    // 1. LECTURE DES POINTS
+    // ============================================================
+    std::string line;
+    std::vector<std::array<double, 3>> points_raw;
+    bool in_nodes = false;
+    std::size_t expected_nodes = 0;
+    std::size_t node_read = 0;
+
+    while (std::getline(file, line)) {
+        if (line == "$Nodes") {
+            std::getline(file, line);  // nombre de noeuds
+            expected_nodes = std::stoul(line);
+            points_raw.resize(expected_nodes);
+            in_nodes = true;
+            continue;
+        }
+        if (line == "$EndNodes") {
+            in_nodes = false;
+            break;
+        }
+        if (!in_nodes) continue;
+        std::istringstream iss(line);
+        int id;
+        iss >> id;
+        double x, y, z;
+        iss >> x >> y >> z;
+        // Gmsh utilise des indices 1-based, CFDX 0-based
+        if (id > 0 && static_cast<std::size_t>(id) <= expected_nodes) {
+            points_raw[id - 1][0] = x;
+            points_raw[id - 1][1] = y;
+            points_raw[id - 1][2] = z;
+        }
+        node_read++;
     }
 
-    if (elements_start != std::string::npos && elements_end != std::string::npos) {
-        std::string elements_content = full.substr(elements_start, elements_end - elements_start);
-        parseElements(elements_content, mesh, points_map);
+    // Remplir mesh.points()
+    cfdx::core::PointCloud points(points_raw.size());
+    for (std::size_t i = 0; i < points_raw.size(); ++i) {
+        points.set(i, points_raw[i][0], points_raw[i][1], points_raw[i][2]);
+    }
+    mesh.points() = points;
+
+    std::cout << "[GMSH_DEBUG] Points lus: " << mesh.n_points() << " (attendu=" << expected_nodes << ")\n";
+
+    // ============================================================
+    // 2. LECTURE DES ÉLÉMENTS (cellules 2D uniquement : triangles type 2, quads type 3)
+    // ============================================================
+    file.clear();
+    file.seekg(0);
+    std::vector<std::vector<cfdx::core::PointIndex>> raw_cells;
+    bool in_elements = false;
+    std::size_t expected_elements = 0;
+    std::size_t element_read = 0;
+
+    while (std::getline(file, line)) {
+        if (line == "$Elements") {
+            std::getline(file, line);  // nombre d'éléments
+            expected_elements = std::stoul(line);
+            in_elements = true;
+            continue;
+        }
+        if (line == "$EndElements") {
+            in_elements = false;
+            break;
+        }
+        if (!in_elements) continue;
+
+        std::istringstream iss(line);
+        int id, type, tag;
+        iss >> id >> type;
+        // Ignorer le tag physique (lecture simplifiée)
+        int phys_tag;
+        if (!(iss >> phys_tag)) phys_tag = 0;
+
+        std::vector<cfdx::core::PointIndex> nodes;
+        int nid;
+        // Lire les IDs des noeuds en fonction du type
+        // Type 2 = triangle (3 noeuds), Type 3 = quad (4 noeuds)
+        int expected_nodes_in_element = (type == 2) ? 3 : (type == 3) ? 4 : 0;
+        if (expected_nodes_in_element > 0) {
+            for (int k = 0; k < expected_nodes_in_element; ++k) {
+                if (iss >> nid) {
+                    // Conversion 1-based (Gmsh) -> 0-based (CFDX)
+                    nodes.push_back(static_cast<cfdx::core::PointIndex>(nid - 1));
+                }
+            }
+            if (!nodes.empty() && nodes.size() == static_cast<std::size_t>(expected_nodes_in_element)) {
+                raw_cells.push_back(nodes);
+            }
+        }
+        element_read++;
     }
 
-    // ======================================================================
-    // TOPOLOGIE FVM : construction des faces, owner/neighbour, cell CSR
-    // ======================================================================
-    std::map<std::vector<uint32_t>, std::pair<std::size_t, std::size_t>> face_map;
-    std::size_t face_idx_count = 0;
+    std::cout << "[GMSH_DEBUG] Éléments 2D lus: " << raw_cells.size()
+              << " (attendu=" << expected_elements << ")\n";
 
-    // Pour chaque cellule brute (triangle/quad), générer les faces
-    // (Simplification : utiliser directement les nodes de la cellule)
-    for (std::size_t c = 0; c < mesh.cells().n_cells(); ++c) {
-        // Récupérer les nodes de cette cellule depuis le parser interne
-        // Note : dans cette version stub, on reconstruit à partir de point_index_map
-        // et des données brutes du parser. Dans la version finale, cela utilisera
-        // directement mesh.cells().faces().
+    // ============================================================
+    // 3. CONSTRUCTION DE LA TOPOLOGIE FVM
+    // ============================================================
+    std::cout << "[GMSH_DEBUG] Construction topologie FVM...\n";
+
+    std::map<std::vector<cfdx::core::PointIndex>, std::pair<std::size_t, std::size_t>> face_map;
+    std::size_t face_idx = 0;
+
+    mesh.faces().reserve(0, 0);  // Clear / reset face connectivity
+    mesh.ownership().resize(0);
+    mesh.cells().clear();
+
+    for (std::size_t c = 0; c < raw_cells.size(); ++c) {
+        const auto& nodes = raw_cells[c];
+        std::vector<cfdx::core::FaceIndex> c_faces;
+
+        std::vector<std::vector<cfdx::core::PointIndex>> cell_edges;
+        if (nodes.size() == 3) {
+            cell_edges = {{nodes[0], nodes[1]}, {nodes[1], nodes[2]}, {nodes[2], nodes[0]}};
+        } else if (nodes.size() == 4) {
+            cell_edges = {{nodes[0], nodes[1]}, {nodes[1], nodes[2]},
+                          {nodes[2], nodes[3]}, {nodes[3], nodes[0]}};
+        } else {
+            continue;  // Ignorer éléments non 2D
+        }
+
+        for (const auto& edge_nodes : cell_edges) {
+            auto canonical = edge_nodes;
+            std::sort(canonical.begin(), canonical.end());
+
+            auto it = face_map.find(canonical);
+            std::size_t f_idx;
+            if (it == face_map.end()) {
+                f_idx = face_idx++;
+                mesh.ownership().resize(face_idx);
+                mesh.ownership().set_owner(f_idx, static_cast<cfdx::core::CellIndex>(c));
+                mesh.ownership().set_neighbour(f_idx, -1);  // Frontière par défaut
+                face_map[canonical] = {c, f_idx};
+            } else {
+                f_idx = it->second.second;
+                if (mesh.ownership().neighbour(f_idx) == -1) {
+                    mesh.ownership().set_neighbour(f_idx, static_cast<std::int64_t>(c));
+                }
+            }
+            c_faces.push_back(static_cast<cfdx::core::FaceIndex>(f_idx));
+        }
+        mesh.cells().push_cell(c_faces);
     }
+
+    std::cout << "[GMSH_DEBUG] Topologie construite: n_faces = " << mesh.n_faces()
+              << ", n_cells = " << mesh.n_cells() << "\n";
+
+    // ============================================================
+    // 4. GÉOMÉTRIE DES FACES (centres + vecteurs surface Sf)
+    // ============================================================
+    std::cout << "[GMSH_DEBUG] Calcul géométrie des faces...\n";
+    std::vector<cfdx::core::Vec3> face_centres(mesh.n_faces());
+    std::vector<cfdx::core::Vec3> face_Sf(mesh.n_faces());
+    const auto& pts_data = mesh.points();
+    const auto* verts_data = mesh.faces().vertices_data();
+    const auto* f_off_data = mesh.faces().offsets_data();
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const auto off = f_off_data[f];
+        const auto n = f_off_data[f + 1] - off;
+        double cx = 0.0, cy = 0.0, cz = 0.0;
+        for (std::size_t v = 0; v < n; ++v) {
+            std::size_t node_idx = verts_data[off + v];
+            cx += pts_data.x(node_idx); cy += pts_data.y(node_idx); cz += pts_data.z(node_idx);
+        }
+        face_centres[f] = cfdx::core::Vec3(cx / n, cy / n, cz / n);
+        // Calcul du vecteur surface Sf (pour arête 2D : rotation 90° anti-horaire)
+        if (n == 2) {
+            std::size_t n0 = verts_data[off];
+            std::size_t n1 = verts_data[off + 1];
+            double dx = pts_data.x(n1) - pts_data.x(n0);
+            double dy = pts_data.y(n1) - pts_data.y(n0);
+            face_Sf[f] = cfdx::core::Vec3(-dy, dx, 0.0);
+        } else {
+            face_Sf[f] = cfdx::core::Vec3(0.0, 0.0, 0.0);
+        }
+    }
+    std::cout << "[GMSH_DEBUG] Géométrie des faces calculée: " << face_centres.size() << " faces\n";
 
     return mesh.n_cells() > 0 || mesh.n_points() > 0;
 }
