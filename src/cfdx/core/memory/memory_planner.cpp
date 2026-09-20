@@ -15,36 +15,57 @@ using namespace cfdx::core::memory;
 // --------------------------------------------
 MemoryPlanner::Plan MemoryPlanner::plan(
     const std::vector<BufferDescriptor>& buffers,
-    int total_operations) {
+    int total_operations,
+    size_t num_cells,
+    size_t num_faces,
+    int num_fields,
+    int num_solver_vectors) {
     Plan result;
-    // Budget prediction (v4 - 6 KPIs)
-    // bytes/cell stored = (topology + geometry + fields) / num_cells
-    // bytes/cell/iteration = (reads + writes per face) / num_cells
-    size_t num_faces_approx = buffers.size() > 0 ? buffers.size() * 2 : 100;
-    result.budget.topology_bytes = num_faces_approx * sizeof(uint32_t) * 3;  // owner, neighbour, connectivity
-    result.budget.geometry_bytes = 0;  // To be computed from mesh geometry policies
-    result.budget.fields_bytes = 0;  // To be computed from physics config (num_fields * FP32)
-    result.budget.solver_vectors_bytes = 0;  // Krylov vectors: num_cells * num_vectors * sizeof(float)
-    result.budget.amg_bytes = 0;  // Multi-grid levels
-    result.budget.temporaries_bytes = 0;  // Buffer reuse pool
-    result.budget.halo_bytes = 0;  // MPI halo cells
 
-    result.budget.peak_ram = result.budget.topology_bytes + result.budget.geometry_bytes
-                           + result.budget.fields_bytes + result.budget.halo_bytes;
-    result.budget.peak_vram = result.budget.solver_vectors_bytes
-                             + result.budget.amg_bytes + result.budget.temporaries_bytes;
+    // Budget prediction (v4 — 6 KPIs réels)
+    result.budget.topology_bytes =
+        num_faces * sizeof(uint32_t) * 2 +
+        num_cells * sizeof(uint32_t) +
+        num_faces * sizeof(uint32_t);
 
-    // KPIs (6 metrics from v4 spec)
-    size_t estimated_cells = 1000;  // Placeholder: should come from mesh
-    result.budget.bytes_per_cell = (result.budget.peak_ram > 0) ?
-        static_cast<double>(result.budget.peak_ram) / estimated_cells : 0.0;
-    // bytes_per_cell_per_iteration = traffic per face per cell
-    size_t reads_per_face = 4 * sizeof(float);
-    size_t writes_per_face = 2 * sizeof(float);
+    result.budget.geometry_bytes =
+        num_cells * sizeof(double) +
+        num_faces * sizeof(double) * 3;  // face area + centre + normal approximatif
+
+    result.budget.fields_bytes =
+        num_cells * num_fields * sizeof(float);
+
+    result.budget.solver_vectors_bytes =
+        num_cells * num_solver_vectors * sizeof(float);
+
+    result.budget.amg_bytes =
+        (num_cells > 0) ? static_cast<size_t>(num_cells * sizeof(double) * 2.5) : 0;
+
+    result.budget.temporaries_bytes = 0;  // À calculer via buffer reuse
+    result.budget.halo_bytes = 0;         // Dépend du partitionnement MPI
+
+    result.budget.peak_ram =
+        result.budget.topology_bytes + result.budget.geometry_bytes +
+        result.budget.fields_bytes + result.budget.halo_bytes;
+
+    result.budget.peak_vram =
+        result.budget.solver_vectors_bytes + result.budget.amg_bytes +
+        result.budget.temporaries_bytes;
+
+    // 6 KPIs (v4 spec)
+    result.budget.bytes_per_cell =
+        (num_cells > 0) ? static_cast<double>(result.budget.peak_ram + result.budget.peak_vram)
+                        / static_cast<double>(num_cells) : 0.0;
+
+    // Traffic : 4 reads + 2 writes per face
+    size_t traffic_face = 4 * sizeof(float) + 2 * sizeof(float);
     result.budget.bytes_per_cell_per_iteration =
-        static_cast<double>(num_faces_approx * (reads_per_face + writes_per_face)) / estimated_cells;
+        (num_cells > 0) ? static_cast<double>(num_faces * traffic_face)
+                        / static_cast<double>(num_cells) : 0.0;
 
-    result.feasible = true;  // Will be validated against hardware constraints
+    // Vérification faisabilité : budget doit être positif et cohérent
+    result.feasible = (num_cells > 0) && (result.budget.bytes_per_cell > 0);
+    result.error_message = result.feasible ? "Budget valide" : "Erreur budget";
     return result;
 }
 

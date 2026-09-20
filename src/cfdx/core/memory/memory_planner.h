@@ -43,13 +43,12 @@ struct BufferID {
     bool operator==(const BufferID& other) const { return id == other.id; }
 };
 
-namespace std {
-    template<> struct hash<cfdx::core::memory::BufferID> {
-        size_t operator()(const cfdx::core::memory::BufferID& b) const {
-            return hash<uint64_t>()(b.id);
-        }
-    };
-}
+// Custom hash wrapper (avoids std namespace shadowing)
+struct BufferIDHash {
+    size_t operator()(const BufferID& b) const {
+        return std::hash<uint64_t>{}(b.id);
+    }
+};
 
 struct BufferDescriptor {
     BufferID id;
@@ -151,7 +150,11 @@ public:
         std::string error_message;
     };
     Plan plan(const std::vector<BufferDescriptor>& buffers,
-               int total_operations);
+               int total_operations,
+               size_t num_cells = 1000,
+               size_t num_faces = 200,
+               int num_fields = 3,
+               int num_solver_vectors = 5);
 };
 
 // ============================================
