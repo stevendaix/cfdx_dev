@@ -211,6 +211,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
+    add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
     # add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp) 
     # add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)  
 

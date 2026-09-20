@@ -17,10 +17,13 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/geometry/cell_geometry.h"
 #include <cstddef>
 #include <functional>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 namespace cfdx {
 namespace core {
@@ -98,8 +101,8 @@ inline Field<double, Location::CELL> advance_time(
     const std::size_t n_cells = phi.size();
     const std::size_t dim = phi.dimension();
 
-    Field<double, Location::CELL> phi_new(n_cells, phi.name() + "_new", phi.unit(), dim);
-    Field<double, Location::CELL> rhs(n_cells, "rhs", phi.unit() + "/s", dim);
+    Field<double, Location::CELL> phi_new(n_cells, phi.metadata().name + "_new", phi.metadata().unit, dim);
+    Field<double, Location::CELL> rhs(n_cells, "rhs", phi.metadata().unit + "/s", dim);
 
     // Compute RHS at current state
     rhs_func(phi, rhs);
@@ -149,7 +152,7 @@ inline Field<double, Location::CELL> advance_time(
                 }
             }
             // Compute RHS at predicted state
-            Field<double, Location::CELL> rhs_star(n_cells, "rhs_star", phi.unit() + "/s", dim);
+            Field<double, Location::CELL> rhs_star(n_cells, "rhs_star", phi.metadata().unit + "/s", dim);
             rhs_func(phi_star, rhs_star);
             // Corrector: φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ*))
             for (std::size_t c = 0; c < n_cells; ++c) {
@@ -311,17 +314,15 @@ inline std::vector<double> compute_local_time_steps(
     std::vector<Vec3> face_centres(mesh.n_faces());
     std::vector<Vec3> face_Sf(mesh.n_faces());
 
-    const PointCloud& pts = mesh.points();
-    const double* px = pts.x_data();
-    const double* py = pts.y_data();
-    const double* pz = pts.z_data();
     const auto* face_verts = mesh.faces().vertices_data();
     const auto* face_offsets = mesh.faces().offsets_data();
+    (void)face_verts; // used in compute_face_geometry
 
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         const Offset off = face_offsets[f];
         const Offset n = face_offsets[f + 1] - off;
-        const FaceGeometry fg = compute_face_geometry(px, py, pz, face_verts, off, n);
+        const FaceGeometry fg = compute_face_geometry(
+            mesh.points().x_data(), mesh.points().y_data(), mesh.points().z_data(), face_verts, off, n);
         face_centres[f] = fg.centre;
         face_Sf[f] = fg.Sf;
     }
@@ -330,15 +331,19 @@ inline std::vector<double> compute_local_time_steps(
     const CellConnectivity& cells = mesh.cells();
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
+    (void)cell_faces; // used in compute_cell_geometry
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
+        (void)n; // used in compute_cell_geometry
         const CellGeometry cg = compute_cell_geometry(
             face_centres.data(), face_Sf.data(), cell_faces + off, n);
         cell_volume[c] = cg.volume;
     }
 
+    // Large initial dt for cells with zero velocity
+    const double dt_max = 1e30;
     std::vector<double> dt_local(n_cells, dt_max);
     for (std::size_t c = 0; c < n_cells; ++c) {
         if (cell_volume[c] <= 0) continue;
@@ -361,7 +366,7 @@ inline void apply_local_time_stepping(
     const std::size_t n_cells = phi.size();
     const std::size_t dim = phi.dimension();
 
-    Field<double, Location::CELL> rhs(n_cells, "rhs", phi.unit() + "/s", dim);
+    Field<double, Location::CELL> rhs(n_cells, "rhs", phi.metadata().unit + "/s", dim);
     rhs_func(phi, rhs);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
