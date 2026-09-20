@@ -3,7 +3,23 @@
 #include "cfdx/io/hdf5/hdf5_writer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/geometry/face_geometry.h"
 #include <string>
+
+// Local type definitions for OpenFOAM import skeleton
+namespace cfdx::io::openfoam {
+    using real3 = double[3];
+    struct Face {
+        int n;
+        uint32_t* indices;
+    };
+    struct PatchDef {
+        std::string name;
+        int type;
+        std::vector<uint32_t> face_ids;
+    };
+}
 
 // Meshio adapter: optional; if meshio/meshio.h unavailable, basic parser used instead
 #ifndef HAS_MESHIO
