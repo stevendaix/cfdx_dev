@@ -61,10 +61,76 @@ int main(int argc, char** argv) {
     std::vector<cfdx::core::memory::BufferDescriptor> buffers;
     auto budget_plan = planner.plan(buffers, 10, mesh.n_cells(), mesh.n_faces(), 1, 5);
     std::cout << "  bytes/cell = " << budget_plan.budget.bytes_per_cell << "\n\n";
-    std::cout << "[3/5] Identifying Dirichlet cells... (COMMENTÉ POUR TEST)\n";
-    std::vector<bool> is_dirichlet(mesh.n_cells(), true);  // Tout Dirichlet = matrice identité
-    std::cout << "  Dirichlet cells = SKIP (test)\n\n";
-    std::cout << "  Dirichlet cells = SKIP (test simplifié)\n\n";
+    std::cout << "[3/5] Identifying Dirichlet cells...\n";
+    std::vector<bool> is_dirichlet(mesh.n_cells(), false);
+
+    // Méthode robuste : utiliser les PhysicalGroups du maillage (si disponibles)
+    // Sinon : heuristique géométrique avec la taille caractéristique h
+    const std::size_t n_pts = mesh.n_points();
+    const std::size_t n_faces_now = mesh.n_faces();
+    std::cout << "  Points: " << n_pts << ", Faces: " << n_faces_now << ", Cells: " << mesh.n_cells() << "\n";
+
+    // Essayer d'utiliser les patches frontières depuis mesh.boundary()
+    const auto& boundary_patches = mesh.boundary();
+    bool has_boundary_patches = (boundary_patches.n_patches() > 0);
+    std::cout << "  Boundary patches: " << (has_boundary_patches ? "YES" : "NO") << " (count=" << boundary_patches.n_patches() << ")\n";
+
+    if (has_boundary_patches) {
+        // Utiliser $PhysicalNames / $PhysicalGroups du maillage Gmsh
+        // Les patches "left", "right", "bottom", "top", "wall" sont des frontières Dirichlet
+        for (std::size_t p = 0; p < boundary_patches.n_patches(); ++p) {
+            const auto& patch = boundary_patches.patch(p);
+            const std::string& name = patch.name;
+            std::cout << "  Patch (Dirichlet): " << name << " (faces=" << patch.size() << ")\n";
+            // Marquer toutes les cellules adjacentes aux faces du patch comme Dirichlet
+            for (auto f_id : patch.face_ids) {
+                std::size_t f = static_cast<std::size_t>(f_id);
+                if (f < mesh.n_faces()) {
+                    std::size_t owner_cell = static_cast<std::size_t>(mesh.ownership().owner(f));
+                    if (owner_cell < mesh.n_cells()) {
+                        is_dirichlet[owner_cell] = true;
+                    }
+                }
+            }
+        }
+    } else {
+        std::cout << "  [WARN] Pas de PhysicalGroups/BoundaryPatches. Utilisation heuristique.\n";
+        // Heuristique géométrique : centre de cellule proche du bord [0,1]²
+        const auto& pts = mesh.points();
+        const double* px = pts.x_data();
+        const double* py = pts.y_data();
+        const double* pz = pts.z_data();
+        const auto* c_faces_data = mesh.cells().faces_data();
+        const auto* c_offsets_data = mesh.cells().offsets_data();
+
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const auto off = c_offsets_data[c];
+            const auto n = c_offsets_data[c + 1] - off;
+            double cx = 0.0, cy = 0.0, count = 0.0;
+            for (auto k = off; k < c_offsets_data[c + 1]; ++k) {
+                std::size_t f_idx = c_faces_data[k];
+                const auto f_off = mesh.faces().offsets_data()[f_idx];
+                const auto f_n = mesh.faces().offsets_data()[f_idx + 1] - f_off;
+                const auto* verts = mesh.faces().vertices_data();
+                for (std::size_t v = 0; v < f_n; ++v) {
+                    std::size_t node_idx = verts[f_off + v];
+                    cx += px[node_idx]; cy += py[node_idx]; count += 1.0;
+                }
+            }
+            if (count > 0) {
+                cx /= count; cy /= count;
+                double h = 1.0 / std::sqrt(static_cast<double>(mesh.n_cells()));
+                const double eps = 0.5 * h;
+                if (cx < eps || cx > 1.0 - eps || cy < eps || cy > 1.0 - eps) {
+                    is_dirichlet[c] = true;
+                }
+            }
+        }
+    }
+
+    std::size_t n_dirichlet = std::count(is_dirichlet.begin(), is_dirichlet.end(), true);
+    std::cout << "  Dirichlet cells: " << n_dirichlet << " / " << mesh.n_cells()
+              << " (" << (100.0 * n_dirichlet / mesh.n_cells()) << "%)\n\n";
     std::cout << "[DEBUG] Avant assemble_laplacian_csr\n";
     std::cout.flush();
     std::cout << "[4/5] Laplacian assembly...\n";
