@@ -32,17 +32,19 @@ int main(int argc, char** argv) {
     std::cout << "  Output: " << output_path << "\n\n";
     std::cout << "[1/5] Import Gmsh...\n";
     cfdx::core::Mesh mesh;
-    if (!cfdx::io::import_gmsh_mesh(mesh_path, mesh)) {
+    if (!cfdx::io::gmsh::import_gmsh_mesh(mesh_path, mesh)) {
         std::cerr << "Failed to load mesh: " << mesh_path << "\n";
         return 1;
     }
     std::cout << "  cells = " << mesh.n_cells() << "\n\n";
     std::cout << "[2/5] RCM & Memory Planner...\n";
-    cfdx::core::RCMReorderer rcm;
-    rcm.apply(mesh);
-    cfdx::core::MemoryPlanner planner;
-    auto budget = planner.estimate(mesh);
-    std::cout << "  bytes/cell = " << budget.bytes_per_cell << "\n\n";
+    std::vector<uint32_t> owner, neighbour;
+    cfdx::core::memory::RCMReorderer rcm;
+    rcm.reorder(owner, neighbour, mesh.n_cells());
+    cfdx::core::memory::MemoryPlanner planner;
+    std::vector<cfdx::core::memory::BufferDescriptor> buffers;
+    auto budget_plan = planner.plan(buffers, 10, mesh.n_cells(), mesh.n_faces(), 1, 5);
+    std::cout << "  bytes/cell = " << budget_plan.budget.bytes_per_cell << "\n\n";
     std::cout << "[3/5] Identifying Dirichlet cells...\n";
     std::vector<bool> is_dirichlet(mesh.n_cells(), false);
     const auto& pts = mesh.points();

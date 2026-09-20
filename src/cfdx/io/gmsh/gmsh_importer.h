@@ -2,7 +2,8 @@
 
 #include <string>
 #include <vector>
-#include <meshio/meshio.h>
+#include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/field/field.h"
 
 namespace cfdx::io::gmsh {
 
@@ -15,10 +16,10 @@ namespace cfdx::io::gmsh {
 //!   - Cell/point fields (scalars, vectors)
 
 //! Import Gmsh mesh file into CFDX Mesh structure
-bool import_gmsh_mesh(const std::string& mshPath, Mesh& mesh);
+bool import_gmsh_mesh(const std::string& mshPath, cfdx::core::Mesh& mesh);
 //! Import Gmsh field file into CFDX scalar field
-bool import_gmsh_scalar(const std::string& mshPath, const std::string& fieldName, ScalarCellField& field);
-//! Import Gmsh vector field into CFDX vector field
-bool import_gmsh_vector(const std::string& mshPath, const std::string& fieldName, VectorCellField& field);
+bool import_gmsh_scalar(const std::string& mshPath, const std::string& fieldName, cfdx::core::ScalarCellField& field);
+//! Import Gmsh vector field into CFDX vector field (stub)
+// bool import_gmsh_vector(const std::string& mshPath, const std::string& fieldName, cfdx::core::VectorCellField& field);
 
 } // namespace cfdx::io::gmsh
