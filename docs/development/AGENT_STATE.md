@@ -42,7 +42,7 @@ ec7763d — "M0.9-T03/T04: Update agent state - round-trip validation complete, 
 
 ## Prochaine tâche
 
-M0.9-T05 — Lightweight VTU writer (XML, no VTK)
+M0.10-T01 — OpenFOAM importer (src/cfdx/io/openfoam/openfoam_importer.h/.cpp)
 
 ## Décisions architecturales
 
