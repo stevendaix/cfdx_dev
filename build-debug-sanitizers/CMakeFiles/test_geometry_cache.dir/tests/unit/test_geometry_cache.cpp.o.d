@@ -1,8 +1,7 @@
-CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: \
- /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.cpp \
+CMakeFiles/test_geometry_cache.dir/tests/unit/test_geometry_cache.cpp.o: \
+ /home/steven/cfdx_dev/tests/unit/test_geometry_cache.cpp \
  /usr/include/stdc-predef.h \
- /home/steven/cfdx_dev/src/cfdx/io/openfoam/openfoam_importer.h \
- /home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_writer.h \
+ /home/steven/cfdx_dev/src/cfdx/core/geometry/geometry_cache.h \
  /home/steven/cfdx_dev/src/cfdx/core/mesh/mesh.h \
  /home/steven/cfdx_dev/src/cfdx/core/mesh/point.h \
  /usr/include/c++/11/vector /usr/include/c++/11/bits/stl_algobase.h \
@@ -194,9 +193,8 @@ CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: \
  /usr/include/c++/11/bits/ostream.tcc \
  /usr/include/c++/11/bits/istream.tcc \
  /usr/include/c++/11/bits/sstream.tcc \
- /home/steven/cfdx_dev/src/cfdx/core/field/field.h \
- /home/steven/cfdx_dev/src/cfdx/io/hdf5/hdf5_reader.h \
  /home/steven/cfdx_dev/src/cfdx/core/geometry/face_geometry.h \
+ /home/steven/cfdx_dev/src/cfdx/core/field/field.h \
  /usr/include/c++/11/algorithm /usr/include/c++/11/bits/stl_algo.h \
  /usr/include/c++/11/bits/algorithmfwd.h \
  /usr/include/c++/11/bits/stl_heap.h \
@@ -209,9 +207,8 @@ CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o: \
  /usr/include/c++/11/bits/hashtable_policy.h \
  /usr/include/c++/11/bits/enable_special_members.h \
  /usr/include/c++/11/bits/unordered_map.h \
- /usr/include/c++/11/pstl/execution_defs.h /usr/include/c++/11/fstream \
- /usr/include/c++/11/bits/codecvt.h \
- /usr/include/x86_64-linux-gnu/c++/11/bits/basic_file.h \
- /usr/include/x86_64-linux-gnu/c++/11/bits/c++io.h \
- /usr/include/c++/11/bits/fstream.tcc /usr/include/c++/11/iostream \
- /usr/include/c++/11/cassert /usr/include/assert.h
+ /usr/include/c++/11/pstl/execution_defs.h \
+ /home/steven/cfdx_dev/src/cfdx/core/geometry/cell_geometry.h \
+ /home/steven/cfdx_dev/src/cfdx/core/geometry/mesh_quality.h \
+ /home/steven/cfdx_dev/tests/common/test_harness.h \
+ /usr/include/c++/11/iostream

@@ -5,6 +5,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/field/field.h"
+#include "cfdx/core/geometry/face_geometry.h"
 #include <string>
 #include <vector>
 #include <cstdint>

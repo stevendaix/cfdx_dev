@@ -465,19 +465,6 @@ test_geometry_cache/fast:
 .PHONY : test_geometry_cache/fast
 
 #=============================================================================
-# Target rules for targets named test_mpi_partition
-
-# Build rule for target.
-test_mpi_partition: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_mpi_partition
-.PHONY : test_mpi_partition
-
-# fast build rule for target.
-test_mpi_partition/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/build
-.PHONY : test_mpi_partition/fast
-
-#=============================================================================
 # Target rules for targets named test_transport_models
 
 # Build rule for target.
@@ -1648,30 +1635,6 @@ tests/unit/test_mesh.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mesh.dir/build.make CMakeFiles/test_mesh.dir/tests/unit/test_mesh.cpp.s
 .PHONY : tests/unit/test_mesh.cpp.s
 
-tests/unit/test_mpi_partition.o: tests/unit/test_mpi_partition.cpp.o
-.PHONY : tests/unit/test_mpi_partition.o
-
-# target to build an object file
-tests/unit/test_mpi_partition.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/tests/unit/test_mpi_partition.cpp.o
-.PHONY : tests/unit/test_mpi_partition.cpp.o
-
-tests/unit/test_mpi_partition.i: tests/unit/test_mpi_partition.cpp.i
-.PHONY : tests/unit/test_mpi_partition.i
-
-# target to preprocess a source file
-tests/unit/test_mpi_partition.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/tests/unit/test_mpi_partition.cpp.i
-.PHONY : tests/unit/test_mpi_partition.cpp.i
-
-tests/unit/test_mpi_partition.s: tests/unit/test_mpi_partition.cpp.s
-.PHONY : tests/unit/test_mpi_partition.s
-
-# target to generate assembly for a file
-tests/unit/test_mpi_partition.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_mpi_partition.dir/build.make CMakeFiles/test_mpi_partition.dir/tests/unit/test_mpi_partition.cpp.s
-.PHONY : tests/unit/test_mpi_partition.cpp.s
-
 tests/unit/test_ownership.o: tests/unit/test_ownership.cpp.o
 .PHONY : tests/unit/test_ownership.o
 
@@ -1874,7 +1837,6 @@ help:
 	@echo "... test_memory_planner_validation"
 	@echo "... test_mesh"
 	@echo "... test_mesh_quality"
-	@echo "... test_mpi_partition"
 	@echo "... test_ownership"
 	@echo "... test_plan_complet"
 	@echo "... test_point"
@@ -2018,9 +1980,6 @@ help:
 	@echo "... tests/unit/test_mesh.o"
 	@echo "... tests/unit/test_mesh.i"
 	@echo "... tests/unit/test_mesh.s"
-	@echo "... tests/unit/test_mpi_partition.o"
-	@echo "... tests/unit/test_mpi_partition.i"
-	@echo "... tests/unit/test_mpi_partition.s"
 	@echo "... tests/unit/test_ownership.o"
 	@echo "... tests/unit/test_ownership.i"
 	@echo "... tests/unit/test_ownership.s"

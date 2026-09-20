@@ -240,7 +240,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     # add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
-    add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+    if(CFDX_ENABLE_MPI AND MPI_FOUND)
+        add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+    endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)  
 
     # HDF5 tests

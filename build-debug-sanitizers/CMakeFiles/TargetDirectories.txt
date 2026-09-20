@@ -24,7 +24,6 @@
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_mesh_quality.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_source_term.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_geometry_cache.dir
-/home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_mpi_partition.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_transport_models.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_hdf5_writer.dir
 /home/steven/cfdx_dev/build-debug-sanitizers/CMakeFiles/test_hdf5_roundtrip.dir

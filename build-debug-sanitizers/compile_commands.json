@@ -226,11 +226,6 @@
 },
 {
   "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
-  "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/test_mpi_partition.dir/tests/unit/test_mpi_partition.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_mpi_partition.cpp",
-  "file": "/home/steven/cfdx_dev/tests/unit/test_mpi_partition.cpp"
-},
-{
-  "directory": "/home/steven/cfdx_dev/build-debug-sanitizers",
   "command": "/usr/bin/c++  -I/home/steven/cfdx_dev/tests -I/home/steven/cfdx_dev/src -I/home/steven/cfdx_dev/third_party/hdf5/include -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -std=c++17 -o CMakeFiles/test_transport_models.dir/tests/unit/test_transport_models.cpp.o -c /home/steven/cfdx_dev/tests/unit/test_transport_models.cpp",
   "file": "/home/steven/cfdx_dev/tests/unit/test_transport_models.cpp"
 },

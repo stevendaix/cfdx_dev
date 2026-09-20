@@ -21,6 +21,10 @@
 using namespace cfdx::core;
 using namespace std;
 
+namespace cfdx::io::openfoam {
+    struct Point3D { double x, y, z; };
+}
+
 // ---------------------------------------------------------------------------
 // Helper: parse OpenFOAM dictionary entries (simple key value or key { ... })
 // ---------------------------------------------------------------------------
@@ -92,7 +96,9 @@ bool cfdx::io::openfoam::read_openfoam_mesh_meshio(const std::string& ofCasePath
     if (ptsFile.good()) {
         double x, y, z;
         while (ptsFile >> x >> y >> z) {
-            points.push_back({x, y, z});
+            cfdx::core::Vec3 p{0.0, 0.0, 0.0};
+            p = {x, y, z};
+            points.push_back(p);
         }
     }
 
