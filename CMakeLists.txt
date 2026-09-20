@@ -139,6 +139,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/integrate.h
     src/cfdx/core/numerics/source_term.h
     src/cfdx/core/numerics/temporal.h
+    src/cfdx/physics/equation_of_state.h
+    src/cfdx/physics/transport_models.h
+    src/cfdx/physics/multi_component.h
     src/cfdx/core/linalg/sparse_matrix.h
     src/cfdx/core/linalg/vector.h
     src/cfdx/core/linalg/linear_system.h
