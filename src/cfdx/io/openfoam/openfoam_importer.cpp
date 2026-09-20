@@ -4,7 +4,6 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
 #include "cfdx/core/mesh/index_types.h"
-#include <meshio/meshio.h>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -13,6 +12,11 @@
 #include <string>
 #include <cassert>
 #include <cmath>
+
+// Meshio adapter: use basic parser if meshio unavailable
+#if HAS_MESHIO
+#include <meshio/meshio.h>
+#endif
 
 using namespace cfdx::core;
 using namespace std;

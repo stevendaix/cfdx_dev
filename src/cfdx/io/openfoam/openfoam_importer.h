@@ -3,8 +3,12 @@
 #include "cfdx/io/hdf5/hdf5_writer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/core/mesh/mesh.h"
-#include <meshio/meshio.h>
 #include <string>
+
+// Meshio adapter: optional; if meshio/meshio.h unavailable, basic parser used instead
+#ifndef HAS_MESHIO
+#define HAS_MESHIO 0
+#endif
 
 namespace cfdx::io::openfoam {
 
