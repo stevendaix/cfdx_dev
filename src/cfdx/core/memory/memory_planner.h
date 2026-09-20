@@ -174,6 +174,13 @@ public:
     ReorderingResult reorder(const std::vector<uint32_t>& owner,
                               const std::vector<uint32_t>& neighbour,
                               size_t num_cells);
+private:
+    double computeBandwidth(const std::vector<uint32_t>& owner,
+                             const std::vector<uint32_t>& neighbour,
+                             const std::vector<uint32_t>& mapping);
+    double computeProfile(const std::vector<uint32_t>& owner,
+                          const std::vector<uint32_t>& neighbour,
+                          const std::vector<uint32_t>& mapping);
 };
 
 enum class MeshOrdering {
