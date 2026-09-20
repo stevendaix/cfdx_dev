@@ -44,9 +44,26 @@ inline void assemble_laplacian_csr(
     for (std::size_t f = 0; f < n_faces; ++f) {
         const auto off = f_offsets[f];
         const auto n = f_offsets[f + 1] - off;
-        const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
-        face_centres[f] = fg.centre;
-        face_Sf[f] = fg.Sf;
+        // Cas 2D (arête, n=2) : calcul manuel du centre et Sf
+        if (n == 2) {
+            const std::size_t n0 = verts[off];
+            const std::size_t n1 = verts[off + 1];
+            face_centres[f] = Vec3{
+                (px[n0] + px[n1]) * 0.5,
+                (py[n0] + py[n1]) * 0.5,
+                (pz[n0] + pz[n1]) * 0.5
+            };
+            double dx = px[n1] - px[n0];
+            double dy = py[n1] - py[n0];
+            face_Sf[f] = Vec3{-dy, dx, 0.0};
+        } else if (n >= 3) {
+            // Cas 3D : utiliser l'API existante
+            const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
+            face_centres[f] = fg.centre;
+            face_Sf[f] = fg.Sf;
+        } else {
+            throw std::runtime_error("assemble_laplacian_csr: face " + std::to_string(f) + " has invalid vertex count: " + std::to_string(n));
+        }
     }
     std::vector<Vec3> cell_centres(n_cells);
     for (std::size_t c = 0; c < n_cells; ++c) {

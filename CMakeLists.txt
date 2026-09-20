@@ -118,6 +118,14 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/vtu/vtu_writer.cpp
 )
 
+set(CFDX_PHYSICS_SOURCES
+    src/cfdx/physics/equation_of_state.h
+    src/cfdx/physics/multi_component.h
+    src/cfdx/physics/source_term_linearization.h
+    src/cfdx/physics/transport_models.h
+    src/cfdx/physics/temporal.h
+)
+
 set(CFDX_CORE_SOURCES
     ${CFDX_MESH_SOURCES}
     ${CFDX_GEOMETRY_SOURCES}
