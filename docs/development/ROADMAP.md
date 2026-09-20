@@ -69,7 +69,10 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [ ] M0.8-T09 Block preconditioners (Schur complement for coupled systems)
 - [ ] M0.8-T10 Matrix-free operator evaluation (prep for M0.12 GPU/large-scale)
 
-## M0.9 — HDF5 / Export
+## M0.9 — HDF5 / Export (v4 Memory-Traffic-First architecture applied)
+
+> **Note architecture v4** : Memory Planner (lifetime + reuse + budget + ledger), Mesh Reordering (RCM + SFC), 6 KPIs (bytes/cell stored/iteration, peak RAM/VRAM/cell, CPU-GPU/MPI traffic/iteration). Voir `docs/development/BACKLOG.md` et `memory_planner.md` (§1-§4).
+
 
 - [x] M0.9-T01 HDF5 writer (mesh, fields, meta)
 - [x] M0.9-T02 HDF5 reader
@@ -79,8 +82,8 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 
 ## M0.10 — Import/export
 
-- [ ] M0.10-T01 OpenFOAM importer
-- [ ] M0.10-T02 Gmsh importer
+- [x] M0.10-T01 OpenFOAM importer
+- [x] M0.10-T02 Gmsh importer
 - [ ] M0.10-T03 meshio importer
 - [ ] M0.10-T04 CFDX case writer
 
@@ -93,8 +96,8 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 ## M0.12 — Execution abstraction
 
 - [ ] M0.12-T01 CPU backend
-- [ ] M0.12-T02 ExecutionPolicy enum
-- [ ] M0.12-T03 Memory planner
+- [x] M0.12-T02 ExecutionPolicy enum (stub)
+- [x] M0.12-T03 Memory planner (v4 skeleton)
 
 ## M0.13 — Temporal Discretization
 
