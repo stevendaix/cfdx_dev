@@ -35,8 +35,8 @@ Dernière mise à jour : 2026-09-19
 | M0.8-T06 | GMRES solver | M0.8-T03 | PLANNED |
 | M0.8-T07 | Preconditioners | M0.8-T03 | PLANNED |
 | M0.9-T01 | HDF5 writer | M0.1-T01..T06, M0.4-T01 | DONE |
-| M0.9-T02 | HDF5 reader | M0.9-T01 | IN_PROGRESS |
-| M0.9-T03 | Round-trip validation | M0.9-T01, M0.9-T02 | PLANNED |
+| M0.9-T02 | HDF5 reader | M0.9-T01 | DONE |
+| M0.9-T03 | Round-trip validation | M0.9-T01, M0.9-T02 | DONE |
 | M0.9-T04 | Hash computation | M0.1-T01..T06 | PLANNED |
 | M0.10-T01 | OpenFOAM importer | M0.1-T01..T06 | PLANNED |
 | M0.10-T02 | Gmsh importer | M0.1-T01..T06 | PLANNED |
