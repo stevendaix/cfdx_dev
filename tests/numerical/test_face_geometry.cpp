@@ -2,6 +2,7 @@
 // Validation Level 1 (geometric invariants) + Level 2 (analytical).
 
 #include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/mesh/index_types.h"
 #include "test_harness.h"
 
 using namespace cfdx::core;
@@ -12,7 +13,7 @@ struct SquareMesh {
     std::vector<double> px = {0.0, 1.0, 1.0, 0.0};
     std::vector<double> py = {0.0, 0.0, 1.0, 1.0};
     std::vector<double> pz = {0.0, 0.0, 0.0, 0.0};
-    std::uint32_t verts[4] = {0, 1, 2, 3};
+    VertexIndex verts[4] = {0, 1, 2, 3};
 };
 
 int main() {
@@ -48,7 +49,7 @@ int main() {
         std::vector<double> px = {0.0, 2.0, 1.0};
         std::vector<double> py = {0.0, 0.0, std::sqrt(3.0)};
         std::vector<double> pz = {0.0, 0.0, 0.0};
-        std::uint32_t verts[3] = {0, 1, 2};
+        VertexIndex verts[3] = {0, 1, 2};
         auto g = compute_face_geometry(px, py, pz, verts, 0, 3);
         EXPECT_NEAR(g.area, std::sqrt(3.0), 1e-12);
     });
@@ -56,14 +57,14 @@ int main() {
     run_case("reversed_orientation_flips_Sf", []() {
         SquareMesh s;
         // Inverse l'ordre des sommets → normale opposée
-        std::uint32_t rev[4] = {3, 2, 1, 0};
+        VertexIndex rev[4] = {3, 2, 1, 0};
         auto g = compute_face_geometry(s.px, s.py, s.pz, rev, 0, 4);
         EXPECT_NEAR(g.Sf.z, -1.0, 1e-12);
         EXPECT_NEAR(g.area, 1.0, 1e-12);
     });
 
     run_case("pentagon_area", []() {
-        // Pentagono regular inscrito en circulo radio 1, primer vértice en (1,0)
+        // Pentagono regular inscrito en circulo radio 1, premier vértice en (1,0)
         const double pi = std::acos(-1.0);
         std::vector<double> px(5), py(5), pz(5, 0.0);
         for (int i = 0; i < 5; ++i) {
@@ -71,7 +72,7 @@ int main() {
             px[i] = std::cos(a);
             py[i] = std::sin(a);
         }
-        std::uint32_t verts[5] = {0, 1, 2, 3, 4};
+        VertexIndex verts[5] = {0, 1, 2, 3, 4};
         auto g = compute_face_geometry(px, py, pz, verts, 0, 5);
         // Aire pentagone regular lado l : A = (1/4) sqrt(5(5+2sqrt(5))) l^2
         // l = 2 sin(pi/5)
@@ -93,7 +94,7 @@ int main() {
         std::vector<double> px = {0.0, 1.0};
         std::vector<double> py = {0.0, 0.0};
         std::vector<double> pz = {0.0, 0.0};
-        std::uint32_t verts[2] = {0, 1};
+        VertexIndex verts[2] = {0, 1};
         EXPECT_THROW(compute_face_geometry(px, py, pz, verts, 0, 2), std::runtime_error);
     });
 

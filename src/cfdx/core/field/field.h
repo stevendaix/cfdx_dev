@@ -8,7 +8,11 @@
 // Exemples :
 //   Field<double, Cell> p;
 //   Field<Vec3, Cell> U;
-//   Field<double, Face> phi;
+//   Field<float, Face> phi;
+//
+// Stockage SoA (Structure of Arrays) pour compatibilité SIMD/GPU :
+//   - Scalaire : 1 array contigu de T
+//   - Vecteur  : 3 arrays contigus de T (x[], y[], z[])
 
 #pragma once
 
@@ -18,6 +22,7 @@
 #include <stdexcept>
 #include <cstdint>
 #include <cmath>
+#include <type_traits>
 
 namespace cfdx {
 namespace core {
@@ -48,69 +53,151 @@ inline Location location_from_string(const std::string& s) {
     return Location::UNKNOWN;
 }
 
+// Types de précision supportés
+enum class Precision : std::uint8_t {
+    FLOAT32 = 0,
+    FLOAT64
+};
+
+inline const char* to_string(Precision p) {
+    return (p == Precision::FLOAT32) ? "float32" : "float64";
+}
+
+inline Precision precision_from_string(const std::string& s) {
+    if (s == "float32" || s == "float") return Precision::FLOAT32;
+    if (s == "float64" || s == "double") return Precision::FLOAT64;
+    return Precision::FLOAT64;
+}
+
 // --- Field metadata (§25) ---
 struct FieldMetadata {
     std::string name;
     Location location = Location::UNKNOWN;
     std::size_t dimension = 1;   // scalaire = 1, vecteur = 3
     std::string unit;
-    std::string precision;       // "float32" ou "float64"
+    Precision precision = Precision::FLOAT64;
     std::string storage;         // "host", "device", "working_set"
 };
 
-// --- Field générique (§24) ---
-// Le stockage est SoA pour les vecteurs (§38).
-// Pour un champ scalaire, T = double, storage est un std::vector<double>.
-// Pour un champ vecteur (Vec3), storage est 3 std::vector<double> (x, y, z).
+// Vector type pour stockage SoA
+struct Vec3 {
+    double x = 0.0, y = 0.0, z = 0.0;
+    Vec3() = default;
+    Vec3(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
 
-template <typename T, Location L>
+    Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
+    Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
+    Vec3 operator*(double s) const { return {x * s, y * s, z * s}; }
+
+    double dot(const Vec3& o) const { return x * o.x + y * o.y + z * o.z; }
+    Vec3 cross(const Vec3& o) const {
+        return {y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x};
+    }
+    double mag() const { return std::sqrt(x * x + y * y + z * z); }
+    double mag2() const { return x * x + y * y + z * z; }
+
+    Vec3 normalized() const {
+        double m = mag();
+        if (m == 0.0) return {0.0, 0.0, 0.0};
+        return {x / m, y / m, z / m};
+    }
+};
+
+// Helper pour détecter si T est un type vectoriel (Vec3, etc.)
+template <typename T>
+struct is_vector_type : std::false_type {};
+
+template <>
+struct is_vector_type<Vec3> : std::true_type {};
+
+// --- Field générique (§24) ---
+// Stockage SoA (Structure of Arrays) :
+//   - Pour scalaire (dim=1) : data_[0] = array de n éléments
+//   - Pour vecteur (dim=3) : data_[0] = x[], data_[1] = y[], data_[2] = z[]
+// Le template T contrôle le type de précision (float, double, etc.)
+
+template <typename T = double, Location L = Location::CELL>
 class Field {
 public:
-    using Value = T;
+    using ValueType = T;
     static constexpr Location location = L;
+
+    static_assert(std::is_arithmetic_v<T> || std::is_same_v<T, Vec3>,
+                  "Field value type must be arithmetic or Vec3");
 
     Field() = default;
 
     explicit Field(std::size_t n, const std::string& name = "",
-                   const std::string& unit = "", std::size_t dim = 1)
-        : meta_{name, L, dim, unit, "float64", "host"},
+                   const std::string& unit = "", std::size_t dim = 1,
+                   Precision precision = Precision::FLOAT64)
+        : meta_{name, L, dim, unit, precision, "host"},
           n_(n),
           dim_(dim)
     {
         if (dim_ == 0) dim_ = 1;
-        data_.resize(n_ * dim_, 0.0);
+        allocate_storage();
     }
 
     // --- Accès ---
 
     std::size_t size() const noexcept { return n_; }
     std::size_t dimension() const noexcept { return dim_; }
+    void set_dimension(std::size_t dim) {
+        if (dim != dim_) {
+            dim_ = dim;
+            allocate_storage();
+        }
+    }
     bool empty() const noexcept { return n_ == 0; }
 
+    Precision precision() const noexcept { return meta_.precision; }
+
     // Accès scalaire (dim == 1).
-    double operator()(std::size_t i) const {
+    T operator()(std::size_t i) const {
         check_index(i);
-        return data_[i];
+        return data_[0][i];
     }
-    double& operator()(std::size_t i) {
+    T& operator()(std::size_t i) {
         check_index(i);
-        return data_[i];
+        return data_[0][i];
     }
 
-    // Accès vecteur (dim == 3).
-    void get(std::size_t i, double& x, double& y, double& z) const {
+    // Accès vecteur (dim == 3) - SoA layout
+    void get(std::size_t i, T& x, T& y, T& z) const {
         check_index(i);
-        const std::size_t base = i * dim_;
-        x = data_[base];
-        y = data_[base + 1];
-        z = data_[base + 2];
+        if (dim_ < 3) {
+            throw std::runtime_error("Field::get: dimension < 3, cannot get vector components");
+        }
+        x = data_[0][i];
+        y = data_[1][i];
+        z = data_[2][i];
     }
-    void set(std::size_t i, double x, double y, double z) {
+
+    void set(std::size_t i, T x, T y, T z) {
         check_index(i);
-        const std::size_t base = i * dim_;
-        data_[base] = x;
-        data_[base + 1] = y;
-        data_[base + 2] = z;
+        if (dim_ < 3) {
+            throw std::runtime_error("Field::set: dimension < 3, cannot set vector components");
+        }
+        data_[0][i] = x;
+        data_[1][i] = y;
+        data_[2][i] = z;
+    }
+
+    // Accès par composante pour vecteur
+    T& operator()(std::size_t i, std::size_t comp) {
+        check_index(i);
+        if (comp >= dim_) {
+            throw std::out_of_range("Field: component index out of range");
+        }
+        return data_[comp][i];
+    }
+
+    T operator()(std::size_t i, std::size_t comp) const {
+        check_index(i);
+        if (comp >= dim_) {
+            throw std::out_of_range("Field: component index out of range");
+        }
+        return data_[comp][i];
     }
 
     // --- Métadonnées ---
@@ -122,30 +209,43 @@ public:
 
     // --- Opérations ---
 
-    void fill(double value) {
-        std::fill(data_.begin(), data_.end(), value);
+    void fill(T value) {
+        for (std::size_t c = 0; c < dim_; ++c) {
+            std::fill(data_[c].begin(), data_[c].end(), value);
+        }
     }
 
     void resize(std::size_t n) {
         n_ = n;
-        data_.resize(n_ * dim_, 0.0);
+        allocate_storage();
     }
 
     void clear() {
         n_ = 0;
-        data_.clear();
+        for (auto& arr : data_) arr.clear();
     }
 
-    // --- Accès bulk ---
+    // --- Accès bulk (pour kernels) ---
 
-    const double* data() const noexcept { return data_.data(); }
-    double* data() noexcept { return data_.data(); }
+    // Retourne pointeurs vers les arrays SoA (data_[0], data_[1], data_[2] pour vecteur)
+    const T* const* data() const noexcept { return data_ptrs_.data(); }
+    T* const* data() noexcept { return data_ptrs_.data(); }
+
+    // Accès direct à une composante
+    const T* component_data(std::size_t comp) const noexcept {
+        return (comp < dim_) ? data_[comp].data() : nullptr;
+    }
+    T* component_data(std::size_t comp) noexcept {
+        return (comp < dim_) ? data_[comp].data() : nullptr;
+    }
 
     // --- Validation ---
 
     bool is_valid() const {
-        for (std::size_t i = 0; i < data_.size(); ++i) {
-            if (!(std::isfinite(data_[i]))) return false;
+        for (std::size_t c = 0; c < dim_; ++c) {
+            for (std::size_t i = 0; i < n_; ++i) {
+                if (!(std::isfinite(data_[c][i]))) return false;
+            }
         }
         return true;
     }
@@ -157,18 +257,34 @@ private:
         }
     }
 
+    void allocate_storage() {
+        data_.clear();
+        data_.resize(dim_);
+        for (std::size_t c = 0; c < dim_; ++c) {
+            data_[c].resize(n_, T{0});
+        }
+        // Update pointer array for kernel access
+        data_ptrs_.resize(dim_);
+        for (std::size_t c = 0; c < dim_; ++c) {
+            data_ptrs_[c] = data_[c].data();
+        }
+    }
+
     FieldMetadata meta_;
     std::size_t n_ = 0;
     std::size_t dim_ = 1;
-    std::vector<double> data_;
+    std::vector<std::vector<T>> data_;      // SoA: data_[comp][index]
+    std::vector<T*> data_ptrs_;              // Pointers for kernel access
 };
 
-// Types courants (§24).
+// Type aliases courants (§24).
 using ScalarCellField = Field<double, Location::CELL>;
 using ScalarFaceField = Field<double, Location::FACE>;
 using ScalarPointField = Field<double, Location::POINT>;
-using Vec3CellField = Field<double, Location::CELL>;  // dim=3
-using Vec3FaceField = Field<double, Location::FACE>;   // dim=3
+using Vec3CellField = Field<Vec3, Location::CELL>;   // T=Vec3, dim=3 (stored as 3 arrays)
+using Vec3FaceField = Field<Vec3, Location::FACE>;
+using Float32CellField = Field<float, Location::CELL>;
+using Float64CellField = Field<double, Location::CELL>;
 
 }  // namespace core
 }  // namespace cfdx

@@ -3,30 +3,40 @@
 #include "cfdx/core/numerics/interpolation.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
+#include "cfdx/core/numerics/flux.h"
 #include "test_harness.h"
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-// Construit un maillage 1D : 2 cellules, 3 faces (2 internes + 2 frontières = 4 faces au total)
-//   face 0 : frontière gauche, owner=0
-//   face 1 : interne, owner=0, neighbour=1
-//   face 2 : interne, owner=1, neighbour=0
-//   face 3 : frontière droite, owner=1
+// Construit un maillage 1D : 2 cellules, 4 faces (2 internes + 2 frontières)
+//   face 0 : frontière gauche, owner=0, vertices {0, 1}
+//   face 1 : interne, owner=0, neighbour=1, vertices {1, 2}
+//   face 2 : interne, owner=1, neighbour=0, vertices {2, 1}
+//   face 3 : frontière droite, owner=1, vertices {2, 3}
+// But we need at least 3 vertices per face for 2D/3D geometry.
+// So let's use triangular faces with z=0 (flat in XY plane).
 Mesh make_two_cell_mesh() {
     Mesh m;
 
-    m.points().resize(4);
+    // 4 points forming two triangles
+    m.points().resize(6);
     m.points().set(0, 0.0, 0.0, 0.0);
     m.points().set(1, 1.0, 0.0, 0.0);
     m.points().set(2, 2.0, 0.0, 0.0);
-    m.points().set(3, 3.0, 0.0, 0.0);
+    m.points().set(3, 0.0, 1.0, 0.0);
+    m.points().set(4, 1.0, 1.0, 0.0);
+    m.points().set(5, 2.0, 1.0, 0.0);
 
-    // 4 faces (segment 2 pts)
-    m.faces().push_face({0, 1});
-    m.faces().push_face({1, 2});
-    m.faces().push_face({2, 1});
-    m.faces().push_face({2, 3});
+    // 4 faces (triangles - 3 vertices each)
+    // Face 0: left boundary triangle
+    m.faces().push_face({0, 3, 1});
+    // Face 1: internal face between cell 0 and 1
+    m.faces().push_face({1, 4, 2});
+    // Face 2: internal face between cell 1 and 0 (reversed)
+    m.faces().push_face({2, 4, 1});
+    // Face 3: right boundary triangle
+    m.faces().push_face({2, 5, 4});
 
     m.ownership().resize(4);
     m.ownership().set_owner(0, 0);
@@ -38,8 +48,10 @@ Mesh make_two_cell_mesh() {
     m.ownership().set_owner(3, 1);
     m.ownership().set_neighbour(3, FaceOwnership::BOUNDARY);
 
-    m.cells().push_cell({0});
-    m.cells().push_cell({1, 2, 3});
+    // Cell 0: faces 0, 1
+    m.cells().push_cell({0, 1});
+    // Cell 1: faces 2, 3
+    m.cells().push_cell({2, 3});
 
     BoundaryPatches bp;
     Patch left, right;
@@ -52,6 +64,20 @@ Mesh make_two_cell_mesh() {
     return m;
 }
 
+// Helper to create a simple face velocity field (constant 1.0 in x direction)
+Field<double, Location::FACE> make_constant_velocity(const Mesh& m) {
+    Field<double, Location::FACE> U(m.n_faces(), "U", "m/s", 3);
+    double* ux = U.component_data(0);
+    double* uy = U.component_data(1);
+    double* uz = U.component_data(2);
+    for (std::size_t f = 0; f < m.n_faces(); ++f) {
+        ux[f] = 1.0;  // Ux = 1.0
+        uy[f] = 0.0;
+        uz[f] = 0.0;
+    }
+    return U;
+}
+
 int main() {
     run_case("interpolate_upwind_scalar", []() {
         Mesh m = make_two_cell_mesh();
@@ -59,10 +85,14 @@ int main() {
         f(0) = 10.0;
         f(1) = 20.0;
 
-        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::UPWIND);
+        // Create face flux for UPWIND scheme
+        auto U = make_constant_velocity(m);
+        auto phi = compute_flux(U, m);
+
+        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::UPWIND, &phi);
         EXPECT_TRUE(face_field.size() == 4);
         EXPECT_TRUE(face_field.dimension() == 1);
-        // Upwind = owner partout
+        // Upwind = owner partout (flux > 0 means outgoing from owner)
         EXPECT_TRUE(face_field(0) == 10.0);
         EXPECT_TRUE(face_field(1) == 10.0);
         EXPECT_TRUE(face_field(2) == 20.0);
@@ -102,7 +132,6 @@ int main() {
 
     run_case("interpolate_limited_clamps", []() {
         // Limited doit borner la valeur linéaire dans [min, max].
-        // On utilise un champ scalaire avec des valeurs extrêmes.
         Mesh m = make_two_cell_mesh();
         ScalarCellField f(2, "p", "Pa", 1);
         f(0) = 0.0;
@@ -150,7 +179,8 @@ int main() {
     run_case("interpolate_empty_mesh", []() {
         Mesh m;
         ScalarCellField f(0, "p", "Pa", 1);
-        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::UPWIND);
+        // Use LINEAR for empty mesh (no faces, no flux needed)
+        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LINEAR);
         EXPECT_TRUE(face_field.size() == 0);
     });
 
@@ -158,7 +188,7 @@ int main() {
         Mesh m = make_two_cell_mesh();
         ScalarCellField f(2, "p", "Pa", 1);
         m.ownership().set_owner(0, 99);  // owner hors de la portée
-        EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::UPWIND),
+        EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::LINEAR),
                      std::runtime_error);
     });
 

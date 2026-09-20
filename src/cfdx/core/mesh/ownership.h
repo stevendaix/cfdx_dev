@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "index_types.h"
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -23,9 +24,9 @@ namespace core {
 
 class FaceOwnership {
 public:
-    using Owner = std::uint32_t;
-    using Neighbour = std::int32_t;
-    static constexpr Neighbour BOUNDARY = -1;
+    using Owner = CellIndex;
+    using Neighbour = std::int64_t;  // Signed for boundary sentinel
+    static constexpr std::int64_t BOUNDARY = -1;
 
     FaceOwnership() = default;
 
@@ -36,22 +37,22 @@ public:
 
     // --- Accès ---
 
-    Owner owner(std::size_t i) const {
+    CellIndex owner(std::size_t i) const {
         check_index(i);
         return owner_[i];
     }
 
-    Neighbour neighbour(std::size_t i) const {
+    std::int64_t neighbour(std::size_t i) const {
         check_index(i);
         return neighbour_[i];
     }
 
-    void set_owner(std::size_t i, Owner o) {
+    void set_owner(std::size_t i, CellIndex o) {
         check_index(i);
         owner_[i] = o;
     }
 
-    void set_neighbour(std::size_t i, Neighbour n) {
+    void set_neighbour(std::size_t i, std::int64_t n) {
         check_index(i);
         neighbour_[i] = n;
     }
@@ -73,23 +74,23 @@ public:
 
     // --- Accès bulk ---
 
-    const Owner* owner_data() const noexcept { return owner_.data(); }
-    const Neighbour* neighbour_data() const noexcept { return neighbour_.data(); }
+    const CellIndex* owner_data() const noexcept { return owner_.data(); }
+    const std::int64_t* neighbour_data() const noexcept { return neighbour_.data(); }
 
-    Owner* owner_data() noexcept { return owner_.data(); }
-    Neighbour* neighbour_data() noexcept { return neighbour_.data(); }
+    CellIndex* owner_data() noexcept { return owner_.data(); }
+    std::int64_t* neighbour_data() noexcept { return neighbour_.data(); }
 
     // --- Validation ---
 
-    // Vérifie la cohérence owner/neighbour (§19) :
+    // Vérifie la cohérence owner/neighbour :
     //   - owner >= 0
     //   - si neighbour >= 0, owner != neighbour (pas de face auto-connectée)
     //   - si neighbour == -1, c'est une face de frontière
     bool is_consistent(std::size_t n_cells) const noexcept {
         for (std::size_t i = 0; i < size(); ++i) {
-            if (owner_[i] >= static_cast<Owner>(n_cells)) return false;
+            if (owner_[i] >= static_cast<CellIndex>(n_cells)) return false;
             if (neighbour_[i] >= 0) {
-                if (owner_[i] == static_cast<Owner>(neighbour_[i])) return false;
+                if (owner_[i] == static_cast<CellIndex>(neighbour_[i])) return false;
                 if (static_cast<std::size_t>(neighbour_[i]) >= n_cells) return false;
             } else if (neighbour_[i] != BOUNDARY) {
                 return false;  // valeur d'invalidité inconnue
@@ -123,8 +124,8 @@ private:
         }
     }
 
-    std::vector<Owner> owner_;
-    std::vector<Neighbour> neighbour_;
+    std::vector<CellIndex> owner_;
+    std::vector<std::int64_t> neighbour_;
 };
 
 }  // namespace core

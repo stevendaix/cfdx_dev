@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "index_types.h"
 #include <vector>
 #include <cstddef>
 #include <stdexcept>
@@ -24,8 +25,8 @@ namespace core {
 
 class FaceConnectivity {
 public:
-    using Index = std::uint32_t;
-    using Offset = std::uint32_t;
+    using Index = FaceIndex;
+    using Offset = ::cfdx::core::Offset;
 
     FaceConnectivity() = default;
 
@@ -81,7 +82,7 @@ public:
 
     // --- Validation ---
 
-    // Vérifie la cohérence interne des offsets (§19).
+    // Vérifie la cohérence interne des offsets.
     // offsets doit être strictement croissant et offsets.back() == vertices.size().
     bool is_consistent() const noexcept {
         if (offsets_.empty() && vertices_.empty()) return true;
@@ -115,7 +116,7 @@ private:
         }
     }
 
-    std::vector<Index> vertices_;
+    std::vector<FaceIndex> vertices_;
     std::vector<Offset> offsets_;
 };
 

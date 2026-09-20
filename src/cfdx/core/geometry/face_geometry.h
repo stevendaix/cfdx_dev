@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "cfdx/core/field/field.h"
+#include "cfdx/core/mesh/index_types.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -26,32 +28,6 @@
 
 namespace cfdx {
 namespace core {
-
-struct Vec3 {
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-
-    Vec3() = default;
-    Vec3(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
-
-    Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
-    Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
-    Vec3 operator*(double s) const { return {x * s, y * s, z * s}; }
-
-    double dot(const Vec3& o) const { return x * o.x + y * o.y + z * o.z; }
-    Vec3 cross(const Vec3& o) const {
-        return {y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x};
-    }
-    double mag() const { return std::sqrt(x * x + y * y + z * z); }
-    double mag2() const { return x * x + y * y + z * z; }
-
-    Vec3 normalized() const {
-        double m = mag();
-        if (m == 0.0) return {0.0, 0.0, 0.0};
-        return {x / m, y / m, z / m};
-    }
-};
 
 // Calcule le centre et le vecteur surface d'une face à partir de ses sommets.
 // Supporte les faces non planaires par triangulation en éventail (fan triangulation)
@@ -70,12 +46,12 @@ struct FaceGeometry {
 // Calcule la géométrie d'une face à partir de ses sommets (positions).
 // Les sommets doivent être dans l'ordre géométrique (consécutifs le long de la face).
 inline FaceGeometry compute_face_geometry(
-    const std::vector<double>& px,
-    const std::vector<double>& py,
-    const std::vector<double>& pz,
-    const std::uint32_t* vertices,
-    std::uint32_t offset,
-    std::uint32_t n_verts)
+    const double* px,
+    const double* py,
+    const double* pz,
+    const VertexIndex* vertices,
+    VertexIndex offset,
+    VertexIndex n_verts)
 {
     if (n_verts < 3) {
         throw std::runtime_error("FaceGeometry: face must have at least 3 vertices");
@@ -85,28 +61,25 @@ inline FaceGeometry compute_face_geometry(
     // pour une face non planaire c'est une approximation acceptable du centre
     // de gravité géométrique).
     Vec3 centre;
-    for (std::uint32_t k = 0; k < n_verts; ++k) {
-        const std::uint32_t v = vertices[offset + k];
+    for (VertexIndex k = 0; k < n_verts; ++k) {
+        const VertexIndex v = vertices[offset + k];
         centre.x += px[v];
         centre.y += py[v];
         centre.z += pz[v];
     }
-    centre.x /= n_verts;
-    centre.y /= n_verts;
-    centre.z /= n_verts;
+    centre.x /= static_cast<double>(n_verts);
+    centre.y /= static_cast<double>(n_verts);
+    centre.z /= static_cast<double>(n_verts);
 
     // Triangulation en éventail (fan) autour du premier sommet.
-    // Aire vectorielle = 1/2 * Σ (P_i × P_{i+1})  (formule de shoelace 3D).
-    // On utilise le premier sommet comme origine.
     Vec3 Sf;
-    const std::uint32_t v0 = vertices[offset];
+    const VertexIndex v0 = vertices[offset];
     const Vec3 p0{px[v0], py[v0], pz[v0]};
-    for (std::uint32_t k = 1; k + 1 < n_verts; ++k) {
-        const std::uint32_t va = vertices[offset + k];
-        const std::uint32_t vb = vertices[offset + k + 1];
+    for (VertexIndex k = 1; k + 1 < n_verts; ++k) {
+        const VertexIndex va = vertices[offset + k];
+        const VertexIndex vb = vertices[offset + k + 1];
         const Vec3 pa{px[va], py[va], pz[va]};
         const Vec3 pb{px[vb], py[vb], pz[vb]};
-        // Triangle (p0, pa, pb) — aire vectorielle = 1/2 * ( (pa-p0) × (pb-p0) )
         const Vec3 ea = pa - p0;
         const Vec3 eb = pb - p0;
         Sf = Sf + ea.cross(eb);
@@ -119,10 +92,59 @@ inline FaceGeometry compute_face_geometry(
     return {centre, Sf, area, normal};
 }
 
+// Surcharge de commodité : accepte des std::vector (API utilisée par les tests).
+inline FaceGeometry compute_face_geometry(
+    const std::vector<double>& px,
+    const std::vector<double>& py,
+    const std::vector<double>& pz,
+    const VertexIndex* vertices,
+    VertexIndex offset,
+    VertexIndex n_verts)
+{
+    return compute_face_geometry(px.data(), py.data(), pz.data(), vertices, offset, n_verts);
+}
+
 // Calcule la distance (signée) entre le centre d'une face et le centre de la cellule owner.
 // Utilisée pour le calcul du delta coefficient (§15).
 inline double face_cell_distance(const Vec3& face_centre, const Vec3& cell_centre) {
     return (face_centre - cell_centre).mag();
+}
+
+// --- Face orientation utilities (§17) ---
+
+// Vérifie et corrige l'orientation du vecteur surface Sf pour une face.
+// Invariant : Sf · (C_neighbour - C_owner) > 0 pour face interne
+//             Sf · (Cf - C_owner) > 0 pour face frontière
+inline void ensure_face_orientation(Vec3& Sf, const Vec3& face_centre,
+                                     const Vec3& owner_centre,
+                                     const Vec3* neighbour_centre = nullptr) {
+    Vec3 d;
+    if (neighbour_centre) {
+        d = *neighbour_centre - owner_centre;
+    } else {
+        d = face_centre - owner_centre;
+    }
+    if (Sf.dot(d) < 0.0) {
+        Sf = Sf * (-1.0);
+    }
+}
+
+// Calcule la géométrie d'une face et assure l'orientation correcte du vecteur surface.
+// Nécessite les centres des cellules owner/neighbour pour déterminer l'orientation.
+inline FaceGeometry compute_face_geometry_oriented(
+    const double* px,
+    const double* py,
+    const double* pz,
+    const VertexIndex* vertices,
+    VertexIndex offset,
+    VertexIndex n_verts,
+    const Vec3& owner_centre,
+    const Vec3* neighbour_centre = nullptr)
+{
+    FaceGeometry fg = compute_face_geometry(px, py, pz, vertices, offset, n_verts);
+    ensure_face_orientation(fg.Sf, fg.centre, owner_centre, neighbour_centre);
+    fg.normal = fg.area > 0.0 ? fg.Sf.normalized() : Vec3{0, 0, 0};
+    return fg;
 }
 
 }  // namespace core

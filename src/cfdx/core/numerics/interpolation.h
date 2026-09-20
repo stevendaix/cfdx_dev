@@ -34,12 +34,31 @@ enum class InterpScheme : std::uint8_t {
     LIMITED
 };
 
+enum class LimiterType : std::uint8_t {
+    NONE = 0,
+    MINMOD,
+    VANLEER,
+    SUPERBEE,
+    VAN_ALBADA
+};
+
 inline const char* to_string(InterpScheme s) {
     switch (s) {
         case InterpScheme::LINEAR:  return "linear";
         case InterpScheme::UPWIND:  return "upwind";
         case InterpScheme::LIMITED: return "limited";
         default:                    return "unknown";
+    }
+}
+
+inline const char* to_string(LimiterType l) {
+    switch (l) {
+        case LimiterType::NONE:      return "none";
+        case LimiterType::MINMOD:    return "minmod";
+        case LimiterType::VANLEER:   return "vanleer";
+        case LimiterType::SUPERBEE:  return "superbee";
+        case LimiterType::VAN_ALBADA: return "vanalbada";
+        default:                     return "unknown";
     }
 }
 
@@ -50,25 +69,71 @@ inline InterpScheme interp_scheme_from_string(const std::string& s) {
     throw std::runtime_error("interp_scheme_from_string: unknown scheme '" + s + "'");
 }
 
+inline LimiterType limiter_type_from_string(const std::string& s) {
+    if (s == "none")      return LimiterType::NONE;
+    if (s == "minmod")    return LimiterType::MINMOD;
+    if (s == "vanleer")   return LimiterType::VANLEER;
+    if (s == "superbee")  return LimiterType::SUPERBEE;
+    if (s == "vanalbada") return LimiterType::VAN_ALBADA;
+    throw std::runtime_error("limiter_type_from_string: unknown limiter '" + s + "'");
+}
+
+// Applique un limiteur pour le schéma LIMITED.
+inline double apply_limiter(double v_owner, double v_neigh, double linear, LimiterType limiter) {
+    double r;
+    if (std::abs(v_owner - v_neigh) < 1e-14) {
+        r = 1.0;
+    } else {
+        r = (linear - v_owner) / (v_neigh - v_owner);
+    }
+
+    double psi = 1.0;  // Default: linear
+    switch (limiter) {
+        case LimiterType::MINMOD:
+            psi = std::max(0.0, std::min(1.0, r));
+            break;
+        case LimiterType::VANLEER:
+            psi = (r + std::abs(r)) / (1.0 + std::abs(r));
+            break;
+        case LimiterType::SUPERBEE:
+            psi = std::max(0.0, std::max(std::min(1.0, 2.0*r), std::min(2.0, r)));
+            break;
+        case LimiterType::VAN_ALBADA:
+            psi = (r*r + r) / (r*r + 1.0);
+            break;
+        default:
+            psi = 1.0;
+    }
+    return v_owner + psi * (linear - v_owner);
+}
+
 // Interpole un champ cellulaire (Field<double, CELL>) vers un champ de faces.
 // Le champ source peut être scalaire (dim=1) ou vecteur (dim=3) — le résultat
 // hérite de la même dimension.
+//
+// Pour UPWIND : nécessite un champ de flux (phi_f = U_f · Sf_f) pour déterminer le signe.
+// Si flux >= 0 : valeur owner ; si flux < 0 : valeur neighbour.
 inline Field<double, Location::FACE> interpolate_cell_to_face(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
-    InterpScheme scheme)
+    InterpScheme scheme,
+    const Field<double, Location::FACE>* face_flux = nullptr,
+    LimiterType limiter_type = LimiterType::NONE)
 {
     const std::size_t n_faces = mesh.n_faces();
     const std::size_t dim = cell_field.dimension();
     if (dim == 0) throw std::runtime_error("interpolate_cell_to_face: dimension must be >= 1");
+
+    if (scheme == InterpScheme::UPWIND && !face_flux) {
+        throw std::runtime_error("interpolate_cell_to_face: UPWIND scheme requires face_flux argument");
+    }
 
     Field<double, Location::FACE> result(
         n_faces, cell_field.name(), cell_field.metadata().unit, dim);
 
     const FaceOwnership& own = mesh.ownership();
 
-    const double* src = cell_field.data();
-    double* dst = result.data();
+    const double* flux = face_flux ? face_flux->component_data(0) : nullptr;
 
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::size_t owner = own.owner(f);
@@ -86,28 +151,33 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
         }
 
         for (std::size_t d = 0; d < dim; ++d) {
-            const double v_owner = src[owner * dim + d];
-            const double v_neigh = src[neighbour * dim + d];
+            // Field uses SoA layout: component_data(d) gives array for component d
+            const double v_owner = cell_field.component_data(d)[owner];
+            const double v_neigh = cell_field.component_data(d)[neighbour];
             double v;
 
             switch (scheme) {
-                case InterpScheme::UPWIND:
-                    v = v_owner;
+                case InterpScheme::UPWIND: {
+                    // Upwind basé sur le signe du flux : phi_f = U_f · Sf_f
+                    // flux > 0 : flux sortant de owner → owner
+                    // flux < 0 : flux entrant dans owner → neighbour
+                    const double phi_f = flux[f];
+                    v = (phi_f >= 0.0) ? v_owner : v_neigh;
                     break;
+                }
                 case InterpScheme::LINEAR:
                     v = 0.5 * (v_owner + v_neigh);
                     break;
                 case InterpScheme::LIMITED: {
-                    const double lo = std::min(v_owner, v_neigh);
-                    const double hi = std::max(v_owner, v_neigh);
                     const double linear = 0.5 * (v_owner + v_neigh);
-                    v = std::max(lo, std::min(hi, linear));
+                    v = apply_limiter(v_owner, v_neigh, linear, limiter_type);
                     break;
                 }
                 default:
                     throw std::runtime_error("interpolate_cell_to_face: unknown scheme");
             }
-            dst[f * dim + d] = v;
+            // Result uses SoA layout too
+            result.component_data(d)[f] = v;
         }
     }
 

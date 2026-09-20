@@ -16,6 +16,7 @@
 #include "ownership.h"
 #include "cell.h"
 #include "boundary.h"
+#include "index_types.h"
 #include <vector>
 #include <string>
 #include <stdexcept>
@@ -128,6 +129,45 @@ public:
             result.add_error("cell face reference count mismatch: got " +
                              std::to_string(cells_.n_face_refs()) +
                              ", expected " + std::to_string(expected_refs));
+        }
+
+        // Vérification de cohérence owner/neighbour <-> cell faces
+        // (plus lent mais plus complet)
+        const auto* cell_faces = cells_.faces_data();
+        const auto* cell_offsets = cells_.offsets_data();
+        for (std::size_t f = 0; f < n_faces(); ++f) {
+            const CellIndex owner = ownership_.owner(f);
+            const std::int64_t neighbour = ownership_.neighbour(f);
+            
+            bool found_owner = false;
+            const Offset off = cell_offsets[owner];
+            const Offset n = cell_offsets[owner + 1] - off;
+            for (Offset k = 0; k < n; ++k) {
+                if (cell_faces[off + k] == static_cast<FaceIndex>(f)) {
+                    found_owner = true;
+                    break;
+                }
+            }
+            if (!found_owner) {
+                result.add_error("face " + std::to_string(f) +
+                                 " not found in owner cell " + std::to_string(owner));
+            }
+            if (neighbour >= 0) {
+                const CellIndex nb = static_cast<CellIndex>(neighbour);
+                bool found_neighbour = false;
+                const Offset off_nb = cell_offsets[nb];
+                const Offset n_nb = cell_offsets[nb + 1] - off_nb;
+                for (Offset k = 0; k < n_nb; ++k) {
+                    if (cell_faces[off_nb + k] == static_cast<FaceIndex>(f)) {
+                        found_neighbour = true;
+                        break;
+                    }
+                }
+                if (!found_neighbour) {
+                    result.add_error("face " + std::to_string(f) +
+                                     " not found in neighbour cell " + std::to_string(nb));
+                }
+            }
         }
 
         return result;

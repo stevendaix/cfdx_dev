@@ -8,7 +8,7 @@
 //                 doublons, patches valides.
 //     Géométrie : volumes positifs, surfaces non nulles,
 //                 NaN, Inf, centres valides, normales cohérentes.
-//     Qualité   : skewness, non-orthogonality, aspect ratio,
+//     Qualité   : skewness, non-orthogonalité, aspect ratio,
 //                 volume ratio, cellules dégénérées.
 //     Conservation : Σ Sf ≈ 0, Σ flux = 0.
 
@@ -151,7 +151,7 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
         const auto size = m.cells().cell_size(c);
         Vec3 sum_Sf;
         for (std::size_t k = 0; k < size; ++k) {
-            const std::uint32_t f = m.cells().faces_data()[offset + k];
+            const FaceIndex f = m.cells().faces_data()[offset + k];
             sum_Sf = sum_Sf + face_Sf[f];
         }
         const double closure_error = sum_Sf.mag();

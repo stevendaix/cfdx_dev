@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "face_geometry.h"
+#include "cfdx/core/field/field.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "index_types.h"
 #include <vector>
 #include <string>
 #include <cstddef>
@@ -61,7 +62,7 @@ inline PatchType patch_type_from_string(const std::string& s) {
 struct Patch {
     std::string name;
     PatchType type = PatchType::UNKNOWN;
-    std::vector<std::uint32_t> face_ids;
+    std::vector<FaceIndex> face_ids;
     std::map<std::string, std::string> metadata;
 
     std::size_t size() const noexcept { return face_ids.size(); }
@@ -124,12 +125,12 @@ public:
 
     // --- Validation ---
 
-    // Vérifie que les face_ids sont valides et non chevauchées (§19).
+    // Vérifie que les face_ids sont valides et non chevauchées.
     bool is_consistent(std::size_t n_faces) const {
         std::vector<bool> seen(n_faces, false);
         for (const auto& p : patches_) {
             for (const auto fid : p.face_ids) {
-                if (fid >= static_cast<std::uint32_t>(n_faces)) return false;
+                if (fid >= static_cast<FaceIndex>(n_faces)) return false;
                 if (seen[fid]) return false;  // face dans deux patches
                 seen[fid] = true;
             }

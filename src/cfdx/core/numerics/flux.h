@@ -14,6 +14,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/mesh/index_types.h"
 #include <cstddef>
 #include <stdexcept>
 
@@ -53,21 +54,20 @@ inline Field<double, Location::FACE> compute_flux(
     const auto* offsets = mesh.faces().offsets_data();
 
     for (std::size_t f = 0; f < n_faces; ++f) {
-        const std::uint32_t off = offsets[f];
-        const std::uint32_t n = offsets[f + 1] - off;
+        const VertexIndex off = offsets[f];
+        const VertexIndex n = offsets[f + 1] - off;
         const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
         face_Sf[f] = fg.Sf;
     }
 
-    const double* U = face_velocity.data();
-    double* p = phi.data();
+    const double* ux = face_velocity.component_data(0);
+    const double* uy = face_velocity.component_data(1);
+    const double* uz = face_velocity.component_data(2);
+    double* p = phi.component_data(0);
 
     for (std::size_t f = 0; f < n_faces; ++f) {
-        const double ux = U[f * 3 + 0];
-        const double uy = U[f * 3 + 1];
-        const double uz = U[f * 3 + 2];
         const Vec3& Sf = face_Sf[f];
-        p[f] = ux * Sf.x + uy * Sf.y + uz * Sf.z;
+        p[f] = ux[f] * Sf.x + uy[f] * Sf.y + uz[f] * Sf.z;
     }
 
     return phi;

@@ -21,11 +21,26 @@ option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
 
 # ---------------------------------------------------------------------------
+# Sanitizer build type
+# ---------------------------------------------------------------------------
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
+
+# Sanitizer build type (DebugSanitizers)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
+    set(CMAKE_CXX_FLAGS_DEBUGSANITIZERS "-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS_DEBUGSANITIZERS "-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUGSANITIZERS "-fsanitize=address,undefined")
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUGSANITIZERS "-fsanitize=address,undefined")
+    set(CMAKE_MODULE_LINKER_FLAGS_DEBUGSANITIZERS "-fsanitize=address,undefined")
+endif()
+
+# ---------------------------------------------------------------------------
 # Compiler flags
 # ---------------------------------------------------------------------------
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic)
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
         add_compile_options(-O2 -DNDEBUG)
     endif()
 endif()
@@ -40,6 +55,16 @@ endif()
 find_package(HDF5 QUIET)
 if(HDF5_FOUND)
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
+    # System HDF5 provides these via find_package
+    if(NOT HDF5_INCLUDE_DIRS)
+        set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
+    endif()
+    if(NOT HDF5_C_LIBRARIES)
+        set(HDF5_C_LIBRARIES ${HDF5_C_LIBRARIES})
+    endif()
+    if(NOT HDF5_HL_LIBRARIES)
+        set(HDF5_HL_LIBRARIES ${HDF5_HL_LIBRARIES})
+    endif()
 elseif(EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     message(STATUS "Using locally-built HDF5 (static) at ${CFDX_HDF5_DIR}")
     set(HDF5_INCLUDE_DIRS "${CFDX_HDF5_DIR}/include")
@@ -50,22 +75,46 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# CFDX core library
+# CFDX core library - Sources organized by module
 # ---------------------------------------------------------------------------
-set(CFDX_CORE_SOURCES
+
+# Mesh module
+set(CFDX_MESH_SOURCES
     src/cfdx/core/mesh/point.cpp
     src/cfdx/core/mesh/face.cpp
     src/cfdx/core/mesh/ownership.cpp
     src/cfdx/core/mesh/cell.cpp
     src/cfdx/core/mesh/mesh.cpp
+)
+
+# Geometry module
+set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
     src/cfdx/core/geometry/cell_geometry.cpp
     src/cfdx/core/geometry/mesh_quality.cpp
     src/cfdx/core/geometry/mesh_validator.cpp
+)
+
+# Field module
+set(CFDX_FIELD_SOURCES
     src/cfdx/core/field/field.cpp
     src/cfdx/core/field/storage.cpp
 )
 
+# IO module
+set(CFDX_IO_SOURCES
+    src/cfdx/io/hdf5/hdf5_writer.cpp
+    src/cfdx/io/hdf5/hdf5_reader.cpp
+)
+
+set(CFDX_CORE_SOURCES
+    ${CFDX_MESH_SOURCES}
+    ${CFDX_GEOMETRY_SOURCES}
+    ${CFDX_FIELD_SOURCES}
+    ${CFDX_IO_SOURCES}
+)
+
+# Headers (for IDE visibility, not compiled)
 set(CFDX_CORE_HEADERS
     src/cfdx/core/mesh/point.h
     src/cfdx/core/mesh/face.h
@@ -77,7 +126,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/geometry/cell_geometry.h
     src/cfdx/core/geometry/mesh_quality.h
     src/cfdx/core/geometry/mesh_validator.h
-src/cfdx/core/field/field.h
+    src/cfdx/core/field/field.h
     src/cfdx/core/field/storage.h
     src/cfdx/core/boundary/boundary_field.h
     src/cfdx/core/numerics/interpolation.h
@@ -91,16 +140,18 @@ src/cfdx/core/field/field.h
     src/cfdx/core/linalg/linear_system.h
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
+    src/cfdx/io/hdf5/hdf5_writer.h
+    src/cfdx/io/hdf5/hdf5_reader.h
 )
 
-add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES} ${CFDX_CORE_HEADERS})
+add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
 target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-if(HDF5_FOUND AND HDF5_C_LIBRARIES)
+if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(cfdx_core PUBLIC ${HDF5_C_LIBRARIES} ${HDF5_HL_LIBRARIES})
+    target_link_libraries(cfdx_core PUBLIC ${HDF5_C_LIBRARIES} ${HDF5_HL_LIBRARIES} z)
 endif()
 
 if(CFDX_ENABLE_MPI)
@@ -116,157 +167,48 @@ endif()
 if(CFDX_BUILD_TESTS)
     enable_testing()
 
-    add_executable(test_point
-        tests/unit/test_point.cpp
-    )
-    target_link_libraries(test_point PRIVATE cfdx_core)
-    target_include_directories(test_point PRIVATE tests)
-    add_test(NAME point COMMAND test_point)
+    # Helper function for tests
+    macro(add_cfdx_test test_name source_file)
+        add_executable(${test_name} ${source_file})
+        target_link_libraries(${test_name} PRIVATE cfdx_core)
+        target_include_directories(${test_name} PRIVATE tests)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endmacro()
 
-    add_executable(test_face
-        tests/unit/test_face.cpp
-    )
-    target_link_libraries(test_face PRIVATE cfdx_core)
-    target_include_directories(test_face PRIVATE tests)
-    add_test(NAME face COMMAND test_face)
+    # Unit tests - Core
+    add_cfdx_test(test_point tests/unit/test_point.cpp)
+    add_cfdx_test(test_face tests/unit/test_face.cpp)
+    add_cfdx_test(test_ownership tests/unit/test_ownership.cpp)
+    add_cfdx_test(test_cell tests/unit/test_cell.cpp)
+    add_cfdx_test(test_boundary tests/unit/test_boundary.cpp)
+    add_cfdx_test(test_mesh tests/unit/test_mesh.cpp)
+    add_cfdx_test(test_field tests/unit/test_field.cpp)
+    add_cfdx_test(test_field_storage tests/unit/test_field_storage.cpp)
+    add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
+    add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
+    add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
+    add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
+    add_cfdx_test(test_flux tests/unit/test_flux.cpp)
+    add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
 
-    add_executable(test_ownership
-        tests/unit/test_ownership.cpp
-    )
-    target_link_libraries(test_ownership PRIVATE cfdx_core)
-    target_include_directories(test_ownership PRIVATE tests)
-    add_test(NAME ownership COMMAND test_ownership)
+    # Unit tests - Linear Algebra
+    add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
+    add_cfdx_test(test_vector tests/unit/test_vector.cpp)
+    add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
+    add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
+    add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
 
-    add_executable(test_cell
-        tests/unit/test_cell.cpp
-    )
-    target_link_libraries(test_cell PRIVATE cfdx_core)
-    target_include_directories(test_cell PRIVATE tests)
-    add_test(NAME cell COMMAND test_cell)
+    # Unit tests - Numerical
+    add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
 
-    add_executable(test_boundary
-        tests/unit/test_boundary.cpp
-    )
-    target_link_libraries(test_boundary PRIVATE cfdx_core)
-    target_include_directories(test_boundary PRIVATE tests)
-    add_test(NAME boundary COMMAND test_boundary)
+    # Numerical tests - Geometry
+    add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
+    add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
+    add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
+    add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
 
-    add_executable(test_mesh
-        tests/unit/test_mesh.cpp
-    )
-    target_link_libraries(test_mesh PRIVATE cfdx_core)
-    target_include_directories(test_mesh PRIVATE tests)
-    add_test(NAME mesh COMMAND test_mesh)
+    # HDF5 tests
+    add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
+    add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
 
-    add_executable(test_face_geometry
-        tests/numerical/test_face_geometry.cpp
-    )
-    target_link_libraries(test_face_geometry PRIVATE cfdx_core)
-    target_include_directories(test_face_geometry PRIVATE tests)
-    add_test(NAME face_geometry COMMAND test_face_geometry)
-
-    add_executable(test_cell_geometry
-        tests/numerical/test_cell_geometry.cpp
-    )
-    target_link_libraries(test_cell_geometry PRIVATE cfdx_core)
-    target_include_directories(test_cell_geometry PRIVATE tests)
-    add_test(NAME cell_geometry COMMAND test_cell_geometry)
-
-    add_executable(test_mesh_quality
-        tests/numerical/test_mesh_quality.cpp
-    )
-    target_link_libraries(test_mesh_quality PRIVATE cfdx_core)
-    target_include_directories(test_mesh_quality PRIVATE tests)
-    add_test(NAME mesh_quality COMMAND test_mesh_quality)
-
-    add_executable(test_field
-        tests/unit/test_field.cpp
-    )
-    target_link_libraries(test_field PRIVATE cfdx_core)
-    target_include_directories(test_field PRIVATE tests)
-    add_test(NAME field COMMAND test_field)
-
-    add_executable(test_field_storage
-        tests/unit/test_field_storage.cpp
-    )
-    target_link_libraries(test_field_storage PRIVATE cfdx_core)
-    target_include_directories(test_field_storage PRIVATE tests)
-    add_test(NAME field_storage COMMAND test_field_storage)
-
-    add_executable(test_boundary_field
-        tests/unit/test_boundary_field.cpp
-    )
-    target_link_libraries(test_boundary_field PRIVATE cfdx_core)
-    target_include_directories(test_boundary_field PRIVATE tests)
-    add_test(NAME boundary_field COMMAND test_boundary_field)
-
-    add_executable(test_interpolation
-        tests/unit/test_interpolation.cpp
-    )
-    target_link_libraries(test_interpolation PRIVATE cfdx_core)
-    target_include_directories(test_interpolation PRIVATE tests)
-    add_test(NAME interpolation COMMAND test_interpolation)
-
-    add_executable(test_gradient
-        tests/unit/test_gradient.cpp
-    )
-    target_link_libraries(test_gradient PRIVATE cfdx_core)
-    target_include_directories(test_gradient PRIVATE tests)
-    add_test(NAME gradient COMMAND test_gradient)
-
-    add_executable(test_divergence
-        tests/unit/test_divergence.cpp
-    )
-    target_link_libraries(test_divergence PRIVATE cfdx_core)
-    target_include_directories(test_divergence PRIVATE tests)
-    add_test(NAME divergence COMMAND test_divergence)
-
-    add_executable(test_laplacian
-        tests/unit/test_laplacian.cpp
-    )
-    target_link_libraries(test_laplacian PRIVATE cfdx_core)
-    target_include_directories(test_laplacian PRIVATE tests)
-    add_test(NAME laplacian COMMAND test_laplacian)
-
-    add_executable(test_flux
-        tests/unit/test_flux.cpp
-    )
-    target_link_libraries(test_flux PRIVATE cfdx_core)
-    target_include_directories(test_flux PRIVATE tests)
-    add_test(NAME flux COMMAND test_flux)
-
-    add_executable(test_integrate
-        tests/unit/test_integrate.cpp
-    )
-    target_link_libraries(test_integrate PRIVATE cfdx_core)
-    target_include_directories(test_integrate PRIVATE tests)
-    add_test(NAME integrate COMMAND test_integrate)
-
-    add_executable(test_sparse_matrix
-        tests/unit/test_sparse_matrix.cpp
-    )
-    target_link_libraries(test_sparse_matrix PRIVATE cfdx_core)
-    target_include_directories(test_sparse_matrix PRIVATE tests)
-    add_test(NAME sparse_matrix COMMAND test_sparse_matrix)
-
-    add_executable(test_vector
-        tests/unit/test_vector.cpp
-    )
-    target_link_libraries(test_vector PRIVATE cfdx_core)
-    target_include_directories(test_vector PRIVATE tests)
-    add_test(NAME vector COMMAND test_vector)
-
-    add_executable(test_cg_solver
-        tests/unit/test_cg_solver.cpp
-    )
-    target_link_libraries(test_cg_solver PRIVATE cfdx_core)
-    target_include_directories(test_cg_solver PRIVATE tests)
-    add_test(NAME cg_solver COMMAND test_cg_solver)
-
-    add_executable(test_bicgstab_solver
-        tests/unit/test_bicgstab_solver.cpp
-    )
-    target_link_libraries(test_bicgstab_solver PRIVATE cfdx_core)
-    target_include_directories(test_bicgstab_solver PRIVATE tests)
-    add_test(NAME bicgstab_solver COMMAND test_bicgstab_solver)
 endif()

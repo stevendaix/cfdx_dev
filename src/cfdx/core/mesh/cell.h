@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "index_types.h"
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -18,8 +19,8 @@ namespace core {
 
 class CellConnectivity {
 public:
-    using FaceId = std::uint32_t;
-    using Offset = std::uint32_t;
+    using FaceId = FaceIndex;
+    using Offset = ::cfdx::core::Offset;
 
     CellConnectivity() = default;
 
@@ -28,7 +29,7 @@ public:
         offsets_.reserve(n_cells + 1);
     }
 
-    void push_cell(const std::vector<FaceId>& cell_faces) {
+    void push_cell(const std::vector<FaceIndex>& cell_faces) {
         if (offsets_.empty()) {
             offsets_.push_back(0);
         }
@@ -54,16 +55,16 @@ public:
         return offsets_[i];
     }
 
-    const FaceId* faces_data() const noexcept { return faces_.data(); }
+    const FaceIndex* faces_data() const noexcept { return faces_.data(); }
     const Offset* offsets_data() const noexcept { return offsets_.data(); }
 
-    FaceId* faces_data() noexcept { return faces_.data(); }
+    FaceIndex* faces_data() noexcept { return faces_.data(); }
     Offset* offsets_data() noexcept { return offsets_.data(); }
 
-    const std::vector<FaceId>& faces() const noexcept { return faces_; }
+    const std::vector<FaceIndex>& faces() const noexcept { return faces_; }
     const std::vector<Offset>& offsets() const noexcept { return offsets_; }
 
-    // Vérifie la cohérence interne (§19).
+    // Vérifie la cohérence interne.
     bool is_consistent() const noexcept {
         if (offsets_.empty() && faces_.empty()) return true;
         if (offsets_.empty() || faces_.empty()) return false;
@@ -79,7 +80,7 @@ public:
     // Vérifie que chaque face reference est dans [0, n_faces).
     bool face_ids_valid(std::size_t n_faces) const noexcept {
         for (const auto f : faces_) {
-            if (f >= static_cast<FaceId>(n_faces)) return false;
+            if (f >= static_cast<FaceIndex>(n_faces)) return false;
         }
         return true;
     }
@@ -96,7 +97,7 @@ private:
         }
     }
 
-    std::vector<FaceId> faces_;
+    std::vector<FaceIndex> faces_;
     std::vector<Offset> offsets_;
 };
 

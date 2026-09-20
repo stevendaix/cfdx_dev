@@ -14,6 +14,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
+#include "cfdx/core/mesh/index_types.h"
 #include <cstddef>
 #include <stdexcept>
 
@@ -55,8 +56,8 @@ inline Field<double, Location::CELL> surface_integrate(
     const auto* offsets = mesh.faces().offsets_data();
 
     for (std::size_t f = 0; f < n_faces; ++f) {
-        const std::uint32_t off = offsets[f];
-        const std::uint32_t n = offsets[f + 1] - off;
+        const VertexIndex off = offsets[f];
+        const VertexIndex n = offsets[f + 1] - off;
         const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
         face_Sf[f] = fg.Sf;
     }
@@ -66,24 +67,25 @@ inline Field<double, Location::CELL> surface_integrate(
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
 
-    const double* phi = face_field.data();
-    double* r = result.data();
+    const double* phi = face_field.component_data(0);
+    double* r_x = result.component_data(0);
+    double* r_y = result.component_data(1);
+    double* r_z = result.component_data(2);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
-        const std::uint32_t off = cell_offsets[c];
-        const std::uint32_t n = cell_offsets[c + 1] - off;
+        const Offset off = cell_offsets[c];
+        const Offset n = cell_offsets[c + 1] - off;
 
         Vec3 sum;
-        for (std::uint32_t k = 0; k < n; ++k) {
+        for (Offset k = 0; k < n; ++k) {
             const std::size_t f = cell_faces[off + k];
             const bool is_owner = (own.owner(f) == c);
             const Vec3 Sf_cell = is_owner ? face_Sf[f] : face_Sf[f] * (-1.0);
             sum = sum + Sf_cell * phi[f];
         }
-        const std::size_t base = c * 3;
-        r[base + 0] = sum.x;
-        r[base + 1] = sum.y;
-        r[base + 2] = sum.z;
+        r_x[c] = sum.x;
+        r_y[c] = sum.y;
+        r_z[c] = sum.z;
     }
 
     return result;
@@ -124,8 +126,8 @@ inline double volume_integrate(
     std::vector<Vec3> face_Sf(mesh.n_faces());
 
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        const std::uint32_t off = face_offsets[f];
-        const std::uint32_t n = face_offsets[f + 1] - off;
+        const VertexIndex off = face_offsets[f];
+        const VertexIndex n = face_offsets[f + 1] - off;
         const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
         face_centres[f] = fg.centre;
         face_Sf[f] = fg.Sf;
@@ -136,14 +138,14 @@ inline double volume_integrate(
     const auto* cell_offsets = cells.offsets_data();
 
     for (std::size_t c = 0; c < n_cells; ++c) {
-        const std::uint32_t off = cell_offsets[c];
-        const std::uint32_t n = cell_offsets[c + 1] - off;
+        const Offset off = cell_offsets[c];
+        const Offset n = cell_offsets[c + 1] - off;
         const CellGeometry cg = compute_cell_geometry(
             face_centres.data(), face_Sf.data(), cell_faces + off, n);
         cell_volume[c] = cg.volume;
     }
 
-    const double* phi = cell_field.data();
+    const double* phi = cell_field.component_data(0);
     double sum = 0.0;
     for (std::size_t c = 0; c < n_cells; ++c) {
         sum += phi[c] * cell_volume[c];

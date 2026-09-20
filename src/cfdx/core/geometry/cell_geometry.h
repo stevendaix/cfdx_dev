@@ -16,7 +16,8 @@
 
 #pragma once
 
-#include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/field/field.h"
+#include "cfdx/core/mesh/index_types.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -44,11 +45,9 @@ struct CellGeometry {
 inline CellGeometry compute_cell_geometry(
     const Vec3* face_centres,
     const Vec3* face_Sf,
-    const std::uint32_t* face_ids,
+    const FaceIndex* face_ids,
     std::size_t n_cell_faces)
 {
-    (void)face_centres;  // unused in this minimal signature — kept for API stability
-    (void)face_Sf;       // unused in this minimal signature — kept for API stability
     if (n_cell_faces == 0) {
         throw std::runtime_error("CellGeometry: cell must have at least one face");
     }
@@ -57,7 +56,7 @@ inline CellGeometry compute_cell_geometry(
     Vec3 weighted_sum;
     double total_area = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
-        const std::uint32_t f = face_ids[k];
+        const FaceIndex f = face_ids[k];
         const Vec3& cf = face_centres[f];
         const Vec3& sf = face_Sf[f];
         const double a = sf.mag();
@@ -70,7 +69,7 @@ inline CellGeometry compute_cell_geometry(
     // V = 1/3 * Σ_f (Cf - Cc) · Sf_f
     double volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
-        const std::uint32_t f = face_ids[k];
+        const FaceIndex f = face_ids[k];
         const Vec3& cf = face_centres[f];
         const Vec3& sf = face_Sf[f];
         const Vec3 d = cf - centre;

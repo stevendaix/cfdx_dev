@@ -82,7 +82,7 @@ int main() {
     run_case("bulk_data_access", []() {
         ScalarCellField f(3, "p", "Pa", 1);
         f(0) = 1.0; f(1) = 2.0; f(2) = 3.0;
-        const double* d = f.data();
+        const double* d = f.component_data(0);
         EXPECT_TRUE(d[0] == 1.0 && d[1] == 2.0 && d[2] == 3.0);
     });
 
