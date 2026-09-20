@@ -24,7 +24,7 @@ int main() {
         IdealGasEOS eos;
         eos.set_params(IdealGasParams{287.058, 1.4, 1004.5, 300.0, 101325.0});
         double h = eos.enthalpy(101325.0, 300.0);
-        double expected = 1004.5 * (300.0 - 273.15);
+        double expected = 1004.5 * (300.0 - 300.0); // At T_ref => h = 0
         EXPECT_NEAR(h, expected, 1e-6);
     });
 
