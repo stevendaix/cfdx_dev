@@ -8,7 +8,7 @@ Phase 0 — Repository Bootstrap (M0 completed)
 
 ## Tâche actuelle
 
-M0.9-T05 — Lightweight VTU writer (XML, no VTK)
+M0.10-A1 — Memory Planner v4 (lifetime/reuse/ledger/reordering) — DONE + M0.10-T02 Gmsh import
 
 ## Tâches complétées
 
@@ -23,7 +23,8 @@ M0.9-T05 — Lightweight VTU writer (XML, no VTK)
 - [x] M0.9-T02: Fix HDF5 reader memory bug (H5Tget_size instead of H5Aget_storage_size)
 - [x] M0.9-T03: Round-trip validation (HDF5 case round-trip, all 7 tests pass)
 - [x] M0.9-T04: Hash computation (SHA256 checksums for case.cfdx.h5 self-contained integrity)
-- [x] Dernier commit validé: ec7763d — M0.9-T03/T04 state update
+- [x] M0.10-A1: Memory Planner v4 (memory_planner.md → src/cfdx/core/memory/)
+- [x] Dernier commit validé: 6e69c23 — M0.10-A1 Memory Planner v4 skeleton
 
 ## Tâches bloquées
 

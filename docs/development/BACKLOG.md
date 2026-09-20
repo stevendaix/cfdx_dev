@@ -44,8 +44,9 @@ Dernière mise à jour : 2026-09-20
 | M0.9-T04 | Hash computation | M0.9-T01, M0.9-T03 | DONE |
 | M0.9-T05 | Lightweight VTU writer (XML, no VTK) | M0.9-T01..T04 | DONE |
 | M0.10-T01 | OpenFOAM importer | M0.1-T01..T05 | DONE |
-| M0.10-T02 | Gmsh importer | M0.1-T01..T05 | PLANNED |
-| M0.10-T03 | meshio importer | M0.1-T01..T06 | PLANNED |
+| M0.10-T02 | Gmsh importer | M0.1-T01..T05 | IN_PROGRESS |
+| M0.10-A1 | Memory Planner v4 (lifetime + reuse + budget + ledger) | M0.9-T05 | DONE |
+| M0.10-A3 | Mesh Reordering v4 (RCM + SFC + GPUOptimized) | M0.10-T02 | PLANNED |
 | M0.10-T04 | CFDX case writer | M0.9-T01 | PLANNED |
 | M0.11-T01 | Domain decomposition | M0.1-T01..T06 | PLANNED |
 | M0.11-T02 | Ghost cells | M0.11-T01 | PLANNED |
