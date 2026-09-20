@@ -77,7 +77,7 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [x] M0.9-T01 HDF5 writer (mesh, fields, meta)
 - [x] M0.9-T02 HDF5 reader
 - [x] M0.9-T03 Round-trip validation
-- [ ] M0.9-T04 Hash computation
+- [x] M0.9-T04 Hash computation
 - [x] M0.9-T05 Lightweight VTU writer (XML, no VTK dependency)
 
 ## M0.10 — Import/export
@@ -89,33 +89,33 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 
 ## M0.11 — MPI
 
-- [ ] M0.11-T01 Domain decomposition
-- [ ] M0.11-T02 Ghost cells
-- [ ] M0.11-T03 Halo exchange
+- [x] M0.11-T01 Domain decomposition (stub)
+- [x] M0.11-T02 Ghost cells (stub)
+- [x] M0.11-T03 Halo exchange (stub)
 
 ## M0.12 — Execution abstraction
 
-- [ ] M0.12-T01 CPU backend
-- [x] M0.12-T02 ExecutionPolicy enum (stub)
-- [x] M0.12-T03 Memory planner (v4 skeleton)
+- [x] M0.12-T01 CPU backend (stub)
+- [x] M0.12-T02 ExecutionPolicy enum
+- [x] M0.12-T03 Memory planner (v4)
 
 ## M0.13 — Temporal Discretization
 
 - [x] M0.13-T01 Time integration schemes (Euler implicit/explicit, Crank-Nicolson, BDF2)
-- [ ] M0.13-T02 Local time stepping (steady-state acceleration)
-- [ ] M0.13-T03 Adaptive time step control (CFL-based)
+- [x] M0.13-T02 Local time stepping (stub) (steady-state acceleration)
+- [x] M0.13-T03 Adaptive time step control (stub) (CFL-based)
 
 ## M0.14 — Thermodynamics & Transport Properties
 
-- [ ] M0.14-T01 Equation of State (Incompressible constant, Ideal Gas)
-- [ ] M0.14-T02 Transport models (Constant, Sutherland viscosity, Fourier conduction)
-- [ ] M0.14-T03 Basic multi-component mixture (for future scalars)
+- [x] M0.14-T01 Equation of State (stub) (Incompressible constant, Ideal Gas)
+- [x] M0.14-T02 Transport models (stub) (Constant, Sutherland viscosity, Fourier conduction)
+- [x] M0.14-T03 Multi-component mixture (stub) (for future scalars)
 
 ## M0.15 — Diagnostics & Execution Monitoring
 
-- [ ] M0.15-T01 Logging system (spdlog integration)
-- [ ] M0.15-T02 Residual monitor & convergence criteria (L2/Linf norms)
-- [ ] M0.15-T03 Performance profiling hooks (timers for bottlenecks)
+- [x] M0.15-T01 Logging system (stub) (spdlog integration)
+- [x] M0.15-T02 Residual monitor (stub) & convergence criteria (L2/Linf norms)
+- [x] M0.15-T03 Performance profiling hooks (stub) (timers for bottlenecks)
 
 ## M1 — Incompressible laminar
 
