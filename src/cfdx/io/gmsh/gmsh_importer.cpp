@@ -223,11 +223,16 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
     // ============================================================
     std::cout << "[GMSH_DEBUG] Construction topologie FVM...\n";
 
-    std::map<std::vector<cfdx::core::PointIndex>, std::pair<std::size_t, std::size_t>> face_map;
-    std::size_t face_idx = 0;
+    // ============================================================
+    // 3. CONSTRUCTION DE LA TOPOLOGIE FVM (version accumulation)
+    // ============================================================
+    std::cout << "[GMSH_DEBUG] Construction topologie FVM (accumulation)...\n";
 
-    mesh.faces().reserve(0, 0);  // Clear / reset face connectivity
-    mesh.ownership().resize(0);
+    std::map<std::vector<cfdx::core::PointIndex>, std::pair<std::size_t, std::size_t>> face_map;
+    std::vector<std::vector<cfdx::core::PointIndex>> all_faces_acc;
+
+    mesh.faces().clear();
+    mesh.ownership().clear();
     mesh.cells().clear();
 
     for (std::size_t c = 0; c < raw_cells.size(); ++c) {
@@ -241,7 +246,7 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
             cell_edges = {{nodes[0], nodes[1]}, {nodes[1], nodes[2]},
                           {nodes[2], nodes[3]}, {nodes[3], nodes[0]}};
         } else {
-            continue;  // Ignorer éléments non 2D
+            continue;
         }
 
         for (const auto& edge_nodes : cell_edges) {
@@ -251,28 +256,39 @@ bool import_gmsh_mesh(const std::string& filename, Mesh& mesh) {
             auto it = face_map.find(canonical);
             std::size_t f_idx;
             if (it == face_map.end()) {
-                f_idx = face_idx++;
-                mesh.ownership().resize(face_idx);
-                mesh.ownership().set_owner(f_idx, static_cast<cfdx::core::CellIndex>(c));
-                mesh.ownership().set_neighbour(f_idx, -1);  // Frontière par défaut
+                f_idx = all_faces_acc.size();
+                all_faces_acc.push_back(edge_nodes);
                 face_map[canonical] = {c, f_idx};
             } else {
                 f_idx = it->second.second;
-                if (mesh.ownership().neighbour(f_idx) == -1) {
-                    mesh.ownership().set_neighbour(f_idx, static_cast<std::int64_t>(c));
-                }
             }
             c_faces.push_back(static_cast<cfdx::core::FaceIndex>(f_idx));
         }
         mesh.cells().push_cell(c_faces);
     }
 
-    std::cout << "[GMSH_DEBUG] Topologie construite: n_faces = " << mesh.n_faces()
-              << ", n_cells = " << mesh.n_cells() << "\n";
+    // Construction finale via build_from_scratch
+    mesh.faces().build_from_scratch(all_faces_acc);
+    std::cout << "[GMSH_DEBUG] Après build_from_scratch, n_faces = " << mesh.n_faces()
+              << ", n_cells = " << mesh.n_cells() << ", all_faces_acc = " << all_faces_acc.size() << "\n";
 
-    // ============================================================
-    // 4. GÉOMÉTRIE DES FACES (centres + vecteurs surface Sf)
-    // ============================================================
+    // Reconstruction de l'ownership avec la nouvelle numérotation des faces
+    mesh.ownership().resize(mesh.n_faces());
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        std::size_t cell_off = mesh.cells().cell_offset(c);
+        std::size_t cell_n = mesh.cells().cell_size(c);
+        for (std::size_t k = 0; k < cell_n; ++k) {
+            std::size_t f = static_cast<std::size_t>(mesh.cells().faces_data()[cell_off + k]);
+            if (f < mesh.n_faces()) {
+                mesh.ownership().set_owner(f, static_cast<cfdx::core::CellIndex>(c));
+                mesh.ownership().set_neighbour(f, -1);  // Par défaut frontière
+            }
+        }
+    }
+
+    std::cout << "[GMSH_DEBUG] Après reconstruction ownership, n_faces = " << mesh.n_faces()
+              << ", n_internal = " << mesh.ownership().n_internal_faces()
+              << ", n_boundary = " << mesh.ownership().n_boundary_faces() << "\n";
     std::cout << "[GMSH_DEBUG] Calcul géométrie des faces...\n";
     std::vector<cfdx::core::Vec3> face_centres(mesh.n_faces());
     std::vector<cfdx::core::Vec3> face_Sf(mesh.n_faces());

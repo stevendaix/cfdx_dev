@@ -109,6 +109,19 @@ public:
         offsets_.clear();
     }
 
+    void build_from_scratch(const std::vector<std::vector<Index>>& all_faces_vertices) {
+        offsets_.clear();
+        vertices_.clear();
+        offsets_.reserve(all_faces_vertices.size() + 1);
+        offsets_.push_back(0);
+        for (const auto& face : all_faces_vertices) {
+            for (auto v : face) {
+                vertices_.push_back(v);
+            }
+            offsets_.push_back(static_cast<Offset>(vertices_.size()));
+        }
+    }
+
 private:
     void check_face(std::size_t i) const {
         if (i >= n_faces()) {

@@ -123,6 +123,7 @@ set(CFDX_CORE_SOURCES
     ${CFDX_GEOMETRY_SOURCES}
     ${CFDX_FIELD_SOURCES}
     ${CFDX_IO_SOURCES}
+    ${CFDX_PHYSICS_SOURCES}
 )
 
 # Headers (for IDE visibility, not compiled)
