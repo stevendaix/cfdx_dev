@@ -48,8 +48,7 @@ inline PressureCorrectionSystem assemble_pressure_correction(
     for (std::size_t c = 0; c < n; ++c) {
         const auto off = mesh.cells().offsets_data()[c];
         const auto count = mesh.cells().offsets_data()[c + 1] - off;
-        const auto cg = compute_cell_geometry(
-            centres.data(), sf.data(), mesh.cells().faces_data() + off, count);
+        const auto cg = compute_cell_geometry(mesh, centres.data(), sf.data(), mesh.cells().faces_data() + off, c, count);
         volume[c] = cg.volume;
         cell_centre[c] = cg.centre;
     }
