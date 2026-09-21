@@ -134,40 +134,18 @@ set(CFDX_IO_SOURCES
 
 # Physics sources
 set(CFDX_PHYSICS_SOURCES
-    src/cfdx/physics/equation_of_state.h
-    src/cfdx/physics/multi_component.h
-    src/cfdx/physics/source_term_linearization.h
-    src/cfdx/physics/transport_models.h
-    src/cfdx/physics/temporal.h
-    src/cfdx/physics/low_storage_time_integration.h
-    src/cfdx/physics/adaptive_cfl.h
-    src/cfdx/physics/advanced_convergence.h
-    src/cfdx/physics/local_time_stepping.h
-    src/cfdx/physics/low_mach.h
-    src/cfdx/physics/compressible_flux.h
-    src/cfdx/physics/radiation_models.h
-    src/cfdx/physics/boussinesq.h
-    src/cfdx/physics/spalart_allmaras.h
-    src/cfdx/physics/radiation_streaming.h
-    src/cfdx/thermodynamics/thermo_state.h
-    src/cfdx/thermodynamics/thermo_cache.h
 )
 
 # Thermodynamics sources (P2 reorganization)
 set(CFDX_THERMODYNAMICS_SOURCES
-    src/cfdx/thermodynamics/equation_of_state.h
 )
 
 # Chemistry sources (P2 reorganization)
 set(CFDX_CHEMISTRY_SOURCES
-    src/cfdx/chemistry/source_terms.h
 )
 
 # Transport sources (P2 reorganizization)
 set(CFDX_TRANSPORT_SOURCES
-    src/cfdx/transport/viscosity/viscosity.h
-    src/cfdx/transport/conductivity/conductivity.h
-    src/cfdx/transport/diffusivity/diffusivity.h
 )
 
 set(CFDX_CORE_SOURCES
@@ -223,9 +201,6 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/energy_solver.h
     src/cfdx/physics/cht_solver.h
     src/cfdx/physics/radiation_solver.h
-    src/cfdx/physics/equation_of_state.h
-    src/cfdx/physics/transport_models.h
-    src/cfdx/physics/multi_component.h
     src/cfdx/core/linalg/sparse_matrix.h
     src/cfdx/core/linalg/vector.h
     src/cfdx/core/linalg/linear_system.h
@@ -247,14 +222,31 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/block_schur.h
     src/cfdx/core/mesh/solver_mesh.h
     src/cfdx/core/mesh/sfc_ordering.h
+    src/cfdx/io/hdf5/hdf5_writer.h
+    src/cfdx/io/hdf5/hdf5_reader.h
+    src/cfdx/io/vtu/vtu_writer.h
+    src/cfdx/physics/equation_of_state.h
+    src/cfdx/physics/multi_component.h
+    src/cfdx/physics/source_term_linearization.h
+    src/cfdx/physics/transport_models.h
+    src/cfdx/physics/temporal.h
+    src/cfdx/physics/low_storage_time_integration.h
+    src/cfdx/physics/adaptive_cfl.h
+    src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/local_time_stepping.h
+    src/cfdx/physics/low_mach.h
+    src/cfdx/physics/compressible_flux.h
+    src/cfdx/physics/radiation_models.h
+    src/cfdx/physics/boussinesq.h
+    src/cfdx/physics/spalart_allmaras.h
+    src/cfdx/physics/radiation_streaming.h
+    src/cfdx/thermodynamics/thermo_state.h
+    src/cfdx/thermodynamics/thermo_cache.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
     src/cfdx/transport/conductivity/conductivity.h
     src/cfdx/transport/diffusivity/diffusivity.h
-    src/cfdx/io/hdf5/hdf5_writer.h
-    src/cfdx/io/hdf5/hdf5_reader.h
-    src/cfdx/io/vtu/vtu_writer.h
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
