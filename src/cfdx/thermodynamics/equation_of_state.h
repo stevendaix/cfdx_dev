@@ -146,14 +146,20 @@ public:
 class IdealGasEOS : public EquationOfState {
     IdealGasParams params_;
     double R = 0.0;
+    double Cp = 0.0;
+    double Cv = 0.0;
 
-    void update_R() { R = params_.R_univ / params_.M; }
+    void update_derived_properties() {
+        R = params_.R_univ / params_.M;
+        Cp = params_.gamma * R / (params_.gamma - 1.0);
+        Cv = R / (params_.gamma - 1.0);
+    }
 
 public:
-    IdealGasEOS(const IdealGasParams& params = {}) : params_(params) { update_R(); }
+    IdealGasEOS(const IdealGasParams& params = {}) : params_(params) { update_derived_properties(); }
     EquationOfStateType type() const override { return EquationOfStateType::IDEAL_GAS; }
 
-    void set_params(const IdealGasParams& params) { params_ = params; update_R(); }
+    void set_params(const IdealGasParams& params) { params_ = params; update_derived_properties(); }
     const IdealGasParams& get_params() const { return params_; }
 
     double density(double p, double T) const override {
@@ -161,13 +167,11 @@ public:
     }
 
     double enthalpy(double /*p*/, double T) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return Cp_derived * (T - params_.T_ref);
+        return Cp * (T - params_.T_ref);
     }
 
     double entropy(double p, double T) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return Cp_derived * std::log(T / params_.T_ref) - R * std::log(p / params_.p_ref);
+        return Cp * std::log(T / params_.T_ref) - R * std::log(p / params_.p_ref);
     }
 
     double speed_of_sound(double /*p*/, double T) const override {
@@ -175,8 +179,7 @@ public:
     }
 
     double temperature_from_enthalpy(double /*p*/, double h) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return params_.T_ref + h / Cp_derived;
+        return params_.T_ref + h / Cp;
     }
 
     double pressure_from_density_temp(double rho, double T) const override {
@@ -200,8 +203,7 @@ public:
     }
 
     double internal_energy(double /*p*/, double T) const override {
-        double Cv_derived = R / (params_.gamma - 1.0);
-        return Cv_derived * (T - params_.T_ref);
+        return Cv * (T - params_.T_ref);
     }
 
     double total_energy(double p, double T, double u_mag2) const override {
@@ -209,7 +211,8 @@ public:
     }
 
     double get_R() const { return R; }
-    double get_Cp(double T) const { return params_.gamma * R / (params_.gamma - 1.0); }
+    double get_Cp(double /*T*/) const { return Cp; }
+    double get_Cv() const { return Cv; }
 };
 
 inline std::unique_ptr<EquationOfState> create_eos(EquationOfStateType type, 
