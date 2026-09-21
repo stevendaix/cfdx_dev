@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 
 namespace cfdx {
 namespace physics {
@@ -36,11 +37,21 @@ struct TransportProperties {
 };
 
 inline double sutherland_viscosity(double T, double mu0_ref = SUTHERTY_MU0, double T_ref = SUTHERTY_T0, double S = SUTHERTY_S) {
-    return mu0_ref * std::pow(T / T_ref, 1.5) * (T_ref + S) / (T + S);
+    if (!std::isfinite(T) || T <= 0.0) throw std::invalid_argument("sutherland_viscosity: temperature must be finite and strictly positive");
+    if (!std::isfinite(mu0_ref) || mu0_ref <= 0.0 || !std::isfinite(T_ref) || T_ref <= 0.0 ||
+        !std::isfinite(S) || S <= -T_ref) throw std::invalid_argument("sutherland_viscosity: invalid parameters");
+    const double mu = mu0_ref * std::pow(T / T_ref, 1.5) * (T_ref + S) / (T + S);
+    if (!std::isfinite(mu) || mu <= 0.0) throw std::runtime_error("sutherland_viscosity: non-finite or non-positive result");
+    return mu;
 }
 
 inline double power_law_viscosity(double T, double mu0, double T0, double n) {
-    return mu0 * std::pow(T / T0, n);
+    if (!std::isfinite(T) || T <= 0.0 || !std::isfinite(mu0) || mu0 <= 0.0 ||
+        !std::isfinite(T0) || T0 <= 0.0 || !std::isfinite(n))
+        throw std::invalid_argument("power_law_viscosity: invalid parameters");
+    const double mu = mu0 * std::pow(T / T0, n);
+    if (!std::isfinite(mu) || mu <= 0.0) throw std::runtime_error("power_law_viscosity: invalid result");
+    return mu;
 }
 
 inline double constant_viscosity(double mu) {
@@ -48,11 +59,14 @@ inline double constant_viscosity(double mu) {
 }
 
 inline double prandtl_conductivity(double mu, double Cp, double Pr) {
+    if (!std::isfinite(mu) || mu < 0.0 || !std::isfinite(Cp) || Cp <= 0.0 || !std::isfinite(Pr) || Pr <= 0.0)
+        throw std::invalid_argument("prandtl_conductivity: invalid transport parameters");
     return mu * Cp / Pr;
 }
 
 inline double schmidt_diffusivity(double mu, double rho, double Sc) {
-    if (rho <= 0) return 0;
+    if (!std::isfinite(mu) || mu < 0.0 || !std::isfinite(rho) || rho <= 0.0 ||
+        !std::isfinite(Sc) || Sc <= 0.0) throw std::invalid_argument("schmidt_diffusivity: invalid transport parameters");
     return mu / (rho * Sc);
 }
 
