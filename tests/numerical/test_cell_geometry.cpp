@@ -101,20 +101,26 @@ int main() {
     });
 
     run_case("two_cell_owner_neighbour_orientation", []() {
+        // Two adjacent unit cubes: [0,1] and [1,2] x [0,1] x [0,1].
+        // Face 5 is internal and is globally oriented owner(cell 0) -> neighbour(cell 1).
         Vec3 fc[11], sf[11];
         const Vec3 centres[11] = {
-            {0,0.5,0.5},{1,0.5,0.5},{0,0,0},{0,1,0},{0,0,1},{0,1,1},
-            {2,0,0},{2,1,0},{2,0,1},{2,1,1},{1,0.5,0.5}
+            {0,0.5,0.5}, {0.5,0,0.5}, {0.5,1,0.5},
+            {0.5,0.5,0}, {0.5,0.5,1}, {1,0.5,0.5},
+            {2,0.5,0.5}, {1.5,0,0.5}, {1.5,1,0.5},
+            {1.5,0.5,0}, {1.5,0.5,1}
         };
         const Vec3 vectors[11] = {
-            {-1,0,0},{1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{0,0,1},
-            {1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{1,0,0}
+            {-1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1},
+            {1,0,0}, {1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1}
         };
         for (int i = 0; i < 11; ++i) { fc[i] = centres[i]; sf[i] = vectors[i]; }
-        const std::size_t owners[11] = {0,0,0,0,0,0,1,1,1,1,0};
-        const int neighbours[11] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1};
+
+        const std::size_t owners[11] = {0,0,0,0,0,0,1,1,1,1,1};
+        const int neighbours[11] = {-1,-1,-1,-1,-1,1,-1,-1,-1,-1,-1};
         const FaceIndex cell0_faces[6] = {0,1,2,3,4,5};
-        const FaceIndex cell1_faces[6] = {10,6,7,8,9,1};
+        const FaceIndex cell1_faces[6] = {5,6,7,8,9,10};
+
         const auto g0 = compute_cell_geometry_oriented(
             fc, sf, owners, neighbours, cell0_faces, 0, 6);
         const auto g1 = compute_cell_geometry_oriented(
@@ -123,6 +129,21 @@ int main() {
         EXPECT_NEAR(g1.volume, 1.0, 1e-12);
         EXPECT_GT(g0.signed_volume, 0.0);
         EXPECT_GT(g1.signed_volume, 0.0);
+    });
+
+    run_case("face_orientation_flips_reversed_internal_face", []() {
+        Mesh mesh;
+        Vec3 fc[1] = {{0.5,0.5,0.5}};
+        Vec3 sf[1] = {{-1,0,0}};
+        std::vector<Vec3> centres = {{0,0.5,0.5}, {1,0.5,0.5}};
+        // Only ownership is needed by the orientation utility for this focused test.
+        mesh.ownership().resize(1);
+        mesh.ownership().set_owner(0, 0);
+        mesh.ownership().set_neighbour(0, 1);
+        mesh.faces().push_face({0,1,2});
+        mesh.cells().resize(2);
+        orient_mesh_face_vectors(mesh, std::vector<Vec3>(fc, fc + 1), centres,
+                                 std::vector<Vec3>(sf, sf + 1));
     });
 
     return run_all();
