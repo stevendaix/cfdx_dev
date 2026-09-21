@@ -14,6 +14,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
 #include <cstddef>
 #include <stdexcept>
@@ -44,6 +45,7 @@ inline Field<double, Location::FACE> compute_flux(
     Field<double, Location::FACE> phi(n_faces, face_velocity.name() + "_flux", "m^3/s", 1);
 
     // Géométrie des faces.
+    std::vector<Vec3> face_centres(n_faces);
     std::vector<Vec3> face_Sf(n_faces);
 
     const PointCloud& pts = mesh.points();
@@ -57,8 +59,13 @@ inline Field<double, Location::FACE> compute_flux(
         const VertexIndex off = offsets[f];
         const VertexIndex n = offsets[f + 1] - off;
         const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
+        face_centres[f] = fg.centre;
         face_Sf[f] = fg.Sf;
     }
+
+    std::vector<Vec3> cell_centres(mesh.n_cells());
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), cell_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, cell_centres, face_Sf);
 
     const double* ux = face_velocity.component_data(0);
     const double* uy = face_velocity.component_data(1);
