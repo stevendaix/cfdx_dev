@@ -26,7 +26,7 @@ int main() {
         double phi_n = 1.0;
         double dt = 0.1;
         double result = implicit_euler_step(phi_n, dt, reaction);
-        EXPECT_NEAR(result, phi_n, 1e-12);
+        EXPECT_NEAR(result, 1.0 / (1.0 + lambda * dt), 1e-12);
     });
 
     run_case("crank_nicolson_decay", [&]() {
@@ -34,7 +34,7 @@ int main() {
         double dt = 0.1;
         double result = crank_nicolson_step(phi_n, dt, reaction);
         double RHS_n = reaction(phi_n);
-        double expected = phi_n + 0.5 * dt * RHS_n;
+        double expected = (phi_n + 0.5 * dt * RHS_n) / (1.0 + 0.5 * lambda * dt);
         EXPECT_NEAR(result, expected, 1e-12);
     });
 
@@ -43,7 +43,7 @@ int main() {
         double phi_prev = 1.0;
         double dt = 0.1;
         double result = bdf2_step(phi_n, dt, phi_prev, reaction);
-        double expected = (4.0 * phi_n - phi_prev + 2.0 * dt * reaction(phi_n)) / 3.0;
+        double expected = (4.0 * phi_n - phi_prev) / (3.0 + 2.0 * lambda * dt);
         EXPECT_NEAR(result, expected, 1e-12);
     });
 

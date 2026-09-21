@@ -56,8 +56,8 @@ int main() {
     std::vector<uint32_t> neighbour{1, 2, 3};
     MeshReorderer reorderer;
     auto reorder_result = reorderer.reorder(owner, neighbour, 1, MeshOrdering::RCM);
-    assert(reorder_result.old_to_new.size() == 3);
-    assert(reorder_result.old_to_new[0] < 3);
+    assert(reorder_result.old_to_new.size() == 4);
+    assert(reorder_result.old_to_new[0] < 4);
     std::printf("  PASS: RCM mapping size=%zu strategy=RCM\n",
                 reorder_result.old_to_new.size());
     passed++;
@@ -66,7 +66,7 @@ int main() {
     // ---- TEST 4: Mesh Reordering — SFC Z-order Stub ----
     std::printf("TEST 4: Mesh Reordering (SFC Z-order stub)\n");
     auto sfc_result = reorderer.reorder(owner, neighbour, 1, MeshOrdering::SFC);
-    assert(sfc_result.old_to_new.size() == 3);
+    assert(sfc_result.old_to_new.size() == 4);
     std::printf("  PASS: SFC mapping size=%zu strategy=SFC\n",
                 sfc_result.old_to_new.size());
     passed++;
