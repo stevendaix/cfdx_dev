@@ -100,32 +100,30 @@ int main() {
         EXPECT_THROW(compute_cell_geometry(fc, fs, faces, 0), std::runtime_error);
     });
 
-    return run_all();
+    run_case("two_cell_owner_neighbour_orientation", []() {
+        Vec3 fc[11], sf[11];
+        const Vec3 centres[11] = {
+            {0,0.5,0.5},{1,0.5,0.5},{0,0,0},{0,1,0},{0,0,1},{0,1,1},
+            {2,0,0},{2,1,0},{2,0,1},{2,1,1},{1,0.5,0.5}
+        };
+        const Vec3 vectors[11] = {
+            {-1,0,0},{1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{0,0,1},
+            {1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{1,0,0}
+        };
+        for (int i = 0; i < 11; ++i) { fc[i] = centres[i]; sf[i] = vectors[i]; }
+        const std::size_t owners[11] = {0,0,0,0,0,0,1,1,1,1,0};
+        const int neighbours[11] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1};
+        const FaceIndex cell0_faces[6] = {0,1,2,3,4,5};
+        const FaceIndex cell1_faces[6] = {10,6,7,8,9,1};
+        const auto g0 = compute_cell_geometry_oriented(
+            fc, sf, owners, neighbours, cell0_faces, 0, 6);
+        const auto g1 = compute_cell_geometry_oriented(
+            fc, sf, owners, neighbours, cell1_faces, 1, 6);
+        EXPECT_NEAR(g0.volume, 1.0, 1e-12);
+        EXPECT_NEAR(g1.volume, 1.0, 1e-12);
+        EXPECT_GT(g0.signed_volume, 0.0);
+        EXPECT_GT(g1.signed_volume, 0.0);
+    });
 
-    // Two-cell regression: internal face vectors are owner-oriented globally,
-    // but must be reversed for the neighbour cell during volume reconstruction.
-    {
-        // The test uses the production Mesh topology so the owner/neighbour
-        // contract is exercised rather than manually duplicating its logic.
-        auto mesh = make_two_cell_cartesian_mesh();
-        std::vector<cfdx::core::Vec3> fc(mesh.n_faces());
-        std::vector<cfdx::core::Vec3> sf(mesh.n_faces());
-        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-            const auto off = mesh.faces().offsets_data()[f];
-            const auto n = mesh.faces().offsets_data()[f + 1] - off;
-            const auto g = cfdx::core::compute_face_geometry(
-                mesh.points().x_data(), mesh.points().y_data(), mesh.points().z_data(),
-                mesh.faces().vertices_data(), off, n);
-            fc[f] = g.centre;
-            sf[f] = g.Sf;
-        }
-        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-            const auto off = mesh.cells().offsets_data()[cell];
-            const auto n = mesh.cells().offsets_data()[cell + 1] - off;
-            const auto g = cfdx::core::compute_cell_geometry(
-                mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, cell, n);
-            EXPECT_NEAR(g.volume, 0.5, 1e-12);
-            EXPECT_GT(g.signed_volume, 0.0);
-        }
-    }
+    return run_all();
 }
