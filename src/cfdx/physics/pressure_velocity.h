@@ -45,12 +45,15 @@ inline PressureCorrectionSystem assemble_pressure_correction(
 
     std::vector<double> volume(n, 0.0);
     std::vector<Vec3> cell_centre(n);
+    compute_area_weighted_cell_centres(mesh, centres.data(), sf.data(), cell_centre.data());
+    orient_mesh_face_vectors(mesh, centres, cell_centre, sf);
     for (std::size_t c = 0; c < n; ++c) {
         const auto off = mesh.cells().offsets_data()[c];
         const auto count = mesh.cells().offsets_data()[c + 1] - off;
         const auto cg = compute_cell_geometry(mesh, centres.data(), sf.data(), mesh.cells().faces_data() + off, c, count);
         volume[c] = cg.volume;
-        cell_centre[c] = cg.centre;
+        if (!(cg.signed_volume > 0.0))
+            throw std::runtime_error("assemble_pressure_correction: inverted cell orientation");
     }
 
     std::vector<std::vector<std::pair<std::size_t, double>>> rows(n);
