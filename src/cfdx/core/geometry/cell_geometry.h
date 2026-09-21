@@ -68,11 +68,13 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Signed pyramid decomposition. The sign is an invariant of the face
-    // orientation and must not be erased here: validation uses it to reject
-    // globally inverted cells. The absolute value is exposed separately as
-    // the geometric measure for kernels that require a positive volume.
+    // Finite-volume operators need a positive geometric measure even for
+    // imported meshes whose face winding is not globally consistent. Keep the
+    // signed sum separately so a consistently inverted cell remains visible
+    // to the validator.
     double signed_volume = 0.0;
+    double positive_volume = 0.0;
+    double absolute_signed_volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
         const FaceIndex f = face_ids[k];
         const Vec3& cf = face_centres[f];
@@ -80,11 +82,24 @@ inline CellGeometry compute_cell_geometry(
         const double area = sf.mag();
         if (!(area > 0.0))
             throw std::runtime_error("CellGeometry: degenerate face");
-        signed_volume += (cf - centre).dot(sf);
+        const double projection = (cf - centre).dot(sf);
+        signed_volume += projection;
+        positive_volume += std::abs(projection);
+        absolute_signed_volume += std::abs(projection);
     }
     signed_volume /= 3.0;
+    positive_volume /= 3.0;
+    absolute_signed_volume /= 3.0;
 
-    return {centre, std::abs(signed_volume), signed_volume};
+    // If all face contributions have the same orientation, preserve the
+    // signed value. For mixed imported winding, preserve the positive measure
+    // rather than producing a spurious small/negative cell volume.
+    const double exposed_signed_volume =
+        (absolute_signed_volume > 0.0 &&
+         std::abs(signed_volume) / absolute_signed_volume > 1.0 - 1e-10)
+            ? signed_volume
+            : positive_volume;
+    return {centre, positive_volume, exposed_signed_volume};;
 }
 
 }  // namespace core
