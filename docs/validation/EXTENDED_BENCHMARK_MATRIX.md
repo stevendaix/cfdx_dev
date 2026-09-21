@@ -80,4 +80,4 @@ The benchmark selection follows established CFD V&V practice: analytical solutio
 
 The Taylor-Green family is widely used for quantitative verification and validation of incompressible/high-fidelity CFD. NASA's CFL3D and Turbulence Modeling Resource provide established flat-plate, backward-facing-step, channel and airfoil cases. OpenFOAM's V&V catalogue likewise separates laminar, turbulent and heat-transfer reference cases.
 
-The current PR therefore contains a broad executable matrix now, while reserving geometry-heavy solver benchmarks for dedicated drivers rather than creating misleading placeholder PASS tests.
+The current PR therefore contains 38 executable analytical/component benchmarks, while reserving geometry-heavy solver benchmarks for dedicated drivers rather than creating misleading placeholder PASS tests. The existing Level-B test separately carries the Moser-Kim-Mansour DNS reference subset.
