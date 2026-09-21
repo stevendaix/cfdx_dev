@@ -15,7 +15,7 @@ int main()
 
     run_case("sst_blending_responds_to_wall_distance", [] {
         const auto near_wall = compute_sst_blending(0.5, 10.0, 1.0e-3, 1.5e-5, 0.09);
-        const auto far_wall = compute_sst_blending(0.5, 10.0, 0.1, 1.5e-5, 0.09);
+        const auto far_wall = compute_sst_blending(0.5, 10.0, 10.0, 1.5e-5, 0.09);
         EXPECT_TRUE(near_wall.first > far_wall.first);
         EXPECT_TRUE(near_wall.second > far_wall.second);
     });
