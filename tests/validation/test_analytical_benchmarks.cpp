@@ -202,6 +202,50 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     return result;
 }
 
+ScalarResult solve_mms_diffusion(std::size_t n, double height, double gamma)
+{
+    auto problem = make_channel(n, height);
+    auto geometry = build_fv_geometry(problem.mesh);
+
+    Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "kg/s", 1);
+    phi.fill(0.0);
+
+    Field<double,Location::CELL> su(n, "source", "unit", 1);
+    Field<double,Location::CELL> sp(n, "sp", "unit", 1);
+    sp.fill(0.0);
+
+    const double pi = std::acos(-1.0);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double y = geometry.cell_centres[i].y;
+        su(i) = gamma * pi*pi/(height*height) * std::sin(pi*y/height);
+    }
+
+    ScalarBoundaryConditions bc;
+    bc["bottom"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+    bc["top"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+    bc["x0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    bc["x1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    bc["z0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    bc["z1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+    auto eq = assemble_scalar_equation(
+        problem.mesh, geometry, phi, gamma, su, sp, bc, true);
+    Vector solution(n, 0.0);
+    const auto linear = solve_scalar_equation(eq, solution, {5000, 1e-13, 1.0});
+    if (linear.status != SolverStatus::CONVERGED)
+        throw std::runtime_error("MMS diffusion: linear solve did not converge");
+
+    ScalarResult result;
+    result.y.resize(n);
+    result.u.resize(n);
+    result.volume = geometry.cell_volumes;
+    for (std::size_t i = 0; i < n; ++i) {
+        result.y[i] = geometry.cell_centres[i].y;
+        result.u[i] = solution(i);
+    }
+    return result;
+}
+
 void report_case(const std::string& name, std::size_t n,
                  const ErrorMetrics& e, double order)
 {
@@ -269,6 +313,25 @@ int main()
             if (e.linf_relative > 1e-11)
                 throw std::runtime_error("1-D conduction analytical solution mismatch");
         }
+
+        // Scalar diffusion MMS: T=sin(pi*y/H), -gamma*T''=S.
+        // This is a true discretisation verification because the source varies
+        // with the manufactured solution and the mesh is systematically refined.
+        std::vector<double> mms_errors;
+        for (const std::size_t n : {8u,16u,32u,64u}) {
+            const auto r = solve_mms_diffusion(n,H,k);
+            std::vector<double> exact(r.y.size());
+            const double pi = std::acos(-1.0);
+            for (std::size_t i=0;i<r.y.size();++i)
+                exact[i] = std::sin(pi*r.y[i]/H);
+            const auto e = error_norms(r.u,exact,r.volume);
+            const double order = mms_errors.empty()
+                ? std::numeric_limits<double>::quiet_NaN()
+                : observed_order(mms_errors.back(),e.l2);
+            report_case("Diffusion MMS",n,e,order);
+            mms_errors.push_back(e.l2);
+        }
+        require_order(mms_errors,2.0,1.80,"Diffusion MMS");
 
         // CHT resistance-in-series and radiation oracles are evaluated
         // independently of the implementation under test.
