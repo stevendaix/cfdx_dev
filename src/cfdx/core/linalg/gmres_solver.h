@@ -150,7 +150,7 @@ inline SolverResult solve_gmres(
             double sum = g[i];
             for (int j = i + 1; j < used; ++j) sum -= H[i][j] * y[j];
             if (std::abs(H[i][i]) <= 1e-30) {
-                result.status = SolverStatus::BREAKDOWN;
+                result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = estimated_residual;
                 result.residual_relative = estimated_residual / std::max(b_norm, 1.0);
