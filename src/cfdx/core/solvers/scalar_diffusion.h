@@ -70,8 +70,7 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
     for (std::size_t c = 0; c < nc; ++c) {
         const auto off = mesh.cells().offsets_data()[c];
         const auto n = mesh.cells().offsets_data()[c + 1] - off;
-        cc[c] = compute_cell_geometry(fc.data(), sf.data(),
-                                      mesh.cells().faces_data() + off, n).centre;
+        cc[c] = compute_cell_geometry(mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, c, n).centre;
     }
 
     // Assemble row-wise in deterministic face order. For each internal face,
