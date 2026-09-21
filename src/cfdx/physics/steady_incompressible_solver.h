@@ -312,7 +312,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             U.component_data(2)[c] = uz(c);
         }
 
-        mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+        std::vector<double> rAU(mesh.n_cells());
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            const double ax=std::max(ex.diagonal[c],1e-30);
+            const double ay=std::max(ey.diagonal[c],1e-30);
+            const double az=std::max(ez.diagonal[c],1e-30);
+            rAU[c]=geometry.cell_volumes[c]/
+                std::max((ax+ay+az)/3.0,1e-30);
+        }
+        mass_flux=make_rhie_chow_mass_flux(
+            mesh,geometry,U,p,rAU,controls.density,velocity_bcs);
 
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
@@ -325,17 +334,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             Vector b(nc, 0.0);
             std::vector<std::map<std::size_t, double>> rows(nc);
             std::vector<double> diag(nc, 0.0);
-
-            std::vector<double> rAU(nc);
-            for (std::size_t c = 0; c < nc; ++c) {
-                // Use the diagonal of the three momentum matrices. This is
-                // the scalar equivalent of rAU = 1/UEqn.A().
-                const double ax = std::max(ex.diagonal[c], 1e-30);
-                const double ay = std::max(ey.diagonal[c], 1e-30);
-                const double az = std::max(ez.diagonal[c], 1e-30);
-                rAU[c] = geometry.cell_volumes[c] /
-                    std::max((ax + ay + az) / 3.0, 1e-30);
-            }
 
             std::vector<double> continuity(nc, 0.0);
             const auto* cell_faces = mesh.cells().faces_data();
