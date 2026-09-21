@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cfdx/physics/turbulence_solver.h"
+#include <algorithm>
+#include <cmath>
 
 namespace cfdx::physics {
 
@@ -17,7 +19,8 @@ inline TurbulenceTransportResult solve_sst_transport(
     const ScalarBoundaryConditions& k_bcs = {},
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
-    double tolerance = 1e-8)
+    double tolerance = 1e-8,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* wall_distance = nullptr)
 {
     validate_turbulence_controls(controls);
     if(controls.model!=TurbulenceModel::SST)
@@ -45,8 +48,28 @@ inline TurbulenceTransportResult solve_sst_transport(
         for(std::size_t i=0;i<n;++i) {
             const double ki=std::max(k(i),controls.k_min);
             const double wi=std::max(omega(i),controls.omega_min);
-            const double f1=std::clamp(F1(i),0.0,1.0);
-            const double f2=std::clamp(F2(i),0.0,1.0);
+            double f1=std::clamp(F1(i),0.0,1.0);
+            double f2=std::clamp(F2(i),0.0,1.0);
+            if (wall_distance) {
+                if (wall_distance->size() != n)
+                    throw std::invalid_argument("SST wall-distance field size mismatch");
+                const double y = std::max((*wall_distance)(i), 1e-12);
+                const double nu = controls.molecular_viscosity;
+                // Menter SST blending functions, evaluated from the current
+                // iterate. The cross-diffusion term requires gradients and is
+                // deliberately omitted here rather than replaced by a frozen
+                // field; the remaining terms are the standard wall-distance
+                // limiter used for the F1/F2 arguments.
+                const double arg1 = std::min(
+                    std::max(std::sqrt(ki) / (controls.beta_star * wi * y),
+                             500.0 * nu / (y*y*wi)),
+                    1.0e10);
+                const double arg2 = std::max(
+                    2.0 * std::sqrt(ki) / (controls.beta_star * wi * y),
+                    500.0 * nu / (y*y*wi));
+                f1 = std::tanh(std::pow(arg1, 4.0));
+                f2 = std::tanh(arg2 * arg2);
+            }
             const double beta=f1*controls.beta1+(1.0-f1)*controls.beta2;
             const double gamma=f1*(5.0/9.0)+(1.0-f1)*0.44;
             const double nut=controls.a1*ki/
