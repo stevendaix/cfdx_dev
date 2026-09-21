@@ -107,6 +107,12 @@ inline Field<double, Location::CELL> compute_laplacian(
         face_Sf[f] = fg.Sf;
     }
 
+    // 3. Establish global owner -> neighbour orientation, then compute
+    // cell-local geometry from the oriented face vectors.
+    std::vector<Vec3> provisional_centres(n_cells);
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), provisional_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, provisional_centres, face_Sf);
+
     // 3. Géométrie des cellules.
     std::vector<double> cell_volume(n_cells, 0.0);
 
