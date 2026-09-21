@@ -46,6 +46,7 @@ inline Field<double, Location::CELL> surface_integrate(
     Field<double, Location::CELL> result(n_cells, face_field.name() + "_surf_int", "m^3/s", 3);
 
     // Géométrie des faces.
+    std::vector<Vec3> face_centres(n_faces);
     std::vector<Vec3> face_Sf(n_faces);
 
     const PointCloud& pts = mesh.points();
@@ -59,6 +60,7 @@ inline Field<double, Location::CELL> surface_integrate(
         const VertexIndex off = offsets[f];
         const VertexIndex n = offsets[f + 1] - off;
         const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
+        face_centres[f] = fg.centre;
         face_Sf[f] = fg.Sf;
     }
 
