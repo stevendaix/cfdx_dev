@@ -19,6 +19,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/mesh/ownership.h"
+#include "cfdx/core/mesh/mesh.h"
 #include <cstddef>
 #include <cmath>
 #include <stdexcept>
@@ -33,6 +34,36 @@ struct CellGeometry {
     // inverted cell and must be rejected by the mesh validator.
     double signed_volume;
 };
+
+// Compute orientation-independent provisional cell centres from face centres
+// and scalar face areas. These centres are used to establish the authoritative
+// owner -> neighbour orientation before signed cell volumes are evaluated.
+inline void compute_area_weighted_cell_centres(
+    const Mesh& mesh,
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    Vec3* cell_centres)
+{
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset n = mesh.cells().offsets_data()[c + 1] - off;
+        if (n == 0)
+            throw std::runtime_error("CellGeometry: cell must have at least one face");
+        Vec3 weighted_sum;
+        double total_area = 0.0;
+        for (Offset k = 0; k < n; ++k) {
+            const FaceIndex f = mesh.cells().faces_data()[off + k];
+            const double area = face_Sf[f].mag();
+            if (!(area > 0.0) || !std::isfinite(area))
+                throw std::runtime_error("CellGeometry: degenerate face");
+            weighted_sum = weighted_sum + face_centres[f] * area;
+            total_area += area;
+        }
+        if (!(total_area > 0.0) || !std::isfinite(total_area))
+            throw std::runtime_error("CellGeometry: invalid total face area");
+        cell_centres[c] = weighted_sum * (1.0 / total_area);
+    }
+}
 
 // Compute cell geometry when the face list uses global owner-oriented vectors.
 // Internal-face vectors are reversed for neighbour cells so every contribution
