@@ -157,6 +157,37 @@ Basé sur la spécification CFDX v0.7 (§95) et l'agent prompt (§39).
 - [ ] Remeshing
 - [ ] Topology changes
 
+## M0.16 — Couplage Pression-Vitesse (SIMPLE / PISO)
+
+- [ ] M0.16-T01 : Algorithme SIMPLE (Semi-Implicit Method for Pressure-Linked Equations) avec sous-relaxation.
+- [ ] M0.16-T02 : Algorithme PISO (pour les écoulements transitoires).
+- [ ] M0.16-T03 : Correction de non-orthogonalité explicite dans l'équation de pression.
+
+## M0.17 — Turbulence RANS
+
+- [ ] M0.17-T01 : Modèle de viscosité turbulente (Boussinesq).
+- [ ] M0.17-T02 : Modèle k-epsilon standard.
+- [ ] M0.17-T03 : Modèle k-omega SST (standard industriel pour couches limites et décollements).
+- [ ] M0.17-T04 : Fonctions d'amortissement de paroi (Wall functions : nutUSpaldingWallFunction, etc.).
+
+## M0.18 — Accélération Matérielle (GPU / CUDA)
+
+- [ ] M0.18-T01 : Abstraction des kernels (macros ou templates CPU / CUDA / HIP).
+- [ ] M0.18-T02 : Portage du produit matrice-vecteur (SpMV) et des opérateurs gradient/flux sur GPU.
+- [ ] M0.18-T03 : Gestion mémoire unifiée / transfert explicite Host ↔ Device pour les champs (Field SoA optimisé).
+
+## M0.19 — AMR / Maillage Mobile
+
+- [ ] M0.19-T01 : Raffinement / déraffinement basé sur estimateur d'erreur (gradient pression / vorticité).
+- [ ] M0.19-T02 : Interpolation conservative des champs lors du remaillage.
+- [ ] M0.19-T03 : Support des mailles pendantes (hanging nodes) ou raffinement octree.
+
+## M0.20 — Robustesse Production (Restart / MMS)
+
+- [ ] M0.20-T01 : Système Checkpoint / Restart binaire (via HDF5, état complet du solveur).
+- [ ] M0.20-T02 : Suite de tests MMS automatisée (convergence L2 / L_inf, vérification ordre 2 du schéma).
+- [ ] M0.20-T03 : Benchmarks de régression (cavité entraînée Re=1000, comparaison données Ghia et al.).
+
 ## M7 — FSI
 
 - [ ] Fluid-structure interface
