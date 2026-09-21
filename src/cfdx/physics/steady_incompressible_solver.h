@@ -211,14 +211,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         (controls.kinematic_viscosity + controls.turbulent_viscosity);
 
     IncompressibleSolveResult result;
-    IterationMetrics initial_metrics;
-    initial_metrics.turbulence_residual = 0.0;
-    initial_metrics.energy_residual = 0.0;
+    // The steady solver's outer loop is the nonlinear convergence loop. The
+    // algorithm controls how many pressure corrections are performed inside
+    // each nonlinear iteration, mirroring the SIMPLE/PISO/PIMPLE structure.
+    const std::size_t pcorr =
+        controls.algorithm == PressureVelocityAlgorithm::SIMPLE
+            ? 1u : static_cast<std::size_t>(controls.coupling.n_pressure_correctors);
 
-    const std::size_t outer = controls.coupling.n_outer_correctors;
-    const std::size_t pcorr = controls.coupling.n_pressure_correctors;
-
-    for (std::size_t iter = 1; iter <= std::min(outer, controls.convergence.max_iterations); ++iter) {
+    for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
@@ -355,6 +355,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += controls.coupling.pressure_relaxation * p_corr(c);
+            // Explicitly enforce the selected pressure gauge after relaxation.
+            p(controls.pressure_reference_cell) = controls.pressure_reference_value;
 
             auto grad_pc = gauss_gradient_with_boundary(
                 p_corr, mesh, geometry, pressure_bcs);
@@ -403,11 +405,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
         result.history.push_back(h);
-
-        if (iter == 1) {
-            initial_metrics.momentum_residual = h.momentum_residual;
-            initial_metrics.pressure_residual = h.pressure_residual;
-        }
 
         if (std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
