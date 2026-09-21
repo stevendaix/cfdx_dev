@@ -2,7 +2,8 @@
 
 #include <cstddef>
 #include <optional>
-#include <string>\n#include <utility>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace cfdx::application {
