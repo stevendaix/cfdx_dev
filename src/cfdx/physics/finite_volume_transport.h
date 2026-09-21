@@ -42,6 +42,27 @@ enum class DiffusionScheme {
     NON_ORTHOGONAL_CORRECTED
 };
 
+inline double nonorthogonal_diffusion_correction(
+    const cfdx::core::Vec3& d,
+    const cfdx::core::Vec3& Sf,
+    double gamma,
+    const cfdx::core::Vec3& grad_owner,
+    const cfdx::core::Vec3& grad_neighbour)
+{
+    const double dmag = d.mag();
+    const double smag = Sf.mag();
+    if (!(dmag > 0.0) || !(smag > 0.0) || !(gamma >= 0.0) ||
+        !std::isfinite(gamma))
+        throw std::invalid_argument(
+            "nonorthogonal_diffusion_correction: invalid geometry/property");
+
+    const auto d_hat = d * (1.0 / dmag);
+    const auto S_orth = d_hat * Sf.dot(d_hat);
+    const auto S_corr = Sf - S_orth;
+    const auto grad_face = (grad_owner + grad_neighbour) * 0.5;
+    return gamma * grad_face.dot(S_corr);
+}
+
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
     std::map<std::string, std::vector<double>> values;
@@ -221,16 +242,13 @@ inline ScalarEquation assemble_scalar_equation(
                     throw std::runtime_error(
                         "assemble_scalar_equation: invalid non-orthogonal face geometry");
 
-                const auto d_hat = dvec * (1.0 / dmag);
-                const auto S_orth = d_hat * Sf.dot(d_hat);
-                const auto S_corr = Sf - S_orth;
                 const double* gx = diffusion_gradient.component_data(0);
                 const double* gy = diffusion_gradient.component_data(1);
                 const double* gz = diffusion_gradient.component_data(2);
                 const cfdx::core::Vec3 grad_o{gx[o], gy[o], gz[o]};
                 const cfdx::core::Vec3 grad_n{gx[n], gy[n], gz[n]};
-                const auto grad_f = (grad_o + grad_n) * 0.5;
-                diffusion_correction = gamma_face * grad_f.dot(S_corr);
+                diffusion_correction = nonorthogonal_diffusion_correction(
+                    dvec, Sf, gamma_face, grad_o, grad_n);
             }
 
             const double a_on = D + std::max(F, 0.0);
