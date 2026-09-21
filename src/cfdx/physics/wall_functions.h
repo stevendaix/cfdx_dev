@@ -1,5 +1,7 @@
 #pragma once
 
+// CFDX wall-function reference kernels are backend-independent.
+
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>
