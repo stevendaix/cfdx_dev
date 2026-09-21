@@ -109,7 +109,7 @@ gauss_gradient_with_boundary(
                         vf = it->second.value;
                 }
             }
-            sum += Sf * vf;
+            sum = sum + Sf * vf;
         }
         const double invV = 1.0 / geometry.cell_volumes[c];
         grad.component_data(0)[c] = sum.x * invV;
@@ -177,11 +177,11 @@ make_rhie_chow_mass_flux(
         if(d<=0.0) throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face");
         const double rface=0.5*(rAU[o]+rAU[n]);
         const double dpdn=(p(n)-p(o))/d;
-        const Vec3 gpface={
+        const cfdx::core::Vec3 gpface={
             0.5*(gradp.component_data(0)[o]+gradp.component_data(0)[n]),
             0.5*(gradp.component_data(1)[o]+gradp.component_data(1)[n]),
             0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
-        const Vec3 Sf=geometry.face_area_vectors[f];
+        const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
         const double gradface=gpface.dot(Sf);
         const double orth=dpdn*Sf.mag();
         flux(f)-=rho*rface*(orth-gradface);
