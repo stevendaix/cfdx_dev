@@ -15,6 +15,7 @@
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 
@@ -140,8 +141,9 @@ inline double volume_integrate(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry_oriented(
+            face_centres.data(), face_Sf.data(), cell_faces + off, n,
+            static_cast<CellIndex>(c), mesh.ownership());
         cell_volume[c] = cg.volume;
     }
 
