@@ -302,10 +302,8 @@ def main() -> int:
     tex = args.output_dir / "cfdx_validation_report.tex"
     write_tex(tex, cases, ghia, logs, plot_name, generated)
 
-    latexmk = shutil.which("latexmk") if "shutil" in globals() else None
-    if latexmk is None:
-        import shutil
-        latexmk = shutil.which("latexmk")
+    import shutil
+    latexmk = shutil.which("latexmk")
     if latexmk is None:
         raise RuntimeError("latexmk is required to build the PDF")
 
