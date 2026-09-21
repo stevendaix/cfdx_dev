@@ -49,7 +49,7 @@ For every production numerical scheme we also require:
 8. negative/degenerate input tests;
 9. regression of the reference result in the PDF report.
 
-This follows established finite-volume verification practice: MMS plus systematic grid refinement is specifically used to determine observed order and expose formulation errors. citeturn0search4turn0search2
+This follows established finite-volume verification practice: MMS plus systematic grid refinement is specifically used to determine observed order and expose formulation errors.
 
 ## Next solver-level waves
 
@@ -66,4 +66,4 @@ The highest-value next waves are:
 - MPI partition invariance;
 - matrix-free versus assembled operator equivalence.
 
-The Ansys VMFL suite should remain the application-level verification layer. Ansys explicitly describes its VMFL cases as verification tests rather than complete model validation, so the two layers serve different purposes. citeturn0search0
+The Ansys VMFL suite should remain the application-level verification layer. Ansys explicitly describes its VMFL cases as verification tests rather than complete model validation, so the two layers serve different purposes.
