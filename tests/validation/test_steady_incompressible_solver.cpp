@@ -1,5 +1,6 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -116,6 +117,42 @@ int main()
         const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
         EXPECT_TRUE(r.converged);
         EXPECT_TRUE(!r.history.empty());
+    });
+
+
+    run_case("momentum_assembly_uses_matching_pressure_gradient_component", [] {
+        const Mesh m = make_unit_cube();
+        const auto geometry = build_fv_geometry(m);
+        Field<double,Location::FACE> mass_flux(m.n_faces(),"phi","kg/s",1);
+        mass_flux.fill(0.0);
+        Field<double,Location::CELL> grad_p(1,"grad_p","Pa/m",3);
+        grad_p.set(0,1.0,2.0,3.0);
+        Field<double,Location::CELL> body(1,"body","N/m3",1);
+        body.fill(0.0);
+        ScalarBoundaryConditions ubc;
+        ubc["wall"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+
+        for (std::size_t component = 0; component < 3; ++component) {
+            const auto eq = assemble_momentum_component(
+                m, geometry, mass_flux, grad_p, body, 1.0, ubc, component, false);
+            EXPECT_NEAR(eq.rhs(0), -static_cast<double>(component + 1), 1e-14);
+        }
+    });
+
+    run_case("rhie_chow_rejects_nonfinite_inverse_diagonal", [] {
+        const Mesh m = make_unit_cube();
+        const auto geometry = build_fv_geometry(m);
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        EXPECT_THROW(
+            make_rhie_chow_mass_flux(m, geometry, U, p,
+                                      {std::numeric_limits<double>::quiet_NaN()},
+                                      1.0, ubc),
+            std::invalid_argument);
     });
 
     run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
