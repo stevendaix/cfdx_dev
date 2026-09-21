@@ -7,13 +7,11 @@ using namespace cfdx::core::memory;
 // ============================================
 // Memory Planner Implementation — M0.10-A1-T01/T02/T03/T04/T05
 // ============================================
-// This file provides skeleton/stub implementations for the Memory Planner
-// and Mesh Reordering components defined in memory_planner.md (v4 spec).
-// Full production implementations require ExecutionGraph integration,
-// mesh connectivity analysis, and hardware profiling.
+// The planner provides deterministic topology/field/solver memory estimates;
+// runtime allocation tracking is handled by MemoryLedger.
 
 // --------------------------------------------
-// MemoryPlanner (stub)
+// MemoryPlanner
 // --------------------------------------------
 MemoryPlanner::Plan MemoryPlanner::plan(
     const std::vector<BufferDescriptor>& buffers,
@@ -22,6 +20,8 @@ MemoryPlanner::Plan MemoryPlanner::plan(
     size_t num_faces,
     int num_fields,
     int num_solver_vectors) {
+    (void)buffers;
+    (void)total_operations;
     Plan result;
 
     // Budget prediction (v4 — 6 KPIs réels)
@@ -260,7 +260,7 @@ double RCMReorderer::computeProfile(const std::vector<uint32_t>& owner,
 }
 
 // --------------------------------------------
-// Mesh Reordering (stub skeleton)
+// Mesh Reordering
 // --------------------------------------------
 MeshReorderer::ReorderingResult MeshReorderer::reorder(
     const std::vector<uint32_t>& owner,
