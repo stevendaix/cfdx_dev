@@ -50,8 +50,3 @@ Après merge et CI verte de la PR #3 :
 ## Décisions architecturales
 
 Voir `docs/development/DECISIONS.md`.
-
-
-## Current audit update — 2026-09-21
-
-The M1-M4 implementation is undergoing a full numerical and code audit. Analytical Level-A benchmarks, conservation checks, radiation normalization, pressure-correction scaling, turbulence production units, mesh I/O bounds checks, MPI halo exchange and legacy convection assembly are being hardened before the stack is considered validated.

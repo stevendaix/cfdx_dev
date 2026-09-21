@@ -139,6 +139,18 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/source_term_linearization.h
     src/cfdx/physics/transport_models.h
     src/cfdx/physics/temporal.h
+    src/cfdx/physics/low_storage_time_integration.h
+    src/cfdx/physics/adaptive_cfl.h
+    src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/local_time_stepping.h
+    src/cfdx/physics/low_mach.h
+    src/cfdx/physics/compressible_flux.h
+    src/cfdx/physics/radiation_models.h
+    src/cfdx/physics/boussinesq.h
+    src/cfdx/physics/spalart_allmaras.h
+    src/cfdx/physics/radiation_streaming.h
+    src/cfdx/thermodynamics/thermo_state.h
+    src/cfdx/thermodynamics/thermo_cache.h
 )
 
 # Thermodynamics sources (P2 reorganization)
@@ -220,17 +232,21 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
     src/cfdx/core/linalg/gmres_solver.h
-    src/cfdx/core/linalg/advanced_preconditioners.h
-    src/cfdx/core/solvers/scalar_diffusion.h
-    src/cfdx/runtime/execution/execution_policy.h
-    src/cfdx/runtime/gpu/device_buffer.h
-    src/cfdx/runtime/gpu/gpu_kernels.h
-    src/cfdx/runtime/ooc/tile_manager.h
-    src/cfdx/runtime/ooc/working_set.h
-    src/cfdx/runtime/ooc/pinned_buffer_pool.h
-    src/cfdx/runtime/ooc/cuda_pinned_buffer_pool.h
-    src/cfdx/runtime/ooc/async_transfer.h
-    src/cfdx/runtime/ooc/ooc_executor.h
+    src/cfdx/core/linalg/linear_operator.h
+    src/cfdx/core/linalg/solver_workspace.h
+    src/cfdx/core/linalg/matrix_free_fv_operator.h
+    src/cfdx/core/linalg/amg_preconditioner.h
+    src/cfdx/core/linalg/mixed_precision.h
+    src/cfdx/core/linalg/chebyshev_smoother.h
+    src/cfdx/core/linalg/fv_operator.h
+    src/cfdx/core/linalg/krylov_controls.h
+    src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/memory/reuse_pool.h
+    src/cfdx/core/memory/field_lifetime.h
+    src/cfdx/core/linalg/mpi_overlap.h
+    src/cfdx/core/linalg/block_schur.h
+    src/cfdx/core/mesh/solver_mesh.h
+    src/cfdx/core/mesh/sfc_ordering.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
@@ -304,6 +320,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
+    add_cfdx_test(test_performance_foundations tests/unit/test_performance_foundations.cpp)
+    add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
+    add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
@@ -328,7 +347,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
-    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)

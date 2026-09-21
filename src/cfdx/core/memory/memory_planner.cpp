@@ -18,6 +18,8 @@ struct ActiveAllocation {
 };
 // The planner provides deterministic topology/field/solver memory estimates;
 // runtime allocation tracking is handled by MemoryLedger.
+// The planner provides deterministic topology/field/solver memory estimates;
+// runtime allocation tracking is handled by MemoryLedger.
 
 size_t saturating_add(size_t a, size_t b, bool& overflow) {
     if (b > std::numeric_limits<size_t>::max() - a) {
@@ -128,6 +130,7 @@ BufferReuseOptimizer::optimize(
 }
 
 // MemoryPlanner
+// MemoryPlanner
 // --------------------------------------------
 MemoryPlanner::Plan MemoryPlanner::plan(
     const std::vector<BufferDescriptor>& buffers,
@@ -136,6 +139,8 @@ MemoryPlanner::Plan MemoryPlanner::plan(
     size_t num_faces,
     int num_fields,
     int num_solver_vectors) const {
+    (void)buffers;
+    (void)total_operations;
     (void)buffers;
     (void)total_operations;
     Plan result;
@@ -517,6 +522,7 @@ double RCMReorderer::computeProfile(
     return static_cast<double>(profile);
 }
 
+// Mesh Reordering
 // Mesh Reordering
 // --------------------------------------------
 MeshReorderer::ReorderingResult MeshReorderer::reorder(
