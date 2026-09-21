@@ -104,9 +104,18 @@ inline Field<double, Location::CELL> advance_time(
     if (!(dt > 0.0) || !std::isfinite(dt)) {
         throw std::invalid_argument("advance_time: dt must be finite and strictly positive");
     }
+    if (!rhs_func) {
+        throw std::invalid_argument("advance_time: rhs function must be valid");
+    }
 
     const std::size_t n_cells = phi.size();
     const std::size_t dim = phi.dimension();
+    if (n_cells == 0 || dim == 0) {
+        throw std::invalid_argument("advance_time: field must have non-zero size and dimension");
+    }
+    if (ctx && (ctx->n_cells != n_cells || ctx->field_dim != dim)) {
+        throw std::invalid_argument("advance_time: time-integration context does not match field shape");
+    }
     Field<double, Location::CELL> phi_new(
         n_cells, "phi_new", phi.metadata().unit, dim);
 
@@ -116,6 +125,14 @@ inline Field<double, Location::CELL> advance_time(
         n_cells, "rhs_iter", phi.metadata().unit + "/s", dim);
 
     rhs_func(phi, rhs);
+    for (std::size_t d = 0; d < dim; ++d) {
+        const double* rhs_data = rhs.component_data(d);
+        for (std::size_t cell = 0; cell < n_cells; ++cell) {
+            if (!std::isfinite(rhs_data[cell])) {
+                throw std::runtime_error("advance_time: RHS contains a non-finite value");
+            }
+        }
+    }
 
     constexpr int max_iterations = 100;
     constexpr double tolerance = 1e-12;
