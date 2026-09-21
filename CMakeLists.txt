@@ -108,6 +108,11 @@ set(CFDX_MEMORY_SOURCES
     src/cfdx/runtime/gpu/gpu_kernels.cpp
 )
 
+# Application layer: Fluent-like case control, monitoring and interactive workflow
+set(CFDX_APPLICATION_SOURCES
+    src/cfdx/application/simulation_controller.cpp
+)
+
 # Geometry module
 set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
@@ -181,6 +186,7 @@ set(CFDX_CORE_SOURCES
     ${CFDX_TRANSPORT_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
+    ${CFDX_APPLICATION_SOURCES}
 )
 
 # Headers (for IDE visibility, not compiled)
@@ -372,6 +378,7 @@ if(CFDX_BUILD_TESTS)
 
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
+    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
