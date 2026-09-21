@@ -19,6 +19,7 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 
 # ---------------------------------------------------------------------------
 # Sanitizer build type
@@ -294,5 +295,12 @@ if(CFDX_BUILD_TESTS)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
+    add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_meshio_bridge
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
+                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
+    endif()
 
 endif()
