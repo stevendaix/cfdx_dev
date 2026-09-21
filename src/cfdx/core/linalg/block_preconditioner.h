@@ -2,14 +2,15 @@
 
 #include "preconditioner.h"
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <utility>
 #include <vector>
 
 namespace cfdx::core {
 
-// Block-Jacobi diagonal scaling. The declared blocks are validated for
-// complete, non-overlapping coverage; dense block inversion is not claimed.
+// Dense block-Jacobi preconditioner. Each declared diagonal block is inverted
+// during setup and applied independently; off-block couplings are ignored.
 class BlockDiagonalPreconditioner final : public Preconditioner {
 public:
     explicit BlockDiagonalPreconditioner(std::vector<std::vector<std::size_t>> blocks)
@@ -18,28 +19,81 @@ public:
     bool setup(const SparseMatrix& A) override {
         if (A.n_rows() != A.n_cols()) return false;
         n_ = A.n_rows();
-        inv_diag_.assign(n_, 0.0);
+        if (!validate()) return false;
+
+        inverse_blocks_.clear();
+        inverse_blocks_.reserve(blocks_.size());
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
-        for (std::size_t i = 0; i < n_; ++i) {
-            bool found = false;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] == i) {
-                    if (val[k] == 0.0) { inv_diag_.clear(); return false; }
-                    inv_diag_[i] = 1.0 / val[k];
-                    found = true;
-                    break;
+
+        for (const auto& block : blocks_) {
+            const std::size_t m = block.size();
+            std::vector<double> aug(m * 2 * m, 0.0);
+            auto at = [m, &aug](std::size_t i, std::size_t j) -> double& {
+                return aug[i * (2 * m) + j];
+            };
+
+            for (std::size_t i = 0; i < m; ++i) {
+                const std::size_t global_row = block[i];
+                for (std::size_t k = row[global_row]; k < row[global_row + 1]; ++k) {
+                    for (std::size_t j = 0; j < m; ++j) {
+                        if (col[k] == block[j]) {
+                            at(i, j) = val[k];
+                            break;
+                        }
+                    }
+                }
+                at(i, m + i) = 1.0;
+            }
+
+            for (std::size_t pivot = 0; pivot < m; ++pivot) {
+                std::size_t best = pivot;
+                double best_abs = std::abs(at(pivot, pivot));
+                for (std::size_t i = pivot + 1; i < m; ++i) {
+                    const double a = std::abs(at(i, pivot));
+                    if (a > best_abs) { best_abs = a; best = i; }
+                }
+                if (best_abs <= 1e-30) return false;
+
+                if (best != pivot) {
+                    for (std::size_t j = 0; j < 2 * m; ++j)
+                        std::swap(at(pivot, j), at(best, j));
+                }
+
+                const double inv_pivot = 1.0 / at(pivot, pivot);
+                for (std::size_t j = 0; j < 2 * m; ++j) at(pivot, j) *= inv_pivot;
+
+                for (std::size_t i = 0; i < m; ++i) {
+                    if (i == pivot) continue;
+                    const double factor = at(i, pivot);
+                    if (factor == 0.0) continue;
+                    for (std::size_t j = 0; j < 2 * m; ++j)
+                        at(i, j) -= factor * at(pivot, j);
                 }
             }
-            if (!found) { inv_diag_.clear(); return false; }
+
+            std::vector<double> inv(m * m);
+            for (std::size_t i = 0; i < m; ++i)
+                for (std::size_t j = 0; j < m; ++j)
+                    inv[i * m + j] = at(i, m + j);
+            inverse_blocks_.push_back(std::move(inv));
         }
-        return validate();
+        return true;
     }
 
     bool apply(const Vector& r, Vector& z) const override {
-        if (r.size() != n_ || z.size() != n_ || inv_diag_.size() != n_ || !validate()) return false;
-        for (std::size_t i = 0; i < n_; ++i) z(i) = inv_diag_[i] * r(i);
+        if (r.size() != n_ || z.size() != n_ || inverse_blocks_.size() != blocks_.size()) return false;
+        for (std::size_t b = 0; b < blocks_.size(); ++b) {
+            const auto& block = blocks_[b];
+            const auto& inv = inverse_blocks_[b];
+            for (std::size_t i = 0; i < block.size(); ++i) {
+                double value = 0.0;
+                for (std::size_t j = 0; j < block.size(); ++j)
+                    value += inv[i * block.size() + j] * r(block[j]);
+                z(block[i]) = value;
+            }
+        }
         return true;
     }
 
@@ -60,7 +114,7 @@ private:
     }
 
     std::vector<std::vector<std::size_t>> blocks_;
-    std::vector<double> inv_diag_;
+    std::vector<std::vector<double>> inverse_blocks_;
     std::size_t n_{0};
 };
 
