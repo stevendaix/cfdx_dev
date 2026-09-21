@@ -75,7 +75,7 @@ inline void validate_incompressible_controls(
 inline cfdx::core::Field<double, cfdx::core::Location::CELL>
 gauss_gradient_with_boundary(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
-    const cfdx::Mesh& mesh,
+    const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const ScalarBoundaryConditions& bcs)
 {
@@ -133,10 +133,12 @@ make_mass_flux(
 
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         const std::size_t o = own.owner(f);
-        Vec3 Uf = U.get(o);
+        Vec3 Uf;
+        U.get(o, Uf.x, Uf.y, Uf.z);
         if (own.neighbour(f) >= 0) {
             const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
-            const Vec3 Un = U.get(n);
+            Vec3 Un;
+            U.get(n, Un.x, Un.y, Un.z);
             Uf = 0.5 * (Uf + Un);
         } else {
             const std::size_t p = geometry.face_patch[f];
@@ -171,6 +173,7 @@ inline ScalarEquation assemble_momentum_component(
         source(c) = body_component(c) - pressure_gradient_component(c);
         sp(c) = 0.0;
     }
+    (void)component;
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, velocity_bcs, bounded);
@@ -219,7 +222,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
-        Field<double, Location::CELL> zero_source(mesh.n_cells(), "zero", "N/m3", 1);
         Field<double, Location::CELL> body_x(mesh.n_cells(), "body_x", "N/m3", 1);
         Field<double, Location::CELL> body_y(mesh.n_cells(), "body_y", "N/m3", 1);
         Field<double, Location::CELL> body_z(mesh.n_cells(), "body_z", "N/m3", 1);
