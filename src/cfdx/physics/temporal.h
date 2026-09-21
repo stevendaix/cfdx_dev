@@ -2,7 +2,7 @@
 // Explicit Euler, Implicit Euler, Crank-Nicolson, BDF2
 #pragma once
 
-#include "physics/equation_of_state.h"
+#include "cfdx/core/field/field.h"
 #include <vector>
 #include <cmath>
 

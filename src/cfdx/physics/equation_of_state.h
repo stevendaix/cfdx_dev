@@ -25,6 +25,7 @@
 #include <memory>
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 
 namespace cfdx {
 namespace physics {
@@ -49,48 +50,45 @@ inline const char* to_string(EquationOfStateType t) {
     }
 }
 
-// Paramètres pour gaz parfait
 struct IdealGasParams {
-    double R = 287.058;    // Constante des gaz [J/kg/K] (air)
-    double gamma = 1.4;    // Ratio des chaleurs spécifiques Cp/Cv
-    double Cp = 1004.5;    // Chaleur spécifique à pression constante [J/kg/K]
-    double Cv = 717.5;     // Chaleur spécifique à volume constant [J/kg/K]
-    double T_ref = 300.0;  // Température de référence [K]
-    double p_ref = 101325.0; // Pression de référence [Pa]
+    double M = 0.02896546;     // Mass molaire [kg/mol] (air)
+    double gamma = 1.4;        // Ratio des chaleurs spécifiques Cp/Cv
+    double R_univ = 8.314462618;  // Constante des gaz universelle [J/mol/K]
+    double Cp = 1004.5;        // Chaleur spécifique à pression constante [J/kg/K]
+    double T_ref = 300.0;      // Température de référence [K]
+    double p_ref = 101325.0;   // Pression de référence [Pa]
 };
 
-// Paramètres pour fluide incompressible
 struct IncompressibleParams {
-    double rho = 1.0;      // Densité constante [kg/m³]
-    double Cp = 4180.0;    // Chaleur spécifique [J/kg/K] (eau)
-    double beta = 0.0;     // Coefficient de dilatation thermique [1/K]
-    double T_ref = 300.0;  // Température de référence [K]
+    double rho = 1.0;          // Densité constante [kg/m³]
+    double Cp = 4180.0;        // Chaleur spécifique [J/kg/K] (eau)
+    double beta = 0.0;         // Coefficient de dilatation thermique [1/K]
+    double T_ref = 300.0;      // Température de référence [K]
 };
 
-// Base class pour les EOS
 class EquationOfState {
 public:
     virtual ~EquationOfState() = default;
     virtual EquationOfStateType type() const = 0;
 
-    // Propriétés thermodynamiques
     virtual double density(double p, double T) const = 0;
     virtual double enthalpy(double p, double T) const = 0;
     virtual double entropy(double p, double T) const = 0;
     virtual double speed_of_sound(double p, double T) const = 0;
     virtual double temperature_from_enthalpy(double p, double h) const = 0;
     virtual double pressure_from_density_temp(double rho, double T) const = 0;
-    virtual double dp_drho_s(double p, double T) const = 0;  // Dérivée pour vitesse du son
-    virtual double dp_dT_rho(double p, double T) const = 0;  // Dérivée partielle
-    virtual double drho_dp_T(double p, double T) const = 0;  // Dérivée partielle
-    virtual double drho_dT_p(double p, double T) const = 0;  // Dérivée partielle
+    virtual double dp_drho_s(double p, double T) const = 0;
+    virtual double dp_dT_rho(double p, double T) const = 0;
+    virtual double drho_dp_T(double p, double T) const = 0;
+    virtual double drho_dT_p(double p, double T) const = 0;
 
-    // Pour flux compressible : flux = ρ*u, energie = ρ*(e + 0.5*u²)
+    virtual double cp(double p, double T) const = 0;
+    virtual double cv(double p, double T) const = 0;
+
     virtual double internal_energy(double p, double T) const = 0;
     virtual double total_energy(double p, double T, double u_mag2) const = 0;
 };
 
-// EOS Incompressible : ρ = constant
 class IncompressibleEOS : public EquationOfState {
     IncompressibleParams params_;
 
@@ -112,7 +110,10 @@ public:
     }
 
     double speed_of_sound(double /*p*/, double /*T*/) const override {
-        return 1e6;  // "Infini" pour incompressible (limite rigide)
+        if (params_.beta <= 0) {
+            return std::numeric_limits<double>::infinity();
+        }
+        return std::sqrt(params_.rho / params_.beta);
     }
 
     double temperature_from_enthalpy(double /*p*/, double h) const override {
@@ -124,23 +125,31 @@ public:
     }
 
     double dp_drho_s(double /*p*/, double /*T*/) const override {
-        return 1e12;  // Presque incompressible
+        return 1.0 / (params_.beta * params_.rho);
     }
 
     double dp_dT_rho(double /*p*/, double /*T*/) const override {
-        return 0.0;  // Incompressible: p indépendant de T à rho constant
+        return params_.rho * params_.beta;
     }
 
     double drho_dp_T(double /*p*/, double /*T*/) const override {
-        return 0.0;  // rho constant
+        return 0.0;
     }
 
     double drho_dT_p(double /*p*/, double /*T*/) const override {
-        return -params_.rho * params_.beta;  // dilatation thermique
+        return -params_.rho * params_.beta;
     }
 
     double internal_energy(double /*p*/, double T) const override {
-        return params_.Cp * (T - params_.T_ref);  // Incompressible: Cp approximates Cv
+        return params_.Cp * (T - params_.T_ref);
+    }
+
+    double cp(double /*p*/, double /*T*/) const override {
+        return params_.Cp;
+    }
+
+    double cv(double /*p*/, double /*T*/) const override {
+        return params_.Cp;
     }
 
     double total_energy(double /*p*/, double T, double u_mag2) const override {
@@ -151,80 +160,114 @@ public:
     const IncompressibleParams& params() const { return params_; }
 };
 
-// EOS Gaz Parfait : p = ρ*R*T
 class IdealGasEOS : public EquationOfState {
     IdealGasParams params_;
+    double R = 0.0;
+
+    void update_R() {
+        R = params_.R_univ / params_.M;
+    }
 
 public:
-    IdealGasEOS(const IdealGasParams& params = {}) : params_(params) {}
+    IdealGasEOS(const IdealGasParams& params = {}) : params_(params) {
+        update_R();
+    }
 
     EquationOfStateType type() const override { return EquationOfStateType::IDEAL_GAS; }
 
+    void set_params(const IdealGasParams& params) {
+        params_ = params;
+        update_R();
+    }
+
+    const IdealGasParams& params() const { return params_; }
+
     double density(double p, double T) const override {
-        return p / (params_.R * T);
+        return p / (R * T);
     }
 
     double enthalpy(double /*p*/, double T) const override {
-        return params_.Cp * (T - params_.T_ref);
+        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
+        return Cp_derived * (T - params_.T_ref);
     }
 
     double entropy(double p, double T) const override {
-        return params_.Cp * std::log(T / params_.T_ref) - params_.R * std::log(p / params_.p_ref);
+        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
+        return Cp_derived * std::log(T / params_.T_ref) - R * std::log(p / params_.p_ref);
     }
 
     double speed_of_sound(double /*p*/, double T) const override {
-        return std::sqrt(params_.gamma * params_.R * T);
+        double gamma = params_.gamma;
+        return std::sqrt(gamma * R * T);
     }
 
     double temperature_from_enthalpy(double /*p*/, double h) const override {
-        return params_.T_ref + h / params_.Cp;
+        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
+        return params_.T_ref + h / Cp_derived;
     }
 
     double pressure_from_density_temp(double rho, double T) const override {
-        return rho * params_.R * T;
+        return rho * R * T;
     }
 
     double dp_drho_s(double p, double T) const override {
-        return params_.gamma * p / density(p, T);  // c² = γ*p/ρ
+        return params_.gamma * p / density(p, T);
     }
 
-    double dp_dT_rho(double /*p*/, double T) const override {
-        return params_.R * T;  // p = ρ*R*T
+    double dp_dT_rho(double p, double T) const override {
+        return density(p, T) * R;
     }
 
     double drho_dp_T(double p, double T) const override {
-        return 1.0 / (params_.R * T);
+        return 1.0 / (R * T);
     }
 
     double drho_dT_p(double p, double T) const override {
-        return -p / (params_.R * T * T);
+        return -p / (R * T * T);
     }
 
     double internal_energy(double /*p*/, double T) const override {
-        return params_.Cv * (T - params_.T_ref);
+        double Cv_derived = R / (params_.gamma - 1.0);
+        return Cv_derived * (T - params_.T_ref);
+    }
+
+    double cp(double /*p*/, double /*T*/) const override {
+        return params_.gamma * R / (params_.gamma - 1.0);
+    }
+
+    double cv(double /*p*/, double /*T*/) const override {
+        return R / (params_.gamma - 1.0);
     }
 
     double total_energy(double p, double T, double u_mag2) const override {
         return internal_energy(p, T) + 0.5 * u_mag2;
     }
-
-    void set_params(const IdealGasParams& params) { params_ = params; }
-    const IdealGasParams& params() const { return params_; }
 };
 
-// Factory pour créer des EOS
-inline std::unique_ptr<EquationOfState> create_eos(EquationOfStateType type) {
+inline std::unique_ptr<EquationOfState> create_eos(EquationOfStateType type,
+                                                       const IdealGasParams& ideal_params = {}) {
     switch (type) {
         case EquationOfStateType::INCOMPRESSIBLE:
             return std::make_unique<IncompressibleEOS>();
         case EquationOfStateType::IDEAL_GAS:
-            return std::make_unique<IdealGasEOS>();
+            return std::make_unique<IdealGasEOS>(ideal_params);
         default:
             throw std::runtime_error("create_eos: unsupported type");
     }
 }
 
-// Helper pour calculer les propriétés sur un champ
+inline std::unique_ptr<EquationOfState> create_eos(EquationOfStateType type,
+                                                       const IncompressibleParams& incompressible_params) {
+    switch (type) {
+        case EquationOfStateType::INCOMPRESSIBLE:
+            return std::make_unique<IncompressibleEOS>(incompressible_params);
+        case EquationOfStateType::IDEAL_GAS:
+            return std::make_unique<IdealGasEOS>();
+        default:
+            throw std::runtime_error("create_eos: unsupported type for parameters");
+    }
+}
+
 template <typename EOS>
 void compute_thermo_fields(const EOS& eos,
                            const Field<double, Location::CELL>& pressure,

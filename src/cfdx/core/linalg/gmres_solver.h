@@ -31,18 +31,8 @@ inline SolverResult solve_gmres(
     const auto* Ar = A.row_offsets_data();
 
     const double b_norm = b.norm2();
-    const double tol_abs = tolerance * std::max(b_norm, 1e-15);
+    const double tol = tolerance * std::max(b_norm, 1.0);
 
-    // Helper: matrix-vector product
-    auto matvec = [&](const std::vector<double>& v) -> std::vector<double> {
-        std::vector<double> y(n, 0.0);
-        for (std::size_t i = 0; i < n; ++i) {
-            for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) y[i] += Av[k] * v[Ac[k]];
-        }
-        return y;
-    };
-
-    // Compute initial residual: r = b - A*x
     std::vector<double> r(n);
     for (std::size_t i = 0; i < n; ++i) {
         r[i] = b(i);
@@ -53,110 +43,123 @@ inline SolverResult solve_gmres(
     for (std::size_t i = 0; i < n; ++i) res += r[i] * r[i];
     res = std::sqrt(res);
 
-    if (res < tol_abs) {
+    if (res < tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = res;
-        result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+        result.residual_relative = res / std::max(b_norm, 1.0);
         return result;
     }
 
-    int total_iter = 0;
-    int m = (restart > 0) ? restart : 30;
+    int iter = 0;
+    int m = restart > 0 ? restart : 30;
+    if (static_cast<std::size_t>(m) > n) m = static_cast<int>(n);
 
-    for (int restart_iter = 0; restart_iter < static_cast<int>(max_iter); ++restart_iter) {
-        // Arnoldi: V_{m+1} and upper Hessenberg H_m
+    for (int restart_iter = 0; iter < static_cast<int>(max_iter); ++restart_iter) {
+        int restart_limit = static_cast<int>(std::min(
+            static_cast<std::size_t>(m),
+            static_cast<std::size_t>(max_iter - iter)));
+
+        if (restart_limit <= 0) break;
+
         std::vector<std::vector<double>> V(m + 1, std::vector<double>(n, 0.0));
+        for (std::size_t i = 0; i < n; ++i) V[0][i] = r[i] / res;
+
         std::vector<std::vector<double>> H(m + 1, std::vector<double>(m + 1, 0.0));
 
-        // v0 = r0 / ||r0||
-        double beta = res;
-        for (std::size_t i = 0; i < n; ++i) V[0][i] = r[i] / beta;
-
-        // g for least squares (after Givens rotations)
-        std::vector<double> g(m + 1, 0.0);
-        g[0] = beta;
-
-        int j = 0;
-        bool converged = false;
-
-        for (j = 1; j <= m; ++j) {
-            // w = A * v_{j-1}
-            std::vector<double> w = matvec(V[j - 1]);
-
-            // Modified Gram-Schmidt with accumulated Givens rotations
-            for (int i = 0; i < j; ++i) {
-                double h_ij = 0.0;
-                for (std::size_t k = 0; k < n; ++k) h_ij += V[i][k] * w[k];
-                H[i][j] = h_ij;
-                for (std::size_t k = 0; k < n; ++k) w[k] -= h_ij * V[i][k];
+        for (int j = 1; j <= restart_limit; ++j) {
+            std::vector<double> w(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) {
+                for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+                    w[i] += Av[k] * V[j - 1][Ac[k]];
+                }
             }
 
-            // h_{j,j} = ||w||
+            for (int i = 0; i < j; ++i) {
+                double h = 0.0;
+                for (std::size_t k = 0; k < n; ++k) h += V[i][k] * w[k];
+                H[i][j] = h;
+                for (std::size_t k = 0; k < n; ++k) w[k] -= h * V[i][k];
+            }
+
             double h_jj = 0.0;
             for (std::size_t k = 0; k < n; ++k) h_jj += w[k] * w[k];
             h_jj = std::sqrt(h_jj);
             H[j][j] = h_jj;
 
-            if (h_jj < 1e-14 * beta) {
-                // Happy breakdown
+            if (h_jj < 1e-14 * res) {
                 break;
             }
 
-            // v_j = w / h_{j,j}
             for (std::size_t k = 0; k < n; ++k) V[j][k] = w[k] / h_jj;
 
-            ++total_iter;
+            ++iter;
+        }
 
-            // Apply Givens rotation to eliminate H[j-1][j]
-            double h_prev = H[j - 1][j];
-            double h_curr = H[j][j];
-            double norm = std::sqrt(h_prev * h_prev + h_curr * h_curr);
+        std::vector<double> g(restart_limit + 2, 0.0);
+        g[0] = res;
+
+        for (int j = 1; j <= restart_limit; ++j) {
+            double h1 = H[j - 1][j];
+            double h2 = H[j][j];
+            double norm = std::sqrt(h1 * h1 + h2 * h2);
 
             if (norm > 1e-14) {
-                double c = h_prev / norm;
-                double s = h_curr / norm;
+                double c = h1 / norm;
+                double s = h2 / norm;
 
-                // Rotate H
                 H[j - 1][j] = norm;
                 H[j][j] = 0.0;
 
-                // Rotate g
-                double g_prev = g[j - 1];
-                g[j - 1] = c * g_prev + s * g[j];
-                g[j] = -s * g_prev + c * g[j];
-            }
-
-            // Current residual estimate
-            res = std::abs(g[j]);
-
-            if (res < tol_abs) {
-                converged = true;
-                break;
+                double g1 = g[j - 1];
+                double g2 = g[j];
+                g[j - 1] = c * g1 + s * g2;
+                g[j] = -s * g1 + c * g2;
             }
         }
 
-        // Back substitution to solve H y = g
-        int jj_end = (converged) ? j - 1 : m;
-        std::vector<double> y(m + 1, 0.0);
+        res = std::abs(g[restart_limit]);
 
-        if (jj_end >= 0 && jj_end <= m && std::abs(H[jj_end][jj_end]) > 1e-14) {
-            y[jj_end] = g[jj_end] / H[jj_end][jj_end];
-            for (int jj = jj_end - 1; jj >= 0; --jj) {
-                double sum = g[jj];
-                for (int kk = jj + 1; kk <= jj_end; ++kk) sum -= H[jj][kk] * y[kk];
-                y[jj] = sum / H[jj][jj];
+        if (res < tol) {
+            std::vector<double> y(restart_limit + 1, 0.0);
+            if (std::abs(H[restart_limit][restart_limit]) > 1e-14) {
+                y[restart_limit] = g[restart_limit] / H[restart_limit][restart_limit];
+                for (int i = restart_limit - 1; i >= 0; --i) {
+                    double sum = g[i];
+                    for (int j = i + 1; j <= restart_limit; ++j) sum -= H[i][j] * y[j];
+                    y[i] = sum / H[i][i];
+                }
+            }
+
+            for (std::size_t i = 0; i < n; ++i) {
+                for (int j = 0; j < restart_limit; ++j) {
+                    x(i) += V[j][i] * y[j];
+                }
+            }
+
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = iter;
+            result.residual = res;
+            result.residual_relative = res / std::max(b_norm, 1.0);
+            return result;
+        }
+
+        std::vector<double> y(restart_limit + 1, 0.0);
+        if (std::abs(H[restart_limit][restart_limit]) > 1e-14) {
+            y[restart_limit] = g[restart_limit] / H[restart_limit][restart_limit];
+            for (int i = restart_limit - 1; i >= 0; --i) {
+                double sum = g[i];
+                for (int j = i + 1; j <= restart_limit; ++j) sum -= H[i][j] * y[j];
+                if (std::abs(H[i][i]) > 1e-14) y[i] = sum / H[i][i];
             }
         }
 
-        // x = x + V * y
         for (std::size_t i = 0; i < n; ++i) {
-            for (int jj = 0; jj <= jj_end; ++jj) {
-                x(i) += V[jj][i] * y[jj];
+            for (int j = 0; j < restart_limit; ++j) {
+                x(i) += V[j][i] * y[j];
             }
         }
 
-        // Compute new residual
         for (std::size_t i = 0; i < n; ++i) {
             r[i] = b(i);
             for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) r[i] -= Av[k] * x(Ac[k]);
@@ -166,21 +169,19 @@ inline SolverResult solve_gmres(
         for (std::size_t i = 0; i < n; ++i) res += r[i] * r[i];
         res = std::sqrt(res);
 
-        if (res < tol_abs) {
+        if (res < tol) {
             result.status = SolverStatus::CONVERGED;
-            result.iterations = total_iter;
+            result.iterations = iter;
             result.residual = res;
-            result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+            result.residual_relative = res / std::max(b_norm, 1.0);
             return result;
         }
-
-        if (static_cast<std::size_t>(total_iter) >= max_iter) break;
     }
 
     result.status = SolverStatus::MAX_ITER_REACHED;
-    result.iterations = total_iter;
+    result.iterations = iter;
     result.residual = res;
-    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+    result.residual_relative = res / std::max(b_norm, 1.0);
     return result;
 }
 

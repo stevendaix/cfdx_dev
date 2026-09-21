@@ -196,7 +196,7 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
                         const double v_extrap_approx = v_owner + (v_neigh - v_owner) * 0.5; // Approximation linéaire
                         v = apply_limiter_tvd(v_owner, v_upwind, v_extrap_approx, limiter_type);
                     } else {
-                        v = apply_limiter(v_owner, v_neigh, linear, limiter_type);
+                        v = apply_limiter_tvd(v_owner, v_neigh, v_owner + (v_neigh - v_owner) * 0.5, limiter_type);
                     }
                     break;
                 }

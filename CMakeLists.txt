@@ -126,6 +126,7 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/gmsh/gmsh_importer.cpp
 )
 
+# Physics sources
 set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/equation_of_state.h
     src/cfdx/physics/multi_component.h
@@ -134,12 +135,32 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/temporal.h
 )
 
+# Thermodynamics sources (P2 reorganization)
+set(CFDX_THERMODYNAMICS_SOURCES
+    src/cfdx/thermodynamics/equation_of_state.h
+)
+
+# Chemistry sources (P2 reorganization)
+set(CFDX_CHEMISTRY_SOURCES
+    src/cfdx/chemistry/source_terms.h
+)
+
+# Transport sources (P2 reorganizization)
+set(CFDX_TRANSPORT_SOURCES
+    src/cfdx/transport/viscosity/viscosity.h
+    src/cfdx/transport/conductivity/conductivity.h
+    src/cfdx/transport/diffusivity/diffusivity.h
+)
+
 set(CFDX_CORE_SOURCES
     ${CFDX_MESH_SOURCES}
     ${CFDX_GEOMETRY_SOURCES}
     ${CFDX_FIELD_SOURCES}
     ${CFDX_IO_SOURCES}
     ${CFDX_PHYSICS_SOURCES}
+    ${CFDX_THERMODYNAMICS_SOURCES}
+    ${CFDX_CHEMISTRY_SOURCES}
+    ${CFDX_TRANSPORT_SOURCES}
     ${CFDX_IMPORTER_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
@@ -177,6 +198,11 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
     src/cfdx/core/linalg/gmres_solver.h
+    src/cfdx/thermodynamics/equation_of_state.h
+    src/cfdx/chemistry/source_terms.h
+    src/cfdx/transport/viscosity/viscosity.h
+    src/cfdx/transport/conductivity/conductivity.h
+    src/cfdx/transport/diffusivity/diffusivity.h
     src/cfdx/io/hdf5/hdf5_writer.h
     src/cfdx/io/hdf5/hdf5_reader.h
     src/cfdx/io/vtu/vtu_writer.h
@@ -245,7 +271,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
-    # add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
+    add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)

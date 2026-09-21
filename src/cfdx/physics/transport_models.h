@@ -1,6 +1,7 @@
 // M0.14-T02 — Transport Models
 //
-// Viscosity, thermal conductivity, diffusivity models
+// Viscosité, conductivité thermique, diffusivité
+// Basé sur les modèles Sutherland pour l'air
 
 #pragma once
 
@@ -8,95 +9,113 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/field/storage.h"
+#include "equation_of_state.h"
 #include <cstddef>
 #include <cmath>
+#include <limits>
 
 namespace cfdx {
 namespace physics {
 
 using cfdx::core::Location;
 using cfdx::core::Field;
-struct SutherlandParams {
-    double mu0 = 1.716e-5;   // Viscosité de référence [Pa.s] à T0
-    double T0 = 273.15;      // Température de référence [K]
-    double S = 110.4;        // Constante de Sutherland [K]
+
+constexpr double SUTHERTY_MU0 = 1.716e-5;
+constexpr double SUTHERTY_T0 = 273.15;
+constexpr double SUTHERTY_S = 110.4;
+constexpr double AIR_R = 287.04749097718457;
+
+struct TransportProperties {
+    double mu = 1.8e-5;
+    double k = 0.026;
+    double D = 2.0e-5;
+    double rho = 1.2;
+    double Cp = 1004.5;
+    double Pr = 0.71;
+    double Sc = 0.7;
 };
 
-// Viscosité constante
-inline double constant_viscosity(double mu) {
-    return mu;
+inline double sutherland_viscosity(double T, double mu0_ref = SUTHERTY_MU0, double T_ref = SUTHERTY_T0, double S = SUTHERTY_S) {
+    return mu0_ref * std::pow(T / T_ref, 1.5) * (T_ref + S) / (T + S);
 }
 
-// Loi de Sutherland pour viscosité
-inline double sutherland_viscosity(double T, const SutherlandParams& params) {
-    return params.mu0 * std::pow(T / params.T0, 1.5) * (params.T0 + params.S) / (T + params.S);
-}
-
-// Loi de puissance pour viscosité
 inline double power_law_viscosity(double T, double mu0, double T0, double n) {
     return mu0 * std::pow(T / T0, n);
 }
 
-// Conductivité thermique constante
-inline double constant_conductivity(double k) {
-    return k;
+inline double constant_viscosity(double mu) {
+    return mu;
 }
 
-// Conductivité thermique via nombre de Prandtl : k = mu * Cp / Pr
 inline double prandtl_conductivity(double mu, double Cp, double Pr) {
     return mu * Cp / Pr;
 }
 
-// Diffusivité constante
-inline double constant_diffusivity(double D) {
-    return D;
-}
-
-// Diffusivité via nombre de Schmidt : D = mu / (rho * Sc)
 inline double schmidt_diffusivity(double mu, double rho, double Sc) {
+    if (rho <= 0) return 0;
     return mu / (rho * Sc);
 }
 
-// Propriétés de transport regroupées
-struct TransportProperties {
-    double mu = 1.8e-5;      // Viscosité dynamique [Pa.s]
-    double k = 0.026;        // Conductivité thermique [W/m/K]
-    double D = 2.0e-5;       // Diffusivité massique [m²/s]
-    double Cp = 1004.5;      // Chaleur spécifique [J/kg/K]
-    double Pr = 0.71;        // Nombre de Prandtl
-    double Sc = 0.7;         // Nombre de Schmidt
-};
-
-// Compute toutes les propriétés de transport à partir de T
-inline TransportProperties compute_transport(double T,
-                                              const SutherlandParams& suth = {},
-                                              double Pr = 0.71,
-                                              double Sc = 0.7,
-                                              double Cp = 1004.5)
-{
+inline TransportProperties compute_transport(double T, double rho,
+                                             double mu0_ref = SUTHERTY_MU0,
+                                             double T_ref = SUTHERTY_T0,
+                                             double S = SUTHERTY_S,
+                                             double Pr = 0.71,
+                                             double Sc = 0.7,
+                                             double Cp = AIR_R * 1005.0 / 1.4) {
     TransportProperties tp;
-    tp.mu = sutherland_viscosity(T, suth);
+    tp.mu = sutherland_viscosity(T, mu0_ref, T_ref, S);
     tp.k = prandtl_conductivity(tp.mu, Cp, Pr);
-    tp.D = schmidt_diffusivity(tp.mu, 1.2, Sc);  // rho ≈ 1.2 kg/m³ pour l'air
+    tp.D = schmidt_diffusivity(tp.mu, rho, Sc);
+    tp.rho = rho;
     tp.Cp = Cp;
     tp.Pr = Pr;
     tp.Sc = Sc;
     return tp;
 }
 
-// Compute sur un champ de température
+inline TransportProperties compute_transport(double T,
+                                              const IdealGasEOS& eos,
+                                              double p,
+                                              double Pr = 0.71,
+                                              double Sc = 0.7) {
+    double rho = eos.density(p, T);
+    double mu = sutherland_viscosity(T);
+    double Cp = eos.cp(p, T);
+    TransportProperties tp;
+    tp.mu = mu;
+    tp.k = prandtl_conductivity(mu, Cp, Pr);
+    tp.D = schmidt_diffusivity(mu, rho, Sc);
+    tp.rho = rho;
+    tp.Cp = Cp;
+    tp.Pr = Pr;
+    tp.Sc = Sc;
+    return tp;
+}
+
 inline void compute_transport_fields(const Field<double, Location::CELL>& T,
                                       Field<double, Location::CELL>& mu,
                                       Field<double, Location::CELL>& k,
                                       Field<double, Location::CELL>& D,
-                                      const SutherlandParams& suth = {},
-                                      double Pr = 0.71,
-                                      double Sc = 0.7,
-                                      double Cp = 1004.5)
-{
+                                      const IdealGasEOS& eos,
+                                      const Field<double, Location::CELL>& p) {
     const std::size_t n = T.size();
     for (std::size_t c = 0; c < n; ++c) {
-        TransportProperties tp = compute_transport(T(c), suth, Pr, Sc, Cp);
+        TransportProperties tp = compute_transport(T(c), eos, p(c));
+        mu(c) = tp.mu;
+        k(c) = tp.k;
+        D(c) = tp.D;
+    }
+}
+
+inline void compute_transport_fields(const Field<double, Location::CELL>& T,
+                                      Field<double, Location::CELL>& mu,
+                                      Field<double, Location::CELL>& k,
+                                      Field<double, Location::CELL>& D,
+                                      double rho) {
+    const std::size_t n = T.size();
+    for (std::size_t c = 0; c < n; ++c) {
+        TransportProperties tp = compute_transport(T(c), rho);
         mu(c) = tp.mu;
         k(c) = tp.k;
         D(c) = tp.D;

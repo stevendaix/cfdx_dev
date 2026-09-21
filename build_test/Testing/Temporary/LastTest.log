@@ -1,0 +1,79 @@
+Start testing: Sep 21 09:08 CEST
+----------------------------------------------------------
+20/35 Testing: test_gmres_solver
+20/35 Test: test_gmres_solver
+Command: "/home/steven/cfdx_dev/build_test/test_gmres_solver"
+Directory: /home/steven/cfdx_dev/build_test
+"test_gmres_solver" start time: Sep 21 09:08 CEST
+Output:
+----------------------------------------------------------
+Running 5 test cases...
+  PASS: gmres_solve_diagonal
+  PASS: gmres_solve_poisson_1d
+  PASS: gmres_already_converged
+  PASS: gmres_dimension_mismatch
+  PASS: gmres_with_restart
+
+Results: 5 passed, 0 failed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_gmres_solver" end time: Sep 21 09:08 CEST
+"test_gmres_solver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/35 Testing: test_temporal_physics
+26/35 Test: test_temporal_physics
+Command: "/home/steven/cfdx_dev/build_test/test_temporal_physics"
+Directory: /home/steven/cfdx_dev/build_test
+"test_temporal_physics" start time: Sep 21 09:08 CEST
+Output:
+----------------------------------------------------------
+Running 5 test cases...
+  PASS: explicit_euler_decay
+  PASS: implicit_euler_placeholder
+  PASS: crank_nicolson_decay
+  PASS: bdf2_decay
+  PASS: derivative_finite_diff
+
+Results: 5 passed, 0 failed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_temporal_physics" end time: Sep 21 09:08 CEST
+"test_temporal_physics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/35 Testing: test_transport_models
+29/35 Test: test_transport_models
+Command: "/home/steven/cfdx_dev/build_test/test_transport_models"
+Directory: /home/steven/cfdx_dev/build_test
+"test_transport_models" start time: Sep 21 09:08 CEST
+Output:
+----------------------------------------------------------
+Running 12 test cases...
+  PASS: ideal_gas_density
+  PASS: ideal_gas_enthalpy
+  PASS: ideal_gas_speed_of_sound
+  PASS: ideal_gas_density_comparison
+  PASS: constant_viscosity
+  PASS: sutherland_viscosity
+  PASS: power_law_viscosity
+  PASS: prandtl_conductivity
+  PASS: compute_transport_with_rho
+  PASS: compute_transport_with_eos
+  PASS: incompressible_eos
+  PASS: transport_fields_on_field
+
+Results: 12 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_transport_models" end time: Sep 21 09:08 CEST
+"test_transport_models" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 21 09:08 CEST
