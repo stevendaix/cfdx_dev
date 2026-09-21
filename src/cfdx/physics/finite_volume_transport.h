@@ -276,8 +276,14 @@ inline ScalarEquation assemble_scalar_equation(
 
         diag[c] -= source_implicit(c) * geometry.cell_volumes[c];
         if (extra_diagonal) diag[c] += (*extra_diagonal)[c];
-        if (!(diag[c] > 0.0) || !std::isfinite(diag[c]))
-            throw std::runtime_error("assemble_scalar_equation: non-positive diagonal");
+        if (!(diag[c] > 0.0) || !std::isfinite(diag[c])) {
+            throw std::runtime_error(
+                "assemble_scalar_equation: non-positive diagonal at cell " +
+                std::to_string(c) + " diag=" + std::to_string(diag[c]) +
+                " div_phi=" + std::to_string(div_phi[c]) +
+                " Sp=" + std::to_string(source_implicit(c)) +
+                " V=" + std::to_string(geometry.cell_volumes[c]));
+        }
 
         rhs[c] += source_explicit(c) * geometry.cell_volumes[c];
         rhs[c] += deferred_rhs[c];
