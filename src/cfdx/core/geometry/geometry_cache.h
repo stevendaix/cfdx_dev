@@ -98,6 +98,8 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
     compute_area_weighted_cell_centres(
         m, cache.face_centres.data(), cache.face_Sf.data(), cache.cell_centres.data());
     orient_mesh_face_vectors(m, cache.face_centres, cache.cell_centres, cache.face_Sf);
+    for (std::size_t f = 0; f < n_faces; ++f)
+        cache.face_normals[f] = cache.face_Sf[f].normalized();
     
     // --- 3. Cell geometry ---
     const CellConnectivity& cells = m.cells();
