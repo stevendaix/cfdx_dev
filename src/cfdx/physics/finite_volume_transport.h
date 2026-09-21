@@ -337,6 +337,11 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
         const double candidate_value = equation.rhs(0) / diagonal;
+        if (!std::isfinite(candidate_value))
+            throw std::runtime_error(
+                "solve_scalar_equation: non-finite 1x1 solution diagonal=" +
+                std::to_string(diagonal) +
+                " rhs=" + std::to_string(equation.rhs(0)));
         // Use a scaled residual for the 1x1 direct solve. Large source terms
         // can otherwise make an exactly solved scalar equation fail an
         // absolute-only tolerance because of floating-point cancellation.
