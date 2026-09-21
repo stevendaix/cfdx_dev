@@ -94,6 +94,35 @@ int main() {
         EXPECT_NEAR(cell.volume, 1.0 / 6.0, 1e-12);
     });
 
+    run_case("shared_face_is_reoriented_for_neighbour_cell", []() {
+        // Global face normals follow the owner orientation. The shared x=1 face
+        // therefore points +x for both cells and must be flipped for cell 1.
+        const Vec3 fc[] = {
+            {0.0,0.5,0.5}, {1.0,0.5,0.5}, {2.0,0.5,0.5},
+            {0.5,0.0,0.5}, {0.5,1.0,0.5},
+            {0.5,0.5,0.0}, {0.5,0.5,1.0},
+            {1.5,0.0,0.5}, {1.5,1.0,0.5},
+            {1.5,0.5,0.0}, {1.5,0.5,1.0}
+        };
+        const Vec3 fs[] = {
+            {-1.0,0.0,0.0}, {1.0,0.0,0.0}, {1.0,0.0,0.0},
+            {0.0,-1.0,0.0}, {0.0,1.0,0.0},
+            {0.0,0.0,-1.0}, {0.0,0.0,1.0},
+            {0.0,-1.0,0.0}, {0.0,1.0,0.0},
+            {0.0,0.0,-1.0}, {0.0,0.0,1.0}
+        };
+        const FaceIndex cell0_faces[] = {0,1,3,4,5,6};
+        const FaceIndex cell1_faces[] = {1,2,7,8,9,10};
+
+        const auto cell0 = compute_cell_geometry(fc,fs,cell0_faces,6);
+        const auto cell1 = compute_cell_geometry(fc,fs,cell1_faces,6);
+
+        EXPECT_NEAR(cell0.volume,1.0,1e-12);
+        EXPECT_NEAR(cell1.volume,1.0,1e-12);
+        EXPECT_NEAR(cell0.centre.x,0.5,1e-12);
+        EXPECT_NEAR(cell1.centre.x,1.5,1e-12);
+    });
+
     run_case("empty_cell_throws", []() {
         Vec3 fc[1]; Vec3 fs[1];
         FaceIndex faces[1] = {0};
