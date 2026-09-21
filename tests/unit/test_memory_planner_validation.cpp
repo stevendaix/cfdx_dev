@@ -42,9 +42,16 @@ int main() {
         assert(pool.total_size == 1536);
         assert(pool.allocations.size() == 3);
 
-        const auto& a = pool.allocations[0];
-        const auto& b = pool.allocations[1];
-        const auto& c = pool.allocations[2];
+        const auto find = [&](uint64_t id) -> const BufferReuseOptimizer::Allocation& {
+            for (const auto& allocation : pool.allocations) {
+                if (allocation.buffer_id.id == id) return allocation;
+            }
+            assert(false);
+            return pool.allocations.front();
+        };
+        const auto& a = find(1);
+        const auto& b = find(2);
+        const auto& c = find(3);
         assert(a.offset == b.offset);
         assert(a.offset != c.offset);
         assert(plan.budget.temporaries_bytes == 2560);
