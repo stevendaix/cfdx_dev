@@ -267,6 +267,10 @@ inline double compute_cfl_time_step(
         face_Sf[f] = fg.Sf;
     }
 
+    std::vector<Vec3> provisional_centres(n_cells);
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), provisional_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, provisional_centres, face_Sf);
+
     std::vector<double> cell_volume(n_cells, 0.0);
     const CellConnectivity& cells = mesh.cells();
     const auto* cell_faces = cells.faces_data();
