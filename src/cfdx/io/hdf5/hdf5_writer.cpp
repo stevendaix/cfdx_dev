@@ -24,6 +24,8 @@
 namespace cfdx {
 namespace io {
 
+static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value);
+
 static std::uint64_t fnv1a_update(
     std::uint64_t hash, const void* data, std::size_t size)
 {
