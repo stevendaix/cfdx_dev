@@ -67,7 +67,9 @@ int main(){
         Mesh m=make_two_tetra();
         Field<double,Location::CELL> ap(2,"aP","1",1);
         Field<double,Location::CELL> r(2,"r","m3/s",1);
-        ap(0)=ap(1)=1.0; r(0)=1.0; r(1)=-1.0;
+        ap(0)=ap(1)=1.0;
+        const double v0 = 1.0/6.0, v1 = 1.0/3.0;
+        r(0)=1.0; r(1)=-(v0/v1);
         auto pc=assemble_pressure_correction(m,ap,r);
         EXPECT_NEAR(pc.matrix(0,0)+pc.matrix(0,1),0.0,1e-12);
         EXPECT_NEAR(pc.matrix(1,0)+pc.matrix(1,1),0.0,1e-12);
