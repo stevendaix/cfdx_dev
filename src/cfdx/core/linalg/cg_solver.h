@@ -119,7 +119,7 @@ inline SolverResult solve_cg(
     std::vector<double> z(n);
     for (std::size_t i = 0; i < n; ++i) {
         z[i] = r[i] / M[i];
-        if (!std::isfinite(z[i])) { result.status = SolverStatus::DIVERGED; return result; }
+        if (!std::isfinite(z[i])) { result.status=SolverStatus::DIVERGED; return result; }
     }
 
     // p = z
@@ -133,7 +133,7 @@ inline SolverResult solve_cg(
     const double b_norm = b.norm2();
     const double tol_abs = tolerance * std::max(b_norm, 1e-15);
 
-    if (!std::isfinite(rsold)) { result.status = SolverStatus::DIVERGED; return result; }
+    if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
 
     if (rsold < tol_abs * tol_abs) {
         result.status = SolverStatus::CONVERGED;
@@ -165,19 +165,17 @@ inline SolverResult solve_cg(
             return result;
         }
         const double alpha = rsold / pAp;
-        if (!std::isfinite(alpha)) { result.status = SolverStatus::DIVERGED; result.iterations = iter; return result; }
+        if (!std::isfinite(alpha)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
 
         // x = x + alpha p
         // r = r - alpha Ap
         for (std::size_t i = 0; i < n; ++i) {
             x(i) += alpha * p[i];
             r[i] -= alpha * Ap[i];
-            if (!std::isfinite(x(i)) || !std::isfinite(r[i])) {
-                result.status = SolverStatus::DIVERGED;
-                result.iterations = iter;
-                return result;
-            }
         }
+
+        for (std::size_t i = 0; i < n; ++i)
+            if (!std::isfinite(x(i)) || !std::isfinite(r[i])) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
 
         // z = M^{-1} r
         for (std::size_t i = 0; i < n; ++i) {
@@ -190,7 +188,7 @@ inline SolverResult solve_cg(
             rsnew += r[i] * z[i];
         }
 
-        if (!std::isfinite(rsnew)) { result.status = SolverStatus::DIVERGED; result.iterations = iter; return result; }
+        if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
         const double res = std::sqrt(std::abs(rsnew));
         if (res < tol_abs) {
             result.status = SolverStatus::CONVERGED;

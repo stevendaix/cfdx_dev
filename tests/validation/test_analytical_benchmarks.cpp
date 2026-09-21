@@ -233,7 +233,7 @@ int main()
                 exact[i] = r.y[i] / H;
             const auto e = error_norms(r.u,exact,r.volume);
             report_case("Couette",n,e,std::numeric_limits<double>::quiet_NaN());
-            if (e.linf > 1e-11)
+            if (e.linf_relative > 1e-11)
                 throw std::runtime_error("Couette analytical solution mismatch");
         }
 
@@ -266,7 +266,7 @@ int main()
                 exact[i] = T0 + (T1-T0)*r.y[i]/H;
             const auto e = error_norms(r.u,exact,r.volume);
             report_case("Conduction 1D",n,e,std::numeric_limits<double>::quiet_NaN());
-            if (e.linf > 1e-11)
+            if (e.linf_relative > 1e-11)
                 throw std::runtime_error("1-D conduction analytical solution mismatch");
         }
 
