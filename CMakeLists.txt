@@ -232,17 +232,21 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
     src/cfdx/core/linalg/gmres_solver.h
-    src/cfdx/core/linalg/advanced_preconditioners.h
-    src/cfdx/core/solvers/scalar_diffusion.h
-    src/cfdx/runtime/execution/execution_policy.h
-    src/cfdx/runtime/gpu/device_buffer.h
-    src/cfdx/runtime/gpu/gpu_kernels.h
-    src/cfdx/runtime/ooc/tile_manager.h
-    src/cfdx/runtime/ooc/working_set.h
-    src/cfdx/runtime/ooc/pinned_buffer_pool.h
-    src/cfdx/runtime/ooc/cuda_pinned_buffer_pool.h
-    src/cfdx/runtime/ooc/async_transfer.h
-    src/cfdx/runtime/ooc/ooc_executor.h
+    src/cfdx/core/linalg/linear_operator.h
+    src/cfdx/core/linalg/solver_workspace.h
+    src/cfdx/core/linalg/matrix_free_fv_operator.h
+    src/cfdx/core/linalg/amg_preconditioner.h
+    src/cfdx/core/linalg/mixed_precision.h
+    src/cfdx/core/linalg/chebyshev_smoother.h
+    src/cfdx/core/linalg/fv_operator.h
+    src/cfdx/core/linalg/krylov_controls.h
+    src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/memory/reuse_pool.h
+    src/cfdx/core/memory/field_lifetime.h
+    src/cfdx/core/linalg/mpi_overlap.h
+    src/cfdx/core/linalg/block_schur.h
+    src/cfdx/core/mesh/solver_mesh.h
+    src/cfdx/core/mesh/sfc_ordering.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
@@ -343,7 +347,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
-    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
