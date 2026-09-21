@@ -98,6 +98,30 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
     std::vector<Vec3> cell_centres(n_cells);
     std::vector<double> cell_volumes(n_cells);
     compute_area_weighted_cell_centres(m, face_centres.data(), face_Sf.data(), cell_centres.data());
+
+    // Validate the input winding before canonicalizing face vectors. The
+    // geometry pipeline may repair orientation for solver use, but the mesh
+    // validator must still report an inverted/raw face winding as invalid.
+    for (std::size_t f = 0; f < n_faces; ++f) {
+        const std::size_t owner = m.ownership().owner(f);
+        if (owner >= n_cells) continue;
+        const auto neighbour = m.ownership().neighbour(f);
+        double projection = 0.0;
+        if (neighbour >= 0) {
+            const std::size_t n = static_cast<std::size_t>(neighbour);
+            if (n < n_cells)
+                projection = face_Sf[f].dot(cell_centres[n] - cell_centres[owner]);
+            else
+                continue;
+        } else {
+            projection = face_Sf[f].dot(face_centres[f] - cell_centres[owner]);
+        }
+        if (!(projection > 0.0) || !std::isfinite(projection)) {
+            report.add_error("face " + std::to_string(f) +
+                             " has inconsistent owner-relative orientation");
+        }
+    }
+
     orient_mesh_face_vectors(m, face_centres, cell_centres, face_Sf);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
