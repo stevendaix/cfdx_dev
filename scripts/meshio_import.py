@@ -113,7 +113,8 @@ def write(path, mesh, topo):
         if b.type not in SURFACE: continue
         tags=block_tags(mesh,"gmsh:physical",bi)
         for j,row in enumerate(np.asarray(b.data)):
-            ncorner = SURFACE[b.type]\n            fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
+            ncorner = SURFACE[b.type]
+            fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
             if fid is None: continue
             pname=names.get(int(tags[j]),f"physical_{int(tags[j])}") if tags is not None and j<len(tags) else "boundary"
             patches.setdefault(pname,[]).append(fid)
