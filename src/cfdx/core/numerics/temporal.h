@@ -195,15 +195,31 @@ inline Field<double, Location::CELL> advance_time(
         case TimeScheme::BDF2:
             if (!ctx || !ctx->has_prev) {
                 // Bootstrap BDF2 with a genuinely implicit Euler step.
-                solve_fixed_point([&] {
+                for (std::size_t d = 0; d < dim; ++d) {
+                    const double* phi_data = phi.component_data(d);
+                    double* new_data = phi_new.component_data(d);
+                    for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                        new_data[cell] = phi_data[cell];
+                    }
+                }
+                for (int iteration = 0; iteration < max_iterations; ++iteration) {
+                    rhs_func(phi_new, rhs_iter);
+                    double max_delta = 0.0;
                     for (std::size_t d = 0; d < dim; ++d) {
                         const double* phi_data = phi.component_data(d);
+                        const double* rhs_data = rhs_iter.component_data(d);
                         double* new_data = phi_new.component_data(d);
                         for (std::size_t cell = 0; cell < n_cells; ++cell) {
-                            new_data[cell] = phi_data[cell];
+                            const double candidate = phi_data[cell] + dt * rhs_data[cell];
+                            max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
+                            new_data[cell] = candidate;
                         }
                     }
-                });
+                    if (max_delta <= tolerance) break;
+                    if (iteration == max_iterations - 1) {
+                        throw std::runtime_error("advance_time: implicit Euler bootstrap did not converge");
+                    }
+                }
             } else {
                 solve_fixed_point([&] {});
             }
