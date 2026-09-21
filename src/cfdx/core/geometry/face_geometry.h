@@ -20,6 +20,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/mesh/mesh.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -145,6 +146,31 @@ inline FaceGeometry compute_face_geometry_oriented(
     ensure_face_orientation(fg.Sf, fg.centre, owner_centre, neighbour_centre);
     fg.normal = fg.area > 0.0 ? fg.Sf.normalized() : Vec3{0, 0, 0};
     return fg;
+}
+
+
+inline void orient_mesh_face_vectors(
+    const Mesh& mesh,
+    const std::vector<Vec3>& face_centres,
+    const std::vector<Vec3>& cell_centres,
+    std::vector<Vec3>& face_Sf)
+{
+    if (face_centres.size() != mesh.n_faces() ||
+        face_Sf.size() != mesh.n_faces() ||
+        cell_centres.size() != mesh.n_cells())
+        throw std::invalid_argument("orient_mesh_face_vectors: geometry size mismatch");
+
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const std::size_t owner = mesh.ownership().owner(f);
+        if (owner >= mesh.n_cells())
+            throw std::runtime_error("orient_mesh_face_vectors: invalid owner");
+        const int neighbour = mesh.ownership().neighbour(f);
+        const Vec3 d = neighbour >= 0
+            ? cell_centres[static_cast<std::size_t>(neighbour)] - cell_centres[owner]
+            : face_centres[f] - cell_centres[owner];
+        if (face_Sf[f].dot(d) < 0.0)
+            face_Sf[f] = face_Sf[f] * -1.0;
+    }
 }
 
 }  // namespace core
