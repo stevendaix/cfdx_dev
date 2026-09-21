@@ -32,7 +32,7 @@ int main() {
     });
     run_case("wall_function_reference_relations", [] {
         const double nu=1e-5, utau=0.5, y=0.001;
-        const double yp=cfdx::cfdx::physics::wall::y_plus(y,utau,nu);
+        const double yp=cfdx::physics::wall::y_plus(y,utau,nu);
         EXPECT_NEAR(yp,50.0,1e-12);
         EXPECT_TRUE(cfdx::physics::wall::u_plus_log(yp)>0.0);
         EXPECT_TRUE(cfdx::physics::wall::turbulent_viscosity_log(y,utau,nu)>0.0);
