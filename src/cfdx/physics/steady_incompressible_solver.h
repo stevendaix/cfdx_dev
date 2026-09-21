@@ -94,7 +94,7 @@ gauss_gradient_with_boundary(
         for (Offset k = 0; k < count; ++k) {
             const std::size_t f = mesh.cells().faces_data()[off + k];
             const bool owner = own.owner(f) == c;
-            Vec3 Sf = owner ? geometry.face_area_vectors[f] : -1.0 * geometry.face_area_vectors[f];
+            Vec3 Sf = owner ? geometry.face_area_vectors[f] : geometry.face_area_vectors[f] * -1.0;
             double vf = field(c);
 
             if (own.neighbour(f) >= 0) {
@@ -109,7 +109,7 @@ gauss_gradient_with_boundary(
                         vf = it->second.value;
                 }
             }
-            sum += vf * Sf;
+            sum += Sf * vf;
         }
         const double invV = 1.0 / geometry.cell_volumes[c];
         grad.component_data(0)[c] = sum.x * invV;
@@ -139,7 +139,7 @@ make_mass_flux(
             const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
             Vec3 Un;
             U.get(n, Un.x, Un.y, Un.z);
-            Uf = 0.5 * (Uf + Un);
+            Uf = (Uf + Un) * 0.5;
         } else {
             const std::size_t p = geometry.face_patch[f];
             if (p < mesh.boundary().n_patches()) {
@@ -354,10 +354,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             pressure_iterations = rp.iterations;
 
             for (std::size_t c = 0; c < nc; ++c)
-                p(c) += controls.coupling.pressure_relaxation * p_corr(c);
+                p(c) += controls.coupling.alpha_p * p_corr(c);
             // Explicitly enforce the selected pressure gauge after relaxation.
             p(controls.pressure_reference_cell) = controls.pressure_reference_value;
 
+            Field<double, Location::CELL> p_corr_field(
+                nc, "p_corr", "Pa", 1);
+            for (std::size_t c = 0; c < nc; ++c) p_corr_field(c) = p_corr(c);
             ScalarBoundaryConditions pressure_correction_bcs;
             for (const auto& [name, bc] : pressure_bcs) {
                 pressure_correction_bcs[name] = bc;
@@ -365,7 +368,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     pressure_correction_bcs[name].value = 0.0;
             }
             auto grad_pc = gauss_gradient_with_boundary(
-                p_corr, mesh, geometry, pressure_correction_bcs);
+                p_corr_field, mesh, geometry, pressure_correction_bcs);
             for (std::size_t c = 0; c < nc; ++c) {
                 U.component_data(0)[c] -= rAU[c] * grad_pc.component_data(0)[c];
                 U.component_data(1)[c] -= rAU[c] * grad_pc.component_data(1)[c];
