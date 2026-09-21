@@ -48,3 +48,42 @@ Build and execute with the normal CMake/CTest workflow:
     ctest --test-dir build --output-on-failure
 
 The test is deliberately solver-independent. Numerical solver validation remains in the existing M1-M4 benchmark/validation suites.
+
+
+## Complete workflow slice
+
+The application layer covers the full UI-neutral workflow contract:
+
+- case tree with Geometry, Mesh, Physics, Materials, Boundaries, Numerics, Solver, Monitors and Reports nodes;
+- property editing routed through the simulation controller and classified as hot/restart/rebuild;
+- steady and transient run targets, including run-to-time;
+- explicit run/pause/stop state transitions;
+- solver adapter lifecycle (validate, begin, iterate, end);
+- checkpoint storage through an interface, with memory and portable text implementations;
+- command bus for TUI/automation commands (validate, run, run-until, pause, stop, set, checkpoint, restore);
+- common scene selection and toolbar state for a future GUI;
+- monitor, report and derived-field models shared by GUI/TUI/automation.
+
+This is intentionally the application contract rather than a display toolkit. A Qt/VTK frontend can bind to Workbench, while HPC/headless execution can use the same objects through CommandBus.
+
+### Workflow acceptance matrix
+
+| Case | Covered by |
+|---|---|
+| Create/open-like case state | Workbench + CaseModel |
+| Navigate setup tree | CaseTree |
+| Edit setup | PropertyEditor |
+| Validate | SimulationController + SolverAdapter |
+| Steady run | RunTarget |
+| Transient run | RunTarget + TimeControl |
+| Run to physical time | run-until |
+| Pause/stop | SimulationController |
+| Hot/restart/rebuild edit | ChangeImpact |
+| Checkpoint | CheckpointStore |
+| Restore | CommandBus + CheckpointStore |
+| Geometry/patch selection | SceneModel + Workbench |
+| Live monitors | MonitorManager |
+| Reports/derived fields | PostProcessor |
+| TUI/automation | CommandBus |
+| Concrete solver integration | SolverAdapter |
+|

@@ -1,4 +1,5 @@
 #include "cfdx/application/simulation_controller.h"
+#include "cfdx/application/solver_adapter.h"
 
 #include <utility>
 
@@ -22,6 +23,7 @@ void SimulationController::set_state(SimulationState state) {
 
 void SimulationController::validate() {
     set_state(SimulationState::Validating);
+    if (solver_adapter_) solver_adapter_->validate(model_);
     if (model_.is_transient() && model_.time.step <= 0.0) {
         set_state(SimulationState::Failed);
         throw std::invalid_argument("Transient time step must be positive");
@@ -53,30 +55,41 @@ void SimulationController::run(RunTarget target) {
         : (model_.is_transient() ? model_.time.max_iterations_per_step : 1);
 
     const double dt = model_.is_transient() ? model_.time.step : 0.0;
+    if (solver_adapter_) solver_adapter_->begin(model_, checkpoint_);
     for (std::size_t i = 0; i < max_iterations; ++i) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stop_requested_) {
                 state_ = SimulationState::Stopped;
+                if (solver_adapter_) solver_adapter_->end();
                 return;
             }
             if (pause_requested_) {
                 state_ = SimulationState::Paused;
+                if (solver_adapter_) solver_adapter_->end();
                 return;
             }
         }
 
         ++checkpoint_.iteration;
         if (model_.is_transient()) checkpoint_.time += dt;
+        if (solver_adapter_ && !solver_adapter_->iterate(checkpoint_.iteration, checkpoint_.time)) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_ = SimulationState::Failed;
+            solver_adapter_->end();
+            return;
+        }
         if (callback_ && !callback_(checkpoint_.iteration, checkpoint_.time)) {
             std::lock_guard<std::mutex> lock(mutex_);
             state_ = SimulationState::Stopped;
+            if (solver_adapter_) solver_adapter_->end();
             return;
         }
 
         if (target.end_time >= 0.0 && checkpoint_.time >= target.end_time) {
             set_state(SimulationState::Converged);
             create_checkpoint();
+            if (solver_adapter_) solver_adapter_->end();
             return;
         }
     }
@@ -84,6 +97,7 @@ void SimulationController::run(RunTarget target) {
     if (target.until_converged) set_state(SimulationState::Converged);
     else set_state(SimulationState::Paused);
     create_checkpoint();
+    if (solver_adapter_) solver_adapter_->end();
 }
 
 void SimulationController::pause() {
@@ -113,6 +127,19 @@ ChangeImpact SimulationController::edit(const std::string& key, Parameter parame
 void SimulationController::acknowledge_restart() {
     requires_restart_ = false;
     ++model_.numerics_revision;
+}
+
+void SimulationController::restore(const CaseSnapshot& snapshot) {
+    if (state() == SimulationState::Running || state() == SimulationState::Validating) {
+        throw std::logic_error("Cannot restore a checkpoint while running");
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    model_ = snapshot.model;
+    checkpoint_ = snapshot.checkpoint;
+    requires_restart_ = false;
+    stop_requested_ = false;
+    pause_requested_ = false;
+    state_ = SimulationState::Stopped;
 }
 
 void SimulationController::create_checkpoint() {
