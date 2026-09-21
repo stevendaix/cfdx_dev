@@ -48,6 +48,8 @@ struct IncompressibleIteration {
     double pressure_residual = std::numeric_limits<double>::infinity();
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
+    double velocity_change_inf = std::numeric_limits<double>::infinity();
+    double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
 };
@@ -164,6 +166,7 @@ make_rhie_chow_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs)
 {
+    using namespace cfdx::core;
     if(p.size()!=mesh.n_cells() || rAU.size()!=mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
     auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
@@ -177,11 +180,11 @@ make_rhie_chow_mass_flux(
         if(d<=0.0) throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face");
         const double rface=0.5*(rAU[o]+rAU[n]);
         const double dpdn=(p(n)-p(o))/d;
-        const Vec3 gpface={
+        const cfdx::core::Vec3 gpface={
             0.5*(gradp.component_data(0)[o]+gradp.component_data(0)[n]),
             0.5*(gradp.component_data(1)[o]+gradp.component_data(1)[n]),
             0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
-        const Vec3 Sf=geometry.face_area_vectors[f];
+        const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
         const double gradface=gpface.dot(Sf);
         const double orth=dpdn*Sf.mag();
         flux(f)-=rho*rface*(orth-gradface);
@@ -254,6 +257,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             ? 1u : static_cast<std::size_t>(controls.coupling.n_pressure_correctors);
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        const auto U_old = U;
+        const auto p_old = p;
         auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
@@ -437,6 +442,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             linf = std::max(linf, std::abs(div));
         }
 
+        double velocity_change_inf = 0.0;
+        double pressure_change_inf = 0.0;
+        double velocity_scale = 1.0;
+        double pressure_scale = 1.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            for (std::size_t d = 0; d < 3; ++d) {
+                velocity_change_inf = std::max(
+                    velocity_change_inf,
+                    std::abs(U.component_data(d)[c] - U_old.component_data(d)[c]));
+                velocity_scale = std::max(
+                    velocity_scale, std::abs(U.component_data(d)[c]));
+            }
+            pressure_change_inf = std::max(
+                pressure_change_inf, std::abs(p(c) - p_old(c)));
+            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
+        }
+        velocity_change_inf /= velocity_scale;
+        pressure_change_inf /= pressure_scale;
+
         IncompressibleIteration h;
         h.iteration = iter;
         h.momentum_residual = std::max({rx.residual_relative, ry.residual_relative,
@@ -444,14 +468,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
+        h.velocity_change_inf = velocity_change_inf;
+        h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
         result.history.push_back(h);
 
-        if (std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
+        if (iter > 1 &&
+            std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance) {
+            h.continuity_linf <= controls.convergence.continuity_tolerance &&
+            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
+            h.pressure_change_inf <= controls.convergence.relative_tolerance) {
             result.converged = true;
             result.iterations = iter;
             break;
