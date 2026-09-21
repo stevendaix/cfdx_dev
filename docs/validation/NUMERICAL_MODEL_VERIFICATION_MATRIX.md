@@ -13,8 +13,8 @@ This matrix complements the Fluent VMFL campaign. It targets numerical methods a
 | N001 | Conjugate Gradient | exact SPD 3x3 solve | B |
 | N002 | BiCGStab | exact non-symmetric 3x3 solve | B |
 | N003 | GMRES | exact non-symmetric 3x3 solve | B |
-| N004 | ILU(0) | exact preconditioner residual | B |
-| N005 | Block-Jacobi | exact block residual | B |
+| N004 | ILU(0) | finite/stable preconditioner application + residual reduction | B |
+| N005 | Block-Jacobi | exact local block solve residual | B |
 | N006 | Mixed-precision dot/norm | exact arithmetic reference | A |
 | N007 | Fused reductions | exact dot/norm/max | A |
 | N008 | TVD limiters | local boundedness invariant | A |
