@@ -35,8 +35,9 @@ for name,(factory,expected) in cases.items():
     with tempfile.TemporaryDirectory() as d:
         root=pathlib.Path(d)
         for fmt, suffix, kwargs in [
-            ("gmsh","msh",{"file_format":"gmsh","binary":False}),
-            ("vtu","vtu",{"file_format":"vtu","binary":False}),
+            ("gmsh_ascii","msh",{"file_format":"gmsh","binary":False}),
+            ("gmsh_binary","msh",{"file_format":"gmsh","binary":True}),
+            ("vtu_ascii","vtu",{"file_format":"vtu","binary":False}),
         ]:
             src=root/f"{name}.{suffix}"
             out=root/f"{name}.h5"
