@@ -166,11 +166,6 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         mesh.points().set(i, pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
     }
 
-    if(fo.empty() || fo.front()!=0 || fo.back()>fv.size()) {
-        H5Fclose(file);
-        return false;
-    }
-    const std::size_t n_faces = fo.size() - 1;
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::uint64_t begin = fo[f];
         const std::uint64_t end = fo[f + 1];
