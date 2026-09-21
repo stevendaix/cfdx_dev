@@ -8,6 +8,8 @@
 #include <vector>
 #include <filesystem>
 #include <cstdint>
+#include <limits>
+#include <algorithm>
 
 namespace cfdx::io::openfoam {
 namespace {
@@ -101,16 +103,16 @@ bool read_boundary(const std::filesystem::path& path,
     for (std::sregex_iterator it(text.begin(), text.end(), patch_re), e; it != e; ++it) {
         const std::string name = (*it)[1].str();
         const std::string body = (*it)[2].str();
-        std::smatch match;
-        if (!std::regex_search(body, match, type_re)) continue;
-        if (!std::regex_search(body, match, nfaces_re)) continue;
-        const std::size_t nfaces = static_cast<std::size_t>(std::stoull(match[1].str()));
-        if (!std::regex_search(body, match, start_re)) continue;
-        const std::size_t start = static_cast<std::size_t>(std::stoull(match[1].str()));
+        std::smatch type_match, count_match, start_match;
+        if (!std::regex_search(body, type_match, type_re)) continue;
+        if (!std::regex_search(body, count_match, nfaces_re)) continue;
+        if (!std::regex_search(body, start_match, start_re)) continue;
+        const std::size_t nfaces = static_cast<std::size_t>(std::stoull(count_match[1].str()));
+        const std::size_t start = static_cast<std::size_t>(std::stoull(start_match[1].str()));
 
         cfdx::core::Patch patch;
         patch.name = name;
-        patch.type = patch_type(std::regex_search(body, match, type_re) ? match[1].str() : "");
+        patch.type = patch_type(type_match[1].str());
         patch.face_ids.reserve(nfaces);
         for (std::size_t i = 0; i < nfaces; ++i) {
             patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start + i));
