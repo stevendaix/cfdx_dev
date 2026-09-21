@@ -33,7 +33,6 @@ public:
 
     template<class Loader, class Compute>
     void for_each_tile(Loader load, Compute compute) {
-        std::size_t slot = 0;
         for (const auto& tile : tiles_.tiles()) {
             auto* buffer = pool_.acquire();
             if (!buffer) throw std::runtime_error("OOCExecutor: staging pool exhausted");
@@ -41,7 +40,50 @@ public:
             load(tile, ws, *buffer);
             compute(ws);
             pool_.release(buffer);
-            ++slot;
+        }
+    }
+
+    // Pipeline tile loading with computation: while tile N is computed, tile
+    // N+1 is loaded on a worker thread. This gives the CPU OOC backend real
+    // transfer/compute overlap without requiring CUDA.
+    template<class Loader, class Compute>
+    void for_each_tile_pipelined(Loader load, Compute compute) {
+        const auto& tiles = tiles_.tiles();
+        if (tiles.empty()) return;
+
+        struct Pending {
+            const Tile* tile = nullptr;
+            typename PinnedBufferPool::Buffer* buffer = nullptr;
+            WorkingSet ws;
+            std::future<void> load_future;
+        };
+
+        Pending pending;
+        auto start_load = [&](const Tile& tile) {
+            auto* buffer = pool_.acquire();
+            if (!buffer) throw std::runtime_error("OOCExecutor: staging pool exhausted");
+            Pending next;
+            next.tile = &tile;
+            next.buffer = buffer;
+            next.ws = make_working_set(tile);
+            next.load_future = std::async(
+                std::launch::async,
+                [&load, &tile, &next]() { load(tile, next.ws, *next.buffer); });
+            return next;
+        };
+
+        pending = start_load(tiles.front());
+        for (std::size_t i = 0; i < tiles.size(); ++i) {
+            pending.load_future.get();
+
+            Pending next;
+            if (i + 1 < tiles.size()) {
+                next = start_load(tiles[i + 1]);
+            }
+
+            compute(pending.ws);
+            pool_.release(pending.buffer);
+            pending = std::move(next);
         }
     }
 
