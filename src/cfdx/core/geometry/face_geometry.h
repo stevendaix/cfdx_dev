@@ -171,11 +171,15 @@ inline void orient_mesh_face_vectors(
             ? cell_centres[static_cast<std::size_t>(neighbour)] - cell_centres[owner]
             : face_centres[f] - cell_centres[owner];
         const double projection = face_Sf[f].dot(d);
+        if (!std::isfinite(projection)) {
+            throw std::runtime_error("orient_mesh_face_vectors: face orientation is non-finite");
+        }
         if (projection < 0.0) {
             face_Sf[f] = face_Sf[f] * -1.0;
-        } else if (!(projection > 0.0) || !std::isfinite(projection)) {
-            throw std::runtime_error("orient_mesh_face_vectors: face orientation is undefined");
         }
+        // A zero projection is geometrically ambiguous. Leave the vector
+        // unchanged; degenerate/invalid geometry is diagnosed by the mesh
+        // validator and cell-geometry checks rather than by this canonicalizer.
     }
 }
 
