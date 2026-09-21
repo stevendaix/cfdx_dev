@@ -353,7 +353,12 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
-        add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+        add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+        target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
+        target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        add_test(NAME test_mpi_partition
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
