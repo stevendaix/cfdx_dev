@@ -43,63 +43,43 @@
 
 - [ ] Navier-Stokes momentum equation
 - [ ] Continuity
-- [ ] Diffusion discretization
-- [ ] Convection discretization
-- [ ] Pressure-velocity coupling
-- [ ] SIMPLE / SIMPLEC
-- [ ] PISO / PIMPLE
-- [ ] Rhie-Chow
+- [x] Diffusion/convection operator foundation
+- [x] Pressure-correction matrix foundation
+- [x] SIMPLE/SIMPLEC control and relaxation primitives
+- [x] PISO/PIMPLE correction primitives
+- [x] Rhie-Chow face-flux correction primitive
 - [ ] Cavity validation
 - [ ] Poiseuille validation
+- [ ] Full nonlinear SIMPLE/PISO/PIMPLE solver loop
 
 ## M2 — Turbulence
 
-- [ ] RANS k-epsilon
-- [ ] RANS k-omega SST
-- [ ] LES / DES
+- [x] RANS k-epsilon eddy-viscosity model foundation
+- [x] RANS k-omega SST eddy-viscosity model foundation
+- [x] LES Smagorinsky eddy-viscosity model
+- [x] DES length-scale model foundation
+- [ ] Transport-equation assembly and wall treatment
+- [ ] Channel/flat-plate validation
 
 ## M3 — Thermal / CHT
 
-- [ ] Energy equation
-- [ ] Conduction / convection
-- [ ] Conjugate heat transfer
+- [x] Energy convection/conduction operator foundation
+- [x] Conductive face heat flux
+- [x] Fluid/solid interface conductance and heat flux
+- [ ] Full transient energy solver
+- [ ] Multi-region CHT coupling
+- [ ] Thermal validation cases
 
 ## M4 — Radiation
 
-- [ ] Surface radiation
-- [ ] Participating media
-- [ ] View factors / DOM / P1
+- [x] Blackbody and gray-surface radiation
+- [x] Two-surface net radiation exchange
+- [x] View-factor matrix validation
+- [x] P1 source-term primitive
+- [x] DOM quadrature validation primitive
+- [ ] Full participating-media transport solve
+- [ ] Radiation/energy coupling validation
 
-## M5 — VOF
+### M1-M4 implementation gate
 
-- [ ] Volume fraction
-- [ ] Interface reconstruction
-- [ ] Surface tension / contact angle
-- [ ] Compressive schemes
-
-## M6 — Dynamic mesh
-
-- [ ] Mesh motion / deformation
-- [ ] Remeshing
-- [ ] Topology changes
-
-## M7 — FSI
-
-- [ ] Fluid-structure interaction
-- [ ] Partitioned / monolithic coupling
-
-## M8 — Reacting flows / combustion
-
-- [ ] Species transport
-- [ ] Finite-rate chemistry
-- [ ] Flame models
-
-## M9 — Discrete phase model
-
-- [ ] Lagrangian particle tracking
-- [ ] One/two-way coupling
-
-## M10 — Optimization / adjoint
-
-- [ ] Discrete adjoint
-- [ ] Shape optimization
+This branch is intentionally a stacked implementation PR on top of the open M1 foundation PR. It adds reusable, testable physics primitives and the interfaces needed to progress from M1 through M4 without claiming completion of the nonlinear solver loops or validation benchmarks until those are exercised in CI and analytical regression cases.
