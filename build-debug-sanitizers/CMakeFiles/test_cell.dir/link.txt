@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_cell.dir/tests/unit/test_cell.cpp.o -o test_cell  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

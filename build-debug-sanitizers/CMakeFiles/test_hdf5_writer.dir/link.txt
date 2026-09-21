@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_hdf5_writer.dir/tests/unit/test_hdf5_writer.cpp.o -o test_hdf5_writer  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 
