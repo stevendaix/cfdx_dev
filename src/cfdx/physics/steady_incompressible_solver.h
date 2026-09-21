@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
@@ -391,6 +392,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Pressure has a gauge freedom whenever only Neumann-type
             // conditions are present. A single reference cell removes it.
             const std::size_t ref = controls.pressure_reference_cell;
+            // Eliminate the reference pressure degree of freedom symmetrically:
+            // remove its column from all other rows as well as replacing its
+            // row by the gauge equation. The remaining pressure operator is
+            // symmetric positive definite and can be solved robustly by CG.
+            for (std::size_t row = 0; row < nc; ++row) {
+                if (row == ref) continue;
+                rows[row].erase(ref);
+            }
             rows[ref].clear();
             rows[ref][ref] = 1.0;
             b(ref) = 0.0;
@@ -401,7 +410,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             A.finalize();
 
             Vector p_corr(nc, 0.0);
-            const auto rp = solve_bicgstab(
+            const auto rp = solve_cg(
                 A, b, p_corr, controls.linear_max_iterations, controls.linear_tolerance);
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
