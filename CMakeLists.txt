@@ -371,7 +371,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
 
     # Plan completion tests
-    add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)\n    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
+    add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
+    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
