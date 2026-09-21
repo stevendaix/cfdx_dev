@@ -72,6 +72,12 @@ inline Field<double, Location::CELL> compute_divergence(
         face_Sf[f] = fg.Sf;
     }
 
+    // Establish global owner -> neighbour face orientation before any cell-local
+    // geometry or flux reconstruction uses the area vectors.
+    std::vector<Vec3> provisional_centres(n_cells);
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), provisional_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, provisional_centres, face_Sf);
+
     // Compute cell volumes
     std::vector<double> cell_volume(n_cells, 0.0);
 
