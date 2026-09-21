@@ -45,15 +45,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
     set(CMAKE_MODULE_LINKER_FLAGS_DEBUGSANITIZERS "-fsanitize=address,undefined")
 endif()
 
-# ---------------------------------------------------------------------------
-# Compiler flags
-# ---------------------------------------------------------------------------
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
-        add_compile_options(-O2 -DNDEBUG)
-    endif()
-endif()
+# Compiler warnings are attached to the CFDX target rather than globally,
+# so external/third-party targets are not forced to adopt CFDX's policy.
+set(CFDX_WARNING_FLAGS
+    -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
 
 # ---------------------------------------------------------------------------
 # HDF5 detection (before any target uses it)
@@ -259,6 +254,10 @@ set(CFDX_CORE_HEADERS
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
+target_compile_features(cfdx_core PUBLIC cxx_std_17)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(cfdx_core PUBLIC ${CFDX_WARNING_FLAGS})
+endif()
 
 if(CFDX_ENABLE_SANITIZERS)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
