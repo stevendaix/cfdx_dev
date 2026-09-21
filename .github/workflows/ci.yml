@@ -1,22 +1,27 @@
-name: CI
+name: CFDX CI
 
 on:
   push:
     branches: [master, main, develop]
   pull_request:
     branches: [master, main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: cfdx-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
+  configure-build-test:
+    name: Build and test (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
     strategy:
+      fail-fast: false
       matrix:
         build_type: [Release, DebugSanitizers]
-        include:
-          - build_type: Release
-            sanitizer: false
-          - build_type: DebugSanitizers
-            sanitizer: true
 
     steps:
       - name: Checkout
@@ -25,21 +30,38 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ zlib1g-dev libhdf5-dev
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev
 
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - name: Configure CMake
+        run: >
+          cmake -S . -B build
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
-        run: cmake --build build -j4
+        run: cmake --build build --parallel 4 --verbose
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - name: Run CTest
+        run: ctest --test-dir build --output-on-failure --no-tests=error
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
 
-      - name: Check for warnings
-        if: matrix.sanitizer == false
-        run: |
-          cmake --build build --target help 2>&1 | grep -i warning || true
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-${{ matrix.build_type }}-logs
+          path: |
+            build/Testing/
+            build/**/*.log
+          if-no-files-found: ignore
+
+      - name: Upload compile database
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          if-no-files-found: error
