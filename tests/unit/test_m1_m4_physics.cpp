@@ -24,7 +24,7 @@ int main()
         EXPECT_NEAR(turbulent_kinematic_viscosity_kepsilon(4.0, 2.0), 0.72, 1e-12);
         EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(1.0, 2.0, 0.5) > 0.0);
         EXPECT_NEAR(smagorinsky_eddy_viscosity(0.1, 20.0),
-                    0.1156, 1e-12);
+                    0.00578, 1e-12);
         EXPECT_TRUE(des_eddy_viscosity(0.1, 0.02, 20.0) >= 0.0);
     });
 
@@ -34,7 +34,7 @@ int main()
         const double g = cht_interface_conductance(10.0, 2.0, 0.01, 0.02, 1.0);
         EXPECT_NEAR(g, 90.9090909090909, 1e-10);
         EXPECT_NEAR(cht_interface_heat_flux(g, 320.0, 300.0),
-                    1666.6666666666665, 1e-9);
+                    1818.181818181818, 1e-9);
     });
 
     run_case("surface_radiation_and_view_factors", [] {
