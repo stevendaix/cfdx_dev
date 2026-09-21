@@ -67,11 +67,8 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
     }
 
     std::vector<Vec3> cc(nc);
-    for (std::size_t c = 0; c < nc; ++c) {
-        const auto off = mesh.cells().offsets_data()[c];
-        const auto n = mesh.cells().offsets_data()[c + 1] - off;
-        cc[c] = compute_cell_geometry(mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, c, n).centre;
-    }
+    compute_area_weighted_cell_centres(mesh, fc.data(), sf.data(), cc.data());
+    orient_mesh_face_vectors(mesh, fc, cc, sf);
 
     // Assemble row-wise in deterministic face order. For each internal face,
     // use the two-point finite-volume conductance k A / d. For Dirichlet
