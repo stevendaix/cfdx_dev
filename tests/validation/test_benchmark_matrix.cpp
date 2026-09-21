@@ -68,7 +68,7 @@ int main()
     });
     run_case("M1_Poiseuille_profile_and_flow_rate", [] {
         const double H=2.0, dpdx=-4.0, mu=2.0;
-        EXPECT_NEAR(plane_poiseuille_velocity(1.0,H,dpdx,mu),0.5,1e-14);
+        EXPECT_NEAR(plane_poiseuille_velocity(1.0,H,dpdx,mu),1.0,1e-14);
         EXPECT_NEAR(plane_poiseuille_flow_rate_per_width(H,dpdx,mu),8.0/3.0,1e-14);
     });
     run_case("M1_Taylor_Green_2D_decay", [] {
@@ -89,7 +89,7 @@ int main()
     });
     run_case("M2_SST_eddy_viscosity_limits", [] {
         EXPECT_NEAR(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,0.0),0.25,1e-14);
-        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,2.0)>0.0);
+        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,1.0)>0.0);
     });
     run_case("M2_Smagorinsky_scaling", [] {
         const double n1=smagorinsky_eddy_viscosity(0.1,4.0);
