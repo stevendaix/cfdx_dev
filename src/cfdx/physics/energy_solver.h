@@ -50,7 +50,8 @@ inline ScalarEquation assemble_energy_equation(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
     const EnergySolverControls& c,
-    const ScalarBoundaryConditions& bcs = {})
+    const ScalarBoundaryConditions& bcs = {},
+    const ScalarBoundaryFaceValues* face_values = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
@@ -74,7 +75,7 @@ inline ScalarEquation assemble_energy_equation(
 
     return assemble_scalar_equation(
         mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true,
-        nullptr,&transient_diag,&transient_rhs);
+        face_values,&transient_diag,&transient_rhs);
 }
 
 inline EnergySolveResult solve_energy(
@@ -84,7 +85,8 @@ inline EnergySolveResult solve_energy(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls = {},
-    const ScalarBoundaryConditions& bcs = {})
+    const ScalarBoundaryConditions& bcs = {},
+    const ScalarBoundaryFaceValues* face_values = nullptr)
 {
     validate_energy_controls(controls);
     if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
@@ -94,7 +96,7 @@ inline EnergySolveResult solve_energy(
     auto old=temperature;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,old,controls,bcs);
+            mesh,geometry,mass_flux,source,old,controls,bcs,face_values);
         auto candidate=temperature;
         ScalarSolveControls sc;
         sc.max_iterations=2000;
