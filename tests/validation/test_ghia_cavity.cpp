@@ -47,7 +47,8 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
             mesh.ownership().set_neighbour(found->second,static_cast<int>(cell));
             return found->second;
         }
-        const std::size_t face=mesh.faces().push_face(vertices);
+        const std::size_t face=mesh.faces().n_faces();
+        mesh.faces().push_face(vertices);
         face_map.emplace(std::move(sorted),face);
         mesh.ownership().set_owner(face,cell);
         mesh.ownership().set_neighbour(face,FaceOwnership::BOUNDARY);
@@ -76,12 +77,13 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 
     for(std::size_t f=0;f<mesh.n_faces();++f) {
         if(mesh.ownership().neighbour(f)>=0) continue;
-        const auto& vertices=mesh.faces().vertices(f);
+        const auto& all_vertices=mesh.faces().vertices();
+        const auto begin=all_vertices.begin()+static_cast<std::ptrdiff_t>(mesh.faces().face_offset(f));
+        const auto end=begin+static_cast<std::ptrdiff_t>(mesh.faces().face_size(f));
         double x=0,y=0,z=0;
-        for(const auto v:vertices) { x+=mesh.points().x(v); y+=mesh.points().y(v); z+=mesh.points().z(v); }
-        x/=static_cast<double>(vertices.size());
-        y/=static_cast<double>(vertices.size());
-        z/=static_cast<double>(vertices.size());
+        for(auto it=begin;it!=end;++it) { x+=mesh.points().x(*it); y+=mesh.points().y(*it); z+=mesh.points().z(*it); }
+        const double nverts=static_cast<double>(mesh.faces().face_size(f));
+        x/=nverts; y/=nverts; z/=nverts;
         constexpr double tol=1e-12;
         if(std::abs(y)<tol) bottom.face_ids.push_back(f);
         else if(std::abs(y-1)<tol) top.face_ids.push_back(f);
