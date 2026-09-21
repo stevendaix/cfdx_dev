@@ -231,6 +231,8 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/fv_operator.h
     src/cfdx/core/linalg/krylov_controls.h
     src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/memory/reuse_pool.h
+    src/cfdx/core/memory/field_lifetime.h
     src/cfdx/core/linalg/mpi_overlap.h
     src/cfdx/core/linalg/block_schur.h
     src/cfdx/core/mesh/solver_mesh.h
