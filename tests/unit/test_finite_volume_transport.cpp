@@ -94,6 +94,22 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
+    run_case("one_cell_scalar_residual_uses_relative_scale", [] {
+        const Mesh m = make_unit_cube();
+        const auto g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","1",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","1",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1",1);
+        flux.fill(0.0); su.fill(1.0e8); sp.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        const auto eq=assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
+        Vector x(1,0.0);
+        const auto r=solve_scalar_equation(eq,x,{10,1e-12,1.0});
+        EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
+        EXPECT_TRUE(r.residual_relative<=1e-12);
+    });
+
     run_case("nonorthogonal_diffusion_correction_vanishes_on_orthogonal_face", [] {
         const Vec3 d{2.0,0.0,0.0};
         const Vec3 Sf{3.0,0.0,0.0};
