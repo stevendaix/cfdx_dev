@@ -22,6 +22,7 @@
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -44,7 +45,8 @@ inline double geometric_interpolation_weight(
     const double dist_owner = d_owner.mag();
     const double dist_total = d_neigh.mag();
 
-    if (dist_total < 1e-15) return 0.5;  // Degenerate: fallback to midpoint
+    if (!std::isfinite(dist_total) || dist_total < 1e-15)
+        throw std::runtime_error("geometric_interpolation_weight: degenerate cell-centre distance");
     return std::min(1.0, std::max(0.0, dist_owner / dist_total));
 }
 
@@ -96,8 +98,9 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry_oriented(
+            face_centres.data(), face_Sf.data(), cell_faces + off, n,
+            static_cast<CellIndex>(c), mesh.ownership());
         cell_centre[c] = cg.centre;
         cell_volume[c] = cg.volume;
     }
@@ -150,7 +153,9 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 
             sum = sum + Sf_cell * phi_f;
         }
-        const double inv_vol = (cell_volume[c] > 0.0) ? 1.0 / cell_volume[c] : 0.0;
+        if (!(cell_volume[c] > 0.0) || !std::isfinite(cell_volume[c]))
+            throw std::runtime_error("compute_gradient_gauss: non-positive cell volume");
+        const double inv_vol = 1.0 / cell_volume[c];
         gx[c] = sum.x * inv_vol;
         gy[c] = sum.y * inv_vol;
         gz[c] = sum.z * inv_vol;
