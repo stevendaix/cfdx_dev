@@ -23,7 +23,7 @@ inline SolverResult solve_bicgstab(
             if (!std::isfinite(v(i))) return false;
         return true;
     };
-    for (std::size_t k = 0; k < A.n_nonzeros(); ++k)
+    for (std::size_t k = 0; k < A.nnz(); ++k)
         if (!std::isfinite(Av[k])) { result.status=SolverStatus::DIVERGED; return result; }
     if (!finite_vector(b) || !finite_vector(x)) {
         result.status=SolverStatus::DIVERGED;
