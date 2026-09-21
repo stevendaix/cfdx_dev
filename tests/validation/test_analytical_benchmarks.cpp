@@ -130,6 +130,7 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "kg/s", 1);
     phi.fill(0.0);
 
+    if(n==8) std::cerr<<"GEOM8 V="<<geometry.cell_volumes[0]<<" dy="<<geometry.cell_centres[1].y-geometry.cell_centres[0].y<<"\n";
     Field<double,Location::CELL> su(n, "source", "unit", 1);
     Field<double,Location::CELL> sp(n, "sp", "unit", 1);
     su.fill(source);
