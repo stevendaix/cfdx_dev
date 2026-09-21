@@ -57,6 +57,30 @@ int main() {
         }
     });
 
+    run_case("gmres_nonsymmetric_upwind_restart", []() {
+        const std::size_t n = 100;
+        SparseMatrix A(n, n);
+        for (std::size_t i = 0; i < n; ++i) {
+            A.push_back(i, i, 1.0);
+            if (i > 0) A.push_back(i, i - 1, -0.9);
+        }
+        A.finalize();
+
+        Vector x_ref(n, 1.0);
+        Vector b(n);
+        auto b_data = A.matvec(x_ref);
+        for (std::size_t i = 0; i < n; ++i) b(i) = b_data[i];
+
+        Vector x(n, 0.0);
+        auto result = solve_gmres(A, b, x, 20, 1000, 1e-11);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations > 20);
+        EXPECT_TRUE(result.residual_relative < 1e-10);
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(x(i), 1.0, 1e-8);
+        }
+    });
+
     run_case("gmres_already_converged", []() {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1.0);
