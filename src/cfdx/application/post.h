@@ -3,7 +3,8 @@
 #include "cfdx/application/monitor.h"
 
 #include <functional>
-#include <string>\n#include <utility>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace cfdx::application {
