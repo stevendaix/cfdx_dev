@@ -31,6 +31,7 @@ static bool read_dataset_double(hid_t loc_id, const char* name,
     hsize_t total = 1;
     for (int i = 0; i < rank; ++i) total *= dims[i];
     out.resize(total);
+    if (total == 0) { H5Sclose(space); H5Dclose(ds); return true; }
     herr_t status = H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
     H5Sclose(space);
     H5Dclose(ds);
@@ -47,6 +48,7 @@ static bool read_dataset_u64(hid_t loc_id, const char* name,
     hsize_t total = 1;
     for (int i = 0; i < rank; ++i) total *= dims[i];
     out.resize(total);
+    if (total == 0) { H5Sclose(space); H5Dclose(ds); return true; }
     herr_t status = H5Dread(ds, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
     H5Sclose(space);
     H5Dclose(ds);
@@ -63,6 +65,7 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
     hsize_t total = 1;
     for (int i = 0; i < rank; ++i) total *= dims[i];
     out.resize(total);
+    if (total == 0) { H5Sclose(space); H5Dclose(ds); return true; }
     herr_t status = H5Dread(ds, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
     H5Sclose(space);
     H5Dclose(ds);
