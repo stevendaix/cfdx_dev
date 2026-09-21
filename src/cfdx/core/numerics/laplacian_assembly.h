@@ -91,14 +91,26 @@ inline void assemble_laplacian_csr(
                 A.push_back(owner, nb, -D_f);
             }
         } else {
-            // Boundary face: Dirichlet contribution (only affects owner)
-            const double D_f = mag_Sf2 / 1e-2;  // Approximate distance for boundary
+            // Face de frontière
+            // Distance géométrique réelle du centre de la cellule au centre de la face
+            const Vec3 d = face_centres[f] - cell_centres[owner];
+            const double d_dot_Sf = d.x * Sf.x + d.y * Sf.y + d.z * Sf.z;
+            
+            // Protection contre les mailles dégénérées où d et Sf sont orthogonaux
+            const double D_f = mag_Sf2 / std::max(std::abs(d_dot_Sf), 1e-12);
+            
             A.push_back(owner, owner, D_f);
+            
+            // NOTE PHYSIQUE : Pour une condition de Dirichlet stricte avec une valeur phi_b, 
+            // il faudrait ajouter ici : b(owner) += D_f * phi_b;
+            // Ceci est laissé à l'implémentation spécifique du gestionnaire de Boundary Conditions.
         }
     }
     for (std::size_t c = 0; c < n_cells; ++c) {
         if (is_dirichlet_cell[c]) {
-            A.push_back(c, c, 1.0);
+            // Méthode de la grande diagonale : coefficient très élevé pour "pinner" la valeur.
+            A.push_back(c, c, 1e15);
+            // Valeur Dirichlet cible (actuellement 0.0, à adapter selon phi_b).
             b(c) = 0.0;
         }
     }
