@@ -126,6 +126,28 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
         }
     }
 
+    // --- 4. Face orientation convention ---
+    // Contract: Sf points from owner to neighbour on internal faces and
+    // outward from the owner cell on boundary faces. Violations are errors,
+    // not warnings, because they reverse finite-volume fluxes.
+    for (std::size_t f = 0; f < n_faces; ++f) {
+        const auto owner = m.ownership().owner(f);
+        if (owner >= n_cells) continue;
+        Vec3 d;
+        const auto neighbour = m.ownership().neighbour(f);
+        if (neighbour >= 0 && static_cast<std::size_t>(neighbour) < n_cells) {
+            d = cell_centres[static_cast<std::size_t>(neighbour)] - cell_centres[owner];
+        } else {
+            d = face_centres[f] - cell_centres[owner];
+        }
+        const double orientation = face_Sf[f].dot(d);
+        const double scale = face_Sf[f].mag() * std::max(d.mag(), 1e-30);
+        if (!(orientation > 1e-12 * scale)) {
+            report.add_error("face " + std::to_string(f) +
+                             " violates owner-to-neighbour/outward orientation convention");
+        }
+    }
+
     // --- 4. Qualité (skewness, non-orthogonalité) ---
     for (std::size_t f = 0; f < n_faces; ++f) {
         const auto owner = m.ownership().owner(f);
