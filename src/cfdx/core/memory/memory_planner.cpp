@@ -572,3 +572,5 @@ void MeshReorderer::applyReordering(
             neighbour[i] = old_to_new[neighbour[i]];
     }
 }
+
+} // namespace cfdx::core::memory
