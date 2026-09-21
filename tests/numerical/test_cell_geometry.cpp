@@ -133,17 +133,22 @@ int main() {
 
     run_case("face_orientation_flips_reversed_internal_face", []() {
         Mesh mesh;
-        Vec3 fc[1] = {{0.5,0.5,0.5}};
-        Vec3 sf[1] = {{-1,0,0}};
-        std::vector<Vec3> centres = {{0,0.5,0.5}, {1,0.5,0.5}};
-        // Only ownership is needed by the orientation utility for this focused test.
+        mesh.faces().push_face(std::vector<FaceIndex>{0,1,2});
         mesh.ownership().resize(1);
         mesh.ownership().set_owner(0, 0);
         mesh.ownership().set_neighbour(0, 1);
-        mesh.faces().push_face({0,1,2});
-        mesh.cells().resize(2);
-        orient_mesh_face_vectors(mesh, std::vector<Vec3>(fc, fc + 1), centres,
-                                 std::vector<Vec3>(sf, sf + 1));
+        mesh.cells().push_cell(std::vector<FaceIndex>{0});
+        mesh.cells().push_cell(std::vector<FaceIndex>{0});
+
+        std::vector<Vec3> face_centres = {{0.5,0.5,0.5}};
+        std::vector<Vec3> face_Sf = {{-1,0,0}};
+        const std::vector<Vec3> cell_centres = {
+            {0,0.5,0.5}, {1,0.5,0.5}
+        };
+        orient_mesh_face_vectors(mesh, face_centres, cell_centres, face_Sf);
+        EXPECT_NEAR(face_Sf[0].x, 1.0, 1e-12);
+        EXPECT_NEAR(face_Sf[0].y, 0.0, 1e-12);
+        EXPECT_NEAR(face_Sf[0].z, 0.0, 1e-12);
     });
 
     return run_all();
