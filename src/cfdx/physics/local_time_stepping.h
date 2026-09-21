@@ -30,15 +30,14 @@ inline void compute_local_time_step(
     dt.resize(n);
     dt.fill(c.dt_max);
     const auto& cells = mesh.cells();
-    const auto& own = mesh.ownership();
     const auto* faces = cells.faces_data();
     const auto* offsets = cells.offsets_data();
 
     for (std::size_t cell = 0; cell < n; ++cell) {
         double sum_flux = 0.0;
         const auto off = offsets[cell];
-        const auto count = offsets[cell + 1] - off;
-        for (decltype(count) k = 0; k < count; ++k) {
+        const std::size_t count = static_cast<std::size_t>(offsets[cell + 1] - off);
+        for (std::size_t k = 0; k < count; ++k) {
             const std::size_t f = faces[off + k];
             sum_flux += std::abs(mass_flux(f));
         }
