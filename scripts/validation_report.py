@@ -206,14 +206,14 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         ]
 
     lines += [
-        r"\\section{Validation executable matrix}",
-        r"\\begin{longtable}{p{70mm}r}",
-        r"\\toprule Executable & return code \\\\",
-        r"\\midrule",
+        r"\section{Validation executable matrix}",
+        r"\begin{longtable}{p{70mm}r}",
+        r"\toprule Executable & return code \\",
+        r"\midrule",
     ]
     for name, rc in suite_status.items():
         lines.append(f"\\texttt{{{latex_escape(name)}}} & {rc}\\\\")
-    lines += [r"\\bottomrule", r"\\end{longtable}"]
+    lines += [r"\bottomrule", r"\end{longtable}"]
 
     if ghia:
         lines += [
