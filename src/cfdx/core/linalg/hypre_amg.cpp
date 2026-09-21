@@ -20,11 +20,12 @@ void HypreAMG::configure(AMGMemoryPolicy policy) {
                 "Fast (strong threshold 0.5)");
 }
 
-bool HypreAMG::setup(const SparseMatrix& A) {
+bool HypreAMG::setup(const SparseMatrix& A, int num_partitions) {
     (void)A;
+    (void)num_partitions;
     // HYPRE is optional and is not linked in this build. Never report a
     // successful setup for an inactive backend.
-    initialized_ = false;
+    is_initialized_ = false;
     return false;
 }
 
@@ -39,13 +40,13 @@ HypreAMG::AMGMemoryUsage HypreAMG::measureMemoryUsage() const {
     usage.setup_peak_bytes = 0;  // Would measure HYPRE memory
     usage.solve_peak_bytes = 0;
     usage.temporary_bytes = 0;
-    usage.num_levels = 3;  // Estimated for medium meshes
-    usage.iterations = 10;  // Estimated
+    usage.num_levels = 0;
+    usage.iterations = 0
     return usage;
 }
 
 double HypreAMG::estimateSpeedup() const {
-    return 2.5;  // Conservative estimate for AMG vs no preconditioner on Poisson
+    return 0.0;  // No benchmark is available until HYPRE is actually configured
 }
 
 void* HypreAMG::hypreSolver() {
