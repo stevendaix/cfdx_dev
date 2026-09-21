@@ -2,6 +2,9 @@
 #include <cstdint>
 #include <cstddef>
 
+__global__ void cfdx_normalize_gradient_kernel(
+    double* gx, double* gy, double* gz, const double* volume, std::size_t n_cells);
+
 __global__ void cfdx_gradient_gauss_kernel(
     const double* phi,
     const double* sx, const double* sy, const double* sz,
