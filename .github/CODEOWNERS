@@ -1,0 +1,5 @@
+# Protect CI and repository automation from accidental changes.
+# Changes to these files must be reviewed by the repository owner.
+.github/workflows/ @stevendaix
+.github/CODEOWNERS @stevendaix
+.github/CI_POLICY.md @stevendaix
