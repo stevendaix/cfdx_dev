@@ -1,6 +1,6 @@
 // M0.7-T06 — Source Term Linearization (Su + Sp*phi)
 // Linearization of source terms in Navier-Stokes equations
-#include "physics/source_term_linearization.h"
+#include "cfdx/physics/source_term_linearization.h"
 #include <vector>
 #include <cmath>
 
@@ -61,4 +61,5 @@ std::vector<double> compute_source_term_linearization(
     return total_source;
 }
 
-}  // namespace physics
+} // namespace physics
+} // namespace cfdx

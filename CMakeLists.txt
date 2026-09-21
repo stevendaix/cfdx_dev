@@ -94,6 +94,11 @@ set(CFDX_IMPORTER_SOURCES
     src/cfdx/core/importers/gmsh_importer.cpp
 )
 
+set(CFDX_LINALG_SOURCES
+    src/cfdx/core/linalg/hypre_amg.cpp
+    src/cfdx/core/linalg/gmres_solver.cpp
+)
+
 # Memory sources
 set(CFDX_MEMORY_SOURCES
     src/cfdx/core/memory/memory_planner.cpp
@@ -137,6 +142,7 @@ set(CFDX_CORE_SOURCES
     ${CFDX_IO_SOURCES}
     ${CFDX_PHYSICS_SOURCES}
     ${CFDX_IMPORTER_SOURCES}
+    ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
 )
 

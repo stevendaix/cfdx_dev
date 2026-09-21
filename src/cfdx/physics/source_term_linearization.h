@@ -1,6 +1,6 @@
 // M0.7-T06 — Source Term Linearization (Su + Sp*phi)
 // Linearization of source terms in Navier-Stokes equations
-#include "physics/equation_of_state.h"
+#include "cfdx/physics/equation_of_state.h"
 #include <vector>
 #include <cmath>
 
@@ -75,7 +75,7 @@ public:
     // This is a placeholder for the actual linearization logic
     // The actual implementation would depend on the specific numerical scheme
     
-    double linearize_source_term(const std::vector<double>& source_terms) {
+    std::vector<double> linearize_source_term(const std::vector<double>& source_terms) {
         // Placeholder: in a real implementation, this would compute
         // the linearized form of the source term based on the current state
         // For now, we return the source terms unchanged (identity)
@@ -125,7 +125,7 @@ public:
         
         // Viscous dissipation
         for (double grad : nu_gradients) {
-            nu_contribution += nu_gradients * grad;
+            nu_contribution += grad * grad;
         }
         
         // Heat conduction
@@ -138,3 +138,4 @@ public:
 };
 
 }  // namespace physics
+}  // namespace cfdx
