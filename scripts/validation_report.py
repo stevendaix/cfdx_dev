@@ -149,9 +149,8 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], logs: dict, plot_
     lines = [
         r"\documentclass[10pt,a4paper]{article}",
         r"\usepackage[margin=20mm]{geometry}",
-        r"\usepackage{booktabs,longtable,array,graphicx,xcolor,hyperref,siunitx}",
+        r"\usepackage{booktabs,longtable,array,graphicx,xcolor,hyperref}",
         r"\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}",
-        r"\sisetup{detect-all}",
         r"\setlength{\parindent}{0pt}",
         r"\setlength{\parskip}{5pt}",
         r"\begin{document}",
