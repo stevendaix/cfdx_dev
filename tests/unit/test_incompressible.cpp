@@ -73,7 +73,7 @@ int main(){
         auto pc=assemble_pressure_correction(m,ap,r);
         EXPECT_NEAR(pc.matrix(0,0)+pc.matrix(0,1),0.0,1e-12);
         EXPECT_NEAR(pc.matrix(1,0)+pc.matrix(1,1),0.0,1e-12);
-        EXPECT_NEAR(pc.rhs(0)+pc.rhs(1),0.0,1e-12);
+        EXPECT_NEAR(pc.rhs(0)*v0+pc.rhs(1)*v1,0.0,1e-12);
         EXPECT_TRUE(pc.matrix.n_rows()==2);
     });
     return run_all();
