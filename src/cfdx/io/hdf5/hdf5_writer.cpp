@@ -1,6 +1,7 @@
 // M0.9-T01 — HDF5 writer
 
 #include "hdf5_writer.h"
+#include "schema.h"
 
 #include <H5public.h>
 #include <H5Epublic.h>
@@ -16,9 +17,61 @@
 #include <stdexcept>
 #include <vector>
 #include <string>
+#include <cstdint>
+#include <iomanip>
+#include <sstream>
 
 namespace cfdx {
 namespace io {
+
+static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value);
+
+static std::uint64_t fnv1a_update(
+    std::uint64_t hash, const void* data, std::size_t size)
+{
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    for (std::size_t i = 0; i < size; ++i) {
+        hash ^= bytes[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+template<class T>
+static std::uint64_t fnv1a_update_vector(
+    std::uint64_t hash, const T* data, std::size_t count)
+{
+    return fnv1a_update(hash, data, count * sizeof(T));
+}
+
+static std::string hash_hex(std::uint64_t hash)
+{
+    std::ostringstream os;
+    os << std::hex << std::setw(16) << std::setfill('0') << hash;
+    return os.str();
+}
+
+static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
+{
+    write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
+    write_attr_str(file, "schema_version", std::to_string(CFDX_HDF5_SCHEMA_VERSION));
+    write_attr_str(file, "cfdx_version", CFDX_VERSION);
+
+    std::uint64_t topology = 1469598103934665603ULL;
+    topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
+    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
+    topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
+    topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
+    topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
+    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
+    write_attr_str(file, "topology_hash", hash_hex(topology));
+
+    std::uint64_t geometry = topology;
+    geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
+    geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
+    geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
+    write_attr_str(file, "mesh_hash", hash_hex(geometry));
+}
 
 static herr_t write_dataset(hid_t loc_id, const char* name,
                             const void* data, const hsize_t* dims, int rank) {
@@ -148,6 +201,8 @@ static bool ensure_group(hid_t file_id, const std::string& path) {
 bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) {
     hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file < 0) return false;
+
+    write_schema_attributes(file, mesh);
 
     write_attr_str(file, "n_points", std::to_string(mesh.n_points()));
     write_attr_str(file, "n_faces", std::to_string(mesh.n_faces()));

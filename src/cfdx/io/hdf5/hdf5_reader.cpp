@@ -1,6 +1,7 @@
 // M0.9-T02 — HDF5 reader
 
 #include "hdf5_reader.h"
+#include "schema.h"
 
 #include <H5public.h>
 #include <H5Dpublic.h>
@@ -124,6 +125,17 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         H5Fclose(file);
         return false;
     };
+
+    std::string schema_version;
+    if (read_attr_str(file, "schema_version", schema_version)) {
+        try {
+            const auto version = std::stoul(schema_version);
+            if (version != CFDX_HDF5_SCHEMA_VERSION)
+                return fail("unsupported HDF5 schema version " + schema_version);
+        } catch (...) {
+            return fail("invalid HDF5 schema version");
+        }
+    }
 
     std::vector<double> pts;
     std::vector<std::uint64_t> fv, fo, owner, cf, co;
