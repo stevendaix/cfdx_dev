@@ -190,6 +190,18 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
               << " diag0=" << eq.diagonal[0] << "\n";
     const auto linear = solve_scalar_equation(
         eq, solution, {5000, 1e-13, 1.0});
+    if (n == 8 && source != 0.0) {
+        std::cout << "DEBUG solver status=" << static_cast<int>(linear.status)
+                  << " residual=" << linear.residual << " u=[";
+        for (std::size_t j=0;j<std::min<std::size_t>(n,4);++j)
+            std::cout << solution(j) << (j+1<4 ? "," : "");
+        std::cout << "] row0=";
+        for (std::uint32_t k=eq.matrix.row_offsets_data()[0];
+             k<eq.matrix.row_offsets_data()[1];++k)
+            std::cout << "(" << eq.matrix.columns_data()[k] << ","
+                      << eq.matrix.values_data()[k] << ") ";
+        std::cout << "\n";
+    }
     if (linear.status != SolverStatus::CONVERGED)
         throw std::runtime_error("analytical benchmark: linear solve did not converge");
 
