@@ -187,6 +187,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/mesh/cell.h
     src/cfdx/core/mesh/boundary.h
     src/cfdx/core/mesh/mesh.h
+    src/cfdx/core/mesh/mesh_topology.h
     src/cfdx/core/geometry/face_geometry.h
     src/cfdx/core/geometry/cell_geometry.h
     src/cfdx/core/geometry/mesh_quality.h
