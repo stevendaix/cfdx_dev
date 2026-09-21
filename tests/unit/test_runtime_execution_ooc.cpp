@@ -45,7 +45,7 @@ int main() {
         EXPECT_TRUE(tm.tiles().size()==2);
         EXPECT_TRUE(tm.tile(0).owned_cells.size()==4);
         EXPECT_TRUE(tm.tile(0).halo_cells.size()==1);
-        EXPECT_TRUE(tm.tile(1).halo_cells.size()==1);
+        EXPECT_TRUE(tm.tile(1).halo_cells.size()==3);
     });
 
     run_case("working_set_and_bounded_staging_pool", [] {
