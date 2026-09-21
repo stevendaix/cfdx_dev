@@ -265,7 +265,7 @@ inline void validate_reciprocity(const std::vector<double>& F,
                 throw std::invalid_argument("view-factor reciprocity violation");
 }
 
-inline double blackbody_intensity(double T)
+inline double p1_blackbody_intensity(double T)
 {
     if (T < 0.0) throw std::invalid_argument("temperature must be non-negative");
     return blackbody(T) / M_PI;
@@ -276,7 +276,7 @@ inline double p1_source(double absorption, double mean_intensity, double T)
     if (absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
         throw std::invalid_argument("invalid P1 source input");
     // P1 source convention: S_r = 4*kappa*(I_b - J).
-    return 4.0 * absorption * (blackbody_intensity(T) - mean_intensity);
+    return 4.0 * absorption * (p1_blackbody_intensity(T) - mean_intensity);
 }
 
 struct Direction {
