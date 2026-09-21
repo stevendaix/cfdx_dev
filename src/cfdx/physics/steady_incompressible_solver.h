@@ -131,25 +131,60 @@ make_mass_flux(
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     const auto& own = mesh.ownership();
 
-    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        const std::size_t o = own.owner(f);
+    for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+        const std::size_t o=own.owner(f);
         Vec3 Uf;
-        U.get(o, Uf.x, Uf.y, Uf.z);
-        if (own.neighbour(f) >= 0) {
-            const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
+        U.get(o,Uf.x,Uf.y,Uf.z);
+        if (own.neighbour(f)>=0) {
+            const std::size_t n=static_cast<std::size_t>(own.neighbour(f));
             Vec3 Un;
-            U.get(n, Un.x, Un.y, Un.z);
-            Uf = (Uf + Un) * 0.5;
+            U.get(n,Un.x,Un.y,Un.z);
+            Uf=(Uf+Un)*0.5;
         } else {
-            const std::size_t p = geometry.face_patch[f];
-            if (p < mesh.boundary().n_patches()) {
-                const auto& name = mesh.boundary().patch(p).name;
-                const auto it = bcs.find(name);
-                if (it != bcs.end() && it->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
-                    Uf = it->second.value;
+            const std::size_t p=geometry.face_patch[f];
+            if(p<mesh.boundary().n_patches()) {
+                const auto& name=mesh.boundary().patch(p).name;
+                const auto it=bcs.find(name);
+                if(it!=bcs.end() && it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    Uf=it->second.value;
             }
         }
-        flux(f) = rho * Uf.dot(geometry.face_area_vectors[f]);
+        flux(f)=rho*Uf.dot(geometry.face_area_vectors[f]);
+    }
+    return flux;
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_mass_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::vector<double>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs)
+{
+    if(p.size()!=mesh.n_cells() || rAU.size()!=mesh.n_cells())
+        throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
+    auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
+    auto gradp=gauss_gradient_with_boundary(p,mesh,geometry,{});
+    for(std::size_t f=0;f<mesh.n_faces();++f) {
+        const auto nr=mesh.ownership().neighbour(f);
+        if(nr<0) continue;
+        const std::size_t o=mesh.ownership().owner(f);
+        const std::size_t n=static_cast<std::size_t>(nr);
+        const double d=(geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
+        if(d<=0.0) throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face");
+        const double rface=0.5*(rAU[o]+rAU[n]);
+        const double dpdn=(p(n)-p(o))/d;
+        const Vec3 gpface={
+            0.5*(gradp.component_data(0)[o]+gradp.component_data(0)[n]),
+            0.5*(gradp.component_data(1)[o]+gradp.component_data(1)[n]),
+            0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
+        const Vec3 Sf=geometry.face_area_vectors[f];
+        const double gradface=gpface.dot(Sf);
+        const double orth=dpdn*Sf.mag();
+        flux(f)-=rho*rface*(orth-gradface);
     }
     return flux;
 }
