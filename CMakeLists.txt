@@ -198,6 +198,16 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/turbulence.h
     src/cfdx/physics/thermal.h
     src/cfdx/physics/radiation.h
+    src/cfdx/physics/m1_m4_models.h
+    src/cfdx/physics/solver_control.h
+    src/cfdx/physics/finite_volume_transport.h
+    src/cfdx/physics/steady_incompressible_solver.h
+    src/cfdx/physics/turbulence_transport.h
+    src/cfdx/physics/turbulence_solver.h
+    src/cfdx/physics/sst_solver.h
+    src/cfdx/physics/energy_solver.h
+    src/cfdx/physics/cht_solver.h
+    src/cfdx/physics/radiation_solver.h
     src/cfdx/physics/equation_of_state.h
     src/cfdx/physics/transport_models.h
     src/cfdx/physics/multi_component.h
@@ -285,6 +295,12 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
+    add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
+    add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
+    add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
+    add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
+    add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
+    add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
