@@ -61,7 +61,7 @@ int main()
         Field<double,Location::CELL> T(1,"T","K",1),old(1,"old","K",1),source(1,"Q","W/m3",1);
         T(0)=300;source(0)=1000;old(0)=300;
         ScalarBoundaryConditions bc;bc["wall"]={ScalarBoundaryType::FIXED_VALUE,300,0};
-        EnergySolverControls c;c.density=1;c.cp=1000;c.conductivity=1;c.dt=1;c.max_iterations=50;c.tolerance=1e-10;
+        EnergySolverControls c;c.density=1;c.cp=1000;c.conductivity=1;c.dt=1;c.max_iterations=10;c.tolerance=1e-10;c.relaxation=1.0;
         auto r=solve_energy(m,g,phi,T,source,c,bc);
         EXPECT_TRUE(r.converged);
         EXPECT_NEAR(T(0),300.0 + 1000.0/(1000.0+12.0),1e-8);
