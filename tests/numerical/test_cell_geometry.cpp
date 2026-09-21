@@ -127,8 +127,8 @@ int main() {
             fc, sf, owners, neighbours, cell1_faces, 1, 6);
         EXPECT_NEAR(g0.volume, 1.0, 1e-12);
         EXPECT_NEAR(g1.volume, 1.0, 1e-12);
-        EXPECT_GT(g0.signed_volume, 0.0);
-        EXPECT_GT(g1.signed_volume, 0.0);
+        EXPECT_TRUE(g0.signed_volume > 0.0);
+        EXPECT_TRUE(g1.signed_volume > 0.0);
     });
 
     run_case("face_orientation_flips_reversed_internal_face", []() {
