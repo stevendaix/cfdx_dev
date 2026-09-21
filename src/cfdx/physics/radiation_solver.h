@@ -100,6 +100,12 @@ inline RadiationSolveResult solve_participating_radiation(
                 sp(c)=-(controls.absorption+controls.scattering);
             }
 
+            if (nc == 1 && m == 0) {
+                std::cout << "DEBUG_FLUX";
+                for (std::size_t ff=0; ff<mesh.n_faces(); ++ff)
+                    std::cout << " " << directional_flux(ff);
+                std::cout << " src=" << source(0) << " sp=" << sp(0) << "\n";
+            }
             auto eq=assemble_scalar_equation(
                 mesh,geometry,directional_flux,0.0,source,sp,
                 wall_intensity_bcs,true);
