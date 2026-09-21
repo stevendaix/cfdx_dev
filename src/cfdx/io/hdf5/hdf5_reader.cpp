@@ -193,25 +193,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
              static_cast<std::uint64_t>(neighbour[i]) >= n_cells)) {
             return fail("neighbour index is outside the cell range");
         }
-    if(owner.size()!=n_faces || neighbour.size()!=n_faces) {
-        H5Fclose(file);
-        return false;
-    }
-    if(owner.size()!=n_faces || neighbour.size()!=n_faces) {
-        H5Fclose(file);
-        return false;
-    }
-    mesh.ownership().resize(owner.size());
-    for (std::size_t i = 0; i < owner.size(); ++i) {
         mesh.ownership().set_owner(i, owner[i]);
         mesh.ownership().set_neighbour(i, neighbour[i]);
     }
 
-    if(co.empty() || co.front()!=0 || co.back()>cf.size()) {
-        H5Fclose(file);
-        return false;
-    }
-    const std::size_t n_cells = co.size() - 1;
     for (std::size_t c = 0; c < n_cells; ++c) {
         const std::uint64_t begin = co[c];
         const std::uint64_t end = co[c + 1];
