@@ -84,6 +84,7 @@ int main()
         // Level C-01: turbulence transport must preserve positivity while
         // receiving a non-zero source on an actual CFDX mesh.
         {
+            std::cout << "DEBUG LevelC turbulence\n";
             Mesh m=cube_with_patches();
             auto g=build_fv_geometry(m);
             Field<double,Location::FACE> mass_flux(m.n_faces(),"phi","kg/s",1);
@@ -117,6 +118,7 @@ int main()
         // Level C-02: radiation/energy must converge on the same physical
         // source state, and the reported energy-balance residual must close.
         {
+            std::cout << "DEBUG LevelC radiation\n";
             Mesh m=cube_with_patches();
             auto g=build_fv_geometry(m);
             Field<double,Location::FACE> mass_flux(m.n_faces(),"phi","kg/s",1);
@@ -155,6 +157,7 @@ int main()
         // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
+            std::cout << "DEBUG LevelC CHT\n";
             Mesh m1=cube_with_patches();
             Mesh m2=cube_with_patches();
             auto g1=build_fv_geometry(m1);
