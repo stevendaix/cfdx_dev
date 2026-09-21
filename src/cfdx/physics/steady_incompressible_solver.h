@@ -257,8 +257,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // algorithm controls how many pressure corrections are performed inside
     // each nonlinear iteration, mirroring the SIMPLE/PISO/PIMPLE structure.
     const std::size_t pcorr =
-        controls.algorithm == PressureVelocityAlgorithm::SIMPLE
-            ? 1u : static_cast<std::size_t>(controls.coupling.n_pressure_correctors);
+        (controls.algorithm == PressureVelocityAlgorithm::PISO ||
+         controls.algorithm == PressureVelocityAlgorithm::PIMPLE)
+            ? static_cast<std::size_t>(controls.coupling.n_pressure_correctors)
+            : 1u;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const auto U_old = U;
@@ -334,8 +336,29 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const double ax=std::max(ex.diagonal[c],1e-30);
             const double ay=std::max(ey.diagonal[c],1e-30);
             const double az=std::max(ez.diagonal[c],1e-30);
-            rAU[c]=geometry.cell_volumes[c]/
-                std::max((ax+ay+az)/3.0,1e-30);
+            double momentum_diagonal=(ax+ay+az)/3.0;
+
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+                auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
+                    double value = eq.diagonal[row];
+                    const auto begin = eq.matrix.row_offsets_data()[row];
+                    const auto end = eq.matrix.row_offsets_data()[row+1];
+                    for (std::uint32_t k=begin;k<end;++k) {
+                        const auto col = eq.matrix.columns_data()[k];
+                        if (col != row)
+                            value += eq.matrix.values_data()[k];
+                    }
+                    return value;
+                };
+                const double cx=corrected_diagonal(ex,c);
+                const double cy=corrected_diagonal(ey,c);
+                const double cz=corrected_diagonal(ez,c);
+                momentum_diagonal=(cx+cy+cz)/3.0;
+            }
+
+            if (!(momentum_diagonal > 0.0) || !std::isfinite(momentum_diagonal))
+                throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
+            rAU[c]=geometry.cell_volumes[c]/momentum_diagonal;
         }
         mass_flux=make_rhie_chow_mass_flux(
             mesh,geometry,U,p,rAU,controls.density,velocity_bcs);
@@ -383,6 +406,35 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             for (std::size_t c = 0; c < nc; ++c) {
                 rows[c][c] += diag[c];
                 b(c) = -continuity[c];
+            }
+
+            // A fixed pressure patch supplies a Dirichlet pressure-correction
+            // contribution. Zero-gradient patches leave the pressure equation
+            // Neumann-like. This prevents silently treating a prescribed
+            // outlet/inlet pressure as a homogeneous Neumann condition.
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                if (mesh.ownership().neighbour(f) >= 0)
+                    continue;
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch >= mesh.boundary().n_patches())
+                    continue;
+                const auto& name = mesh.boundary().patch(patch).name;
+                const auto it = pressure_bcs.find(name);
+                if (it == pressure_bcs.end() ||
+                    it->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    continue;
+
+                const std::size_t o = mesh.ownership().owner(f);
+                const double distance =
+                    (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+                const double area = geometry.face_area_vectors[f].mag();
+                if (!(distance > 0.0) || !(area > 0.0))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: degenerate pressure boundary face");
+                const double coeff =
+                    controls.density * rAU[o] * area / distance;
+                rows[o][o] += coeff;
+                b(o) += coeff * (it->second.value - p(o));
             }
 
             // Pressure has a gauge freedom whenever only Neumann-type
