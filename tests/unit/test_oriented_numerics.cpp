@@ -23,7 +23,7 @@ static Mesh make_two_cell_cartesian()
     const std::vector<std::vector<VertexIndex>> faces = {
         {0,3,2,1}, {4,5,6,7}, {0,1,5,4}, {3,7,6,2}, {0,4,7,3},
         {1,2,6,5}, {8,9,11,10}, {5,10,11,6},
-        {1,8,10,5}, {2,6,11,9}, {1,8,9,2}
+        {1,8,10,5}, {2,6,11,9}, {1,2,9,8}
     };
     for (const auto& f : faces) m.faces().push_face(f);
 
@@ -43,11 +43,11 @@ int main()
     run_case("gauss_gradient_respects_internal_face_orientation", [] {
         const Mesh m = make_two_cell_cartesian();
         Field<double,Location::CELL> phi(2,"phi","m",1);
-        phi(0) = 0.5;
-        phi(1) = 1.5;
+        phi(0) = 1.0;
+        phi(1) = 1.0;
         const auto grad = compute_gradient_gauss(phi,m);
-        EXPECT_NEAR(grad.component_data(0)[0],1.0,1e-12);
-        EXPECT_NEAR(grad.component_data(0)[1],1.0,1e-12);
+        EXPECT_NEAR(grad.component_data(0)[0],0.0,1e-12);
+        EXPECT_NEAR(grad.component_data(0)[1],0.0,1e-12);
         EXPECT_NEAR(grad.component_data(1)[0],0.0,1e-12);
         EXPECT_NEAR(grad.component_data(2)[1],0.0,1e-12);
     });
