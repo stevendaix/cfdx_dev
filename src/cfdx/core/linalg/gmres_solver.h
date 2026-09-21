@@ -17,7 +17,7 @@ struct LinearOperator {
     std::function<void(const Vector&, Vector&)> apply;
 };
 
-inline SolverResult solve_gmres_operator(
+inline SolverResult solve_gmres(
     const LinearOperator& op,
     const Vector& b,
     Vector& x,
@@ -199,7 +199,7 @@ inline SolverResult solve_gmres(
     LinearOperator op;
     op.size=A.n_rows();
     op.apply=[&A](const Vector& in, Vector& out){ const auto y=A.matvec(in); for(std::size_t i=0;i<y.size();++i) out(i)=y[i]; };
-    return solve_gmres_operator(op,b,x,restart,max_iter,tolerance,preconditioner);
+    return solve_gmres(op,b,x,restart,max_iter,tolerance,preconditioner);
 }
 
 } // namespace cfdx::core
