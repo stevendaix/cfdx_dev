@@ -67,8 +67,8 @@ int main()
     });
     run_case("M1_Poiseuille_profile_and_flow_rate", [] {
         const double H=2.0, dpdx=-4.0, mu=2.0;
-        EXPECT_NEAR(plane_poiseuille_velocity(1.0,H,dpdx,mu),0.5,1e-14);
-        EXPECT_NEAR(plane_poiseuille_flow_rate_per_width(H,dpdx,mu),8.0/3.0,1e-14);
+        EXPECT_NEAR(plane_poiseuille_velocity(1.0,H,dpdx,mu),1.0,1e-14);
+        EXPECT_NEAR(plane_poiseuille_flow_rate_per_width(H,dpdx,mu),4.0/3.0,1e-14);
     });
     run_case("M1_Taylor_Green_2D_decay", [] {
         const double nu=0.01, t=0.7, k=1.0;
