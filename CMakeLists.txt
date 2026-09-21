@@ -90,11 +90,6 @@ set(CFDX_MESH_SOURCES
 )
 
 # Importers module
-set(CFDX_IMPORTER_SOURCES
-    src/cfdx/core/importers/opensfoam_importer.cpp
-    src/cfdx/core/importers/gmsh_importer.cpp
-)
-
 set(CFDX_LINALG_SOURCES
     src/cfdx/core/linalg/hypre_amg.cpp
 )
@@ -163,7 +158,6 @@ set(CFDX_CORE_SOURCES
     ${CFDX_THERMODYNAMICS_SOURCES}
     ${CFDX_CHEMISTRY_SOURCES}
     ${CFDX_TRANSPORT_SOURCES}
-    ${CFDX_IMPORTER_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
 )
