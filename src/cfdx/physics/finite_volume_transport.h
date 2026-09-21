@@ -76,9 +76,10 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     for (std::size_t c = 0; c < nc; ++c) {
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
-        const auto cg = compute_cell_geometry(
+        const auto cg = compute_cell_geometry_oriented(
             g.face_centres.data(), g.face_area_vectors.data(),
-            mesh.cells().faces_data() + off, count);
+            mesh.cells().faces_data() + off, count, static_cast<CellIndex>(c),
+            mesh.ownership());
         g.cell_centres[c] = cg.centre;
         g.cell_volumes[c] = cg.volume;
         if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
