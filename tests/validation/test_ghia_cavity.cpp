@@ -158,8 +158,8 @@ double interpolate_line(const Field<double,Location::CELL>& U,
 
     const double fx=qx*static_cast<double>(nx)-0.5;
     const double fy=qy*static_cast<double>(ny)-0.5;
-    const long ix0=std::clamp(static_cast<long>(std::floor(fx)),0,static_cast<long>(nx)-2);
-    const long iy0=std::clamp(static_cast<long>(std::floor(fy)),0,static_cast<long>(ny)-2);
+    const long ix0=std::clamp(static_cast<long>(std::floor(fx)),0L,static_cast<long>(nx)-2L);
+    const long iy0=std::clamp(static_cast<long>(std::floor(fy)),0L,static_cast<long>(ny)-2L);
     const std::size_t i0=static_cast<std::size_t>(ix0);
     const std::size_t j0=static_cast<std::size_t>(iy0);
     const double tx=std::clamp(fx-static_cast<double>(ix0),0.0,1.0);
