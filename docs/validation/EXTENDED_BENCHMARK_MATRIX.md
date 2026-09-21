@@ -78,10 +78,10 @@ The following are intentionally listed as **future solver-level validation**, no
 
 The benchmark sources are intentionally separated by validation class:
 
-- **Ghia cavity:** Ghia, Ghia & Shin, *Journal of Computational Physics* 48 (1982), 387–411. The benchmark family covers Re=100 through 10,000 and provides centreline velocity data and vortex information. citeturn0search0turn0search6
-- **Turbulent channel DNS:** the Moser-Kim-Mansour database provides DNS statistics at friction Reynolds numbers 180, 395 and 590, including mean velocity and Reynolds stresses. citeturn0search11
-- **Natural convection:** de Vahl Davis provides the canonical differentially heated square-cavity benchmark over Ra=10^3–10^6 with mesh refinement/extrapolation. citeturn0search1
-- **Graetz thermal entrance:** the classical laminar thermal-entry problem has an analytical/eigenfunction solution; the fully developed constant-wall-temperature limit is approximately Nu=3.6568 for a circular tube, while entrance-region values depend on the Graetz coordinate. citeturn2search1turn2search6
+- **Ghia cavity:** Ghia, Ghia & Shin, *Journal of Computational Physics* 48 (1982), 387–411. The benchmark family covers Re=100 through 10,000 and provides centreline velocity data and vortex information.
+- **Turbulent channel DNS:** the Moser-Kim-Mansour database provides DNS statistics at friction Reynolds numbers 180, 395 and 590, including mean velocity and Reynolds stresses.
+- **Natural convection:** de Vahl Davis provides the canonical differentially heated square-cavity benchmark over Ra=10^3–10^6 with mesh refinement/extrapolation.
+- **Graetz thermal entrance:** the classical laminar thermal-entry problem has an analytical/eigenfunction solution; the fully developed constant-wall-temperature limit is approximately Nu=3.6568 for a circular tube, while entrance-region values depend on the Graetz coordinate.
 
 
 
