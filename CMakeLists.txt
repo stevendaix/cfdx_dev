@@ -312,6 +312,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
+    add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
 
     # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
