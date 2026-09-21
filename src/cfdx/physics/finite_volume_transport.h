@@ -73,36 +73,25 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         g.face_area_vectors[f] = fg.Sf;
     }
 
+    std::vector<std::size_t> face_owners(nf);
+    std::vector<int> face_neighbours(nf);
+    for (std::size_t f = 0; f < nf; ++f) {
+        face_owners[f] = mesh.ownership().owner(f);
+        face_neighbours[f] = mesh.ownership().neighbour(f);
+    }
+
     for (std::size_t c = 0; c < nc; ++c) {
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
-        const auto cg = compute_cell_geometry(
+        const auto cg = compute_cell_geometry_oriented(
             g.face_centres.data(), g.face_area_vectors.data(),
-            mesh.cells().faces_data() + off, count);
+            face_owners.data(), face_neighbours.data(),
+            mesh.cells().faces_data() + off, c, count);
         g.cell_centres[c] = cg.centre;
-
-        // Face area vectors are stored once, oriented from owner to neighbour.
-        // For a neighbour cell the same face therefore has the opposite
-        // outward normal. Cell geometry must account for that orientation;
-        // otherwise internal faces corrupt neighbour-cell volumes.
-        double signed_volume = 0.0;
-        for (std::size_t k = 0; k < count; ++k) {
-            const std::size_t f = mesh.cells().faces_data()[off + k];
-            const auto owner = mesh.ownership().owner(f);
-            const auto neighbour = mesh.ownership().neighbour(f);
-            if (owner != c && neighbour != static_cast<int>(c))
-                throw std::runtime_error("build_fv_geometry: cell-face ownership mismatch");
-            const double orientation = owner == c ? 1.0 : -1.0;
-            signed_volume +=
-                (g.face_centres[f] - g.cell_centres[c]).dot(
-                    g.face_area_vectors[f] * orientation);
-        }
-        signed_volume /= 3.0;
-        g.cell_volumes[c] = std::abs(signed_volume);
+        g.cell_volumes[c] = cg.volume;
         if (!(g.cell_volumes[c] > 0.0) || !std::isfinite(g.cell_volumes[c]))
             throw std::runtime_error("build_fv_geometry: non-positive cell volume");
     }
-
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
         for (const auto f : mesh.boundary().patch(p).face_ids) {
             if (f >= nf || mesh.ownership().neighbour(f) >= 0)
