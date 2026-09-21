@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -13,7 +14,6 @@ namespace cfdx::runtime::gpu {
 class DeviceBuffer {
 public:
     DeviceBuffer() = default;
-    explicit DeviceBuffer(std::size_t bytes) { resize(bytes); }
     DeviceBuffer(const DeviceBuffer&) = delete;
     DeviceBuffer& operator=(const DeviceBuffer&) = delete;
     DeviceBuffer(DeviceBuffer&&) noexcept = default;
