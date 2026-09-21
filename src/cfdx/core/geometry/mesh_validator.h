@@ -102,7 +102,7 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
         const auto offset = m.cells().cell_offset(c);
         const auto size = m.cells().cell_size(c);
         try {
-            auto geom = compute_cell_geometry(
+            auto geom = compute_cell_geometry_raw(
                 face_centres.data(), face_Sf.data(),
                 m.cells().faces_data() + offset, size);
             cell_centres[c] = geom.centre;
