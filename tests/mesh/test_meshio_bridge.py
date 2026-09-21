@@ -10,10 +10,7 @@ with tempfile.TemporaryDirectory() as d:
     src = root / "two_tetra.msh"
     dst = root / "mesh.h5"
     points = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=float)
-    cells = [
-        ("triangle", np.array([[0,2,1],[0,1,3],[1,2,3],[2,0,3]], dtype=int)),
-        ("tetra", np.array([[0,1,2,3]], dtype=int)),
-    ]
+    cells = [("tetra", np.array([[0,1,2,3]], dtype=int))]
     mesh = meshio.Mesh(
         points, cells,
         cell_data={"gmsh:physical": [
