@@ -82,6 +82,11 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
     return result
 
 
+def parse_model_results(output: str) -> list[dict[str, str]]:
+    pattern = re.compile(r"MODEL (?P<name>[A-Z0-9_]+) (?P<metric>[A-Za-z0-9_]+)=(?P<value>[-+0-9.eE]+) reference=(?P<reference>.*)")
+    return [m.groupdict() for m in pattern.finditer(output)]
+
+
 def run_ghia(executable: Path, log_path: Path) -> tuple[int, str, list[dict]]:
     rc, output = run_test(executable, log_path)
     return rc, output, parse_ghia(output)
@@ -134,7 +139,7 @@ def make_plot(out: Path, ghia: list[dict]) -> str | None:
     return out.name
 
 
-def write_tex(path: Path, cases: list[Case], ghia: list[dict], logs: dict, plot_name: str | None, generated: str) -> None:
+def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: list[dict], logs: dict, plot_name: str | None, generated: str) -> None:
     counts: dict[str, int] = {}
     for c in cases:
         counts[c.status] = counts.get(c.status, 0) + 1
@@ -230,7 +235,22 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], logs: dict, plot_
         lines.append(f"\texttt{{{latex_escape(ident)}}}: return code {rc}.")
 
     lines += [
+        r"\section{Numerical model verification}",
+        r"The table below is populated directly from the deterministic numerical-model executable.",
+        r"\begin{longtable}{p{38mm}p{30mm}p{30mm}p{65mm}}",
+        r"\toprule Model & Metric & Value/error & Reference\\",
+        r"\midrule",
+    ]
+    for m in model_results:
+        lines.append(
+            f"\texttt{{{latex_escape(m['name'])}}} & {latex_escape(m['metric'])} & "
+            f"{latex_escape(m['value'])} & {latex_escape(m['reference'])}\\"
+        )
+    lines += [
+        r"\bottomrule",
+        r"\end{longtable}",
         r"\section{Full VMFL capability matrix}",
+
         r"\small",
         r"\begin{longtable}{p{12mm}p{48mm}p{18mm}p{72mm}}",
         r"\toprule ID & Fluent case & CFDX status & Main comparison\\",
@@ -282,6 +302,15 @@ def main() -> int:
     else:
         logs["test_fluent_vmfl_reference"] = (-1, "executable not found")
 
+    model_results: list[dict] = []
+    model_exe = args.build_dir / "test_numerical_model_verification"
+    if model_exe.exists():
+        rc, output = run_test(model_exe, args.output_dir / "test_numerical_model_verification.log")
+        model_results = parse_model_results(output)
+        logs["test_numerical_model_verification"] = (rc, output)
+    else:
+        logs["test_numerical_model_verification"] = (-1, "executable not found")
+
     ghia: list[dict] = []
     ghia_exe = args.build_dir / "test_ghia_cavity"
     if ghia_exe.exists():
@@ -291,7 +320,7 @@ def main() -> int:
         logs["test_ghia_cavity"] = (-1, "executable not found")
 
     (args.output_dir / "results.json").write_text(
-        json.dumps({"generated": generated, "ghia": ghia,
+        json.dumps({"generated": generated, "ghia": ghia, "model_results": model_results,
                     "test_status": {k: v[0] for k, v in logs.items()}}, indent=2),
         encoding="utf-8",
     )
@@ -299,7 +328,7 @@ def main() -> int:
     plot_name = make_plot(args.output_dir / "ghia_mesh_convergence.png", ghia)
 
     tex = args.output_dir / "cfdx_validation_report.tex"
-    write_tex(tex, cases, ghia, logs, plot_name, generated)
+    write_tex(tex, cases, ghia, model_results, logs, plot_name, generated)
 
     import shutil
     latexmk = shutil.which("latexmk")
