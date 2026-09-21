@@ -18,7 +18,16 @@ VOLUME_FACES = {
  "pyramid": ((0,1,2,3),(0,4,1),(1,4,2),(2,4,3),(3,4,0)),
  "voxel": ((0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)),
 }
-SURFACE = {"triangle": 3, "quad": 4}
+SURFACE = {"triangle": 3, "quad": 4, "triangle6": 3, "quad8": 4, "quad9": 4}
+CORNER_COUNT = {
+ "tetra10": 4, "hexahedron20": 8, "hexahedron27": 8,
+ "wedge15": 6, "wedge18": 6, "pyramid13": 5, "pyramid14": 5,
+ "triangle6": 3, "quad8": 4, "quad9": 4,
+}
+BASE_TYPE = {
+ "tetra10":"tetra", "hexahedron20":"hexahedron", "hexahedron27":"hexahedron",
+ "wedge15":"wedge", "wedge18":"wedge", "pyramid13":"pyramid", "pyramid14":"pyramid",
+}
 
 def patch_type(name):
     n=name.lower()
@@ -48,21 +57,37 @@ def build(mesh):
     if points.shape[1]==2: points=np.column_stack((points,np.zeros(len(points))))
     volumes=[]; surfaces=[]; skipped=collections.Counter()
     for bi,b in enumerate(mesh.cells):
-        if b.type in VOLUME_FACES:
-            volumes += [(b.type,[int(x) for x in row],bi) for row in np.asarray(b.data)]
-        elif b.type in SURFACE:
-            surfaces += [(b.type,[int(x) for x in row],bi) for row in np.asarray(b.data)]
-        else: skipped[b.type]+=len(b.data)
+        ctype = b.type
+        base = BASE_TYPE.get(ctype, ctype)
+        if base in VOLUME_FACES:
+            ncorner = CORNER_COUNT.get(ctype, len(VOLUME_FACES[base][0]))
+            volumes += [(base,[int(x) for x in row[:ncorner]],bi)
+                        for row in np.asarray(b.data)]
+        elif ctype in SURFACE:
+            ncorner = SURFACE[ctype]
+            surfaces += [(ctype,[int(x) for x in row[:ncorner]],bi)
+                         for row in np.asarray(b.data)]
+        elif ctype == "polyhedron":
+            for row in b.data:
+                faces_for_cell = [[int(x) for x in np.asarray(face)] for face in row]
+                volumes.append(("polyhedron", faces_for_cell, bi))
+        else:
+            skipped[ctype]+=len(b.data)
     if not volumes and not surfaces: raise ValueError("no supported cells")
     cells=volumes if volumes else surfaces
     face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
     for ci,(ctype,nodes,_) in enumerate(cells):
-        if volumes: templates=VOLUME_FACES[ctype]
+        if volumes and ctype == "polyhedron":
+            templates = tuple(range(len(nodes)))
+        elif volumes: templates=VOLUME_FACES[ctype]
         else:
             templates=tuple((i,(i+1)%len(nodes)) for i in range(len(nodes)))
         refs=[]
         for local in templates:
-            face=[nodes[i] for i in local] if volumes else [nodes[local[0]],nodes[local[1]]]
+            if volumes and ctype == "polyhedron":
+                face = nodes[local]
+            else:
+                face=[nodes[i] for i in local] if volumes else [nodes[local[0]],nodes[local[1]]]
             key=tuple(sorted(face)); fid=face_map.get(key)
             if fid is None:
                 fid=len(faces); face_map[key]=fid; faces.append(face)
