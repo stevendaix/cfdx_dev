@@ -57,7 +57,9 @@ public:
         if (command == "restore") {
             if (!store_.contains()) return {false, "No checkpoint available"};
             restored_ = store_.load();
-            return {true, "Checkpoint restored to command context"};
+            workbench_.controller().restore(*restored_);
+            workbench_.tree().reset(workbench_.controller().model());
+            return {true, "Checkpoint restored"};
         }
         if (command == "set") {
             std::string key;
