@@ -21,7 +21,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Release, DebugSanitizers]
+        include:
+          - build_type: Release
+            sanitizers: OFF
+          - build_type: Debug
+            sanitizers: ON
 
     steps:
       - name: Checkout
@@ -44,6 +48,7 @@ jobs:
           cmake -S . -B build
           -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCFDX_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
