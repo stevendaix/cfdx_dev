@@ -19,6 +19,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 #include <string>
