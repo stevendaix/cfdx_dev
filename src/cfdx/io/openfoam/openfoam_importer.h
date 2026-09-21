@@ -3,7 +3,8 @@
 #include "cfdx/core/field/field.h"
 #include <string>
 #include <vector>
-#include <cstdint>\n#include <utility>
+#include <cstdint>
+#include <utility>
 
 namespace cfdx::io::openfoam {
 using ScalarCellField = cfdx::core::ScalarCellField;
@@ -15,7 +16,7 @@ struct PatchDef {
     int n_elements;
     std::vector<std::uint32_t> face_ids;
     PatchDef(std::string n, int t, int ne, std::vector<std::uint32_t> ids)
-        : name(n), type(t), n_elements(ne), face_ids(std::move(ids)) {}
+        : name(std::move(n)), type(t), n_elements(ne), face_ids(std::move(ids)) {}
 };
 
 struct OpenFOAMFace { int n; std::vector<std::uint32_t> indices; };
