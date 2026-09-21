@@ -74,7 +74,7 @@ inline ScalarEquation assemble_energy_equation(
 
     return assemble_scalar_equation(
         mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true,
-        &transient_diag,&transient_rhs);
+        nullptr,&transient_diag,&transient_rhs);
 }
 
 inline EnergySolveResult solve_energy(
