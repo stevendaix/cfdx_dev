@@ -50,12 +50,12 @@ inline RadiationSolveResult solve_participating_radiation(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
     cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
     cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
-    const std::vector<Direction>& directions,
+    const std::vector<DiscreteDirection>& directions,
     const RadiationTransportControls& controls = {},
     const ScalarBoundaryConditions& wall_intensity_bcs = {})
 {
     validate_radiation_transport_controls(controls);
-    validate_dom(directions);
+    validate_discrete_directions(directions);
     if(temperature.size()!=mesh.n_cells() ||
        irradiation.size()!=mesh.n_cells() ||
        radiation_source.size()!=mesh.n_cells())
@@ -83,9 +83,9 @@ inline RadiationSolveResult solve_participating_radiation(
                 mesh.n_faces(),"sI","W/m2",1);
             const auto& d=directions[m];
             for(std::size_t f=0;f<mesh.n_faces();++f)
-                directional_flux(f)=d.x*geometry.face_area_vectors[f].x+
-                                    d.y*geometry.face_area_vectors[f].y+
-                                    d.z*geometry.face_area_vectors[f].z;
+                directional_flux(f)=d.dx*geometry.face_area_vectors[f].x+
+                                    d.dy*geometry.face_area_vectors[f].y+
+                                    d.dz*geometry.face_area_vectors[f].z;
 
             cfdx::core::Field<double,cfdx::core::Location::CELL> source(
                 nc,"radiation_source","W/m3/sr",1);
@@ -104,11 +104,14 @@ inline RadiationSolveResult solve_participating_radiation(
                 wall_intensity_bcs,true);
 
             auto old=intensities[m];
+            cfdx::core::Vector intensity(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) intensity(c)=intensities[m](c);
             ScalarSolveControls sc;
             sc.max_iterations=controls.linear_max_iterations;
             sc.tolerance=controls.linear_tolerance;
             sc.relaxation=controls.intensity_relaxation;
-            const auto lr=solve_scalar_equation(eq,intensities[m],sc);
+            const auto lr=solve_scalar_equation(eq,intensity,sc);
+            for(std::size_t c=0;c<nc;++c) intensities[m](c)=intensity(c);
             if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
                 throw std::runtime_error("radiation intensity linear solve did not converge");
 
@@ -123,7 +126,7 @@ inline RadiationSolveResult solve_participating_radiation(
                 G+=directions[m].weight*intensities[m](c);
             irradiation(c)=G;
             radiation_source(c)=controls.absorption*
-                (4.0*M_PI*blackbody(temperature(c))-G);
+                (4.0*M_PI*blackbody_intensity(temperature(c))-G);
         }
 
         double max_source_delta = 0.0;
@@ -161,8 +164,9 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& non_radiative_source,
     cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
-    const std::vector<Direction>& directions,
+    const std::vector<DiscreteDirection>& directions,
     const RadiationEnergyCouplingControls& controls = {},
+    const ScalarBoundaryConditions& radiation_bcs = {},
     const ScalarBoundaryConditions& thermal_bcs = {})
 {
     if(controls.max_outer_iterations==0 || controls.tolerance<=0.0)
@@ -183,7 +187,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
 
         auto rr=solve_participating_radiation(
             mesh,geometry,temperature,irradiation,qrad,directions,
-            controls.radiation,thermal_bcs);
+            controls.radiation,radiation_bcs);
         if(!rr.converged)
             throw std::runtime_error("radiation inner solve did not converge");
 
