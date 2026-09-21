@@ -37,6 +37,11 @@ enum class ConvectionScheme {
     SECOND_ORDER_UPWIND
 };
 
+enum class DiffusionScheme {
+    ORTHOGONAL,
+    NON_ORTHOGONAL_CORRECTED
+};
+
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
     std::map<std::string, std::vector<double>> values;
@@ -135,7 +140,9 @@ inline ScalarEquation assemble_scalar_equation(
     const std::vector<double>* extra_rhs = nullptr,
     const std::vector<double>* cell_diffusion = nullptr,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    DiffusionScheme diffusion_scheme = DiffusionScheme::ORTHOGONAL,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* diffused_field = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -190,6 +197,40 @@ inline ScalarEquation assemble_scalar_equation(
             }
             const double D = gamma_face * area / distance;
 
+            // Two-point diffusion is exact on orthogonal meshes. On a
+            // non-orthogonal face, split Sf into the line-of-centres
+            // contribution plus a tangential correction. The orthogonal
+            // contribution remains implicit; the correction is deferred
+            // explicitly using a cell-centred Gauss gradient.
+            double diffusion_correction = 0.0;
+            if (diffusion_scheme == DiffusionScheme::NON_ORTHOGONAL_CORRECTED) {
+                if (diffused_field == nullptr ||
+                    diffused_field->size() != nc ||
+                    diffused_field->dimension() != 1)
+                    throw std::invalid_argument(
+                        "assemble_scalar_equation: non-orthogonal diffusion requires a scalar diffused field");
+
+                const auto grad = cfdx::core::compute_gradient_gauss(*diffused_field, mesh);
+                const auto dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const double dmag = dvec.mag();
+                const auto Sf = geometry.face_area_vectors[f];
+                const double smag = Sf.mag();
+                if (!(dmag > 0.0) || !(smag > 0.0))
+                    throw std::runtime_error(
+                        "assemble_scalar_equation: invalid non-orthogonal face geometry");
+
+                const auto d_hat = dvec * (1.0 / dmag);
+                const auto S_orth = d_hat * Sf.dot(d_hat);
+                const auto S_corr = Sf - S_orth;
+                const double* gx = grad.component_data(0);
+                const double* gy = grad.component_data(1);
+                const double* gz = grad.component_data(2);
+                const cfdx::core::Vec3 grad_o{gx[o], gy[o], gz[o]};
+                const cfdx::core::Vec3 grad_n{gx[n], gy[n], gz[n]};
+                const auto grad_f = (grad_o + grad_n) * 0.5;
+                diffusion_correction = gamma_face * grad_f.dot(S_corr);
+            }
+
             const double a_on = D + std::max(F, 0.0);
             const double a_no = D + std::max(-F, 0.0);
             diag[o] += a_on;
@@ -199,6 +240,10 @@ inline ScalarEquation assemble_scalar_equation(
 
             div_phi[o] += F;
             div_phi[n] -= F;
+            if (diffusion_scheme == DiffusionScheme::NON_ORTHOGONAL_CORRECTED) {
+                deferred_rhs[o] -= diffusion_correction;
+                deferred_rhs[n] += diffusion_correction;
+            }
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
                 const std::size_t upwind = F >= 0.0 ? o : n;
