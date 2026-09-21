@@ -336,6 +336,9 @@ if(CFDX_BUILD_TESTS)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
     endif()
+    if(CFDX_ENABLE_GPU)
+        add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
+    endif()
 
     # HDF5 tests
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
