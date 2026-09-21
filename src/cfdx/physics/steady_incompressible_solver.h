@@ -215,10 +215,14 @@ inline ScalarEquation assemble_momentum_component(
     cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
         mesh.n_cells(), "momentum_sp", "kg/m3/s", 1);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-        source(c) = body_component(c) - pressure_gradient_component(c);
+        if (pressure_gradient_component.dimension() != 3 ||
+            pressure_gradient_component.size() != mesh.n_cells())
+            throw std::invalid_argument("assemble_momentum_component: pressure gradient must be a 3-component cell field");
+        source(c) = body_component(c) - pressure_gradient_component.component_data(component)[c];
         sp(c) = 0.0;
     }
-    (void)component;
+    if (component >= 3)
+        throw std::invalid_argument("assemble_momentum_component: component index out of range");
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, velocity_bcs, bounded, nullptr, nullptr, nullptr, nullptr,
