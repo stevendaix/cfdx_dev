@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -117,7 +118,9 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
     if (file < 0) return false;
 
-    auto fail = [&]() {
+    auto fail = [&](const std::string& reason) {
+        std::cerr << "HDF5 integrity error in '" << filename
+                  << "': " << reason << '\\n';
         H5Fclose(file);
         return false;
     };
@@ -134,7 +137,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         !read_dataset_i64(file, "neighbour", neighbour) ||
         !read_dataset_u64(file, "cell_faces", cf) ||
         !read_dataset_u64(file, "cell_offsets", co)) {
-        return fail();
+        return fail("missing required topology dataset");
     }
 
     if (pts.size() % 3 != 0 || fo.empty() || co.empty() ||
@@ -142,7 +145,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         fo.back() != fv.size() || co.back() != cf.size() ||
         owner.size() != neighbour.size() ||
         fo.size() - 1 != owner.size()) {
-        return fail();
+        return fail("invalid topology dataset dimensions or CSR terminal offsets");
     }
 
     const std::size_t n_points = pts.size() / 3;
@@ -151,10 +154,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
 
     // Validate CSR offsets before converting uint64_t to size_t.
     for (std::size_t i = 1; i < fo.size(); ++i) {
-        if (fo[i] < fo[i - 1] || fo[i] > fv.size()) return fail();
+        if (fo[i] < fo[i - 1] || fo[i] > fv.size()) return fail("face CSR offsets are not monotonic or exceed face-vertex storage");
     }
     for (std::size_t i = 1; i < co.size(); ++i) {
-        if (co[i] < co[i - 1] || co[i] > cf.size()) return fail();
+        if (co[i] < co[i - 1] || co[i] > cf.size()) return fail("cell CSR offsets are not monotonic or exceed cell-face storage");
     }
 
     mesh.clear();
@@ -169,21 +172,21 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         std::vector<cfdx::core::FaceConnectivity::Index> vertices;
         vertices.reserve(static_cast<std::size_t>(end - begin));
         for (std::uint64_t j = begin; j < end; ++j) {
-            if (fv[j] >= n_points) return fail();
+            if (fv[j] >= n_points) return fail("face vertex index is outside the point array");
             vertices.push_back(
                 static_cast<cfdx::core::FaceConnectivity::Index>(fv[j]));
         }
-        if (vertices.size() < 3) return fail();
+        if (vertices.size() < 3) return fail("face contains fewer than three vertices");
         mesh.faces().push_face(std::move(vertices));
     }
 
     mesh.ownership().resize(n_faces);
     for (std::size_t i = 0; i < n_faces; ++i) {
-        if (owner[i] >= n_cells) return fail();
+        if (owner[i] >= n_cells) return fail("owner index is outside the cell range");
         if (neighbour[i] < -1 ||
             (neighbour[i] >= 0 &&
              static_cast<std::uint64_t>(neighbour[i]) >= n_cells)) {
-            return fail();
+            return fail("neighbour index is outside the cell range");
         }
         mesh.ownership().set_owner(i, owner[i]);
         mesh.ownership().set_neighbour(i, neighbour[i]);
@@ -195,11 +198,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         std::vector<cfdx::core::CellConnectivity::FaceId> faces;
         faces.reserve(static_cast<std::size_t>(end - begin));
         for (std::uint64_t j = begin; j < end; ++j) {
-            if (cf[j] >= n_faces) return fail();
+            if (cf[j] >= n_faces) return fail("cell contains no faces");
             faces.push_back(
                 static_cast<cfdx::core::CellConnectivity::FaceId>(cf[j]));
         }
-        if (faces.empty()) return fail();
+        if (faces.empty()) return fail("cell-face index is outside the face range");
         mesh.cells().push_cell(std::move(faces));
     }
 
@@ -215,13 +218,13 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             patch_face_offsets.front() != 0 ||
             patch_face_offsets.back() != patch_face_ids.size() ||
             patch_face_offsets.size() != patch_entries.size() + 1) {
-            return fail();
+            return fail("boundary patch metadata datasets are missing or inconsistent");
         }
 
         for (std::size_t i = 1; i < patch_face_offsets.size(); ++i) {
             if (patch_face_offsets[i] < patch_face_offsets[i - 1] ||
                 patch_face_offsets[i] > patch_face_ids.size()) {
-                return fail();
+                return fail("boundary patch CSR offsets are invalid");
             }
         }
 
@@ -233,7 +236,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             const size_t p3 = entry.find(':', p2 == std::string::npos ? 0 : p2 + 1);
             if (p1 == std::string::npos || p2 == std::string::npos ||
                 p3 == std::string::npos) {
-                return fail();
+                return fail("boundary patch metadata entry is malformed");
             }
 
             cfdx::core::Patch patch;
@@ -251,18 +254,18 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
                 if (count != offset_end - offset_begin ||
                     start > n_faces ||
                     start + count > n_faces) {
-                    return fail();
+                    return fail("boundary patch face count/range is inconsistent");
                 }
 
                 patch.face_ids.reserve(static_cast<std::size_t>(count));
                 for (std::uint64_t j = 0; j < count; ++j) {
                     const std::uint64_t face_id = patch_face_ids[offset_begin + j];
-                    if (face_id >= n_faces) return fail();
+                    if (face_id >= n_faces) return fail("boundary patch references a face outside the mesh");
                     patch.face_ids.push_back(
                         static_cast<cfdx::core::FaceIndex>(face_id));
                 }
             } catch (...) {
-                return fail();
+                return fail("mesh topology validation failed");
             }
             bp.add_patch(std::move(patch));
         }
