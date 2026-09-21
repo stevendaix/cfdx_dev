@@ -167,6 +167,14 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     auto problem = make_channel(n, height);
     auto geometry = build_fv_geometry(problem.mesh);
 
+    // Internal faces are owner-oriented and must be reversed for neighbour
+    // cells when computing closed-cell volumes.
+    const double expected_volume = height / static_cast<double>(n);
+    for (std::size_t c = 0; c < n; ++c) {
+        if (std::abs(geometry.cell_volumes[c] - expected_volume) > 1e-12)
+            throw std::runtime_error("channel cell volume is inconsistent with mesh topology");
+    }
+
     Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "kg/s", 1);
     phi.fill(0.0);
 
