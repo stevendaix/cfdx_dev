@@ -1,4 +1,8 @@
 #include "cfdx/core/linalg/linear_operator.h"
+#include "cfdx/core/memory/reuse_pool.h"
+#include "cfdx/core/memory/field_lifetime.h"
+#include "cfdx/core/linalg/mpi_overlap.h"
+#include "cfdx/core/mesh/sfc_ordering.h"
 #include "cfdx/core/linalg/krylov_controls.h"
 #include "cfdx/core/linalg/communication_avoiding.h"
 #include "cfdx/core/linalg/chebyshev_smoother.h"
@@ -35,6 +39,6 @@ int main() {
     thermodynamics::IdealGasThermoModel gas;
     cache.update(gas,{101325.0,101325.0},{300.0,310.0});
     if (!cache.valid || cache.state.size()!=2) return 8;
-    std::cout<<"performance runtime: PASS\n";
+    core::memory::ReusePool pool; auto aoff=pool.acquire(128); auto boff=pool.acquire(64); pool.release(aoff); auto coff=pool.acquire(32); if(coff!=aoff || pool.allocated_bytes()!=96) return 9;\n    core::memory::FieldLifetime fa{"a",64,0,2,core::memory::Residency::Ephemeral}; core::memory::FieldLifetime fb{"b",64,2,4,core::memory::Residency::Ephemeral}; if(!core::memory::reusable(fa,fb)) return 10;\n    bool overlap=false; core::HaloOverlap schedule([&](){overlap=true;},[]{},[]{},[]{}); schedule.execute(); if(!overlap) return 11;\n    std::cout<<"performance runtime: PASS\n";
     return 0;
 }

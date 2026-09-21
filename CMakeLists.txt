@@ -231,7 +231,10 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/fv_operator.h
     src/cfdx/core/linalg/krylov_controls.h
     src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/linalg/mpi_overlap.h
+    src/cfdx/core/linalg/block_schur.h
     src/cfdx/core/mesh/solver_mesh.h
+    src/cfdx/core/mesh/sfc_ordering.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
