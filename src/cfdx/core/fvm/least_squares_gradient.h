@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
