@@ -197,8 +197,19 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         auto er=solve_energy(
             mesh,geometry,mass_flux,temperature,source,
             controls.energy,thermal_bcs);
-        if(!er.converged)
-            throw std::runtime_error("energy inner solve did not converge");
+        if(!er.converged) {
+            const double last_residual = er.history.empty()
+                ? std::numeric_limits<double>::infinity()
+                : er.history.back().residual;
+            const double last_imbalance = er.history.empty()
+                ? std::numeric_limits<double>::infinity()
+                : er.history.back().energy_imbalance;
+            throw std::runtime_error(
+                "energy inner solve did not converge: iterations=" +
+                std::to_string(er.iterations) +
+                " residual=" + std::to_string(last_residual) +
+                " imbalance=" + std::to_string(last_imbalance));
+        }
 
         double max_delta=0.0;
         for(std::size_t c=0;c<nc;++c)
