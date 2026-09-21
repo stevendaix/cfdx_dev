@@ -4,7 +4,7 @@
 
 ## Phase actuelle
 
-**M0 — Stabilisation finale / validation des imports** → M1 — Navier-Stokes incompressible
+**M0 — Stabilisation terminée; M1-M4 verification hardening in progress** → M1 — Navier-Stokes incompressible
 
 La branche `audit/mesh-importers` complète l'audit de l'import maillage. M1 ne doit démarrer qu'après validation CI de cette PR.
 
@@ -50,3 +50,8 @@ Après merge et CI verte de la PR #3 :
 ## Décisions architecturales
 
 Voir `docs/development/DECISIONS.md`.
+
+
+## Current audit update — 2026-09-21
+
+The M1-M4 implementation is undergoing a full numerical and code audit. Analytical Level-A benchmarks, conservation checks, radiation normalization, pressure-correction scaling, turbulence production units, mesh I/O bounds checks, MPI halo exchange and legacy convection assembly are being hardened before the stack is considered validated.
