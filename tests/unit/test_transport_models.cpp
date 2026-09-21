@@ -11,6 +11,15 @@ using namespace cfdx::physics;
 using namespace cfdx::testing;
 
 int main() {
+    run_case("eos_rejects_invalid_parameters", []() {
+        IdealGasParams ideal;
+        ideal.gamma = 1.0;
+        EXPECT_THROW(IdealGasEOS(ideal), std::invalid_argument);
+        IncompressibleParams inc;
+        inc.rho = 0.0;
+        EXPECT_THROW(IncompressibleEOS(inc), std::invalid_argument);
+    });
+
     run_case("ideal_gas_density", []() {
         IdealGasParams params;
         params.M = 0.02896546;
