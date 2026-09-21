@@ -51,12 +51,12 @@ public:
             return {true, "Pause requested"};
         }
         if (command == "checkpoint") {
-            store_.save({workbench_.controller().model(), workbench_.controller().latest_checkpoint()});
+            store_->save({workbench_.controller().model(), workbench_.controller().latest_checkpoint()});
             return {true, "Checkpoint saved"};
         }
         if (command == "restore") {
-            if (!store_.contains()) return {false, "No checkpoint available"};
-            restored_ = store_.load();
+            if (!store_->contains()) return {false, "No checkpoint available"};
+            restored_ = store_->load();
             workbench_.controller().restore(*restored_);
             workbench_.tree().reset(workbench_.controller().model());
             return {true, "Checkpoint restored"};
