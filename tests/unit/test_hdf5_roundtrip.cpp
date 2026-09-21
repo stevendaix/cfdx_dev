@@ -6,7 +6,7 @@
 #include "common/test_harness.h"
 #include <cstdio>
 #include <string>
-#include <H5public.h>
+#include <hdf5.h>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
