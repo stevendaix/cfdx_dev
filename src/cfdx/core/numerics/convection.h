@@ -61,19 +61,44 @@ inline Field<double, Location::CELL> compute_vector_convection(
     if (vector.dimension() != 3) {
         throw std::runtime_error("compute_vector_convection: 3-component field required");
     }
+    if (face_flux.dimension() != 1 || face_flux.size() != mesh.n_faces()) {
+        throw std::runtime_error("compute_vector_convection: invalid face flux");
+    }
+    if (vector.size() != mesh.n_cells()) {
+        throw std::runtime_error("compute_vector_convection: field size != n_cells");
+    }
+
+    // Interpolate all three components in one pass. The previous implementation
+    // constructed/copying a scalar Field and a scalar result three times, which
+    // created avoidable heap traffic and repeated mesh traversal.
+    const auto face_value =
+        interpolate_cell_to_face(vector, mesh, scheme, &face_flux);
+
     Field<double, Location::CELL> result(
         mesh.n_cells(), vector.name() + "_convection",
         vector.metadata().unit + "/s", 3);
+
+    const auto& ownership = mesh.ownership();
+    const auto& cells = mesh.cells();
+    const auto* cell_faces = cells.faces_data();
+    const auto* cell_offsets = cells.offsets_data();
+    const double* flux = face_flux.component_data(0);
+
     for (std::size_t d = 0; d < 3; ++d) {
-        Field<double, Location::CELL> component(
-            mesh.n_cells(), vector.name() + "_component", vector.metadata().unit, 1);
-        double* dst = component.component_data(0);
-        const double* src = vector.component_data(d);
-        for (std::size_t c = 0; c < mesh.n_cells(); ++c) dst[c] = src[c];
-        const auto conv = compute_convection(component, face_flux, mesh, scheme);
+        const double* phi = face_value.component_data(d);
         double* out = result.component_data(d);
-        const double* in = conv.component_data(0);
-        for (std::size_t c = 0; c < mesh.n_cells(); ++c) out[c] = in[c];
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double sum = 0.0;
+            const Offset off = cell_offsets[c];
+            const Offset n = cell_offsets[c + 1] - off;
+            for (Offset k = 0; k < n; ++k) {
+                const std::size_t f = cell_faces[off + k];
+                const double signed_flux =
+                    ownership.owner(f) == c ? flux[f] : -flux[f];
+                sum += signed_flux * phi[f];
+            }
+            out[c] = sum;
+        }
     }
     return result;
 }
