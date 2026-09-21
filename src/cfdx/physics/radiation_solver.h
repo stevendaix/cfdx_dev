@@ -15,7 +15,7 @@ namespace cfdx::physics {
 struct RadiationTransportControls {
     double absorption = 0.0;
     double scattering = 0.0;
-    double temperature_relaxation = 1.0;
+    double intensity_relaxation = 1.0;
     std::size_t max_iterations = 100;
     double tolerance = 1e-8;
     std::size_t linear_max_iterations = 2000;
@@ -39,7 +39,7 @@ inline void validate_radiation_transport_controls(const RadiationTransportContro
     if(c.absorption<0.0 || c.scattering<0.0 ||
        c.max_iterations==0 || c.tolerance<=0.0 ||
        c.linear_max_iterations==0 || c.linear_tolerance<=0.0 ||
-       !(c.temperature_relaxation>0.0 && c.temperature_relaxation<=1.0))
+       !(c.intensity_relaxation>0.0 && c.intensity_relaxation<=1.0))
         throw std::invalid_argument("invalid radiation transport controls");
 }
 
@@ -105,7 +105,7 @@ inline RadiationSolveResult solve_participating_radiation(
             ScalarSolveControls sc;
             sc.max_iterations=controls.linear_max_iterations;
             sc.tolerance=controls.linear_tolerance;
-            sc.relaxation=controls.temperature_relaxation;
+            sc.relaxation=controls.intensity_relaxation;
             const auto lr=solve_scalar_equation(eq,intensities[m],sc);
             if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
                 throw std::runtime_error("radiation intensity linear solve did not converge");
