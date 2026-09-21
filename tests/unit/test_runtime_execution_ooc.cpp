@@ -54,6 +54,11 @@ int main() {
         auto ws = ooc::make_working_set(tm.tile(0),2);
         EXPECT_TRUE(ws.values.size()==4);
         ooc::PinnedBufferPool pool(1024,512);
+#ifdef CFDX_ENABLE_GPU
+        EXPECT_TRUE(ooc::PinnedBufferPool::is_pinned());
+#else
+        EXPECT_TRUE(!ooc::PinnedBufferPool::is_pinned());
+#endif
         auto* a=pool.acquire(); auto* b=pool.acquire();
         EXPECT_TRUE(a!=nullptr && b!=nullptr);
         EXPECT_TRUE(pool.acquire()==nullptr);
