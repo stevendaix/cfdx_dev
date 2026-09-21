@@ -28,7 +28,7 @@ inline void compute_kepsilon_production_field(
     for(std::size_t i=0;i<mesh.n_cells();++i) {
         const double nut=c.C_mu*std::max(k(i),c.k_min)*std::max(k(i),c.k_min)/
                          std::max(epsilon(i),c.epsilon_min);
-        production(i)=2.0*nut*strain_rate(i)*strain_rate(i);
+        production(i)=c.density*2.0*nut*strain_rate(i)*strain_rate(i);
     }
 }
 
@@ -105,12 +105,22 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         sc.max_iterations=2000;
         sc.tolerance=tolerance;
         sc.relaxation=0.7;
-        auto rk=solve_scalar_equation(eqk,k,sc);
-        auto re=solve_scalar_equation(eqe,epsilon,sc);
+        cfdx::core::Vector k_solution(n,0.0);
+        cfdx::core::Vector epsilon_solution(n,0.0);
+        for(std::size_t i=0;i<n;++i) {
+            k_solution(i)=k(i);
+            epsilon_solution(i)=epsilon(i);
+        }
+        auto rk=solve_scalar_equation(eqk,k_solution,sc);
+        auto re=solve_scalar_equation(eqe,epsilon_solution,sc);
+        for(std::size_t i=0;i<n;++i) {
+            k(i)=k_solution(i);
+            epsilon(i)=epsilon_solution(i);
+        }
         enforce_turbulence_bounds(k,epsilon,controls);
 
-        result.k_residual=scalar_equation_residual_inf(eqk,k);
-        result.second_residual=scalar_equation_residual_inf(eqe,epsilon);
+        result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
+        result.second_residual=scalar_equation_residual_inf(eqe,epsilon_solution);
         result.iterations=iter;
 
         double dk=0.0,de=0.0;

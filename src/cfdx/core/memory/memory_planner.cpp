@@ -16,6 +16,8 @@ struct ActiveAllocation {
     BufferReuseOptimizer::Allocation allocation;
     int death_op;
 };
+// The planner provides deterministic topology/field/solver memory estimates;
+// runtime allocation tracking is handled by MemoryLedger.
 
 size_t saturating_add(size_t a, size_t b, bool& overflow) {
     if (b > std::numeric_limits<size_t>::max() - a) {
@@ -125,6 +127,8 @@ BufferReuseOptimizer::optimize(
     return pools;
 }
 
+// MemoryPlanner
+// --------------------------------------------
 MemoryPlanner::Plan MemoryPlanner::plan(
     const std::vector<BufferDescriptor>& buffers,
     int total_operations,
@@ -132,6 +136,8 @@ MemoryPlanner::Plan MemoryPlanner::plan(
     size_t num_faces,
     int num_fields,
     int num_solver_vectors) const {
+    (void)buffers;
+    (void)total_operations;
     Plan result;
 
     if (total_operations < 0 || num_fields < 0 || num_solver_vectors < 0) {
@@ -511,6 +517,8 @@ double RCMReorderer::computeProfile(
     return static_cast<double>(profile);
 }
 
+// Mesh Reordering
+// --------------------------------------------
 MeshReorderer::ReorderingResult MeshReorderer::reorder(
     const std::vector<uint32_t>& owner,
     const std::vector<uint32_t>& neighbour,
@@ -558,5 +566,3 @@ void MeshReorderer::applyReordering(
             neighbour[i] = old_to_new[neighbour[i]];
     }
 }
-
-} // namespace cfdx::core::memory

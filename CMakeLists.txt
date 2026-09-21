@@ -98,11 +98,6 @@ set(CFDX_MESH_SOURCES
 )
 
 # Importers module
-set(CFDX_IMPORTER_SOURCES
-    src/cfdx/core/importers/opensfoam_importer.cpp
-    src/cfdx/core/importers/gmsh_importer.cpp
-)
-
 set(CFDX_LINALG_SOURCES
     src/cfdx/core/linalg/hypre_amg.cpp
 )
@@ -172,7 +167,6 @@ set(CFDX_CORE_SOURCES
     ${CFDX_THERMODYNAMICS_SOURCES}
     ${CFDX_CHEMISTRY_SOURCES}
     ${CFDX_TRANSPORT_SOURCES}
-    ${CFDX_IMPORTER_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
 )
@@ -252,6 +246,9 @@ target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_compile_definitions(cfdx_core PRIVATE CFDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+if(Python3_Interpreter_FOUND)
+    target_compile_definitions(cfdx_core PRIVATE CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}")
+endif()
 
 if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
@@ -329,6 +326,11 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
+    add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
+    add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
+    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
+    add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
+    add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
