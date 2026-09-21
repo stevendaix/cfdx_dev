@@ -87,7 +87,7 @@ int main()
         EXPECT_NEAR(turbulent_kinematic_viscosity_kepsilon(1.0,2.0),0.045,1e-14);
     });
     run_case("M2_SST_eddy_viscosity_limits", [] {
-        EXPECT_NEAR(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,0.0),0.0775,1e-14);
+        EXPECT_NEAR(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,0.0),0.25,1e-14);
         EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,2.0)>0.0);
     });
     run_case("M2_Smagorinsky_scaling", [] {
