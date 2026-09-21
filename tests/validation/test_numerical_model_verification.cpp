@@ -247,7 +247,7 @@ int main() {
         {
             close(m1m4::thermal_diffusivity(10,2,5),1.0,1e-14,"thermal diffusivity");
             close(m1m4::conductive_flux(10,400,300,0.5),2000.0,1e-12,"conductive flux");
-            close(m1m4::interface_conductance(10,20,0.1,0.2,2),50.0,1e-12,"interface conductance");
+            close(m1m4::interface_conductance(10,20,0.1,0.2,2),100.0,1e-12,"interface conductance");
             std::cout<<"MODEL THERMAL_CHT error=0 reference=thermal_resistance\n";
         }
         // N025: numerical model inventory marker. The report consumes these records.
