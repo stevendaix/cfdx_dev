@@ -33,6 +33,8 @@ public:
         for (auto& b : buffers_) b.bytes.resize(buffer_bytes);
     }
 
+    static constexpr bool is_pinned() noexcept { return false; }
+
     Buffer* acquire() {
         for (auto& b : buffers_) {
             if (!b.in_use) {
