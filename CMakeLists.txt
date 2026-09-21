@@ -138,6 +138,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/multi_component.h
     src/cfdx/physics/source_term_linearization.h
     src/cfdx/physics/transport_models.h
+    src/cfdx/physics/wall_functions.h
     src/cfdx/physics/temporal.h
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
@@ -306,6 +307,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_mesh tests/unit/test_mesh.cpp)
     add_cfdx_test(test_field tests/unit/test_field.cpp)
     add_cfdx_test(test_field_storage tests/unit/test_field_storage.cpp)
+    add_cfdx_test(test_field_wall_hardening tests/unit/test_field_wall_hardening.cpp)
     add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
