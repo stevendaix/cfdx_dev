@@ -281,6 +281,27 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
 
+    if (solution.size() == 1) {
+        const auto begin = equation.matrix.row_offsets_data()[0];
+        const auto end = equation.matrix.row_offsets_data()[1];
+        double diagonal = 0.0;
+        for (std::uint32_t k = begin; k < end; ++k) {
+            if (equation.matrix.columns_data()[k] == 0)
+                diagonal += equation.matrix.values_data()[k];
+        }
+        if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
+            throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
+        const double candidate_value = equation.rhs(0) / diagonal;
+        const double residual = std::abs(diagonal * candidate_value - equation.rhs(0));
+        solution(0) += controls.relaxation * (candidate_value - solution(0));
+        return {
+            residual <= controls.tolerance
+                ? cfdx::core::SolverStatus::CONVERGED
+                : cfdx::core::SolverStatus::MAX_ITER_REACHED,
+            1, residual, residual
+        };
+    }
+
     cfdx::core::Vector candidate = solution;
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
