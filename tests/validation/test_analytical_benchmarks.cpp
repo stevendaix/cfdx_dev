@@ -195,6 +195,10 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     result.y.resize(n);
     result.u.resize(n);
     result.volume = geometry.cell_volumes;
+    std::cout << "DEBUG Poiseuille n=" << n
+              << " V0=" << geometry.cell_volumes.front()
+              << " y0=" << geometry.cell_centres.front().y
+              << " u0=" << solution(0) << "\n";
     for (std::size_t i = 0; i < n; ++i) {
         result.y[i] = geometry.cell_centres[i].y;
         result.u[i] = solution(i);
