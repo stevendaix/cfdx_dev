@@ -32,8 +32,8 @@ int main() {
         m.faces().push_face({1, 2, 5, 4});
         m.faces().push_face({3, 4, 7, 6});
 
-        m.cells().push_cell({0, 1, 2, 3, 4});
-        m.cells().push_cell({1, 2, 5, 4});
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({1, 2});
 
         m.ownership().resize(3);
         m.ownership().set_owner(0, 0); m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
