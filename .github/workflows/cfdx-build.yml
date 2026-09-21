@@ -13,7 +13,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev libopenmpi-dev python3-venv
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev libopenmpi-dev python3-venv latexmk texlive-latex-base texlive-latex-recommended
       - name: Install Python mesh I/O stack
         run: |
           python3 -m venv .venv
@@ -25,5 +25,17 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_MPI=ON -DCFDX_USE_HDF5_SERIAL=OFF
       - name: Build
         run: cmake --build build --parallel
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - name: Test and generate validation report
+        run: |
+          set +e
+          ctest --test-dir build --output-on-failure
+          test_rc=$?
+          set -e
+          python3 scripts/validation_report.py --build-dir build --output-dir build/validation-report
+          exit $test_rc
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-validation-report
+          path: build/validation-report/
