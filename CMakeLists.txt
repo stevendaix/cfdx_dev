@@ -124,6 +124,7 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/vtu/vtu_writer.cpp
     src/cfdx/io/openfoam/openfoam_importer.cpp
     src/cfdx/io/gmsh/gmsh_importer.cpp
+    src/cfdx/io/mesh/mesh_importer.cpp
 )
 
 # Physics sources
@@ -212,6 +213,7 @@ add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
 target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+target_compile_definitions(cfdx_core PRIVATE CFDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
