@@ -44,7 +44,7 @@ int main() {
         tm.build(8,4,{{0,4},{1,4},{3,7},{4,5}});
         EXPECT_TRUE(tm.tiles().size()==2);
         EXPECT_TRUE(tm.tile(0).owned_cells.size()==4);
-        EXPECT_TRUE(tm.tile(0).halo_cells.size()==1);
+        EXPECT_TRUE(tm.tile(0).halo_cells.size()==2);
         EXPECT_TRUE(tm.tile(1).halo_cells.size()==1);
     });
 
