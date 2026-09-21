@@ -67,3 +67,46 @@ The highest-value next waves are:
 - matrix-free versus assembled operator equivalence.
 
 The Ansys VMFL suite should remain the application-level verification layer. Ansys explicitly describes its VMFL cases as verification tests rather than complete model validation, so the two layers serve different purposes.
+
+## Extended solver/discretisation verification
+
+| ID | Domain | Verification | Level | Current gate |
+|---|---|---|---|---|
+| N023 | convection-diffusion | manufactured sinusoidal solution + 16/32/64/128 refinement | C | implemented |
+| N024 | convection | upwind boundedness and refinement trend | C | implemented through N023 transport operator |
+| N025 | transient integration | RK2 temporal refinement on u'=-u | C | implemented |
+| N026 | transient integration | RK3 temporal refinement on u'=-u | C | algebraic; extend campaign |
+| N027 | transient diffusion | PDE MMS with temporal refinement | C | pending solver driver |
+| N028 | incompressible NS | Ghia Re=100/400 grid convergence | C | implemented |
+| N029 | incompressible NS | manufactured divergence-free velocity/pressure solution | C | pending forcing interface |
+| N030 | pressure-velocity coupling | SIMPLE zero-state + continuity/physical residual gates | C | implemented |
+| N031 | turbulence | k-epsilon transport positivity/source response | C | implemented |
+| N032 | turbulence | SST transport positivity/source response | C | implemented |
+| N033 | turbulence | SA closure algebraic verification | A | implemented |
+| N034 | turbulence | SA manufactured transport equation | C | pending SA transport solver |
+| N035 | energy | 1-D conduction refinement | C | implemented |
+| N036 | energy | transient energy manufactured solution | C | pending PDE campaign driver |
+| N037 | CHT | two-region interface temperature/flux continuity | C | implemented |
+| N038 | CHT | resistance-series analytical solution vs solver | C | pending coupled quantitative case |
+| N039 | radiation | blackbody equilibrium | A/B | implemented |
+| N040 | radiation | participating-media transport equilibrium | C | implemented |
+| N041 | radiation | manufactured intensity/source solution | C | pending source-manufacture interface |
+| N042 | compressible | Euler flux identical-state/free-stream preservation | A/B | implemented at flux level |
+| N043 | compressible | 1-D shock tube against exact Riemann solution | C | pending compressible solver |
+| N044 | compressible | isentropic vortex/free-stream preservation | C | pending compressible solver |
+| N045 | low-Mach | asymptotic pressure/density consistency | A/B | implemented |
+| N046 | transport properties | Sutherland/Prandtl/Schmidt regression | A | implemented |
+| N047 | parallel | 1/2/4/8-rank numerical equivalence | C | pending distributed solver case |
+| N048 | linear algebra | assembled vs matrix-free solution equivalence | C | pending common operator driver |
+| N049 | mesh quality | orthogonal/skew/non-orthogonal convergence comparison | C | pending mesh campaign |
+| N050 | reproducibility | deterministic repeated-run QoI and residual comparison | C | pending campaign harness |
+| N051 | negative verification | invalid BC/NaN/negative property rejection | A/B | partly covered by unit tests |
+| N052 | uncertainty | mesh/time uncertainty estimate from refinement | C | pending report aggregation |
+| N053 | experimental/DNS | independent reference datasets with stated uncertainty | D | case-by-case |
+| N054 | Fluent VMFL | VMFL reference/oracle matrix | E | matrix implemented; solver coverage varies |
+
+### Required interpretation
+
+An `implemented` gate means the executable gate exists; it does not mean that CFDX has passed the case. A PASS is only emitted after the executable, quantitative error criterion, convergence criterion, and reference comparison succeed. `pending` marks capabilities for which the current solver API does not yet expose the forcing or coupled driver required to perform a legitimate verification; these are not converted into artificial PASS results.
+
+For quantitative campaigns the report records the mesh/time sequence, QoI, reference value, absolute error, relative error, residual/conservation measures, and observed order whenever the data permit it.
