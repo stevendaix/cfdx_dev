@@ -48,6 +48,8 @@ struct IncompressibleIteration {
     double pressure_residual = std::numeric_limits<double>::infinity();
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
+    double velocity_change_inf = std::numeric_limits<double>::infinity();
+    double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
 };
@@ -254,6 +256,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             ? 1u : static_cast<std::size_t>(controls.coupling.n_pressure_correctors);
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        const auto U_old = U;
+        const auto p_old = p;
         auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
@@ -437,6 +441,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             linf = std::max(linf, std::abs(div));
         }
 
+        double velocity_change_inf = 0.0;
+        double pressure_change_inf = 0.0;
+        double velocity_scale = 1.0;
+        double pressure_scale = 1.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            for (std::size_t d = 0; d < 3; ++d) {
+                velocity_change_inf = std::max(
+                    velocity_change_inf,
+                    std::abs(U.component_data(d)[c] - U_old.component_data(d)[c]));
+                velocity_scale = std::max(
+                    velocity_scale, std::abs(U.component_data(d)[c]));
+            }
+            pressure_change_inf = std::max(
+                pressure_change_inf, std::abs(p(c) - p_old(c)));
+            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
+        }
+        velocity_change_inf /= velocity_scale;
+        pressure_change_inf /= pressure_scale;
+
         IncompressibleIteration h;
         h.iteration = iter;
         h.momentum_residual = std::max({rx.residual_relative, ry.residual_relative,
@@ -444,14 +467,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
+        h.velocity_change_inf = velocity_change_inf;
+        h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
         result.history.push_back(h);
 
-        if (std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
+        if (iter > 1 &&
+            std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance) {
+            h.continuity_linf <= controls.convergence.continuity_tolerance &&
+            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
+            h.pressure_change_inf <= controls.convergence.relative_tolerance) {
             result.converged = true;
             result.iterations = iter;
             break;
