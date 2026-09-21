@@ -132,10 +132,15 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/temporal.h
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
+    src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/local_time_stepping.h
+    src/cfdx/physics/low_mach.h
+    src/cfdx/physics/radiation_models.h
     src/cfdx/physics/boussinesq.h
     src/cfdx/physics/spalart_allmaras.h
     src/cfdx/physics/radiation_streaming.h
     src/cfdx/thermodynamics/thermo_state.h
+    src/cfdx/thermodynamics/thermo_cache.h
 )
 
 # Thermodynamics sources (P2 reorganization)
@@ -222,6 +227,11 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/mixed_precision.h
+    src/cfdx/core/linalg/chebyshev_smoother.h
+    src/cfdx/core/linalg/fv_operator.h
+    src/cfdx/core/linalg/krylov_controls.h
+    src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/mesh/solver_mesh.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
@@ -291,6 +301,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
     add_cfdx_test(test_performance_foundations tests/unit/test_performance_foundations.cpp)
+    add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)

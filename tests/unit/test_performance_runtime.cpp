@@ -1,0 +1,40 @@
+#include "cfdx/core/linalg/linear_operator.h"
+#include "cfdx/core/linalg/krylov_controls.h"
+#include "cfdx/core/linalg/communication_avoiding.h"
+#include "cfdx/core/linalg/chebyshev_smoother.h"
+#include "cfdx/physics/advanced_convergence.h"
+#include "cfdx/physics/local_time_stepping.h"
+#include "cfdx/physics/low_mach.h"
+#include "cfdx/physics/radiation_models.h"
+#include "cfdx/thermodynamics/thermo_cache.h"
+#include "cfdx/core/field/field.h"
+#include <cmath>
+#include <iostream>
+int main() {
+    using namespace cfdx;
+    core::FunctionalLinearOperator op(3, [](const core::Vector& x, core::Vector& y) {
+        y.resize(3);
+        y(0)=2.0*x(0); y(1)=3.0*x(1); y(2)=4.0*x(2);
+    });
+    core::Vector rhs(3,1.0), x(3,0.0);
+    core::ChebyshevSmoother smoother({2,1.0,4.0,1.0});
+    smoother.apply(op,rhs,x);
+    if (!(x.norm2()>0.0)) return 1;
+    auto tol=physics::eisenstat_walker_tolerance(1e-4,1e-2);
+    if (!(tol>0.0 && tol<1.0)) return 2;
+    if (physics::choose_pressure_correctors(1e-2)<2) return 3;
+    physics::RadiationModelSelector selector;
+    if (selector.select(2.0,0.0,2.0)!=physics::RadiationApproximation::Rosseland) return 4;
+    if (!(physics::rosseland_conductivity(1000.0,1.0)>0.0)) return 5;
+    core::Vector b(3,2.0);
+    auto red=core::fused_reduction(rhs,b);
+    if (std::abs(red.dot-6.0)>1e-12) return 6;
+    auto restart=core::choose_gmres_restart(30,0.5);
+    if (restart>=30) return 7;
+    thermodynamics::ThermoCache cache;
+    thermodynamics::IdealGasThermoModel gas;
+    cache.update(gas,{101325.0,101325.0},{300.0,310.0});
+    if (!cache.valid || cache.state.size()!=2) return 8;
+    std::cout<<"performance runtime: PASS\n";
+    return 0;
+}
