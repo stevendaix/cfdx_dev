@@ -128,6 +128,24 @@ public:
         return matvec_transpose(std::vector<Value>(x.data(), x.data() + x.size()));
     }
 
+    // Return the diagonal in O(nnz) time. Missing diagonal entries are zero.
+    // This is intentionally extracted on demand so matrix construction remains
+    // lightweight while iterative solvers avoid repeated per-row searches.
+    std::vector<Value> diagonal() const {
+        std::vector<Value> diag(n_rows_, 0.0);
+        for (std::size_t i = 0; i < n_rows_; ++i) {
+            const Index start = row_offsets_[i];
+            const Index end = row_offsets_[i + 1];
+            for (Index k = start; k < end; ++k) {
+                if (columns_[k] == static_cast<Index>(i)) {
+                    diag[i] = values_[k];
+                    break;
+                }
+            }
+        }
+        return diag;
+    }
+
     // --- Accès bulk ---
 
     const Value* values_data() const noexcept { return values_.data(); }
