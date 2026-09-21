@@ -22,6 +22,7 @@
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/geometry/cell_geometry.h"
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -82,8 +83,9 @@ inline Field<double, Location::CELL> compute_divergence(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry_oriented(
+            face_centres.data(), face_Sf.data(), cell_faces + off, n,
+            static_cast<CellIndex>(c), mesh.ownership());
         cell_volume[c] = cg.volume;
     }
 
@@ -105,7 +107,9 @@ inline Field<double, Location::CELL> compute_divergence(
             const bool is_owner = (own.owner(f) == c);
             sum += is_owner ? phi_f : -phi_f;
         }
-        const double inv_vol = (cell_volume[c] > 0.0) ? 1.0 / cell_volume[c] : 0.0;
+        if (!(cell_volume[c] > 0.0) || !std::isfinite(cell_volume[c]))
+            throw std::runtime_error("compute_gradient_gauss: non-positive cell volume");
+        const double inv_vol = 1.0 / cell_volume[c];
         d[c] = sum * inv_vol;
     }
 
