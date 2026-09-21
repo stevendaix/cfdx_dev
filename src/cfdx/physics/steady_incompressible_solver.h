@@ -409,7 +409,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             for (std::size_t c = 0; c < nc; ++c) {
                 rows[c][c] += diag[c];
-                b(c) = -continuity[c];
+                b(c) = continuity[c];
             }
 
             // A fixed pressure patch supplies a Dirichlet pressure-correction
