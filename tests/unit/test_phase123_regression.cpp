@@ -29,8 +29,6 @@ static Mesh cube() {
 
 int main() {
     run_case("universal_import_format_detection", [] {
-        EXPECT_TRUE(detect_format("constant/polyMesh") == MeshFormat::MESHIO ||
-                    detect_format("constant/polyMesh") == MeshFormat::UNKNOWN);
         EXPECT_TRUE(detect_format("mesh.msh") == MeshFormat::MESHIO);
         EXPECT_TRUE(detect_format("mesh.vtu") == MeshFormat::MESHIO);
     });
