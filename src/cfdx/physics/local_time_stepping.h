@@ -24,7 +24,8 @@ inline void compute_local_time_step(
     const LocalTimeStepControls& c = {}) {
     const std::size_t n = mesh.n_cells();
     if (mass_flux.size() != mesh.n_faces() || rho.size() != n ||
-        c.cfl <= 0.0 || c.dt_min <= 0.0 || c.dt_max < c.dt_min) {
+        !std::isfinite(c.cfl) || c.cfl <= 0.0 || !std::isfinite(c.dt_min) || c.dt_min <= 0.0 ||
+        !std::isfinite(c.dt_max) || c.dt_max < c.dt_min) {
         throw std::invalid_argument("invalid local time-step inputs");
     }
     dt.resize(n);
@@ -39,12 +40,20 @@ inline void compute_local_time_step(
         const auto count = offsets[cell + 1] - off;
         for (std::size_t k = 0; k < count; ++k) {
             const std::size_t f = faces[off + k];
-            sum_flux += std::abs(mass_flux(f));
+            const double flux = mass_flux(f);
+            if (!std::isfinite(flux)) throw std::invalid_argument("non-finite face mass flux");
+            sum_flux += std::abs(flux);
+        }
+        const double density = rho(cell);
+        if (!std::isfinite(density) || !(density > 0.0)) {
+            throw std::invalid_argument("non-positive or non-finite cell density");
+        }
+        if (!std::isfinite(sum_flux)) {
+            throw std::invalid_argument("non-finite cell flux sum");
         }
         if (!(sum_flux > 0.0)) {
             dt(cell) = c.dt_max;
         } else {
-            const double density = std::max(rho(cell), 1e-30);
             dt(cell) = std::clamp(c.cfl * density / sum_flux, c.dt_min, c.dt_max);
         }
     }
