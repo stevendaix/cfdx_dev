@@ -9,10 +9,13 @@ namespace cfdx {
 namespace core {
 
 /**
- * Generic block-diagonal preconditioner.
- * Blocks are contiguous ranges; each block is solved with diagonal scaling.
- * This is intentionally independent of CFD physics and is safe as a baseline
- * before adding specialized Schur-complement approximations.
+ * Generic block-Jacobi baseline preconditioner.
+ * Blocks are contiguous ranges; this implementation applies diagonal scaling
+ * inside each block and deliberately does not invert the coupled block.
+ *
+ * This is intentionally independent of CFD physics. For pressure-velocity
+ * coupling (e.g. SIMPLE), a Schur-complement or block-factorization
+ * preconditioner is required for stronger coupling treatment.
  */
 class BlockDiagonalPreconditioner {
 public:
