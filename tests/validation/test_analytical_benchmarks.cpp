@@ -59,9 +59,9 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
         return id;
     };
 
-    bottom.push_back(add_face({0,3,2,1}));
+    bottom.push_back(add_face({0,1,2,3}));
     const std::size_t top_base=4*n;
-    top.push_back(add_face({top_base+0,top_base+1,top_base+2,top_base+3}));
+    top.push_back(add_face({top_base+0,top_base+3,top_base+2,top_base+1}));
 
     for(std::size_t i=0;i<n;++i) {
         const std::size_t b=4*i;
@@ -126,8 +126,6 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
 {
     auto problem = make_channel(n, height);
     auto geometry = build_fv_geometry(problem.mesh);
-    if(n==8) std::cerr<<"POISEUILLE_GEOM V="<<geometry.cell_volumes[0]
-        <<" y0="<<geometry.cell_centres[0].y<<" y1="<<geometry.cell_centres[1].y<<"\n";
 
     Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "kg/s", 1);
     phi.fill(0.0);
