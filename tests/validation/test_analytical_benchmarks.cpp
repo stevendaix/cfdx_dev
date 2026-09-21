@@ -186,6 +186,8 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     auto eq = assemble_scalar_equation(
         problem.mesh, geometry, phi, gamma, su, sp, bc, true);
     Vector solution(n, 0.0);
+    std::cout << "DEBUG matrix n=" << n << " rhs0=" << eq.rhs(0)
+              << " diag0=" << eq.diagonal[0] << "\n";
     const auto linear = solve_scalar_equation(
         eq, solution, {5000, 1e-13, 1.0});
     if (linear.status != SolverStatus::CONVERGED)
