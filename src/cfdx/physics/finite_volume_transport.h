@@ -346,6 +346,16 @@ inline cfdx::core::SolverResult solve_scalar_equation(
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED ||
         result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
+        if (!std::isfinite(result.residual) || !std::isfinite(result.residual_relative)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
     }
