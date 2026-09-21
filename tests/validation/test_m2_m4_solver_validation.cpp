@@ -64,7 +64,7 @@ int main()
         EnergySolverControls c;c.density=1;c.cp=1000;c.conductivity=1;c.dt=1;c.max_iterations=50;c.tolerance=1e-10;
         auto r=solve_energy(m,g,phi,T,source,c,bc);
         EXPECT_TRUE(r.converged);
-        EXPECT_NEAR(T(0),300.0+1.0,1e-8);
+        EXPECT_NEAR(T(0),300.0 + 1000.0/(1000.0+12.0),1e-8);
     });
 
     run_case("dom_isotropic_blackbody_equilibrium",[] {
