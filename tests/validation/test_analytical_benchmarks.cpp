@@ -86,7 +86,7 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
         };
     }
 
-    for (std::size_t f = 0; f < m.faces().size(); ++f) {
+    for (std::size_t f = 0; f < m.n_faces(); ++f) {
         bool assigned = false;
         for (std::size_t c = 0; c < n && !assigned; ++c) {
             for (const auto cf : cell_faces[c]) {
@@ -219,16 +219,13 @@ int main()
 
         // Couette: u(y)=U*y/H. The orthogonal FV diffusion operator with
         // exact Dirichlet face values should reproduce the linear field.
-        std::vector<double> couette_errors;
         for (const std::size_t n : {8u,16u,32u,64u}) {
             const auto r = solve_diffusion_case(n,H,mu,0.0,0.0,1.0);
             std::vector<double> exact(r.y.size());
             for (std::size_t i=0;i<r.y.size();++i)
                 exact[i] = r.y[i] / H;
             const auto e = error_norms(r.u,exact,r.volume);
-            couette_errors.push_back(e.linf);
-            report_case("Couette",n,e,n==8 ? std::numeric_limits<double>::quiet_NaN()
-                                          : observed_order(couette_errors[couette_errors.size()-2],e.l2));
+            report_case("Couette",n,e,std::numeric_limits<double>::quiet_NaN());
             if (e.linf > 1e-11)
                 throw std::runtime_error("Couette analytical solution mismatch");
         }
@@ -288,7 +285,7 @@ int main()
         const double sigma = STEFAN_BOLTZMANN;
         const double q_black = sigma*area*(std::pow(Ta,4)-std::pow(Tb,4));
         const double q_gray = sigma*area*(std::pow(Ta,4)-std::pow(Tb,4)) /
-            ((1.0-e1)/(e1*area) + 1.0/area + (1.0-e2)/(e2*area));
+            ((1.0-e1)/e1 + 1.0 + (1.0-e2)/e2);
         const double q_gray_impl = area*two_surface_net_exchange(e1,e2,Ta,Tb,1.0);
         if (std::abs(q_black - sigma*area*(std::pow(Ta,4)-std::pow(Tb,4))) > 1e-12 ||
             std::abs(q_gray - q_gray_impl) > 1e-10*std::max(1.0,std::abs(q_gray)))
