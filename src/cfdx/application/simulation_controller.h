@@ -42,6 +42,7 @@ public:
     void acknowledge_restart();
 
     void create_checkpoint();
+    void restore(const CaseSnapshot& snapshot);
     const Checkpoint& latest_checkpoint() const noexcept { return checkpoint_; }
 
     using IterationCallback = std::function<bool(std::size_t, double)>;
