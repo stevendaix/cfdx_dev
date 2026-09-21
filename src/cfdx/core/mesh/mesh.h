@@ -16,6 +16,7 @@
 #include "ownership.h"
 #include "cell.h"
 #include "boundary.h"
+#include "mesh_topology.h"
 #include "index_types.h"
 #include <vector>
 #include <string>
@@ -71,6 +72,11 @@ public:
     std::size_t n_points() const noexcept { return points_.size(); }
     std::size_t n_faces() const noexcept { return faces_.n_faces(); }
     std::size_t n_cells() const noexcept { return cells_.n_cells(); }
+
+    // Topology-only view for algorithms that should not depend on geometry.
+    MeshTopology topology() const noexcept {
+        return MeshTopology(faces_, ownership_, cells_, boundary_);
+    }
 
     MeshStats stats() const {
         MeshStats s;
