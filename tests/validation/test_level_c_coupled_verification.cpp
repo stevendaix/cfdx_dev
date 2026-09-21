@@ -81,7 +81,7 @@ void require_close(double value, double reference, double tolerance,
 int main()
 {
     try {
-        // Level C-01: turbulence transport must preserve positivity while
+        std::cout<<"LEVEL_C-01 turbulence\n";\n        // Level C-01: turbulence transport must preserve positivity while
         // receiving a non-zero source on an actual CFDX mesh.
         {
             Mesh m=cube_with_patches();
@@ -114,7 +114,7 @@ int main()
                 throw std::runtime_error("turbulence transport positivity gate failed");
         }
 
-        // Level C-02: radiation/energy must converge on the same physical
+        std::cout<<"LEVEL_C-02 radiation-energy\n";\n        // Level C-02: radiation/energy must converge on the same physical
         // source state, and the reported energy-balance residual must close.
         {
             Mesh m=cube_with_patches();
@@ -152,7 +152,7 @@ int main()
                            "radiation-energy energy-balance gate failed");
         }
 
-        // Level C-03: two-region CHT uses a single matched interface with
+        std::cout<<"LEVEL_C-03 CHT\n";\n        // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
             Mesh m1=cube_with_patches();
