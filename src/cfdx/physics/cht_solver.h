@@ -115,8 +115,6 @@ inline ChtSolveResult solve_two_region_cht(
             const double h1=controls.conductivity1/d1;
             const double h2=controls.conductivity2/d2;
             const double Tint=(h1*T1(p.cell1)+h2*T2(p.cell2))/(h1+h2);
-            fv1.values[controls.region1_patch].resize(mesh1.n_faces(),0.0);
-            fv2.values[controls.region2_patch].resize(mesh2.n_faces(),0.0);
             fv1.values[controls.region1_patch][p.face1]=Tint;
             fv2.values[controls.region2_patch][p.face2]=Tint;
         }
