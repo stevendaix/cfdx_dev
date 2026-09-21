@@ -33,10 +33,16 @@ inline std::vector<double> cell_volumes(const cfdx::core::Mesh& mesh)
         sf[f] = g.Sf;
     }
     std::vector<double> volumes(mesh.n_cells());
+    std::vector<Vec3> cell_centres(mesh.n_cells());
+    compute_area_weighted_cell_centres(mesh, fc.data(), sf.data(), cell_centres.data());
+    orient_mesh_face_vectors(mesh, fc, cell_centres, sf);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         const auto off = mesh.cells().offsets_data()[c];
         const auto count = mesh.cells().offsets_data()[c + 1] - off;
-        volumes[c] = compute_cell_geometry(mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, c, count).volume;
+        const auto cg = compute_cell_geometry(mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, c, count);
+        if (!(cg.signed_volume > 0.0))
+            throw std::runtime_error("cell_volumes: inverted cell orientation");
+        volumes[c] = cg.volume;
     }
     return volumes;
 }
