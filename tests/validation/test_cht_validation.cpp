@@ -34,7 +34,7 @@ int main()
         Field<double,Location::CELL> T1(1,"T1","K",1),T2(1,"T2","K",1);
         Field<double,Location::CELL> q1(1,"q1","W/m3",1),q2(1,"q2","W/m3",1);
         T1(0)=400;T2(0)=300;q1(0)=0;q2(0)=0;
-        EnergySolverControls e1;e1.conductivity=1;e1.max_iterations=20;e1.tolerance=1e-10;
+        EnergySolverControls e1;e1.conductivity=1;e1.max_iterations=10;e1.tolerance=1e-10;e1.relaxation=1.0;
         EnergySolverControls e2=e1;
         ChtInterfaceControls c;c.region1_patch="interface1";c.region2_patch="interface2";
         c.conductivity1=1;c.conductivity2=1;c.matching_tolerance=1e-12;
