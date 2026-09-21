@@ -94,6 +94,39 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
+    run_case("nonorthogonal_diffusion_correction_vanishes_on_orthogonal_face", [] {
+        const Vec3 d{2.0,0.0,0.0};
+        const Vec3 Sf{3.0,0.0,0.0};
+        const Vec3 go{4.0,-2.0,1.0};
+        const Vec3 gn{4.0,-2.0,1.0};
+        EXPECT_NEAR(nonorthogonal_diffusion_correction(d,Sf,2.0,go,gn),0.0,1e-14);
+    });
+
+    run_case("nonorthogonal_diffusion_correction_matches_tangential_flux", [] {
+        const Vec3 d{2.0,0.0,0.0};
+        const Vec3 Sf{2.0,1.0,0.0};
+        const Vec3 go{3.0,4.0,0.0};
+        const Vec3 gn{3.0,4.0,0.0};
+        // S_corr=(0,1,0), so Gamma grad.S_corr = 2*4.
+        EXPECT_NEAR(nonorthogonal_diffusion_correction(d,Sf,2.0,go,gn),8.0,1e-14);
+    });
+
+    run_case("nonorthogonal_diffusion_rejects_missing_field", [] {
+        const Mesh m = make_unit_cube();
+        const auto g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","1/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        EXPECT_THROW(
+            assemble_scalar_equation(m,g,flux,1.0,su,sp,bc,true,nullptr,nullptr,
+                nullptr,nullptr,ConvectionScheme::UPWIND,nullptr,
+                DiffusionScheme::NON_ORTHOGONAL_CORRECTED,nullptr),
+            std::invalid_argument);
+    });
+
     run_case("second_order_upwind_constant_state_preserves_constant", [] {
         const Mesh m = make_unit_cube();
         auto g = build_fv_geometry(m);
