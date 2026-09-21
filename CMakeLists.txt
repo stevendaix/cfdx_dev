@@ -301,6 +301,10 @@ if(CFDX_BUILD_TESTS)
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
                          ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
+        add_test(NAME test_mesh_geometry_matrix
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
+                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
     endif()
 
 endif()
