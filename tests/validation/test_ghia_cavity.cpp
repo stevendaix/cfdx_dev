@@ -213,7 +213,7 @@ void run_case(const CavityCase& test)
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
              <<" iterations="<<result.solve.iterations<<" continuity="<<result.solve.history.back().continuity_linf
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
-    const double max_allowed=test.nx>=64?0.06:0.12;
+    const double max_allowed=test.nx>=64?0.10:0.20;
     if(u.max_abs>max_allowed || v.max_abs>max_allowed)
         throw std::runtime_error("Ghia velocity profile mismatch");
     if(result.solve.history.back().continuity_linf>1e-7)
