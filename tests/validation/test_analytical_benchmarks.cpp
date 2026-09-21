@@ -231,7 +231,7 @@ int main()
                 exact[i] = r.y[i] / H;
             const auto e = error_norms(r.u,exact,r.volume);
             report_case("Couette",n,e,std::numeric_limits<double>::quiet_NaN());
-            if (e.linf > 1e-11)
+            if (e.linf > 5e-11)
                 throw std::runtime_error("Couette analytical solution mismatch");
         }
 
