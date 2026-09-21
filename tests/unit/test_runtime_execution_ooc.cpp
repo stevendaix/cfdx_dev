@@ -5,6 +5,7 @@
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/async_transfer.h"
+#include "cfdx/runtime/ooc/ooc_executor.h"
 #include "common/test_harness.h"
 #include <cstdint>
 #include <stdexcept>
@@ -63,6 +64,28 @@ int main() {
         EXPECT_TRUE(a!=nullptr && b!=nullptr);
         EXPECT_TRUE(pool.acquire()==nullptr);
         pool.release(a); pool.release(b);
+    });
+
+    run_case("pipelined_ooc_execution", [] {
+        ooc::OOCConfig cfg;
+        cfg.tile_cells = 2;
+        cfg.staging_buffers = 2;
+        cfg.staging_buffer_bytes = 256;
+        ooc::OOCExecutor executor(cfg);
+        executor.build_tiles(6, {{0,2},{1,2},{2,3},{3,4},{4,5}});
+        std::size_t loaded = 0;
+        std::size_t computed = 0;
+        executor.for_each_tile_pipelined(
+            [&loaded](const ooc::Tile&, ooc::WorkingSet& ws, auto&) {
+                for (double& value : ws.values) value = 1.0;
+                ++loaded;
+            },
+            [&computed](const ooc::WorkingSet& ws) {
+                EXPECT_TRUE(!ws.values.empty());
+                ++computed;
+            });
+        EXPECT_TRUE(loaded == executor.tiles().tiles().size());
+        EXPECT_TRUE(computed == loaded);
     });
 
     run_case("async_transfer_and_double_buffer", [] {
