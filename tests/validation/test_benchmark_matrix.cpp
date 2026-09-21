@@ -88,7 +88,7 @@ int main()
     });
     run_case("M2_SST_eddy_viscosity_limits", [] {
         EXPECT_NEAR(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,0.0),0.25,1e-14);
-        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,2.0)>0.0);
+        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(0.5,2.0,1.0)>0.0);
     });
     run_case("M2_Smagorinsky_scaling", [] {
         const double n1=smagorinsky_eddy_viscosity(0.1,4.0);
@@ -107,7 +107,7 @@ int main()
         const double Re=1e6; EXPECT_NEAR(0.664/std::sqrt(Re),6.64e-4,1e-12);
     });
     run_case("M2_flat_plate_turbulent_Cf_correlation", [] {
-        const double Re=1e6; EXPECT_NEAR(0.0592/std::pow(Re,0.2),0.003735,1e-6);
+        const double Re=1e6; EXPECT_NEAR(0.0592/std::pow(Re,0.2),0.003735267479322744,1e-12);
     });
     // M3 — heat transfer / CHT.
     run_case("M3_thermal_diffusivity", [] {
