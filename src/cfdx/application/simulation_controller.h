@@ -10,6 +10,8 @@
 
 namespace cfdx::application {
 
+class SolverAdapter;
+
 enum class SimulationState {
     Created, Validating, Ready, Running, Paused, Stopping, Stopped, Converged, Failed
 };
@@ -44,6 +46,7 @@ public:
 
     using IterationCallback = std::function<bool(std::size_t, double)>;
     void set_iteration_callback(IterationCallback callback) { callback_ = std::move(callback); }
+    void set_solver_adapter(SolverAdapter* adapter) noexcept { solver_adapter_ = adapter; }
 
 private:
     mutable std::mutex mutex_;
@@ -54,6 +57,7 @@ private:
     bool pause_requested_{false};
     bool requires_restart_{false};
     IterationCallback callback_;
+    SolverAdapter* solver_adapter_{nullptr};
 
     void set_state(SimulationState state);
 };
