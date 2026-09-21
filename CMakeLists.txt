@@ -232,6 +232,9 @@ target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_compile_definitions(cfdx_core PRIVATE CFDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+if(Python3_Interpreter_FOUND)
+    target_compile_definitions(cfdx_core PRIVATE CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}")
+endif()
 
 if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
