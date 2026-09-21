@@ -73,24 +73,27 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         g.face_area_vectors[f] = fg.Sf;
     }
 
-    std::vector<std::size_t> face_owners(nf);
-    std::vector<int> face_neighbours(nf);
-    for (std::size_t f = 0; f < nf; ++f) {
-        face_owners[f] = mesh.ownership().owner(f);
-        face_neighbours[f] = mesh.ownership().neighbour(f);
-    }
+    // First pass: cell centres depend only on face centres and scalar areas,
+    // not on face-vector orientation. This gives the reference points needed
+    // to establish the global owner -> neighbour orientation.
+    compute_area_weighted_cell_centres(
+        mesh, g.face_centres.data(), g.face_area_vectors.data(), g.cell_centres.data());
+    orient_mesh_face_vectors(mesh, g.face_centres, g.cell_centres, g.face_area_vectors);
 
+    // Second pass: use the now-authoritative global orientation and reverse
+    // internal faces for neighbour cells when reconstructing local geometry.
     for (std::size_t c = 0; c < nc; ++c) {
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
-        const auto cg = compute_cell_geometry_oriented(
-            g.face_centres.data(), g.face_area_vectors.data(),
-            face_owners.data(), face_neighbours.data(),
+        const auto cg = compute_cell_geometry(
+            mesh, g.face_centres.data(), g.face_area_vectors.data(),
             mesh.cells().faces_data() + off, c, count);
         g.cell_centres[c] = cg.centre;
         g.cell_volumes[c] = cg.volume;
         if (!(g.cell_volumes[c] > 0.0) || !std::isfinite(g.cell_volumes[c]))
             throw std::runtime_error("build_fv_geometry: non-positive cell volume");
+        if (!(cg.signed_volume > 0.0))
+            throw std::runtime_error("build_fv_geometry: inverted cell orientation");
     }
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
         for (const auto f : mesh.boundary().patch(p).face_ids) {
