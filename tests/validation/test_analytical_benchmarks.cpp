@@ -5,7 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
+#include <iomanip>\n#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -75,7 +75,7 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
     // Cell face order matches the boundary orientation used by the core
     // geometry tests. Internal faces are oriented from the lower-y owner to
     // the upper-y neighbour.
-    m.ownership().resize(m.faces().size());
+    m.ownership().resize(m.n_faces());
     std::vector<std::vector<std::size_t>> cell_faces(n);
     for (std::size_t i = 0; i < n; ++i) {
         const std::size_t b = 8 * i;
