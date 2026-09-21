@@ -359,7 +359,7 @@ if(CFDX_BUILD_TESTS)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         add_test(NAME test_mpi_partition
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
+                 COMMAND ${MPIEXEC_EXECUTABLE} -n 2
                          --allow-run-as-root $<TARGET_FILE:test_mpi_partition>)
         # GitHub-hosted Ubuntu runners execute the CTest process as root.
         # OpenMPI requires explicit opt-in for root-launched test ranks.
