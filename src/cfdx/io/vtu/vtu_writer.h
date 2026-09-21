@@ -70,7 +70,7 @@ private:
     void write_cell_fields(std::ofstream& os,
                            const cfdx::core::Mesh& mesh,
                            const std::map<std::string, cfdx::core::ScalarCellField>& fields,
-                           const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells);
+                           const std::vector<std::size_t>& vtk_to_original_cell);
 
     void write_point_fields(std::ofstream& os,
                             const cfdx::core::Mesh& mesh,
