@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Run the deterministic M1-M4 analytical verification executables.
-
-Usage:
-    python scripts/run_validation.py --build-dir build
-"""
+"""Run the complete M1-M4 verification campaign (Levels A, B and C)."""
 
 from __future__ import annotations
 
@@ -13,23 +9,46 @@ import sys
 from pathlib import Path
 
 
+LEVELS = {
+    "A": ["test_analytical_benchmarks"],
+    "B": ["test_level_b_reference_benchmarks"],
+    "C": ["test_level_c_coupled_verification"],
+}
+
+
+def find_executable(build_dir: Path, name: str) -> Path | None:
+    for p in (build_dir / name, build_dir / "tests" / name):
+        if p.is_file():
+            return p
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
     args = parser.parse_args()
 
-    candidates = [
-        args.build_dir / "test_analytical_benchmarks",
-        args.build_dir / "tests" / "test_analytical_benchmarks",
-    ]
-    executable = next((p for p in candidates if p.is_file()), None)
-    if executable is None:
-        print(f"Validation executable not found under {args.build_dir}", file=sys.stderr)
-        print("Configure and build CFDX first.", file=sys.stderr)
-        return 2
+    failed = False
+    print("CFDX M1-M4 VERIFICATION")
+    print("=======================")
 
-    completed = subprocess.run([str(executable)], check=False)
-    return completed.returncode
+    for level, executables in LEVELS.items():
+        print(f"\nLEVEL {level}")
+        for name in executables:
+            exe = find_executable(args.build_dir, name)
+            if exe is None:
+                print(f"  {name}: NOT BUILT", file=sys.stderr)
+                failed = True
+                continue
+            result = subprocess.run([str(exe)], check=False)
+            status = "PASS" if result.returncode == 0 else "FAIL"
+            print(f"  {name}: {status}")
+            failed |= result.returncode != 0
+
+    print("\nOVERALL")
+    print("=======")
+    print("STATUS: FAIL" if failed else "STATUS: PASS")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
