@@ -59,11 +59,11 @@ static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
 
     std::uint64_t topology = 1469598103934665603ULL;
     topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
-    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
+    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() == 0 ? 0 : mesh.faces().n_faces() + 1);
     topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
     topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
     topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
-    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
+    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() == 0 ? 0 : mesh.cells().n_cells() + 1);
     write_attr_str(file, "topology_hash", hash_hex(topology));
 
     std::uint64_t geometry = topology;
