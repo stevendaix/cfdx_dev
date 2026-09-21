@@ -146,6 +146,16 @@ int main()
             controls.max_outer_iterations=50;
             controls.tolerance=1e-8;
 
+            std::cout<<"LEVEL_C: C-02 calling radiation solver\n";
+            Field<double,Location::CELL> qrad_probe(1,"qrad_probe","W/m3",1);
+            qrad_probe.fill(0.0);
+            auto rad_probe = solve_participating_radiation(
+                m,g,T,irradiation,qrad_probe,isotropic_directions(),
+                controls.radiation,{});
+            std::cout<<"LEVEL_C: C-02 radiation returned\n";
+            if(!rad_probe.converged)
+                throw std::runtime_error("radiation probe did not converge");
+
             std::cout<<"LEVEL_C: C-02 calling coupled solver\n";
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
