@@ -371,8 +371,33 @@ if(CFDX_BUILD_TESTS)
     # Memory Planner tests
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
 
+    # Geometry-orientation tests are a dedicated verification gate. Keep the
+    # analytical benchmark in the same label so a face-orientation regression
+    # cannot be hidden behind a green unit-test-only subset.
+    set_tests_properties(
+        test_face_geometry
+        test_cell_geometry
+        test_geometry_invariants
+        test_mesh_quality
+        test_mesh_family_volumes
+        test_geometry_cache
+        test_analytical_benchmarks
+        PROPERTIES LABELS geometry)
+
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
+
+    add_custom_target(cfdx_geometry_orientation_check
+        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L geometry
+        DEPENDS
+            test_face_geometry
+            test_cell_geometry
+            test_geometry_invariants
+            test_mesh_quality
+            test_mesh_family_volumes
+            test_geometry_cache
+            test_analytical_benchmarks
+        USES_TERMINAL)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
