@@ -128,6 +128,19 @@ void SimulationController::acknowledge_restart() {
     ++model_.numerics_revision;
 }
 
+void SimulationController::restore(const CaseSnapshot& snapshot) {
+    if (state() == SimulationState::Running || state() == SimulationState::Validating) {
+        throw std::logic_error("Cannot restore a checkpoint while running");
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    model_ = snapshot.model;
+    checkpoint_ = snapshot.checkpoint;
+    requires_restart_ = false;
+    stop_requested_ = false;
+    pause_requested_ = false;
+    state_ = SimulationState::Stopped;
+}
+
 void SimulationController::create_checkpoint() {
     checkpoint_.case_revision = model_.revision;
     checkpoint_.mesh_revision = model_.mesh_revision;
