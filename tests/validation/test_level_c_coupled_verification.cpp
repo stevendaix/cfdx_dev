@@ -126,10 +126,13 @@ int main()
             T(0)=800.0; source(0)=0.0; irradiation(0)=0.0;
 
             ScalarBoundaryConditions thermal_bc;
-            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"})
-                thermal_bc[name]={
+            ScalarBoundaryConditions radiation_bc;
+            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"}) {
+                thermal_bc[name]={ScalarBoundaryType::FIXED_VALUE,800.0,0.0};
+                radiation_bc[name]={
                     ScalarBoundaryType::FIXED_VALUE,
-                    800.0,0.0};
+                    blackbody_intensity(800.0),0.0};
+            }
 
             RadiationEnergyCouplingControls controls;
             controls.radiation.absorption=0.5;
@@ -145,7 +148,7 @@ int main()
 
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
-                controls,thermal_bc);
+                controls,radiation_bc,thermal_bc);
             if (!r.converged || r.energy_balance_residuals.empty())
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
