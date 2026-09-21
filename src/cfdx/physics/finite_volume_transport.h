@@ -118,7 +118,9 @@ inline ScalarEquation assemble_scalar_equation(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_explicit,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_implicit,
     const ScalarBoundaryConditions& boundary_conditions = {},
-    bool bounded_convection = true)
+    bool bounded_convection = true,
+    const std::vector<double>* extra_diagonal = nullptr,
+    const std::vector<double>* extra_rhs = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -126,7 +128,9 @@ inline ScalarEquation assemble_scalar_equation(
 
     if (face_flux.size() != nf || face_flux.dimension() != 1 ||
         source_explicit.size() != nc || source_explicit.dimension() != 1 ||
-        source_implicit.size() != nc || source_implicit.dimension() != 1)
+        source_implicit.size() != nc || source_implicit.dimension() != 1 ||
+        (extra_diagonal && extra_diagonal->size() != nc) ||
+        (extra_rhs && extra_rhs->size() != nc))
         throw std::invalid_argument("assemble_scalar_equation: field dimensions do not match mesh");
     if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
         throw std::invalid_argument("assemble_scalar_equation: invalid diffusion coefficient");
@@ -206,10 +210,12 @@ inline ScalarEquation assemble_scalar_equation(
         if (bounded_convection) diag[c] -= div_phi[c];
 
         diag[c] -= source_implicit(c) * geometry.cell_volumes[c];
+        if (extra_diagonal) diag[c] += (*extra_diagonal)[c];
         if (!(diag[c] > 0.0) || !std::isfinite(diag[c]))
             throw std::runtime_error("assemble_scalar_equation: non-positive diagonal");
 
         rhs[c] += source_explicit(c) * geometry.cell_volumes[c];
+        if (extra_rhs) rhs[c] += (*extra_rhs)[c];
 
         std::vector<std::pair<std::size_t, double>> entries;
         entries.reserve(rows[c].size() + 1);
