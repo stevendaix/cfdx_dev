@@ -108,7 +108,7 @@ inline Field<double, Location::CELL> compute_divergence(
             sum += is_owner ? phi_f : -phi_f;
         }
         if (!(cell_volume[c] > 0.0) || !std::isfinite(cell_volume[c]))
-            throw std::runtime_error("compute_gradient_gauss: non-positive cell volume");
+            throw std::runtime_error("compute_divergence: non-positive cell volume");
         const double inv_vol = 1.0 / cell_volume[c];
         d[c] = sum * inv_vol;
     }
