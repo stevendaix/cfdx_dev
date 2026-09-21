@@ -153,6 +153,13 @@ int main()
                 m,g,T,irradiation,qrad_probe,isotropic_directions(),
                 controls.radiation,{});
             std::cout<<"LEVEL_C: C-02 radiation returned\n";
+            Field<double,Location::CELL> energy_source_probe(1,"energy_source_probe","W/m3",1);
+            energy_source_probe(0)=source(0)+qrad_probe(0);
+            auto energy_probe = solve_energy(
+                m,g,mass_flux,T,energy_source_probe,controls.energy,thermal_bc);
+            std::cout<<"LEVEL_C: C-02 energy returned\n";
+            if(!energy_probe.converged)
+                throw std::runtime_error("energy probe did not converge");
             if(!rad_probe.converged)
                 throw std::runtime_error("radiation probe did not converge");
 
