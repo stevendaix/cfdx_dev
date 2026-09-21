@@ -68,13 +68,11 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Volume by convex-cell pyramid decomposition. The face-area-weighted
-    // centre is used as an interior reference point; each contribution is
-    // one third of face area times the perpendicular distance to that face.
-    // Using the absolute normal projection makes the volume robust to a face
-    // winding error while preserving the exact result for closed planar convex
-    // cells.
-    double volume = 0.0;
+    // Signed pyramid decomposition. The sign is an invariant of the face
+    // orientation and must not be erased here: validation uses it to reject
+    // globally inverted cells. The absolute value is exposed separately as
+    // the geometric measure for kernels that require a positive volume.
+    double signed_volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
         const FaceIndex f = face_ids[k];
         const Vec3& cf = face_centres[f];
@@ -82,15 +80,11 @@ inline CellGeometry compute_cell_geometry(
         const double area = sf.mag();
         if (!(area > 0.0))
             throw std::runtime_error("CellGeometry: degenerate face");
-        const Vec3 d = cf - centre;
-        const double height = std::abs(d.dot(sf)) / area;
-        volume += area * height;
+        signed_volume += (cf - centre).dot(sf);
     }
-    volume /= 3.0;
+    signed_volume /= 3.0;
 
-    // Keep both values: numerical kernels can use the positive measure while
-    // validation can still detect an inverted cell instead of masking it.
-    return {centre, std::abs(volume), volume};
+    return {centre, std::abs(signed_volume), signed_volume};
 }
 
 }  // namespace core
