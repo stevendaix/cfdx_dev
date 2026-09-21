@@ -39,7 +39,13 @@ bool import_gmsh_scalar(const std::string& path, const std::string& field_name,
     const fs::path script=fs::path(CFDX_SOURCE_DIR)/"scripts"/"gmsh_scalar_import.py";
 
     std::ostringstream command;
-    command<<"python3 "<<quote(script.string())<<" "<<quote(path)<<" "
+    command<<
+#ifdef CFDX_PYTHON_EXECUTABLE
+           quote(CFDX_PYTHON_EXECUTABLE)
+#else
+           "python3"
+#endif
+           <<" "<<quote(script.string())<<" "<<quote(path)<<" "
            <<quote(output.string())<<" "<<quote(field_name);
     const int rc=std::system(command.str().c_str());
     if(rc!=0 || !fs::exists(output)) {
