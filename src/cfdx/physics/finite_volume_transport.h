@@ -336,6 +336,9 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
         if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
+        if (!std::isfinite(equation.rhs(0)))
+            throw std::runtime_error(
+                "solve_scalar_equation: non-finite 1x1 rhs");
         const double candidate_value = equation.rhs(0) / diagonal;
         if (!std::isfinite(candidate_value))
             throw std::runtime_error(
