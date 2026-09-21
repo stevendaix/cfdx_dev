@@ -31,6 +31,11 @@ struct ScalarBoundaryCondition {
 
 using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
 
+struct ScalarBoundaryFaceValues {
+    // Values are indexed by global face id. Only boundary faces need entries.
+    std::map<std::string, std::vector<double>> values;
+};
+
 struct FvGeometry {
     std::vector<cfdx::core::Vec3> face_centres;
     std::vector<cfdx::core::Vec3> face_area_vectors;
@@ -119,6 +124,7 @@ inline ScalarEquation assemble_scalar_equation(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_implicit,
     const ScalarBoundaryConditions& boundary_conditions = {},
     bool bounded_convection = true,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
     const std::vector<double>* extra_rhs = nullptr)
 {
@@ -173,6 +179,13 @@ inline ScalarEquation assemble_scalar_equation(
                 const auto& patch_name = mesh.boundary().patch(patch).name;
                 const auto it = boundary_conditions.find(patch_name);
                 if (it != boundary_conditions.end()) bc = it->second;
+                if (face_values) {
+                    const auto fv = face_values->values.find(patch_name);
+                    if (fv != face_values->values.end() && f < fv->second.size()) {
+                        bc.type = ScalarBoundaryType::FIXED_VALUE;
+                        bc.value = fv->second[f];
+                    }
+                }
             }
 
             const double area = geometry.face_area_vectors[f].mag();
