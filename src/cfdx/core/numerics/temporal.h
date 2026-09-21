@@ -24,6 +24,8 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 
 namespace cfdx {
 namespace core {
@@ -98,6 +100,9 @@ inline Field<double, Location::CELL> advance_time(
     const RhsFunction& rhs_func,
     TimeIntegrationContext* ctx = nullptr)
 {
+    if (!(dt > 0.0) || !std::isfinite(dt)) {
+        throw std::invalid_argument("advance_time: dt must be positive and finite");
+    }
     const std::size_t n_cells = phi.size();
     const std::size_t dim = phi.dimension();
 
@@ -122,83 +127,104 @@ inline Field<double, Location::CELL> advance_time(
         }
 
         case TimeScheme::EULER_IMPLICIT: {
-            // φ^{n+1} = φ^n + Δt * RHS(φ^{n+1})
-            // This requires solving a linear system: (I - Δt*J) φ^{n+1} = φ^n + Δt*RHS(φ^n) - Δt*J*φ^n
-            // For now, fall back to explicit with warning - full implicit needs linear solver
-            // Users should provide implicit RHS function
-            for (std::size_t c = 0; c < n_cells; ++c) {
+            Field<double, Location::CELL> iterate = phi;
+            Field<double, Location::CELL> rhs_iter(
+                n_cells, "rhs_iter", phi.metadata().unit + "/s", dim);
+            constexpr std::size_t max_iter = 100;
+            constexpr double tolerance = 1e-12;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                rhs_func(iterate, rhs_iter);
+                double max_delta = 0.0;
                 for (std::size_t d = 0; d < dim; ++d) {
+                    const double* old_data = iterate.component_data(d);
                     const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
+                    const double* rhs_data = rhs_iter.component_data(d);
                     double* new_data = phi_new.component_data(d);
-                    new_data[c] = phi_data[c] + dt * rhs_data[c];  // explicit fallback
+                    for (std::size_t c = 0; c < n_cells; ++c) {
+                        const double value = phi_data[c] + dt * rhs_data[c];
+                        max_delta = std::max(max_delta, std::abs(value - old_data[c]));
+                        new_data[c] = value;
+                    }
                 }
+                iterate = phi_new;
+                if (max_delta <= tolerance) { converged = true; break; }
             }
+            if (!converged) throw std::runtime_error("advance_time: implicit Euler did not converge");
             break;
         }
 
         case TimeScheme::CRANK_NICOLSON: {
-            // φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ^{n+1}))
-            // Rearranged: (I - 0.5*Δt*J) φ^{n+1} = (I + 0.5*Δt*J) φ^n
-            // For now: explicit predictor + implicit corrector (semi-implicit)
-            Field<double, Location::CELL> phi_star = phi;  // predictor
-            // Predictor: φ* = φ^n + Δt * RHS(φ^n)
-            for (std::size_t c = 0; c < n_cells; ++c) {
+            Field<double, Location::CELL> iterate = phi;
+            Field<double, Location::CELL> rhs_iter(
+                n_cells, "rhs_iter", phi.metadata().unit + "/s", dim);
+            constexpr std::size_t max_iter = 100;
+            constexpr double tolerance = 1e-12;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                rhs_func(iterate, rhs_iter);
+                double max_delta = 0.0;
                 for (std::size_t d = 0; d < dim; ++d) {
+                    const double* old_data = iterate.component_data(d);
                     const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    double* star_data = phi_star.component_data(d);
-                    star_data[c] = phi_data[c] + dt * rhs_data[c];
-                }
-            }
-            // Compute RHS at predicted state
-            Field<double, Location::CELL> rhs_star(n_cells, "rhs_star", phi.metadata().unit + "/s", dim);
-            rhs_func(phi_star, rhs_star);
-            // Corrector: φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ*))
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                for (std::size_t d = 0; d < dim; ++d) {
-                    const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    const double* rhs_star_data = rhs_star.component_data(d);
+                    const double* rhs_n_data = rhs.component_data(d);
+                    const double* rhs_i_data = rhs_iter.component_data(d);
                     double* new_data = phi_new.component_data(d);
-                    new_data[c] = phi_data[c] + 0.5 * dt * (rhs_data[c] + rhs_star_data[c]);
+                    for (std::size_t c = 0; c < n_cells; ++c) {
+                        const double value = phi_data[c] +
+                            0.5 * dt * (rhs_n_data[c] + rhs_i_data[c]);
+                        max_delta = std::max(max_delta, std::abs(value - old_data[c]));
+                        new_data[c] = value;
+                    }
                 }
+                iterate = phi_new;
+                if (max_delta <= tolerance) { converged = true; break; }
             }
+            if (!converged) throw std::runtime_error("advance_time: Crank-Nicolson did not converge");
             break;
         }
 
         case TimeScheme::BDF2: {
-            // (3φ^{n+1} - 4φ^n + φ^{n-1}) / (2Δt) = RHS(φ^{n+1})
-            // Rearranged: 3φ^{n+1} = 4φ^n - φ^{n-1} + 2Δt * RHS(φ^{n+1})
-            if (!ctx || !ctx->has_prev) {
-                // First step: fall back to Euler implicit
-                for (std::size_t c = 0; c < n_cells; ++c) {
-                    for (std::size_t d = 0; d < dim; ++d) {
-                        const double* phi_data = phi.component_data(d);
-                        const double* rhs_data = rhs.component_data(d);
-                        double* new_data = phi_new.component_data(d);
-                        new_data[c] = phi_data[c] + dt * rhs_data[c];
+            if (ctx == nullptr) {
+                throw std::invalid_argument("advance_time: BDF2 requires a TimeIntegrationContext");
+            }
+            if (!ctx->has_prev) {
+                Field<double, Location::CELL> bootstrap =
+                    advance_time(TimeScheme::EULER_IMPLICIT, phi, dt, rhs_func, nullptr);
+                ctx->initialize(phi);
+                ctx->shift(bootstrap);
+                return bootstrap;
+            }
+            Field<double, Location::CELL> iterate = phi;
+            Field<double, Location::CELL> rhs_iter(
+                n_cells, "rhs_iter", phi.metadata().unit + "/s", dim);
+            constexpr std::size_t max_iter = 100;
+            constexpr double tolerance = 1e-12;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                rhs_func(iterate, rhs_iter);
+                double max_delta = 0.0;
+                for (std::size_t d = 0; d < dim; ++d) {
+                    const double* old_data = iterate.component_data(d);
+                    const double* curr_data = phi.component_data(d);
+                    const double* prev_data = ctx->phi_prev.component_data(d);
+                    const double* rhs_data = rhs_iter.component_data(d);
+                    double* new_data = phi_new.component_data(d);
+                    for (std::size_t c = 0; c < n_cells; ++c) {
+                        const double value = (4.0 * curr_data[c] - prev_data[c] +
+                            2.0 * dt * rhs_data[c]) / 3.0;
+                        max_delta = std::max(max_delta, std::abs(value - old_data[c]));
+                        new_data[c] = value;
                     }
                 }
-            } else {
-                // Use history: φ^{n-1} = ctx->phi_prev, φ^n = phi
-                for (std::size_t c = 0; c < n_cells; ++c) {
-                    for (std::size_t d = 0; d < dim; ++d) {
-                        const double* phi_data = phi.component_data(d);
-                        const double* phi_prev_data = ctx->phi_prev.component_data(d);
-                        const double* rhs_data = rhs.component_data(d);
-                        double* new_data = phi_new.component_data(d);
-                        // Explicit BDF2: 3φ^{n+1} = 4φ^n - φ^{n-1} + 2Δt * RHS(φ^n)
-                        new_data[c] = (4.0 * phi_data[c] - phi_prev_data[c] + 2.0 * dt * rhs_data[c]) / 3.0;
-                    }
-                }
+                iterate = phi_new;
+                if (max_delta <= tolerance) { converged = true; break; }
             }
-            // Update context
-            if (ctx) {
-                ctx->shift(phi_new);
-            }
+            if (!converged) throw std::runtime_error("advance_time: BDF2 did not converge");
+            ctx->shift(phi_new);
             break;
         }
+
     }
 
     return phi_new;
