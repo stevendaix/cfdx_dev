@@ -15,6 +15,8 @@ struct ConvergenceCriteria {
     double continuity_tolerance = 1e-10;
     double energy_tolerance = 1e-10;
     std::size_t max_iterations = 1000;
+    bool require_turbulence = false;
+    bool require_energy = false;
 };
 
 struct IterationMetrics {
@@ -60,11 +62,21 @@ inline bool converged(const IterationMetrics& m,
                       const IterationMetrics& initial,
                       const ConvergenceCriteria& c)
 {
+    const bool turbulence_ok =
+        !c.require_turbulence ||
+        residual_converged(initial.turbulence_residual, m.turbulence_residual, c);
+    const bool energy_ok =
+        !c.require_energy ||
+        residual_converged(initial.energy_residual, m.energy_residual, c);
+    const bool conservation_ok =
+        std::isfinite(m.continuity_imbalance) &&
+        std::abs(m.continuity_imbalance) <= c.continuity_tolerance &&
+        (!c.require_energy ||
+         (std::isfinite(m.energy_imbalance) &&
+          std::abs(m.energy_imbalance) <= c.energy_tolerance));
     return residual_converged(initial.momentum_residual, m.momentum_residual, c) &&
            residual_converged(initial.pressure_residual, m.pressure_residual, c) &&
-           residual_converged(initial.turbulence_residual, m.turbulence_residual, c) &&
-           residual_converged(initial.energy_residual, m.energy_residual, c) &&
-           conservation_converged(m, c);
+           turbulence_ok && energy_ok && conservation_ok;
 }
 
 } // namespace cfdx::physics
