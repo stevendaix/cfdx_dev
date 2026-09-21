@@ -22,6 +22,7 @@
 #include <map>
 #include <stdexcept>
 #include <cstddef>
+#include <limits>
 
 namespace cfdx {
 namespace core {
@@ -29,6 +30,11 @@ namespace core {
 // Un PatchField est une portion de champ sur un patch spécifique.
 class PatchField {
 public:
+    struct RobinCoefficients {
+        double alpha = 1.0;
+        double beta = 0.0;
+        double gamma = 0.0;
+    };
     PatchField() : patch_name_(), type_("zero"), n_faces_(0), data_() {}
 
     PatchField(const std::string& patch_name,
@@ -56,6 +62,37 @@ public:
     }
 
     void set_type(const std::string& type) { type_ = type; }
+    void set_robin_coefficients(double alpha, double beta, double gamma) {
+        if (!std::isfinite(alpha) || !std::isfinite(beta) || !std::isfinite(gamma))
+            throw std::invalid_argument("PatchField: Robin coefficients must be finite");
+        if (std::abs(alpha) <= std::numeric_limits<double>::epsilon() &&
+            std::abs(beta) <= std::numeric_limits<double>::epsilon())
+            throw std::invalid_argument("PatchField: Robin alpha and beta cannot both be zero");
+        robin_ = {alpha, beta, gamma};
+    }
+    const RobinCoefficients& robin_coefficients() const noexcept { return robin_; }
+
+    // Evaluate the boundary value from the adjacent-cell value and normal
+    // distance. fixedValue uses the stored patch value; zeroGradient returns
+    // the adjacent value; Robin solves alpha*phi_f + beta*dphi/dn = gamma
+    // with a first-order normal derivative approximation.
+    double evaluate(std::size_t face_id, double internal_value,
+                    double face_distance, double time = 0.0) const {
+        (void)time;
+        check_index(face_id);
+        if (!std::isfinite(internal_value) || face_distance <= 0.0)
+            throw std::invalid_argument("PatchField::evaluate: invalid internal value or face distance");
+        if (type_ == "fixedValue" || type_ == "FIXED_VALUE") return data_[face_id];
+        if (type_ == "zero" || type_ == "zeroGradient" || type_ == "ZERO_GRADIENT")
+            return internal_value;
+        if (type_ == "robin" || type_ == "ROBIN") {
+            const double denom = robin_.alpha + robin_.beta / face_distance;
+            if (std::abs(denom) <= std::numeric_limits<double>::epsilon())
+                throw std::runtime_error("PatchField::evaluate: singular Robin boundary");
+            return (robin_.gamma + robin_.beta * internal_value / face_distance) / denom;
+        }
+        throw std::invalid_argument("PatchField::evaluate: unsupported boundary type '" + type_ + "'");
+    }
     void fill(double value) { std::fill(data_.begin(), data_.end(), value); }
     void resize(std::size_t n) { n_faces_ = n; data_.resize(n, 0.0); }
     void clear() { n_faces_ = 0; data_.clear(); }
@@ -74,6 +111,7 @@ private:
     std::string type_;
     std::size_t n_faces_;
     std::vector<double> data_;
+    RobinCoefficients robin_{};
 };
 
 // BoundaryField gère les PatchField pour un champ donné.
