@@ -1,5 +1,6 @@
 #include "cfdx/core/numerics/laplacian_assembly.h"
 #include "common/test_harness.h"
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
