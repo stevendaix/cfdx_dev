@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -49,6 +50,8 @@ struct IncompressibleIteration {
     double pressure_residual = std::numeric_limits<double>::infinity();
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
+    double continuity_normalized = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
@@ -440,6 +443,39 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        // Reassemble the final momentum equations after all pressure
+        // corrections. Linear-solver residuals alone describe intermediate
+        // predictor systems and do not measure the corrected physical state.
+        Field<double, Location::CELL> final_ux_field(mesh.n_cells(), "Ux_final", "m/s", 1);
+        Field<double, Location::CELL> final_uy_field(mesh.n_cells(), "Uy_final", "m/s", 1);
+        Field<double, Location::CELL> final_uz_field(mesh.n_cells(), "Uz_final", "m/s", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            final_ux_field(c) = U.component_data(0)[c];
+            final_uy_field(c) = U.component_data(1)[c];
+            final_uz_field(c) = U.component_data(2)[c];
+        }
+        auto final_grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        auto final_ex = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
+            controls.use_bounded_convection, controls.convection_scheme, &final_ux_field);
+        auto final_ey = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
+            controls.use_bounded_convection, controls.convection_scheme, &final_uy_field);
+        auto final_ez = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
+            controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
+        Vector final_ux(mesh.n_cells()), final_uy(mesh.n_cells()), final_uz(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            final_ux(c) = U.component_data(0)[c];
+            final_uy(c) = U.component_data(1)[c];
+            final_uz(c) = U.component_data(2)[c];
+        }
+        const double final_momentum_residual = std::max({
+            scalar_equation_residual_inf(final_ex, final_ux),
+            scalar_equation_residual_inf(final_ey, final_uy),
+            scalar_equation_residual_inf(final_ez, final_uz)
+        });
+
         double l1 = 0.0;
         double linf = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
@@ -480,6 +516,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
+        h.momentum_equation_residual = final_momentum_residual;
+        const double domain_volume =
+            std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
+        const double characteristic_area =
+            std::max(std::pow(domain_volume, 2.0 / 3.0), 1e-30);
+        h.continuity_normalized =
+            linf / std::max(controls.density * velocity_scale * characteristic_area, 1e-30);
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
@@ -489,6 +532,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
+            h.momentum_equation_residual <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
             h.continuity_linf <= controls.convergence.continuity_tolerance &&
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
