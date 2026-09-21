@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
+#include <unordered_map>
 
 namespace cfdx {
 namespace core {
