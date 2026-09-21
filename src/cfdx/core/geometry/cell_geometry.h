@@ -18,6 +18,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/mesh/ownership.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -85,6 +86,41 @@ inline CellGeometry compute_cell_geometry(
     signed_volume /= 3.0;
 
     return {centre, std::abs(signed_volume), signed_volume};
+}
+
+
+inline CellGeometry compute_cell_geometry_oriented(
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    const FaceIndex* face_ids,
+    std::size_t n_cell_faces,
+    CellIndex cell,
+    const FaceOwnership& ownership)
+{
+    if (n_cell_faces == 0)
+        throw std::runtime_error("CellGeometry: cell must have at least one face");
+
+    std::vector<Vec3> local_centres(n_cell_faces);
+    std::vector<Vec3> local_Sf(n_cell_faces);
+    std::vector<FaceIndex> local_ids(n_cell_faces);
+
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        if (f >= ownership.size())
+            throw std::runtime_error("CellGeometry: face ownership index out of range");
+
+        const CellIndex owner = ownership.owner(f);
+        const std::int64_t neighbour = ownership.neighbour(f);
+        if (owner != cell && neighbour != static_cast<std::int64_t>(cell))
+            throw std::runtime_error("CellGeometry: face is not attached to requested cell");
+
+        local_centres[k] = face_centres[f];
+        local_Sf[k] = (owner == cell) ? face_Sf[f] : face_Sf[f] * (-1.0);
+        local_ids[k] = static_cast<FaceIndex>(k);
+    }
+
+    return compute_cell_geometry(
+        local_centres.data(), local_Sf.data(), local_ids.data(), n_cell_faces);
 }
 
 }  // namespace core
