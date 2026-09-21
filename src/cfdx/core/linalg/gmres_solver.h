@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sparse_matrix.h"
+#include "cg_solver.h"
 #include "vector.h"
 #include "preconditioner.h"
 #include <algorithm>
