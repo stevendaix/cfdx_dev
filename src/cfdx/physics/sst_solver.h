@@ -70,8 +70,18 @@ inline TurbulenceTransportResult solve_sst_transport(
             nullptr,nullptr,&gamma_w);
 
         ScalarSolveControls sc{2000,tolerance,0.7};
-        const auto rk=solve_scalar_equation(eqk,k,sc);
-        const auto rw=solve_scalar_equation(eqw,omega,sc);
+        cfdx::core::Vector k_solution(n, 0.0);
+        cfdx::core::Vector omega_solution(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            k_solution(i) = k(i);
+            omega_solution(i) = omega(i);
+        }
+        const auto rk = solve_scalar_equation(eqk, k_solution, sc);
+        const auto rw = solve_scalar_equation(eqw, omega_solution, sc);
+        for (std::size_t i = 0; i < n; ++i) {
+            k(i) = k_solution(i);
+            omega(i) = omega_solution(i);
+        }
         enforce_turbulence_bounds(k,omega,controls);
 
         double dk=0.0,dw=0.0;
@@ -79,8 +89,8 @@ inline TurbulenceTransportResult solve_sst_transport(
             dk=std::max(dk,std::abs(k(i)-oldk(i)));
             dw=std::max(dw,std::abs(omega(i)-oldw(i)));
         }
-        result.k_residual=scalar_equation_residual_inf(eqk,k);
-        result.second_residual=scalar_equation_residual_inf(eqw,omega);
+        result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
+        result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
         result.iterations=iter;
         if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
            rw.status==cfdx::core::SolverStatus::CONVERGED &&
