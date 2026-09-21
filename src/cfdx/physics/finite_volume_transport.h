@@ -356,12 +356,14 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
         const double candidate_value = equation.rhs(0) / diagonal;
         const double residual = std::abs(diagonal * candidate_value - equation.rhs(0));
+        const double rhs_scale = std::max(std::abs(equation.rhs(0)), 1e-15);
+        const double relative_residual = residual / rhs_scale;
         solution(0) += controls.relaxation * (candidate_value - solution(0));
         return {
-            residual <= controls.tolerance
+            relative_residual <= controls.tolerance
                 ? cfdx::core::SolverStatus::CONVERGED
                 : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            1, residual, residual
+            1, residual, relative_residual
         };
     }
 
