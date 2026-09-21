@@ -66,10 +66,14 @@ inline void assemble_laplacian_csr(
         }
     }
     std::vector<Vec3> cell_centres(n_cells);
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), cell_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, cell_centres, face_Sf);
     for (std::size_t c = 0; c < n_cells; ++c) {
         const auto off = c_offsets[c];
         const auto n = c_offsets[c + 1] - off;
         const CellGeometry cg = compute_cell_geometry(mesh, face_centres.data(), face_Sf.data(), c_faces + off, c, n);
+        if (!(cg.signed_volume > 0.0))
+            throw std::runtime_error("assemble_laplacian_csr: inverted cell orientation");
         cell_centres[c] = cg.centre;
     }
     for (std::size_t f = 0; f < n_faces; ++f) {
