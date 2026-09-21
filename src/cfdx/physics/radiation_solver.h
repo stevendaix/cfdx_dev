@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <vector>
 #include <limits>
-#include <iostream>
 
 namespace cfdx::physics {
 
@@ -100,12 +99,6 @@ inline RadiationSolveResult solve_participating_radiation(
                 sp(c)=-(controls.absorption+controls.scattering);
             }
 
-            if (nc == 1 && m == 0) {
-                std::cout << "DEBUG_FLUX";
-                for (std::size_t ff=0; ff<mesh.n_faces(); ++ff)
-                    std::cout << " " << directional_flux(ff);
-                std::cout << " src=" << source(0) << " sp=" << sp(0) << "\n";
-            }
             auto eq=assemble_scalar_equation(
                 mesh,geometry,directional_flux,0.0,source,sp,
                 wall_intensity_bcs,true);
@@ -118,11 +111,6 @@ inline RadiationSolveResult solve_participating_radiation(
             sc.tolerance=controls.linear_tolerance;
             sc.relaxation=controls.intensity_relaxation;
             const auto lr=solve_scalar_equation(eq,intensity,sc);
-            if (nc == 1 && lr.status != cfdx::core::SolverStatus::CONVERGED)
-                std::cout << "DEBUG_RAD m=" << m << " diag=" << eq.diagonal[0]
-                          << " rhs=" << eq.rhs(0) << " I=" << intensity(0)
-                          << " status=" << static_cast<int>(lr.status)
-                          << " residual=" << lr.residual << "\n";
             for(std::size_t c=0;c<nc;++c) intensities[m](c)=intensity(c);
             if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
                 throw std::runtime_error("radiation intensity linear solve did not converge");
