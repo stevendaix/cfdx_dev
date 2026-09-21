@@ -54,7 +54,6 @@ inline SolverResult solve_gmres(
         for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
         return w.r.norm2();
     };
-    auto residual_norm = [&]() { return w.r.norm2(); };
 
     double beta = true_residual();
     if (beta <= tol) {
@@ -216,7 +215,7 @@ inline SolverResult solve_gmres(
     LinearOperator op;
     op.size = A.n_rows();
     op.apply = [&A](const Vector& in, Vector& out) {
-        if (out.size() != A.n_rows()) out.resize(A.n_rows(), 0.0);
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
