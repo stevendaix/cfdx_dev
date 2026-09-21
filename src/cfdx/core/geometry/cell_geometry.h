@@ -65,15 +65,23 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Volume from the divergence theorem:
-    // V = 1/3 * integral_boundary x . n dA
-    //   = 1/3 * sum_f Cf . Sf_f.
-    // This is exact for closed polyhedra with planar polygonal faces and
-    // does not depend on the approximate face-area-weighted cell centre.
+    // Volume by convex-cell pyramid decomposition. The face-area-weighted
+    // centre is used as an interior reference point; each contribution is
+    // one third of face area times the perpendicular distance to that face.
+    // Using the absolute normal projection makes the volume robust to a face
+    // winding error while preserving the exact result for closed planar convex
+    // cells.
     double volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
         const FaceIndex f = face_ids[k];
-        volume += face_centres[f].dot(face_Sf[f]);
+        const Vec3& cf = face_centres[f];
+        const Vec3& sf = face_Sf[f];
+        const double area = sf.mag();
+        if (!(area > 0.0))
+            throw std::runtime_error("CellGeometry: degenerate face");
+        const Vec3 d = cf - centre;
+        const double height = std::abs(d.dot(sf)) / area;
+        volume += area * height;
     }
     volume /= 3.0;
 
