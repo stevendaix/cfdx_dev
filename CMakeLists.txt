@@ -108,6 +108,11 @@ set(CFDX_MEMORY_SOURCES
     src/cfdx/runtime/gpu/gpu_kernels.cpp
 )
 
+# Application layer: Fluent-like case control, monitoring and interactive workflow
+set(CFDX_APPLICATION_SOURCES
+    src/cfdx/application/simulation_controller.cpp
+)
+
 # Geometry module
 set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
@@ -181,6 +186,7 @@ set(CFDX_CORE_SOURCES
     ${CFDX_TRANSPORT_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
+    ${CFDX_APPLICATION_SOURCES}
 )
 
 # Headers (for IDE visibility, not compiled)
