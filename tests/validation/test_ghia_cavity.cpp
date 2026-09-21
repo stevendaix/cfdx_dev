@@ -100,7 +100,7 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
     mesh.boundary().add_patch(left); mesh.boundary().add_patch(right);
     mesh.boundary().add_patch(front); mesh.boundary().add_patch(back);
 
-    const topology = mesh.topo_validate();
+    const auto topology = mesh.topo_validate();
     if (!topology.ok) {
         throw std::runtime_error("cavity mesh topology invalid: " +
                                  (topology.errors.empty() ? "unknown error" : topology.errors.front()));
