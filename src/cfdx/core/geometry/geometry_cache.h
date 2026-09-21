@@ -91,7 +91,15 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         cache.face_normals[f] = fg.normal;
     }
     
-    // --- 2. Cell geometry ---
+    // --- 2. Establish the authoritative global face orientation ---
+    // The provisional centres are orientation-independent because they use only
+    // scalar face areas. They are then used to enforce owner -> neighbour (and
+    // owner -> boundary) orientation before any signed cell geometry is built.
+    compute_area_weighted_cell_centres(
+        m, cache.face_centres.data(), cache.face_Sf.data(), cache.cell_centres.data());
+    orient_mesh_face_vectors(m, cache.face_centres, cache.cell_centres, cache.face_Sf);
+    
+    // --- 3. Cell geometry ---
     const CellConnectivity& cells = m.cells();
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
@@ -102,9 +110,11 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         const CellGeometry cg = compute_cell_geometry(m, cache.face_centres.data(), cache.face_Sf.data(), cell_faces + off, c, n);
         cache.cell_centres[c] = cg.centre;
         cache.cell_volumes[c] = cg.volume;
+        if (!(cg.signed_volume > 0.0))
+            throw std::runtime_error("compute_geometry_cache: inverted cell orientation");
     }
     
-    // --- 3. Quality metrics (skewness, non-orthogonality) ---
+    // --- 4. Quality metrics (skewness, non-orthogonality) ---
     const FaceOwnership& own = m.ownership();
     cache.max_skewness = 0.0;
     cache.max_non_orthogonality_deg = 0.0;
@@ -140,14 +150,16 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         }
     }
     
-    // --- 4. Surface closure (conservation) ---
+    // --- 5. Surface closure (conservation) ---
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
         Vec3 sum_Sf;
         for (Offset k = 0; k < n; ++k) {
             const FaceIndex f = cell_faces[off + k];
-            sum_Sf = sum_Sf + cache.face_Sf[f];
+            const std::size_t owner = own.owner(f);
+            const Vec3 local_Sf = owner == c ? cache.face_Sf[f] : cache.face_Sf[f] * -1.0;
+            sum_Sf = sum_Sf + local_Sf;
         }
         const double closure = sum_Sf.mag();
         cache.surface_closure_error[c] = closure;
@@ -156,7 +168,7 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         }
     }
     
-    // --- 5. Delta coefficients (distance from cell centre to face centre) ---
+    // --- 6. Delta coefficients (distance from cell centre to face centre) ---
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::size_t owner = own.owner(f);
         if (owner < n_cells) {
