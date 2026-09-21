@@ -140,6 +140,7 @@ int main()
             controls.energy.cp=1000.0;
             controls.energy.max_iterations=100;
             controls.energy.tolerance=1e-10;
+            controls.energy.relaxation=1.0;
             controls.max_outer_iterations=50;
             controls.tolerance=1e-8;
 
