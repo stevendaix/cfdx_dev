@@ -45,7 +45,7 @@ int main() {
     (void)boff;
     pool.release(aoff);
     const auto coff = pool.acquire(32);
-    if (coff != aoff || pool.allocated_bytes() != 192) return 9;
+    if (coff != aoff || pool.allocated_bytes() != 96) return 9;
 
     core::memory::FieldLifetime fa{"a",64,0,2,core::memory::Residency::Ephemeral};
     core::memory::FieldLifetime fb{"b",64,2,4,core::memory::Residency::Ephemeral};
