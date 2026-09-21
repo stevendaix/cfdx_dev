@@ -40,7 +40,13 @@ bool import_with_meshio(const std::filesystem::path& input, cfdx::core::Mesh& me
     const fs::path script = fs::path(CFDX_SOURCE_DIR) / "scripts" / "meshio_import.py";
 
     std::ostringstream command;
-    command << "python3 " << quote(script.string()) << " "
+    command <<
+#ifdef CFDX_PYTHON_EXECUTABLE
+        quote(CFDX_PYTHON_EXECUTABLE)
+#else
+        "python3"
+#endif
+            << " " << quote(script.string()) << " "
             << quote(input.string()) << " " << quote(output.string());
 
     const int rc = std::system(command.str().c_str());

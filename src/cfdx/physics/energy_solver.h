@@ -78,6 +78,69 @@ inline ScalarEquation assemble_energy_equation(
         face_values,&transient_diag,&transient_rhs);
 }
 
+inline double energy_balance_relative(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
+    const EnergySolverControls& controls,
+    const ScalarBoundaryConditions& bcs)
+{
+    double net_flux = 0.0;
+    double source_total = 0.0;
+    double accumulation = 0.0;
+    const auto& own = mesh.ownership();
+
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        source_total += source(c) * geometry.cell_volumes[c];
+        if(controls.dt > 0.0)
+            accumulation += controls.density * controls.cp *
+                geometry.cell_volumes[c] *
+                (temperature(c)-old_temperature(c))/controls.dt;
+    }
+
+    for(std::size_t f=0;f<mesh.n_faces();++f) {
+        const std::size_t o=own.owner(f);
+        const auto nraw=own.neighbour(f);
+        if(nraw>=0) continue;
+
+        const std::size_t patch=geometry.face_patch[f];
+        ScalarBoundaryCondition bc;
+        if(patch<mesh.boundary().n_patches()) {
+            const auto& name=mesh.boundary().patch(patch).name;
+            auto it=bcs.find(name);
+            if(it!=bcs.end()) bc=it->second;
+        }
+
+        const auto& Sf0=geometry.face_area_vectors[f];
+        const auto dvec=geometry.face_centres[f]-geometry.cell_centres[o];
+        const double sign=(Sf0.dot(dvec)>=0.0)?1.0:-1.0;
+        const auto Sf=Sf0*sign;
+        const double area=Sf.mag();
+        const double d=dvec.mag();
+        const double F=mass_flux(f);
+        double Tf=temperature(o);
+        if(bc.type==ScalarBoundaryType::FIXED_VALUE)
+            Tf=bc.value;
+        else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
+            Tf=temperature(o)+bc.gradient*d;
+
+        const double k=controls.conductivity;
+        double conductive=-k*bc.gradient*area;
+        if(bc.type==ScalarBoundaryType::FIXED_VALUE && d>0.0)
+            conductive=-k*(Tf-temperature(o))/d*area;
+        const double convective=F*(F>=0.0 ? temperature(o) : Tf);
+        net_flux += convective + conductive;
+    }
+
+    const double imbalance=accumulation + net_flux - source_total;
+    const double scale=std::max({1.0,std::abs(accumulation),
+                                 std::abs(net_flux),std::abs(source_total)});
+    return std::abs(imbalance)/scale;
+}
+
 inline EnergySolveResult solve_energy(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -97,7 +160,9 @@ inline EnergySolveResult solve_energy(
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
             mesh,geometry,mass_flux,source,old,controls,bcs,face_values);
-        auto candidate=temperature;
+        cfdx::core::Vector candidate(temperature.size(),0.0);
+        for(std::size_t i=0;i<temperature.size();++i)
+            candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
         sc.tolerance=controls.tolerance;
@@ -105,11 +170,10 @@ inline EnergySolveResult solve_energy(
         const auto linear=solve_scalar_equation(eq,candidate,sc);
         double res=scalar_equation_residual_inf(eq,candidate);
 
-        double imbalance=0.0;
-        for(std::size_t i=0;i<mesh.n_cells();++i)
-            imbalance=std::max(imbalance,std::abs(eq.rhs(i)));
-
-        temperature=candidate;
+        for(std::size_t i=0;i<temperature.size();++i)
+            temperature(i)=candidate(i);
+        const double imbalance=energy_balance_relative(
+            mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 

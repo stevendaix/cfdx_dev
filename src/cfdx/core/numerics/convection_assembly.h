@@ -30,6 +30,7 @@ bool assembleMomentumCSR(const Mesh& mesh,
                         const ScalarCellField& pressure,
                         const std::string& convection_scheme,
                         SparseMatrix& A,
-                        Vector& b);
+                        Vector& b,
+                        double diffusion_coefficient = 0.0);
 
 } // namespace cfdx::core::numerics
