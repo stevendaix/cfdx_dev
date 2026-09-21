@@ -40,7 +40,7 @@ int main(){
         Mesh m=make_cube();
         Field<double,Location::CELL> phi(1,"phi","1",1); phi(0)=2.0;
         Field<double,Location::FACE> flux(6,"flux","m3/s",1);
-        for(std::size_t f=0;f<6;++f) flux.component_data(0)[f]=0.0;
+        for(std::size_t f=0;f<6;++f) flux(0,f)=0.0;
         auto c=compute_convection(phi,flux,m,InterpScheme::UPWIND);
         EXPECT_NEAR(c(0),0.0,1e-12);
     });
@@ -67,7 +67,7 @@ int main(){
         Mesh m=make_two_tetra();
         Field<double,Location::CELL> ap(2,"aP","1",1);
         Field<double,Location::CELL> r(2,"r","m3/s",1);
-        ap(0)=ap(1)=1.0; r(0)=1.0; r(1)=-0.5;
+        ap(0)=ap(1)=1.0; r(0)=1.0; r(1)=-1.0;
         auto pc=assemble_pressure_correction(m,ap,r);
         EXPECT_NEAR(pc.matrix(0,0)+pc.matrix(0,1),0.0,1e-12);
         EXPECT_NEAR(pc.matrix(1,0)+pc.matrix(1,1),0.0,1e-12);

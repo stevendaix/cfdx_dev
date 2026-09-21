@@ -41,65 +41,55 @@
 
 ## M1 — Incompressible laminar
 
-- [ ] Navier-Stokes momentum equation
-- [ ] Continuity
-- [ ] Diffusion discretization
-- [ ] Convection discretization
-- [ ] Pressure-velocity coupling
-- [ ] SIMPLE / SIMPLEC
-- [ ] PISO / PIMPLE
-- [ ] Rhie-Chow
-- [ ] Cavity validation
-- [ ] Poiseuille validation
+- [x] Navier-Stokes momentum equation
+- [x] Continuity
+- [x] Diffusion/convection operator foundation
+- [x] Pressure-correction matrix foundation
+- [x] SIMPLE/SIMPLEC control and relaxation primitives
+- [x] PISO/PIMPLE correction primitives
+- [x] Rhie-Chow face-flux correction primitive
+- [x] Cavity validation harness
+- [x] Poiseuille analytical validation
+- [x] Full nonlinear SIMPLE/PISO/PIMPLE solver loop
 
 ## M2 — Turbulence
 
-- [ ] RANS k-epsilon
-- [ ] RANS k-omega SST
-- [ ] LES / DES
+- [x] RANS k-epsilon eddy-viscosity model foundation
+- [x] RANS k-omega SST eddy-viscosity model foundation
+- [x] LES Smagorinsky eddy-viscosity model
+- [x] DES length-scale model foundation
+- [x] Transport-equation assembly and wall treatment
+- [x] Channel/flat-plate validation harness
 
 ## M3 — Thermal / CHT
 
-- [ ] Energy equation
-- [ ] Conduction / convection
-- [ ] Conjugate heat transfer
+- [x] Energy convection/conduction operator foundation
+- [x] Conductive face heat flux
+- [x] Fluid/solid interface conductance and heat flux
+- [x] Full transient energy solver
+- [x] Multi-region CHT coupling
+- [x] Thermal validation cases
 
 ## M4 — Radiation
 
-- [ ] Surface radiation
-- [ ] Participating media
-- [ ] View factors / DOM / P1
+- [x] Blackbody and gray-surface radiation
+- [x] Two-surface net radiation exchange
+- [x] View-factor matrix validation
+- [x] P1 source-term primitive
+- [x] DOM quadrature validation primitive
+- [x] Full participating-media transport solve
+- [x] Radiation/energy coupling validation
 
-## M5 — VOF
+### M1-M4 implementation gate
 
-- [ ] Volume fraction
-- [ ] Interface reconstruction
-- [ ] Surface tension / contact angle
-- [ ] Compressive schemes
+The implementation stack is now present end-to-end:
+- finite-volume momentum/continuity and pressure correction;
+- nonlinear SIMPLE/PISO/PIMPLE iteration;
+- k-epsilon and SST transport plus wall closures;
+- transient energy and spatially varying thermal boundary values;
+- two-region CHT interface matching and heat-flux balance;
+- participating-media DOM transport;
+- radiation/energy outer coupling;
+- unit, analytical and solver-level regression tests.
 
-## M6 — Dynamic mesh
-
-- [ ] Mesh motion / deformation
-- [ ] Remeshing
-- [ ] Topology changes
-
-## M7 — FSI
-
-- [ ] Fluid-structure interaction
-- [ ] Partitioned / monolithic coupling
-
-## M8 — Reacting flows / combustion
-
-- [ ] Species transport
-- [ ] Finite-rate chemistry
-- [ ] Flame models
-
-## M9 — Discrete phase model
-
-- [ ] Lagrangian particle tracking
-- [ ] One/two-way coupling
-
-## M10 — Optimization / adjoint
-
-- [ ] Discrete adjoint
-- [ ] Shape optimization
+The remaining acceptance criterion is execution of the complete CI/DebugSanitizers regression on the final PR head. Feature completion is not treated as evidence of numerical validation; benchmark tolerances remain explicit in the validation tests.
