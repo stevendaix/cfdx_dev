@@ -26,7 +26,7 @@ int main()
     run_case("ideal_gas_rejects_inconsistent_cp", [] {
         IdealGasParams params;
         params.Cp *= 1.01;
-        EXPECT_THROW(IdealGasEOS(params), std::invalid_argument);
+        EXPECT_THROW((IdealGasEOS(params)), std::invalid_argument);
     });
 
     run_case("ideal_gas_set_params_preserves_consistency_contract", [] {
