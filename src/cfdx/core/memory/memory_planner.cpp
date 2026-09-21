@@ -140,7 +140,7 @@ RCMReorderer::ReorderingResult RCMReorderer::reorder(
         uint32_t o = owner[face];
         uint32_t n = neighbour[face];
         if (o < num_cells) degree[o]++;
-        if (n != 0xFFFFFFFF && n < num_cells) degree[o]++;
+        if (n != 0xFFFFFFFF && n < num_cells) degree[n]++;
     }
 
     // 2. Find start node (minimum degree)
@@ -269,7 +269,11 @@ MeshReorderer::ReorderingResult MeshReorderer::reorder(
     MeshOrdering policy) {
     ReorderingResult result;
     result.selected_strategy = policy;
-    size_t n = owner.size();
+    size_t n = 0;
+    for (size_t f = 0; f < owner.size(); ++f) {
+        if (owner[f] != 0xFFFFFFFF) n = std::max(n, static_cast<size_t>(owner[f]) + 1);
+        if (neighbour[f] != 0xFFFFFFFF) n = std::max(n, static_cast<size_t>(neighbour[f]) + 1);
+    }
     result.old_to_new.resize(n);
     result.new_to_old.resize(n);
 
@@ -278,25 +282,25 @@ MeshReorderer::ReorderingResult MeshReorderer::reorder(
         auto rcm_result = rcm.reorder(owner, neighbour, static_cast<size_t>(n));
         result.old_to_new = rcm_result.old_to_new;
         result.new_to_old = rcm_result.new_to_old;
-        result.estimated_speedup = 1.5;
+        result.estimated_speedup = 0.0;
     } else if (policy == MeshOrdering::SFC) {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
             result.new_to_old[i] = static_cast<uint32_t>(i);
         }
-        result.estimated_speedup = 1.30;
+        result.estimated_speedup = 0.0;
     } else if (policy == MeshOrdering::GPUOptimized) {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
             result.new_to_old[i] = static_cast<uint32_t>(i);
         }
-        result.estimated_speedup = 1.50;
+        result.estimated_speedup = 0.0;
     } else {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
             result.new_to_old[i] = static_cast<uint32_t>(i);
         }
-        result.estimated_speedup = 1.0;
+        result.estimated_speedup = 0.0;
     }
     return result;
 }
