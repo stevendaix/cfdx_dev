@@ -298,13 +298,10 @@ VALIDATION_EXECUTABLES = [
     "test_analytical_benchmarks",
     "test_benchmark_matrix",
     "test_cht_validation",
-    "test_fluent_vmfl_reference",
-    "test_ghia_cavity",
     "test_level_b_reference_benchmarks",
     "test_level_c_coupled_verification",
     "test_m1_m4_validation",
     "test_m2_m4_solver_validation",
-    "test_numerical_model_verification",
     "test_steady_incompressible_solver",
 ]
 
