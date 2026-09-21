@@ -46,14 +46,10 @@ inline SolverResult solve_gmres(
     w.resize(n, static_cast<std::size_t>(current_restart));
 
     auto apply_operator = [&](const double* in, Vector& out) {
-        for (std::size_t i = 0; i < n; ++i) w.vin(i) = in[i];
+        for (std::size_t i = 0; i < n; ++i) {
+            w.vin(i) = in[i];
+        }
         op.apply(w.vin, out);
-        std::vector<double> ax;
-        std::vector<double> xv(n);
-        for(std::size_t i=0;i<n;++i) xv[i]=x(i);
-        apply_operator(xv,ax);
-        r.resize(n);
-        for(std::size_t i=0;i<n;++i) r[i]=b(i)-ax[i];
     };
     auto true_residual = [&]() {
         apply_operator(x.data(), w.ax);
