@@ -20,6 +20,7 @@ option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
+option(CFDX_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
@@ -258,6 +259,14 @@ set(CFDX_CORE_HEADERS
 )
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
+
+if(CFDX_ENABLE_SANITIZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "CFDX_ENABLE_SANITIZERS requires GCC or Clang")
+    endif()
+    target_compile_options(cfdx_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(cfdx_core PUBLIC -fsanitize=address,undefined)
+endif()
 target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
