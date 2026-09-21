@@ -205,6 +205,16 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
             r"\end{figure}",
         ]
 
+    lines += [
+        r"\\section{Validation executable matrix}",
+        r"\\begin{longtable}{p{70mm}r}",
+        r"\\toprule Executable & return code \\\\",
+        r"\\midrule",
+    ]
+    for name, rc in suite_status.items():
+        lines.append(f"\\texttt{{{latex_escape(name)}}} & {rc}\\\\")
+    lines += [r"\\bottomrule", r"\\end{longtable}"]
+
     if ghia:
         lines += [
             r"\subsection{Ghia lid-driven cavity}",
@@ -284,6 +294,33 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+VALIDATION_EXECUTABLES = [
+    "test_analytical_benchmarks",
+    "test_benchmark_matrix",
+    "test_cht_validation",
+    "test_fluent_vmfl_reference",
+    "test_ghia_cavity",
+    "test_level_b_reference_benchmarks",
+    "test_level_c_coupled_verification",
+    "test_m1_m4_validation",
+    "test_m2_m4_solver_validation",
+    "test_numerical_model_verification",
+    "test_steady_incompressible_solver",
+]
+
+def run_validation_suite(build_dir: Path, output_dir: Path) -> dict[str, int]:
+    status: dict[str, int] = {}
+    for name in VALIDATION_EXECUTABLES:
+        exe = build_dir / name
+        if not exe.exists():
+            status[name] = -1
+            (output_dir / f"{name}.log").write_text("executable not found", encoding="utf-8")
+            continue
+        rc, _ = run_test(exe, output_dir / f"{name}.log")
+        status[name] = rc
+    return status
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
@@ -296,6 +333,7 @@ def main() -> int:
     generated = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M %Z")
 
     logs: dict[str, tuple[int, str]] = {}
+    suite_status = run_validation_suite(args.build_dir, args.output_dir)
     ref_exe = args.build_dir / "test_fluent_vmfl_reference"
     if ref_exe.exists():
         logs["test_fluent_vmfl_reference"] = run_test(ref_exe, args.output_dir / "test_fluent_vmfl_reference.log")
@@ -321,7 +359,8 @@ def main() -> int:
 
     (args.output_dir / "results.json").write_text(
         json.dumps({"generated": generated, "ghia": ghia, "model_results": model_results,
-                    "test_status": {k: v[0] for k, v in logs.items()}}, indent=2),
+                    "test_status": {k: v[0] for k, v in logs.items()},
+                    "validation_suite_status": suite_status}, indent=2),
         encoding="utf-8",
     )
 
