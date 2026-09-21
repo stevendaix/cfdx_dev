@@ -96,7 +96,9 @@ inline PressureCorrectionSystem assemble_pressure_correction(
 
     Vector rhs(n, 0.0);
     for (std::size_t c = 0; c < n; ++c)
-        rhs(c) = -continuity.component_data(0)[c] * volume[c];
+        // continuity is already a volumetric face-flux imbalance [m^3/s].
+        // Do not multiply by cell volume a second time.
+        rhs(c) = -continuity.component_data(0)[c];
 
     return {std::move(matrix), std::move(rhs)};
 }
