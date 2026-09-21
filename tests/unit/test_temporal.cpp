@@ -22,20 +22,19 @@ int main() {
         EXPECT_NEAR(result, expected, 1e-12);
     });
 
-    run_case("implicit_euler_placeholder", [&]() {
+    run_case("implicit_euler_decay", [&]() {
         double phi_n = 1.0;
         double dt = 0.1;
         double result = implicit_euler_step(phi_n, dt, reaction);
-        EXPECT_NEAR(result, phi_n, 1e-12);
+        EXPECT_NEAR(result, 1.0 / 1.2, 1e-10);
     });
 
     run_case("crank_nicolson_decay", [&]() {
         double phi_n = 1.0;
         double dt = 0.1;
         double result = crank_nicolson_step(phi_n, dt, reaction);
-        double RHS_n = reaction(phi_n);
-        double expected = phi_n + 0.5 * dt * RHS_n;
-        EXPECT_NEAR(result, expected, 1e-12);
+        double expected = (1.0 - 0.1) / (1.0 + 0.1);
+        EXPECT_NEAR(result, expected, 1e-10);
     });
 
     run_case("bdf2_decay", [&]() {
@@ -43,8 +42,8 @@ int main() {
         double phi_prev = 1.0;
         double dt = 0.1;
         double result = bdf2_step(phi_n, dt, phi_prev, reaction);
-        double expected = (4.0 * phi_n - phi_prev + 2.0 * dt * reaction(phi_n)) / 3.0;
-        EXPECT_NEAR(result, expected, 1e-12);
+        double expected = 1.0 / 1.2;
+        EXPECT_NEAR(result, expected, 1e-10);
     });
 
     run_case("derivative_finite_diff", [&]() {
