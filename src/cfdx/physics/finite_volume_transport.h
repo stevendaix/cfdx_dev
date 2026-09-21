@@ -413,9 +413,29 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     }
 
     cfdx::core::Vector candidate = solution;
-    auto result = cfdx::core::solve_bicgstab(
-        equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+    bool symmetric = true;
+    const auto* row = equation.matrix.row_offsets_data();
+    const auto* col = equation.matrix.columns_data();
+    const auto* val = equation.matrix.values_data();
+    for (std::size_t i = 0; i < equation.matrix.n_rows() && symmetric; ++i) {
+        for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+            const std::size_t j = col[k];
+            double transpose = 0.0;
+            for (std::uint32_t q = row[j]; q < row[j + 1]; ++q) {
+                if (col[q] == i) { transpose = val[q]; break; }
+            }
+            if (std::abs(val[k] - transpose) > 1e-12 *
+                std::max({1.0, std::abs(val[k]), std::abs(transpose)})) {
+                symmetric = false;
+                break;
+            }
+        }
+    }
+    auto result = symmetric
+        ? cfdx::core::solve_cg(equation.matrix, equation.rhs, candidate,
+                              controls.max_iterations, controls.tolerance)
+        : cfdx::core::solve_bicgstab(equation.matrix, equation.rhs, candidate,
+                                     controls.max_iterations, controls.tolerance);
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED ||
         result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
