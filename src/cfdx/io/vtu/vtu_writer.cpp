@@ -50,11 +50,13 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
                                     std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                                     std::vector<VtkCellType>& vtk_cell_types,
                                     std::vector<std::uint32_t>& cell_face_offsets,
-                                    std::vector<cfdx::core::FaceIndex>& cell_face_indices)
+                                    std::vector<cfdx::core::FaceIndex>& cell_face_indices,
+                                    std::vector<std::size_t>& vtk_to_original_cell)
 {
     const std::size_t n_cells = mesh.n_cells();
     vtk_cells.reserve(n_cells);
     vtk_cell_types.reserve(n_cells);
+    vtk_to_original_cell.reserve(n_cells);
     cell_face_offsets.reserve(n_cells + 1);
     cell_face_indices.reserve(mesh.cells().n_face_refs());
 
@@ -94,6 +96,7 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
                 vtk_cells.push_back({ref_vertex, fv_a, fv_b});
                 vtk_cell_types.push_back(VtkCellType::TETRA);
+                vtk_to_original_cell.push_back(c);
             }
         }
     }
