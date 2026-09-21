@@ -12,6 +12,7 @@
 #include <limits>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 
 namespace cfdx::core {
 
