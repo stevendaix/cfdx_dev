@@ -204,17 +204,19 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
             patch_types[i] = static_cast<std::uint32_t>(patch.type);
         }
         
-        // Write patch metadata
-        std::string patches_str;
-        for (std::size_t i = 0; i < n_patches; ++i) {
-            if (i > 0) patches_str += ";";
-            patches_str += patch_names[i] + ":" + std::to_string(patch_starts[i]) + ":" + 
-                           std::to_string(patch_counts[i]) + ":" + std::to_string(patch_types[i]);
-        }
-        write_attr_str(file, "boundary_patches", patches_str);
-        
-        // Write patch face IDs as a flat array with offsets
+        // Boundary patch metadata is optional. For a mesh with no patches,
+        // omit the attribute and datasets entirely; this keeps an empty mesh
+        // representable without manufacturing an otherwise meaningless
+        // boundary-patch schema.
         if (n_patches > 0) {
+            std::string patches_str;
+            for (std::size_t i = 0; i < n_patches; ++i) {
+                if (i > 0) patches_str += ";";
+                patches_str += patch_names[i] + ":" + std::to_string(patch_starts[i]) + ":" +
+                               std::to_string(patch_counts[i]) + ":" + std::to_string(patch_types[i]);
+            }
+            write_attr_str(file, "boundary_patches", patches_str);
+
             std::vector<std::uint64_t> all_face_ids;
             for (std::size_t i = 0; i < n_patches; ++i) {
                 const auto& patch = bp.patch(i);
@@ -225,13 +227,13 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
             for (std::size_t i = 0; i < n_patches; ++i) {
                 patch_face_offsets[i + 1] = patch_face_offsets[i] + patch_counts[i];
             }
-            write_dataset_u64(file, "patch_face_ids", all_face_ids.data(), all_face_ids.size());
-            write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(), patch_face_offsets.size());
-        } else {
-            std::vector<std::uint64_t> empty_ids;
-            std::vector<std::uint64_t> empty_offsets = {0};
-            write_dataset_u64(file, "patch_face_ids", empty_ids.data(), 0);
-            write_dataset_u64(file, "patch_face_offsets", empty_offsets.data(), empty_offsets.size());
+            if (write_dataset_u64(file, "patch_face_ids", all_face_ids.data(),
+                                  all_face_ids.size()) < 0 ||
+                write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(),
+                                  patch_face_offsets.size()) < 0) {
+                H5Fclose(file);
+                return false;
+            }
         }
     }
 
