@@ -472,17 +472,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             scalar_equation_residual_inf(final_ex, final_ux),
             scalar_equation_residual_inf(final_ey, final_uy),
             scalar_equation_residual_inf(final_ez, final_uz)});
-        double velocity_l1_scale = 0.0;
+        double velocity_scale = 1.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-            velocity_l1_scale += geometry.cell_volumes[c] *
-                std::max({std::abs(U.component_data(0)[c]),
-                          std::abs(U.component_data(1)[c]),
-                          std::abs(U.component_data(2)[c]), 1e-30});
+            velocity_scale = std::max(velocity_scale, std::sqrt(
+                std::pow(U.component_data(0)[c], 2) +
+                std::pow(U.component_data(1)[c], 2) +
+                std::pow(U.component_data(2)[c], 2)));
         const double domain_volume = std::accumulate(
             geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
-        const double characteristic_volume = std::max(domain_volume, 1e-30);
+        const double characteristic_area = std::max(
+            std::pow(domain_volume, 2.0 / 3.0), 1e-30);
         const double continuity_normalized = linf /
-            std::max(controls.density * velocity_l1_scale / characteristic_volume, 1e-30);
+            std::max(controls.density * velocity_scale * characteristic_area, 1e-30);
 
         double velocity_change_inf = 0.0;
         double pressure_change_inf = 0.0;
