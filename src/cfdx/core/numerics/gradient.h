@@ -96,8 +96,7 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry(mesh, face_centres.data(), face_Sf.data(), cell_faces + off, c, n);
         cell_centre[c] = cg.centre;
         cell_volume[c] = cg.volume;
     }
