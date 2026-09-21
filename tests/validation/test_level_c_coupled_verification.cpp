@@ -116,7 +116,6 @@ int main()
                 throw std::runtime_error("turbulence transport positivity gate failed");
         }
 
-        std::cout<<"LEVEL_C: C-02 radiation-energy\n";
         // Level C-02: radiation/energy must converge on the same physical
         // source state, and the reported energy-balance residual must close.
         {
@@ -146,34 +145,15 @@ int main()
             controls.max_outer_iterations=50;
             controls.tolerance=1e-8;
 
-            std::cout<<"LEVEL_C: C-02 calling radiation solver\n";
-            Field<double,Location::CELL> qrad_probe(1,"qrad_probe","W/m3",1);
-            qrad_probe.fill(0.0);
-            auto rad_probe = solve_participating_radiation(
-                m,g,T,irradiation,qrad_probe,isotropic_directions(),
-                controls.radiation,{});
-            std::cout<<"LEVEL_C: C-02 radiation returned\n";
-            Field<double,Location::CELL> energy_source_probe(1,"energy_source_probe","W/m3",1);
-            energy_source_probe(0)=source(0)+qrad_probe(0);
-            auto energy_probe = solve_energy(
-                m,g,mass_flux,T,energy_source_probe,controls.energy,thermal_bc);
-            std::cout<<"LEVEL_C: C-02 energy returned\n";
-            if(!energy_probe.converged)
-                throw std::runtime_error("energy probe did not converge");
-            if(!rad_probe.converged)
-                throw std::runtime_error("radiation probe did not converge");
-
-            std::cout<<"LEVEL_C: C-02 calling coupled solver\n";
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
-                controls,thermal_bc);
+                controls,{},thermal_bc);
             if (!r.converged || r.energy_balance_residuals.empty())
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
                            "radiation-energy energy-balance gate failed");
         }
 
-        std::cout<<"LEVEL_C: C-03 CHT\n";
         // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
