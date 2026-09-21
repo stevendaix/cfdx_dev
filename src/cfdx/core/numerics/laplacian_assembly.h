@@ -69,8 +69,7 @@ inline void assemble_laplacian_csr(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const auto off = c_offsets[c];
         const auto n = c_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), c_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry(mesh, face_centres.data(), face_Sf.data(), c_faces + off, c, n);
         cell_centres[c] = cg.centre;
     }
     for (std::size_t f = 0; f < n_faces; ++f) {
