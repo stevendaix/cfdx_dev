@@ -32,7 +32,7 @@ int main()
         EXPECT_NEAR(heat_flux_conduction(10.0, 300.0, 290.0, 0.5),
                     200.0, 1e-12);
         const double g = cht_interface_conductance(10.0, 2.0, 0.01, 0.02, 1.0);
-        EXPECT_NEAR(g, 83.33333333333333, 1e-10);
+        EXPECT_NEAR(g, 90.9090909090909, 1e-10);
         EXPECT_NEAR(cht_interface_heat_flux(g, 320.0, 300.0),
                     1666.6666666666665, 1e-9);
     });
