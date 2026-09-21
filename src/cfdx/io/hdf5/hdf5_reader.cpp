@@ -124,6 +124,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     if (!read_dataset_double(file, "points", pts)) {
         pts.clear();
     }
+    if(pts.size()%3!=0) {
+        H5Fclose(file);
+        return false;
+    }
     const std::size_t n_points = pts.size() / 3;
     mesh.points().resize(n_points);
     for (std::size_t i = 0; i < n_points; ++i) {
@@ -139,7 +143,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     if (!read_dataset_u64(file, "face_offsets", fo)) {
         fo.clear();
     }
-    const std::size_t n_faces = fo.size() > 0 ? fo.size() - 1 : 0;
+    if(fo.empty() || fo.front()!=0 || fo.back()>fv.size()) {
+        H5Fclose(file);
+        return false;
+    }
+    const std::size_t n_faces = fo.size() - 1;
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::uint64_t off = fo[f];
         const std::uint64_t n = fo[f + 1] - off;
@@ -158,6 +166,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     if (!read_dataset_i64(file, "neighbour", neighbour)) {
         neighbour.clear();
     }
+    if(owner.size()!=n_faces || neighbour.size()!=n_faces) {
+        H5Fclose(file);
+        return false;
+    }
     mesh.ownership().resize(owner.size());
     for (std::size_t i = 0; i < owner.size(); ++i) {
         mesh.ownership().set_owner(i, owner[i]);
@@ -173,7 +185,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     if (!read_dataset_u64(file, "cell_offsets", co)) {
         co.clear();
     }
-    const std::size_t n_cells = co.size() > 0 ? co.size() - 1 : 0;
+    if(co.empty() || co.front()!=0 || co.back()>cf.size()) {
+        H5Fclose(file);
+        return false;
+    }
+    const std::size_t n_cells = co.size() - 1;
     for (std::size_t c = 0; c < n_cells; ++c) {
         const std::uint64_t off = co[c];
         const std::uint64_t n = co[c + 1] - off;
