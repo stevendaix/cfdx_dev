@@ -160,7 +160,9 @@ inline EnergySolveResult solve_energy(
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
             mesh,geometry,mass_flux,source,old,controls,bcs,face_values);
-        auto candidate=temperature;
+        cfdx::core::Vector candidate(temperature.size(),0.0);
+        for(std::size_t i=0;i<temperature.size();++i)
+            candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
         sc.tolerance=controls.tolerance;
@@ -168,7 +170,10 @@ inline EnergySolveResult solve_energy(
         const auto linear=solve_scalar_equation(eq,candidate,sc);
         double res=scalar_equation_residual_inf(eq,candidate);
 
-        temperature=candidate;
+        for(std::size_t i=0;i<temperature.size();++i)
+            temperature(i)=candidate(i);
+        const double imbalance=energy_balance_relative(
+            mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
         const double imbalance=energy_balance_relative(
             mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
         result.history.push_back({iter,res,imbalance});
