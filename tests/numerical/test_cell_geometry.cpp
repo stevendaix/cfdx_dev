@@ -109,7 +109,7 @@ int main() {
         const std::vector<std::vector<VertexIndex>> faces = {
             {0,3,2,1}, {4,5,6,7}, {0,1,5,4}, {3,7,6,2}, {0,4,7,3},
             {1,2,6,5}, {8,9,11,10}, {5,10,11,6},
-            {1,8,10,5}, {2,6,11,9}, {1,8,9,2}
+            {1,8,10,5}, {2,6,11,9}, {1,2,9,8}
         };
         for (const auto& face : faces) m.faces().push_face(face);
         m.ownership().resize(faces.size());
