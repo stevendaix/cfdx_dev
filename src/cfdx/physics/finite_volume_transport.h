@@ -102,9 +102,27 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     for (std::size_t c = 0; c < nc; ++c) {
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+
+        // Face geometry is stored with the global face orientation (owner
+        // normal). Cell geometry, however, requires every face normal to be
+        // outward from the current cell. Reverse shared-face normals for
+        // neighbour cells before evaluating the signed pyramid volume.
+        std::vector<Vec3> local_centres(count);
+        std::vector<Vec3> local_Sf(count);
+        for (Offset k = 0; k < count; ++k) {
+            const std::size_t f = mesh.cells().faces_data()[off + k];
+            local_centres[k] = g.face_centres[f];
+            const bool owner = mesh.ownership().owner(f) == c;
+            local_Sf[k] = owner
+                ? g.face_area_vectors[f]
+                : g.face_area_vectors[f] * (-1.0);
+        }
+        std::vector<FaceIndex> local_ids(count);
+        for (Offset k = 0; k < count; ++k)
+            local_ids[k] = static_cast<FaceIndex>(k);
+
         const auto cg = compute_cell_geometry(
-            g.face_centres.data(), g.face_area_vectors.data(),
-            mesh.cells().faces_data() + off, count);
+            local_centres.data(), local_Sf.data(), local_ids.data(), count);
         g.cell_centres[c] = cg.centre;
         g.cell_volumes[c] = cg.volume;
         if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
