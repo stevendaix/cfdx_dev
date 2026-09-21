@@ -77,3 +77,8 @@ A benchmark may therefore have three states:
 - **BLOCKED**: the required physical/numerical capability is not implemented yet.
 
 This status model is intentional: a component oracle is never promoted to a solver-validation PASS.
+
+
+## Validation campaign status
+
+The full CI suite is treated as the numerical gate: infrastructure/test-harness failures are fixed separately from solver-physics failures, and analytical tolerances are expressed relative to the reference scale where appropriate.
