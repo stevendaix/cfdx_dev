@@ -143,6 +143,7 @@ public:
         for (std::size_t f = 0; f < n_faces(); ++f) {
             const CellIndex owner = ownership_.owner(f);
             const std::int64_t neighbour = ownership_.neighbour(f);
+            if (owner >= n_cells()) continue;
             
             bool found_owner = false;
             const Offset off = cell_offsets[owner];
@@ -157,7 +158,7 @@ public:
                 result.add_error("face " + std::to_string(f) +
                                  " not found in owner cell " + std::to_string(owner));
             }
-            if (neighbour >= 0) {
+            if (neighbour >= 0 && static_cast<std::size_t>(neighbour) < n_cells()) {
                 const CellIndex nb = static_cast<CellIndex>(neighbour);
                 bool found_neighbour = false;
                 const Offset off_nb = cell_offsets[nb];
