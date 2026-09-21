@@ -99,8 +99,7 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            cache.face_centres.data(), cache.face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry(m, cache.face_centres.data(), cache.face_Sf.data(), cell_faces + off, c, n);
         cache.cell_centres[c] = cg.centre;
         cache.cell_volumes[c] = cg.volume;
     }
