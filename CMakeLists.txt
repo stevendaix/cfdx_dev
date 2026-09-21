@@ -135,6 +135,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/advanced_convergence.h
     src/cfdx/physics/local_time_stepping.h
     src/cfdx/physics/low_mach.h
+    src/cfdx/physics/compressible_flux.h
     src/cfdx/physics/radiation_models.h
     src/cfdx/physics/boussinesq.h
     src/cfdx/physics/spalart_allmaras.h
