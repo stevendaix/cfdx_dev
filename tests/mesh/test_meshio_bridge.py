@@ -11,17 +11,7 @@ with tempfile.TemporaryDirectory() as d:
     dst = root / "mesh.h5"
     points = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=float)
     cells = [("tetra", np.array([[0,1,2,3]], dtype=int))]
-    mesh = meshio.Mesh(
-        points, cells,
-        cell_data={"gmsh:physical": [
-            np.array([1,1,1,1], dtype=int),
-            np.array([2], dtype=int),
-        ]},
-        field_data={
-            "wall": np.array([1,2], dtype=int),
-            "fluid": np.array([2,3], dtype=int),
-        },
-    )
+    mesh = meshio.Mesh(points, cells)
     meshio.write(src, mesh, file_format="gmsh", binary=False)
     subprocess.check_call([sys.executable, str(bridge), str(src), str(dst)])
     with h5py.File(dst, "r") as h5:
