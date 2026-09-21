@@ -49,5 +49,8 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Geometry orientation gate
+        run: cmake --build build --target cfdx_geometry_orientation_check
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
