@@ -40,10 +40,8 @@ for name,(factory,expected) in cases.items():
         ]:
             src=root/f"{name}.{suffix}"
             out=root/f"{name}.h5"
-            meshio.write(src,meshio.Mesh(points,[("hexahedron",data)] if name=="cube"
-                else [("tetra",data)] if name=="two_tetra"
-                else [("pyramid",data)] if name=="pyramid"
-                else [("wedge",data)],),**kwargs)
+            cell_type = {"cube":"hexahedron","two_tetra":"tetra","pyramid":"pyramid","wedge":"wedge"}[name]
+            meshio.write(src, meshio.Mesh(points, [(cell_type, data)]), **kwargs)
             subprocess.check_call([sys.executable,str(BRIDGE),str(src),str(out)])
             import h5py
             with h5py.File(out,"r") as h:
