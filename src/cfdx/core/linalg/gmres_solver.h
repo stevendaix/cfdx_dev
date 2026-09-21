@@ -89,7 +89,7 @@ inline SolverResult solve_gmres(
         int used = 0;
         double estimated_residual = beta;
 
-        for (int j = 0; j < m && iterations < max_iter; ++j, ++iterations) {
+        for (int j = 0; j < m && iterations < max_iter; ++j) {
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) z[i] = V[j][i];
                 Vector rv(n), zv(n);
@@ -139,6 +139,7 @@ inline SolverResult solve_gmres(
                 g[j + 1] = -sn[j] * gj + cs[j] * gj1;
             }
 
+            ++iterations;
             estimated_residual = std::abs(g[j + 1]);
             used = j + 1;
             if (estimated_residual <= tol || H[j + 1][j] == 0.0) break;
