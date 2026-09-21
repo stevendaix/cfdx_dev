@@ -7,12 +7,18 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace cfdx::core {
 
-inline SolverResult solve_gmres(
-    const SparseMatrix& A,
+struct LinearOperator {
+    std::size_t size = 0;
+    std::function<void(const Vector&, Vector&)> apply;
+};
+
+inline SolverResult solve_gmres_operator(
+    const LinearOperator& op,
     const Vector& b,
     Vector& x,
     int restart = 30,
@@ -21,34 +27,32 @@ inline SolverResult solve_gmres(
     const Preconditioner* preconditioner = nullptr)
 {
     SolverResult result;
-    if (A.n_rows() != A.n_cols() || b.size() != A.n_rows() || x.size() != A.n_cols() ||
+    if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
         restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
 
-    const std::size_t n = A.n_rows();
-    const auto* values = A.values_data();
-    const auto* columns = A.columns_data();
-    const auto* rows = A.row_offsets_data();
+    const std::size_t n = op.size;
     const double b_norm = b.norm2();
     const double tol = tolerance * std::max(b_norm, 1.0);
     const int m = std::min<int>(restart, static_cast<int>(n));
 
-        auto matvec = [&](const std::vector<double>& in, std::vector<double>& out) {
-        out.assign(n, 0.0);
-        for (std::size_t i = 0; i < n; ++i)
-            for (std::size_t k = rows[i]; k < rows[i + 1]; ++k)
-                out[i] += values[k] * in[columns[k]];
+        auto apply_operator = [&](const std::vector<double>& in, std::vector<double>& out) {
+        Vector vin(n), vout(n);
+        for(std::size_t i=0;i<n;++i) vin(i)=in[i];
+        op.apply(vin,vout);
+        out.resize(n);
+        for(std::size_t i=0;i<n;++i) out[i]=vout(i);
     };
 
     auto residual = [&](std::vector<double>& r) {
-        r.assign(n, 0.0);
-        for (std::size_t i = 0; i < n; ++i) {
-            r[i] = b(i);
-            for (std::size_t k = rows[i]; k < rows[i + 1]; ++k)
-                r[i] -= values[k] * x(columns[k]);
-        }
+        std::vector<double> ax;
+        std::vector<double> xv(n);
+        for(std::size_t i=0;i<n;++i) xv[i]=x(i);
+        apply_operator(xv,ax);
+        r.resize(n);
+        for(std::size_t i=0;i<n;++i) r[i]=b(i)-ax[i];
     };
 
     std::vector<double> r, w(n), z(n);
@@ -104,7 +108,7 @@ inline SolverResult solve_gmres(
                 Z[j] = V[j];
             }
 
-            matvec(Z[j], w);
+            apply_operator(Z[j], w);
 
             for (int i = 0; i <= j; ++i) {
                 double h = 0.0;
@@ -181,6 +185,21 @@ inline SolverResult solve_gmres(
     result.residual = beta;
     result.residual_relative = beta / std::max(b_norm, 1.0);
     return result;
+}
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    const Preconditioner* preconditioner = nullptr)
+{
+    LinearOperator op;
+    op.size=A.n_rows();
+    op.apply=[&A](const Vector& in, Vector& out){ A.matvec(in,out); };
+    return solve_gmres_operator(op,b,x,restart,max_iter,tolerance,preconditioner);
 }
 
 } // namespace cfdx::core
