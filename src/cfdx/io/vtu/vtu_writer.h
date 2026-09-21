@@ -54,6 +54,7 @@ private:
                              std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                              std::vector<VtkCellType>& vtk_cell_types,
                              std::vector<std::uint32_t>& cell_face_offsets,
+                             std::vector<std::size_t>& vtk_to_original_cell,
                              std::vector<cfdx::core::FaceIndex>& cell_face_indices);
 
     // Write XML header + points
