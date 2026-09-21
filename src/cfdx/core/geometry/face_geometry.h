@@ -165,11 +165,17 @@ inline void orient_mesh_face_vectors(
         if (owner >= mesh.n_cells())
             throw std::runtime_error("orient_mesh_face_vectors: invalid owner");
         const int neighbour = mesh.ownership().neighbour(f);
+        if (neighbour >= 0 && static_cast<std::size_t>(neighbour) >= mesh.n_cells())
+            throw std::runtime_error("orient_mesh_face_vectors: invalid neighbour");
         const Vec3 d = neighbour >= 0
             ? cell_centres[static_cast<std::size_t>(neighbour)] - cell_centres[owner]
             : face_centres[f] - cell_centres[owner];
-        if (face_Sf[f].dot(d) < 0.0)
+        const double projection = face_Sf[f].dot(d);
+        if (projection < 0.0) {
             face_Sf[f] = face_Sf[f] * -1.0;
+        } else if (!(projection > 0.0) || !std::isfinite(projection)) {
+            throw std::runtime_error("orient_mesh_face_vectors: face orientation is undefined");
+        }
     }
 }
 
