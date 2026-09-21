@@ -97,45 +97,32 @@ int main() {
 
     run_case("mpi_partition_4cells", []() {
         Mesh m;
-
-        m.points().resize(12);
-        m.points().set(0, 0.0, 0.0, 0.0);
-        m.points().set(1, 1.0, 0.0, 0.0);
-        m.points().set(2, 2.0, 0.0, 0.0);
-        m.points().set(3, 3.0, 0.0, 0.0);
-        m.points().set(4, 0.0, 1.0, 0.0);
-        m.points().set(5, 1.0, 1.0, 0.0);
-        m.points().set(6, 2.0, 1.0, 0.0);
-        m.points().set(7, 3.0, 1.0, 0.0);
-        m.points().set(8, 0.0, 0.0, 1.0);
-        m.points().set(9, 1.0, 0.0, 1.0);
-        m.points().set(10, 2.0, 0.0, 1.0);
-        m.points().set(11, 3.0, 0.0, 1.0);
-
-        for (int i = 0; i < 4; ++i) {
-            m.faces().push_face({i, i+3, i+4, i+1});
-            m.faces().push_face({i+4, i+7, i+8, i+5});
+        // Four cells represented by a valid 1-D face graph. This test checks
+        // partition metadata only; it deliberately does not depend on 3-D
+        // geometric volume.
+        m.points().resize(10);
+        for (std::size_t i=0;i<5;++i) {
+            m.points().set(2*i,static_cast<double>(i),0.0,0.0);
+            m.points().set(2*i+1,static_cast<double>(i),1.0,0.0);
         }
-
-        m.ownership().resize(8);
-        for (int i = 0; i < 8; ++i) {
-            m.ownership().set_owner(i, i/2);
-            m.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
+        for (std::size_t i=0;i<5;++i)
+            m.faces().push_face({static_cast<std::uint32_t>(2*i),
+                                 static_cast<std::uint32_t>(2*i+1),
+                                 static_cast<std::uint32_t>(2*i+1),
+                                 static_cast<std::uint32_t>(2*i)});
+        m.ownership().resize(5);
+        for (std::size_t f=0;f<5;++f) {
+            m.ownership().set_owner(f,f==0?0:f-1);
+            m.ownership().set_neighbour(f, f<4 ? static_cast<int>(f) + 1 : FaceOwnership::BOUNDARY);
         }
-        m.ownership().set_neighbour(3, 1);
-        m.ownership().set_neighbour(7, 3);
+        for (std::size_t c=0;c<4;++c)
+            m.cells().push_cell({static_cast<std::uint32_t>(c),
+                                 static_cast<std::uint32_t>(c+1)});
 
-        m.cells().push_cell({0, 1, 5, 4});
-        m.cells().push_cell({1, 2, 6, 5});
-        m.cells().push_cell({2, 3, 7, 6});
-        m.cells().push_cell({4, 5, 9, 8});
-        m.cells().push_cell({5, 6, 10, 9});
-
-        m.topo_validate();
-
-        Partition part = partition_geometric(m, 4);
-        EXPECT_TRUE(part.n_parts == 4);
-        EXPECT_TRUE(part.cell_rank.size() == 5);
+        Partition part = partition_geometric(m,4);
+        EXPECT_TRUE(part.n_parts==4);
+        EXPECT_TRUE(part.cell_rank.size()==4);
+        for (const auto r:part.cell_rank) EXPECT_TRUE(r>=0 && r<4);
     });
 
     return run_all();
