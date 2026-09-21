@@ -89,16 +89,11 @@ inline SolverResult solve_cg(
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
 
-    // Préconditionneur diagonal : M = diag(A).
-    std::vector<double> M(n, 0.0);
-    for (std::size_t i = 0; i < n; ++i) {
-        for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-            if (Ac[k] == static_cast<std::uint32_t>(i)) {
-                M[i] = Av[k];
-                break;
-            }
-        }
-        if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+    // Jacobi preconditioner. SparseMatrix performs the diagonal extraction
+    // in one O(nnz) traversal instead of repeatedly scanning each row here.
+    std::vector<double> M = A.diagonal();
+    for (const double value : M) {
+        if (!(value > 0.0) || !std::isfinite(value)) {
             result.status = SolverStatus::NOT_APPLICABLE;
             return result;
         }
