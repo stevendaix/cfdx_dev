@@ -14,10 +14,10 @@ int main() {
     run_case("eos_rejects_invalid_parameters", []() {
         IdealGasParams ideal;
         ideal.gamma = 0.5;
-        EXPECT_THROW(IdealGasEOS(ideal), std::invalid_argument);
+        EXPECT_THROW((IdealGasEOS(ideal)), std::invalid_argument);
         IncompressibleParams inc;
         inc.rho = -1.0;
-        EXPECT_THROW(IncompressibleEOS(inc), std::invalid_argument);
+        EXPECT_THROW((IncompressibleEOS(inc)), std::invalid_argument);
     });
 
     run_case("ideal_gas_density", []() {
