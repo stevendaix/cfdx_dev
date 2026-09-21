@@ -12,6 +12,10 @@ Level A isolates discretization and implementation errors against closed-form so
 
 Quantities include L2, Linf, conservation/oracle checks and observed spatial order.
 
+### Important M1 scope note
+
+The current Couette and Poiseuille Level-A executables solve the corresponding 1-D finite-volume diffusion equation with analytical velocity references. They therefore verify the scalar diffusion/discretisation path used by the momentum assembly, but they are **not yet a full pressure-velocity-coupled Navier-Stokes validation**. The latter requires an actual incompressible solver driver with velocity boundary conditions, pressure correction, continuity monitoring and grid convergence.
+
 ## Extended component verification
 
 The extended benchmark matrix (`test_benchmark_matrix`) contains 38 executable checks. These are **component-level verification/reference-oracle checks**, not solver-level CFD validation. They exercise implemented CFDX functions for turbulence closures, radiation limits, thermophysical models, linear algebra, temporal operators and numerical invariants. They are run by the campaign driver but must not be interpreted as 38 independent physical CFD cases.
