@@ -1,78 +1,100 @@
 // M0.13-T01 — Temporal Discretization
-// Explicit Euler, Implicit Euler, Crank-Nicolson, BDF2
+// Scalar reference implementations for time-integration schemes.
+// Production field integration is provided by cfdx/core/numerics/temporal.h.
 #pragma once
 
 #include "cfdx/core/field/field.h"
-#include <vector>
 #include <cmath>
+#include <stdexcept>
+#include <vector>
 
 namespace cfdx {
 namespace physics {
 
-// ============================================================================
-// Explicit Euler
-// phi^{n+1} = phi^n + dt * f(phi^n)
-// ============================================================================
+namespace detail {
+
+inline void validate_dt(double dt) {
+    if (!(dt > 0.0) || !std::isfinite(dt)) {
+        throw std::invalid_argument("time step must be finite and strictly positive");
+    }
+}
+
+template<class Function>
+inline double fixed_point(
+    double initial,
+    Function&& f,
+    double dt,
+    double rhs_scale,
+    double constant,
+    int max_iterations = 100,
+    double tolerance = 1e-12)
+{
+    double x = initial;
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+        const double x_new = constant + rhs_scale * f(x);
+        if (!std::isfinite(x_new)) {
+            throw std::runtime_error("temporal fixed-point iteration produced a non-finite value");
+        }
+        if (std::abs(x_new - x) <= tolerance * std::max(1.0, std::abs(x_new))) {
+            return x_new;
+        }
+        x = x_new;
+    }
+    throw std::runtime_error("temporal fixed-point iteration did not converge");
+}
+
+} // namespace detail
 
 template<class Function>
 inline double explicit_euler_step(double phi_n, double dt, Function&& f) {
+    detail::validate_dt(dt);
     return phi_n + dt * f(phi_n);
 }
 
-// ============================================================================
-// Implicit Euler
-// phi^{n+1} = phi^n + dt * f(phi^{n+1})
-// Requires solving nonlinear equation for phi^{n+1}
-// ============================================================================
-
-// Placeholder for implicit Euler - requires iterative solver
-// In a real implementation, this would call a Newton-Raphson solver
+// phi^{n+1} = phi^n + dt f(phi^{n+1})
 template<class Function>
 inline double implicit_euler_step(double phi_n, double dt, Function&& f) {
-    // TODO: Implement implicit Euler using Newton-Raphson
-    // For now, return phi_n (identity approximation)
-    return phi_n;
+    detail::validate_dt(dt);
+    return detail::fixed_point(phi_n, std::forward<Function>(f), dt, dt, phi_n);
 }
 
-// ============================================================================
-// Crank-Nicolson
-// (phi^{n+1} - phi^n)/dt = 0.5*(f(phi^{n+1}) + f(phi^n))
-// ============================================================================
-
+// phi^{n+1} = phi^n + dt/2 [f(phi^n) + f(phi^{n+1})]
 template<class Function>
 inline double crank_nicolson_step(double phi_n, double dt, Function&& f) {
-    // Solve (phi^{n+1} - phi^n)/dt = 0.5*(f(phi^{n+1}) + f(phi^n))
-    // This requires solving a nonlinear equation
-    // For demonstration, return a simple approximation
-    return phi_n + 0.5 * dt * f(phi_n);
+    detail::validate_dt(dt);
+    const double rhs_n = f(phi_n);
+    return detail::fixed_point(
+        phi_n,
+        std::forward<Function>(f),
+        dt,
+        0.5 * dt,
+        phi_n + 0.5 * dt * rhs_n);
 }
 
-// ============================================================================
-// BDF2 (Backward Differentiation Formula 2)
-// (3*phi^{n+1} - 4*phi^n + phi^{n-1})/(2*dt) = f(phi^n)
-// Requires two previous time levels
-// ============================================================================
-
-// NOTE: BDF2 requires phi^{n-1}. We'll provide a helper that assumes
-// phi^{n-1} is available (e.g., stored in a buffer).
-// For now, we'll implement a simplified version that uses phi^n and phi^{n-1}.
+// (3 phi^{n+1} - 4 phi^n + phi^{n-1})/(2 dt) = f(phi^{n+1})
 template<class Function>
-inline double bdf2_step(double phi_n, double dt, double phi_prev, Function&& f) {
-    // Simplified BDF2 - in production, would solve implicit equation
-    // (3*phi^{n+1} - 4*phi^n + phi^{n-1})/(2*dt) = f(phi^n)
-    // => phi^{n+1} = (4*phi^n - phi^{n-1} + 2*dt*f(phi^n))/3
-    double phi_n_plus_1 = (4.0 * phi_n - phi_prev + 2.0 * dt * f(phi_n)) / 3.0;
-    return phi_n_plus_1;
+inline double bdf2_step(
+    double phi_n,
+    double dt,
+    double phi_prev,
+    Function&& f)
+{
+    detail::validate_dt(dt);
+    const double constant = (4.0 * phi_n - phi_prev) / 3.0;
+    const double rhs_scale = 2.0 * dt / 3.0;
+    return detail::fixed_point(
+        phi_n,
+        std::forward<Function>(f),
+        dt,
+        rhs_scale,
+        constant);
 }
 
-// ============================================================================
-// Utility functions
-// ============================================================================
-
-// Compute derivative of f at phi (for Newton-Raphson in implicit methods)
 template<class Function>
 inline double derivative(Function&& f, double phi, double h) {
-    // Central difference approximation
+    if (!(h > 0.0) || !std::isfinite(h)) {
+        throw std::invalid_argument("finite-difference step must be finite and strictly positive");
+    }
     return (f(phi + h) - f(phi - h)) / (2.0 * h);
 }
 
