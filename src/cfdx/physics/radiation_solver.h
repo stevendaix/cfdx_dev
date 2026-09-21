@@ -112,8 +112,13 @@ inline RadiationSolveResult solve_participating_radiation(
             sc.relaxation=controls.intensity_relaxation;
             const auto lr=solve_scalar_equation(eq,intensity,sc);
             for(std::size_t c=0;c<nc;++c) intensities[m](c)=intensity(c);
-            if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
-                throw std::runtime_error("radiation intensity linear solve did not converge");
+            if(lr.status!=cfdx::core::SolverStatus::CONVERGED) {
+                throw std::runtime_error(
+                    "radiation intensity linear solve did not converge: residual=" +
+                    std::to_string(lr.residual) +
+                    " relative=" + std::to_string(lr.residual_relative) +
+                    " iterations=" + std::to_string(lr.iterations));
+            }
 
             for(std::size_t c=0;c<nc;++c)
                 max_delta=std::max(max_delta,

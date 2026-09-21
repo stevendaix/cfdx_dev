@@ -58,18 +58,26 @@ static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
     write_attr_str(file, "cfdx_version", CFDX_VERSION);
 
     std::uint64_t topology = 1469598103934665603ULL;
-    topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
-    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
-    topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
-    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
+    if (mesh.faces().n_vertices() > 0)
+        topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
+    if (mesh.faces().n_faces() > 0)
+        topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
+    if (mesh.ownership().size() > 0) {
+        topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
+        topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
+    }
+    if (mesh.cells().n_face_refs() > 0)
+        topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
+    if (mesh.cells().n_cells() > 0)
+        topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
     write_attr_str(file, "topology_hash", hash_hex(topology));
 
     std::uint64_t geometry = topology;
-    geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
+    if (mesh.n_points() > 0) {
+        geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
+        geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
+        geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
+    }
     write_attr_str(file, "mesh_hash", hash_hex(geometry));
 }
 
@@ -225,7 +233,12 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
     {
         const cfdx::core::FaceConnectivity& fc = mesh.faces();
         write_dataset_u64(file, "face_vertices", fc.vertices_data(), fc.n_vertices());
-        write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
+        if (fc.n_faces() == 0) {
+            const std::uint64_t zero = 0;
+            write_dataset_u64(file, "face_offsets", &zero, 1);
+        } else {
+            write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
+        }
     }
 
     // Owner / neighbour.
@@ -239,7 +252,12 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
     {
         const cfdx::core::CellConnectivity& cc = mesh.cells();
         write_dataset_u64(file, "cell_faces", cc.faces_data(), cc.n_face_refs());
-        write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
+        if (cc.n_cells() == 0) {
+            const std::uint64_t zero = 0;
+            write_dataset_u64(file, "cell_offsets", &zero, 1);
+        } else {
+            write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
+        }
     }
 
     // Boundary patches.

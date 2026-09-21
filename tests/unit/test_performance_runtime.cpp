@@ -23,38 +23,38 @@ int main() {
     core::Vector rhs(3,1.0), x(3,0.0);
     core::ChebyshevSmoother smoother({2,1.0,4.0,1.0,4});
     smoother.apply(op,rhs,x);
-    if (!(x.norm2()>0.0)) return 1;
+    if (!(x.norm2()>0.0)) { std::cerr<<"performance check 1 failed\n"; return 1; }
     auto tol=physics::eisenstat_walker_tolerance(1e-4,1e-2);
-    if (!(tol>0.0 && tol<1.0)) return 2;
-    if (physics::choose_pressure_correctors(1e-2)<2) return 3;
+    if (!(tol>0.0 && tol<1.0)) { std::cerr<<"performance check 2 failed tol="<<tol<<"\n"; return 2; }
+    if (physics::choose_pressure_correctors(1e-2)<2) { std::cerr<<"performance check 3 failed\n"; return 3; }
     physics::RadiationModelSelector selector;
-    if (selector.select(2.0,0.0,2.0)!=physics::RadiationApproximation::Rosseland) return 4;
-    if (!(physics::rosseland_conductivity(1000.0,1.0)>0.0)) return 5;
+    if (selector.select(2.0,0.0,2.0)!=physics::RadiationApproximation::Rosseland) { std::cerr<<"performance check 4 failed\n"; return 4; }
+    if (!(physics::rosseland_conductivity(1000.0,1.0)>0.0)) { std::cerr<<"performance check 5 failed\n"; return 5; }
     core::Vector b(3,2.0);
     auto red=core::fused_reduction(rhs,b);
-    if (std::abs(red.dot-6.0)>1e-12) return 6;
+    if (std::abs(red.dot-6.0)>1e-12) { std::cerr<<"performance check 6 failed dot="<<red.dot<<"\n"; return 6; }
     auto restart=core::choose_gmres_restart(30,0.5);
-    if (restart>=30) return 7;
+    if (restart>=30) { std::cerr<<"performance check 7 failed restart="<<restart<<"\n"; return 7; }
     thermodynamics::ThermoCache cache;
     thermodynamics::IdealGasThermoModel gas;
     cache.update(gas,{101325.0,101325.0},{300.0,310.0});
-    if (!cache.valid || cache.state.size()!=2) return 8;
+    if (!cache.valid || cache.state.size()!=2) { std::cerr<<"performance check 8 failed\n"; return 8; }
     core::memory::ReusePool pool;
     const auto aoff = pool.acquire(128);
     const auto boff = pool.acquire(64);
     (void)boff;
     pool.release(aoff);
     const auto coff = pool.acquire(32);
-    if (coff != aoff || pool.allocated_bytes() != 96) return 9;
+    if (coff != aoff || pool.allocated_bytes() != 96) { std::cerr<<"performance check 9 failed coff="<<coff<<" aoff="<<aoff<<" active="<<pool.allocated_bytes()<<"\n"; return 9; }
 
     core::memory::FieldLifetime fa{"a",64,0,2,core::memory::Residency::Ephemeral};
     core::memory::FieldLifetime fb{"b",64,2,4,core::memory::Residency::Ephemeral};
-    if (!core::memory::reusable(fa,fb)) return 10;
+    if (!core::memory::reusable(fa,fb)) { std::cerr<<"performance check 10 failed\n"; return 10; }
 
     bool overlap = false;
     core::HaloOverlap schedule([&](){ overlap = true; }, [](){}, [](){}, [](){});
     schedule.execute();
-    if (!overlap) return 11;
+    if (!overlap) { std::cerr<<"performance check 11 failed\n"; return 11; }
 
     std::cout << "performance runtime: PASS\\n";
     return 0;

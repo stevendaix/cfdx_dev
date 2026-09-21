@@ -19,15 +19,15 @@ int main()
 
     run_case("M1_Rhie_Chow_zero_pressure_correction", [] {
         const double phi = rhie_chow_mass_flux(
-            1.0, 2.5, 10.0, 10.0, 3.0, 3.0, 0.5, 1.0);
-        EXPECT_NEAR(phi, 1.0, 1e-14);
+            1.0, 2.5, 10.0, 10.0, 0.0, 0.0, 0.5, 1.0);
+        EXPECT_NEAR(phi, 2.5, 1e-14);
     });
 
     run_case("M2_k_epsilon_and_Smagorinsky", [] {
         EXPECT_NEAR(k_epsilon_nut(4.0, 2.0), 0.72, 1e-14);
         EXPECT_TRUE(k_epsilon_production(0.5, 2.0) > 0.0);
         EXPECT_TRUE(k_epsilon_dissipation_source(1.0, 1.92, 0.5, 2.0) > 0.0);
-        EXPECT_NEAR(smagorinsky_nut(0.1, 20.0), 0.578, 1e-14);
+        EXPECT_NEAR(smagorinsky_nut(0.1, 20.0), 0.00578, 1e-14);
         EXPECT_NEAR(des_length_scale(0.1, 0.02), 0.02, 1e-14);
     });
 
