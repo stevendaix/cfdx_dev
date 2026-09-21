@@ -198,11 +198,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         std::vector<cfdx::core::CellConnectivity::FaceId> faces;
         faces.reserve(static_cast<std::size_t>(end - begin));
         for (std::uint64_t j = begin; j < end; ++j) {
-            if (cf[j] >= n_faces) return fail("cell contains no faces");
+            if (cf[j] >= n_faces) return fail("cell-face index is outside the face range");
             faces.push_back(
                 static_cast<cfdx::core::CellConnectivity::FaceId>(cf[j]));
         }
-        if (faces.empty()) return fail("cell-face index is outside the face range");
+        if (faces.empty()) return fail("cell contains no faces");
         mesh.cells().push_cell(std::move(faces));
     }
 
