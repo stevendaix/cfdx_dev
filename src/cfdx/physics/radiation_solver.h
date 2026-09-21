@@ -208,7 +208,9 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
                 "energy inner solve did not converge: iterations=" +
                 std::to_string(er.iterations) +
                 " residual=" + std::to_string(last_residual) +
-                " imbalance=" + std::to_string(last_imbalance));
+                " imbalance=" + std::to_string(last_imbalance) +
+                " temperature=" + std::to_string(temperature(0)) +
+                " qrad=" + std::to_string(qrad(0)));
         }
 
         double max_delta=0.0;
