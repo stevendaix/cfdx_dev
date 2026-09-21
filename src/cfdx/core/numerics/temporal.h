@@ -275,8 +275,7 @@ inline double compute_cfl_time_step(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry(mesh, face_centres.data(), face_Sf.data(), cell_faces + off, c, n);
         cell_volume[c] = cg.volume;
     }
 
@@ -366,8 +365,7 @@ inline std::vector<double> compute_local_time_steps(
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
         (void)n; // used in compute_cell_geometry
-        const CellGeometry cg = compute_cell_geometry(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry(mesh, face_centres.data(), face_Sf.data(), cell_faces + off, c, n);
         cell_volume[c] = cg.volume;
     }
 
