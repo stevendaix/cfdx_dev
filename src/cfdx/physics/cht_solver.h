@@ -104,8 +104,6 @@ inline ChtSolveResult solve_two_region_cht(
 
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         ScalarBoundaryFaceValues fv1,fv2;
-        std::vector<double> q1(pairs.size()),q2(pairs.size());
-        double max_delta=0.0;
 
         // Compute the exact two-layer interface temperature for the current
         // cell-centre values. This enforces equal normal heat flux on both
