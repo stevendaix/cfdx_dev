@@ -193,6 +193,21 @@ int main()
         auto r=solve_bicgstab(A,b,x,200,1e-12); EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
         EXPECT_NEAR(x(0),1.0,1e-10); EXPECT_NEAR(x(1),2.0,1e-10); EXPECT_NEAR(x(2),3.0,1e-10);
     });
+    run_case("N_GMRES_linear_operator_interface", [] {
+        auto A=nonsym_matrix();
+        LinearOperator op;
+        op.size=3;
+        op.apply=[&A](const Vector& in, Vector& out) {
+            const auto y=A.matvec(in);
+            for(std::size_t i=0;i<y.size();++i) out(i)=y[i];
+        };
+        Vector b(3,0),x(3,0); b(0)=6;b(1)=11;b(2)=8;
+        auto r=solve_gmres(op,b,x,3,200,1e-12);
+        EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0),1.0,1e-10);
+        EXPECT_NEAR(x(1),2.0,1e-10);
+        EXPECT_NEAR(x(2),3.0,1e-10);
+    });
     run_case("N_GMRES_manufactured_nonsymmetric_system", [] {
         auto A=nonsym_matrix(); Vector b(3,0),x(3,0); b(0)=6;b(1)=11;b(2)=8;
         auto r=solve_gmres(A,b,x,3,200,1e-12); EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
