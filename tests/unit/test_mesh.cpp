@@ -72,6 +72,15 @@ int main() {
         EXPECT_TRUE(m.stats().n_internal_faces == 0);
     });
 
+    run_case("topology_view_is_geometry_independent", []() {
+        Mesh m = make_unit_cube();
+        const auto topology = m.topology();
+        EXPECT_TRUE(topology.n_cells() == m.n_cells());
+        EXPECT_TRUE(topology.n_faces() == m.n_faces());
+        EXPECT_TRUE(topology.cells().n_cells() == m.cells().n_cells());
+        EXPECT_TRUE(topology.boundary().n_patches() == m.boundary().n_patches());
+    });
+
     run_case("unit_cube_topo_validate_ok", []() {
         Mesh m = make_unit_cube();
         auto result = m.topo_validate();
