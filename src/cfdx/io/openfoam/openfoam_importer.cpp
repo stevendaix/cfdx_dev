@@ -156,8 +156,17 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     for (std::size_t i = 0; i < points.size(); ++i)
         mesh.points().set(i, points[i].x, points[i].y, points[i].z);
 
-    mesh.faces().build_from_scratch(
-        std::vector<std::vector<cfdx::core::FaceIndex>>(faces.begin(), faces.end()));
+    std::vector<std::vector<cfdx::core::FaceIndex>> face_vertices;
+    face_vertices.reserve(faces.size());
+    for (const auto& face : faces) {
+        face_vertices.emplace_back();
+        face_vertices.back().reserve(face.size());
+        for (const std::uint32_t vertex : face) {
+            face_vertices.back().push_back(
+                static_cast<cfdx::core::FaceIndex>(vertex));
+        }
+    }
+    mesh.faces().build_from_scratch(std::move(face_vertices));
 
     mesh.ownership().resize(faces.size());
     for (std::size_t f = 0; f < faces.size(); ++f) {
