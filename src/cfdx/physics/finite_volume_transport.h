@@ -158,10 +158,8 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
-        if (convected_field == nullptr || convected_field->size() != nc ||
-            convected_field->dimension() != 1)
-            throw std::invalid_argument(
-                "assemble_scalar_equation: second-order upwind requires a scalar convected field");
+        if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
+            throw std::invalid_argument("assemble_scalar_equation: second-order upwind requires a scalar convected field");
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
     }
 
@@ -206,15 +204,18 @@ inline ScalarEquation assemble_scalar_equation(
                 const std::size_t upwind = F >= 0.0 ? o : n;
                 const double phi_up = (*convected_field)(upwind);
                 const auto& C_up = geometry.cell_centres[upwind];
-                const auto& C_f = geometry.face_centres[f];
-                const double phi_high =
-                    std::clamp(
-                        phi_up
-                        + reconstructed_gradient.component_data(0)[upwind] * (C_f.x - C_up.x)
-                        + reconstructed_gradient.component_data(1)[upwind] * (C_f.y - C_up.y)
-                        + reconstructed_gradient.component_data(2)[upwind] * (C_f.z - C_up.z),
-                        std::min(phi_up, (*convected_field)(F >= 0.0 ? n : o)),
-                        std::max(phi_up, (*convected_field)(F >= 0.0 ? n : o)));
+                const auto& Cf = geometry.face_centres[f];
+                const double* gx = reconstructed_gradient.component_data(0);
+                const double* gy = reconstructed_gradient.component_data(1);
+                const double* gz = reconstructed_gradient.component_data(2);
+                double phi_high = phi_up
+                    + gx[upwind] * (Cf.x - C_up.x)
+                    + gy[upwind] * (Cf.y - C_up.y)
+                    + gz[upwind] * (Cf.z - C_up.z);
+                const double phi_other = (*convected_field)(F >= 0.0 ? n : o);
+                const double lo = std::min(phi_up, phi_other);
+                const double hi = std::max(phi_up, phi_other);
+                phi_high = std::clamp(phi_high, lo, hi);
                 const double correction = F * (phi_high - phi_up);
                 deferred_rhs[o] -= correction;
                 deferred_rhs[n] += correction;
@@ -275,8 +276,14 @@ inline ScalarEquation assemble_scalar_equation(
 
         diag[c] -= source_implicit(c) * geometry.cell_volumes[c];
         if (extra_diagonal) diag[c] += (*extra_diagonal)[c];
-        if (!(diag[c] > 0.0) || !std::isfinite(diag[c]))
-            throw std::runtime_error("assemble_scalar_equation: non-positive diagonal");
+        if (!(diag[c] > 0.0) || !std::isfinite(diag[c])) {
+            throw std::runtime_error(
+                "assemble_scalar_equation: non-positive diagonal at cell " +
+                std::to_string(c) + " diag=" + std::to_string(diag[c]) +
+                " div_phi=" + std::to_string(div_phi[c]) +
+                " Sp=" + std::to_string(source_implicit(c)) +
+                " V=" + std::to_string(geometry.cell_volumes[c]));
+        }
 
         rhs[c] += source_explicit(c) * geometry.cell_volumes[c];
         rhs[c] += deferred_rhs[c];
@@ -345,6 +352,16 @@ inline cfdx::core::SolverResult solve_scalar_equation(
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED ||
         result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
+        if (!std::isfinite(result.residual) || !std::isfinite(result.residual_relative)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
     }
