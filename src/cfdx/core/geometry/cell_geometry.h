@@ -18,8 +18,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
-#include "cfdx/core/mesh/mesh.h"
-#include <vector>
+#include "cfdx/core/mesh/ownership.h"
 #include <cstddef>
 #include <cmath>
 #include <stdexcept>
@@ -135,6 +134,50 @@ inline CellGeometry compute_cell_geometry(
 
 
 inline CellGeometry compute_cell_geometry(
+    const FaceOwnership& ownership,
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    const FaceIndex* face_ids,
+    std::size_t cell_id,
+    std::size_t n_cell_faces)
+{
+    if (ownership.size() == 0)
+        throw std::runtime_error("CellGeometry: empty face ownership");
+
+    Vec3 weighted_sum;
+    double total_area = 0.0;
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        const std::size_t owner = ownership.owner(f);
+        const std::int64_t neighbour = ownership.neighbour(f);
+        if (owner != cell_id &&
+            (neighbour < 0 || static_cast<std::size_t>(neighbour) != cell_id))
+            throw std::runtime_error("CellGeometry: cell-face ownership mismatch");
+        const Vec3 sf = owner == cell_id ? face_Sf[f] : face_Sf[f] * -1.0;
+        const double area = sf.mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::runtime_error("CellGeometry: degenerate face");
+        weighted_sum = weighted_sum + face_centres[f] * area;
+        total_area += area;
+    }
+    if (!(total_area > 0.0) || !std::isfinite(total_area))
+        throw std::runtime_error("CellGeometry: invalid total face area");
+    const Vec3 centre = weighted_sum * (1.0 / total_area);
+
+    double signed_volume = 0.0;
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        const std::size_t owner = ownership.owner(f);
+        const Vec3 sf = owner == cell_id ? face_Sf[f] : face_Sf[f] * -1.0;
+        signed_volume += (face_centres[f] - centre).dot(sf);
+    }
+    signed_volume /= 3.0;
+    if (!std::isfinite(signed_volume) || signed_volume == 0.0)
+        throw std::runtime_error("CellGeometry: invalid cell volume");
+    return {centre, std::abs(signed_volume), signed_volume};
+}
+
+inline CellGeometry compute_cell_geometry(
     const Mesh& mesh,
     const Vec3* face_centres,
     const Vec3* face_Sf,
@@ -142,15 +185,8 @@ inline CellGeometry compute_cell_geometry(
     std::size_t cell_id,
     std::size_t n_cell_faces)
 {
-    std::vector<std::size_t> owners(mesh.n_faces());
-    std::vector<int> neighbours(mesh.n_faces());
-    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        owners[f] = mesh.ownership().owner(f);
-        neighbours[f] = mesh.ownership().neighbour(f);
-    }
-    return compute_cell_geometry_oriented(
-        face_centres, face_Sf, owners.data(), neighbours.data(),
-        face_ids, cell_id, n_cell_faces);
+    return compute_cell_geometry(mesh.ownership(), face_centres, face_Sf,
+                                 face_ids, cell_id, n_cell_faces);
 }
 
 }  // namespace core
