@@ -124,6 +124,7 @@ int main()
             Field<double,Location::CELL> T(1,"T","K",1),source(1,"source","W/m3",1);
             Field<double,Location::CELL> irradiation(1,"G","W/m2",1);
             T(0)=800.0; source(0)=0.0; irradiation(0)=0.0;
+            std::cout << "DEBUG_IB=" << blackbody_intensity(800.0) << "\n";
 
             ScalarBoundaryConditions thermal_bc;
             for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"})
