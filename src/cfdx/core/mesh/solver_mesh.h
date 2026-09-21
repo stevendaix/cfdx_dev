@@ -1,7 +1,10 @@
 #pragma once
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/mesh/index_types.h"
 #include <cstdint>
 #include <vector>
+#include <limits>
+#include <stdexcept>
 
 namespace cfdx::core {
 
@@ -9,8 +12,8 @@ namespace cfdx::core {
 // connectivity (point coordinates and face-vertex lists) can be released
 // after this object has been built for a fixed mesh.
 struct SolverMesh {
-    std::vector<std::uint32_t> owner;
-    std::vector<std::int32_t> neighbour;
+    std::vector<LocalIndex> owner;
+    std::vector<std::int64_t> neighbour;
     std::vector<Vec3> face_area;
     std::vector<Vec3> cell_centres;
     std::vector<double> cell_volume;
@@ -36,8 +39,11 @@ inline SolverMesh build_solver_mesh(
     out.cell_centres = cell_centres;
     out.cell_volume = cell_volume;
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        out.owner[f] = static_cast<std::uint32_t>(mesh.ownership().owner(f));
-        out.neighbour[f] = static_cast<std::int32_t>(mesh.ownership().neighbour(f));
+        const auto owner = mesh.ownership().owner(f);
+        if (owner > static_cast<CellIndex>(std::numeric_limits<LocalIndex>::max()))
+            throw std::overflow_error("SolverMesh: owner index does not fit LocalIndex");
+        out.owner[f] = static_cast<LocalIndex>(owner);
+        out.neighbour[f] = mesh.ownership().neighbour(f);
     }
     return out;
 }
