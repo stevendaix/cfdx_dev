@@ -129,7 +129,7 @@ int main()
             for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"})
                 thermal_bc[name]={
                     ScalarBoundaryType::FIXED_VALUE,
-                    blackbody_intensity(800.0),0.0};
+                    800.0,0.0};
 
             RadiationEnergyCouplingControls controls;
             controls.radiation.absorption=0.5;
