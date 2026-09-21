@@ -41,13 +41,20 @@ public:
             const auto ta = cell_to_tile_.at(a);
             const auto tb = cell_to_tile_.at(b);
             if (ta == tb) continue;
-            auto add_unique=[&](std::vector<std::uint32_t>& v,std::uint32_t x){
-                if(std::find(v.begin(),v.end(),x)==v.end()) v.push_back(x);
-            };
-            add_unique(tiles_[ta].halo_cells,b);
-            add_unique(tiles_[tb].halo_cells,a);
-            add_unique(tiles_[ta].neighbor_tiles,tb);
-            add_unique(tiles_[tb].neighbor_tiles,ta);
+            tiles_[ta].halo_cells.push_back(b);
+            tiles_[tb].halo_cells.push_back(a);
+            tiles_[ta].neighbor_tiles.push_back(static_cast<std::uint64_t>(tb));
+            tiles_[tb].neighbor_tiles.push_back(static_cast<std::uint64_t>(ta));
+        }
+        for (auto& tile : tiles_) {
+            std::sort(tile.halo_cells.begin(), tile.halo_cells.end());
+            tile.halo_cells.erase(
+                std::unique(tile.halo_cells.begin(), tile.halo_cells.end()),
+                tile.halo_cells.end());
+            std::sort(tile.neighbor_tiles.begin(), tile.neighbor_tiles.end());
+            tile.neighbor_tiles.erase(
+                std::unique(tile.neighbor_tiles.begin(), tile.neighbor_tiles.end()),
+                tile.neighbor_tiles.end());
         }
     }
 

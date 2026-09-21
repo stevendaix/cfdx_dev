@@ -37,6 +37,11 @@ public:
     CudaPinnedBufferPool(const CudaPinnedBufferPool&) = delete;
     CudaPinnedBufferPool& operator=(const CudaPinnedBufferPool&) = delete;
 
+    static constexpr bool is_pinned() noexcept { return true; }
+
+    std::size_t size() const noexcept { return buffers_.size(); }
+    std::size_t buffer_bytes() const noexcept { return buffer_bytes_; }
+
     Buffer* acquire() {
         for (auto& b : buffers_) if (!b.in_use) {
             b.in_use = true;

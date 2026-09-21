@@ -234,6 +234,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/runtime/ooc/tile_manager.h
     src/cfdx/runtime/ooc/working_set.h
     src/cfdx/runtime/ooc/pinned_buffer_pool.h
+    src/cfdx/runtime/ooc/cuda_pinned_buffer_pool.h
     src/cfdx/runtime/ooc/async_transfer.h
     src/cfdx/runtime/ooc/ooc_executor.h
     src/cfdx/thermodynamics/equation_of_state.h
