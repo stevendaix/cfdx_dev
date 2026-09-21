@@ -103,11 +103,11 @@ inline double k_epsilon_production(double nut, double strain_rate)
     return 2.0 * nut * strain_rate * strain_rate;
 }
 
-inline double k_epsilon_epsilon_source(double rho, double C1, double production, double epsilon)
+inline double k_epsilon_dissipation_source(double rho, double C2, double epsilon, double k)
 {
-    if (rho <= 0.0 || C1 < 0.0 || production < 0.0 || epsilon < 0.0)
-        throw std::invalid_argument("invalid epsilon source input");
-    return rho * C1 * production * epsilon / std::max(production, epsilon);
+    if (rho <= 0.0 || C2 < 0.0 || epsilon < 0.0 || k <= 0.0)
+        throw std::invalid_argument("invalid epsilon dissipation input");
+    return rho * C2 * epsilon * epsilon / k;
 }
 
 struct SSTCoefficients {
@@ -311,18 +311,6 @@ inline double fully_developed_temperature(double x, double Tin, double qdot,
     if (rho<=0.0 || cp<=0.0 || U<=0.0 || A<=0.0 || perimeter<0.0)
         throw std::invalid_argument("invalid thermal validation parameters");
     return Tin + qdot * perimeter * x / (rho * U * A * cp);
-}
-
-inline double radiation_equilibrium_temperature(double T1, double T2,
-                                                double emissivity, double view_factor)
-{
-    if (T1<0.0 || T2<0.0 || emissivity<=0.0 || view_factor<=0.0)
-        throw std::invalid_argument("invalid radiation validation parameters");
-    // Net exchange is returned by two_surface_exchange; this helper is
-    // intentionally explicit to keep validation cases dimensionally transparent.
-    return std::pow(0.5*(std::pow(T1,4)+std::pow(T2,4)), 0.25) *
-           std::pow(std::max(view_factor, 1e-15), 0.0) *
-           std::pow(emissivity, 0.0);
 }
 
 } // namespace cfdx::physics::m1m4
