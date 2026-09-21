@@ -77,3 +77,8 @@ A benchmark may therefore have three states:
 - **BLOCKED**: the required physical/numerical capability is not implemented yet.
 
 This status model is intentional: a component oracle is never promoted to a solver-validation PASS.
+
+
+### Solver diagnostics
+
+The incompressible solver now distinguishes the linear-system residuals of the intermediate momentum/pressure solves from the **final physical momentum equation residual** after pressure correction. The latter is reassembled from the corrected U/p fields and is part of the nonlinear convergence gate. The iteration history also exposes a dimensionless continuity metric normalized by a characteristic mass flux, so benchmark cases can compare conservation quality without depending only on raw kg/s values.
