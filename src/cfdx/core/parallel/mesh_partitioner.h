@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 
 namespace cfdx {
 namespace core {
@@ -29,15 +30,12 @@ struct Partition {
 
 // Simple geometric partitioning using coordinate-based space-filling curve (Hilbert/Z-order)
 inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm = MPI_COMM_WORLD) {
-    int rank = mpi_rank(comm);
-    int size = mpi_size(comm);
-    
-    if (n_parts != size) {
-        if (rank == 0) {
-            mpi_print_rank0("[partition_geometric] n_parts must equal mpi_size, adjusting\n");
-        }
-        n_parts = size;
-    }
+    const int rank = mpi_rank(comm);
+    const int size = mpi_size(comm);
+    (void)rank;
+    (void)size;
+    if (n_parts <= 0)
+        throw std::invalid_argument("partition_geometric: n_parts must be positive");
     
     const std::size_t n_cells = m.n_cells();
     const std::size_t n_faces = m.n_faces();
