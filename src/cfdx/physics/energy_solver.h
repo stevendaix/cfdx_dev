@@ -118,7 +118,10 @@ inline EnergySolveResult solve_energy(
             result.converged=true;
             break;
         }
-        old=temperature;
+        // For a transient step, "old" is the state at t^n and must remain
+        // fixed throughout the nonlinear iterations of the t^(n+1) solve.
+        // For steady mode dt<=0 and old is only a linearisation reference.
+
     }
     return result;
 }
