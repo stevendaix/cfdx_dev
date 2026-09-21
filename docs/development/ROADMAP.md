@@ -93,8 +93,3 @@ The implementation stack is now present end-to-end:
 - unit, analytical and solver-level regression tests.
 
 The remaining acceptance criterion is execution of the complete CI/DebugSanitizers regression on the final PR head. Feature completion is not treated as evidence of numerical validation; benchmark tolerances remain explicit in the validation tests.
-
-
-## Current audit update — 2026-09-21
-
-The M1-M4 implementation is undergoing a full numerical and code audit. Analytical Level-A benchmarks, conservation checks, radiation normalization, pressure-correction scaling, turbulence production units, mesh I/O bounds checks, MPI halo exchange and legacy convection assembly are being hardened before the stack is considered validated.
