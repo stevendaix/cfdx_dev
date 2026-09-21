@@ -66,5 +66,82 @@ int main()
         EXPECT_NEAR(r.history.back().continuity_linf,0.0,1e-14);
     });
 
+
+    run_case("simplec_zero_state_uses_consistent_momentum_diagonal", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
+        c.convergence.max_iterations = 5;
+        c.convergence.continuity_tolerance = 1e-12;
+        c.linear_tolerance = 1e-12;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
+        EXPECT_TRUE(r.converged);
+        EXPECT_TRUE(!r.history.empty());
+    });
+
+    run_case("piso_zero_state_runs_multiple_pressure_corrections", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::PISO;
+        c.coupling.n_pressure_correctors = 3;
+        c.convergence.max_iterations = 5;
+        c.convergence.continuity_tolerance = 1e-12;
+        c.linear_tolerance = 1e-12;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
+        EXPECT_TRUE(r.converged);
+        EXPECT_TRUE(!r.history.empty());
+    });
+
+    run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(100.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE,100.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 5;
+        c.convergence.continuity_tolerance = 1e-12;
+        c.linear_tolerance = 1e-12;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 100.0;
+
+        const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
+        EXPECT_TRUE(r.converged);
+        EXPECT_NEAR(p(0),100.0,1e-12);
+    });
+
     return run_all();
 }
