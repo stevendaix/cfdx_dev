@@ -206,6 +206,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/boundary/boundary_field.h
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
+    src/cfdx/core/fvm/least_squares_gradient.h
     src/cfdx/core/numerics/divergence.h
     src/cfdx/core/numerics/laplacian.h
     src/cfdx/core/numerics/flux.h

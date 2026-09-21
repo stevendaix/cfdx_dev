@@ -1,6 +1,7 @@
 // M0.7-T01 — Tests for Gauss gradient
 
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/fvm/least_squares_gradient.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
 
@@ -98,6 +99,78 @@ int main() {
         EXPECT_TRUE(grad.name() == "p_grad");
         EXPECT_TRUE(grad.loc() == Location::CELL);
         EXPECT_TRUE(grad.metadata().unit == "1/s");
+    });
+
+    run_case("least_squares_exact_linear_2d", []() {
+        const Vec3 centre{0.2, -0.3, 0.0};
+        const Vec3 expected{2.0, -3.0, 0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.1, -0.3, 0.0},
+            {-0.4, 0.2, 0.0},
+            {0.7, 1.4, 0.0},
+            {-1.0, -1.1, 0.0}
+        };
+        std::vector<double> values;
+        for (const auto& p : neighbours)
+            values.push_back(1.7 + expected.x * p.x + expected.y * p.y);
+        const double centre_value =
+            1.7 + expected.x * centre.x + expected.y * centre.y;
+        const Vec3 grad = least_squares_gradient(
+            centre, centre_value, neighbours, values);
+        EXPECT_NEAR(grad.x, expected.x, 1e-12);
+        EXPECT_NEAR(grad.y, expected.y, 1e-12);
+        EXPECT_NEAR(grad.z, 0.0, 1e-12);
+    });
+
+    run_case("least_squares_exact_linear_3d", []() {
+        const Vec3 centre{0.1, -0.2, 0.3};
+        const Vec3 expected{1.5, -2.0, 0.75};
+        const std::vector<Vec3> neighbours = {
+            {0.9, -0.1, 0.5},
+            {-0.6, 0.7, 0.2},
+            {0.4, -1.1, 1.2},
+            {-0.8, -0.9, -0.4},
+            {1.2, 0.4, -0.7}
+        };
+        std::vector<double> values;
+        for (const auto& p : neighbours)
+            values.push_back(-0.4 + expected.x * p.x +
+                             expected.y * p.y + expected.z * p.z);
+        const double centre_value =
+            -0.4 + expected.x * centre.x +
+            expected.y * centre.y + expected.z * centre.z;
+        const Vec3 grad = least_squares_gradient(
+            centre, centre_value, neighbours, values);
+        EXPECT_NEAR(grad.x, expected.x, 1e-12);
+        EXPECT_NEAR(grad.y, expected.y, 1e-12);
+        EXPECT_NEAR(grad.z, expected.z, 1e-12);
+    });
+
+    run_case("least_squares_constant_field", []() {
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.0, 0.2, 0.0}, {-0.4, 0.9, 0.0},
+            {0.3, -0.7, 0.0}, {-0.8, -0.2, 0.0}
+        };
+        const std::vector<double> values(neighbours.size(), 42.0);
+        const Vec3 grad = least_squares_gradient(
+            centre, 42.0, neighbours, values);
+        EXPECT_NEAR(grad.x, 0.0, 1e-12);
+        EXPECT_NEAR(grad.y, 0.0, 1e-12);
+        EXPECT_NEAR(grad.z, 0.0, 1e-12);
+    });
+
+    run_case("least_squares_rank_deficient_2d", []() {
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.0, 0.0, 0.0}, {-1.0, 0.0, 0.0}
+        };
+        const std::vector<double> values = {3.0, -1.0};
+        const Vec3 grad = least_squares_gradient(
+            centre, 1.0, neighbours, values);
+        EXPECT_NEAR(grad.x, 2.0, 1e-12);
+        EXPECT_NEAR(grad.y, 0.0, 1e-12);
+        EXPECT_NEAR(grad.z, 0.0, 1e-12);
     });
 
     run_case("gradient_empty_mesh", []() {
