@@ -374,18 +374,6 @@ if(CFDX_BUILD_TESTS)
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
 
-    add_custom_target(cfdx_geometry_orientation_check
-        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L geometry
-        DEPENDS
-            test_face_geometry
-            test_cell_geometry
-            test_geometry_invariants
-            test_mesh_quality
-            test_mesh_family_volumes
-            test_geometry_cache
-            test_analytical_benchmarks
-        USES_TERMINAL)
-
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
@@ -412,5 +400,17 @@ if(CFDX_BUILD_TESTS)
         test_geometry_cache
         test_analytical_benchmarks
         PROPERTIES LABELS geometry)
+
+    add_custom_target(cfdx_geometry_orientation_check
+        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L geometry
+        DEPENDS
+            test_face_geometry
+            test_cell_geometry
+            test_geometry_invariants
+            test_mesh_quality
+            test_mesh_family_volumes
+            test_geometry_cache
+            test_analytical_benchmarks
+        USES_TERMINAL)
 
 endif()
