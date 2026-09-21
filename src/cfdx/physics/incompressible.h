@@ -75,7 +75,7 @@ compute_continuity_residual(
     double* r = result.component_data(0);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         r[c] = 0.0;
-        for (Offset k = co[c]; k < co[c + 1]; ++k) {
+        for (cfdx::core::Offset k = co[c]; k < co[c + 1]; ++k) {
             const std::size_t face = cf[k];
             r[c] += (own.owner(face) == c) ? f[face] : -f[face];
         }
