@@ -407,6 +407,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_python_api
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_python_api.py)
         add_test(NAME test_cfdx_cli
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tests/python/test_cfdx_cli.py)
