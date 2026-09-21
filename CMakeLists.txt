@@ -138,6 +138,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/multi_component.h
     src/cfdx/physics/source_term_linearization.h
     src/cfdx/physics/transport_models.h
+    src/cfdx/physics/wall_functions.h
     src/cfdx/physics/temporal.h
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
@@ -306,6 +307,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_mesh tests/unit/test_mesh.cpp)
     add_cfdx_test(test_field tests/unit/test_field.cpp)
     add_cfdx_test(test_field_storage tests/unit/test_field_storage.cpp)
+    add_cfdx_test(test_field_wall_hardening tests/unit/test_field_wall_hardening.cpp)
     add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
@@ -345,8 +347,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
-    add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
-    target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
+    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_fluent_vmfl_reference tests/validation/test_fluent_vmfl_reference.cpp)
@@ -359,12 +360,8 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-        set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
-        if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
-            set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
-        endif()
         add_test(NAME test_mpi_partition
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
