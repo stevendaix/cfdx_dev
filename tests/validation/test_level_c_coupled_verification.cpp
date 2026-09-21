@@ -134,7 +134,7 @@ int main()
                     800.0,0.0};
 
             RadiationEnergyCouplingControls controls;
-            controls.radiation.absorption=0.5;
+            controls.radiation.absorption=1e-6;
             controls.radiation.max_iterations=100;
             controls.radiation.tolerance=1e-10;
             controls.energy.conductivity=1.0;
