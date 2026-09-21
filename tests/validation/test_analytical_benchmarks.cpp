@@ -126,6 +126,8 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
 {
     auto problem = make_channel(n, height);
     auto geometry = build_fv_geometry(problem.mesh);
+    if(n==8) std::cerr<<"POISEUILLE_GEOM V="<<geometry.cell_volumes[0]
+        <<" y0="<<geometry.cell_centres[0].y<<" y1="<<geometry.cell_centres[1].y<<"\n";
 
     Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "kg/s", 1);
     phi.fill(0.0);
