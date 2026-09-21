@@ -34,7 +34,7 @@ int main()
         IdealGasParams params;
         params.T_ref = 500.0;
         params.p_ref = 90000.0;
-        EXPECT_NO_THROW(eos.set_params(params));
+        eos.set_params(params);
         EXPECT_NEAR(eos.enthalpy(90000.0, 550.0), params.Cp * 50.0, 1e-12);
         EXPECT_NEAR(eos.temperature_from_enthalpy(90000.0, params.Cp * 50.0), 550.0, 1e-12);
     });
