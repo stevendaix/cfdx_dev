@@ -109,7 +109,7 @@ gauss_gradient_with_boundary(
                         vf = it->second.value;
                 }
             }
-            sum += Sf * vf;
+            sum = sum + Sf * vf;
         }
         const double invV = 1.0 / geometry.cell_volumes[c];
         grad.component_data(0)[c] = sum.x * invV;
@@ -164,6 +164,7 @@ make_rhie_chow_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs)
 {
+    using namespace cfdx::core;
     if(p.size()!=mesh.n_cells() || rAU.size()!=mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
     auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
