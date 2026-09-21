@@ -21,15 +21,15 @@ void HypreAMG::configure(AMGMemoryPolicy policy) {
 }
 
 bool HypreAMG::setup(const SparseMatrix&, int) {
-    // Skeleton — real implementation requires HYPRE library linking
-    is_initialized_ = true;
-    std::printf("[HypreAMG] Setup complete (stub — requires HYPRE linking)\n");
-    return true;
+    // HYPRE is not linked in this build. Never report a stub as a valid AMG setup.
+    is_initialized_ = false;
+    std::printf("[HypreAMG] Setup unavailable: HYPRE backend is not linked\n");
+    return false;
 }
 
 bool HypreAMG::apply(const Vector&, Vector&) const {
-    std::printf("[HypreAMG] Apply called (stub)\n");
-    return true;
+    std::printf("[HypreAMG] Apply unavailable: HYPRE backend is not linked\n");
+    return false;
 }
 
 HypreAMG::AMGMemoryUsage HypreAMG::measureMemoryUsage() const {
@@ -37,13 +37,13 @@ HypreAMG::AMGMemoryUsage HypreAMG::measureMemoryUsage() const {
     usage.setup_peak_bytes = 0;  // Would measure HYPRE memory
     usage.solve_peak_bytes = 0;
     usage.temporary_bytes = 0;
-    usage.num_levels = 3;  // Estimated for medium meshes
-    usage.iterations = 10;  // Estimated
+    usage.num_levels = 0;
+    usage.iterations = 0;
     return usage;
 }
 
 double HypreAMG::estimateSpeedup() const {
-    return 2.5;  // Conservative estimate for AMG vs no preconditioner on Poisson
+    return 0.0;  // No benchmark is available while HYPRE is disabled
 }
 
 void* HypreAMG::hypreSolver() {
