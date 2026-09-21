@@ -147,7 +147,7 @@ int main()
 
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
-                controls,thermal_bc);
+                controls,thermal_bc,thermal_bc);
             if (!r.converged || r.energy_balance_residuals.empty())
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
