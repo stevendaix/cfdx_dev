@@ -161,7 +161,7 @@ int main()
         validate_reciprocity({0,1,1,0},{1,1},2);
     });
     run_case("M4_P1_equilibrium_source", [] {
-        EXPECT_NEAR(p1_source(2.0,blackbody_intensity(900),900),0.0,1e-10*blackbody_intensity(900));
+        EXPECT_NEAR(p1_source(2.0,p1_blackbody_intensity(900),900),0.0,1e-10*p1_blackbody_intensity(900));
     });
     run_case("M4_DOM_quadrature_closure", [] {
         std::vector<Direction> d={{1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
