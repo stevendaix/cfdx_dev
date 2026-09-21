@@ -18,6 +18,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/mesh/mesh.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -130,6 +131,26 @@ inline CellGeometry compute_cell_geometry(
     signed_volume /= 3.0;
 
     return {centre, std::abs(signed_volume), signed_volume};
+}
+
+
+inline CellGeometry compute_cell_geometry(
+    const Mesh& mesh,
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    const FaceIndex* face_ids,
+    std::size_t cell_id,
+    std::size_t n_cell_faces)
+{
+    std::vector<std::size_t> owners(mesh.n_faces());
+    std::vector<int> neighbours(mesh.n_faces());
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        owners[f] = mesh.ownership().owner(f);
+        neighbours[f] = mesh.ownership().neighbour(f);
+    }
+    return compute_cell_geometry_oriented(
+        face_centres, face_Sf, owners.data(), neighbours.data(),
+        face_ids, cell_id, n_cell_faces);
 }
 
 }  // namespace core
