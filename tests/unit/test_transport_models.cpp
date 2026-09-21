@@ -5,6 +5,7 @@
 #include "cfdx/core/field/field.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -75,6 +76,17 @@ int main() {
         double expected = 1.716e-5 * std::pow(T / 273.15, 1.5) * (273.15 + 110.4) / (T + 110.4);
         EXPECT_NEAR(mu, expected, 1e-12);
         EXPECT_TRUE(mu > 0);
+    });
+
+    run_case("sutherland_rejects_invalid_domain", []() {
+        EXPECT_THROW(sutherland_viscosity(0.0), std::invalid_argument);
+        EXPECT_THROW(sutherland_viscosity(-1.0), std::invalid_argument);
+        EXPECT_THROW(sutherland_viscosity(std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
+    });
+
+    run_case("power_law_rejects_invalid_domain", []() {
+        EXPECT_THROW(power_law_viscosity(0.0, 1.8e-5, 273.15, 0.7), std::invalid_argument);
+        EXPECT_THROW(power_law_viscosity(300.0, 0.0, 273.15, 0.7), std::invalid_argument);
     });
 
     run_case("power_law_viscosity", []() {
