@@ -93,9 +93,18 @@ class IncompressibleEOS : public EquationOfState {
     IncompressibleParams params_;
 
 public:
-    IncompressibleEOS(const IncompressibleParams& params = {}) : params_(params) {}
+    IncompressibleEOS(const IncompressibleParams& params = {}) : params_(params) { validate_params(); }
 
     EquationOfStateType type() const override { return EquationOfStateType::INCOMPRESSIBLE; }
+
+    void validate_params() const {
+        if (!std::isfinite(params_.rho) || !(params_.rho > 0.0) ||
+            !std::isfinite(params_.Cp) || !(params_.Cp > 0.0) ||
+            !std::isfinite(params_.T_ref) || !(params_.T_ref > 0.0) ||
+            !std::isfinite(params_.beta) || params_.beta < 0.0) {
+            throw std::invalid_argument("invalid incompressible EOS parameters");
+        }
+    }
 
     double density(double /*p*/, double /*T*/) const override {
         return params_.rho;
@@ -156,7 +165,7 @@ public:
         return internal_energy(0, T) + 0.5 * u_mag2;
     }
 
-    void set_params(const IncompressibleParams& params) { params_ = params; }
+    void set_params(const IncompressibleParams& params) { params_ = params; validate_params(); }
     const IncompressibleParams& params() const { return params_; }
 };
 
@@ -170,13 +179,26 @@ class IdealGasEOS : public EquationOfState {
 
 public:
     IdealGasEOS(const IdealGasParams& params = {}) : params_(params) {
+        validate_params();
         update_R();
     }
 
     EquationOfStateType type() const override { return EquationOfStateType::IDEAL_GAS; }
 
+    void validate_params() const {
+        if (!std::isfinite(params_.M) || !(params_.M > 0.0) ||
+            !std::isfinite(params_.gamma) || !(params_.gamma > 1.0) ||
+            !std::isfinite(params_.R_univ) || !(params_.R_univ > 0.0) ||
+            !std::isfinite(params_.Cp) || !(params_.Cp > 0.0) ||
+            !std::isfinite(params_.T_ref) || !(params_.T_ref > 0.0) ||
+            !std::isfinite(params_.p_ref) || !(params_.p_ref > 0.0)) {
+            throw std::invalid_argument("invalid ideal-gas EOS parameters");
+        }
+    }
+
     void set_params(const IdealGasParams& params) {
         params_ = params;
+        validate_params();
         update_R();
     }
 
