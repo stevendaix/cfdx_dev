@@ -1,4 +1,9 @@
 # Build
+build*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
 build/
 *.o
 *.obj
