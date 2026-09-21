@@ -126,7 +126,7 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.linear_tolerance=1e-10;
     controls.pressure_reference_cell=0;
     controls.pressure_reference_value=0.0;
-    controls.use_bounded_convection=true;
+    controls.use_bounded_convection=false;
     controls.convection_scheme=ConvectionScheme::UPWIND;
     controls.coupling.alpha_u=0.3;
     controls.coupling.alpha_p=0.1;
