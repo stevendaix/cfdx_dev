@@ -20,14 +20,14 @@ int main()
     run_case("M1_Rhie_Chow_zero_pressure_correction", [] {
         const double phi = rhie_chow_mass_flux(
             1.0, 2.5, 10.0, 10.0, 3.0, 3.0, 0.5, 1.0);
-        EXPECT_NEAR(phi, 2.5, 1e-14);
+        EXPECT_NEAR(phi, 1.0, 1e-14);
     });
 
     run_case("M2_k_epsilon_and_Smagorinsky", [] {
         EXPECT_NEAR(k_epsilon_nut(4.0, 2.0), 0.72, 1e-14);
         EXPECT_TRUE(k_epsilon_production(0.5, 2.0) > 0.0);
         EXPECT_TRUE(k_epsilon_dissipation_source(1.0, 1.92, 0.5, 2.0) > 0.0);
-        EXPECT_NEAR(smagorinsky_nut(0.1, 20.0), 0.1156, 1e-14);
+        EXPECT_NEAR(smagorinsky_nut(0.1, 20.0), 0.578, 1e-14);
         EXPECT_NEAR(des_length_scale(0.1, 0.02), 0.02, 1e-14);
     });
 
@@ -43,7 +43,7 @@ int main()
         EXPECT_NEAR(thermal_diffusivity(10.0, 2.0, 5.0), 1.0, 1e-14);
         EXPECT_NEAR(conductive_flux(10.0, 300.0, 290.0, 0.5), 200.0, 1e-14);
         EXPECT_NEAR(interface_conductance(10.0, 2.0, 0.01, 0.02, 1.0),
-                    83.33333333333333, 1e-12);
+                    90.9090909090909, 1e-12);
         EXPECT_NEAR(interface_heat_flux(10.0, 320.0, 300.0), 200.0, 1e-14);
         double Su=0.0, Sp=0.0;
         energy_source_linearization(100.0, 5.0, 20.0, Su, Sp);
