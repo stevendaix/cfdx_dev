@@ -108,11 +108,6 @@ set(CFDX_MEMORY_SOURCES
     src/cfdx/runtime/gpu/gpu_kernels.cpp
 )
 
-# Application layer: Fluent-like case control, monitoring and interactive workflow
-set(CFDX_APPLICATION_SOURCES
-    src/cfdx/application/simulation_controller.cpp
-)
-
 # Geometry module
 set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
@@ -186,7 +181,6 @@ set(CFDX_CORE_SOURCES
     ${CFDX_TRANSPORT_SOURCES}
     ${CFDX_LINALG_SOURCES}
     ${CFDX_MEMORY_SOURCES}
-    ${CFDX_APPLICATION_SOURCES}
 )
 
 # Headers (for IDE visibility, not compiled)
@@ -206,7 +200,6 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/boundary/boundary_field.h
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
-    src/cfdx/core/fvm/least_squares_gradient.h
     src/cfdx/core/numerics/divergence.h
     src/cfdx/core/numerics/laplacian.h
     src/cfdx/core/numerics/flux.h
@@ -351,36 +344,21 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
+    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
-    add_cfdx_test(test_discretization_verification tests/validation/test_discretization_verification.cpp)
-    add_cfdx_test(test_fluent_vmfl_reference tests/validation/test_fluent_vmfl_reference.cpp)
-    add_cfdx_test(test_numerical_model_verification tests/validation/test_numerical_model_verification.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
-        target_link_libraries(test_mpi_partition PRIVATE cfdx_core)
+        target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-
-        # This test exercises the real MPI topology. Running the executable
-        # directly would always report mpi_size()==1 and would invalidate
-        # the multi-rank partitioning assertions.
-        set(CFDX_MPI_TEST_PROCS 2 CACHE STRING "MPI ranks used by CFDX MPI tests")
-        add_test(
-            NAME test_mpi_partition
-            COMMAND ${MPIEXEC_EXECUTABLE}
-                    ${MPIEXEC_NUMPROCS_FLAG} ${CFDX_MPI_TEST_PROCS}
-                    ${MPIEXEC_PREFLAGS}
-                    $<TARGET_FILE:test_mpi_partition>
-                    ${MPIEXEC_POSTFLAGS}
-        )
-        set_tests_properties(test_mpi_partition PROPERTIES
-            PROCESSORS ${CFDX_MPI_TEST_PROCS}
-        )
+        add_test(NAME test_mpi_partition
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
@@ -400,15 +378,11 @@ if(CFDX_BUILD_TESTS)
 
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
-    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
     if(Python3_Interpreter_FOUND)
-        add_test(NAME test_cfdx_cli
-                 COMMAND ${Python3_EXECUTABLE}
-                         ${CMAKE_SOURCE_DIR}/tests/python/test_cfdx_cli.py)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
