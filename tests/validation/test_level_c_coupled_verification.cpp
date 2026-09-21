@@ -124,13 +124,17 @@ int main()
             Field<double,Location::CELL> T(1,"T","K",1),source(1,"source","W/m3",1);
             Field<double,Location::CELL> irradiation(1,"G","W/m2",1);
             T(0)=800.0; source(0)=0.0; irradiation(0)=0.0;
-            std::cout << "DEBUG_IB=" << blackbody_intensity(800.0) << "\n";
 
+            ScalarBoundaryConditions radiation_bc;
             ScalarBoundaryConditions thermal_bc;
-            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"})
-                thermal_bc[name]={
+            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"}) {
+                radiation_bc[name]={
                     ScalarBoundaryType::FIXED_VALUE,
                     blackbody_intensity(800.0),0.0};
+                thermal_bc[name]={
+                    ScalarBoundaryType::FIXED_VALUE,
+                    800.0,0.0};
+            }
 
             RadiationEnergyCouplingControls controls;
             controls.radiation.absorption=0.5;
@@ -146,7 +150,7 @@ int main()
 
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
-                controls,thermal_bc,thermal_bc);
+                controls,radiation_bc,thermal_bc);
             if (!r.converged || r.energy_balance_residuals.empty())
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
