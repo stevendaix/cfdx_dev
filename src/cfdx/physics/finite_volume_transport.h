@@ -164,10 +164,19 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> diffusion_gradient;
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
         if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
             throw std::invalid_argument("assemble_scalar_equation: second-order upwind requires a scalar convected field");
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+    }
+
+    if (diffusion_scheme == DiffusionScheme::NON_ORTHOGONAL_CORRECTED) {
+        if (diffused_field == nullptr || diffused_field->size() != nc ||
+            diffused_field->dimension() != 1)
+            throw std::invalid_argument(
+                "assemble_scalar_equation: non-orthogonal diffusion requires a scalar diffused field");
+        diffusion_gradient = cfdx::core::compute_gradient_gauss(*diffused_field, mesh);
     }
 
     const auto& own = mesh.ownership();
@@ -204,13 +213,6 @@ inline ScalarEquation assemble_scalar_equation(
             // explicitly using a cell-centred Gauss gradient.
             double diffusion_correction = 0.0;
             if (diffusion_scheme == DiffusionScheme::NON_ORTHOGONAL_CORRECTED) {
-                if (diffused_field == nullptr ||
-                    diffused_field->size() != nc ||
-                    diffused_field->dimension() != 1)
-                    throw std::invalid_argument(
-                        "assemble_scalar_equation: non-orthogonal diffusion requires a scalar diffused field");
-
-                const auto grad = cfdx::core::compute_gradient_gauss(*diffused_field, mesh);
                 const auto dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
                 const double dmag = dvec.mag();
                 const auto Sf = geometry.face_area_vectors[f];
@@ -222,9 +224,9 @@ inline ScalarEquation assemble_scalar_equation(
                 const auto d_hat = dvec * (1.0 / dmag);
                 const auto S_orth = d_hat * Sf.dot(d_hat);
                 const auto S_corr = Sf - S_orth;
-                const double* gx = grad.component_data(0);
-                const double* gy = grad.component_data(1);
-                const double* gz = grad.component_data(2);
+                const double* gx = diffusion_gradient.component_data(0);
+                const double* gy = diffusion_gradient.component_data(1);
+                const double* gz = diffusion_gradient.component_data(2);
                 const cfdx::core::Vec3 grad_o{gx[o], gy[o], gz[o]};
                 const cfdx::core::Vec3 grad_n{gx[n], gy[n], gz[n]};
                 const auto grad_f = (grad_o + grad_n) * 0.5;
