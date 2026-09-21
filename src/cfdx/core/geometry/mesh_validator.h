@@ -108,8 +108,12 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
             cell_centres[c] = geom.centre;
             cell_volumes[c] = geom.volume;
 
-            if (geom.volume <= 0.0) {
-                report.add_error("cell " + std::to_string(c) + " has non-positive volume");
+            if (!(geom.signed_volume > 0.0) || !std::isfinite(geom.signed_volume)) {
+                report.add_error("cell " + std::to_string(c) +
+                                 " has non-positive or inverted signed volume");
+            }
+            if (!(geom.volume > 0.0) || !std::isfinite(geom.volume)) {
+                report.add_error("cell " + std::to_string(c) + " has invalid volume");
             }
 
             // Stats.

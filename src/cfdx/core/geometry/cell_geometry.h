@@ -29,6 +29,9 @@ namespace core {
 struct CellGeometry {
     Vec3 centre;
     double volume;
+    // Signed volume before taking the absolute value. A negative value is an
+    // inverted cell and must be rejected by the mesh validator.
+    double signed_volume;
 };
 
 // Calcule le centre et le volume d'une cellule polyédrique.
@@ -77,11 +80,9 @@ inline CellGeometry compute_cell_geometry(
     }
     volume /= 3.0;
 
-    // Le volume doit être positif pour une cellule valide (§18).
-    // Si négatif, l'orientation des faces est inversée.
-    // On retourne la valeur absolue pour le volume, mais on signale la non-conformité.
-
-    return {centre, std::abs(volume)};
+    // Keep both values: numerical kernels can use the positive measure while
+    // validation can still detect an inverted cell instead of masking it.
+    return {centre, std::abs(volume), volume};
 }
 
 }  // namespace core

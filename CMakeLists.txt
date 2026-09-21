@@ -19,6 +19,14 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
+option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
+
+if(CFDX_ENABLE_GPU)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
+
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
 # ---------------------------------------------------------------------------
@@ -102,6 +110,7 @@ set(CFDX_LINALG_SOURCES
 # Memory sources
 set(CFDX_MEMORY_SOURCES
     src/cfdx/core/memory/memory_planner.cpp
+    src/cfdx/runtime/gpu/gpu_kernels.cpp
 )
 
 # Geometry module
@@ -217,6 +226,16 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
     src/cfdx/core/linalg/gmres_solver.h
+    src/cfdx/core/linalg/advanced_preconditioners.h
+    src/cfdx/core/solvers/scalar_diffusion.h
+    src/cfdx/runtime/execution/execution_policy.h
+    src/cfdx/runtime/gpu/device_buffer.h
+    src/cfdx/runtime/gpu/gpu_kernels.h
+    src/cfdx/runtime/ooc/tile_manager.h
+    src/cfdx/runtime/ooc/working_set.h
+    src/cfdx/runtime/ooc/pinned_buffer_pool.h
+    src/cfdx/runtime/ooc/async_transfer.h
+    src/cfdx/runtime/ooc/ooc_executor.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
@@ -236,6 +255,11 @@ target_compile_definitions(cfdx_core PRIVATE CFDX_SOURCE_DIR="${CMAKE_CURRENT_SO
 if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
     target_link_libraries(cfdx_core PUBLIC ${HDF5_C_LIBRARIES} ${HDF5_HL_LIBRARIES} z)
+endif()
+
+if(CFDX_ENABLE_GPU)
+    target_sources(cfdx_core PRIVATE src/cfdx/runtime/gpu/cuda_kernels.cu)
+    target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_GPU=1)
 endif()
 
 if(CFDX_ENABLE_MPI)
@@ -285,11 +309,15 @@ if(CFDX_BUILD_TESTS)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
+    add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
+    add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
+    add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
 
     # Numerical tests - Geometry
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
+    add_cfdx_test(test_geometry_invariants tests/unit/test_geometry_invariants.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
@@ -305,7 +333,13 @@ if(CFDX_BUILD_TESTS)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
     endif()
-    add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)  
+    add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
+    if(CFDX_BUILD_RUNTIME_TESTS)
+        add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
+    endif()
+    if(CFDX_ENABLE_GPU)
+        add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
+    endif()
 
     # HDF5 tests
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
