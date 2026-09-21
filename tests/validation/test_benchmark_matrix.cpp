@@ -21,6 +21,7 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
 using namespace cfdx::physics::m1m4;
+using namespace cfdx::transport;
 
 namespace {
 Mesh unit_cube()
