@@ -206,7 +206,9 @@ void report_case(const std::string& name, std::size_t n,
     std::cout << std::left << std::setw(30) << name
               << " N=" << std::setw(4) << n
               << " L2=" << std::scientific << std::setprecision(6) << e.l2
-              << " Linf=" << e.linf;
+              << " Linf=" << e.linf
+              << " relL2=" << e.l2_relative
+              << " relLinf=" << e.linf_relative;
     if (std::isfinite(order))
         std::cout << " order=" << std::fixed << std::setprecision(3) << order;
     std::cout << "\n";
