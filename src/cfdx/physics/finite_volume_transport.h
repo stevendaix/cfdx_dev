@@ -126,7 +126,8 @@ inline ScalarEquation assemble_scalar_equation(
     bool bounded_convection = true,
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
-    const std::vector<double>* extra_rhs = nullptr)
+    const std::vector<double>* extra_rhs = nullptr,
+    const std::vector<double>* cell_diffusion = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -136,7 +137,8 @@ inline ScalarEquation assemble_scalar_equation(
         source_explicit.size() != nc || source_explicit.dimension() != 1 ||
         source_implicit.size() != nc || source_implicit.dimension() != 1 ||
         (extra_diagonal && extra_diagonal->size() != nc) ||
-        (extra_rhs && extra_rhs->size() != nc))
+        (extra_rhs && extra_rhs->size() != nc) ||
+        (cell_diffusion && cell_diffusion->size() != nc))
         throw std::invalid_argument("assemble_scalar_equation: field dimensions do not match mesh");
     if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
         throw std::invalid_argument("assemble_scalar_equation: invalid diffusion coefficient");
@@ -161,7 +163,17 @@ inline ScalarEquation assemble_scalar_equation(
             const double area = geometry.face_area_vectors[f].mag();
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate internal face");
-            const double D = diffusion_coefficient * area / distance;
+            double gamma_face = diffusion_coefficient;
+            if (cell_diffusion) {
+                const double go = (*cell_diffusion)[o];
+                const double gn = (*cell_diffusion)[n];
+                if (go < 0.0 || gn < 0.0)
+                    throw std::invalid_argument("assemble_scalar_equation: negative cell diffusion");
+                gamma_face = (go > 0.0 && gn > 0.0)
+                    ? 2.0 * go * gn / (go + gn)
+                    : 0.0;
+            }
+            const double D = gamma_face * area / distance;
 
             const double a_on = D + std::max(F, 0.0);
             const double a_no = D + std::max(-F, 0.0);
@@ -194,7 +206,11 @@ inline ScalarEquation assemble_scalar_equation(
                 throw std::runtime_error("assemble_scalar_equation: degenerate boundary face");
 
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                const double D = diffusion_coefficient * area / distance;
+                const double gamma_owner = cell_diffusion
+                    ? (*cell_diffusion)[o] : diffusion_coefficient;
+                if (gamma_owner < 0.0)
+                    throw std::invalid_argument("assemble_scalar_equation: negative boundary diffusion");
+                const double D = gamma_owner * area / distance;
                 const double a_owner = D + std::max(F, 0.0);
                 const double a_boundary = D + std::max(-F, 0.0);
                 diag[o] += a_owner;
