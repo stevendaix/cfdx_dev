@@ -73,8 +73,8 @@ int main()
     run_case("M1_Taylor_Green_2D_decay", [] {
         const double nu=0.01, t=0.7, k=1.0;
         const double decay=std::exp(-2.0*nu*k*k*t);
-        EXPECT_NEAR(decay,std::exp(-0.014),1e-14);
-        EXPECT_NEAR(decay*decay,std::exp(-4.0*nu*k*k*t),1e-14);
+        EXPECT_NEAR(decay,0.9860975442628619,1e-14);
+        EXPECT_NEAR(decay*decay,0.9723883668012469,1e-14);
     });
     run_case("M1_continuity_closed_cube_constant_velocity", [] {
         auto m=unit_cube();
@@ -109,10 +109,6 @@ int main()
     run_case("M2_flat_plate_turbulent_Cf_correlation", [] {
         const double Re=1e6; EXPECT_NEAR(0.0592/std::pow(Re,0.2),0.003735,1e-6);
     });
-    run_case("M2_channel_DNS_reference_normalization", [] {
-        EXPECT_NEAR(0.053648,0.053648,1e-12); EXPECT_NEAR(0.053639,0.053639,1e-12);
-    });
-
     // M3 — heat transfer / CHT.
     run_case("M3_thermal_diffusivity", [] {
         EXPECT_NEAR(thermal_diffusivity(2.0,4.0,1000.0),5e-4,1e-14);
