@@ -166,11 +166,17 @@ inline EnergySolveResult solve_energy(
         ScalarSolveControls sc;
         sc.max_iterations=2000;
         sc.tolerance=controls.tolerance;
-        sc.relaxation=controls.relaxation;
+        // The linear system must be solved to the requested tolerance before
+        // applying nonlinear under-relaxation. Otherwise the residual is
+        // measured on the relaxed state and can never reach a tight tolerance
+        // within a finite iteration budget for a stationary linear problem.
+        sc.relaxation=1.0;
         const auto linear=solve_scalar_equation(eq,candidate,sc);
-        double res=scalar_equation_residual_inf(eq,candidate);
+        const double linear_residual=scalar_equation_residual_inf(eq,candidate);
         for(std::size_t i=0;i<temperature.size();++i)
-            temperature(i)=candidate(i);
+            temperature(i)=temperature(i)+
+                controls.relaxation*(candidate(i)-temperature(i));
+        const double res=scalar_equation_residual_inf(eq,temperature);
 
         const double imbalance=energy_balance_relative(
             mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
