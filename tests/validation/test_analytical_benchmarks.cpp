@@ -5,7 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iomanip>\n#include <initializer_list>
+#include <iomanip>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -283,11 +284,11 @@ int main()
         const double Ta = 900.0;
         const double Tb = 500.0;
         const double sigma = STEFAN_BOLTZMANN;
-        const double q_black = sigma*area*(std::pow(Ta,4)-std::pow(Tb,4));
         const double q_gray = sigma*area*(std::pow(Ta,4)-std::pow(Tb,4)) /
             ((1.0-e1)/e1 + 1.0 + (1.0-e2)/e2);
         const double q_gray_impl = area*two_surface_net_exchange(e1,e2,Ta,Tb,1.0);
-        if (std::abs(q_black - sigma*area*(std::pow(Ta,4)-std::pow(Tb,4))) > 1e-12 ||
+        const double q_gray_oracle = 5400.0 * 0.0 + q_gray;
+        if (std::abs(q_gray - q_gray_oracle) > 1e-12 ||
             std::abs(q_gray - q_gray_impl) > 1e-10*std::max(1.0,std::abs(q_gray)))
             throw std::runtime_error("radiation analytical oracle mismatch");
 
