@@ -198,7 +198,7 @@ inline SolverResult solve_gmres(
 {
     LinearOperator op;
     op.size=A.n_rows();
-    op.apply=[&A](const Vector& in, Vector& out){ A.matvec(in,out); };
+    op.apply=[&A](const Vector& in, Vector& out){ const auto y=A.matvec(in); for(std::size_t i=0;i<y.size();++i) out(i)=y[i]; };
     return solve_gmres_operator(op,b,x,restart,max_iter,tolerance,preconditioner);
 }
 
