@@ -287,9 +287,7 @@ int main()
         const double q_gray = sigma*area*(std::pow(Ta,4)-std::pow(Tb,4)) /
             ((1.0-e1)/e1 + 1.0 + (1.0-e2)/e2);
         const double q_gray_impl = area*two_surface_net_exchange(e1,e2,Ta,Tb,1.0);
-        const double q_gray_oracle = 5400.0 * 0.0 + q_gray;
-        if (std::abs(q_gray - q_gray_oracle) > 1e-12 ||
-            std::abs(q_gray - q_gray_impl) > 1e-10*std::max(1.0,std::abs(q_gray)))
+        if (std::abs(q_gray - q_gray_impl) > 1e-10*std::max(1.0,std::abs(q_gray)))
             throw std::runtime_error("radiation analytical oracle mismatch");
 
         std::cout << "ANALYTICAL_BENCHMARKS: PASS\n";
