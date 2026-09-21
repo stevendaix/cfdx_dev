@@ -33,6 +33,21 @@ int main() {
         EXPECT_TRUE(pf(2) == 3.0);
     });
 
+    run_case("patchfield_robin_evaluation", []() {
+        PatchField pf("wall", 1, "robin");
+        pf.set_robin_coefficients(2.0, 1.0, 10.0);
+        EXPECT_NEAR(pf.evaluate(0, 4.0, 0.5), 4.0, 1e-12);
+        EXPECT_THROW(pf.evaluate(0, 4.0, 0.0), std::invalid_argument);
+    });
+
+    run_case("patchfield_fixed_and_zero_evaluation", []() {
+        PatchField fixed("inlet", 1, "fixedValue");
+        fixed(0) = 7.0;
+        EXPECT_NEAR(fixed.evaluate(0, 2.0, 0.5), 7.0, 1e-12);
+        PatchField zero("outlet", 1, "zeroGradient");
+        EXPECT_NEAR(zero.evaluate(0, 2.0, 0.5), 2.0, 1e-12);
+    });
+
     run_case("patchfield_fill", []() {
         PatchField pf("inlet", 4, "fixedValue");
         pf.fill(42.0);
