@@ -1,23 +1,24 @@
 #include "cfdx/core/geometry/mesh_validator.h"
 #include "common/test_harness.h"
+#include <algorithm>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-static Mesh cube(bool invert_bottom=false) {
+static Mesh cube(bool invert_all=false) {
     Mesh m;
     m.points().resize(8);
     m.points().set(0,0,0,0); m.points().set(1,1,0,0);
     m.points().set(2,1,1,0); m.points().set(3,0,1,0);
     m.points().set(4,0,0,1); m.points().set(5,1,0,1);
     m.points().set(6,1,1,1); m.points().set(7,0,1,1);
-    m.faces().push_face(invert_bottom ? std::vector<std::uint32_t>{0,1,2,3}
-                                      : std::vector<std::uint32_t>{0,3,2,1});
-    m.faces().push_face({4,5,6,7});
-    m.faces().push_face({0,1,5,4});
-    m.faces().push_face({3,7,6,2});
-    m.faces().push_face({0,4,7,3});
-    m.faces().push_face({1,2,6,5});
+    const std::vector<std::vector<std::uint32_t>> faces = {
+        {0,3,2,1}, {4,5,6,7}, {0,1,5,4},
+        {3,7,6,2}, {0,4,7,3}, {1,2,6,5}};
+    for (auto face : faces) {
+        if (invert_all) std::reverse(face.begin(), face.end());
+        m.faces().push_face(face);
+    }
     m.ownership().resize(6);
     for(std::size_t f=0; f<6; ++f) {
         m.ownership().set_owner(f,0);
