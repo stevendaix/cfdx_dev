@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <limits>
 #include <vector>
+#include <utility>
+#include <cstdint>
 
 namespace cfdx::core {
 
