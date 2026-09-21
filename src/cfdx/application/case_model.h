@@ -40,15 +40,10 @@ struct CaseModel {
     std::uint64_t numerics_revision{0};
 
     ChangeImpact set_parameter(std::string key, Parameter parameter) {
-        const auto old = parameters.find(key);
-        const ChangeImpact impact = parameter.impact;
+            const ChangeImpact impact = parameter.impact;
         parameters[std::move(key)] = std::move(parameter);
         ++revision;
-        if (old != parameters.end()) {
-            // Revisions are deliberately coarse-grained: the controller decides
-            // whether a restart/rebuild is required from the parameter metadata.
-        }
-        return impact;
+            return impact;
     }
 
     std::optional<Parameter> get_parameter(const std::string& key) const {
