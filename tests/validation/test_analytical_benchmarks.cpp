@@ -200,6 +200,9 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
              k<eq.matrix.row_offsets_data()[1];++k)
             std::cout << "(" << eq.matrix.columns_data()[k] << ","
                       << eq.matrix.values_data()[k] << ") ";
+        std::cout << " row1=";
+        for (std::uint32_t k=eq.matrix.row_offsets_data()[1]; k<eq.matrix.row_offsets_data()[2]; ++k)
+            std::cout << "(" << eq.matrix.columns_data()[k] << "," << eq.matrix.values_data()[k] << ") ";
         std::cout << "\n";
     }
     if (linear.status != SolverStatus::CONVERGED)
