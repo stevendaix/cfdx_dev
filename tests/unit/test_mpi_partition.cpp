@@ -177,15 +177,13 @@ int main() {
                 (part.cell_rank[0] == rank) ? 0 : 1;
             EXPECT_NEAR(values(owned_cell), static_cast<double>(rank), 1e-14);
 
-            // The halo plan is owner -> ghost: the ghost rank receives the
-            // remote owner's value in the owner's global cell slot.
-            const std::size_t owner_cell =
-                (part.cell_rank[0] == rank) ? 1 : 0;
-            if (part.cell_rank[owner_cell] != rank) {
-                const std::size_t remote_owner =
-                    (part.cell_rank[0] == rank) ? 1 : 0;
-                EXPECT_NEAR(values(remote_owner),
-                            static_cast<double>(part.cell_rank[remote_owner]), 1e-14);
+            // Every receive entry contains a global owner-cell slot. After
+            // exchange it must contain the value sent by that owner rank.
+            for (int owner_rank = 0; owner_rank < 2; ++owner_rank) {
+                if (owner_rank == rank) continue;
+                for (const int cell : plan.recv_cells[owner_rank])
+                    EXPECT_NEAR(values(static_cast<std::size_t>(cell)),
+                                static_cast<double>(owner_rank), 1e-14);
             }
         }
     });
