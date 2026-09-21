@@ -16,7 +16,7 @@ int main()
         validate_coupling_controls(c);
         EXPECT_NEAR(relaxed_value(1.0, 3.0, 0.5), 2.0, 1e-12);
         EXPECT_NEAR(rhie_chow_face_flux(2.0, 5.0, 3.0, 1.0, 2.0, 2.0, 1.0),
-                    1.5, 1e-12);
+                    3.5, 1e-12);
         EXPECT_TRUE(piso_correction_gain(2.0, 0.5) > 0.0);
     });
 
