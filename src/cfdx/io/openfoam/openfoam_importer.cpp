@@ -1,182 +1,222 @@
 #include "openfoam_importer.h"
-#include "cfdx/io/hdf5/hdf5_writer.h"
-#include "cfdx/io/hdf5/hdf5_reader.h"
-#include "cfdx/core/mesh/mesh.h"
-#include "cfdx/core/mesh/ownership.h"
-#include "cfdx/core/mesh/index_types.h"
 
-#if HAS_MESHIO
-#include <meshio/meshio.h>
-#endif
-
+#include "cfdx/core/mesh/boundary.h"
 #include <fstream>
+#include <regex>
 #include <sstream>
-#include <iostream>
-#include <unordered_map>
-#include <vector>
 #include <string>
-#include <cassert>
-#include <cmath>
-
-using namespace cfdx::core;
-using namespace std;
+#include <vector>
+#include <filesystem>
+#include <cstdint>
 
 namespace cfdx::io::openfoam {
-    struct Point3D { double x, y, z; };
+namespace {
+
+std::string strip_comments(std::string text) {
+    text = std::regex_replace(text, std::regex(R"(//[^\n]*)"), "");
+    text = std::regex_replace(text, std::regex(R"(/\*[\s\S]*?\*/)"), "");
+    return text;
 }
 
-// ---------------------------------------------------------------------------
-// Helper: parse OpenFOAM dictionary entries (simple key value or key { ... })
-// ---------------------------------------------------------------------------
-
-static bool get_dict_string(const std::string& dictContent, const std::string& entry, std::string& value) {
-    size_t pos = dictContent.find(entry + " ");
-    if (pos == std::string::npos) return false;
-    pos += entry.size() + 1;
-    size_t end = dictContent.find(";", pos);
-    if (end == std::string::npos) end = dictContent.size();
-    value = dictContent.substr(pos, end - pos);
-    size_t start = value.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return false;
-    size_t last = value.find_last_not_of(" \t\r\n");
-    value = value.substr(start, last - start + 1);
+bool read_text(const std::filesystem::path& path, std::string& text) {
+    std::ifstream in(path);
+    if (!in) return false;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    text = strip_comments(buffer.str());
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// M0.10-T01: OpenFOAM importer main entry
-// ---------------------------------------------------------------------------
+bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3>& points) {
+    std::string text;
+    if (!read_text(path, text)) return false;
+    const auto begin = text.find('(');
+    const auto end = text.rfind(')');
+    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
 
-bool cfdx::io::openfoam::import_openfoam_case(const std::string& ofCasePath, Mesh& mesh) {
-    // Read mesh using meshio adapter
-    vector<Vec3> points;
-    vector<OpenFOAMFace> faces;
-    vector<PatchDef> patches;
+    const std::string body = text.substr(begin + 1, end - begin - 1);
+    std::regex point_re(R"(\(\s*([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*\))");
+    for (std::sregex_iterator it(body.begin(), body.end(), point_re), e; it != e; ++it) {
+        points.emplace_back(
+            std::stod((*it)[1].str()),
+            std::stod((*it)[2].str()),
+            std::stod((*it)[3].str()));
+    }
+    return !points.empty();
+}
 
-    if (!read_openfoam_mesh_meshio(ofCasePath, points, faces, patches)) {
+bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
+    std::string text;
+    if (!read_text(path, text)) return false;
+    const auto begin = text.find('(');
+    const auto end = text.rfind(')');
+    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
+    std::istringstream in(text.substr(begin + 1, end - begin - 1));
+    std::int64_t value = 0;
+    while (in >> value) values.push_back(value);
+    return !values.empty();
+}
+
+bool read_faces(const std::filesystem::path& path,
+                std::vector<std::vector<std::uint32_t>>& faces) {
+    std::string text;
+    if (!read_text(path, text)) return false;
+    const auto begin = text.find('(');
+    const auto end = text.rfind(')');
+    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
+    const std::string body = text.substr(begin + 1, end - begin - 1);
+
+    std::regex face_re(R"(\b(\d+)\s*\(([^()]*)\))");
+    for (std::sregex_iterator it(body.begin(), body.end(), face_re), e; it != e; ++it) {
+        const std::size_t count = static_cast<std::size_t>(std::stoull((*it)[1].str()));
+        std::istringstream in((*it)[2].str());
+        std::vector<std::uint32_t> face;
+        std::uint64_t index = 0;
+        while (in >> index) {
+            if (index > std::numeric_limits<std::uint32_t>::max()) return false;
+            face.push_back(static_cast<std::uint32_t>(index));
+        }
+        if (face.size() != count || face.size() < 3) return false;
+        faces.push_back(std::move(face));
+    }
+    return !faces.empty();
+}
+
+cfdx::core::PatchType patch_type(const std::string& type) {
+    return cfdx::core::patch_type_from_string(type);
+}
+
+bool read_boundary(const std::filesystem::path& path,
+                   cfdx::core::BoundaryPatches& boundary) {
+    std::string text;
+    if (!read_text(path, text)) return false;
+
+    std::regex patch_re(
+        R"(([A-Za-z_][A-Za-z0-9_.-]*)\s*\{([\s\S]*?)\})");
+    std::regex type_re(R"(\btype\s+([^;]+);)");
+    std::regex nfaces_re(R"(\bnFaces\s+(\d+)\s*;)");
+    std::regex start_re(R"(\bstartFace\s+(\d+)\s*;)");
+
+    bool found = false;
+    for (std::sregex_iterator it(text.begin(), text.end(), patch_re), e; it != e; ++it) {
+        const std::string name = (*it)[1].str();
+        const std::string body = (*it)[2].str();
+        std::smatch match;
+        if (!std::regex_search(body, match, type_re)) continue;
+        if (!std::regex_search(body, match, nfaces_re)) continue;
+        const std::size_t nfaces = static_cast<std::size_t>(std::stoull(match[1].str()));
+        if (!std::regex_search(body, match, start_re)) continue;
+        const std::size_t start = static_cast<std::size_t>(std::stoull(match[1].str()));
+
+        cfdx::core::Patch patch;
+        patch.name = name;
+        patch.type = patch_type(std::regex_search(body, match, type_re) ? match[1].str() : "");
+        patch.face_ids.reserve(nfaces);
+        for (std::size_t i = 0; i < nfaces; ++i) {
+            patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start + i));
+        }
+        boundary.add_patch(patch);
+        found = true;
+    }
+    return found;
+}
+
+} // namespace
+
+bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) {
+    namespace fs = std::filesystem;
+    const fs::path root(case_path);
+    const fs::path poly = root / "constant" / "polyMesh";
+    if (!fs::is_directory(poly)) return false;
+
+    std::vector<cfdx::core::Vec3> points;
+    std::vector<std::vector<std::uint32_t>> faces;
+    std::vector<std::int64_t> owner;
+    std::vector<std::int64_t> neighbour;
+    cfdx::core::BoundaryPatches boundary;
+
+    if (!read_points(poly / "points", points) ||
+        !read_faces(poly / "faces", faces) ||
+        !read_label_list(poly / "owner", owner) ||
+        !read_label_list(poly / "neighbour", neighbour)) {
         return false;
     }
+    if (owner.size() != faces.size() || neighbour.size() > owner.size()) return false;
 
-    // Build CFDX Mesh
+    mesh.clear();
     mesh.points().resize(points.size());
-    for (std::size_t i = 0; i < points.size(); ++i) {
+    for (std::size_t i = 0; i < points.size(); ++i)
         mesh.points().set(i, points[i].x, points[i].y, points[i].z);
-    }
 
-    // Add faces as polyhedral faces
-    mesh.faces().clear();
+    mesh.faces().build_from_scratch(
+        std::vector<std::vector<cfdx::core::FaceIndex>>(faces.begin(), faces.end()));
+
     mesh.ownership().resize(faces.size());
-    for (std::size_t i = 0; i < faces.size(); ++i) {
-        mesh.ownership().set_owner(i, 0);
-        mesh.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        if (owner[f] < 0) return false;
+        mesh.ownership().set_owner(f, static_cast<cfdx::core::CellIndex>(owner[f]));
+        mesh.ownership().set_neighbour(
+            f, f < neighbour.size() ? neighbour[f] : cfdx::core::FaceOwnership::BOUNDARY);
     }
 
-    for (std::size_t i = 0; i < faces.size(); ++i) {
-        const auto& f = faces[i];
-        if (f.indices.size() >= 3) {
-            std::vector<cfdx::core::FaceIndex> idx(f.indices.begin(), f.indices.end());
-            mesh.faces().push_face(idx);
-        }
+    // Reconstruct cell -> face CSR directly from owner/neighbour.
+    std::size_t n_cells = 0;
+    for (std::int64_t value : owner) {
+        if (value < 0) return false;
+        n_cells = std::max(n_cells, static_cast<std::size_t>(value) + 1);
+    }
+    for (std::int64_t value : neighbour) {
+        if (value >= 0)
+            n_cells = std::max(n_cells, static_cast<std::size_t>(value) + 1);
     }
 
-    mesh.set_boundary(BoundaryPatches{});
+    std::vector<std::vector<cfdx::core::FaceIndex>> cell_faces(n_cells);
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        cell_faces[static_cast<std::size_t>(owner[f])].push_back(
+            static_cast<cfdx::core::FaceIndex>(f));
+        if (f < neighbour.size() && neighbour[f] >= 0)
+            cell_faces[static_cast<std::size_t>(neighbour[f])].push_back(
+                static_cast<cfdx::core::FaceIndex>(f));
+    }
+    for (const auto& cf : cell_faces) mesh.cells().push_cell(cf);
 
+    const fs::path boundary_file = poly / "boundary";
+    if (fs::exists(boundary_file)) {
+        if (!read_boundary(boundary_file, boundary)) return false;
+        mesh.set_boundary(boundary);
+    }
+
+    const auto validation = mesh.topo_validate();
+    return validation.ok;
+}
+
+bool read_openfoam_mesh_meshio(const std::string& case_path,
+                               std::vector<cfdx::core::Vec3>& points,
+                               std::vector<OpenFOAMFace>& faces,
+                               std::vector<PatchDef>& patches) {
+    cfdx::core::Mesh mesh;
+    if (!import_openfoam_case(case_path, mesh)) return false;
+
+    points.resize(mesh.n_points());
+    for (std::size_t i = 0; i < mesh.n_points(); ++i)
+        points[i] = {mesh.points().x(i), mesh.points().y(i), mesh.points().z(i)};
+
+    faces.resize(mesh.n_faces());
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const auto off = mesh.faces().offsets_data()[f];
+        const auto end = mesh.faces().offsets_data()[f + 1];
+        faces[f].n = static_cast<int>(end - off);
+        faces[f].indices.assign(
+            mesh.faces().vertices_data() + off,
+            mesh.faces().vertices_data() + end);
+    }
+    for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+        const auto& patch = mesh.boundary().patch(p);
+        patches.emplace_back(
+            patch.name, static_cast<int>(patch.type), static_cast<int>(patch.size()),
+            std::vector<std::uint32_t>(patch.face_ids.begin(), patch.face_ids.end()));
+    }
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Helper: read OpenFOAM mesh via meshio
-// ---------------------------------------------------------------------------
-
-bool cfdx::io::openfoam::read_openfoam_mesh_meshio(const std::string& ofCasePath,
-                                                   std::vector<Vec3>& points,
-                                                   std::vector<OpenFOAMFace>& faces,
-                                                   std::vector<PatchDef>& patches) {
-    std::ifstream ptsFile(ofCasePath + "/constant/polyMesh/points");
-    if (ptsFile.good()) {
-        double x, y, z;
-        while (ptsFile >> x >> y >> z) {
-            cfdx::core::Vec3 p{0.0, 0.0, 0.0};
-            p = {x, y, z};
-            points.push_back(p);
-        }
-    }
-
-    std::ifstream faceFile(ofCasePath + "/constant/polyMesh/faces");
-    if (faceFile.good()) {
-        int nPoints;
-        while (faceFile >> nPoints) {
-            std::vector<uint32_t> indices;
-            for (int i = 0; i < nPoints; ++i) {
-                int idx;
-                faceFile >> idx;
-                indices.push_back(static_cast<uint32_t>(idx));
-            }
-            if (indices.size() >= 3) {
-                faces.push_back({static_cast<int>(indices.size()), indices});
-            }
-        }
-    }
-
-    patches.push_back({"all", 0, 4, std::vector<uint32_t>{0}});
-
-    return true;
-}
-
-// ---------------------------------------------------------------------------
-// Field import (scalar)
-// ---------------------------------------------------------------------------
-
-bool cfdx::io::openfoam::import_openfoam_field(const std::string& ofFieldName,
-                                               const std::string& ofCasePath,
-                                               ScalarCellField& cfdxField) {
-    std::ifstream fieldFile(ofCasePath + "/constant/fields/" + ofFieldName);
-    if (!fieldFile.good()) {
-        fieldFile.open(ofCasePath + "/system/fields/" + ofFieldName);
-    }
-    if (fieldFile.good()) {
-        std::vector<double> values;
-        double val;
-        while (fieldFile >> val) values.push_back(val);
-        cfdxField.resize(values.size());
-        for (size_t i = 0; i < values.size() && i < cfdxField.size(); ++i) {
-            cfdxField.data()[0][i] = values[i];
-        }
-        return true;
-    }
-    return false;
-}
-
-// ---------------------------------------------------------------------------
-// Field import (vector)
-// ---------------------------------------------------------------------------
-
-bool cfdx::io::openfoam::import_openfoam_field(const std::string& ofFieldName,
-                                               const std::string& ofCasePath,
-                                               Vec3CellField& cfdxField) {
-    std::ifstream fieldFile(ofCasePath + "/constant/fields/" + ofFieldName);
-    if (!fieldFile.good()) {
-        fieldFile.open(ofCasePath + "/system/fields/" + ofFieldName);
-    }
-    if (fieldFile.good()) {
-        std::vector<double> values;
-        double val;
-        while (fieldFile >> val) values.push_back(val);
-        std::size_t n_cells = values.size() / 3;
-        if (n_cells == 0) return false;
-        Vec3CellField temp_field(n_cells);
-        for (std::size_t i = 0; i < n_cells; ++i) {
-            Vec3& v = temp_field(i);
-            v.x = values[i * 3];
-            v.y = values[i * 3 + 1];
-            v.z = values[i * 3 + 2];
-        }
-        cfdxField = temp_field;
-        return true;
-    }
-    return false;
-}
-
-// ============================================================================
-// End of openfoam_importer.cpp
-// ============================================================================
+} // namespace cfdx::io::openfoam
