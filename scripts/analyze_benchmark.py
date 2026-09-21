@@ -20,7 +20,7 @@ for n in sizes:
     # On utilise des valeurs cohérentes avec un schéma d'ordre 2 pour montrer le calcul
     # (le benchmark scientifique réel nécessite le solveur complet, pas le stub)
 
-    # Pour le benchmark structurel, on vérifie juste que le pipeline passe (exit 0) et que le maillage grandit
+    # Structural inventory only: this script does not execute the solver or claim convergence.
     results[n] = {"mesh_size": n * n, "triangles": 2 * n * n, "boundary_lines": 4 * n}
 
 # Afficher le tableau de scaling
@@ -34,7 +34,7 @@ for n in sizes:
 # Calcul d'ordre de convergence (simulation avec valeurs cohérentes d'un vrai MMS d'ordre 2)
 # Note : le solveur simplifié donne L_2 constant ; le benchmark scientifique réel attend le solveur final.
 # Ici on montre la formule et le résultat attendu.
-print("\n=== CALCUL D'ORDRE DE CONVERGENCE (formule) ===")
+print("\n=== CALCUL D'ORDRE DE CONVERGENCE (formule indicative) ===")
 E_16 = 0.508141  # Mesuré (stub simplifié)
 E_32 = 0.508141  # Même valeur car stub simplifié (pas de convergence réelle avec stub)
 print(f"L_2(16) = {E_16:.6f}")
