@@ -2,6 +2,7 @@
 #include "common/test_harness.h"
 #include <cmath>
 #include <stdexcept>
+#include <limits>
 
 using namespace cfdx::core;
 
@@ -28,6 +29,23 @@ int main() {
         EXPECT_NEAR(result(0), 0.9 / 1.1, 1e-10);
     });
 
+    run_case("context_shape_mismatch", [] {
+        ScalarCellField phi(2, "phi", "1", 1);
+        TimeIntegrationContext ctx(1, 1, "phi");
+        ctx.initialize(ScalarCellField(1, "initial", "1", 1));
+        RhsFunction rhs = [](const ScalarCellField&, ScalarCellField& out) { out(0) = 0.0; };
+        EXPECT_THROW(advance_time(phi, 0.1, rhs, TimeScheme::BDF2, &ctx), std::invalid_argument);
+    });
+
+    run_case("nonfinite_rhs_rejected", [] {
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 1.0;
+        RhsFunction rhs = [](const ScalarCellField&, ScalarCellField& out) {
+            out(0) = std::numeric_limits<double>::quiet_NaN();
+        };
+        EXPECT_THROW(advance_time(phi, 0.1, rhs, TimeScheme::EULER_EXPLICIT), std::runtime_error);
+    });
+
     run_case("invalid_dt", [] {
         ScalarCellField phi(1, "phi", "1", 1);
         RhsFunction rhs = [](const ScalarCellField&, ScalarCellField& out) {
@@ -51,6 +69,8 @@ int main() {
         EXPECT_NEAR(first(0), 1.0 / 1.2, 1e-10);
 
         const auto second = advance_time(first, 0.1, rhs, TimeScheme::BDF2, &ctx);
+        const double expected = (4.0 * first(0) - 1.0) / 3.4;
+        EXPECT_NEAR(second(0), expected, 1e-10);
         EXPECT_TRUE(std::isfinite(second(0)));
         EXPECT_TRUE(second(0) > 0.0);
     });
