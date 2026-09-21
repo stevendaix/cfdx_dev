@@ -62,9 +62,15 @@ int main() {
     // Command/TUI workflow.
     CommandBus bus(workbench);
     assert(bus.execute("set output.frequency 20 hot").ok);
+    assert(bus.execute("set saved.parameter 42 hot").ok);
     assert(bus.execute("checkpoint").ok);
+    assert(workbench.controller().model().get_parameter("saved.parameter").has_value());
+    assert(bus.execute("set saved.parameter 99 hot").ok);
     assert(bus.execute("restore").ok);
     assert(bus.restored_snapshot().has_value());
+    const auto restored_parameter = workbench.controller().model().get_parameter("saved.parameter");
+    assert(restored_parameter.has_value());
+    assert(std::get<double>(restored_parameter->value) == 42.0);
 
     // Persistent checkpoint round-trip.
     const auto path = std::filesystem::temp_directory_path() / "cfdx_application_checkpoint.txt";
@@ -73,6 +79,7 @@ int main() {
     assert(disk.contains());
     const auto restored = disk.load();
     assert(restored.model.name == model.name);
+    assert(restored.model.get_parameter("saved.parameter").has_value());
     assert(restored.checkpoint.iteration == workbench.controller().checkpoint().iteration);
     std::filesystem::remove(path);
 
