@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <functional>
 #include <stdexcept>
+#include <utility>
 
 namespace cfdx {
 namespace core {
