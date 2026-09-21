@@ -80,7 +80,7 @@ int main()
         RadiationTransportControls c;c.absorption=1;c.scattering=0;c.max_iterations=100;c.tolerance=1e-10;
         auto r=solve_participating_radiation(m,g,T,G,q,dirs,c,bc);
         EXPECT_TRUE(r.converged);
-        EXPECT_NEAR(q(0),0.0,1e-5*blackbody(1000));
+        EXPECT_NEAR(q(0),0.0,1e-5*blackbody_emissive_power(1000));
     });
 
     return run_all();
