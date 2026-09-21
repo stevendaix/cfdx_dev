@@ -1,13 +1,14 @@
 #include "cfdx/application/simulation_controller.h"
 
-#include <algorithm>
-#include <cmath>
 #include <utility>
 
 namespace cfdx::application {
 
 SimulationController::SimulationController(CaseModel model)
-    : model_(std::move(model)) {}
+    : model_(std::move(model)) {
+    checkpoint_.time = model_.is_transient() ? model_.time.start : 0.0;
+    create_checkpoint();
+}
 
 SimulationState SimulationController::state() const {
     std::lock_guard<std::mutex> lock(mutex_);
