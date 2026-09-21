@@ -101,4 +101,31 @@ int main() {
     });
 
     return run_all();
+
+    // Two-cell regression: internal face vectors are owner-oriented globally,
+    // but must be reversed for the neighbour cell during volume reconstruction.
+    {
+        // The test uses the production Mesh topology so the owner/neighbour
+        // contract is exercised rather than manually duplicating its logic.
+        auto mesh = make_two_cell_cartesian_mesh();
+        std::vector<cfdx::core::Vec3> fc(mesh.n_faces());
+        std::vector<cfdx::core::Vec3> sf(mesh.n_faces());
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto off = mesh.faces().offsets_data()[f];
+            const auto n = mesh.faces().offsets_data()[f + 1] - off;
+            const auto g = cfdx::core::compute_face_geometry(
+                mesh.points().x_data(), mesh.points().y_data(), mesh.points().z_data(),
+                mesh.faces().vertices_data(), off, n);
+            fc[f] = g.centre;
+            sf[f] = g.Sf;
+        }
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            const auto off = mesh.cells().offsets_data()[cell];
+            const auto n = mesh.cells().offsets_data()[cell + 1] - off;
+            const auto g = cfdx::core::compute_cell_geometry(
+                mesh, fc.data(), sf.data(), mesh.cells().faces_data() + off, cell, n);
+            EXPECT_NEAR(g.volume, 0.5, 1e-12);
+            EXPECT_GT(g.signed_volume, 0.0);
+        }
+    }
 }
