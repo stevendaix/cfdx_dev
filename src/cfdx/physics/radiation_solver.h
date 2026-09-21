@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <vector>
 #include <limits>
+#include <iostream>
 
 namespace cfdx::physics {
 
@@ -111,6 +112,11 @@ inline RadiationSolveResult solve_participating_radiation(
             sc.tolerance=controls.linear_tolerance;
             sc.relaxation=controls.intensity_relaxation;
             const auto lr=solve_scalar_equation(eq,intensity,sc);
+            if (nc == 1 && lr.status != cfdx::core::SolverStatus::CONVERGED)
+                std::cout << "DEBUG_RAD m=" << m << " diag=" << eq.diagonal[0]
+                          << " rhs=" << eq.rhs(0) << " I=" << intensity(0)
+                          << " status=" << static_cast<int>(lr.status)
+                          << " residual=" << lr.residual << "\n";
             for(std::size_t c=0;c<nc;++c) intensities[m](c)=intensity(c);
             if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
                 throw std::runtime_error("radiation intensity linear solve did not converge");
