@@ -48,3 +48,12 @@ The script executes the Level-A solver benchmarks, the extended component matrix
 ## Status semantics
 
 PASS means the executable was run and its explicit gates passed. It does not mean that a higher-level physical validation has been completed when the required production case is not yet implemented.
+
+
+## V&V methodology basis
+
+The campaign follows the usual separation between code verification, solution verification and validation. ASME V&V 20 emphasizes quantitative comparison at specified validation variables, while MMS provides a systematic way to generate exact solutions and assess observed order under grid refinement.
+
+References:
+- ASME V&V 20-2009 (R2021): https://www.asme.org/codes-standards/find-codes-standards/standard-for-verification-and-validation-in-computational-fluid-dynamics-and-heat-transfer
+- Roache, P. J., "Code Verification by the Method of Manufactured Solutions", Journal of Fluids Engineering, 124(1), 4-10, 2002: https://doi.org/10.1115/1.1436090
