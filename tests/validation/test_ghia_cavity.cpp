@@ -238,6 +238,8 @@ CaseMetrics run_case(const CavityCase& test)
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
              <<" iterations="<<result.solve.iterations
              <<" continuity="<<result.solve.history.back().continuity_linf
+             <<" continuity_normalized="<<result.solve.history.back().continuity_normalized
+             <<" momentum_equation_residual="<<result.solve.history.back().momentum_equation_residual
              <<" top_normal_flux="<<top_normal_flux
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs
              <<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
@@ -247,6 +249,9 @@ CaseMetrics run_case(const CavityCase& test)
         throw std::runtime_error("Ghia velocity profile mismatch");
     if(result.solve.history.back().continuity_linf>1e-7)
         throw std::runtime_error("Ghia continuity residual too large");
+    if(!std::isfinite(result.solve.history.back().momentum_equation_residual) ||
+       result.solve.history.back().momentum_equation_residual>1e-7)
+        throw std::runtime_error("Ghia final momentum equation residual too large");
     if(top_normal_flux>1e-12)
         throw std::runtime_error("Ghia lid violates zero-normal-velocity boundary condition");
 
