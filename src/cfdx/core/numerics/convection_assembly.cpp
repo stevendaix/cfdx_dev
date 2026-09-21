@@ -1,5 +1,6 @@
 #include "convection_assembly.h"
 #include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/geometry/cell_geometry.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -35,20 +36,9 @@ GeometryData build_geometry(const Mesh& mesh)
         g.face_area_vectors[f]=fg.Sf;
     }
 
-    for (std::size_t c=0; c<mesh.n_cells(); ++c) {
-        const auto off=mesh.cells().offsets_data()[c];
-        const auto n=mesh.cells().offsets_data()[c+1]-off;
-        Vec3 centre;
-        double weight=0.0;
-        for (std::size_t k=0;k<n;++k) {
-            const auto f=mesh.cells().faces_data()[off+k];
-            const double a=g.face_area_vectors[f].mag();
-            centre=centre+g.face_centres[f]*a;
-            weight+=a;
-        }
-        if (!(weight>0.0)) throw std::runtime_error("convection assembly: invalid cell geometry");
-        g.cell_centres[c]=centre*(1.0/weight);
-    }
+    compute_area_weighted_cell_centres(
+        mesh, g.face_centres.data(), g.face_area_vectors.data(), g.cell_centres.data());
+    orient_mesh_face_vectors(mesh, g.face_centres, g.cell_centres, g.face_area_vectors);
     return g;
 }
 
