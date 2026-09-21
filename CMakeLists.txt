@@ -358,8 +358,12 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
+        if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
+            set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
+        endif()
         add_test(NAME test_mpi_partition
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
