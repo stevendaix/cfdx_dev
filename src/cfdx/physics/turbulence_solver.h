@@ -83,24 +83,23 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             spe(i)=-controls.density*controls.C2*ei/ki;
         }
 
-        // Diffusivity is cell dependent; the generic FVM operator currently
-        // accepts a constant coefficient, so use the conservative cell mean.
-        double nut_mean=0.0;
+        std::vector<double> gamma_k(n), gamma_e(n);
         for(std::size_t i=0;i<n;++i) {
             const double ki=std::max(k(i),controls.k_min);
             const double ei=std::max(epsilon(i),controls.epsilon_min);
-            nut_mean+=controls.C_mu*ki*ki/ei;
+            const double nut=controls.C_mu*ki*ki/ei;
+            gamma_k[i]=controls.density*
+                (controls.molecular_viscosity+nut/controls.sigma_k);
+            gamma_e[i]=controls.density*
+                (controls.molecular_viscosity+nut/controls.sigma_epsilon);
         }
-        nut_mean/=std::max<std::size_t>(n,1);
 
         auto eqk=assemble_scalar_equation(
-            mesh,geometry,mass_flux,
-            controls.density*(controls.molecular_viscosity+nut_mean/controls.sigma_k),
-            sk,spk,k_bcs,true);
+            mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+            nullptr,nullptr,&gamma_k);
         auto eqe=assemble_scalar_equation(
-            mesh,geometry,mass_flux,
-            controls.density*(controls.molecular_viscosity+nut_mean/controls.sigma_epsilon),
-            se,spe,epsilon_bcs,true);
+            mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
+            nullptr,nullptr,&gamma_e);
 
         ScalarSolveControls sc;
         sc.max_iterations=2000;
