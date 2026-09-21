@@ -18,6 +18,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/index_types.h"
+#include "cfdx/core/mesh/ownership.h"
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -68,13 +69,11 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Finite-volume operators need a positive geometric measure even for
-    // imported meshes whose face winding is not globally consistent. Keep the
-    // signed sum separately so a consistently inverted cell remains visible
-    // to the validator.
+    // Signed pyramid decomposition. The sign is an invariant of the face
+    // orientation and must not be erased here: validation uses it to reject
+    // globally inverted cells. The absolute value is exposed separately as
+    // the geometric measure for kernels that require a positive volume.
     double signed_volume = 0.0;
-    double positive_volume = 0.0;
-    double absolute_signed_volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
         const FaceIndex f = face_ids[k];
         const Vec3& cf = face_centres[f];
@@ -82,21 +81,46 @@ inline CellGeometry compute_cell_geometry(
         const double area = sf.mag();
         if (!(area > 0.0))
             throw std::runtime_error("CellGeometry: degenerate face");
-        const double projection = (cf - centre).dot(sf);
-        signed_volume += projection;
-        positive_volume += std::abs(projection);
-        absolute_signed_volume += std::abs(projection);
+        signed_volume += (cf - centre).dot(sf);
     }
     signed_volume /= 3.0;
-    positive_volume /= 3.0;
-    absolute_signed_volume /= 3.0;
 
-    const double exposed_signed_volume =
-        (absolute_signed_volume > 0.0 &&
-         std::abs(signed_volume) / absolute_signed_volume > 1.0 - 1e-10)
-            ? signed_volume
-            : positive_volume;
-    return {centre, positive_volume, exposed_signed_volume};;
+    return {centre, std::abs(signed_volume), signed_volume};
+}
+
+
+inline CellGeometry compute_cell_geometry_oriented(
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    const FaceIndex* face_ids,
+    std::size_t n_cell_faces,
+    CellIndex cell,
+    const FaceOwnership& ownership)
+{
+    if (n_cell_faces == 0)
+        throw std::runtime_error("CellGeometry: cell must have at least one face");
+
+    std::vector<Vec3> local_centres(n_cell_faces);
+    std::vector<Vec3> local_Sf(n_cell_faces);
+    std::vector<FaceIndex> local_ids(n_cell_faces);
+
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        if (f >= ownership.size())
+            throw std::runtime_error("CellGeometry: face ownership index out of range");
+
+        const CellIndex owner = ownership.owner(f);
+        const std::int64_t neighbour = ownership.neighbour(f);
+        if (owner != cell && neighbour != static_cast<std::int64_t>(cell))
+            throw std::runtime_error("CellGeometry: face is not attached to requested cell");
+
+        local_centres[k] = face_centres[f];
+        local_Sf[k] = (owner == cell) ? face_Sf[f] : face_Sf[f] * (-1.0);
+        local_ids[k] = static_cast<FaceIndex>(k);
+    }
+
+    return compute_cell_geometry(
+        local_centres.data(), local_Sf.data(), local_ids.data(), n_cell_faces);
 }
 
 }  // namespace core
