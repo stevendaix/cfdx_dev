@@ -60,7 +60,8 @@ private:
     // Write XML header + points
     void write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                       const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                      const std::vector<VtkCellType>& vtk_cell_types);
+                      const std::vector<VtkCellType>& vtk_cell_types,
+                      const std::vector<std::size_t>& vtk_to_original_cell);
 
     // Write cell connectivity
     void write_cells(std::ofstream& os,
