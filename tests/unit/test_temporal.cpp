@@ -42,7 +42,7 @@ int main() {
         double phi_prev = 1.0;
         double dt = 0.1;
         double result = bdf2_step(phi_n, dt, phi_prev, reaction);
-        double expected = 1.0 / 1.2;
+        double expected = 3.0 / 3.4;
         EXPECT_NEAR(result, expected, 1e-10);
     });
 
