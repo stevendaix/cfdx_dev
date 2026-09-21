@@ -171,6 +171,7 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     mesh.ownership().resize(faces.size());
     for (std::size_t f = 0; f < faces.size(); ++f) {
         if (owner[f] < 0) return false;
+        if (f < neighbour.size() && neighbour[f] < -1) return false;
         mesh.ownership().set_owner(f, static_cast<cfdx::core::CellIndex>(owner[f]));
         mesh.ownership().set_neighbour(
             f, f < neighbour.size() ? neighbour[f] : cfdx::core::FaceOwnership::BOUNDARY);
@@ -198,10 +199,9 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     for (const auto& cf : cell_faces) mesh.cells().push_cell(cf);
 
     const fs::path boundary_file = poly / "boundary";
-    if (fs::exists(boundary_file)) {
-        if (!read_boundary(boundary_file, boundary)) return false;
-        mesh.set_boundary(boundary);
-    }
+    if (!fs::exists(boundary_file) || !read_boundary(boundary_file, boundary))
+        return false;
+    mesh.set_boundary(boundary);
 
     const auto validation = mesh.topo_validate();
     return validation.ok;
