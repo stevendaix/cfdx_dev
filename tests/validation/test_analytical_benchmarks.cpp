@@ -66,10 +66,10 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
     for(std::size_t i=0;i<n;++i) {
         const std::size_t b=4*i;
         const std::size_t u=4*(i+1);
-        side_x0.push_back(add_face({b+0,u+0,u+3,b+3}));
-        side_x1.push_back(add_face({b+1,b+2,u+2,u+1}));
-        side_z0.push_back(add_face({b+0,b+1,u+1,u+0}));
-        side_z1.push_back(add_face({b+3,u+3,u+2,b+2}));
+        side_x0.push_back(add_face({b+0,b+3,u+3,u+0}));
+        side_x1.push_back(add_face({b+1,u+1,u+2,b+2}));
+        side_z0.push_back(add_face({b+0,u+0,u+1,b+1}));
+        side_z1.push_back(add_face({b+3,b+2,u+2,u+3}));
         if(i+1<n)
             internal.push_back(add_face({u+0,u+1,u+2,u+3}));
     }
