@@ -26,6 +26,7 @@
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
+using namespace cfdx::thermodynamics;
 
 namespace {
 void close(double v, double ref, double tol, const char* msg) {
