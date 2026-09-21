@@ -232,8 +232,9 @@ inline double two_surface_exchange(double e1, double e2, double T1, double T2,
                                    double F12)
 {
     if (e1 <= 0.0 || e1 > 1.0 || e2 <= 0.0 || e2 > 1.0 ||
-        T1 < 0.0 || T2 < 0.0 || F12 <= 0.0 || F12 > 1.0)
+        T1 < 0.0 || T2 < 0.0 || F12 < 0.0 || F12 > 1.0)
         throw std::invalid_argument("invalid radiation exchange input");
+    if (F12 == 0.0) return 0.0;
     const double resistance = (1.0-e1)/e1 + 1.0/F12 + (1.0-e2)/e2;
     return sigma_sb * (std::pow(T1,4)-std::pow(T2,4)) / resistance;
 }
@@ -264,12 +265,18 @@ inline void validate_reciprocity(const std::vector<double>& F,
                 throw std::invalid_argument("view-factor reciprocity violation");
 }
 
-inline double p1_source(double absorption, double emission_coefficient, double T)
+inline double p1_blackbody_intensity(double T)
 {
-    if (absorption < 0.0 || emission_coefficient < 0.0 || T < 0.0)
+    if (T < 0.0) throw std::invalid_argument("temperature must be non-negative");
+    return blackbody(T) / M_PI;
+}
+
+inline double p1_source(double absorption, double mean_intensity, double T)
+{
+    if (absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
         throw std::invalid_argument("invalid P1 source input");
-    return 4.0 * sigma_sb * absorption *
-           (std::pow(T,4) - emission_coefficient);
+    // P1 source convention: S_r = 4*kappa*(I_b - J).
+    return 4.0 * absorption * (p1_blackbody_intensity(T) - mean_intensity);
 }
 
 struct Direction {

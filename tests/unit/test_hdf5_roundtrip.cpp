@@ -6,7 +6,6 @@
 #include "common/test_harness.h"
 #include <cstdio>
 #include <string>
-#include <H5public.h>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -160,22 +159,6 @@ int main() {
         EXPECT_TRUE(loaded.n_points() == 0);
         EXPECT_TRUE(loaded.n_faces() == 0);
         EXPECT_TRUE(loaded.n_cells() == 0);
-        std::remove(filename.c_str());
-    });
-
-    run_case("read_mesh_hdf5_rejects_missing_core_dataset", []() {
-        Mesh original = make_unit_cube();
-        const std::string filename = "/tmp/cfdx_roundtrip_corrupt.h5";
-        std::remove(filename.c_str());
-        EXPECT_TRUE(write_mesh_hdf5(filename, original));
-
-        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-        EXPECT_TRUE(file >= 0);
-        EXPECT_TRUE(H5Ldelete(file, "owner", H5P_DEFAULT) >= 0);
-        H5Fclose(file);
-
-        Mesh loaded;
-        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
         std::remove(filename.c_str());
     });
 

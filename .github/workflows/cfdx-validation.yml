@@ -1,0 +1,36 @@
+name: CFDX validation
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  m1-m4-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-validation -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_MPI=OFF             -DCFDX_BUILD_PYTHON=OFF             -DCFDX_USE_HDF5_SERIAL=OFF
+
+      - name: Build validation executables
+        run: |
+          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_ghia_cavity             test_level_b_reference_benchmarks             test_level_c_coupled_verification             --parallel 2
+
+      - name: Run validation tests
+        run: |
+          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|ghia_cavity|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
+
+      - name: Run campaign driver
+        run: |
+          python3 scripts/run_validation.py --build-dir build-validation

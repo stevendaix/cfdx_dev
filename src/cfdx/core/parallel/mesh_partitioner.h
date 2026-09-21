@@ -161,8 +161,10 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
 
 // Build halo exchange plan from partition
 struct HaloPlan {
-    std::vector<std::vector<int>> send_faces;  // send_faces[rank] = list of face indices to send
-    std::vector<std::vector<int>> recv_faces;  // recv_faces[rank] = list of face indices to receive
+    std::vector<std::vector<int>> send_faces;
+    std::vector<std::vector<int>> recv_faces;
+    std::vector<std::vector<int>> send_cells;
+    std::vector<std::vector<int>> recv_cells;
 };
 
 inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm comm = MPI_COMM_WORLD) {
@@ -175,6 +177,8 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
     HaloPlan plan;
     plan.send_faces.resize(size);
     plan.recv_faces.resize(size);
+    plan.send_cells.resize(size);
+    plan.recv_cells.resize(size);
     
     for (std::size_t f = 0; f < n_faces; ++f) {
         const int owner_rank = part.face_owner_rank[f];
@@ -182,11 +186,15 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
         
         if (ghost_rank >= 0) {
             // Face is shared between owner_rank and ghost_rank
+            const int owner_cell = static_cast<int>(own.owner(f));
+            const int neighbour_cell = static_cast<int>(own.neighbour(f));
             if (owner_rank == rank) {
                 plan.send_faces[ghost_rank].push_back(static_cast<int>(f));
+                plan.send_cells[ghost_rank].push_back(owner_cell);
             }
             if (ghost_rank == rank) {
                 plan.recv_faces[owner_rank].push_back(static_cast<int>(f));
+                plan.recv_cells[owner_rank].push_back(neighbour_cell);
             }
         }
     }
@@ -211,8 +219,8 @@ inline void exchange_halo_faces(
         send_buffers[r].resize(faces.size() * dim);
         for (std::size_t i = 0; i < faces.size(); ++i) {
             int f = faces[i];
-            double* src = field.component_data(0) + f * dim;
-            std::copy(src, src + dim, send_buffers[r].data() + i * dim);
+            for (std::size_t comp=0; comp<dim; ++comp)
+                send_buffers[r][i*dim+comp]=field(f,comp);
         }
     }
     
@@ -236,8 +244,8 @@ inline void exchange_halo_faces(
         const auto& recv_faces = plan.recv_faces[r];
         for (std::size_t i = 0; i < recv_faces.size(); ++i) {
             int f = recv_faces[i];
-            double* dst = field.component_data(0) + f * dim;
-            std::copy(recv_buffer.data() + i * dim, recv_buffer.data() + (i + 1) * dim, dst);
+            for (std::size_t comp=0; comp<dim; ++comp)
+                field(f,comp)=recv_buffer[i*dim+comp];
         }
     }
 }
@@ -248,11 +256,32 @@ inline void exchange_halo_cells(
     const HaloPlan& plan,
     MPI_Comm comm = MPI_COMM_WORLD)
 {
-    // For cell fields, we need to exchange cells that are adjacent to ghost faces
-    // This is more complex - for now, implement basic face-based exchange
-    // and derive cell values from face interpolation if needed
-    (void)field; (void)plan; (void)comm;
-    // TODO: Implement proper cell halo exchange
+    const int rank=mpi_rank(comm);
+    const int size=mpi_size(comm);
+    const std::size_t dim=field.dimension();
+    if(static_cast<int>(plan.send_cells.size())!=size ||
+       static_cast<int>(plan.recv_cells.size())!=size)
+        return;
+
+    for(int r=0;r<size;++r) {
+        if(r==rank) continue;
+        const auto& send=plan.send_cells[r];
+        const auto& recv=plan.recv_cells[r];
+        std::vector<double> send_buffer(send.size()*dim);
+        std::vector<double> recv_buffer(recv.size()*dim);
+        for(std::size_t i=0;i<send.size();++i)
+            for(std::size_t comp=0;comp<dim;++comp)
+                send_buffer[i*dim+comp]=field(static_cast<std::size_t>(send[i]),comp);
+
+        MPI_Status status;
+        MPI_Sendrecv(send_buffer.data(),static_cast<int>(send_buffer.size()),MPI_DOUBLE,r,1,
+                     recv_buffer.data(),static_cast<int>(recv_buffer.size()),MPI_DOUBLE,r,1,
+                     comm,&status);
+
+        for(std::size_t i=0;i<recv.size();++i)
+            for(std::size_t comp=0;comp<dim;++comp)
+                field(static_cast<std::size_t>(recv[i]),comp)=recv_buffer[i*dim+comp];
+    }
 }
 
 }  // namespace parallel

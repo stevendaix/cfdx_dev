@@ -39,9 +39,11 @@ int main()
 
     run_case("surface_radiation_and_view_factors", [] {
         EXPECT_NEAR(blackbody_emissive_power(0.0), 0.0, 1e-12);
+        EXPECT_NEAR(M_PI * blackbody_intensity(300.0), blackbody_emissive_power(300.0), 1e-10);
         const double q = gray_surface_emissivity_flux(1.0, 300.0, 0.0);
         EXPECT_NEAR(q, STEFAN_BOLTZMANN * std::pow(300.0, 4), 1e-10);
         EXPECT_TRUE(two_surface_net_exchange(1.0, 1.0, 400.0, 300.0, 1.0) > 0.0);
+        EXPECT_NEAR(two_surface_net_exchange(1.0, 1.0, 400.0, 300.0, 0.0), 0.0, 1e-12);
 
         std::vector<double> F{0.0, 1.0, 1.0, 0.0};
         validate_view_factor_matrix(F, 2);

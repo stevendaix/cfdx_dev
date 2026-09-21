@@ -17,6 +17,13 @@ inline double blackbody_emissive_power(double temperature)
     return STEFAN_BOLTZMANN * std::pow(temperature, 4);
 }
 
+// Blackbody radiance/intensity integrated over a differential solid angle.
+// E_b = pi I_b for a Lambertian blackbody.
+inline double blackbody_intensity(double temperature)
+{
+    return blackbody_emissive_power(temperature) / M_PI;
+}
+
 inline double gray_surface_emissivity_flux(double emissivity,
                                            double temperature,
                                            double irradiation)
@@ -35,6 +42,8 @@ inline double two_surface_net_exchange(double emissivity1, double emissivity2,
         emissivity2 <= 0.0 || emissivity2 > 1.0 ||
         T1 < 0.0 || T2 < 0.0 || view_factor_12 < 0.0 || view_factor_12 > 1.0)
         throw std::invalid_argument("two_surface_net_exchange: invalid input");
+    if (view_factor_12 == 0.0)
+        return 0.0;
     const double resistance =
         (1.0 - emissivity1) / emissivity1 +
         1.0 / view_factor_12 +
@@ -62,13 +71,14 @@ inline void validate_view_factor_matrix(const std::vector<double>& F,
     }
 }
 
-inline double p1_radiative_source(double absorption, double emission,
+inline double p1_radiative_source(double absorption, double mean_intensity,
                                   double temperature)
 {
-    if (absorption < 0.0 || emission < 0.0 || temperature < 0.0)
+    if (absorption < 0.0 || mean_intensity < 0.0 || temperature < 0.0)
         throw std::invalid_argument("p1_radiative_source: invalid input");
-    return 4.0 * STEFAN_BOLTZMANN * absorption *
-           (std::pow(temperature, 4) - emission);
+    // S_rad = 4 kappa (I_b - J), with I_b = sigma T^4 / pi.
+    return 4.0 * absorption *
+           (blackbody_intensity(temperature) - mean_intensity);
 }
 
 struct DiscreteDirection {
