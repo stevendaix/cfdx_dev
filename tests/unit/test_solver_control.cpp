@@ -15,12 +15,15 @@ int main()
 
     run_case("conservation_gate", [] {
         ConvergenceCriteria c;
+        ConvergenceCriteria c_energy = c;
+        c_energy.require_energy = true;
         IterationMetrics m;
         m.continuity_imbalance = 1e-12;
         m.energy_imbalance = 1e-12;
-        EXPECT_TRUE(conservation_converged(m, c));
+        m.energy_imbalance = 1e-12;
+        EXPECT_TRUE(conservation_converged(m, c_energy));
         m.energy_imbalance = 1e-3;
-        EXPECT_FALSE(conservation_converged(m, c));
+        EXPECT_FALSE(conservation_converged(m, c_energy));
     });
 
     return run_all();
