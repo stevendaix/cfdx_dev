@@ -7,6 +7,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -30,6 +31,11 @@ struct ScalarBoundaryCondition {
 };
 
 using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
+
+enum class ConvectionScheme {
+    UPWIND,
+    SECOND_ORDER_UPWIND
+};
 
 struct ScalarBoundaryFaceValues {
     // Values are indexed by global face id. Only boundary faces need entries.
@@ -127,7 +133,9 @@ inline ScalarEquation assemble_scalar_equation(
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
     const std::vector<double>* extra_rhs = nullptr,
-    const std::vector<double>* cell_diffusion = nullptr)
+    const std::vector<double>* cell_diffusion = nullptr,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -147,6 +155,13 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> rhs(nc, 0.0);
     std::vector<double> diag(nc, 0.0);
     std::vector<double> div_phi(nc, 0.0);
+    std::vector<double> deferred_rhs(nc, 0.0);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+        if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
+            throw std::invalid_argument("assemble_scalar_equation: second-order upwind requires a scalar convected field");
+        reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+    }
 
     const auto& own = mesh.ownership();
     const double* phi = face_flux.component_data(0);
@@ -184,6 +199,27 @@ inline ScalarEquation assemble_scalar_equation(
 
             div_phi[o] += F;
             div_phi[n] -= F;
+
+            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                const std::size_t upwind = F >= 0.0 ? o : n;
+                const double phi_up = (*convected_field)(upwind);
+                const auto& C_up = geometry.cell_centres[upwind];
+                const auto& Cf = geometry.face_centres[f];
+                const double* gx = reconstructed_gradient.component_data(0);
+                const double* gy = reconstructed_gradient.component_data(1);
+                const double* gz = reconstructed_gradient.component_data(2);
+                double phi_high = phi_up
+                    + gx[upwind] * (Cf.x - C_up.x)
+                    + gy[upwind] * (Cf.y - C_up.y)
+                    + gz[upwind] * (Cf.z - C_up.z);
+                const double phi_other = (*convected_field)(F >= 0.0 ? n : o);
+                const double lo = std::min(phi_up, phi_other);
+                const double hi = std::max(phi_up, phi_other);
+                phi_high = std::clamp(phi_high, lo, hi);
+                const double correction = F * (phi_high - phi_up);
+                deferred_rhs[o] -= correction;
+                deferred_rhs[n] += correction;
+            }
         } else {
             const std::size_t patch = geometry.face_patch[f];
             ScalarBoundaryCondition bc;
@@ -244,6 +280,7 @@ inline ScalarEquation assemble_scalar_equation(
             throw std::runtime_error("assemble_scalar_equation: non-positive diagonal");
 
         rhs[c] += source_explicit(c) * geometry.cell_volumes[c];
+        rhs[c] += deferred_rhs[c];
         if (extra_rhs) rhs[c] += (*extra_rhs)[c];
 
         std::vector<std::pair<std::size_t, double>> entries;
