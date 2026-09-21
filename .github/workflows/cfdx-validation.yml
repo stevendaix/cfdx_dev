@@ -41,9 +41,9 @@ jobs:
 
       - name: Run campaign driver
         run: |
-          python3 scripts/run_validation.py --build-dir build-validation
+          python3 scripts/run_validation.py --build-dir build-validation --junit build-validation/validation-junit.xml
 
-      - name: Upload validation logs
+      - name: Upload validation JUnit\n        if: always()\n        uses: actions/upload-artifact@v4\n        with:\n          name: cfdx-validation-junit\n          path: build-validation/validation-junit.xml\n          if-no-files-found: error\n\n      - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
