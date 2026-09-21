@@ -33,7 +33,8 @@ inline void validate_coupling_controls(const CouplingControls& c)
 
 inline double relaxed_value(double old_value, double computed_value, double alpha)
 {
-    if (alpha <= 0.0 || alpha > 1.0)
+    if (!std::isfinite(alpha) || !std::isfinite(old_value) || !std::isfinite(computed_value) ||
+        alpha <= 0.0 || alpha > 1.0)
         throw std::invalid_argument("relaxed_value: alpha must be in (0,1]");
     return old_value + alpha * (computed_value - old_value);
 }
@@ -46,7 +47,9 @@ inline double rhie_chow_face_flux(double interpolated_flux,
                                   double aP_neighbour,
                                   double area)
 {
-    if (d_f <= 0.0 || aP_owner <= 0.0 || aP_neighbour <= 0.0 || area < 0.0)
+    if (!std::isfinite(d_f) || !std::isfinite(aP_owner) ||
+        !std::isfinite(aP_neighbour) || !std::isfinite(area) ||
+        d_f <= 0.0 || aP_owner <= 0.0 || aP_neighbour <= 0.0 || area < 0.0)
         throw std::invalid_argument("rhie_chow_face_flux: invalid geometric/momentum coefficient");
     const double d = 0.5 * (1.0 / aP_owner + 1.0 / aP_neighbour);
     const double correction = d * (pressure_owner - pressure_neighbour) / d_f * area;
@@ -55,7 +58,7 @@ inline double rhie_chow_face_flux(double interpolated_flux,
 
 inline double piso_correction_gain(double diagonal, double neighbor_sum)
 {
-    if (diagonal <= 0.0)
+    if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) || diagonal <= 0.0)
         throw std::invalid_argument("piso_correction_gain: diagonal must be positive");
     return 1.0 / std::max(diagonal - neighbor_sum, diagonal * 1e-12);
 }
