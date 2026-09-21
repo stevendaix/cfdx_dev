@@ -123,9 +123,8 @@ inline ChtSolveResult solve_two_region_cht(
             fv2.values[controls.region2_patch][p.face2]=Tint;
         }
 
-        // Preserve the previous interface values for under-relaxation.
-        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1);
-        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2);
+        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1);
+        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2,&fv2);
         if(!r1.converged || !r2.converged)
             throw std::runtime_error("CHT region energy solve did not converge");
 
@@ -133,23 +132,16 @@ inline ChtSolveResult solve_two_region_cht(
         for(const auto& p:pairs) {
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
+            const double Tint=fv1.values.at(controls.region1_patch)[p.face1];
             const double qflux1=controls.conductivity1*
-                (T1(p.cell1)-T1(p.cell1)) / d1;
+                (T1(p.cell1)-Tint)/d1;
             const double qflux2=controls.conductivity2*
-                (T2(p.cell2)-T2(p.cell2)) / d2;
+                (Tint-T2(p.cell2))/d2;
             qimb=std::max(qimb,std::abs(qflux1-qflux2));
         }
-
-        (void)fv1;
-        (void)fv2;
-        (void)max_delta;
         result.interface_imbalance=qimb;
         result.iterations=iter;
 
-        // The current EnergySolver API applies patch BCs uniformly. Keep the
-        // interface matcher and resistance calculation explicit here; a future
-        // boundary-field backend can consume fv1/fv2 without changing the
-        // CHT algorithm.
         if(qimb<=controls.tolerance) {
             result.converged=true;
             break;
