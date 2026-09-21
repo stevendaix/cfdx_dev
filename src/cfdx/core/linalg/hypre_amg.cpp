@@ -20,16 +20,18 @@ void HypreAMG::configure(AMGMemoryPolicy policy) {
                 "Fast (strong threshold 0.5)");
 }
 
-bool HypreAMG::setup(const SparseMatrix&, int) {
-    // Skeleton — real implementation requires HYPRE library linking
-    is_initialized_ = true;
-    std::printf("[HypreAMG] Setup complete (stub — requires HYPRE linking)\n");
-    return true;
+bool HypreAMG::setup(const SparseMatrix& A) {
+    (void)A;
+    // HYPRE is optional and is not linked in this build. Never report a
+    // successful setup for an inactive backend.
+    initialized_ = false;
+    return false;
 }
 
-bool HypreAMG::apply(const Vector&, Vector&) const {
-    std::printf("[HypreAMG] Apply called (stub)\n");
-    return true;
+bool HypreAMG::apply(const Vector& rhs, Vector& x) const {
+    (void)rhs;
+    (void)x;
+    return false;
 }
 
 HypreAMG::AMGMemoryUsage HypreAMG::measureMemoryUsage() const {
