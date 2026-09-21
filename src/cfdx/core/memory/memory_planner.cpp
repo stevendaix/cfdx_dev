@@ -269,7 +269,12 @@ MeshReorderer::ReorderingResult MeshReorderer::reorder(
     MeshOrdering policy) {
     ReorderingResult result;
     result.selected_strategy = policy;
-    size_t n = owner.size();
+    // owner/neighbour contain face connectivity, so owner.size() is the
+    // number of faces, not the number of cells. Infer the cell count from
+    // the largest referenced cell index.
+    size_t n = 0;
+    for (const auto cell : owner) n = std::max(n, static_cast<size_t>(cell) + 1);
+    for (const auto cell : neighbour) n = std::max(n, static_cast<size_t>(cell) + 1);
     result.old_to_new.resize(n);
     result.new_to_old.resize(n);
 
@@ -278,19 +283,19 @@ MeshReorderer::ReorderingResult MeshReorderer::reorder(
         auto rcm_result = rcm.reorder(owner, neighbour, static_cast<size_t>(n));
         result.old_to_new = rcm_result.old_to_new;
         result.new_to_old = rcm_result.new_to_old;
-        result.estimated_speedup = 1.5;
+        result.estimated_speedup = 0.0;
     } else if (policy == MeshOrdering::SFC) {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
             result.new_to_old[i] = static_cast<uint32_t>(i);
         }
-        result.estimated_speedup = 1.30;
+        result.estimated_speedup = 0.0;
     } else if (policy == MeshOrdering::GPUOptimized) {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
             result.new_to_old[i] = static_cast<uint32_t>(i);
         }
-        result.estimated_speedup = 1.50;
+        result.estimated_speedup = 0.0;
     } else {
         for (size_t i = 0; i < n; ++i) {
             result.old_to_new[i] = static_cast<uint32_t>(i);
