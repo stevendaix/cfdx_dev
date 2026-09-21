@@ -235,7 +235,7 @@ int main()
                     std::sqrt(1.4*(8.314462618/0.02896546)*300),1e-10);
     });
     run_case("N_Sutherland_transport_reference", [] {
-        const double mu=cfdx::transport::viscosity::sutherland(273.15);
+        const double mu=cfdx::transport::viscosity::sutherland(273.15, 1.716e-5, 273.15, 110.4);
         EXPECT_NEAR(mu,1.716e-5,1e-12);
         EXPECT_NEAR(cfdx::transport::conductivity::prandtl(1e-3,1000,1),1.0,1e-14);
     });
