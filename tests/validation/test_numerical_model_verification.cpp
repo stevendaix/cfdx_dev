@@ -149,7 +149,7 @@ int main() {
         }
         // N013: local pseudo-time step from a known face-flux sum.
         {
-            // rho=2, sum |phi|=4 => dt=CFL*rho/sum=0.5 for CFL=1.
+            // rho=2, sum |phi|=4 => dt=CFL*rho/sum=1/6 for CFL=1.
             Mesh m; m.points().resize(8);
             const double p[8][3]={{0,0,0},{1,0,0},{1,1,0},{0,1,0},{0,0,1},{1,0,1},{1,1,1},{0,1,1}};
             for(std::size_t i=0;i<8;++i)m.points().set(i,p[i][0],p[i][1],p[i][2]);
@@ -160,8 +160,8 @@ int main() {
             Field<double,Location::FACE> flux(6,"phi","kg/s",1);flux.fill(2.0);
             Field<double,Location::CELL> rho(1,"rho","kg/m3",1);rho(0)=2.0;
             Field<double,Location::CELL> dt; LocalTimeStepControls c;c.cfl=1.0;
-            compute_local_time_step(m,flux,rho,dt,c); close(dt(0),1.0/3.0,1e-14,"local timestep");
-            std::cout<<"MODEL LOCAL_TIMESTEP error=0 reference=0.3333333333333333\n";
+            compute_local_time_step(m,flux,rho,dt,c); close(dt(0),1.0/6.0,1e-14,"local timestep");
+            std::cout<<"MODEL LOCAL_TIMESTEP error=0 reference=0.1666666666666667\n";
         }
         // N014: compressible Rusanov consistency: identical states recover physical flux.
         {
