@@ -70,6 +70,7 @@ inline RadiationSolveResult solve_participating_radiation(
 
     RadiationSolveResult result;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
+        auto old_radiation_source=radiation_source;
         std::vector<double> J(nc,0.0);
         for(std::size_t m=0;m<directions.size();++m)
             for(std::size_t c=0;c<nc;++c)
@@ -126,10 +127,11 @@ inline RadiationSolveResult solve_participating_radiation(
 
         double max_source_delta = 0.0;
         for(std::size_t c=0;c<nc;++c)
-            max_source_delta=std::max(max_source_delta,std::abs(radiation_source(c)-qrad(c)));
+            max_source_delta=std::max(max_source_delta,
+                std::abs(radiation_source(c)-old_radiation_source(c)));
         result.history.push_back({iter,max_delta,max_source_delta});
         result.iterations=iter;
-        if(max_delta<=controls.tolerance) {
+        if(max_delta<=controls.tolerance && qrad_delta<=controls.tolerance) {
             result.converged=true;
             break;
         }
@@ -174,6 +176,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     RadiationEnergyCouplingResult result;
     for(std::size_t iter=1;iter<=controls.max_outer_iterations;++iter) {
         cfdx::core::Field<double,cfdx::core::Location::CELL> oldT=temperature;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> old_qrad=qrad;
         cfdx::core::Field<double,cfdx::core::Location::CELL> source(
             nc,"radiation_source","W/m3",1);
 
@@ -196,8 +199,11 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         for(std::size_t c=0;c<nc;++c)
             max_delta=std::max(max_delta,std::abs(temperature(c)-oldT(c)));
 
-        result.source_residuals.push_back(max_delta);
-        result.energy_balance_residuals.push_back(max_delta);
+        double qrad_delta=0.0;
+        for(std::size_t c=0;c<nc;++c)
+            qrad_delta=std::max(qrad_delta,std::abs(qrad(c)-old_qrad(c)));
+        result.source_residuals.push_back(qrad_delta);
+        result.energy_balance_residuals.push_back(qrad_delta);
         result.iterations=iter;
         if(max_delta<=controls.tolerance) {
             result.converged=true;
