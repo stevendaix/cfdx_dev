@@ -56,7 +56,7 @@ bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t
     std::istringstream in(text.substr(begin + 1, end - begin - 1));
     std::int64_t value = 0;
     while (in >> value) values.push_back(value);
-    return !values.empty();
+    return true;
 }
 
 bool read_faces(const std::filesystem::path& path,
