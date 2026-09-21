@@ -174,6 +174,10 @@ make_rhie_chow_mass_flux(
     using namespace cfdx::core;
     if(p.size()!=mesh.n_cells() || rAU.size()!=mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
+    for (const double value : rAU) {
+        if (!std::isfinite(value) || value <= 0.0)
+            throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal must be finite and positive");
+    }
     auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
     auto gradp=gauss_gradient_with_boundary(p,mesh,geometry,{});
     for(std::size_t f=0;f<mesh.n_faces();++f) {
