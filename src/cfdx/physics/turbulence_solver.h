@@ -28,7 +28,7 @@ inline void compute_kepsilon_production_field(
     for(std::size_t i=0;i<mesh.n_cells();++i) {
         const double nut=c.C_mu*std::max(k(i),c.k_min)*std::max(k(i),c.k_min)/
                          std::max(epsilon(i),c.epsilon_min);
-        production(i)=controls.density*2.0*nut*strain_rate(i)*strain_rate(i);
+        production(i)=c.density*2.0*nut*strain_rate(i)*strain_rate(i);
     }
 }
 
