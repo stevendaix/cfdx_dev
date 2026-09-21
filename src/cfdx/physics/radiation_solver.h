@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
+#include <limits>
 
 namespace cfdx::physics {
 
@@ -131,7 +132,7 @@ inline RadiationSolveResult solve_participating_radiation(
                 std::abs(radiation_source(c)-old_radiation_source(c)));
         result.history.push_back({iter,max_delta,max_source_delta});
         result.iterations=iter;
-        if(max_delta<=controls.tolerance && qrad_delta<=controls.tolerance) {
+        if(max_delta<=controls.tolerance && max_source_delta<=controls.tolerance) {
             result.converged=true;
             break;
         }
@@ -202,10 +203,15 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         double qrad_delta=0.0;
         for(std::size_t c=0;c<nc;++c)
             qrad_delta=std::max(qrad_delta,std::abs(qrad(c)-old_qrad(c)));
+        const double energy_balance_residual = er.history.empty()
+            ? std::numeric_limits<double>::infinity()
+            : er.history.back().energy_imbalance;
         result.source_residuals.push_back(qrad_delta);
-        result.energy_balance_residuals.push_back(qrad_delta);
+        result.energy_balance_residuals.push_back(energy_balance_residual);
         result.iterations=iter;
-        if(max_delta<=controls.tolerance) {
+        if(max_delta<=controls.tolerance &&
+           qrad_delta<=controls.tolerance &&
+           energy_balance_residual<=controls.tolerance) {
             result.converged=true;
             break;
         }
