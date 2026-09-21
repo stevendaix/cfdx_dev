@@ -64,8 +64,9 @@ ScalarBoundaryConditions fixed_wall_conditions(
     ScalarBoundaryConditions bc;
     for (const char* name : {"x_min","x_max","y_min","z_min","z_max"})
         bc[name] = {ScalarBoundaryType::FIXED_VALUE,value,0.0};
-    // The interface value is supplied by the CHT coupling itself.
-    (void)interface_name;
+    // The interface value is overwritten by the CHT coupling fixed-point value,
+    // but a Dirichlet default keeps the standalone region equation nonsingular.
+    bc[interface_name] = {ScalarBoundaryType::FIXED_VALUE,value,0.0};
     return bc;
 }
 
