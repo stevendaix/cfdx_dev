@@ -38,7 +38,7 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 
     std::map<std::vector<std::size_t>,std::size_t> face_map;
     std::vector<std::vector<std::size_t>> cell_faces(nx*ny);
-    mesh.ownership().resize(6*nx*ny);
+    // Ownership is sized after face creation because shared faces are deduplicated.
     auto add_or_get_face=[&](std::initializer_list<std::size_t> vertices,std::size_t cell) {
         std::vector<std::size_t> sorted(vertices);
         std::sort(sorted.begin(),sorted.end());
@@ -49,6 +49,7 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
         }
         const std::size_t face=mesh.faces().n_faces();
         mesh.faces().push_face(vertices);
+        mesh.ownership().resize(mesh.faces().n_faces());
         face_map.emplace(std::move(sorted),face);
         mesh.ownership().set_owner(face,cell);
         mesh.ownership().set_neighbour(face,FaceOwnership::BOUNDARY);
