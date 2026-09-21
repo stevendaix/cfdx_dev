@@ -25,7 +25,7 @@ jobs:
 
       - name: Build validation executables
         run: |
-          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_level_b_reference_benchmarks             test_level_c_coupled_verification             --parallel 2
+          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_ghia_cavity             test_level_b_reference_benchmarks             test_level_c_coupled_verification             --parallel 2
 
       - name: Run validation tests
         run: |
