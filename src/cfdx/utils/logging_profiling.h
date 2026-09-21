@@ -1,70 +1,72 @@
-// M0.15 — Logging + Residual monitoring + Profiling hook
-// Integration of logging, residual monitoring, and profiling capabilities
-#include "physics/equation_of_state.h"
-#include <iostream>
-#include <fstream>
+#pragma once
+
 #include <chrono>
-#include <cstdlib>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <mutex>
+#include <string>
 
-namespace cfdx {
-namespace utils {
+namespace cfdx::utils {
 
-// Logger for simulation output
-struct SimulationLogger {
-    std::ofstream log_file;
-    std::string timestamp;
-    
-    SimulationLogger() : log_file("simulation.log") {
-        timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+class SimulationLogger {
+public:
+    explicit SimulationLogger(const std::string& path = "simulation.log")
+        : log_file_(path, std::ios::app) {}
+
+    void info(const std::string& msg) { write("INFO", msg); }
+    void debug(const std::string& msg) { write("DEBUG", msg); }
+    void error(const std::string& msg) { write("ERROR", msg); }
+
+private:
+    void write(const char* level, const std::string& msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (log_file_) log_file_ << "[" << level << "] " << msg << '\n';
     }
-    
-    void info(const std::string& msg) {
-        log_file << "[INFO] " << timestamp << " " << msg << std::endl;
-    }
-    
-    void debug(const std::string& msg) {
-        log_file << "[DEBUG] " << timestamp << " " << msg << std::endl;
-    }
-    
-    void error(const std::string& msg) {
-        log_file << "[ERROR] " << timestamp << " " << msg << std::endl;
+    std::ofstream log_file_;
+    std::mutex mutex_;
+};
+
+class ProfilingHook {
+public:
+    using Clock = std::chrono::steady_clock;
+
+    template<class Function>
+    static auto profile(Function&& function) {
+        const auto start = Clock::now();
+        if constexpr (std::is_void_v<std::invoke_result_t<Function>>) {
+            std::forward<Function>(function)();
+            return std::chrono::duration_cast<std::chrono::microseconds>(
+                Clock::now() - start);
+        } else {
+            auto result = std::forward<Function>(function)();
+            return std::pair<decltype(result), std::chrono::microseconds>{
+                std::move(result),
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    Clock::now() - start)};
+        }
     }
 };
 
-// Profiling hook for timing computations
-struct ProfilingHook {
-    std::chrono::high_resolution_clock::time_point start_time;
-    
-    void profile(void (*func)(void*, void*), void* args) {
-        auto start = std::chrono::high_resolution_clock::now();
-        func(*args);
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        std::cout << "Profile: " << duration.count() << " microseconds" << std::endl;
-    }
-};
-
-// Main entry point for logging/residual/profiling integration
-void initialize_logging_and_profiling() {
-    SimulationLogger logger;
-    ProfilingHook profiler;
-    
-    // Initialize profiler
-    profiler.start_time = std::chrono::high_resolution_clock::now();
+inline SimulationLogger& simulation_logger() {
+    static SimulationLogger logger;
+    return logger;
 }
 
-void log_residual(const std::string& residual, double tolerance = 1e-6) {
-    double abs_val = std::abs(residual);
-    if (abs_val > tolerance) {
-        logger.error("Residual too large: " + std::to_string(residual) + " > " + std::to_string(tolerance));
-    } else {
-        logger.info("Residual within tolerance: " + std::to_string(abscol) + " < " + std::to_string(tolerance));
-    }
+inline void initialize_logging_and_profiling() {
+    (void)simulation_logger();
 }
 
-void print_profile_summary() {
-    std::cout << "=== Profile Summary ===" << std::endl;
-    std::cout << "Total elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(profiler.start_time.until()).count() << " ms" << std::endl;
+inline void log_residual(const std::string& residual, double tolerance = 1e-6) {
+    const double value = std::stod(residual);
+    if (!std::isfinite(value))
+        throw std::invalid_argument("log_residual: residual must be finite");
+    if (std::abs(value) > tolerance)
+        simulation_logger().error(
+            "Residual too large: " + residual + " > " + std::to_string(tolerance));
+    else
+        simulation_logger().info(
+            "Residual within tolerance: " + residual + " <= " + std::to_string(tolerance));
 }
 
-}  // namespace utils
+}  // namespace cfdx::utils
