@@ -127,6 +127,7 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.pressure_reference_cell=0;
     controls.pressure_reference_value=0.0;
     controls.use_bounded_convection=false;
+    controls.convection_scheme=ConvectionScheme::SECOND_ORDER_UPWIND;
     controls.coupling.alpha_u=0.5;
     controls.coupling.alpha_p=0.2;
     controls.convergence.max_iterations=test.max_iterations;
@@ -213,8 +214,10 @@ void run_case(const CavityCase& test)
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
              <<" iterations="<<result.solve.iterations<<" continuity="<<result.solve.history.back().continuity_linf
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
-    const double max_allowed=test.nx>=64?0.10:0.20;
-    if(u.max_abs>max_allowed || v.max_abs>max_allowed)
+    const double max_allowed=test.nx>=64?0.10:0.15;
+    const double rms_allowed=0.075;
+    if(u.max_abs>max_allowed || v.max_abs>max_allowed ||
+       u.rms>rms_allowed || v.rms>rms_allowed)
         throw std::runtime_error("Ghia velocity profile mismatch");
     if(result.solve.history.back().continuity_linf>1e-7)
         throw std::runtime_error("Ghia continuity residual too large");
@@ -227,7 +230,8 @@ int main()
     try {
         run_case({100.0,32,32,2500});
         run_case({100.0,64,64,5000});
-        run_case({400.0,64,64,7000});
+        run_case({100.0,128,128,12000});
+        run_case({400.0,64,64,9000});
         std::cout<<"GHIA_CAVITY_VALIDATION: PASS\n";
         return 0;
     } catch(const std::exception& e) {
