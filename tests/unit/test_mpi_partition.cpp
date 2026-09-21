@@ -172,12 +172,21 @@ int main() {
         exchange_halo_cells(values, plan);
 
         if (mpi_size(MPI_COMM_WORLD) == 2) {
-            const int remote = 1 - rank;
             EXPECT_TRUE(part.cell_rank[0] != part.cell_rank[1]);
-            const std::size_t remote_cell = (part.cell_rank[0] == remote) ? 0 : 1;
-            EXPECT_NEAR(values(remote_cell), static_cast<double>(remote), 1e-14);
-            EXPECT_NEAR(values(rank == part.cell_rank[0] ? 0 : 1),
-                        static_cast<double>(rank), 1e-14);
+            const std::size_t owned_cell =
+                (part.cell_rank[0] == rank) ? 0 : 1;
+            EXPECT_NEAR(values(owned_cell), static_cast<double>(rank), 1e-14);
+
+            // The halo plan is owner -> ghost: the ghost rank receives the
+            // remote owner's value in the owner's global cell slot.
+            const std::size_t owner_cell =
+                (part.cell_rank[0] == rank) ? 1 : 0;
+            if (part.cell_rank[owner_cell] != rank) {
+                const std::size_t remote_owner =
+                    (part.cell_rank[0] == rank) ? 1 : 0;
+                EXPECT_NEAR(values(remote_owner),
+                            static_cast<double>(part.cell_rank[remote_owner]), 1e-14);
+            }
         }
     });
 
