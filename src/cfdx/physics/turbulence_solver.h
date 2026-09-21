@@ -104,7 +104,7 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         ScalarSolveControls sc;
         sc.max_iterations=2000;
         sc.tolerance=tolerance;
-        sc.relaxation=0.7;
+        sc.relaxation=1.0;
         cfdx::core::Vector k_solution(n,0.0);
         cfdx::core::Vector epsilon_solution(n,0.0);
         for(std::size_t i=0;i<n;++i) {
@@ -114,8 +114,8 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         auto rk=solve_scalar_equation(eqk,k_solution,sc);
         auto re=solve_scalar_equation(eqe,epsilon_solution,sc);
         for(std::size_t i=0;i<n;++i) {
-            k(i)=k_solution(i);
-            epsilon(i)=epsilon_solution(i);
+            k(i)=k(i)+0.7*(k_solution(i)-k(i));
+            epsilon(i)=epsilon(i)+0.7*(epsilon_solution(i)-epsilon(i));
         }
         enforce_turbulence_bounds(k,epsilon,controls);
 
