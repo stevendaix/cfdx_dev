@@ -206,7 +206,9 @@ std::vector<Sample> v_reference(double re)
     std::vector<Sample> result; for(std::size_t i=0;i<17;++i) result.push_back({x[i],values[i]}); return result;
 }
 
-void run_case(const CavityCase& test)
+struct CaseMetrics { Comparison u; Comparison v; };
+
+CaseMetrics run_case(const CavityCase& test)
 {
     const auto result=solve_cavity(test);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
@@ -227,6 +229,7 @@ void run_case(const CavityCase& test)
        !std::isfinite(result.solve.history.back().momentum_equation_residual) ||
        result.solve.history.back().momentum_equation_residual>1e-7)
         throw std::runtime_error("Ghia physical residual gate failed");
+    return {u,v};
 }
 
 } // namespace
@@ -234,10 +237,24 @@ void run_case(const CavityCase& test)
 int main()
 {
     try {
-        run_case({100.0,32,32,2500});
-        run_case({100.0,64,64,5000});
-        run_case({100.0,128,128,12000});
+        const auto r32 = run_case({100.0,32,32,2500});
+        const auto r64 = run_case({100.0,64,64,5000});
+        const auto r128 = run_case({100.0,128,128,12000});
         run_case({400.0,64,64,9000});
+
+        const double p_v_max = std::log(r64.v.max_abs / r128.v.max_abs) / std::log(2.0);
+        const double p_v_rms = std::log(r64.v.rms / r128.v.rms) / std::log(2.0);
+        const double p_u_max = std::log(r64.u.max_abs / r128.u.max_abs) / std::log(2.0);
+        const double p_u_rms = std::log(r64.u.rms / r128.u.rms) / std::log(2.0);
+        std::cout << "GHIA Re=100 observed_order"
+                  << " U_RMS=" << p_u_rms
+                  << " U_max=" << p_u_max
+                  << " V_RMS=" << p_v_rms
+                  << " V_max=" << p_v_max << "\n";
+        (void)r32;
+        if (!(p_u_rms > 0.50) || !(p_v_rms > 0.50) ||
+            !(p_u_max > 0.50) || !(p_v_max > 0.50))
+            throw std::runtime_error("Ghia Re=100 mesh convergence is insufficient");
         std::cout<<"GHIA_CAVITY_VALIDATION: PASS\n";
         return 0;
     } catch(const std::exception& e) {
