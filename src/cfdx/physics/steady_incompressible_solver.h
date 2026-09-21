@@ -109,7 +109,7 @@ gauss_gradient_with_boundary(
                         vf = it->second.value;
                 }
             }
-            sum = sum + Sf * vf;
+            sum += Sf * vf;
         }
         const double invV = 1.0 / geometry.cell_volumes[c];
         grad.component_data(0)[c] = sum.x * invV;
