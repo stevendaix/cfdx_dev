@@ -80,8 +80,26 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
             g.face_centres.data(), g.face_area_vectors.data(),
             mesh.cells().faces_data() + off, count);
         g.cell_centres[c] = cg.centre;
-        g.cell_volumes[c] = cg.volume;
-        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
+
+        // Face area vectors are stored once, oriented from owner to neighbour.
+        // For a neighbour cell the same face therefore has the opposite
+        // outward normal. Cell geometry must account for that orientation;
+        // otherwise internal faces corrupt neighbour-cell volumes.
+        double signed_volume = 0.0;
+        for (std::size_t k = 0; k < count; ++k) {
+            const std::size_t f = mesh.cells().faces_data()[off + k];
+            const auto owner = mesh.ownership().owner(f);
+            const auto neighbour = mesh.ownership().neighbour(f);
+            if (owner != c && neighbour != static_cast<int>(c))
+                throw std::runtime_error("build_fv_geometry: cell-face ownership mismatch");
+            const double orientation = owner == c ? 1.0 : -1.0;
+            signed_volume +=
+                (g.face_centres[f] - g.cell_centres[c]).dot(
+                    g.face_area_vectors[f] * orientation);
+        }
+        signed_volume /= 3.0;
+        g.cell_volumes[c] = std::abs(signed_volume);
+        if (!(g.cell_volumes[c] > 0.0) || !std::isfinite(g.cell_volumes[c]))
             throw std::runtime_error("build_fv_geometry: non-positive cell volume");
     }
 
