@@ -139,7 +139,7 @@ def make_plot(out: Path, ghia: list[dict]) -> str | None:
     return out.name
 
 
-def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: list[dict], logs: dict, plot_name: str | None, generated: str) -> None:
+def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: list[dict], logs: dict, suite_status: dict[str, int], plot_name: str | None, generated: str) -> None:
     counts: dict[str, int] = {}
     for c in cases:
         counts[c.status] = counts.get(c.status, 0) + 1
@@ -367,7 +367,7 @@ def main() -> int:
     plot_name = make_plot(args.output_dir / "ghia_mesh_convergence.png", ghia)
 
     tex = args.output_dir / "cfdx_validation_report.tex"
-    write_tex(tex, cases, ghia, model_results, logs, plot_name, generated)
+    write_tex(tex, cases, ghia, model_results, logs, suite_status, plot_name, generated)
 
     import shutil
     latexmk = shutil.which("latexmk")
