@@ -83,9 +83,9 @@ inline RadiationSolveResult solve_participating_radiation(
                 mesh.n_faces(),"sI","W/m2",1);
             const auto& d=directions[m];
             for(std::size_t f=0;f<mesh.n_faces();++f)
-                directional_flux(f)=d.x*geometry.face_area_vectors[f].x+
-                                    d.y*geometry.face_area_vectors[f].y+
-                                    d.z*geometry.face_area_vectors[f].z;
+                directional_flux(f)=d.dx*geometry.face_area_vectors[f].x+
+                                    d.dy*geometry.face_area_vectors[f].y+
+                                    d.dz*geometry.face_area_vectors[f].z;
 
             cfdx::core::Field<double,cfdx::core::Location::CELL> source(
                 nc,"radiation_source","W/m3/sr",1);
