@@ -1,4 +1,6 @@
 #include <cuda_runtime.h>
+#include <cstdint>
+#include <cstddef>
 
 __global__ void cfdx_gradient_gauss_kernel(
     const double* phi,
@@ -37,9 +39,10 @@ extern "C" void cfdx_cuda_gradient_gauss(
     cfdx_gradient_gauss_kernel<<<grid, block, 0, stream>>>(
         phi, sx, sy, sz, owner, neighbour, volume, n_faces, gx, gy, gz);
     // Normalize in a separate kernel to keep the accumulation kernel simple.
+    cfdx_normalize_gradient_kernel<<<grid, block, 0, stream>>>(gx, gy, gz, volume, n_cells);
 }
 
-__global__ void cfdx_divergence_kernel(
+__global__ void cfdx_normalize_gradient_kernel(double* gx, double* gy, double* gz, const double* volume, std::size_t n_cells) {\n    const std::size_t c = blockIdx.x * blockDim.x + threadIdx.x;\n    if (c >= n_cells) return;\n    const double inv = volume[c] > 0.0 ? 1.0 / volume[c] : 0.0;\n    gx[c] *= inv; gy[c] *= inv; gz[c] *= inv;\n}\n\n__global__ void cfdx_divergence_kernel(
     const double* phi_face, const std::uint32_t* owner,
     const std::int64_t* neighbour, std::size_t n_faces, double* div)
 {
