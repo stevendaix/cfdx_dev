@@ -97,7 +97,13 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
     // --- 3. Géométrie des cellules ---
     std::vector<Vec3> cell_centres(n_cells);
     std::vector<double> cell_volumes(n_cells);
-    compute_area_weighted_cell_centres(m, face_centres.data(), face_Sf.data(), cell_centres.data());
+    try {
+        compute_area_weighted_cell_centres(
+            m, face_centres.data(), face_Sf.data(), cell_centres.data());
+    } catch (const std::exception& e) {
+        report.add_error(std::string("cell-centre reconstruction: ") + e.what());
+        return report;
+    }
 
     // Validate the input winding before canonicalizing face vectors. The
     // geometry pipeline may repair orientation for solver use, but the mesh
