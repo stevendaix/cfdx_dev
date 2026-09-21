@@ -55,7 +55,7 @@ struct IdealGasParams {
     double M = 0.02896546;     // Mass molaire [kg/mol] (air)
     double gamma = 1.4;        // Ratio des chaleurs spécifiques Cp/Cv
     double R_univ = 8.314462618;  // Constante des gaz universelle [J/mol/K]
-    double Cp = 1004.5;        // Chaleur spécifique à pression constante [J/kg/K]
+    double Cp = 1.4 * (8.314462618 / 0.02896546) / 0.4;  // Consistent with gamma*R/(gamma-1)
     double T_ref = 300.0;      // Température de référence [K]
     double p_ref = 101325.0;   // Pression de référence [Pa]
 };
