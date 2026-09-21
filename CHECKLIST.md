@@ -1,133 +1,66 @@
-# CFDX — Checklist complete
+# CFDX — Checklist complète synchronisée avec l'issue #34
 
-Organisee par phase d'apres la roadmap (§95) et les criteres de sortie du Module 0 (§96).
+L'issue #34 est la source de vérité pour l'exécution. Cette checklist indique le niveau
+d'achèvement réel et ne transforme pas une simple présence de code en validation.
 
-Legende : [ ] a faire / [~] en cours / [x] fait
+Legend: [ ] missing / [~] implemented but validation incomplete / [x] validated foundation
 
----
+## M0 Data / Mesh / Operators / Algebra
 
-## Phase 0 — Data model
+- [x] HDF5 round-trip and corruption tests
+- [x] Versioned schema metadata
+- [x] Deterministic topology and mesh hashes
+- [x] OpenFOAM/Gmsh/meshio import foundations
+- [x] Geometry/quality/validator foundations
+- [x] Gauss and least-squares gradient foundations
+- [~] Full gradient/interpolation/divergence/laplacian MMS matrix
+- [~] Full mesh-family and skew/non-orthogonal convergence matrix
+- [x] CSR, CG, BiCGStab, GMRES foundations
+- [~] Complete preconditioner robustness/equivalence matrix
 
-- [ ] Creer un `case.cfdx.h5` minimal
-- [ ] Recharger le fichier
-- [ ] Reconstruire le mesh depuis le fichier
-- [ ] Reconstruire les fields
-- [ ] Calculer les hashes (topology, mesh, case)
-- [ ] Verifier l'integrite
+## MPI / GPU / OOC
 
-## Phase 1 — Import
+- [x] Real multi-rank partition CI test
+- [~] Ghost/halo operator equivalence
+- [~] Parallel HDF5
+- [~] N→M restart
+- [x] ExecutionPolicy and memory-planning foundations
+- [~] Complete CUDA FVM kernels
+- [~] CPU/GPU equivalence
+- [~] GPU-OOC end-to-end CFD beyond VRAM
 
-- [ ] Import OpenFOAM (constant/polyMesh : points, faces, owner, neighbour, boundary)
-- [ ] Import Gmsh (.msh)
-- [ ] Import meshio (.vtu, etc.)
-- [ ] Pipeline commun de normalisation
+## Physics
 
-## Phase 2 — Geometry
+- [~] M1 incompressible + pressure-velocity coupling
+- [~] M1 canonical benchmark campaign
+- [~] M2 turbulence solver-level validation
+- [~] M3 thermal/CHT solver-level validation
+- [~] M4 radiation solver-level validation
+- [x] M5 bounded VOF reference kernel
+- [~] M5 full PLIC/interface/surface-tension/contact-angle solver
+- [x] M6 mesh-motion/volume-gate foundation
+- [~] M6 remeshing/topology-change/field-transfer solver
+- [x] M7 partitioned coupling/Aitken/work foundation
+- [~] M7 coupled fluid/structure benchmark
 
-- [ ] Calcul des centres de face
-- [ ] Calcul des aires et vecteurs surface Sf
-- [ ] Calcul des centres de cellule
-- [ ] Calcul des volumes de cellule
-- [ ] Calcul du skewness
-- [ ] Calcul de la non-orthogonalite
-- [ ] Validator de mesh (topologie + geometrie + qualite + conservation)
+## Application / Reproducibility
 
-## Phase 3 — Operators
-
-- [ ] Gradient (Gauss linear)
-- [ ] Interpolation cell->face (linear, upwind, limited)
-- [ ] Divergence
-- [ ] Laplacien (orthogonal, non-orthogonal corrected, uncorrected)
-- [ ] Flux
-- [ ] Surface integrate
-- [ ] Volume integrate
-- [ ] Tests de conservation (flux = 0 sur volume fermé)
-
-## Phase 4 — Scalar solver
-
-- [ ] Solveur Poisson
-- [ ] Solveur Laplace
-- [ ] Tests analytiques (cube, tetrahedron, pyramid, prism, polyhedron arbitraire)
-
-## Phase 5 — Linear algebra
-
-- [ ] SparseMatrix (CSR)
-- [ ] Vector
-- [ ] LinearSystem
-- [ ] Solveur CG
-- [ ] Solveur BiCGStab
-- [ ] Solveur GMRES
-- [ ] Preconditionneur Jacobi
-- [ ] Preconditionneur Gauss-Seidel
-- [ ] Preconditionneur ILU
-- [ ] Preconditionneur AMG (plus tard)
-
-## Phase 6 — MPI
-
-- [ ] Domain decomposition
-- [ ] Ghost cells
-- [ ] Halo exchange
-- [ ] Parallel HDF5
-- [ ] Restart independant du nombre de ranks
-
-## Phase 7 — GPU
-
-- [ ] CUDA backend
-- [ ] Device storage
-- [ ] Memory planner
-- [ ] GPU kernels (gradient, divergence, laplacien, etc.)
-- [ ] Full GPU mode (H2D initial, iterations GPU, D2H checkpoint)
-
-## Phase 8 — GPU OOC
-
-- [ ] Tile manager
-- [ ] Halo manager
-- [ ] Working sets
-- [ ] Pinned buffer pool
-- [ ] Async transfers (H2D, D2H)
-- [ ] Double buffering
-- [ ] Mode GPU out-of-core (probleme > VRAM)
-
-## Phase 9 — Incompressible (Module 1)
-
-- [ ] Navier-Stokes
-- [ ] Continuity
-- [ ] Couplage pression-vitesse
-- [ ] Rhie-Chow
-- [ ] SIMPLE
-- [ ] SIMPLEC
-- [ ] PISO
-- [ ] PIMPLE
-
-## Phase 10 — Physics (M2-M7)
-
-- [ ] M2 Turbulence (RANS k-epsilon, k-omega, SST, puis LES, DES)
-- [ ] M3 Thermal / CHT
-- [ ] M4 Radiation
-- [ ] M5 VOF
-- [ ] M6 Dynamic mesh
-- [ ] M7 FSI
-
-## Infrastructure
-
-- [ ] Build system (CMake)
-- [ ] Python API / CLI
-- [ ] Profiling hooks (mesh, geometry, assembly, gradient, divergence, laplacien, matrix-vector, preconditioner, solver, MPI, H2D, D2H, halo, I/O)
-- [ ] Logging (ERROR, WARNING, INFO, DEBUG, TRACE)
-- [ ] CLI commands (check, info, run, convert, inspect, benchmark)
-- [ ] Inspection HDF5 (h5ls, h5dump)
-- [ ] Versionnage du schema HDF5
-- [ ] Reproductibilite (version, compiler, CUDA, MPI, GPU, CPU, precision, schemes, hashes)
-- [ ] Determinisme (deterministic mode vs performance mode)
-- [ ] Precision (float32, float64, mixed precision)
+- [x] Fluent-like case lifecycle
+- [x] CLI check/info/inspect/run/convert/benchmark
+- [x] Python orchestration API
+- [x] Reproducibility manifest
+- [x] HDF5 schema versioning
+- [~] Full compiler/CUDA/MPI/GPU/CPU metadata persistence
+- [~] Deterministic/performance evidence
+- [ ] GUI
 
 ## Validation
 
-- [ ] Tests analytiques gradient (constant, lineaire, quadratique)
-- [ ] Tests analytiques laplacien (constant, lineaire, quadratique)
-- [ ] Tests de conservation
-- [ ] Comparaison OpenFOAM (mesh, BC, discretisation, parametres physiques)
-- [ ] Benchmark (wall time, CPU time, memory, VRAM, bandwidth, FLOP/s, MPI, GPU utilization, PCIe)
-- [ ] Memory benchmark (mesh, fields, matrix, preconditioner, temporaires, peak)
-- [ ] Profiling
-- [ ] Tests sur cube, tetrahedron, pyramid, prism, polyhedron arbitraire
+- [x] Analytical/reference verification framework
+- [x] Numerical-model verification matrix
+- [x] VMFL matrix/reporting foundation
+- [~] Executable VMFL solver-level coverage
+- [~] Manufactured solutions and observed-order campaign
+- [~] Independent OpenFOAM comparisons
+- [~] Performance/memory/profiling benchmark matrix
+- [ ] Final spec/architecture audit
