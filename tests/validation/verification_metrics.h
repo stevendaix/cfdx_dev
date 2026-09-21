@@ -12,6 +12,8 @@ namespace cfdx::verification {
 struct ErrorMetrics {
     double l2 = 0.0;
     double linf = 0.0;
+    double l2_relative = 0.0;
+    double linf_relative = 0.0;
 };
 
 inline ErrorMetrics error_norms(const std::vector<double>& numerical,
@@ -25,7 +27,9 @@ inline ErrorMetrics error_norms(const std::vector<double>& numerical,
 
     double sum_w = 0.0;
     double sum_e2 = 0.0;
+    double sum_exact2 = 0.0;
     double max_e = 0.0;
+    double max_exact = 0.0;
     for (std::size_t i = 0; i < numerical.size(); ++i) {
         const double w = weights.empty() ? 1.0 : weights[i];
         if (!(w > 0.0) || !std::isfinite(w))
@@ -33,9 +37,15 @@ inline ErrorMetrics error_norms(const std::vector<double>& numerical,
         const double e = std::abs(numerical[i] - exact[i]);
         sum_w += w;
         sum_e2 += w * e * e;
+        sum_exact2 += w * exact[i] * exact[i];
         max_e = std::max(max_e, e);
+        max_exact = std::max(max_exact, std::abs(exact[i]));
     }
-    return {std::sqrt(sum_e2 / sum_w), max_e};
+    const double l2=std::sqrt(sum_e2/sum_w);
+    const double exact_l2=std::sqrt(sum_exact2/sum_w);
+    const double scale=std::max(exact_l2,std::numeric_limits<double>::min());
+    const double inf_scale=std::max(max_exact,std::numeric_limits<double>::min());
+    return {l2,max_e,l2/scale,max_e/inf_scale};
 }
 
 inline double observed_order(double coarse_error, double fine_error,
