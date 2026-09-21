@@ -58,7 +58,7 @@ Mesh make_unit_cube() {
 }
 
 int main() {
-    run_case("roundtrip_mesh_points", []() {
+    run_case("hdf5_schema_and_hash_attributes", []() {\n        Mesh original = make_unit_cube();\n        const std::string filename = "/tmp/cfdx_schema.h5";\n        std::remove(filename.c_str());\n        EXPECT_TRUE(write_mesh_hdf5(filename, original));\n        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);\n        EXPECT_TRUE(file >= 0);\n        const char* names[] = {"format_version", "schema_version", "cfdx_version", "topology_hash", "mesh_hash"};\n        for (const char* name : names) {\n            hid_t attr = H5Aopen(file, name, H5P_DEFAULT);\n            EXPECT_TRUE(attr >= 0);\n            if (attr >= 0) H5Aclose(attr);\n        }\n        H5Fclose(file);\n        std::remove(filename.c_str());\n    });\n\n    run_case("roundtrip_mesh_points", []() {
         Mesh original = make_unit_cube();
         const std::string filename = "/tmp/cfdx_roundtrip.h5";
         std::remove(filename.c_str());
