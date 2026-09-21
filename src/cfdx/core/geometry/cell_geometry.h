@@ -45,6 +45,30 @@ struct CellGeometry {
 //   face_ids     : liste des indices de faces appartenant à la cellule
 //
 // Retourne {centre, volume}.
+inline Vec3 compute_cell_centre(
+    const Vec3* face_centres,
+    const Vec3* face_Sf,
+    const FaceIndex* face_ids,
+    std::size_t n_cell_faces)
+{
+    if (n_cell_faces == 0)
+        throw std::runtime_error("CellGeometry: cell must have at least one face");
+
+    Vec3 weighted_sum;
+    double total_area = 0.0;
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        const double area = face_Sf[f].mag();
+        if (!(area > 0.0))
+            throw std::runtime_error("CellGeometry: degenerate face");
+        weighted_sum = weighted_sum + face_centres[f] * area;
+        total_area += area;
+    }
+    if (!(total_area > 0.0))
+        throw std::runtime_error("CellGeometry: cell has zero total face area");
+    return weighted_sum * (1.0 / total_area);
+}
+
 inline CellGeometry compute_cell_geometry_raw(
     const Vec3* face_centres,
     const Vec3* face_Sf,
