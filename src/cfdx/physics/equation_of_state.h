@@ -168,9 +168,19 @@ class IdealGasEOS : public EquationOfState {
         R = params_.R_univ / params_.M;
     }
 
+    void validate_thermodynamic_consistency() const {
+        const double cp_from_gamma = params_.gamma * R / (params_.gamma - 1.0);
+        const double scale = std::max({1.0, std::abs(params_.Cp), std::abs(cp_from_gamma)});
+        if (std::abs(params_.Cp - cp_from_gamma) > 1.0e-10 * scale) {
+            throw std::invalid_argument(
+                "IdealGasEOS: Cp is inconsistent with gamma and R");
+        }
+    }
+
 public:
     IdealGasEOS(const IdealGasParams& params = {}) : params_(params) {
         update_R();
+        validate_thermodynamic_consistency();
     }
 
     EquationOfStateType type() const override { return EquationOfStateType::IDEAL_GAS; }
@@ -178,6 +188,7 @@ public:
     void set_params(const IdealGasParams& params) {
         params_ = params;
         update_R();
+        validate_thermodynamic_consistency();
     }
 
     const IdealGasParams& params() const { return params_; }
@@ -187,13 +198,11 @@ public:
     }
 
     double enthalpy(double /*p*/, double T) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return Cp_derived * (T - params_.T_ref);
+        return params_.Cp * (T - params_.T_ref);
     }
 
     double entropy(double p, double T) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return Cp_derived * std::log(T / params_.T_ref) - R * std::log(p / params_.p_ref);
+        return params_.Cp * std::log(T / params_.T_ref) - R * std::log(p / params_.p_ref);
     }
 
     double speed_of_sound(double /*p*/, double T) const override {
@@ -202,8 +211,7 @@ public:
     }
 
     double temperature_from_enthalpy(double /*p*/, double h) const override {
-        double Cp_derived = params_.gamma * R / (params_.gamma - 1.0);
-        return params_.T_ref + h / Cp_derived;
+        return params_.T_ref + h / params_.Cp;
     }
 
     double pressure_from_density_temp(double rho, double T) const override {
@@ -232,11 +240,11 @@ public:
     }
 
     double cp(double /*p*/, double /*T*/) const override {
-        return params_.gamma * R / (params_.gamma - 1.0);
+        return params_.Cp;
     }
 
     double cv(double /*p*/, double /*T*/) const override {
-        return R / (params_.gamma - 1.0);
+        return params_.Cp - R;
     }
 
     double total_energy(double p, double T, double u_mag2) const override {
