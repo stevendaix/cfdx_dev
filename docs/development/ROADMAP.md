@@ -48,8 +48,8 @@
 - [x] SIMPLE/SIMPLEC control and relaxation primitives
 - [x] PISO/PIMPLE correction primitives
 - [x] Rhie-Chow face-flux correction primitive
-- [x] Cavity validation (benchmark harness)
-- [x] Poiseuille validation
+- [x] Cavity validation harness
+- [x] Poiseuille analytical validation
 - [x] Full nonlinear SIMPLE/PISO/PIMPLE solver loop
 
 ## M2 — Turbulence
@@ -59,7 +59,7 @@
 - [x] LES Smagorinsky eddy-viscosity model
 - [x] DES length-scale model foundation
 - [x] Transport-equation assembly and wall treatment
-- [x] Channel/flat-plate validation (model/transport regression harness)
+- [x] Channel/flat-plate validation harness
 
 ## M3 — Thermal / CHT
 
