@@ -192,7 +192,7 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
             }
             if (ghost_rank == rank) {
                 plan.recv_faces[owner_rank].push_back(static_cast<int>(f));
-                plan.recv_cells[owner_rank].push_back(neighbour_cell);
+                plan.recv_cells[owner_rank].push_back(owner_cell);
             }
         }
     }
