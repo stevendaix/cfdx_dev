@@ -36,10 +36,20 @@ int main() {
     assert(workbench.controller().state() == SimulationState::Ready);
     assert(workbench.toolbar().can_run);
 
+    // Solver adapter is invoked by the controller, not by the UI.
+    std::size_t solver_iterations = 0;
+    CallbackSolverAdapter solver;
+    solver.validate_fn = [](const CaseModel&) {};
+    solver.begin_fn = [](const CaseModel&, const Checkpoint&) {};
+    solver.iterate_fn = [&](std::size_t, double) { ++solver_iterations; return true; };
+    solver.end_fn = [] {};
+    workbench.controller().set_solver_adapter(&solver);
+
     // Transient run-to-time case.
     workbench.controller().run({0, 1.0, false});
     assert(workbench.controller().state() == SimulationState::Converged);
     assert(workbench.controller().checkpoint().time >= 1.0);
+    assert(solver_iterations == 2);
 
     // Restart/rebuild edit is explicitly visible.
     assert(workbench.properties().set(
