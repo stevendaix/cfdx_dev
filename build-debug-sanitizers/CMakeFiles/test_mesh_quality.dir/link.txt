@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_mesh_quality.dir/tests/numerical/test_mesh_quality.cpp.o -o test_mesh_quality  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

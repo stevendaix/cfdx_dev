@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_boundary.dir/tests/unit/test_boundary.cpp.o -o test_boundary  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

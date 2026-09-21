@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_bicgstab_solver.dir/tests/unit/test_bicgstab_solver.cpp.o -o test_bicgstab_solver  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 
