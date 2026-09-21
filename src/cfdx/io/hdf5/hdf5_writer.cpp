@@ -78,8 +78,8 @@ static herr_t write_dataset(hid_t loc_id, const char* name,
     hsize_t total = 1;
     for (int i = 0; i < rank; ++i) total *= dims[i];
     if (total == 0) {
-        // For empty datasets, create with proper type but don't write data
-        hid_t space = H5Screate_simple(rank, dims, nullptr);
+        // H5S_NULL is the portable representation of an empty dataset.
+        hid_t space = H5Screate(H5S_NULL);
         if (space < 0) return -1;
         hid_t ds = H5Dcreate2(loc_id, name, H5T_NATIVE_DOUBLE, space,
                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -104,7 +104,7 @@ static herr_t write_dataset(hid_t loc_id, const char* name,
 static herr_t write_dataset_u64(hid_t file_id, const char* name,
                                 const std::uint64_t* data, hsize_t n) {
     if (n == 0) {
-        hid_t space = H5Screate_simple(1, &n, nullptr);
+        hid_t space = H5Screate(H5S_NULL);
         if (space < 0) return -1;
         hid_t type = H5T_NATIVE_UINT64;
         hid_t ds = H5Dcreate2(file_id, name, type, space,
