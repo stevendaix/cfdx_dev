@@ -358,8 +358,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Explicitly enforce the selected pressure gauge after relaxation.
             p(controls.pressure_reference_cell) = controls.pressure_reference_value;
 
+            ScalarBoundaryConditions pressure_correction_bcs;
+            for (const auto& [name, bc] : pressure_bcs) {
+                pressure_correction_bcs[name] = bc;
+                if (bc.type == ScalarBoundaryType::FIXED_VALUE)
+                    pressure_correction_bcs[name].value = 0.0;
+            }
             auto grad_pc = gauss_gradient_with_boundary(
-                p_corr, mesh, geometry, pressure_bcs);
+                p_corr, mesh, geometry, pressure_correction_bcs);
             for (std::size_t c = 0; c < nc; ++c) {
                 U.component_data(0)[c] -= rAU[c] * grad_pc.component_data(0)[c];
                 U.component_data(1)[c] -= rAU[c] * grad_pc.component_data(1)[c];
