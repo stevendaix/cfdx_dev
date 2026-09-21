@@ -22,6 +22,7 @@
 #include <string>
 #include <sstream>
 #include <cmath>
+#include <algorithm>
 
 namespace cfdx {
 namespace core {
