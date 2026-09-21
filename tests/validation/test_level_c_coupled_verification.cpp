@@ -146,6 +146,7 @@ int main()
             controls.max_outer_iterations=50;
             controls.tolerance=1e-8;
 
+            std::cout<<"LEVEL_C: C-02 calling coupled solver\n";
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
                 controls,thermal_bc);
