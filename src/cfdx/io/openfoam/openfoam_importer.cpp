@@ -85,6 +85,12 @@ bool read_faces(const std::filesystem::path& path,
 }
 
 cfdx::core::PatchType patch_type(const std::string& type) {
+    if (type == "symmetryPlane" || type == "symmetry") return cfdx::core::PatchType::SYMMETRY;
+    if (type == "cyclic" || type == "cyclicAMI" || type == "cyclicACMI") return cfdx::core::PatchType::PERIODIC;
+    if (type == "processor") return cfdx::core::PatchType::INTERFACE;
+    if (type == "empty") return cfdx::core::PatchType::EMPTY;
+    if (type == "wall") return cfdx::core::PatchType::WALL;
+    if (type == "patch") return cfdx::core::PatchType::UNKNOWN;
     return cfdx::core::patch_type_from_string(type);
 }
 
