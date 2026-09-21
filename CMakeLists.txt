@@ -361,6 +361,10 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
+        # GitHub-hosted Ubuntu runners execute the CTest process as root.
+        # OpenMPI requires explicit opt-in for root-launched test ranks.
+        set_tests_properties(test_mpi_partition PROPERTIES
+            ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
