@@ -212,15 +212,21 @@ void run_case(const CavityCase& test)
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
-             <<" iterations="<<result.solve.iterations<<" continuity="<<result.solve.history.back().continuity_linf
+             <<" iterations="<<result.solve.iterations
+             <<" continuity="<<result.solve.history.back().continuity_linf
+             <<" continuity_norm="<<result.solve.history.back().continuity_normalized
+             <<" momentum_eq="<<result.solve.history.back().momentum_equation_residual
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
     const double max_allowed=test.nx>=64?0.10:0.15;
     const double rms_allowed=0.075;
     if(u.max_abs>max_allowed || v.max_abs>max_allowed ||
        u.rms>rms_allowed || v.rms>rms_allowed)
         throw std::runtime_error("Ghia velocity profile mismatch");
-    if(result.solve.history.back().continuity_linf>1e-7)
-        throw std::runtime_error("Ghia continuity residual too large");
+    if(result.solve.history.back().continuity_linf>1e-7 ||
+       !std::isfinite(result.solve.history.back().continuity_normalized) ||
+       !std::isfinite(result.solve.history.back().momentum_equation_residual) ||
+       result.solve.history.back().momentum_equation_residual>1e-7)
+        throw std::runtime_error("Ghia physical residual gate failed");
 }
 
 } // namespace
