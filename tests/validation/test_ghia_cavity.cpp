@@ -139,31 +139,49 @@ CavityResult solve_cavity(const CavityCase& test)
     return {std::move(U),solve,build_fv_geometry(mesh)};
 }
 
-double interpolate_line(const Field<double,Location::CELL>& U,const FvGeometry& geometry,
-                        bool horizontal_component,double coordinate)
+double interpolate_line(const Field<double,Location::CELL>& U,
+                        const FvGeometry& geometry,
+                        std::size_t nx, std::size_t ny,
+                        bool horizontal_component,
+                        double coordinate)
 {
-    double best=0.0;
-    double best_distance=std::numeric_limits<double>::infinity();
-    constexpr double centre=0.5;
-    for(std::size_t c=0;c<U.size();++c) {
-        const double x=geometry.cell_centres[c].x, y=geometry.cell_centres[c].y;
-        const double distance=horizontal_component
-            ? std::abs(x-centre)+0.05*std::abs(y-coordinate)
-            : std::abs(y-centre)+0.05*std::abs(x-coordinate);
-        if(distance<best_distance) {
-            best_distance=distance;
-            best=U.component_data(horizontal_component?0:1)[c];
-        }
-    }
-    return best;
+    const double centre=0.5;
+    const double eps=1e-12;
+    if (coordinate<=eps || coordinate>=1.0-eps)
+        return horizontal_component
+            ? (coordinate>=1.0-eps ? 1.0 : 0.0)
+            : 0.0;
+
+    const double* values=U.component_data(horizontal_component?0:1);
+    const double qx=horizontal_component ? centre : coordinate;
+    const double qy=horizontal_component ? coordinate : centre;
+
+    const double fx=qx*static_cast<double>(nx)-0.5;
+    const double fy=qy*static_cast<double>(ny)-0.5;
+    const long ix0=std::clamp(static_cast<long>(std::floor(fx)),0,static_cast<long>(nx)-2);
+    const long iy0=std::clamp(static_cast<long>(std::floor(fy)),0,static_cast<long>(ny)-2);
+    const std::size_t i0=static_cast<std::size_t>(ix0);
+    const std::size_t j0=static_cast<std::size_t>(iy0);
+    const double tx=std::clamp(fx-static_cast<double>(ix0),0.0,1.0);
+    const double ty=std::clamp(fy-static_cast<double>(iy0),0.0,1.0);
+
+    const auto at=[&](std::size_t i,std::size_t j) {
+        return values[j*nx+i];
+    };
+    const double v00=at(i0,j0);
+    const double v10=at(i0+1,j0);
+    const double v01=at(i0,j0+1);
+    const double v11=at(i0+1,j0+1);
+    return (1.0-ty)*((1.0-tx)*v00+tx*v10)
+         + ty*((1.0-tx)*v01+tx*v11);
 }
 
 Comparison compare(const Field<double,Location::CELL>& U,const FvGeometry& geometry,
-                   bool horizontal_component,const std::vector<Sample>& samples)
+                   std::size_t nx,std::size_t ny,bool horizontal_component,const std::vector<Sample>& samples)
 {
     double sum2=0.0,max_abs=0.0;
     for(const auto& sample:samples) {
-        const double error=std::abs(interpolate_line(U,geometry,horizontal_component,sample.coordinate)-sample.reference);
+        const double error=std::abs(interpolate_line(U,geometry,nx,ny,horizontal_component,sample.coordinate)-sample.reference);
         sum2+=error*error; max_abs=std::max(max_abs,error);
     }
     return {std::sqrt(sum2/static_cast<double>(samples.size())),max_abs,max_abs};
@@ -190,8 +208,8 @@ std::vector<Sample> v_reference(double re)
 void run_case(const CavityCase& test)
 {
     const auto result=solve_cavity(test);
-    const auto u=compare(result.velocity,result.geometry,true,u_reference(test.reynolds));
-    const auto v=compare(result.velocity,result.geometry,false,v_reference(test.reynolds));
+    const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
+    const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
              <<" iterations="<<result.solve.iterations<<" continuity="<<result.solve.history.back().continuity_linf
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
