@@ -114,8 +114,12 @@ int main() {
     });
 
     run_case("compute_transport_with_eos", []() {
-        IdealGasEOS eos;
-        eos.set_params(IdealGasParams{0.02896546, 1.4, 300.0, 101325.0});
+        IdealGasParams params;
+        params.M = 0.02896546;
+        params.gamma = 1.4;
+        params.T_ref = 300.0;
+        params.p_ref = 101325.0;
+        IdealGasEOS eos(params);
         double T = 300.0;
         double p = 101325.0;
         TransportProperties tp = compute_transport(T, eos, p);
