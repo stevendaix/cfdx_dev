@@ -197,6 +197,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         H5Fclose(file);
         return false;
     }
+    if(owner.size()!=n_faces || neighbour.size()!=n_faces) {
+        H5Fclose(file);
+        return false;
+    }
     mesh.ownership().resize(owner.size());
     for (std::size_t i = 0; i < owner.size(); ++i) {
         mesh.ownership().set_owner(i, owner[i]);

@@ -31,87 +31,127 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
         throw std::invalid_argument("make_channel: invalid dimensions");
 
     Mesh m;
-    // A shared point plane is essential here: using independent cell vertices
-    // for a 1-D chain makes the cell polyhedra geometrically inconsistent with
-    // their shared faces and destroys grid-convergence of the Poiseuille case.
-    m.points().resize(4 * (n + 1));
-    const auto point_id=[](std::size_t j,std::size_t k) {
-        return 4*j+k;
-    };
-    const double dy=height/static_cast<double>(n);
-    for(std::size_t j=0;j<=n;++j) {
-        const double y=dy*static_cast<double>(j);
-        m.points().set(point_id(j,0),0.0,y,0.0);
-        m.points().set(point_id(j,1),1.0,y,0.0);
-        m.points().set(point_id(j,2),1.0,y,1.0);
-        m.points().set(point_id(j,3),0.0,y,1.0);
+    m.points().resize(8 * n);
+
+    const double dy = height / static_cast<double>(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double y0 = dy * static_cast<double>(i);
+        const double y1 = dy * static_cast<double>(i + 1);
+        const std::size_t b = 8 * i;
+        const double p[8][3] = {
+            {0.0,y0,0.0}, {1.0,y0,0.0}, {1.0,y1,0.0}, {0.0,y1,0.0},
+            {0.0,y0,1.0}, {1.0,y0,1.0}, {1.0,y1,1.0}, {0.0,y1,1.0}
+        };
+        for (std::size_t j = 0; j < 8; ++j)
+            m.points().set(b + j, p[j][0], p[j][1], p[j][2]);
     }
 
-    std::vector<std::size_t> bottom,top,side_x0,side_x1,side_z0,side_z1,internal;
+    std::vector<std::size_t> bottom, top, side_x0, side_x1, side_z0, side_z1;
+    std::vector<std::size_t> internal;
     bottom.reserve(1); top.reserve(1);
     side_x0.reserve(n); side_x1.reserve(n);
     side_z0.reserve(n); side_z1.reserve(n);
-    internal.reserve(n>1?n-1:0);
+    internal.reserve(n > 0 ? n - 1 : 0);
 
-    auto add_face=[&](std::initializer_list<std::size_t> vertices) {
-        const std::size_t id=m.faces().n_faces();
-        m.faces().push_face(vertices);
+    // Boundary faces are inserted first so patch ids are deterministic.
+    auto add_face = [&](std::initializer_list<std::size_t> vertices) {
+        const std::size_t id = m.faces().n_faces();
+        m.faces().push_face(
+            std::vector<FaceIndex>(vertices.begin(), vertices.end()));
         return id;
     };
 
-    bottom.push_back(add_face({0,1,2,3}));
-    const std::size_t top_base=4*n;
-    top.push_back(add_face({top_base+0,top_base+3,top_base+2,top_base+1}));
+    bottom.push_back(add_face({0,1,5,4}));
+    top.push_back(add_face({8*(n-1)+3,8*(n-1)+7,8*(n-1)+6,8*(n-1)+2}));
 
-    for(std::size_t i=0;i<n;++i) {
-        const std::size_t b=4*i;
-        const std::size_t u=4*(i+1);
-        side_x0.push_back(add_face({b+0,b+3,u+3,u+0}));
-        side_x1.push_back(add_face({b+1,u+1,u+2,b+2}));
-        side_z0.push_back(add_face({b+0,u+0,u+1,b+1}));
-        side_z1.push_back(add_face({b+3,b+2,u+2,u+3}));
-        if(i+1<n)
-            internal.push_back(add_face({u+0,u+1,u+2,u+3}));
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t b = 8 * i;
+        side_x0.push_back(add_face({b+0,b+4,b+7,b+3}));
+        side_x1.push_back(add_face({b+1,b+2,b+6,b+5}));
+        side_z0.push_back(add_face({b+0,b+3,b+2,b+1}));
+        side_z1.push_back(add_face({b+4,b+5,b+6,b+7}));
     }
 
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        const std::size_t b0 = 8 * i;
+        internal.push_back(add_face({b0+3,b0+7,b0+6,b0+2}));
+    }
+
+    // Cell face order matches the boundary orientation used by the core
+    // geometry tests. Internal faces are oriented from the lower-y owner to
+    // the upper-y neighbour.
     m.ownership().resize(m.n_faces());
     std::vector<std::vector<std::size_t>> cell_faces(n);
-    for(std::size_t i=0;i<n;++i) {
-        cell_faces[i]={
-            i==0?bottom[0]:internal[i-1],
-            i+1==n?top[0]:internal[i],
-            side_x0[i],side_x1[i],side_z0[i],side_z1[i]};
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t b = 8 * i;
+        cell_faces[i] = {
+            i == 0 ? bottom[0] : internal[i - 1],
+            i + 1 == n ? top[0] : internal[i],
+            side_x0[i], side_x1[i], side_z0[i], side_z1[i]
+        };
     }
 
-    for(std::size_t f=0;f<m.n_faces();++f) {
-        std::size_t owner=0;
-        bool found=false;
-        bool is_internal=false;
-        for(std::size_t c=0;c<n && !found;++c)
-            for(const auto cf:cell_faces[c])
-                if(cf==f) {
-                    owner=c;
-                    found=true;
-                    is_internal=std::find(internal.begin(),internal.end(),f)!=internal.end();
+    for (std::size_t f = 0; f < m.n_faces(); ++f) {
+        bool assigned = false;
+        for (std::size_t c = 0; c < n && !assigned; ++c) {
+            for (const auto cf : cell_faces[c]) {
+                if (cf == f) {
+                    m.ownership().set_owner(f, c);
+                    const bool is_internal =
+                        (std::find(internal.begin(), internal.end(), f) != internal.end());
+                    m.ownership().set_neighbour(
+                        f, is_internal
+                            ? static_cast<int>(c + 1)
+                            : FaceOwnership::BOUNDARY);
+                    assigned = true;
                     break;
                 }
-        if(!found) throw std::runtime_error("make_channel: unassigned face");
-        m.ownership().set_owner(f,owner);
-        m.ownership().set_neighbour(f,is_internal?static_cast<int>(owner+1):FaceOwnership::BOUNDARY);
+            }
+        }
+        if (!assigned)
+            throw std::runtime_error("make_channel: unassigned face");
     }
 
-    for(const auto& faces:cell_faces) m.cells().push_cell(faces);
+    for (const auto& faces : cell_faces)
+        m.cells().push_cell(faces);
 
-    Patch p_bottom; p_bottom.name="bottom"; p_bottom.type=PatchType::WALL; p_bottom.face_ids=bottom;
-    Patch p_top; p_top.name="top"; p_top.type=PatchType::WALL; p_top.face_ids=top;
-    Patch p_x0; p_x0.name="x0"; p_x0.type=PatchType::WALL; p_x0.face_ids=side_x0;
-    Patch p_x1; p_x1.name="x1"; p_x1.type=PatchType::WALL; p_x1.face_ids=side_x1;
-    Patch p_z0; p_z0.name="z0"; p_z0.type=PatchType::WALL; p_z0.face_ids=side_z0;
-    Patch p_z1; p_z1.name="z1"; p_z1.type=PatchType::WALL; p_z1.face_ids=side_z1;
-    m.boundary().add_patch(p_bottom); m.boundary().add_patch(p_top);
-    m.boundary().add_patch(p_x0); m.boundary().add_patch(p_x1);
-    m.boundary().add_patch(p_z0); m.boundary().add_patch(p_z1);
-    return {std::move(m),{}};
+    Patch p_bottom;
+    p_bottom.name = "bottom";
+    p_bottom.type = PatchType::WALL;
+    p_bottom.face_ids = bottom;
+    m.boundary().add_patch(p_bottom);
+
+    Patch p_top;
+    p_top.name = "top";
+    p_top.type = PatchType::WALL;
+    p_top.face_ids = top;
+    m.boundary().add_patch(p_top);
+
+    Patch p_x0;
+    p_x0.name = "x0";
+    p_x0.type = PatchType::WALL;
+    p_x0.face_ids = side_x0;
+    m.boundary().add_patch(p_x0);
+
+    Patch p_x1;
+    p_x1.name = "x1";
+    p_x1.type = PatchType::WALL;
+    p_x1.face_ids = side_x1;
+    m.boundary().add_patch(p_x1);
+
+    Patch p_z0;
+    p_z0.name = "z0";
+    p_z0.type = PatchType::WALL;
+    p_z0.face_ids = side_z0;
+    m.boundary().add_patch(p_z0);
+
+    Patch p_z1;
+    p_z1.name = "z1";
+    p_z1.type = PatchType::WALL;
+    p_z1.face_ids = side_z1;
+    m.boundary().add_patch(p_z1);
+
+    return {std::move(m), {}};
 }
 
 struct ScalarResult {
@@ -193,7 +233,7 @@ int main()
                 exact[i] = r.y[i] / H;
             const auto e = error_norms(r.u,exact,r.volume);
             report_case("Couette",n,e,std::numeric_limits<double>::quiet_NaN());
-            if (e.linf > 5e-11)
+            if (e.linf > 1e-11)
                 throw std::runtime_error("Couette analytical solution mismatch");
         }
 
@@ -226,7 +266,7 @@ int main()
                 exact[i] = T0 + (T1-T0)*r.y[i]/H;
             const auto e = error_norms(r.u,exact,r.volume);
             report_case("Conduction 1D",n,e,std::numeric_limits<double>::quiet_NaN());
-            if (e.linf > 1e-9)
+            if (e.linf > 1e-11)
                 throw std::runtime_error("1-D conduction analytical solution mismatch");
         }
 
