@@ -24,6 +24,9 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace cfdx {
 namespace core {
@@ -92,117 +95,127 @@ struct TimeIntegrationContext {
 // Advance field in time by one step
 // Returns the new field φ^{n+1}
 inline Field<double, Location::CELL> advance_time(
-    TimeScheme scheme,
     const Field<double, Location::CELL>& phi,
     double dt,
     const RhsFunction& rhs_func,
+    TimeScheme scheme,
     TimeIntegrationContext* ctx = nullptr)
 {
-    const std::size_t n_cells = phi.size();
-    const std::size_t dim = phi.dimension();
-
-    Field<double, Location::CELL> phi_new(n_cells, phi.metadata().name + "_new", phi.metadata().unit, dim);
-    Field<double, Location::CELL> rhs(n_cells, "rhs", phi.metadata().unit + "/s", dim);
-
-    // Compute RHS at current state
-    rhs_func(phi, rhs);
-
-    switch (scheme) {
-        case TimeScheme::EULER_EXPLICIT: {
-            // φ^{n+1} = φ^n + Δt * RHS(φ^n)
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                for (std::size_t d = 0; d < dim; ++d) {
-                    const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    double* new_data = phi_new.component_data(d);
-                    new_data[c] = phi_data[c] + dt * rhs_data[c];
-                }
-            }
-            break;
-        }
-
-        case TimeScheme::EULER_IMPLICIT: {
-            // φ^{n+1} = φ^n + Δt * RHS(φ^{n+1})
-            // This requires solving a linear system: (I - Δt*J) φ^{n+1} = φ^n + Δt*RHS(φ^n) - Δt*J*φ^n
-            // For now, fall back to explicit with warning - full implicit needs linear solver
-            // Users should provide implicit RHS function
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                for (std::size_t d = 0; d < dim; ++d) {
-                    const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    double* new_data = phi_new.component_data(d);
-                    new_data[c] = phi_data[c] + dt * rhs_data[c];  // explicit fallback
-                }
-            }
-            break;
-        }
-
-        case TimeScheme::CRANK_NICOLSON: {
-            // φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ^{n+1}))
-            // Rearranged: (I - 0.5*Δt*J) φ^{n+1} = (I + 0.5*Δt*J) φ^n
-            // For now: explicit predictor + implicit corrector (semi-implicit)
-            Field<double, Location::CELL> phi_star = phi;  // predictor
-            // Predictor: φ* = φ^n + Δt * RHS(φ^n)
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                for (std::size_t d = 0; d < dim; ++d) {
-                    const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    double* star_data = phi_star.component_data(d);
-                    star_data[c] = phi_data[c] + dt * rhs_data[c];
-                }
-            }
-            // Compute RHS at predicted state
-            Field<double, Location::CELL> rhs_star(n_cells, "rhs_star", phi.metadata().unit + "/s", dim);
-            rhs_func(phi_star, rhs_star);
-            // Corrector: φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ*))
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                for (std::size_t d = 0; d < dim; ++d) {
-                    const double* phi_data = phi.component_data(d);
-                    const double* rhs_data = rhs.component_data(d);
-                    const double* rhs_star_data = rhs_star.component_data(d);
-                    double* new_data = phi_new.component_data(d);
-                    new_data[c] = phi_data[c] + 0.5 * dt * (rhs_data[c] + rhs_star_data[c]);
-                }
-            }
-            break;
-        }
-
-        case TimeScheme::BDF2: {
-            // (3φ^{n+1} - 4φ^n + φ^{n-1}) / (2Δt) = RHS(φ^{n+1})
-            // Rearranged: 3φ^{n+1} = 4φ^n - φ^{n-1} + 2Δt * RHS(φ^{n+1})
-            if (!ctx || !ctx->has_prev) {
-                // First step: fall back to Euler implicit
-                for (std::size_t c = 0; c < n_cells; ++c) {
-                    for (std::size_t d = 0; d < dim; ++d) {
-                        const double* phi_data = phi.component_data(d);
-                        const double* rhs_data = rhs.component_data(d);
-                        double* new_data = phi_new.component_data(d);
-                        new_data[c] = phi_data[c] + dt * rhs_data[c];
-                    }
-                }
-            } else {
-                // Use history: φ^{n-1} = ctx->phi_prev, φ^n = phi
-                for (std::size_t c = 0; c < n_cells; ++c) {
-                    for (std::size_t d = 0; d < dim; ++d) {
-                        const double* phi_data = phi.component_data(d);
-                        const double* phi_prev_data = ctx->phi_prev.component_data(d);
-                        const double* rhs_data = rhs.component_data(d);
-                        double* new_data = phi_new.component_data(d);
-                        // Explicit BDF2: 3φ^{n+1} = 4φ^n - φ^{n-1} + 2Δt * RHS(φ^n)
-                        new_data[c] = (4.0 * phi_data[c] - phi_prev_data[c] + 2.0 * dt * rhs_data[c]) / 3.0;
-                    }
-                }
-            }
-            // Update context
-            if (ctx) {
-                ctx->shift(phi_new);
-            }
-            break;
-        }
+    if (!(dt > 0.0) || !std::isfinite(dt)) {
+        throw std::invalid_argument("advance_time: dt must be finite and strictly positive");
     }
 
+    const std::size_t n_cells = phi.size();
+    const std::size_t dim = phi.dimension();
+    Field<double, Location::CELL> phi_new(
+        n_cells, "phi_new", phi.metadata().unit, dim);
+
+    Field<double, Location::CELL> rhs(
+        n_cells, "rhs", phi.metadata().unit + "/s", dim);
+    Field<double, Location::CELL> rhs_iter(
+        n_cells, "rhs_iter", phi.metadata().unit + "/s", dim);
+
+    rhs_func(phi, rhs);
+
+    constexpr int max_iterations = 100;
+    constexpr double tolerance = 1e-12;
+
+    auto solve_fixed_point = [&](auto&& predictor) {
+        predictor();
+        for (int iteration = 0; iteration < max_iterations; ++iteration) {
+            rhs_func(phi_new, rhs_iter);
+            double max_delta = 0.0;
+            for (std::size_t d = 0; d < dim; ++d) {
+                const double* old_data = phi_new.component_data(d);
+                const double* phi_data = phi.component_data(d);
+                const double* rhs_data = rhs_iter.component_data(d);
+                double* new_data = phi_new.component_data(d);
+                (void)old_data;
+                for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                    double candidate = 0.0;
+                    if (scheme == TimeScheme::EULER_IMPLICIT) {
+                        candidate = phi_data[cell] + dt * rhs_data[cell];
+                    } else if (scheme == TimeScheme::CRANK_NICOLSON) {
+                        const double* rhs_old = rhs.component_data(d);
+                        candidate = phi_data[cell] +
+                            0.5 * dt * (rhs_old[cell] + rhs_data[cell]);
+                    } else {
+                        const double* prev = ctx->phi_prev.component_data(d);
+                        candidate = (4.0 * phi_data[cell] - prev[cell] +
+                            2.0 * dt * rhs_data[cell]) / 3.0;
+                    }
+                    max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
+                    new_data[cell] = candidate;
+                }
+            }
+            if (max_delta <= tolerance) {
+                return;
+            }
+        }
+        throw std::runtime_error("advance_time: implicit iteration did not converge");
+    };
+
+    switch (scheme) {
+        case TimeScheme::EULER_EXPLICIT:
+            for (std::size_t d = 0; d < dim; ++d) {
+                const double* phi_data = phi.component_data(d);
+                const double* rhs_data = rhs.component_data(d);
+                double* new_data = phi_new.component_data(d);
+                for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                    new_data[cell] = phi_data[cell] + dt * rhs_data[cell];
+                }
+            }
+            break;
+
+        case TimeScheme::EULER_IMPLICIT:
+            solve_fixed_point([&] {
+                for (std::size_t d = 0; d < dim; ++d) {
+                    const double* phi_data = phi.component_data(d);
+                    double* new_data = phi_new.component_data(d);
+                    for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                        new_data[cell] = phi_data[cell];
+                    }
+                }
+            });
+            break;
+
+        case TimeScheme::CRANK_NICOLSON:
+            solve_fixed_point([&] {
+                for (std::size_t d = 0; d < dim; ++d) {
+                    const double* phi_data = phi.component_data(d);
+                    const double* rhs_data = rhs.component_data(d);
+                    double* new_data = phi_new.component_data(d);
+                    for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                        new_data[cell] = phi_data[cell] + dt * rhs_data[cell];
+                    }
+                }
+            });
+            break;
+
+        case TimeScheme::BDF2:
+            if (!ctx || !ctx->has_prev) {
+                // Bootstrap BDF2 with a genuinely implicit Euler step.
+                solve_fixed_point([&] {
+                    for (std::size_t d = 0; d < dim; ++d) {
+                        const double* phi_data = phi.component_data(d);
+                        double* new_data = phi_new.component_data(d);
+                        for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                            new_data[cell] = phi_data[cell];
+                        }
+                    }
+                });
+            } else {
+                solve_fixed_point([&] {});
+            }
+            break;
+    }
+
+    if (ctx) {
+        ctx->shift(phi_new);
+    }
     return phi_new;
 }
+
 
 // Compute stable time step based on CFL condition
 // CFL = |u| * Δt / h ≤ CFL_max
