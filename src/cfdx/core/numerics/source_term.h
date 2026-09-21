@@ -206,6 +206,10 @@ inline SourceTerm make_spatial_source(const Mesh& mesh,
         face_Sf[f] = fg.Sf;
     }
 
+    std::vector<Vec3> provisional_centres(n_cells);
+    compute_area_weighted_cell_centres(mesh, face_centres.data(), face_Sf.data(), provisional_centres.data());
+    orient_mesh_face_vectors(mesh, face_centres, provisional_centres, face_Sf);
+
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
