@@ -120,7 +120,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
 
     auto fail = [&](const std::string& reason) {
         std::cerr << "HDF5 integrity error in '" << filename
-                  << "': " << reason << '\\n';
+                  << "': " << reason << '\n';
         H5Fclose(file);
         return false;
     };
