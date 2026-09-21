@@ -1,0 +1,95 @@
+#pragma once
+
+#include "cfdx/physics/turbulence_solver.h"
+
+namespace cfdx::physics {
+
+inline TurbulenceTransportResult solve_sst_transport(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& F1,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& F2,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs = {},
+    const ScalarBoundaryConditions& omega_bcs = {},
+    std::size_t max_iterations = 100,
+    double tolerance = 1e-8)
+{
+    validate_turbulence_controls(controls);
+    if(controls.model!=TurbulenceModel::SST)
+        throw std::invalid_argument("solve_sst_transport requires SST model");
+    const std::size_t n=mesh.n_cells();
+    if(F1.size()!=n || F2.size()!=n || strain_rate.size()!=n)
+        throw std::invalid_argument("SST blending field size mismatch");
+
+    TurbulenceTransportResult result;
+    for(std::size_t iter=1;iter<=max_iterations;++iter) {
+        auto oldk=k;
+        auto oldw=omega;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> P(
+            n,"Pk","W/m3",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> sk(
+            n,"Sk","W/m3",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> sw(
+            n,"Sw","W/m3",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> spk(
+            n,"Spk","kg/m3/s",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> spw(
+            n,"Spw","kg/m3/s",1);
+        std::vector<double> gamma_k(n),gamma_w(n);
+
+        for(std::size_t i=0;i<n;++i) {
+            const double ki=std::max(k(i),controls.k_min);
+            const double wi=std::max(omega(i),controls.omega_min);
+            const double f1=std::clamp(F1(i),0.0,1.0);
+            const double f2=std::clamp(F2(i),0.0,1.0);
+            const double beta=f1*controls.beta1+(1.0-f1)*controls.beta2;
+            const double gamma=f1*(5.0/9.0)+(1.0-f1)*0.44;
+            const double nut=controls.a1*ki/
+                std::max(controls.a1*wi,strain_rate(i)*f2);
+            P(i)=2.0*nut*strain_rate(i)*strain_rate(i);
+            gamma_k[i]=controls.density*
+                (controls.molecular_viscosity+controls.sigma_k*nut);
+            gamma_w[i]=controls.density*
+                (controls.molecular_viscosity+controls.sigma_epsilon*nut);
+            sk(i)=P(i);
+            spk(i)=-controls.density*controls.beta_star*wi;
+            sw(i)=gamma*P(i)/std::max(nut,1e-20);
+            spw(i)=-controls.density*beta*wi;
+        }
+
+        auto eqk=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+            nullptr,nullptr,&gamma_k);
+        auto eqw=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
+            nullptr,nullptr,&gamma_w);
+
+        ScalarSolveControls sc{2000,tolerance,0.7};
+        const auto rk=solve_scalar_equation(eqk,k,sc);
+        const auto rw=solve_scalar_equation(eqw,omega,sc);
+        enforce_turbulence_bounds(k,omega,controls);
+
+        double dk=0.0,dw=0.0;
+        for(std::size_t i=0;i<n;++i) {
+            dk=std::max(dk,std::abs(k(i)-oldk(i)));
+            dw=std::max(dw,std::abs(omega(i)-oldw(i)));
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,k);
+        result.second_residual=scalar_equation_residual_inf(eqw,omega);
+        result.iterations=iter;
+        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+           rw.status==cfdx::core::SolverStatus::CONVERGED &&
+           std::max(dk,dw)<=tolerance) {
+            result.converged=true;
+            break;
+        }
+    }
+    return result;
+}
+
+} // namespace cfdx::physics
