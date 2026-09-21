@@ -29,7 +29,7 @@ jobs:
 
       - name: Run validation tests
         run: |
-          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
+          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|ghia_cavity|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
 
       - name: Run campaign driver
         run: |
