@@ -29,6 +29,8 @@ l'existence du code de sa vérification numérique et de sa validation solver-le
 ## 🟡 En cours — validation / completion
 
 - [ ] M0 complete exit criteria: all mesh families + MMS + conservation + refinement
+- [ ] Validation automation: MMS convergence must use measured solver errors
+- [ ] Validation reports: CI publishes machine-readable JUnit results
 - [ ] Full operator verification on orthogonal/non-orthogonal/skewed meshes
 - [ ] Full linear-algebra robustness matrix and preconditioner equivalence
 - [ ] MPI serial/parallel equivalence, parallel HDF5, N→M restart
