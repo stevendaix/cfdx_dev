@@ -19,6 +19,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/index_types.h"
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 #include <string>
@@ -177,10 +178,18 @@ class IdealGasEOS : public EquationOfState {
         R = params_.R_univ / params_.M;
     }
 
+    void validate_thermodynamic_consistency() const {
+        const double cp_expected = params_.gamma * R / (params_.gamma - 1.0);
+        const double scale = std::max({1.0, std::abs(params_.Cp), std::abs(cp_expected)});
+        if (std::abs(params_.Cp - cp_expected) > 1.0e-10 * scale)
+            throw std::invalid_argument("IdealGasEOS: Cp is inconsistent with gamma and R");
+    }
+
 public:
     IdealGasEOS(const IdealGasParams& params = {}) : params_(params) {
         validate_params();
         update_R();
+        validate_thermodynamic_consistency();
     }
 
     EquationOfStateType type() const override { return EquationOfStateType::IDEAL_GAS; }
@@ -200,6 +209,7 @@ public:
         params_ = params;
         validate_params();
         update_R();
+        validate_thermodynamic_consistency();
     }
 
     const IdealGasParams& params() const { return params_; }
