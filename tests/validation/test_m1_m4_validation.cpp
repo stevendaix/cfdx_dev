@@ -19,7 +19,7 @@ int main()
 
     run_case("M1_Rhie_Chow_zero_pressure_correction", [] {
         const double phi = rhie_chow_mass_flux(
-            1.0, 2.5, 10.0, 10.0, 3.0, 3.0, 0.5, 1.0);
+            1.0, 2.5, 10.0, 10.0, 0.0, 0.0, 0.5, 1.0);
         EXPECT_NEAR(phi, 2.5, 1e-14);
     });
 
