@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <stdexcept>
 
 namespace cfdx::core {
 
@@ -36,15 +37,13 @@ inline SolverResult solve_gmres(
     }
 
     const std::size_t n = op.size;
+    int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
+    current_restart = std::min<int>(current_restart, static_cast<int>(n));
     const double b_norm = b.norm2();
     const double tol = tolerance * std::max(b_norm, 1.0);
 
-        auto apply_operator = [&](const std::vector<double>& in, std::vector<double>& out) {
-        Vector vin(n), vout(n);
-        for(std::size_t i=0;i<n;++i) vin(i)=in[i];
-        op.apply(vin,vout);
-        out.resize(n);
-        for(std::size_t i=0;i<n;++i) out[i]=vout(i);
+    GmresWorkspace w;
+    w.resize(n, static_cast<std::size_t>(current_restart));
 
     auto apply_operator = [&](const double* in, Vector& out) {
         for (std::size_t i = 0; i < n; ++i) w.vin(i) = in[i];
@@ -102,7 +101,7 @@ inline SolverResult solve_gmres(
                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
             }
 
-            apply_operator(Z[j], w);
+            apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
 
             for (int i = 0; i <= j; ++i) {
                 double h = 0.0;
@@ -218,12 +217,22 @@ inline SolverResult solve_gmres(
     int restart = 30,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    const Preconditioner* preconditioner = nullptr)
-{
+    const Preconditioner* preconditioner = nullptr) {
     LinearOperator op;
-    op.size=A.n_rows();
-    op.apply=[&A](const Vector& in, Vector& out){ const auto y=A.matvec(in); for(std::size_t i=0;i<y.size();++i) out(i)=y[i]; };
-    return solve_gmres(op,b,x,restart,max_iter,tolerance,preconditioner);
+    op.size = A.n_rows();
+    op.apply = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner);
 }
 
 } // namespace cfdx::core
