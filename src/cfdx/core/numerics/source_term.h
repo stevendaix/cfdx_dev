@@ -210,9 +210,8 @@ inline SourceTerm make_spatial_source(const Mesh& mesh,
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
         (void)n; // used in compute_cell_geometry
-        const CellGeometry cg = compute_cell_geometry(
+        cell_centres[c] = compute_cell_centre(
             face_centres.data(), face_Sf.data(), cell_faces + off, n);
-        cell_centres[c] = cg.centre;
     }
 
     double* su_data = st.Su.component_data(0);
