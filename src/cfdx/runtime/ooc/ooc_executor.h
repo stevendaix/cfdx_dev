@@ -6,6 +6,7 @@
 #include "working_set.h"
 #include <cstddef>
 #include <future>
+#include <memory>
 #include <vector>
 
 namespace cfdx::runtime::ooc {
@@ -54,7 +55,7 @@ public:
         struct Pending {
             const Tile* tile = nullptr;
             typename PinnedBufferPool::Buffer* buffer = nullptr;
-            WorkingSet ws;
+            std::shared_ptr<WorkingSet> ws;
             std::future<void> load_future;
         };
 
@@ -65,10 +66,14 @@ public:
             Pending next;
             next.tile = &tile;
             next.buffer = buffer;
-            next.ws = make_working_set(tile);
+            next.ws = std::make_shared<WorkingSet>(make_working_set(tile));
+            auto* next_buffer = next.buffer;
+            auto next_ws = next.ws;
             next.load_future = std::async(
                 std::launch::async,
-                [&load, &tile, &next]() { load(tile, next.ws, *next.buffer); });
+                [&load, &tile, next_ws, next_buffer]() {
+                    load(tile, *next_ws, *next_buffer);
+                });
             return next;
         };
 
@@ -81,7 +86,7 @@ public:
                 next = start_load(tiles[i + 1]);
             }
 
-            compute(pending.ws);
+            compute(*pending.ws);
             pool_.release(pending.buffer);
             pending = std::move(next);
         }
