@@ -60,24 +60,21 @@ inline ScalarEquation assemble_energy_equation(
         mesh.n_cells(),"energy_source","W/m3",1);
     cfdx::core::Field<double,cfdx::core::Location::CELL> sp(
         mesh.n_cells(),"energy_sp","W/m3/K",1);
+    std::vector<double> transient_diag(mesh.n_cells(),0.0);
+    std::vector<double> transient_rhs(mesh.n_cells(),0.0);
+
     for(std::size_t i=0;i<mesh.n_cells();++i) {
         su(i)=source(i);
         sp(i)=0.0;
-    }
-
-    auto eq=assemble_scalar_equation(
-        mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true);
-
-    if(c.dt>0.0) {
-        for(std::size_t i=0;i<mesh.n_cells();++i) {
-            const double a0=c.density*c.cp*geometry.cell_volumes[i]/c.dt;
-            eq.matrix.push_back(i,i,a0);
-            eq.rhs(i)+=a0*old_temperature(i);
-            eq.diagonal[i]+=a0;
+        if(c.dt>0.0) {
+            transient_diag[i]=c.density*c.cp*geometry.cell_volumes[i]/c.dt;
+            transient_rhs[i]=transient_diag[i]*old_temperature(i);
         }
-        eq.matrix.finalize();
     }
-    return eq;
+
+    return assemble_scalar_equation(
+        mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true,
+        &transient_diag,&transient_rhs);
 }
 
 inline EnergySolveResult solve_energy(
