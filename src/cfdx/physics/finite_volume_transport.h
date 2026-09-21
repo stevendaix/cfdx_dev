@@ -222,9 +222,11 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += diffusion_coefficient * area * bc.gradient;
                 div_phi[o] += F;
             } else {
-                // Zero-gradient: no diffusive contribution and owner value is
-                // used for both flow directions.
-                diag[o] += F;
+                // Zero-gradient: the upwind owner coefficient is active only
+                // for outflow. For inflow the prescribed boundary value is
+                // represented by the boundary condition rather than by a
+                // negative diagonal contribution.
+                diag[o] += std::max(F, 0.0);
                 div_phi[o] += F;
             }
         }
