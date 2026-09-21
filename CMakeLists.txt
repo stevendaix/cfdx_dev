@@ -194,6 +194,10 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/convection.h
     src/cfdx/physics/incompressible.h
     src/cfdx/physics/pressure_velocity.h
+    src/cfdx/physics/pressure_velocity_algorithms.h
+    src/cfdx/physics/turbulence.h
+    src/cfdx/physics/thermal.h
+    src/cfdx/physics/radiation.h
     src/cfdx/physics/equation_of_state.h
     src/cfdx/physics/transport_models.h
     src/cfdx/physics/multi_component.h
@@ -280,6 +284,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
+    add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_cfdx_test(test_mpi_partition tests/unit/test_mpi_partition.cpp)
