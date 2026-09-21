@@ -52,10 +52,14 @@ inline bool residual_converged(double initial_residual, double residual,
 inline bool conservation_converged(const IterationMetrics& m,
                                    const ConvergenceCriteria& c)
 {
-    return std::isfinite(m.continuity_imbalance) &&
-           std::isfinite(m.energy_imbalance) &&
-           std::abs(m.continuity_imbalance) <= c.continuity_tolerance &&
-           std::abs(m.energy_imbalance) <= c.energy_tolerance;
+    if (!std::isfinite(m.continuity_imbalance) ||
+        std::abs(m.continuity_imbalance) > c.continuity_tolerance)
+        return false;
+    if (c.require_energy) {
+        return std::isfinite(m.energy_imbalance) &&
+               std::abs(m.energy_imbalance) <= c.energy_tolerance;
+    }
+    return true;
 }
 
 inline bool converged(const IterationMetrics& m,
