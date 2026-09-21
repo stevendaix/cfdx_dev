@@ -8,6 +8,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include <cmath>
 #include <cstddef>
+#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
@@ -74,7 +75,8 @@ inline PressureCorrectionSystem assemble_pressure_correction(
         if (!(distance > 1e-14)) {
             throw std::runtime_error("assemble_pressure_correction: degenerate cell-centre distance");
         }
-        const double face_area_sq = sf[f].mag2();
+        const double face_area = sf[f].mag();
+        const double face_area_sq = face_area * face_area;
         const double coefficient =
             0.5 * (1.0 / ao + 1.0 / an) * face_area_sq / distance;
         diagonal[o] += coefficient;
