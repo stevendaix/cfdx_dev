@@ -28,12 +28,14 @@ bool VtuWriter::write(const std::string& filename,
     std::vector<VtkCellType> vtk_cell_types;
     std::vector<std::uint32_t> cell_face_offsets;
     std::vector<cfdx::core::FaceIndex> cell_face_indices;
+    std::vector<std::size_t> vtk_to_original_cell;
 
-    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices);
+    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices,
+                        vtk_to_original_cell);
 
     write_header(os, mesh, vtk_cells, vtk_cell_types);
     write_cells(os, vtk_cells, vtk_cell_types);
-    write_cell_fields(os, mesh, fields_cell, vtk_cells);
+    write_cell_fields(os, mesh, fields_cell, vtk_to_original_cell);
     write_point_fields(os, mesh, fields_point);
 
     // Close XML
