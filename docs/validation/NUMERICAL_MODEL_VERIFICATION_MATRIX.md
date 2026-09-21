@@ -98,7 +98,7 @@ The Ansys VMFL suite should remain the application-level verification layer. Ans
 | N046 | transport properties | Sutherland/Prandtl/Schmidt regression | A | implemented |
 | N047 | parallel | 1/2/4/8-rank numerical equivalence | C | pending distributed solver case |
 | N048 | linear algebra | assembled vs matrix-free solution equivalence | C | pending common operator driver |
-| N049 | mesh quality | orthogonal/skew/non-orthogonal convergence comparison | C | pending mesh campaign |
+| N049 | mesh quality | orthogonal/skew/non-orthogonal diffusion correction | C | correction kernel implemented and unit-verified; quantitative skewed-mesh MMS campaign still required |
 | N050 | reproducibility | deterministic repeated-run QoI and residual comparison | C | pending campaign harness |
 | N051 | negative verification | invalid BC/NaN/negative property rejection | A/B | partly covered by unit tests |
 | N052 | uncertainty | mesh/time uncertainty estimate from refinement | C | pending report aggregation |
