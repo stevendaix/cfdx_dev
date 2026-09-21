@@ -21,7 +21,7 @@ int main() {
         y(0)=2.0*x(0); y(1)=3.0*x(1); y(2)=4.0*x(2);
     });
     core::Vector rhs(3,1.0), x(3,0.0);
-    core::ChebyshevSmoother smoother({2,1.0,4.0,1.0});
+    core::ChebyshevSmoother smoother({2,1.0,4.0,1.0,4});
     smoother.apply(op,rhs,x);
     if (!(x.norm2()>0.0)) return 1;
     auto tol=physics::eisenstat_walker_tolerance(1e-4,1e-2);
@@ -39,6 +39,23 @@ int main() {
     thermodynamics::IdealGasThermoModel gas;
     cache.update(gas,{101325.0,101325.0},{300.0,310.0});
     if (!cache.valid || cache.state.size()!=2) return 8;
-    core::memory::ReusePool pool; auto aoff=pool.acquire(128); auto boff=pool.acquire(64); pool.release(aoff); auto coff=pool.acquire(32); if(coff!=aoff || pool.allocated_bytes()!=96) return 9;\n    core::memory::FieldLifetime fa{"a",64,0,2,core::memory::Residency::Ephemeral}; core::memory::FieldLifetime fb{"b",64,2,4,core::memory::Residency::Ephemeral}; if(!core::memory::reusable(fa,fb)) return 10;\n    bool overlap=false; core::HaloOverlap schedule([&](){overlap=true;},[]{},[]{},[]{}); schedule.execute(); if(!overlap) return 11;\n    std::cout<<"performance runtime: PASS\n";
+    core::memory::ReusePool pool;
+    const auto aoff = pool.acquire(128);
+    const auto boff = pool.acquire(64);
+    (void)boff;
+    pool.release(aoff);
+    const auto coff = pool.acquire(32);
+    if (coff != aoff || pool.allocated_bytes() != 96) return 9;
+
+    core::memory::FieldLifetime fa{"a",64,0,2,core::memory::Residency::Ephemeral};
+    core::memory::FieldLifetime fb{"b",64,2,4,core::memory::Residency::Ephemeral};
+    if (!core::memory::reusable(fa,fb)) return 10;
+
+    bool overlap = false;
+    core::HaloOverlap schedule([&](){ overlap = true; }, [](){}, [](){}, [](){});
+    schedule.execute();
+    if (!overlap) return 11;
+
+    std::cout << "performance runtime: PASS\\n";
     return 0;
 }
