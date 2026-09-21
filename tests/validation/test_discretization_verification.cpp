@@ -34,7 +34,26 @@ Mesh1D make_channel(std::size_t n, double H)
     std::vector<std::vector<std::size_t>> cf(n);
     for(std::size_t i=0;i<n;++i) cf[i]={i?internal[i-1]:lo[0],i+1<n?internal[i]:hi[0],x0[i],x1[i],z0[i],z1[i]};
     m.ownership().resize(m.n_faces());
-    for(std::size_t f=0;f<m.n_faces();++f)for(std::size_t c=0;c<n;++c)for(auto id:cf[c])if(id==f){m.ownership().set_owner(f,c);m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);for(auto q:internal)if(q==f)m.ownership().set_neighbour(f,static_cast<int>(c+1));}
+    for(std::size_t c=0;c<n;++c) {
+        m.ownership().set_owner(lo[0],0);
+        m.ownership().set_owner(hi[0],n-1);
+        m.ownership().set_owner(x0[c],c);
+        m.ownership().set_owner(x1[c],c);
+        m.ownership().set_owner(z0[c],c);
+        m.ownership().set_owner(z1[c],c);
+    }
+    m.ownership().set_neighbour(lo[0],FaceOwnership::BOUNDARY);
+    m.ownership().set_neighbour(hi[0],FaceOwnership::BOUNDARY);
+    for(std::size_t c=0;c<n;++c) {
+        m.ownership().set_neighbour(x0[c],FaceOwnership::BOUNDARY);
+        m.ownership().set_neighbour(x1[c],FaceOwnership::BOUNDARY);
+        m.ownership().set_neighbour(z0[c],FaceOwnership::BOUNDARY);
+        m.ownership().set_neighbour(z1[c],FaceOwnership::BOUNDARY);
+    }
+    for(std::size_t i=0;i+1<n;++i) {
+        m.ownership().set_owner(internal[i],i);
+        m.ownership().set_neighbour(internal[i],static_cast<int>(i+1));
+    }
     for(auto& q:cf)m.cells().push_cell(q);
     auto patch=[&](const char* name,const std::vector<std::size_t>& ids){Patch p;p.name=name;p.type=PatchType::WALL;p.face_ids=ids;m.boundary().add_patch(p);};
     patch("inlet",lo);patch("outlet",hi);patch("x0",x0);patch("x1",x1);patch("z0",z0);patch("z1",z1);
