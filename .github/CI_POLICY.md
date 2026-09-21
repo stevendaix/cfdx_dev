@@ -22,3 +22,8 @@ Repository protection should require this workflow's check before merging to
 
 Do not remove or weaken the workflow to make a failing test pass. Fix the
 underlying implementation or validation instead.
+
+
+## Geometry-orientation gate
+
+The required CFDX workflow also executes the dedicated `cfdx_geometry_orientation_check` target. It labels the face/cell geometry, geometry-cache, mesh-family, and analytical benchmark tests as `geometry`, so owner/neighbour face-orientation regressions are exercised explicitly in CI in addition to the complete CTest suite.
