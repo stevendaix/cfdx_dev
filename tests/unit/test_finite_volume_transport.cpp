@@ -91,9 +91,9 @@ int main()
         su.fill(0.0);
         sp.fill(0.0);
         ScalarBoundaryConditions bc;
-        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["wall"] = {ScalarBoundaryType::FIXED_VALUE,3.5,0.0};
         const auto eq = assemble_scalar_equation(
-            m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
+            m,g,flux,1.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
             ConvectionScheme::SECOND_ORDER_UPWIND,&phi);
         Vector x(m.n_cells(),3.5);
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
@@ -110,8 +110,6 @@ int main()
         sp.fill(0.0);
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true);
-        EXPECT_NEAR(eq.max_imbalance,0.0,1e-14);
         EXPECT_THROW(assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true),
                      std::runtime_error);
     });
