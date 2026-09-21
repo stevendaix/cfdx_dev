@@ -326,6 +326,7 @@ if(CFDX_BUILD_TESTS)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
+    add_cfdx_test(test_laplacian_assembly tests/unit/test_laplacian_assembly.cpp)
     add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
     add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
     add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
