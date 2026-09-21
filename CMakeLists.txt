@@ -371,19 +371,6 @@ if(CFDX_BUILD_TESTS)
     # Memory Planner tests
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
 
-    # Geometry-orientation tests are a dedicated verification gate. Keep the
-    # analytical benchmark in the same label so a face-orientation regression
-    # cannot be hidden behind a green unit-test-only subset.
-    set_tests_properties(
-        test_face_geometry
-        test_cell_geometry
-        test_geometry_invariants
-        test_mesh_quality
-        test_mesh_family_volumes
-        test_geometry_cache
-        test_analytical_benchmarks
-        PROPERTIES LABELS geometry)
-
     # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
 
@@ -412,5 +399,18 @@ if(CFDX_BUILD_TESTS)
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
                          ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
     endif()
+
+    # Geometry-orientation tests are a dedicated verification gate. Keep the
+    # analytical benchmark in the same label so a face-orientation regression
+    # cannot be hidden behind a green unit-test-only subset.
+    set_tests_properties(
+        test_face_geometry
+        test_cell_geometry
+        test_geometry_invariants
+        test_mesh_quality
+        test_mesh_family_volumes
+        test_geometry_cache
+        test_analytical_benchmarks
+        PROPERTIES LABELS geometry)
 
 endif()
