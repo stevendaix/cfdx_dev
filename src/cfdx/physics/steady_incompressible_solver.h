@@ -356,7 +356,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                 const double area = geometry.face_area_vectors[f].mag();
                 const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
-                const double coeff = controls.density * dface * area;
+                const double coeff = controls.density * dface;
                 diag[o] += coeff;
                 diag[n] += coeff;
                 rows[o][n] -= coeff;
