@@ -53,6 +53,16 @@ static bool read_dataset_u64(hid_t loc_id, const char* name,
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
+    if (space < 0) {
+        H5Dclose(ds);
+        return false;
+    }
+    if (H5Sget_simple_extent_type(space) == H5S_NULL) {
+        out.clear();
+        H5Sclose(space);
+        H5Dclose(ds);
+        return true;
+    }
     hsize_t dims[2];
     int rank = H5Sget_simple_extent_dims(space, dims, nullptr);
     hsize_t total = 1;
@@ -69,6 +79,16 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
+    if (space < 0) {
+        H5Dclose(ds);
+        return false;
+    }
+    if (H5Sget_simple_extent_type(space) == H5S_NULL) {
+        out.clear();
+        H5Sclose(space);
+        H5Dclose(ds);
+        return true;
+    }
     hsize_t dims[2];
     int rank = H5Sget_simple_extent_dims(space, dims, nullptr);
     hsize_t total = 1;
