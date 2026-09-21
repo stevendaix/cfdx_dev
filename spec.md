@@ -2750,3 +2750,41 @@ Physics → MPI
 ```
 
 C'est cette séparation qui doit permettre à CFDX d'évoluer progressivement d'un noyau FVM simple vers un solveur HPC complet sans devoir réécrire les modules physiques à chaque changement d'architecture matérielle.
+
+# 100. CFDX Application and Fluent-like User Workflow
+
+## 100.1 Scope
+
+CFDX shall expose one coherent case model through three interchangeable front ends: CLI, terminal UI (TUI), and graphical UI (GUI). The front ends are views/controllers over the same application API; they shall not maintain independent solver configuration models.
+
+## 100.2 Case tree
+
+The application case is organized as Geometry, Mesh, Physics, Materials, Boundaries, Numerics, Solver, Run, Monitors, Results, and Reports. Selecting an object in the 3D scene and selecting the corresponding tree node shall address the same object identity.
+
+## 100.3 Parameter model
+
+Every user-editable parameter has a typed value, optional unit, validation constraints, and a change impact. Change impacts are Hot (safe while paused), RequiresRestart, or RequiresRebuild. The controller shall reject edits while the solver is running unless the parameter is explicitly supported as a runtime control.
+
+## 100.4 Simulation controller
+
+The solver lifecycle is explicit: CREATED, VALIDATING, READY, RUNNING, PAUSED, STOPPING, STOPPED, CONVERGED, FAILED. RUN, PAUSE, STOP, checkpoint, restart and rerun are first-class operations. Steady cases use iteration targets; transient cases additionally use physical time and time-step controls.
+
+## 100.5 Checkpoints and revisions
+
+A checkpoint records the case, mesh, physics and numerics revisions together with iteration and physical time. A case edit increments the case revision. Restart/rebuild requirements are explicit so a paused simulation can be modified and continued without silently using stale numerical state.
+
+## 100.6 Monitoring and post-processing
+
+Monitors are persistent case objects containing iteration/time/value samples. Post-processing shall support derived fields, expressions, plots, surface/volume reductions, forces, fluxes, probes, animations and report generation. The first application-layer implementation provides the common object model; specialized numerical evaluators and rendering backends plug into it.
+
+## 100.7 3D scene
+
+The visualization layer shall represent bodies, faces, edges, regions, patches and cells with stable IDs and selection state. GUI renderers remain optional adapters; the application model must remain usable headlessly for HPC and automated validation.
+
+## 100.8 HPC and remote execution
+
+The same controller API shall support local and remote execution. A future remote adapter may submit to MPI/Slurm while preserving RUN/PAUSE/STOP/CHECKPOINT/RESTART semantics in the UI.
+
+## 100.9 Acceptance criteria
+
+A conforming application implementation shall demonstrate: (1) steady and transient run control, (2) pause/stop and rerun, (3) hot and rebuild-required edits, (4) checkpoint metadata, (5) live monitor samples, (6) stable 3D selection identities, (7) derived-field/report registration, and (8) identical case semantics from CLI/TUI/GUI adapters. Unit tests shall cover each state transition and invalid operation.
