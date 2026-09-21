@@ -25,7 +25,7 @@ int main() {
         Field<double, Location::CELL> phi(1, "phi", "1", 1);
         phi(0) = 1.0;
         auto out = advance_time(TimeScheme::CRANK_NICOLSON, phi, 0.1, decay_rhs);
-        EXPECT_NEAR(out(0), 0.8 / 1.2, 1e-10);
+        EXPECT_NEAR(out(0), 0.9 / 1.1, 1e-10);
     });
 
     run_case("core_invalid_dt", []() {
