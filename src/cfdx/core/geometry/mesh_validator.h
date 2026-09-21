@@ -97,6 +97,8 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
     // --- 3. Géométrie des cellules ---
     std::vector<Vec3> cell_centres(n_cells);
     std::vector<double> cell_volumes(n_cells);
+    compute_area_weighted_cell_centres(m, face_centres.data(), face_Sf.data(), cell_centres.data());
+    orient_mesh_face_vectors(m, face_centres, cell_centres, face_Sf);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         const auto offset = m.cells().cell_offset(c);
