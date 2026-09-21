@@ -199,6 +199,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/thermal.h
     src/cfdx/physics/radiation.h
     src/cfdx/physics/m1_m4_models.h
+    src/cfdx/physics/solver_control.h
     src/cfdx/physics/equation_of_state.h
     src/cfdx/physics/transport_models.h
     src/cfdx/physics/multi_component.h
