@@ -90,3 +90,24 @@ element topology can be represented without loss in a finite-volume solver.
 Format support and topology support are deliberately separated. A format can
 be read by meshio while an unsupported cell topology is reported and rejected
 or skipped instead of producing an invalid CFDX mesh.
+
+
+## Synthetic geometry matrix
+
+CI generates small deterministic meshes rather than storing large reference
+meshes in Git. The matrix currently exercises:
+
+- cube/hexahedron;
+- two tetrahedra sharing exactly one internal face;
+- pyramid;
+- wedge/prism.
+
+Each geometry is written through meshio as:
+
+- Gmsh ASCII;
+- Gmsh binary;
+- VTU ASCII.
+
+For every generated file the test checks cell count, internal-face count,
+boundary-face count, total face count, and consistency of the resulting
+CFDX-HDF5 topology.
