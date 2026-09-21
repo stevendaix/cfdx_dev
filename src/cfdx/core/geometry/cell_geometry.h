@@ -65,15 +65,15 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Volume par décomposition en pyramides.
-    // V = 1/3 * Σ_f (Cf - Cc) · Sf_f
+    // Volume from the divergence theorem:
+    // V = 1/3 * integral_boundary x . n dA
+    //   = 1/3 * sum_f Cf . Sf_f.
+    // This is exact for closed polyhedra with planar polygonal faces and
+    // does not depend on the approximate face-area-weighted cell centre.
     double volume = 0.0;
     for (std::size_t k = 0; k < n_cell_faces; ++k) {
         const FaceIndex f = face_ids[k];
-        const Vec3& cf = face_centres[f];
-        const Vec3& sf = face_Sf[f];
-        const Vec3 d = cf - centre;
-        volume += d.dot(sf);
+        volume += face_centres[f].dot(face_Sf[f]);
     }
     volume /= 3.0;
 
