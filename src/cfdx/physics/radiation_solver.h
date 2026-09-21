@@ -166,6 +166,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
     const std::vector<DiscreteDirection>& directions,
     const RadiationEnergyCouplingControls& controls = {},
+    const ScalarBoundaryConditions& radiation_bcs = {},
     const ScalarBoundaryConditions& thermal_bcs = {})
 {
     if(controls.max_outer_iterations==0 || controls.tolerance<=0.0)
@@ -186,7 +187,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
 
         auto rr=solve_participating_radiation(
             mesh,geometry,temperature,irradiation,qrad,directions,
-            controls.radiation,thermal_bcs);
+            controls.radiation,radiation_bcs);
         if(!rr.converged)
             throw std::runtime_error("radiation inner solve did not converge");
 
