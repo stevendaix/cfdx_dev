@@ -3,10 +3,18 @@ name: CFDX validation
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [master, "feature/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   m1-m4-validation:
+    name: M1-M4 validation
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -34,3 +42,13 @@ jobs:
       - name: Run campaign driver
         run: |
           python3 scripts/run_validation.py --build-dir build-validation
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-validation-logs
+          path: |
+            build-validation/Testing/
+            build-validation/**/*.log
+          if-no-files-found: ignore
