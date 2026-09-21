@@ -12,7 +12,7 @@
 namespace cfdx::io::mesh {
 namespace {
 
-std::string quote(const std::string& value) {
+        if (c == static_cast<char>(39)) out += "'\\''";
     std::string out = "'";
     for (char c : value) {
         if (c == '\\'') out += "'\\''";
