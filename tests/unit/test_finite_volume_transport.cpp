@@ -90,8 +90,6 @@ int main()
         sp.fill(0.0);
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true);
-        EXPECT_NEAR(eq.max_imbalance,0.0,1e-14);
         EXPECT_THROW(assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true),
                      std::runtime_error);
     });
