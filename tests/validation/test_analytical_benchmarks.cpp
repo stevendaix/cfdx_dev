@@ -55,7 +55,10 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
 
     // Boundary faces are inserted first so patch ids are deterministic.
     auto add_face = [&](std::initializer_list<std::size_t> vertices) {
-        return m.faces().push_face(vertices);
+        const std::size_t id = m.faces().n_faces();
+        m.faces().push_face(
+            std::vector<FaceIndex>(vertices.begin(), vertices.end()));
+        return id;
     };
 
     bottom.push_back(add_face({0,1,5,4}));
@@ -71,7 +74,6 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
 
     for (std::size_t i = 0; i + 1 < n; ++i) {
         const std::size_t b0 = 8 * i;
-        const std::size_t b1 = 8 * (i + 1);
         internal.push_back(add_face({b0+3,b0+7,b0+6,b0+2}));
     }
 
