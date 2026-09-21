@@ -72,11 +72,11 @@ int main()
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
         T(0)=1000;G(0)=0;q(0)=0;
         Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);phi.fill(0);
-        std::vector<Direction> dirs={
+        std::vector<DiscreteDirection> dirs={
             {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
             {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
             {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
-        ScalarBoundaryConditions bc;bc["wall"]={ScalarBoundaryType::FIXED_VALUE,blackbody(1000),0};
+        ScalarBoundaryConditions bc;bc["wall"]={ScalarBoundaryType::FIXED_VALUE,blackbody_intensity(1000),0};
         RadiationTransportControls c;c.absorption=1;c.scattering=0;c.max_iterations=100;c.tolerance=1e-10;
         auto r=solve_participating_radiation(m,g,T,G,q,dirs,c,bc);
         EXPECT_TRUE(r.converged);
