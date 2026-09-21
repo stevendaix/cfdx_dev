@@ -25,6 +25,11 @@ static Mesh cube(bool invert_all=false) {
         m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
     }
     m.cells().push_cell({0,1,2,3,4,5});
+    Patch wall;
+    wall.name = "walls";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {0,1,2,3,4,5};
+    m.boundary().add_patch(wall);
     return m;
 }
 

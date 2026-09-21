@@ -95,8 +95,11 @@ inline PressureCorrectionSystem assemble_pressure_correction(
     matrix.finalize();
 
     Vector rhs(n, 0.0);
+    // Continuity is already a cell-integrated mass/volume flux imbalance.
+    // Do not multiply it by cell volume a second time: that would destroy
+    // the global conservation constraint on non-uniform meshes.
     for (std::size_t c = 0; c < n; ++c)
-        rhs(c) = -continuity.component_data(0)[c] * volume[c];
+        rhs(c) = -continuity.component_data(0)[c];
 
     return {std::move(matrix), std::move(rhs)};
 }

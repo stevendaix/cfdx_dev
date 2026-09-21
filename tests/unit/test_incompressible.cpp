@@ -40,7 +40,7 @@ int main(){
         Mesh m=make_cube();
         Field<double,Location::CELL> phi(1,"phi","1",1); phi(0)=2.0;
         Field<double,Location::FACE> flux(6,"flux","m3/s",1);
-        for(std::size_t f=0;f<6;++f) flux(0,f)=0.0;
+        for(std::size_t f=0;f<6;++f) flux(f)=0.0;
         auto c=compute_convection(phi,flux,m,InterpScheme::UPWIND);
         EXPECT_NEAR(c(0),0.0,1e-12);
     });
