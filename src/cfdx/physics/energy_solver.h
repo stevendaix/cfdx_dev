@@ -170,10 +170,6 @@ inline EnergySolveResult solve_energy(
         const auto linear=solve_scalar_equation(eq,candidate,sc);
         double res=scalar_equation_residual_inf(eq,candidate);
 
-        for(std::size_t i=0;i<temperature.size();++i)
-            temperature(i)=candidate(i);
-        const double imbalance=energy_balance_relative(
-            mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
         const double imbalance=energy_balance_relative(
             mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
         result.history.push_back({iter,res,imbalance});
