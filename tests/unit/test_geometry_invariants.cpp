@@ -12,7 +12,7 @@ static Mesh cube(bool invert_all=false) {
     m.points().set(2,1,1,0); m.points().set(3,0,1,0);
     m.points().set(4,0,0,1); m.points().set(5,1,0,1);
     m.points().set(6,1,1,1); m.points().set(7,0,1,1);
-    const std::vector<std::vector<std::uint32_t>> faces = {
+    const std::vector<std::vector<Index>> faces = {
         {0,3,2,1}, {4,5,6,7}, {0,1,5,4},
         {3,7,6,2}, {0,4,7,3}, {1,2,6,5}};
     for (auto face : faces) {
