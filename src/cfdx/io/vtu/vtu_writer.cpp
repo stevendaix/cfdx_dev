@@ -107,7 +107,7 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<VtkCellType>& vtk_cell_types)
 {
     const std::size_t n_points = mesh.n_points();
-    const std::size_t n_cells = vtk_cells.size();
+    const std::size_t n_cells = vtk_to_original_cell.size();
 
     os << "<?xml version=\"1.0\"?>\n";
     os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n";
@@ -169,7 +169,7 @@ void VtuWriter::write_cells(std::ofstream& os,
 void VtuWriter::write_cell_fields(std::ofstream& os,
                                   const cfdx::core::Mesh& mesh,
                                   const std::map<std::string, cfdx::core::ScalarCellField>& fields,
-                                  const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells)
+                                  const std::vector<std::size_t>& vtk_to_original_cell)
 {
     if (fields.empty()) return;
 
@@ -182,15 +182,11 @@ void VtuWriter::write_cell_fields(std::ofstream& os,
 
         os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\n";
 
-        // Map original cell field to decomposed VTK cells
+        // Each generated VTK cell carries the source CFDX cell index.
         for (std::size_t vtk_c = 0; vtk_c < n_cells; ++vtk_c) {
-            // Find which original cell this VTK cell belongs to
-            // For tet decomposition: each tet maps back to its parent cell
-            // Simple approach: distribute evenly
-            std::size_t orig_c = vtk_c; // approximation
-            if (orig_c < field.size()) {
-                os << "     " << field(orig_c) << "\n";
-            }
+            const std::size_t orig_c = vtk_to_original_cell[vtk_c];
+            if (orig_c >= field.size()) continue;
+            os << "     " << field(orig_c) << "\n";
         }
         os << "    </DataArray>\n";
     }
