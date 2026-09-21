@@ -33,7 +33,7 @@ bool VtuWriter::write(const std::string& filename,
     decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices,
                         vtk_to_original_cell);
 
-    write_header(os, mesh, vtk_cells, vtk_cell_types);
+    write_header(os, mesh, vtk_cells, vtk_cell_types, vtk_to_original_cell);
     write_cells(os, vtk_cells, vtk_cell_types);
     write_cell_fields(os, mesh, fields_cell, vtk_to_original_cell);
     write_point_fields(os, mesh, fields_point);
@@ -104,7 +104,8 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                             const std::vector<VtkCellType>& vtk_cell_types)
+                             const std::vector<VtkCellType>& vtk_cell_types,
+                             const std::vector<std::size_t>& vtk_to_original_cell)
 {
     const std::size_t n_points = mesh.n_points();
     const std::size_t n_cells = vtk_to_original_cell.size();
