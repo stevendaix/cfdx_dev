@@ -23,6 +23,8 @@
 #include <stdexcept>
 #include <cstddef>
 #include <limits>
+#include <cmath>
+#include <algorithm>
 
 namespace cfdx {
 namespace core {
