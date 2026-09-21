@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <type_traits>
+#include <cstdlib>
 #include <iostream>
 
 namespace cfdx {
@@ -96,7 +98,6 @@ inline double mpi_allreduce_min(double value, MPI_Comm comm = MPI_COMM_WORLD) {
 // All-gather for vectors
 template <typename T>
 inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm comm = MPI_COMM_WORLD) {
-    int rank = mpi_rank(comm);
     int size = mpi_size(comm);
     
     std::vector<int> recv_counts(size);
@@ -110,11 +111,20 @@ inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm c
         displs[i] = displs[i - 1] + recv_counts[i - 1];
     }
     
+    static_assert(std::is_trivially_copyable_v<T>, "mpi_allgather requires trivially copyable T");
     int total_count = displs[size - 1] + recv_counts[size - 1];
-    std::vector<T> result(total_count);
-    
-    MPI_Allgatherv(local_data.data(), local_count, MPI_BYTE,
-                   result.data(), recv_counts.data(), displs.data(), MPI_BYTE, comm);
+    std::vector<T> result(static_cast<std::size_t>(total_count));
+    std::vector<int> recv_bytes(size);
+    std::vector<int> byte_displs(size);
+    for (int i = 0; i < size; ++i) {
+        recv_bytes[i] = recv_counts[i] * static_cast<int>(sizeof(T));
+        byte_displs[i] = displs[i] * static_cast<int>(sizeof(T));
+    }
+    const int local_bytes = local_count * static_cast<int>(sizeof(T));
+    MPI_Allgatherv(local_data.empty() ? nullptr : const_cast<T*>(local_data.data()),
+                   local_bytes, MPI_BYTE,
+                   result.empty() ? nullptr : result.data(),
+                   recv_bytes.data(), byte_displs.data(), MPI_BYTE, comm);
     
     return result;
 }
