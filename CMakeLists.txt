@@ -366,10 +366,14 @@ if(CFDX_BUILD_TESTS)
         # directly would always report mpi_size()==1 and would invalidate
         # the multi-rank partitioning assertions.
         set(CFDX_MPI_TEST_PROCS 2 CACHE STRING "MPI ranks used by CFDX MPI tests")
+        set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
+        if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
+            set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
+        endif()
         add_test(
             NAME test_mpi_partition
             COMMAND ${MPIEXEC_EXECUTABLE}
-                    ${MPIEXEC_NUMPROCS_FLAG} ${CFDX_MPI_TEST_PROCS}
+                    ${CFDX_MPIEXEC_NUMPROCS_FLAG} ${CFDX_MPI_TEST_PROCS}
                     ${MPIEXEC_PREFLAGS}
                     $<TARGET_FILE:test_mpi_partition>
                     ${MPIEXEC_POSTFLAGS}
