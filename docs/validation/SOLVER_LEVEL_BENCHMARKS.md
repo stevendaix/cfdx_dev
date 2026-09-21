@@ -9,7 +9,7 @@ This document separates executable solver comparisons from component-level refer
 | Couette | finite-volume scalar diffusion | exact linear profile | PASS |
 | Plane Poiseuille | finite-volume scalar diffusion/source | exact quadratic profile | PASS, observed order 2.0 |
 | 1-D conduction | finite-volume scalar diffusion | exact linear profile | PASS within numerical tolerance |
-| Ghia cavity Re=100/400 | steady incompressible SIMPLE | Ghia et al. centreline tables | active solver benchmark; tolerance is mesh-dependent |
+| Ghia cavity Re=100/400 | steady incompressible SIMPLE | Ghia et al. centreline tables | active solver benchmark; tolerance is mesh-dependent |\n\nFor Ghia, the executable gate now includes Re=100 at 32/64/128 cells per side plus Re=400 at 64 cells per side. The Re=100 run reports observed mesh-convergence orders for the centreline velocity errors and explicitly checks zero normal velocity on the moving lid. The current momentum convection operator is first-order upwind; its `bounded_convection` option is a conservative continuity correction, not a second-order LUD/TVD scheme. Therefore the validation gate requires positive mesh convergence and does not claim second-order accuracy. A future LUD/TVD implementation should add a separate order-of-accuracy gate.
 | two-region CHT | coupled energy solver/interface matching | resistance/flux continuity | PASS |
 | radiation-energy equilibrium | DOM + energy coupling | uniform blackbody equilibrium | PASS |
 
