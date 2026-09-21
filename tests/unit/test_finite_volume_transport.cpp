@@ -79,6 +79,37 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
+    run_case("second_order_upwind_requires_convected_field", [] {
+        const Mesh m = make_unit_cube();
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","1/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        EXPECT_THROW(
+            assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,
+                                     nullptr,ConvectionScheme::SECOND_ORDER_UPWIND,nullptr),
+            std::invalid_argument);
+    });
+
+    run_case("second_order_upwind_preserves_constant_state", [] {
+        const Mesh m = make_unit_cube();
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","1/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        Field<double,Location::CELL> scalar(m.n_cells(),"q","1",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0); scalar.fill(2.5);
+        ScalarBoundaryConditions bc;
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const auto eq = assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,
+            nullptr,ConvectionScheme::SECOND_ORDER_UPWIND,&scalar);
+        EXPECT_NEAR(scalar_equation_residual_inf(eq,Vector(1,2.5)),0.0,1e-12);
+    });
+
     run_case("bounded_convection_constant_state_has_zero_residual", [] {
         const Mesh m = make_unit_cube();
         const FvGeometry g = build_fv_geometry(m);

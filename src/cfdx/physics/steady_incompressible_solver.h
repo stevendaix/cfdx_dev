@@ -40,6 +40,7 @@ struct IncompressibleSolverControls {
     std::size_t pressure_reference_cell = 0;
     double pressure_reference_value = 0.0;
     bool use_bounded_convection = true;
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
 };
 
 struct IncompressibleIteration {
@@ -201,7 +202,9 @@ inline ScalarEquation assemble_momentum_component(
     double effective_dynamic_viscosity,
     const ScalarBoundaryConditions& velocity_bcs,
     std::size_t component,
-    bool bounded)
+    bool bounded,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
 {
     cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "momentum_source", "N/m3", 1);
@@ -214,7 +217,8 @@ inline ScalarEquation assemble_momentum_component(
     (void)component;
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
-        source, sp, velocity_bcs, bounded);
+        source, sp, velocity_bcs, bounded, nullptr, nullptr, nullptr, nullptr,
+        convection_scheme, convected_field);
 }
 
 inline void apply_velocity_boundary_conditions(
@@ -272,6 +276,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         ScalarBoundaryConditions ubc_x, ubc_y, ubc_z;
+        Field<double, Location::CELL> u_x_field(mesh.n_cells(), "Ux_reconstruction", "m/s", 1);
+        Field<double, Location::CELL> u_y_field(mesh.n_cells(), "Uy_reconstruction", "m/s", 1);
+        Field<double, Location::CELL> u_z_field(mesh.n_cells(), "Uz_reconstruction", "m/s", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            u_x_field(c) = U.component_data(0)[c];
+            u_y_field(c) = U.component_data(1)[c];
+            u_z_field(c) = U.component_data(2)[c];
+        }
         for (const auto& [name, bc] : velocity_bcs) {
             ubc_x[name] = {bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
                                ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::ZERO_GRADIENT,
@@ -286,13 +298,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         auto ex = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
-            controls.use_bounded_convection);
+            controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
         auto ey = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
-            controls.use_bounded_convection);
+            controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
         auto ez = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
-            controls.use_bounded_convection);
+            controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
 
         Vector ux(mesh.n_cells()), uy(mesh.n_cells()), uz(mesh.n_cells());
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {

@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -102,6 +103,17 @@ int main() {
         Vector x(3, 0.0);
         auto result = solve_cg(A, b, x);
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("cg_rejects_nonfinite_system", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, std::numeric_limits<double>::quiet_NaN());
+        A.finalize();
+        Vector b(2, 1.0);
+        Vector x(2, 0.0);
+        const auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
     });
 
     run_case("cg_dimension_mismatch", []() {
