@@ -262,6 +262,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
+    add_cfdx_test(test_preconditioner tests/unit/test_preconditioner.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
