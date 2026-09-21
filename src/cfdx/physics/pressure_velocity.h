@@ -99,7 +99,7 @@ inline PressureCorrectionSystem assemble_pressure_correction(
     // Do not multiply it by cell volume a second time: that would destroy
     // the global conservation constraint on non-uniform meshes.
     for (std::size_t c = 0; c < n; ++c)
-        rhs(c) = -continuity.component_data(0)[c];
+        rhs(c) = continuity.component_data(0)[c];
 
     return {std::move(matrix), std::move(rhs)};
 }
