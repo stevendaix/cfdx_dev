@@ -109,8 +109,7 @@ int main() {
         auto result = loaded.topo_validate();
         if (!result.ok) {
             for (const auto& e : result.errors) {
-                std::fprintf(stderr, "  error: %s
-", e.c_str());
+                std::fprintf(stderr, "  error: %s\n", e.c_str());
             }
         }
         EXPECT_TRUE(result.ok);
