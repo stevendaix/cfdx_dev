@@ -41,6 +41,11 @@ template<class T>
 static std::uint64_t fnv1a_update_vector(
     std::uint64_t hash, const T* data, std::size_t count)
 {
+    // Empty CFDX containers may expose a null data pointer even when their
+    // logical CSR offset array has the single zero entry. Do not dereference
+    // such a pointer while constructing schema hashes.
+    if (count == 0 || data == nullptr)
+        return hash;
     return fnv1a_update(hash, data, count * sizeof(T));
 }
 
