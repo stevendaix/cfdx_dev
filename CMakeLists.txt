@@ -96,7 +96,6 @@ set(CFDX_IMPORTER_SOURCES
 
 set(CFDX_LINALG_SOURCES
     src/cfdx/core/linalg/hypre_amg.cpp
-    src/cfdx/core/linalg/gmres_solver.cpp
 )
 
 # Memory sources
@@ -177,6 +176,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/linear_system.h
     src/cfdx/core/linalg/cg_solver.h
     src/cfdx/core/linalg/bicgstab_solver.h
+    src/cfdx/core/linalg/gmres_solver.h
     src/cfdx/io/hdf5/hdf5_writer.h
     src/cfdx/io/hdf5/hdf5_reader.h
     src/cfdx/io/vtu/vtu_writer.h
@@ -235,6 +235,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
+    add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)

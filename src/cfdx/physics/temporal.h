@@ -14,7 +14,8 @@ namespace physics {
 // phi^{n+1} = phi^n + dt * f(phi^n)
 // ============================================================================
 
-inline double explicit_euler_step(double phi_n, double dt, double f) {
+template<class Function>
+inline double explicit_euler_step(double phi_n, double dt, Function&& f) {
     return phi_n + dt * f(phi_n);
 }
 
@@ -26,7 +27,8 @@ inline double explicit_euler_step(double phi_n, double dt, double f) {
 
 // Placeholder for implicit Euler - requires iterative solver
 // In a real implementation, this would call a Newton-Raphson solver
-inline double implicit_euler_step(double phi_n, double dt, double f) {
+template<class Function>
+inline double implicit_euler_step(double phi_n, double dt, Function&& f) {
     // TODO: Implement implicit Euler using Newton-Raphson
     // For now, return phi_n (identity approximation)
     return phi_n;
@@ -37,7 +39,8 @@ inline double implicit_euler_step(double phi_n, double dt, double f) {
 // (phi^{n+1} - phi^n)/dt = 0.5*(f(phi^{n+1}) + f(phi^n))
 // ============================================================================
 
-inline double crank_nicolson_step(double phi_n, double dt, double f) {
+template<class Function>
+inline double crank_nicolson_step(double phi_n, double dt, Function&& f) {
     // Solve (phi^{n+1} - phi^n)/dt = 0.5*(f(phi^{n+1}) + f(phi^n))
     // This requires solving a nonlinear equation
     // For demonstration, return a simple approximation
@@ -53,7 +56,8 @@ inline double crank_nicolson_step(double phi_n, double dt, double f) {
 // NOTE: BDF2 requires phi^{n-1}. We'll provide a helper that assumes
 // phi^{n-1} is available (e.g., stored in a buffer).
 // For now, we'll implement a simplified version that uses phi^n and phi^{n-1}.
-inline double bdf2_step(double phi_n, double dt, double phi_prev, double f) {
+template<class Function>
+inline double bdf2_step(double phi_n, double dt, double phi_prev, Function&& f) {
     // Simplified BDF2 - in production, would solve implicit equation
     // (3*phi^{n+1} - 4*phi^n + phi^{n-1})/(2*dt) = f(phi^n)
     // => phi^{n+1} = (4*phi^n - phi^{n-1} + 2*dt*f(phi^n))/3
@@ -66,7 +70,8 @@ inline double bdf2_step(double phi_n, double dt, double phi_prev, double f) {
 // ============================================================================
 
 // Compute derivative of f at phi (for Newton-Raphson in implicit methods)
-inline double derivative(double f, double phi, double h) {
+template<class Function>
+inline double derivative(Function&& f, double phi, double h) {
     // Central difference approximation
     return (f(phi + h) - f(phi - h)) / (2.0 * h);
 }
