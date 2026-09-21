@@ -91,7 +91,7 @@ inline RadiationSolveResult solve_participating_radiation(
                 nc,"radiation_sp","1/m",1);
 
             for(std::size_t c=0;c<nc;++c) {
-                const double Ib=blackbody(temperature(c));
+                const double Ib=blackbody_intensity(temperature(c));
                 source(c)=controls.absorption*Ib +
                           controls.scattering*J[c];
                 sp(c)=-(controls.absorption+controls.scattering);
@@ -124,7 +124,10 @@ inline RadiationSolveResult solve_participating_radiation(
                 (4.0*M_PI*blackbody(temperature(c))-G);
         }
 
-        result.history.push_back({iter,max_delta,0.0});
+        double max_source_delta = 0.0;
+        for(std::size_t c=0;c<nc;++c)
+            max_source_delta=std::max(max_source_delta,std::abs(radiation_source(c)-qrad(c)));
+        result.history.push_back({iter,max_delta,max_source_delta});
         result.iterations=iter;
         if(max_delta<=controls.tolerance) {
             result.converged=true;
@@ -145,6 +148,7 @@ struct RadiationEnergyCouplingResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<double> source_residuals;
+    std::vector<double> energy_balance_residuals;
 };
 
 inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
@@ -193,6 +197,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             max_delta=std::max(max_delta,std::abs(temperature(c)-oldT(c)));
 
         result.source_residuals.push_back(max_delta);
+        result.energy_balance_residuals.push_back(max_delta);
         result.iterations=iter;
         if(max_delta<=controls.tolerance) {
             result.converged=true;
