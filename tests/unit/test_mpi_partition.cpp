@@ -138,5 +138,7 @@ int main() {
         EXPECT_TRUE(part.cell_rank.size() == 5);
     });
 
-    return run_all();
+    const int rc = run_all();
+    MPI_Finalize();
+    return rc;
 }
