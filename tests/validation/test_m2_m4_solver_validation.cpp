@@ -5,7 +5,6 @@
 #include "common/test_harness.h"
 #include <cmath>
 #include <vector>
-#include <numbers>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
