@@ -523,7 +523,6 @@ double RCMReorderer::computeProfile(
 }
 
 // Mesh Reordering
-// Mesh Reordering
 // --------------------------------------------
 MeshReorderer::ReorderingResult MeshReorderer::reorder(
     const std::vector<uint32_t>& owner,
@@ -572,3 +571,5 @@ void MeshReorderer::applyReordering(
             neighbour[i] = old_to_new[neighbour[i]];
     }
 }
+
+} // namespace cfdx::core::memory

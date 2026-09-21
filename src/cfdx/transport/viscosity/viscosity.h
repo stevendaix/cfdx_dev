@@ -17,7 +17,7 @@ struct SutherlandParams {
     double S = 110.4;         // Sutherland constant [K]
 };
 
-inline double sutherland(double T, const SutherlandParams& params = {}) {
+inline double sutherland(double T, const SutherlandParams& params) {
     return params.mu0 * std::pow(T / params.T0, 1.5) * (params.T0 + params.S) / (T + params.S);
 }
 
