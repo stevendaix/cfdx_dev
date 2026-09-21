@@ -20,6 +20,7 @@ VOLUME_FACES = {
 }
 SURFACE = {"triangle": 3, "quad": 4, "triangle6": 3, "quad8": 4, "quad9": 4}
 CORNER_COUNT = {
+ "tetra": 4, "hexahedron": 8, "wedge": 6, "pyramid": 5, "voxel": 8,
  "tetra10": 4, "hexahedron20": 8, "hexahedron27": 8,
  "wedge15": 6, "wedge18": 6, "pyramid13": 5, "pyramid14": 5,
  "triangle6": 3, "quad8": 4, "quad9": 4,
