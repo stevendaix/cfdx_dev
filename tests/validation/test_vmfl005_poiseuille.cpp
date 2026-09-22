@@ -55,7 +55,7 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
             const std::size_t sn = (s + 1) % ns;
             // Outward normal for sector s along the radial edge center->ring_s.
             radial[k][s] = m.faces().n_faces();
-            m.faces().push_face({b0, b0 + 1 + s, b1 + 1 + s, b1});
+            m.faces().push_face({b0, b1, b1 + 1 + s, b0 + 1 + s});
 
             // Circular wall face, outward in the radial direction.
             wall[k][s] = m.faces().n_faces();
