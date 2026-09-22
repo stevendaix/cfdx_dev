@@ -1,4 +1,4 @@
-"""Non-blocking local solver runner for CFDX orchestration."""
+""""Non-blocking local solver runner for CFDX orchestration."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +8,6 @@ import signal
 import subprocess
 import threading
 from typing import Callable, Sequence
-import shlex
 
 
 @dataclass(frozen=True)
@@ -58,8 +57,15 @@ class SolverRunner:
         on_output: OutputCallback | None = None,
         on_complete: CompletionCallback | None = None,
         restart_path: Path | None = None,
+        restart_option: str | None = "--restart",
     ) -> None:
-        command = self.command if restart_path is None else self.command + ("--restart", str(restart_path))
+        if restart_path is not None and restart_option is None:
+            raise ValueError("restart_option must be configured for a restart")
+        command = (
+            self.command
+            if restart_path is None
+            else self.command + (str(restart_option), str(restart_path))
+        )
         with self._lock:
             if self.running:
                 raise RuntimeError("solver is already running")
@@ -88,18 +94,8 @@ class SolverRunner:
             assert process.stdout is not None
             assert process.stderr is not None
             readers = [
-                threading.Thread(
-                    target=consume,
-                    args=(process.stdout, False),
-                    name="cfdx-solver-stdout",
-                    daemon=True,
-                ),
-                threading.Thread(
-                    target=consume,
-                    args=(process.stderr, True),
-                    name="cfdx-solver-stderr",
-                    daemon=True,
-                ),
+                threading.Thread(target=consume, args=(process.stdout, False), name="cfdx-solver-stdout", daemon=True),
+                threading.Thread(target=consume, args=(process.stderr, True), name="cfdx-solver-stderr", daemon=True),
             ]
             for reader in readers:
                 reader.start()
@@ -109,11 +105,7 @@ class SolverRunner:
             if on_complete:
                 on_complete(ProcessResult(returncode, command))
 
-        self._thread = threading.Thread(
-            target=monitor,
-            name="cfdx-solver-monitor",
-            daemon=True,
-        )
+        self._thread = threading.Thread(target=monitor, name="cfdx-solver-monitor", daemon=True)
         self._thread.start()
 
     def _send_group_signal(self, sig: int) -> None:
