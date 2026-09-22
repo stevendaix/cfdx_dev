@@ -272,33 +272,13 @@ if QApplication is not None:
             if self.controller is not None and self.controller.runner.running:
                 raise RuntimeError("Cannot replace an active session")
             self.session = session
-            self.setup_panel.deleteLater()
-            self.setup_panel = CaseSetupPanel(self.session.case)
-            self.parameters.itemAt(0).widget().deleteLater()
-            self.cfl = QDoubleSpinBox()
-            self.cfl.setRange(0.0, 1.0e6)
-            self.cfl.setDecimals(6)
+            self.setup_panel.set_case(self.session.case)
+            self.cfl.blockSignals(True)
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
-            self.cfl.valueChanged.connect(self._set_cfl)
-            self.parameters.insertRow(0, "CFL", self.cfl)
-            self._replace_setup_panel()
+            self.cfl.blockSignals(False)
             self.controller = None
             self._connect_controller()
             self.refresh()
-
-        def _replace_setup_panel(self) -> None:
-            layout = self.setup_panel.parentWidget().layout()
-            if layout is not None:
-                for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    if item is not None and item.widget() is self.setup_panel:
-                        layout.removeWidget(self.setup_panel)
-                        break
-            self.setup_panel.setParent(None)
-            self.setup_panel.setParent(self.centralWidget().findChild(QWidget, ""))
-            # Reinsert into the visible right-hand layout by using the known layout.
-            right = self.centralWidget().layout().itemAt(1).widget().layout()
-            right.insertWidget(right.count() - 1, self.setup_panel)
 
         def refresh(self) -> None:
             self.tree.clear()
