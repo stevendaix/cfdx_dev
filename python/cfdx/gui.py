@@ -510,6 +510,8 @@ if QApplication is not None:
                         return
                 if not self._ensure_case_path():
                     return
+                if not self._check_case():
+                    return
                 controller = self._ensure_controller()
                 controller.start()
                 self.signals.state_changed.emit(self.session.state)
