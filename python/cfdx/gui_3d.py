@@ -50,6 +50,13 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.reset_camera()
         self.plotter.render()
 
+    @staticmethod
+    def patch_actor_id(stable_id: str) -> str:
+        """Return the renderer actor ID for a stable application patch ID."""
+        if not stable_id.startswith("patch:") or not stable_id.split(":", 1)[1]:
+            raise ValueError(f"invalid patch stable ID: {stable_id!r}")
+        return stable_id
+
     def load_cfdx_mesh(self, source: str) -> None:
         """Load real CFDX HDF5 mesh patches as selectable 3D actors."""
         import h5py
@@ -84,7 +91,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                     begin, stop = int(face_offsets[fid]), int(face_offsets[fid + 1])
                     vertices = face_vertices[begin:stop]
                     faces.extend([len(vertices), *map(int, vertices)])
-                actor_id = f"patch:{index}"
+                actor_id = self.patch_actor_id(f"patch:{name}")
                 mesh = self._pv.PolyData(points, np.asarray(faces, dtype=np.int64))
                 self._actors[actor_id] = self.plotter.add_mesh(mesh, name=actor_id)
             self.plotter.reset_camera()
