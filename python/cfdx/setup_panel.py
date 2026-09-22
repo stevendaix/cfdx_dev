@@ -51,6 +51,13 @@ class CaseSetupPanel(QWidget):
         self.physics_button.clicked.connect(self._apply_physics)
         self.boundary_button.clicked.connect(self._apply_boundary)
 
+    def set_case(self, case: Case) -> None:
+        """Rebind the panel to a newly opened case."""
+        self.case = case
+        self.physics_enabled.setChecked(False)
+        self.boundary_name.clear()
+        self.boundary_value.clear()
+
     def _apply_physics(self) -> None:
         model = self.physics_model.currentText()
         self.case.physics[model] = {"enabled": self.physics_enabled.isChecked()}
