@@ -92,6 +92,10 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
     }
     
     // --- 2. Cell geometry ---
+    // Internal faces are stored with owner-oriented surface vectors. The
+    // neighbour cell therefore needs the oriented geometry helper so its
+    // local face normals are outward as well.
+    const FaceOwnership& own = m.ownership();
     const CellConnectivity& cells = m.cells();
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
@@ -99,14 +103,14 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry(
-            cache.face_centres.data(), cache.face_Sf.data(), cell_faces + off, n);
+        const CellGeometry cg = compute_cell_geometry_oriented(
+            cache.face_centres.data(), cache.face_Sf.data(), cell_faces + off, n,
+            static_cast<CellIndex>(c), own);
         cache.cell_centres[c] = cg.centre;
         cache.cell_volumes[c] = cg.volume;
     }
     
     // --- 3. Quality metrics (skewness, non-orthogonality) ---
-    const FaceOwnership& own = m.ownership();
     cache.max_skewness = 0.0;
     cache.max_non_orthogonality_deg = 0.0;
     cache.min_cell_volume = 0.0;
