@@ -1,6 +1,7 @@
 // M0.8/M0.7 — Assembled vs matrix-free finite-volume diffusion equivalence
 
 #include "cfdx/core/linalg/matrix_free_fv_operator.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/core/solvers/scalar_diffusion.h"
 #include "common/test_harness.h"
 #include <limits>
@@ -69,11 +70,10 @@ int main() {
         x(1) = -1.0;
         Vector y_mf;
         mf.apply(x, y_mf);
-        Vector y_a(2, 0.0);
-        A.apply(x, y_a);
+        const std::vector<double> y_a = A.matvec(x);
 
-        EXPECT_NEAR(y_mf(0), y_a(0), 1e-12);
-        EXPECT_NEAR(y_mf(1), y_a(1), 1e-12);
+        EXPECT_NEAR(y_mf(0), y_a[0], 1e-12);
+        EXPECT_NEAR(y_mf(1), y_a[1], 1e-12);
         EXPECT_NEAR(y_mf(0) + y_mf(1), 0.0, 1e-12);
     });
 
