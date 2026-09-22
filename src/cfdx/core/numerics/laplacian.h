@@ -10,13 +10,18 @@
 //     non-orthogonal limited
 //     uncorrected
 //
-// Première implémentation : orthogonal.
-//
 // Pour un champ scalaire φ (Field<double, CELL>) :
 //   For ORTHOGONAL/UNCORRECTED:
 //     ∇²φ_c = (1/V_c) Σ_internal_f (|Sf|/|d|) (φ_N - φ_P)
 //   where d is the owner-neighbour centre distance.
 //   Boundary faces have zero contribution because no BoundaryField value is supplied.
+//
+//   For CORRECTED:
+//     Sf = Sf_orth + Sf_corr
+//     Sf_orth = d (Sf·d)/|d|²
+//     F_f = (Sf·d)/|d|² (φ_N-φ_P) + Sf_corr·grad(phi)_f
+//   where grad(phi)_f is the arithmetic mean of the cached Gauss gradients
+//   in the two adjacent cells.
 //
 // Le résultat est un Field<double, CELL> de dimension 1.
 
@@ -66,13 +71,6 @@ inline LaplacianScheme laplacian_scheme_from_string(const std::string& s) {
 }
 
 // Calcule le laplacien d'un champ scalaire cellulaire.
-//
-// Args:
-//   cell_field : champ scalaire (dim=1) sur les cellules.
-//   mesh       : maillage.
-//   scheme     : schéma de discrétisation.
-//
-// Retourne un Field<double, CELL> de dimension 1.
 inline Field<double, Location::CELL> compute_laplacian(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
@@ -111,11 +109,8 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (owner != c && neighbour != static_cast<std::int64_t>(c))
                 throw std::runtime_error("compute_laplacian: face is not attached to cell");
 
-            // Orthogonal two-point finite-volume contribution:
-            //   Gamma_f = |Sf| / |C_N - C_P|
-            //   flux_f = Gamma_f * (phi_N - phi_P)
-            // Boundary faces have zero normal gradient in this Module-0
-            // operator because no BoundaryField value is supplied.
+            // Boundary faces have zero normal gradient because this Module-0
+            // operator has no BoundaryField value.
             if (neighbour < 0)
                 continue;
 
@@ -123,17 +118,14 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (nb >= n_cells)
                 throw std::runtime_error("compute_laplacian: neighbour index out of range");
 
-            const double d = (geometry.cell_centres[nb] - geometry.cell_centres[owner]).mag();
-            const double area = geometry.face_Sf[f].mag();
-            if (!(d > 1e-14) || !(area > 0.0) ||
-                !std::isfinite(d) || !std::isfinite(area))
-                throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
-
             const Vec3 dvec = geometry.cell_centres[nb] - geometry.cell_centres[owner];
             const Vec3 Sf = geometry.face_Sf[f];
             const double d2 = dvec.dot(dvec);
-            if (!(d2 > 1e-28) || !std::isfinite(d2))
-                throw std::runtime_error("compute_laplacian: invalid centre-to-centre vector");
+            const double d = std::sqrt(d2);
+            const double area = Sf.mag();
+            if (!(d > 1e-14) || !(area > 0.0) ||
+                !std::isfinite(d) || !std::isfinite(area))
+                throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
 
             const double orth_dot = Sf.dot(dvec);
             const Vec3 Sf_orth = dvec * (orth_dot / d2);
@@ -143,8 +135,11 @@ inline Field<double, Location::CELL> compute_laplacian(
 
             if (scheme == LaplacianScheme::CORRECTED) {
                 const Vec3 Sf_corr = Sf - Sf_orth;
-                const Vec3 grad_face =
-                    (gradients[owner] + gradients[nb]) * 0.5;
+                const Vec3 grad_face{
+                    0.5 * (gradients(owner, 0) + gradients(nb, 0)),
+                    0.5 * (gradients(owner, 1) + gradients(nb, 1)),
+                    0.5 * (gradients(owner, 2) + gradients(nb, 2))
+                };
                 contribution += Sf_corr.dot(grad_face);
             }
 
