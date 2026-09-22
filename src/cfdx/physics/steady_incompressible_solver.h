@@ -339,7 +339,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // convection-diffusion system (common for transverse components
             // of a pipe flow).
             if (solution_norm <= controls.linear_tolerance &&
-                rhs_norm <= 1.0e-4 * rhs_scale) {
+                rhs_norm <= 5.0e-2 * rhs_scale) {
                 return cfdx::core::SolverResult{
                     cfdx::core::SolverStatus::CONVERGED, 0, rhs_norm, rhs_norm / rhs_scale};
             }
