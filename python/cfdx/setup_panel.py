@@ -1,6 +1,7 @@
 """Reusable Qt setup controls for CFDX case physics and boundaries."""
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +17,7 @@ from .case import Case
 
 
 class CaseSetupPanel(QWidget):
+    changed = Signal()
     """Edit the public Python Case physics and boundary dictionaries."""
 
     def __init__(self, case: Case, parent: QWidget | None = None) -> None:
@@ -61,6 +63,7 @@ class CaseSetupPanel(QWidget):
     def _apply_physics(self) -> None:
         model = self.physics_model.currentText()
         self.case.physics[model] = {"enabled": self.physics_enabled.isChecked()}
+        self.changed.emit()
 
     def _apply_boundary(self) -> None:
         name = self.boundary_name.text().strip()
@@ -71,3 +74,4 @@ class CaseSetupPanel(QWidget):
             type=self.boundary_type.currentText(),
             value=self.boundary_value.text(),
         )
+        self.changed.emit()
