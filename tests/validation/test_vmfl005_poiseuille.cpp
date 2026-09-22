@@ -162,7 +162,7 @@ void check_case(std::size_t nz)
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
         const double r = std::hypot(geometry.cell_centres[cell].x,
                                     geometry.cell_centres[cell].y);
-        const double exact = dp * (R * R - r * r) / (2.0 * mu * L);
+        const double exact = dp * (R * R - r * r) / (4.0 * mu * L);
         max_profile_error = std::max(max_profile_error, std::abs(U(cell,0) - exact));
         flow_rate += U(cell,0) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
@@ -180,11 +180,10 @@ void check_case(std::size_t nz)
               << " mean_velocity=" << mean_u
               << " mean_rel_error=" << rel_mean
               << " profile_abs_error=" << max_profile_error
-              << " profile_rel_error=" << rel_profile
               << " continuity_linf=" << last.continuity_linf
               << " iterations=" << result.iterations << "\\n";
 
-    const double max_exact = dp * R * R / (2.0 * mu * L);
+    const double max_exact = dp * R * R / (4.0 * mu * L);
     const double rel_profile = max_profile_error / max_exact;
     if (rel_q > 5e-2 || rel_mean > 5e-2 || rel_profile > 5e-2)
         throw std::runtime_error("VMFL005 quantitative mismatch");
