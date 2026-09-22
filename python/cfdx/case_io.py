@@ -45,7 +45,9 @@ def save_case(session: CFDXSession, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     case_data = session.case.as_dict()
 
-    with h5py.File(path, "w") as h5:
+    # Append to an existing CFDX HDF5 artifact so a mesh/topology written by
+    # the native C++ HDF5 layer is never destroyed by a case save.
+    with h5py.File(path, "a") as h5:
         h5.attrs["format"] = _FORMAT
         h5.attrs["schema_version"] = _SCHEMA_VERSION
         h5.attrs["case_revision"] = session.case_revision
@@ -54,6 +56,8 @@ def save_case(session: CFDXSession, path: Path) -> Path:
         h5.attrs["numerics_revision"] = session.numerics_revision
 
         case_group = h5.require_group("case")
+        if "config" in case_group:
+            del case_group["config"]
         case_group.create_dataset(
             "config",
             data=json.dumps(case_data, sort_keys=True, separators=(",", ":")),
