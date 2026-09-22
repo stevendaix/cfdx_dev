@@ -5,7 +5,7 @@
 #include "cfdx/core/numerics/flux.h"
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
+#include <stdexcept>\n#include <array>
 
 namespace cfdx::physics {
 
@@ -20,7 +20,7 @@ struct CouplingControls {
     double alpha_u = 0.7;
     double alpha_p = 0.3;
     int n_outer_correctors = 1;
-    int n_pressure_correctors = 2;
+    int n_pressure_correctors = 2;\n    std::array<bool, 3> active_velocity_components{true, true, true};
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
