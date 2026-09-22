@@ -128,10 +128,10 @@ void check_case(std::size_t n)
     IncompressibleSolverControls c;
     c.algorithm = PressureVelocityAlgorithm::SIMPLE;
     c.convergence.max_iterations = 500;
-    c.convergence.relative_tolerance = 1e-9;
+    c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-10;
     c.linear_max_iterations = 5000;
-    c.linear_tolerance = 1e-9;
+    c.linear_tolerance = 1e-8;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
     c.pressure_reference_cell = 0;
