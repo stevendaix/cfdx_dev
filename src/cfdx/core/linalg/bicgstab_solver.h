@@ -31,7 +31,20 @@ inline SolverResult solve_bicgstab(
     }
     KrylovWorkspace w;w.resize(n);
     std::vector<double> inv_diag(n,0.0);
-    for(std::size_t i=0;i<n;++i){for(std::size_t k=Ar[i];k<Ar[i+1];++k)if(Ac[k]==static_cast<std::uint32_t>(i)){inv_diag[i]=1.0/Av[k];break;}if(!std::isfinite(inv_diag[i])){result.status=SolverStatus::NOT_APPLICABLE;return result;}}
+    for(std::size_t i=0;i<n;++i){
+        bool found_diag=false;
+        for(std::size_t k=Ar[i];k<Ar[i+1];++k) {
+            if(Ac[k]==static_cast<std::uint32_t>(i)){
+                found_diag=true;
+                inv_diag[i]=1.0/Av[k];
+                break;
+            }
+        }
+        if(!found_diag || !std::isfinite(inv_diag[i])){
+            result.status=SolverStatus::NOT_APPLICABLE;
+            return result;
+        }
+    }
     auto matvec=[&](const Vector& in,Vector& out){for(std::size_t i=0;i<n;++i){double s=0.0;for(std::size_t k=Ar[i];k<Ar[i+1];++k)s+=Av[k]*in(Ac[k]);out(i)=s;}};
     Vector Ax(n,0.0);matvec(x,Ax);
     if (!finite_vector(Ax)) { result.status=SolverStatus::DIVERGED; return result; }
