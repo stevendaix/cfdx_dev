@@ -3,6 +3,7 @@
 #include "cfdx/core/linalg/matrix_free_fv_operator.h"
 #include "cfdx/core/solvers/scalar_diffusion.h"
 #include "common/test_harness.h"
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
