@@ -10,6 +10,10 @@ from .runner import SolverRunner
 from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
 from .watcher import ResultWatcher
+from .mesh_model import read_mesh_catalog
+from .mesh_browser_panel import MeshBrowserPanel
+from .results_series import discover_result_series
+from .results_series_panel import ResultsSeriesPanel
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -81,6 +85,9 @@ if QApplication is not None:
             self.save_case_as_action = file_menu.addAction("Save Case As…")
             self.save_case_dat_action = file_menu.addAction("Save Case + DAT…")
             file_menu.addSeparator()
+            self.open_mesh_action = file_menu.addAction("Open Mesh…")
+            self.open_results_action = file_menu.addAction("Open Results Directory…")
+            file_menu.addSeparator()
             self.exit_action = file_menu.addAction("Exit")
 
             run_menu = self.menuBar().addMenu("Run")
@@ -94,6 +101,8 @@ if QApplication is not None:
             self.save_case_action.triggered.connect(self._save_case)
             self.save_case_as_action.triggered.connect(self._save_case_as)
             self.save_case_dat_action.triggered.connect(self._save_case_with_dat)
+            self.open_mesh_action.triggered.connect(self._open_mesh)
+            self.open_results_action.triggered.connect(self._open_results_directory)
             self.exit_action.triggered.connect(self.close)
             self.run_action.triggered.connect(self._run)
             self.pause_action.triggered.connect(self._pause)
@@ -129,6 +138,11 @@ if QApplication is not None:
             self.cfl.valueChanged.connect(self._set_cfl)
             self.parameters.addRow("CFL", self.cfl)
 
+            self.mesh_browser = MeshBrowserPanel()
+            self.mesh_browser.selection_changed.connect(self._mesh_selection_changed)
+            self.results_series = ResultsSeriesPanel()
+            self.results_series.frame_changed.connect(self._result_frame_changed)
+
             self.setup_panel = CaseSetupPanel(self.session.case)
             self.setup_panel.changed.connect(self._mark_dirty)
             right = QVBoxLayout()
@@ -136,6 +150,7 @@ if QApplication is not None:
             right.addWidget(self.file_status)
             right.addLayout(controls)
             right.addLayout(self.parameters)
+            right.addWidget(self.mesh_browser)
             right.addWidget(self.setup_panel)
             right.addWidget(self.log)
 
@@ -150,6 +165,7 @@ if QApplication is not None:
             result_controls.addWidget(self.open_result_button)
             result_controls.addWidget(self.result_status, 1)
             visualization_layout.addLayout(result_controls)
+            visualization_layout.addWidget(self.results_series)
             try:
                 self.view3d = PyVistaQtView()
                 visualization_layout.addWidget(self.view3d, 1)
@@ -174,6 +190,57 @@ if QApplication is not None:
             self.signals.output.connect(self._queue_output)
             self.signals.metrics_changed.connect(self._refresh_metrics)
             self.signals.results_changed.connect(self.refresh)
+
+        def _open_mesh(self) -> bool:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open CFDX Mesh", str(self._case_path.parent if self._case_path else ""),
+                "CFDX mesh (*.h5);;All files (*)"
+            )
+            if not path:
+                return False
+            try:
+                catalog = read_mesh_catalog(Path(path))
+                self.mesh_browser.set_catalog(catalog)
+                return True
+            except (OSError, ValueError) as exc:
+                self._show_error("Open Mesh failed", str(exc))
+                return False
+
+        def _open_results_directory(self) -> bool:
+            directory = QFileDialog.getExistingDirectory(
+                self, "Open CFDX Results Directory",
+                str(self._case_path.parent if self._case_path else "")
+            )
+            if not directory:
+                return False
+            try:
+                series = discover_result_series(Path(directory))
+                self.results_series.set_series(series)
+                if series.frames:
+                    self._result_frame_changed(series.frames[0])
+                else:
+                    self.result_status.setText("No VTK result files found")
+                return True
+            except (OSError, ValueError) as exc:
+                self._show_error("Open Results failed", str(exc))
+                return False
+
+        def _result_frame_changed(self, frame) -> None:
+            if self.view3d is None:
+                self.result_status.setText(str(frame.path))
+                return
+            try:
+                self.view3d.load(str(frame.path))
+                self._result_source = frame.path
+                self.result_status.setText(str(frame.path))
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._show_error("Open 3D result failed", str(exc))
+
+        def _mesh_selection_changed(self, selection) -> None:
+            self.result_status.setText(
+                f"Selected {selection.kind} {selection.index}"
+                + (f" ({selection.name})" if selection.name else "")
+            )
 
         def _open_result(self) -> bool:
             if self.view3d is None:
@@ -217,8 +284,7 @@ if QApplication is not None:
                 command.extend([restart_option, str(self._restart_dat)])
             if self.session.case.execution.mpi_ranks > 1:
                 command = [
-                    "mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command
-                ]
+                    "mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command                ]
             return command
 
         def _ensure_controller(self) -> ExecutionController:
@@ -498,17 +564,3 @@ if QApplication is not None:
         window.show()
         return app.exec()
 else:
-    class CFDXMainWindow:
-        def __init__(
-            self,
-            session: CFDXSession | None = None,
-            results_dir: Path | None = None,
-            execution_controller: ExecutionController | None = None,
-        ) -> None:
-            raise RuntimeError("PySide6 is required for the CFDX GUI")
-
-    def create_application(argv: list[str] | None = None):
-        raise RuntimeError("PySide6 is required for the CFDX GUI")
-
-    def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
-        raise RuntimeError("PySide6 is required for the CFDX GUI")
