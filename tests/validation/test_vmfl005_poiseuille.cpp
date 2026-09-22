@@ -201,7 +201,15 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L, std::size_t n
     }
     return m;
 }
-void check_case(std::size_t nz)
+struct ValidationMetrics {
+    double relative_flow_error = 0.0;
+    double relative_mean_error = 0.0;
+    double relative_profile_max_error = 0.0;
+    double relative_profile_l2_error = 0.0;
+    double continuity_linf = 0.0;
+};
+
+ValidationMetrics check_case(std::size_t nz)
 {
     constexpr double R = 0.00125;
     constexpr double L = 0.1;
@@ -322,6 +330,13 @@ void check_case(std::size_t nz)
         throw std::runtime_error("VMFL005 axial flow is not uniform");
     if (last.continuity_linf > 1e-8)
         throw std::runtime_error("VMFL005 continuity error too large");
+
+    return {
+        rel_q,
+        rel_mean,
+        rel_profile,
+        rel_profile_l2,
+        last.continuity_linf};
 }
 
 } // namespace
@@ -329,8 +344,29 @@ void check_case(std::size_t nz)
 int main()
 {
     try {
-        check_case(16);
-        check_case(32);
+        const auto coarse = check_case(16);
+        const auto fine = check_case(32);
+
+        // The axial refinement must improve every exact-solution error metric.
+        // This makes the two meshes a convergence study rather than two
+        // independent pass/fail checks.
+        std::cout << "VMFL005 refinement: q_error_ratio="
+                  << fine.relative_flow_error / coarse.relative_flow_error
+                  << " mean_error_ratio="
+                  << fine.relative_mean_error / coarse.relative_mean_error
+                  << " profile_max_error_ratio="
+                  << fine.relative_profile_max_error / coarse.relative_profile_max_error
+                  << " profile_l2_error_ratio="
+                  << fine.relative_profile_l2_error / coarse.relative_profile_l2_error
+                  << "\\n";
+
+        if (fine.relative_flow_error >= coarse.relative_flow_error ||
+            fine.relative_mean_error >= coarse.relative_mean_error ||
+            fine.relative_profile_max_error >= coarse.relative_profile_max_error ||
+            fine.relative_profile_l2_error >= coarse.relative_profile_l2_error) {
+            throw std::runtime_error("VMFL005 refinement did not reduce all discretization errors");
+        }
+
         std::cout << "VMFL005_VALIDATION: PASS\\n";
         return 0;
     } catch (const std::exception& e) {
