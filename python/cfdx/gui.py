@@ -163,6 +163,11 @@ if QApplication is not None:
             if self._case_path is None:
                 raise ValueError("Save the case before Run")
             command = [solver, str(self._case_path)]
+            if self._restart_dat is not None:
+                restart_option = self.session.case.execution.restart_option
+                if not restart_option:
+                    raise ValueError("A DAT restart is loaded but no solver restart option is configured")
+                command.extend([restart_option, str(self._restart_dat)])
             if self.session.case.execution.mpi_ranks > 1:
                 command = [
                     "mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command
