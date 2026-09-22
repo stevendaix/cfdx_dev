@@ -393,6 +393,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
+        bool has_fixed_pressure_boundary = false;
+        for (const auto& [name, bc] : pressure_bcs) {
+            (void)name;
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                has_fixed_pressure_boundary = true;
+                break;
+            }
+        }
 
         for (std::size_t corr = 0; corr < pcorr; ++corr) {
             // Assemble the pressure-correction Laplacian with the same
@@ -440,7 +448,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // physical pressure equation. For a prescribed pressure boundary,
             // p' = 0; the physical pressure target is already represented by
             // p and must not be injected again into the correction RHS.
-            bool has_fixed_pressure_boundary = false;
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 if (mesh.ownership().neighbour(f) >= 0)
                     continue;
@@ -453,7 +460,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     it->second.type != ScalarBoundaryType::FIXED_VALUE)
                     continue;
 
-                has_fixed_pressure_boundary = true;
                 const std::size_t o = mesh.ownership().owner(f);
                 const double distance =
                     (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
@@ -494,8 +500,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += controls.coupling.alpha_p * p_corr(c);
-            // Explicitly enforce the selected pressure gauge after relaxation.
-            p(controls.pressure_reference_cell) = controls.pressure_reference_value;
+            // With prescribed pressure boundaries the physical pressure gauge
+            // is already fixed by the boundary data; resetting an arbitrary
+            // cell would inject an artificial pressure discontinuity. A cell
+            // reference is needed only for a pure-Neumann pressure problem.
+            if (!has_fixed_pressure_boundary)
+                p(controls.pressure_reference_cell) = controls.pressure_reference_value;
 
             Field<double, Location::CELL> p_corr_field(
                 nc, "p_corr", "Pa", 1);
