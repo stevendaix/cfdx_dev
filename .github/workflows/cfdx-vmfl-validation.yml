@@ -1,0 +1,113 @@
+name: CFDX VMFL validation campaign
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-vmfl-validation
+  cancel-in-progress: false
+
+jobs:
+  validation:
+    name: Full validation campaign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build and report dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            zlib1g-dev libhdf5-dev \
+            python3 python3-venv \
+            latexmk texlive-latex-base texlive-latex-recommended \
+            texlive-latex-extra
+
+      - name: Install Python report dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install numpy matplotlib
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure CFDX
+        run: |
+          cmake -S . -B build-validation -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF
+
+      - name: Build validation suite
+        run: cmake --build build-validation --parallel 4
+
+      - name: Run complete validation report
+        id: validation_report
+        continue-on-error: true
+        run: |
+          python3 scripts/validation_report.py \
+            --build-dir build-validation \
+            --output-dir build-validation/validation-report
+
+      - name: Publish validation summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("build-validation/validation-report/results.json")
+          print("## CFDX VMFL validation campaign")
+          if not path.exists():
+              print("Validation report did not produce results.json.")
+              raise SystemExit(0)
+
+          data = json.loads(path.read_text())
+          gate = data.get("validation_gate", "UNKNOWN")
+          status = data.get("validation_suite_status", {})
+          failures = [k for k, v in status.items() if v != 0]
+          print(f"- Validation gate: **{gate}**")
+          print(f"- Executables checked: **{len(status)}**")
+          print(f"- Non-zero/missing executables: **{len(failures)}**")
+          if failures:
+              print("")
+              print("### Cases requiring investigation")
+              for name in failures:
+                  print(f"- `{name}`: exit code {status[name]}")
+          print("")
+          print("The complete PDF, machine-readable results, logs and figures are attached as a workflow artifact.")
+          PY
+
+      - name: Upload complete validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-vmfl-validation-report
+          path: build-validation/validation-report/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload CTest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-vmfl-ctest-evidence
+          path: |
+            build-validation/Testing/
+            build-validation/**/*.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Enforce validation gate
+        if: steps.validation_report.outcome == 'failure'
+        run: |
+          echo "CFDX validation gate failed. Inspect the uploaded validation report and logs."
+          exit 1
