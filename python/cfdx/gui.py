@@ -15,7 +15,7 @@ try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
     from PySide6.QtWidgets import (
         QApplication, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-        QLabel, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+        QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
         QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
     )
 except ImportError:  # pragma: no cover
