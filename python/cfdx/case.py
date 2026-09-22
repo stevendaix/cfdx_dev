@@ -12,6 +12,7 @@ class ExecutionConfig:
     solver: str | None = None
     mpi_ranks: int = 1
     deterministic: bool = True
+    restart_option: str | None = "--restart"
 
 
 @dataclass
@@ -47,6 +48,7 @@ class Case:
                 "solver": self.execution.solver,
                 "mpi_ranks": self.execution.mpi_ranks,
                 "deterministic": self.execution.deterministic,
+                "restart_option": self.execution.restart_option,
             },
         }
 
