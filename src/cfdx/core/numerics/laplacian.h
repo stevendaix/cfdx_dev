@@ -94,6 +94,9 @@ inline Field<double, Location::CELL> compute_laplacian(
     const FaceOwnership& own = mesh.ownership();
     const double* phi = cell_field.component_data(0);
     double* out = lap.component_data(0);
+    Field<double, Location::CELL> grad;
+    if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED)
+        grad = compute_gradient_gauss(cell_field, mesh, geometry);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
@@ -110,7 +113,7 @@ inline Field<double, Location::CELL> compute_laplacian(
             // non-orthogonal correction.  d is the owner->neighbour vector,
             // while Sf is the canonical owner->exterior area vector.
             const Vec3 dvec = geometry.cell_centres[nb] - geometry.cell_centres[owner];
-            const double d2 = dvec.mag2();
+            const double d2 = dvec.x * dvec.x + dvec.y * dvec.y + dvec.z * dvec.z;
             const double area = geometry.face_Sf[f].mag();
             if (!(d2 > 1e-28) || !(area > 0.0) ||
                 !std::isfinite(d2) || !std::isfinite(area))
@@ -125,7 +128,6 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED) {
                 // Reconstruct the face gradient from the two cell gradients.
                 // The correction acts only on the tangential part of Sf.
-                const auto grad = compute_gradient_gauss(cell_field, mesh, geometry);
                 const Vec3 grad_owner{grad.component_data(0)[owner],
                                       grad.component_data(1)[owner],
                                       grad.component_data(2)[owner]};
