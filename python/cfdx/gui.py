@@ -390,6 +390,20 @@ if QApplication is not None:
 
         def _run(self) -> None:
             try:
+                if self._dirty:
+                    choice = QMessageBox.question(
+                        self,
+                        "Unsaved changes",
+                        "Save the case before starting the solver?",
+                        QMessageBox.StandardButton.Save
+                        | QMessageBox.StandardButton.Discard
+                        | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Save,
+                    )
+                    if choice is QMessageBox.StandardButton.Cancel:
+                        return
+                    if choice is QMessageBox.StandardButton.Save and not self._save_case():
+                        return
                 if not self._ensure_case_path():
                     return
                 controller = self._ensure_controller()
@@ -436,6 +450,22 @@ if QApplication is not None:
             return TuiRenderer.render(self.session)
 
         def closeEvent(self, event) -> None:
+            if self._dirty and (self.controller is None or not self.controller.runner.running):
+                choice = QMessageBox.question(
+                    self,
+                    "Unsaved changes",
+                    "Save changes before closing?",
+                    QMessageBox.StandardButton.Save
+                    | QMessageBox.StandardButton.Discard
+                    | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Save,
+                )
+                if choice is QMessageBox.StandardButton.Cancel:
+                    event.ignore()
+                    return
+                if choice is QMessageBox.StandardButton.Save and not self._save_case():
+                    event.ignore()
+                    return
             if self.controller is not None and self.controller.runner.running:
                 choice = QMessageBox.question(
                     self, "Solver still running",
