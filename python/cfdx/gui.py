@@ -237,6 +237,10 @@ if QApplication is not None:
                 return False
 
         def _result_frame_changed(self, frame) -> None:
+            if not frame.complete:
+                self._result_source = None
+                self.result_status.setText(f"Incomplete result: {frame.path.name}")
+                return
             if self.view3d is None:
                 self.result_status.setText(str(frame.path))
                 return
