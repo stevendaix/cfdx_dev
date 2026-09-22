@@ -116,6 +116,25 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
 
     if (!m.ownership().is_consistent(m.n_cells()))
         throw std::runtime_error("VMFL005: inconsistent face ownership");
+
+    // Validate the complete owner/neighbour <-> cell-face contract before the
+    // solver touches the mesh. This makes topology regressions local and
+    // reports the exact offending cell/face pair.
+    for (std::size_t c = 0; c < m.n_cells(); ++c) {
+        const auto off = m.cells().offsets_data()[c];
+        const auto count = m.cells().offsets_data()[c + 1] - off;
+        for (std::size_t j = 0; j < count; ++j) {
+            const auto f = m.cells().faces_data()[off + j];
+            const auto owner = m.ownership().owner(f);
+            const auto neighbour = m.ownership().neighbour(f);
+            if (owner != c && neighbour != static_cast<std::int64_t>(c)) {
+                throw std::runtime_error("VMFL005: face " + std::to_string(f) +
+                                         " is not attached to cell " + std::to_string(c) +
+                                         " (owner=" + std::to_string(owner) +
+                                         ", neighbour=" + std::to_string(neighbour) + ")");
+            }
+        }
+    }
     return m;
 }
 
