@@ -83,7 +83,8 @@ public:
         if (!z.is_valid())
             return false;
 
-        if (!op_.apply(z, ws_.fine_A) || !ws_.fine_A.is_valid())
+        op_.apply(z, ws_.fine_A);
+        if (!ws_.fine_A.is_valid())
             return false;
         for (std::size_t i = 0; i < r.size(); ++i)
             ws_.fine_r(i) = r(i) - ws_.fine_A(i);
@@ -196,7 +197,8 @@ private:
     bool smooth(const Vector& r, Vector& x, std::size_t sweeps) const
     {
         for (std::size_t s = 0; s < sweeps; ++s) {
-            if (!op_.apply(x, ws_.fine_A) || !ws_.fine_A.is_valid())
+            op_.apply(x, ws_.fine_A);
+            if (!ws_.fine_A.is_valid())
                 return false;
             for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag_[i] * (r(i) - ws_.fine_A(i));
