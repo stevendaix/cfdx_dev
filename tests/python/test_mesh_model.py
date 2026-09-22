@@ -43,3 +43,35 @@ def test_catalog_rejects_duplicate_patch_names(tmp_path):
         h.attrs["boundary_patches"]="inlet:0:2:1;inlet:2:4:0"
     with pytest.raises(ValueError, match="unique"):
         read_mesh_catalog(path)
+
+
+def test_cell_selection_has_stable_identity(tmp_path):
+    path=tmp_path/"mesh.h5"; write_mesh(path)
+    mesh=read_mesh_catalog(path)
+    assert mesh.cell(2).stable_id=="cell:2"
+    assert mesh.cell(2).selection.stable_id=="cell:2"
+    assert len(set(mesh.cell_ids)) == mesh.n_cells
+
+
+def test_catalog_reads_multi_region_hdf5(tmp_path):
+    path=tmp_path/"regions.h5"
+    with h5py.File(path, "w") as h:
+        regions = h.create_group("regions")
+        for region_name, n_cells, patch_name in (("fluid", 3, "inlet"), ("solid", 2, "wall")):
+            g = regions.create_group(region_name)
+            g.create_dataset("points", data=np.zeros((4,3)))
+            g.create_dataset("owner", data=np.arange(2,dtype=np.uint64))
+            g.create_dataset("neighbour", data=np.full(2,-1,dtype=np.int64))
+            g.create_dataset("cell_offsets", data=np.arange(n_cells+1,dtype=np.uint64))
+            g.attrs["n_cells"] = n_cells
+            g.attrs["boundary_patches"] = f"{patch_name}:0:2:1"
+            g.create_dataset("patch_face_ids", data=np.arange(2,dtype=np.uint64))
+            g.create_dataset("patch_face_offsets", data=np.array([0,2],dtype=np.uint64))
+            g.create_dataset("cell_ids", data=np.asarray([f"{region_name}-{i}" for i in range(n_cells)], dtype="S16"))
+    mesh=read_mesh_catalog(path)
+    assert tuple(r.name for r in mesh.regions)==("fluid","solid")
+    assert mesh.n_cells==5
+    assert mesh.patch(0).stable_id=="region:fluid/patch:inlet"
+    assert mesh.patch(1).stable_id=="region:solid/patch:wall"
+    assert mesh.cell_ids[0]=="region:fluid/cell:fluid-0"
+    assert mesh.cell_ids[-1]=="region:solid/cell:solid-1"
