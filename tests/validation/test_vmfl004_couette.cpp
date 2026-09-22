@@ -1,6 +1,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 #include <iostream>
@@ -60,11 +61,17 @@ Mesh make_channel(std::size_t n, double height, double length)
         };
         m.cells().push_cell(faces);
         for (const auto f : faces) {
-            m.ownership().set_owner(f, i);
             const bool is_internal =
                 std::find(internal.begin(), internal.end(), f) != internal.end();
-            m.ownership().set_neighbour(
-                f, is_internal ? static_cast<int>(i + 1) : FaceOwnership::BOUNDARY);
+            if (is_internal) {
+                if (m.ownership().owner(f) != FaceOwnership::UNASSIGNED)
+                    continue;
+                m.ownership().set_owner(f, i);
+                m.ownership().set_neighbour(f, static_cast<int>(i + 1));
+            } else {
+                m.ownership().set_owner(f, i);
+                m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+            }
         }
     }
 
