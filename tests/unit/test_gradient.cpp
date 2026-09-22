@@ -89,6 +89,122 @@ int main() {
         EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
     });
 
+    run_case("gradient_gauss_linear_field_exact_on_interior_cell", []() {
+        // Three Cartesian cells in x.  The middle cell has neighbours on
+        // both x-faces, so the zero-gradient boundary contract cannot
+        // contaminate the linear-field oracle.
+        Mesh m;
+        m.points().resize(16);
+        const double p[16][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{3,0,0},
+            {0,1,0},{1,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{3,0,1},
+            {0,1,1},{1,1,1},{2,1,1},{3,1,1}
+        };
+        for (std::size_t i = 0; i < 16; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        const std::vector<std::vector<Index>> faces = {
+            {0,8,12,4}, {0,1,9,8}, {4,12,13,5}, {0,4,5,1},
+            {8,9,13,12}, {9,10,14,13}, {1,5,6,2}, {1,2,10,9},
+            {5,13,14,6}, {1,5,6,2}, {10,11,15,14}, {2,3,11,10},
+            {6,14,15,7}, {2,6,7,3}, {11,15,14,10}
+        };
+        // Replace the duplicated face above with the six faces per cell:
+        // use an explicit, compact 3-cell topology below.
+        m = Mesh{};
+        m.points().resize(16);
+        for (std::size_t i = 0; i < 16; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        const std::vector<std::vector<Index>> fs = {
+            {0,8,12,4}, {0,1,5,4}, {8,9,13,12}, {1,2,6,5},
+            {9,10,14,13}, {2,3,7,6}, {10,11,15,14},
+            {0,4,12,8}, {1,9,13,5}, {2,10,14,6},
+            {3,11,15,7}, {4,5,6,7}, {8,12,13,9},
+            {9,13,14,10}, {10,14,15,11}
+        };
+        for (const auto& face : fs) m.faces().push_face(face);
+
+        m.ownership().resize(fs.size());
+        for (std::size_t f = 0; f < fs.size(); ++f) {
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        // Face ordering: left boundary, x-internal 0-1, x-internal 1-2,
+        // right boundary, then y/z boundary faces.
+        m.ownership().set_owner(0, 0);
+        m.ownership().set_owner(1, 0);
+        m.ownership().set_neighbour(1, 1);
+        m.ownership().set_owner(2, 1);
+        m.ownership().set_neighbour(2, 2);
+        m.ownership().set_owner(3, 2);
+        for (std::size_t f = 4; f < fs.size(); ++f) {
+            // y/z faces are assigned to the corresponding cell below.
+            const std::size_t owner = (f <= 5) ? 0 : (f <= 8 ? 1 : 2);
+            m.ownership().set_owner(f, owner);
+        }
+        m.cells().push_cell({0,1,4,5,7,8});
+        m.cells().push_cell({1,2,6,9,12,13});
+        m.cells().push_cell({2,3,10,11,14,15});
+
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField f(3, "phi", "1", 1);
+        for (std::size_t c = 0; c < 3; ++c)
+            f(c) = geometry.cell_centres[c].x;
+
+        const auto grad = compute_gradient_gauss(f, m, geometry);
+        EXPECT_NEAR(grad(1, 0), 1.0, 1e-12);
+        EXPECT_NEAR(grad(1, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(1, 2), 0.0, 1e-12);
+    });
+
+    run_case("gradient_gauss_quadratic_field_exact_on_interior_cell", []() {
+        Mesh m;
+        m.points().resize(16);
+        const double p[16][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{3,0,0},
+            {0,1,0},{1,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{3,0,1},
+            {0,1,1},{1,1,1},{2,1,1},{3,1,1}
+        };
+        for (std::size_t i = 0; i < 16; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        const std::vector<std::vector<Index>> fs = {
+            {0,8,12,4}, {0,1,5,4}, {8,9,13,12}, {1,2,6,5},
+            {9,10,14,13}, {2,3,7,6}, {10,11,15,14},
+            {0,4,12,8}, {1,9,13,5}, {2,10,14,6},
+            {3,11,15,7}, {4,5,6,7}, {8,12,13,9},
+            {9,13,14,10}, {10,14,15,11}
+        };
+        for (const auto& face : fs) m.faces().push_face(face);
+        m.ownership().resize(fs.size());
+        for (std::size_t face = 0; face < fs.size(); ++face)
+            m.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(0, 0);
+        m.ownership().set_owner(1, 0); m.ownership().set_neighbour(1, 1);
+        m.ownership().set_owner(2, 1); m.ownership().set_neighbour(2, 2);
+        m.ownership().set_owner(3, 2);
+        for (std::size_t face = 4; face < fs.size(); ++face)
+            m.ownership().set_owner(face, face <= 5 ? 0 : (face <= 8 ? 1 : 2));
+        m.cells().push_cell({0,1,4,5,7,8});
+        m.cells().push_cell({1,2,6,9,12,13});
+        m.cells().push_cell({2,3,10,11,14,15});
+
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField f(3, "phi", "1", 1);
+        for (std::size_t c = 0; c < 3; ++c) {
+            const double x = geometry.cell_centres[c].x;
+            f(c) = x * x;
+        }
+
+        const auto grad = compute_gradient_gauss(f, m, geometry);
+        // Middle-cell centre is x=1.5, hence d(x^2)/dx = 3.
+        EXPECT_NEAR(grad(1, 0), 3.0, 1e-12);
+        EXPECT_NEAR(grad(1, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(1, 2), 0.0, 1e-12);
+    });
+
     run_case("gradient_size_mismatch", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(2, "p", "Pa", 1);
