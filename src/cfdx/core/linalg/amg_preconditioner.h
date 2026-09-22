@@ -287,7 +287,8 @@ private:
             if (!std::isfinite(x(i))) return false;
         }
 
-        if (!smooth(level, r, x, post_)) { std::cerr << "AMG post-smooth failure level=" << level << "\n"; return false; }\n        return true;
+        if (!smooth(level, r, x, post_)) { std::cerr << "AMG post-smooth failure level=" << level << "\n"; return false; }
+        return true;
     }
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
