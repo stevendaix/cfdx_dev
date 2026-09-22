@@ -246,6 +246,32 @@ inline void validate_halo_plan(const HaloPlan& plan, int size) {
     }
 }
 
+inline void validate_halo_indices_collective(
+    const std::vector<std::vector<int>>& indices,
+    std::size_t field_size,
+    int size,
+    MPI_Comm comm,
+    const char* what)
+{
+    int local_error = static_cast<int>(indices.size() != static_cast<std::size_t>(size));
+    if (local_error == 0) {
+        for (const auto& peer_indices : indices) {
+            for (const int index : peer_indices) {
+                if (index < 0 || static_cast<std::size_t>(index) >= field_size) {
+                    local_error = 1;
+                    break;
+                }
+            }
+            if (local_error != 0) break;
+        }
+    }
+
+    int global_error = 0;
+    MPI_Allreduce(&local_error, &global_error, 1, MPI_INT, MPI_MAX, comm);
+    if (global_error != 0)
+        throw std::out_of_range(std::string("halo exchange: invalid ") + what + " index");
+}
+
 inline std::size_t checked_mpi_product(std::size_t lhs, std::size_t rhs, const char* context) {
     if (rhs != 0 && lhs > std::numeric_limits<std::size_t>::max() / rhs)
         throw std::overflow_error(std::string(context) + ": size multiplication overflow");
@@ -283,6 +309,8 @@ inline void exchange_halo_faces(
     int size = mpi_size(comm);
     const std::size_t dim = field.dimension();
     validate_halo_plan_collective(plan, size, comm);
+    validate_halo_indices_collective(plan.send_faces, field.size(), size, comm, "send face");
+    validate_halo_indices_collective(plan.recv_faces, field.size(), size, comm, "receive face");
     
     // Prepare send buffers
     std::vector<std::vector<double>> send_buffers(size);
@@ -346,6 +374,8 @@ inline void exchange_halo_cells(
     const int size=mpi_size(comm);
     const std::size_t dim=field.dimension();
     validate_halo_plan_collective(plan, size, comm);
+    validate_halo_indices_collective(plan.send_cells, field.size(), size, comm, "send cell");
+    validate_halo_indices_collective(plan.recv_cells, field.size(), size, comm, "receive cell");
 
     for(int r=0;r<size;++r) {
         if(r==rank) continue;
