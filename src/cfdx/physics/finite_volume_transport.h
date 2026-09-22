@@ -362,7 +362,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
-            30, controls.max_iterations, controls.tolerance);
+            64, controls.max_iterations, controls.tolerance);
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
