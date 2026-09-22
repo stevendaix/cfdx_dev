@@ -1,220 +1,370 @@
 #pragma once
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/preconditioner.h"
+#include "cfdx/core/linalg/sparse_matrix.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
 namespace cfdx::core {
 
-// Matrix-free fine-level V-cycle with connectivity-aware pair aggregation.
-// The fine operator remains matrix-free during apply(). The SparseMatrix
-// passed to setup() is used only for diagonal/graph construction.
-// The coarse operator is a diagonal approximation for this foundation stage.
-// The mutable workspace makes one instance non-thread-safe across apply calls.
+// Multilevel agglomerated AMG using piecewise-constant aggregation and
+// Galerkin coarse operators. The finest operator remains matrix-free during
+// apply(); SparseMatrix is used during setup to build the hierarchy.
+// This is a lightweight AMG implementation: aggregation is pairwise and
+// coarsest solves use damped Jacobi rather than a direct sparse factorization.
 class MatrixFreeVcyclePreconditioner final : public Preconditioner {
 public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
                                    double omega = 0.7,
-                                   std::size_t pre = 2,
-                                   std::size_t post = 2)
+                                   std::size_t pre = 4,
+                                   std::size_t post = 4)
         : op_(op), omega_(omega), pre_(pre), post_(post)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0)) {
-            throw std::invalid_argument("invalid V-cycle operator");
+            throw std::invalid_argument("invalid AMG operator");
         }
-        setup_diagonal();
     }
 
     bool setup(const SparseMatrix& A) override
     {
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
-            A.n_rows() == 0)
+            A.n_rows() == 0 || !matrix_is_valid(A)) {
+            std::cerr << "AMG setup: fine matrix invalid\\n";
+            levels_.clear();
+            first_aggregate_.clear();
             return false;
-        const auto* row = A.row_offsets_data();
-        const auto* col = A.columns_data();
-        const auto* val = A.values_data();
-        inv_diag_.assign(A.n_rows(), 0.0);
-        for (std::size_t i = 0; i < A.n_rows(); ++i) {
-            bool found_diagonal = false;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] >= A.n_cols() || !std::isfinite(val[k]))
-                    return false;
-                if (col[k] == i) {
-                    if (found_diagonal || std::abs(val[k]) <= 1e-30)
-                        return false;
-                    inv_diag_[i] = 1.0 / val[k];
-                    if (!std::isfinite(inv_diag_[i]))
-                        return false;
-                    found_diagonal = true;
-                }
-            }
-            if (!found_diagonal)
-                return false;
         }
-        build_connectivity_aware_aggregation(A);
-        resize_workspace();
+
+        levels_.clear();
+        first_aggregate_.clear();
+
+        Level fine;
+        fine.A = A;
+        if (!build_diagonal(fine)) {
+            levels_.clear();
+            return false;
+        }
+        levels_.push_back(std::move(fine));
+
+        // Build a genuine multilevel hierarchy until the coarse problem is
+        // small. Keep the first aggregation public for diagnostics/tests.
+        while (levels_.back().A.n_rows() > 2) {
+            std::vector<std::size_t> aggregate;
+            std::size_t coarse_n = 0;
+            build_pair_aggregation(levels_.back(), aggregate, coarse_n);
+            if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
+                break;
+            }
+
+            SparseMatrix coarse = galerkin_coarse(levels_.back().A, aggregate, coarse_n);
+            if (!matrix_is_valid(coarse)) {
+                levels_.clear();
+                first_aggregate_.clear();
+                return false;
+            }
+
+            if (levels_.size() == 1) {
+                first_aggregate_ = aggregate;
+            }
+
+            Level next;
+            next.A = std::move(coarse);
+            if (!build_diagonal(next)) {
+                levels_.clear();
+                first_aggregate_.clear();
+                return false;
+            }
+            levels_.back().aggregate = std::move(aggregate);
+            levels_.push_back(std::move(next));
+        }
+
+        if (levels_.empty() || levels_.front().A.n_rows() == 0) {
+            levels_.clear();
+            return false;
+        }
         return true;
     }
 
-    std::size_t coarse_size() const noexcept { return coarse_to_fine_.size(); }
+    std::size_t coarse_size() const noexcept
+    {
+        if (levels_.size() < 2) return levels_.empty() ? 0 : levels_.front().A.n_rows();
+        return levels_[1].A.n_rows();
+    }
 
     std::size_t aggregate_of(std::size_t fine_cell) const
     {
-        if (fine_cell >= aggregate_of_.size()) {
+        if (fine_cell >= first_aggregate_.size()) {
             throw std::out_of_range("aggregate_of: fine-cell index out of range");
         }
-        return aggregate_of_[fine_cell];
+        return first_aggregate_[fine_cell];
     }
 
     bool apply(const Vector& r, Vector& z) const override
     {
-        if (r.size() != op_.rows() || inv_diag_.size() != r.size() ||
-            aggregate_of_.size() != r.size() || coarse_to_fine_.empty())
+        if (levels_.empty() || r.size() != op_.rows() || !r.is_valid()) {
             return false;
-        if (!r.is_valid())
-            return false;
+        }
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
-        if (!smooth(r, z, pre_))
-            return false;
-        if (!z.is_valid())
-            return false;
-
-        op_.apply(z, ws_.fine_A);
-        if (!ws_.fine_A.is_valid())
-            return false;
-        for (std::size_t i = 0; i < r.size(); ++i)
-            ws_.fine_r(i) = r(i) - ws_.fine_A(i);
-
-        ws_.coarse_r.fill(0.0);
-        for (std::size_t i = 0; i < r.size(); ++i)
-            ws_.coarse_r(aggregate_of_[i]) += ws_.fine_r(i);
-
-        for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c) {
-            ws_.coarse_x(c) = ws_.coarse_r(c) * ws_.coarse_inv_diag[c];
-            if (!std::isfinite(ws_.coarse_x(c)))
-                return false;
-        }
-
-        for (std::size_t i = 0; i < r.size(); ++i) {
-            z(i) += ws_.coarse_x(aggregate_of_[i]);
-            if (!std::isfinite(z(i)))
-                return false;
-        }
-
-        if (!smooth(r, z, post_))
-            return false;
-        return z.is_valid();
+        return vcycle(0, r, z);
     }
 
-    const char* name() const override { return "matrix-free-agglomerated-vcycle"; }
+    const char* name() const override { return "galerkin-agglomerated-amg"; }
 
 private:
-    struct Workspace {
-        Vector fine_r, fine_A, coarse_r, coarse_x;
-        std::vector<double> coarse_inv_diag;
+    struct Level {
+        SparseMatrix A;
+        std::vector<double> inv_diag;
+        std::vector<std::size_t> aggregate;
     };
 
-    void setup_diagonal()
+    static bool matrix_is_valid(const SparseMatrix& A)
     {
-        Vector d(op_.rows(), 1.0);
-        if (op_.has_diagonal()) op_.diagonal(d);
-        inv_diag_.resize(d.size());
-        for (std::size_t i = 0; i < d.size(); ++i)
-            inv_diag_[i] = std::abs(d(i)) > 1e-30 ? 1.0 / d(i) : 1.0;
-
-        aggregate_of_.resize(d.size());
-        coarse_to_fine_.resize((d.size() + 1) / 2);
-        for (std::size_t i = 0; i < d.size(); ++i) aggregate_of_[i] = i / 2;
-        resize_workspace();
-    }
-
-    void build_connectivity_aware_aggregation(const SparseMatrix& A)
-    {
-        const std::size_t n = A.n_rows();
-        aggregate_of_.assign(n, 0);
-        coarse_to_fine_.clear();
+        if (A.n_rows() != A.n_cols() || A.n_rows() == 0 || !A.is_consistent()) {
+            return false;
+        }
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            if (row[i] > row[i + 1]) return false;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] >= A.n_cols() || !std::isfinite(val[k])) return false;
+                if (k > row[i] && col[k] < col[k - 1]) return false;
+            }
+        }
+        return true;
+    }
+
+    static bool build_diagonal(Level& level)
+    {
+        const std::size_t n = level.A.n_rows();
+        const auto* row = level.A.row_offsets_data();
+        const auto* col = level.A.columns_data();
+        const auto* val = level.A.values_data();
+        level.inv_diag.assign(n, 0.0);
+
+        for (std::size_t i = 0; i < n; ++i) {
+            double diagonal = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i) diagonal += val[k];
+            }
+            if (!std::isfinite(diagonal) || std::abs(diagonal) <= 1e-30) {
+                return false;
+            }
+            level.inv_diag[i] = 1.0 / diagonal;
+            if (!std::isfinite(level.inv_diag[i])) return false;
+        }
+        return true;
+    }
+
+    static void build_pair_aggregation(const Level& level,
+                                       std::vector<std::size_t>& aggregate,
+                                       std::size_t& coarse_n)
+    {
+        const std::size_t n = level.A.n_rows();
+        const auto* row = level.A.row_offsets_data();
+        const auto* col = level.A.columns_data();
+        const auto* val = level.A.values_data();
+
+        aggregate.assign(n, 0);
         std::vector<bool> matched(n, false);
+        coarse_n = 0;
 
         for (std::size_t i = 0; i < n; ++i) {
             if (matched[i]) continue;
+
             std::size_t best = n;
             double best_strength = -1.0;
+            const double di = 1.0 / level.inv_diag[i];
+
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
                 if (j == i || j >= n || matched[j]) continue;
-                const double denom = std::sqrt(std::max(
-                    std::abs(1.0 / inv_diag_[i]) *
-                    std::abs(1.0 / inv_diag_[j]), 1e-60));
+                const double dj = 1.0 / level.inv_diag[j];
+                const double denom = std::sqrt(std::max(std::abs(di * dj), 1e-60));
                 const double strength = std::abs(val[k]) / denom;
-                if (strength > best_strength) {
+                if (std::isfinite(strength) && strength > best_strength) {
                     best_strength = strength;
                     best = j;
                 }
             }
 
-            const std::size_t aggregate = coarse_to_fine_.size();
-            coarse_to_fine_.push_back(i);
-            aggregate_of_[i] = aggregate;
+            aggregate[i] = coarse_n;
             matched[i] = true;
             if (best < n) {
-                aggregate_of_[best] = aggregate;
+                aggregate[best] = coarse_n;
                 matched[best] = true;
             }
+            ++coarse_n;
         }
     }
 
-    void resize_workspace()
+    static SparseMatrix galerkin_coarse(const SparseMatrix& A,
+                                        const std::vector<std::size_t>& aggregate,
+                                        std::size_t coarse_n)
     {
-        const std::size_t nc = coarse_to_fine_.size();
-        ws_.fine_r.resize(inv_diag_.size());
-        ws_.fine_A.resize(inv_diag_.size());
-        ws_.coarse_r.resize(nc);
-        ws_.coarse_x.resize(nc);
-        ws_.coarse_inv_diag.assign(nc, 0.0);
+        std::vector<std::map<std::size_t, double>> rows(coarse_n);
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
 
-        for (std::size_t i = 0; i < inv_diag_.size(); ++i) {
-            const std::size_t c = aggregate_of_[i];
-            const double diagonal =
-                1.0 / std::max(std::abs(inv_diag_[i]), 1e-30);
-            ws_.coarse_inv_diag[c] += diagonal;
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            const std::size_t ci = aggregate[i];
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t cj = aggregate[col[k]];
+                rows[ci][cj] += val[k];
+            }
         }
-        for (double& diagonal : ws_.coarse_inv_diag)
-            diagonal = 1.0 / std::max(diagonal, 1e-30);
 
-        ws_.fine_r.fill(0.0);
-        ws_.fine_A.fill(0.0);
-        ws_.coarse_r.fill(0.0);
-        ws_.coarse_x.fill(0.0);
+        SparseMatrix coarse(coarse_n, coarse_n);
+        for (std::size_t i = 0; i < coarse_n; ++i) {
+            for (const auto& [j, value] : rows[i]) {
+                if (std::isfinite(value) && std::abs(value) > 1e-30) {
+                    coarse.push_back(i, j, value);
+                }
+            }
+        }
+        coarse.finalize();
+        return coarse;
     }
 
-    bool smooth(const Vector& r, Vector& x, std::size_t sweeps) const
+    bool apply_operator(std::size_t level, const Vector& x, Vector& y) const
     {
+        if (level == 0) {
+            op_.apply(x, y);
+            return y.is_valid();
+        }
+        const auto& A = levels_[level].A;
+        const auto result = A.matvec(x);
+        if (y.size() != result.size()) y.resize(result.size());
+        for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
+        return y.is_valid();
+    }
+
+    bool smooth(std::size_t level, const Vector& r, Vector& x, std::size_t sweeps) const
+    {
+        Vector Ax(r.size());
+        const auto& inv_diag = levels_[level].inv_diag;
         for (std::size_t s = 0; s < sweeps; ++s) {
-            op_.apply(x, ws_.fine_A);
-            if (!ws_.fine_A.is_valid())
-                return false;
+            if (!apply_operator(level, x, Ax)) { std::cerr << "AMG operator failure level=" << level << "\n"; return false; }
             for (std::size_t i = 0; i < r.size(); ++i) {
-                x(i) += omega_ * inv_diag_[i] * (r(i) - ws_.fine_A(i));
-                if (!std::isfinite(x(i)))
-                    return false;
+                x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
+                if (!std::isfinite(x(i))) return false;
             }
         }
         return true;
     }
 
+    bool vcycle(std::size_t level, const Vector& r, Vector& x) const
+    {
+        const auto& current = levels_[level];
+        if (level + 1 == levels_.size()) {
+            return smooth_coarsest(level, r, x);
+        }
+
+        if (!smooth(level, r, x, pre_)) { std::cerr << "AMG pre-smooth failure level=" << level << "\n"; return false; }
+
+        Vector Ax(r.size());
+        if (!apply_operator(level, x, Ax)) return false;
+
+        const auto& aggregate = current.aggregate;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector coarse_r(nc, 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i) {
+            coarse_r(aggregate[i]) += r(i) - Ax(i);
+        }
+
+        Vector coarse_x(nc, 0.0);
+        if (!vcycle(level + 1, coarse_r, coarse_x)) { std::cerr << "AMG coarse-cycle failure level=" << level << "\n"; return false; }
+
+        for (std::size_t i = 0; i < r.size(); ++i) {
+            x(i) += coarse_x(aggregate[i]);
+            if (!std::isfinite(x(i))) return false;
+        }
+
+        if (!smooth(level, r, x, post_)) return false;
+        return true;
+    }
+
+    bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
+    {
+        // Solve the tiny coarsest problem directly. Using a fixed number of
+        // Jacobi sweeps leaves low-frequency error on small Poisson systems
+        // and makes the V-cycle quality depend on the arbitrary sweep count.
+        // The coarsest level is intentionally small, so a dense pivoted solve
+        // is both robust and negligible compared with the fine-grid work.
+        const auto& A = levels_[level].A;
+        const std::size_t n = A.n_rows();
+        if (r.size() != n || n == 0) return false;
+
+        std::vector<double> m(n * n, 0.0);
+        std::vector<double> b(n, 0.0);
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < n; ++i) {
+            b[i] = r(i);
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                m[i * n + col[k]] += val[k];
+            }
+        }
+
+        constexpr double pivot_tol = 1e-14;
+        for (std::size_t k = 0; k < n; ++k) {
+            std::size_t pivot = k;
+            double pivot_abs = std::abs(m[k * n + k]);
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double candidate = std::abs(m[i * n + k]);
+                if (candidate > pivot_abs) {
+                    pivot_abs = candidate;
+                    pivot = i;
+                }
+            }
+            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
+
+            if (pivot != k) {
+                for (std::size_t j = k; j < n; ++j) {
+                    std::swap(m[k * n + j], m[pivot * n + j]);
+                }
+                std::swap(b[k], b[pivot]);
+            }
+
+            const double diagonal = m[k * n + k];
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double factor = m[i * n + k] / diagonal;
+                if (!std::isfinite(factor)) return false;
+                m[i * n + k] = 0.0;
+                for (std::size_t j = k + 1; j < n; ++j) {
+                    m[i * n + j] -= factor * m[k * n + j];
+                }
+                b[i] -= factor * b[k];
+            }
+        }
+
+        if (x.size() != n) x.resize(n);
+        for (std::size_t ii = n; ii-- > 0;) {
+            double sum = b[ii];
+            for (std::size_t j = ii + 1; j < n; ++j) {
+                sum -= m[ii * n + j] * x(j);
+            }
+            const double diagonal = m[ii * n + ii];
+            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
+            x(ii) = sum / diagonal;
+            if (!std::isfinite(x(ii))) return false;
+        }
+        return x.is_valid();
+    }
+
     const LinearOperatorBase& op_;
     double omega_;
     std::size_t pre_, post_;
-    std::vector<double> inv_diag_;
-    std::vector<std::size_t> aggregate_of_, coarse_to_fine_;
-    mutable Workspace ws_;
+    std::vector<Level> levels_;
+    std::vector<std::size_t> first_aggregate_;
 };
 
 using AgglomeratedAMGPreconditioner = MatrixFreeVcyclePreconditioner;
