@@ -129,13 +129,13 @@ int main() {
         m.cells().push_cell({2, 3});
         m.cells().push_cell({4, 5});
         m.cells().push_cell({6, 7});
-        m.cells().push_cell({0, 2});
-
         m.topo_validate();
 
         Partition part = partition_geometric(m, 4);
         EXPECT_TRUE(part.n_parts == 4);
-        EXPECT_TRUE(part.cell_rank.size() == 5);
+        EXPECT_TRUE(part.cell_rank.size() == 4);
+        for (const auto& r : part.cell_rank)
+            EXPECT_TRUE(r >= 0 && r < 4);
     });
 
     run_case("mpi_halo_cell_exchange_is_rank_consistent", []() {
