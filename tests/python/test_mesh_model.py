@@ -29,3 +29,17 @@ def test_catalog_rejects_missing_topology(tmp_path):
     path=tmp_path/"mesh.h5"
     with h5py.File(path,"w") as h: h.create_dataset("points",data=np.zeros((1,3)))
     with pytest.raises(ValueError,match="mandatory topology"): read_mesh_catalog(path)
+
+def test_patch_selection_has_stable_identity_independent_of_index(tmp_path):
+    path=tmp_path/"mesh.h5"; write_mesh(path)
+    mesh=read_mesh_catalog(path)
+    assert mesh.patch(0).stable_id=="patch:inlet"
+    assert mesh.patch(0).selection.stable_id=="patch:inlet"
+
+
+def test_catalog_rejects_duplicate_patch_names(tmp_path):
+    path=tmp_path/"mesh.h5"; write_mesh(path)
+    with h5py.File(path, "a") as h:
+        h.attrs["boundary_patches"]="inlet:0:2:1;inlet:2:4:0"
+    with pytest.raises(ValueError, match="unique"):
+        read_mesh_catalog(path)

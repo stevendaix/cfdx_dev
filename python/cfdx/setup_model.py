@@ -58,12 +58,15 @@ class MeshSelection:
     kind: str
     index: int
     name: str | None = None
+    stable_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in {"body", "face", "edge", "region", "patch", "cell"}:
             raise ValueError(f"unsupported mesh selection kind: {self.kind}")
         if self.index < 0:
             raise ValueError("mesh selection index must be non-negative")
+        if self.stable_id is not None and not self.stable_id.strip():
+            raise ValueError("mesh selection stable_id must not be empty")
 
 @dataclass(frozen=True)
 class SetupDiagnostic:

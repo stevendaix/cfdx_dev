@@ -22,8 +22,13 @@ class MeshPatch:
     face_count: int
 
     @property
+    def stable_id(self) -> str:
+        """Stable identity independent of the patch ordering in the HDF5 file."""
+        return f"patch:{self.name}"
+
+    @property
     def selection(self) -> MeshSelection:
-        return MeshSelection("patch", self.index, self.name)
+        return MeshSelection("patch", self.index, self.name, self.stable_id)
 
 @dataclass(frozen=True)
 class MeshCatalog:
@@ -90,6 +95,9 @@ def read_mesh_catalog(path: Path) -> MeshCatalog:
             raise ValueError("boundary patch offsets must be monotonic")
         if any(int(fid) < 0 or int(fid) >= n_faces for fid in face_ids):
             raise ValueError("boundary patch contains an out-of-range face id")
+        names = [name for name, _ in metadata]
+        if len(names) != len(set(names)):
+            raise ValueError("boundary patch names must be unique for stable selection identifiers")
         patches=[]
         for i,(name,type_code) in enumerate(metadata):
             start,end=int(offsets[i]),int(offsets[i+1])
