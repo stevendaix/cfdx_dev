@@ -6,6 +6,7 @@ from .runner import ProcessResult, SolverRunner
 from .metrics import SolverMetrics, SolverMetricsParser
 from .renderer import Renderer, RenderObject, NullRenderer
 from .execution import ExecutionController, ExecutionError
+from .gui import CFDXMainWindow, create_application, launch
 
 __all__ = [
     "Case", "ExecutionConfig", "CFDXSession", "CaseNode", "ChangeImpact",
@@ -13,4 +14,5 @@ __all__ = [
     "SolverRunner", "SolverMetrics", "SolverMetricsParser",
     "Renderer", "RenderObject", "NullRenderer",
     "ExecutionController", "ExecutionError",
+    "CFDXMainWindow", "create_application", "launch",
 ]
