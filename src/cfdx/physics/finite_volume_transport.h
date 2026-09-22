@@ -4,6 +4,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -352,6 +353,17 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
+
+    // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
+    // when the system is well posed. Retry from the original iterate with
+    // restarted GMRES rather than injecting an unconverged Krylov state into
+    // the nonlinear solver.
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+        candidate = solution;
+        result = cfdx::core::solve_gmres(
+            equation.matrix, equation.rhs, candidate,
+            30, controls.max_iterations, controls.tolerance);
+    }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
