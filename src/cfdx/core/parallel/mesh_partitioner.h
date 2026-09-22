@@ -303,6 +303,7 @@ inline void exchange_halo_faces(
         const int send_count = checked_mpi_count(checked_mpi_product(plan.send_faces[r].size(), dim, "exchange_halo_faces send"), "exchange_halo_faces send");
         const int recv_count = checked_mpi_count(checked_mpi_product(plan.recv_faces[r].size(), dim, "exchange_halo_faces recv"), "exchange_halo_faces recv");
         int remote_send_count = 0;
+        int remote_recv_count = 0;
 
         MPI_Status status;
         MPI_Sendrecv(
@@ -310,7 +311,12 @@ inline void exchange_halo_faces(
             &remote_send_count, 1, MPI_INT, r, 2,
             comm, &status
         );
-        if (remote_send_count != recv_count)
+        MPI_Sendrecv(
+            &recv_count, 1, MPI_INT, r, 4,
+            &remote_recv_count, 1, MPI_INT, r, 4,
+            comm, &status
+        );
+        if (remote_send_count != recv_count || remote_recv_count != send_count)
             throw std::runtime_error("exchange_halo_faces: asymmetric send/recv counts");
 
         std::vector<double> recv_buffer(recv_count);
@@ -354,11 +360,15 @@ inline void exchange_halo_cells(
         const int send_count = checked_mpi_count(send_buffer.size(), "exchange_halo_cells send");
         const int recv_count = checked_mpi_count(recv_buffer.size(), "exchange_halo_cells recv");
         int remote_send_count = 0;
+        int remote_recv_count = 0;
         MPI_Status status;
         MPI_Sendrecv(&send_count, 1, MPI_INT, r, 3,
                      &remote_send_count, 1, MPI_INT, r, 3,
                      comm, &status);
-        if (remote_send_count != recv_count)
+        MPI_Sendrecv(&recv_count, 1, MPI_INT, r, 5,
+                     &remote_recv_count, 1, MPI_INT, r, 5,
+                     comm, &status);
+        if (remote_send_count != recv_count || remote_recv_count != send_count)
             throw std::runtime_error("exchange_halo_cells: asymmetric send/recv counts");
         MPI_Sendrecv(send_buffer.data(),send_count,MPI_DOUBLE,r,1,
                      recv_buffer.data(),recv_count,MPI_DOUBLE,r,1,
