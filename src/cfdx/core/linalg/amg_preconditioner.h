@@ -30,18 +30,29 @@ public:
 
     bool setup(const SparseMatrix& A) override
     {
-        if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols()) return false;
+        if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
+            A.n_rows() == 0)
+            return false;
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
-        inv_diag_.assign(A.n_rows(), 1.0);
+        inv_diag_.assign(A.n_rows(), 0.0);
         for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            bool found_diagonal = false;
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] == i && std::abs(val[k]) > 1e-30) {
+                if (col[k] >= A.n_cols() || !std::isfinite(val[k]))
+                    return false;
+                if (col[k] == i) {
+                    if (found_diagonal || std::abs(val[k]) <= 1e-30)
+                        return false;
                     inv_diag_[i] = 1.0 / val[k];
-                    break;
+                    if (!std::isfinite(inv_diag_[i]))
+                        return false;
+                    found_diagonal = true;
                 }
             }
+            if (!found_diagonal)
+                return false;
         }
         build_connectivity_aware_aggregation(A);
         resize_workspace();
@@ -64,6 +75,8 @@ public:
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
         smooth(r, z, pre_);
+        if (!z.is_valid())
+            return false;
 
         op_.apply(z, ws_.fine_A);
         for (std::size_t i = 0; i < r.size(); ++i)
@@ -125,7 +138,9 @@ private:
                 const std::size_t j = col[k];
                 if (j == i || j >= n || matched[j]) continue;
                 const double dj = std::abs(inv_diag_[j]);
-                const double denom = std::sqrt(std::max(di * dj, 1e-60));
+                const double denom = std::sqrt(std::max(
+                    std::abs(1.0 / inv_diag_[i]) *
+                    std::abs(1.0 / inv_diag_[j]), 1e-60));
                 const double strength = std::abs(val[k]) / denom;
                 if (strength > best_strength) {
                     best_strength = strength;
