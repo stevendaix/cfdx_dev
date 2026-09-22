@@ -1,6 +1,6 @@
 """Optional Qt controls for a ResultSeries."""
 from __future__ import annotations
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 from .results_series import ResultSeries
 
@@ -10,7 +10,7 @@ class ResultsSeriesPanel(QWidget):
     def __init__(self,parent: QWidget | None=None) -> None:
         super().__init__(parent); self.series: ResultSeries | None=None
         self.play=QPushButton("Play"); self.speed=QComboBox(); self.speed.addItems(["0.5x","1x","2x","4x"])
-        self.slider=QSlider(); self.slider.setOrientation(1); self.slider.valueChanged.connect(self._select)
+        self.slider=QSlider(); self.slider.setOrientation(Qt.Orientation.Horizontal); self.slider.valueChanged.connect(self._select)
         self.status=QLabel("No result series loaded")
         row=QHBoxLayout(); row.addWidget(self.play); row.addWidget(self.speed)
         layout=QVBoxLayout(self); layout.addWidget(self.status); layout.addLayout(row); layout.addWidget(self.slider)
