@@ -40,3 +40,17 @@ def test_valid_case_has_no_errors():
     report = validate_case(case, FakeMesh(10, ("inlet",)))
     assert report.ok
     assert not report.errors
+
+
+def test_case_validation_reports_missing_physics_and_materials():
+    from cfdx.case import Case
+    from cfdx.validation import validate_case
+    report=validate_case(Case(name="pipe"))
+    assert any(d.code=="PHYSICS_UNSET" for d in report.errors)
+
+def test_case_validation_rejects_invalid_boundary_schema():
+    from cfdx.case import Case
+    from cfdx.validation import validate_case
+    case=Case(name="pipe"); case.boundaries["inlet"]={"type":"inlet","velocity_type":"ROBIN","fields":["velocity"]}
+    report=validate_case(case)
+    assert any(d.code=="BOUNDARY_SCHEMA" for d in report.errors)
