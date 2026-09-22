@@ -141,6 +141,7 @@ void check_case(std::size_t n)
     if (!result.converged)
         throw std::runtime_error("VMFL004 coupled solver did not converge");
 
+    const auto geometry = build_fv_geometry(mesh);
     double max_error = 0.0;
     double mean_u = 0.0;
     double volume = 0.0;
