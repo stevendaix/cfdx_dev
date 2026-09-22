@@ -1,6 +1,7 @@
 #pragma once
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/geometry/face_geometry.h"
 #include <cmath>
 #include <stdexcept>
 #include <vector>
