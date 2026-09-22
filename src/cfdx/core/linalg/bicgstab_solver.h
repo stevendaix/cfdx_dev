@@ -72,6 +72,7 @@ inline SolverResult solve_bicgstab(
         for (std::size_t i = 0; i < n; ++i) {
             const double ri = b(i) - Ax(i);
             if (!std::isfinite(ri)) return std::numeric_limits<double>::infinity();
+            w.r(i) = ri;
             sum += ri * ri;
         }
         return std::sqrt(sum);
@@ -107,6 +108,16 @@ inline SolverResult solve_bicgstab(
                 result.status=SolverStatus::CONVERGED;result.iterations=iter;result.residual=res;
                 result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
             }
+            if (!std::isfinite(res)) {
+                result.status=SolverStatus::DIVERGED;
+                result.iterations=iter;
+                return result;
+            }
+            // The recurrence residual s can be below tolerance while the
+            // recomputed true residual is not. Continue from the recomputed
+            // residual; never mix the two residual states.
+            rho = rho_new;
+            continue;
         }
 
         if(preconditioner){
