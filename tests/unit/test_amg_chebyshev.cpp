@@ -88,7 +88,14 @@ int main() {
     // Setup must reject malformed matrix data rather than silently falling
     // back to an identity diagonal.
     SparseMatrix bad(4, 4);
-    bad.push_back(0, 0, std::numeric_limits<double>::quiet_NaN());
+    bool bad_nonfinite_rejected = false;
+    try {
+        bad.push_back(0, 0, std::numeric_limits<double>::quiet_NaN());
+    } catch (const std::invalid_argument&) {
+        bad_nonfinite_rejected = true;
+    }
+    if (!bad_nonfinite_rejected) return 7;
+    bad.push_back(0, 0, 1.0);
     bad.push_back(0, 1, -1.0);
     bad.push_back(1, 0, -1.0);
     bad.push_back(1, 1, 2.0);
