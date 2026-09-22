@@ -53,6 +53,43 @@ Mesh make_unit_cube() {
     return m;
 }
 
+Mesh make_two_cell_unit_cubes() {
+    Mesh m;
+    m.points().resize(12);
+    const double p[12][3] = {
+        {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+        {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
+    for (std::size_t i = 0; i < 12; ++i)
+        m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+    m.faces().push_face({0,6,9,3});
+    m.faces().push_face({0,1,7,6});
+    m.faces().push_face({3,9,10,4});
+    m.faces().push_face({0,3,4,1});
+    m.faces().push_face({6,7,10,9});
+    m.faces().push_face({7,10,4,1});
+    m.faces().push_face({2,5,11,8});
+    m.faces().push_face({1,2,8,7});
+    m.faces().push_face({4,10,11,5});
+    m.faces().push_face({1,4,5,2});
+    m.faces().push_face({7,8,11,10});
+
+    m.ownership().resize(11);
+    for (std::size_t f = 0; f < 5; ++f) {
+        m.ownership().set_owner(f, 0);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.ownership().set_owner(5, 0);
+    m.ownership().set_neighbour(5, 1);
+    for (std::size_t f = 6; f < 11; ++f) {
+        m.ownership().set_owner(f, 1);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.cells().push_cell({0,1,2,3,4,5});
+    m.cells().push_cell({5,6,7,8,9,10});
+    return m;
+}
+
 int main() {
     run_case("laplacian_dimension1", []() {
         Mesh m = make_unit_cube();
@@ -129,15 +166,16 @@ int main() {
     });
 
     run_case("laplacian_linear_field_two_cells", []() {
-        // With zero-gradient boundary faces, the interior cell balance of a
-        // linear field is zero only away from physical boundaries. This test
-        // therefore checks the operator contract through a direct two-cell
-        // shared-face cancellation.
-        Mesh m = make_unit_cube();
-        ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 42.0;
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        // phi = x at the two cell centres: 0.5 and 1.5.
+        f(0) = 0.5;
+        f(1) = 1.5;
         auto lap = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
-        EXPECT_NEAR(lap(0), 0.0, 1e-12);
+        // The shared face conductance is A/d = 1. With zero-gradient
+        // boundaries, the two rows receive equal and opposite fluxes.
+        EXPECT_NEAR(lap(0), 1.0, 1e-12);
+        EXPECT_NEAR(lap(1), -1.0, 1e-12);
     });
 
     run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
