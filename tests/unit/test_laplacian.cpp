@@ -140,11 +140,44 @@ int main() {
         EXPECT_TRUE(lap.size() == 0);
     });
 
-    run_case("laplacian_non_orthogonal_not_silently_accepted", []() {
+    run_case("laplacian_corrected_matches_orthogonal_on_orthogonal_mesh", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        auto orth = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
+        auto corrected = compute_laplacian(f, m, LaplacianScheme::CORRECTED);
+        EXPECT_NEAR(corrected(0), orth(0), 1e-12);
+        EXPECT_NEAR(corrected(1), orth(1), 1e-12);
+    });
+
+    run_case("laplacian_corrected_uses_nonorthogonal_face_component", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+
+        GeometryCache geometry = make_geometry_cache(m);
+        // Add a tangential component to the shared owner->neighbour face
+        // while keeping the owner/neighbour centres unchanged.
+        geometry.face_Sf[5].y = 0.25;
+
+        auto orth = compute_laplacian(f, m, geometry, LaplacianScheme::ORTHOGONAL);
+        auto corrected = compute_laplacian(f, m, geometry, LaplacianScheme::CORRECTED);
+
+        // The skew component is non-zero and the corrected decomposition must
+        // therefore differ from the orthogonal projection while conserving
+        // the internal face flux between the two cells.
+        EXPECT_TRUE(corrected(0) > orth(0));
+        EXPECT_NEAR(corrected(0) + corrected(1), 0.0, 1e-12);
+        EXPECT_NEAR(corrected(0), 1.0625, 1e-12);
+        EXPECT_NEAR(corrected(1), -1.0625, 1e-12);
+    });
+
+    run_case("laplacian_limited_scheme_is_explicitly_unsupported", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 1.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        f(0) = 42.0;
         EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
     });
 
