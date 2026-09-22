@@ -147,6 +147,35 @@ def _read_session(path: Path) -> CFDXSession:
     return session
 
 
+def validate_case_bundle(path: Path) -> dict[str, bool]:
+    """Validate one self-contained CFDX HDF5 case artifact."""
+    case_path = _validate_path(path)
+    if not case_path.is_file():
+        raise FileNotFoundError(case_path)
+    required_mesh = ("points", "face_vertices", "face_offsets", "owner", "neighbour", "cell_faces", "cell_offsets")
+    with h5py.File(case_path, "r") as h5:
+        if h5.attrs.get("format") != _FORMAT:
+            raise ValueError("not a CFDX HDF5 case")
+        if int(h5.attrs.get("schema_version", -1)) != _SCHEMA_VERSION:
+            raise ValueError("unsupported CFDX HDF5 case schema")
+        if _CASE_DATASET not in h5:
+            raise ValueError("case configuration is missing")
+        if not all(name in h5 for name in required_mesh):
+            raise ValueError("mesh data is missing from the self-contained case")
+        if "fields" not in h5 or "values" not in h5["fields"]:
+            raise ValueError("fields data is missing from the self-contained case")
+        raw = h5[_CASE_DATASET][()]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        data = json.loads(raw)
+        if not isinstance(data.get("physics"), dict):
+            raise ValueError("physics configuration is missing")
+        if not isinstance(data.get("numerics"), dict):
+            raise ValueError("numerics configuration is missing")
+        runtime_separated = "runtime" in h5 and "case" in h5 and "config" not in h5["runtime"]
+    return {"mesh": True, "fields": True, "physics": True, "numerics": True, "runtime_separated": runtime_separated}
+
+
 def read_case(path: Path) -> CFDXSession:
     """Load only the HDF5 case; no solver restart artifact is consumed."""
     return _read_session(path)
