@@ -326,6 +326,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_performance_foundations tests/unit/test_performance_foundations.cpp)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
+    add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
