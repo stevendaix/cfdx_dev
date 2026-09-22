@@ -93,7 +93,7 @@ int main() {
         auto lap = compute_laplacian(f, m);
         EXPECT_TRUE(lap.name() == "p_lap");
         EXPECT_TRUE(lap.loc() == Location::CELL);
-        EXPECT_TRUE(lap.metadata().unit == "1/s^2");
+        EXPECT_TRUE(lap.metadata().unit == "Pa/m^2");
     });
 
     run_case("laplacian_empty_mesh", []() {
@@ -103,12 +103,19 @@ int main() {
         EXPECT_TRUE(lap.size() == 0);
     });
 
+    run_case("laplacian_non_orthogonal_not_silently_accepted", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 1.0;
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
+    });
+
     run_case("laplacian_scheme_from_string", []() {
         EXPECT_TRUE(laplacian_scheme_from_string("orthogonal") == LaplacianScheme::ORTHOGONAL);
         EXPECT_TRUE(laplacian_scheme_from_string("corrected") == LaplacianScheme::CORRECTED);
         EXPECT_TRUE(laplacian_scheme_from_string("limited") == LaplacianScheme::LIMITED);
-        EXPECT_TRUE(laplacian_scheme_from_string("uncorrected") == LaplacianScheme::UNCORRECTED);
-        EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
+        EXPECT_TRUE(laplacian_scheme_from_string("uncorrected") == LaplacianScheme::UNCORRECTED);\n        EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
     });
 
     return run_all();
