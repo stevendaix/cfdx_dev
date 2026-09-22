@@ -14,6 +14,7 @@ from pathlib import Path
 import h5py
 
 from .case import Case, ExecutionConfig
+from .dat_io import read_dat_restart, write_dat_hdf5
 from .session import CFDXSession
 
 
@@ -90,7 +91,8 @@ def save_case_with_dat(
 
     case_path = save_case(session, path)
     target_dat = _paired_dat_path(case_path)
-    shutil.copy2(dat_path, target_dat)
+    restart = read_dat_restart(dat_path)
+    write_dat_hdf5(target_dat, restart)
 
     with h5py.File(case_path, "r+") as h5:
         restart = h5.require_group(_RESTART_GROUP)

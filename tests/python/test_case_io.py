@@ -5,6 +5,7 @@ import pytest
 
 from cfdx import CFDXSession
 from cfdx.case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 
 
 def make_session() -> CFDXSession:
@@ -52,7 +53,16 @@ def test_case_hdf5_contains_no_separate_checkpoint_file(tmp_path: Path) -> None:
 
 def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    source.write_text("CFDX DAT restart\niteration=120\ntime=2.5\n", encoding="utf-8")
+    write_dat_hdf5(
+        source,
+        DatRestart(
+            version=2,
+            cells=1,
+            iteration=120,
+            time=2.5,
+            fields={"U": DatField("U", 3, [1.0, 2.0, 3.0]), "p": DatField("p", 1, [4.0])},
+        ),
+    )
     case_path, dat_path = save_case_with_dat(
         make_session(), tmp_path / "channel.cfdx.h5", source
     )
@@ -64,16 +74,16 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     assert loaded.iteration == 120
     assert loaded.time == pytest.approx(2.5)
     assert loaded_dat == dat_path
-    assert loaded_dat.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+    assert loaded_dat.read_bytes() == source.read_bytes()
 
 
 def test_read_case_with_dat_rejects_modified_dat(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    source.write_text("restart A\n", encoding="utf-8")
+    write_dat_hdf5(source, DatRestart(2, 1, 0, 0.0, {"p": DatField("p", 1, [1.0])}))
     case_path, dat_path = save_case_with_dat(
         make_session(), tmp_path / "channel.cfdx.h5", source
     )
-    dat_path.write_text("restart B\n", encoding="utf-8")
+    dat_path.write_bytes(dat_path.read_bytes() + b"corrupt")
 
     with pytest.raises(ValueError, match="incompatible"):
         read_case_with_dat(case_path)

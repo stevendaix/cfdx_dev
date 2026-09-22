@@ -27,10 +27,14 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._actors: dict[str, object] = {}
         self._current_result: Path | None = None
         self._selected_field: str | None = None
+        self._dat_dataset = None
+        self._dat_fields: list[str] = []
         layout = QVBoxLayout(self)
         layout.addWidget(self.plotter)
 
     def _dataset(self):
+        if self._dat_dataset is not None:
+            return self._dat_dataset
         if self._current_result is None:
             raise RuntimeError("no result dataset loaded")
         return self._pv.read(self._current_result)
@@ -45,6 +49,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.clear()
         self._actors.clear()
         self._current_result = path
+        self._dat_dataset = None
+        self._dat_fields = []
         dataset = self._dataset()
         self.plotter.add_mesh(dataset, scalars=self._selected_field if self._selected_field in self._available_fields(dataset) else None)
         self.plotter.reset_camera()
@@ -96,6 +102,63 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 self._actors[actor_id] = self.plotter.add_mesh(mesh, name=actor_id)
             self.plotter.reset_camera()
             self.plotter.render()
+
+    def load_cfdx_dat(self, case_path: str, dat_path: str) -> list[str]:
+        """Load a CFDX HDF5 mesh and a generic DAT checkpoint into one dataset."""
+        import h5py
+        import numpy as np
+        from .dat_io import read_dat_restart
+
+        restart = read_dat_restart(dat_path)
+        with h5py.File(Path(case_path), "r") as h5:
+            points = np.asarray(h5["points"][:], dtype=float)
+            face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
+            face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
+            cell_faces = np.asarray(h5["cell_faces"][:], dtype=np.int64)
+            cell_offsets = np.asarray(h5["cell_offsets"][:], dtype=np.int64)
+
+        mesh_cells = len(cell_offsets) - 1
+        if restart.cells != mesh_cells:
+            raise ValueError(
+                f"DAT cell count {restart.cells} does not match HDF5 mesh cell count {mesh_cells}"
+            )
+
+        cells: list[int] = []
+        for cell_id in range(mesh_cells):
+            first, last = int(cell_offsets[cell_id]), int(cell_offsets[cell_id + 1])
+            faces = cell_faces[first:last]
+            cells.append(len(faces))
+            for face_id in faces:
+                fid = int(face_id)
+                begin, end = int(face_offsets[fid]), int(face_offsets[fid + 1])
+                vertices = face_vertices[begin:end]
+                cells.append(len(vertices))
+                cells.extend(int(v) for v in vertices)
+
+        celltypes = np.full(
+            mesh_cells, self._pv.CellType.POLYHEDRON, dtype=np.uint8
+        )
+        dataset = self._pv.UnstructuredGrid(
+            np.asarray(cells, dtype=np.int64), celltypes, points
+        )
+        for name, field in restart.fields.items():
+            values = np.asarray(field.values, dtype=float).reshape(
+                mesh_cells, field.dimension
+            )
+            dataset.cell_data[name] = values[:, 0] if field.dimension == 1 else values
+
+        self.plotter.clear()
+        self._actors.clear()
+        self._current_result = None
+        self._selected_field = None
+        self._dat_dataset = dataset
+        self._dat_fields = list(restart.fields)
+        self.plotter.add_mesh(
+            dataset, scalars=self._dat_fields[0] if self._dat_fields else None
+        )
+        self.plotter.reset_camera()
+        self.plotter.render()
+        return list(self._dat_fields)
 
     def set_field(self, field: str) -> None:
         """Display a selected result field on the current dataset."""
@@ -150,6 +213,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._actors.clear()
         self._current_result = None
         self._selected_field = None
+        self._dat_dataset = None
+        self._dat_fields = []
 
     def closeEvent(self, event) -> None:
         self.plotter.close()

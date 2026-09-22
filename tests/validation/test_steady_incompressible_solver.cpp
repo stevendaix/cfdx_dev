@@ -1,4 +1,6 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/io/restart/dat_restart.h"
+#include <filesystem>
 #include "common/test_harness.h"
 #include <limits>
 
@@ -37,6 +39,58 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("native_solver_consumes_dat_restart", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> seed_u(1,"U","m/s",3);
+        Field<double,Location::CELL> seed_p(1,"p","Pa",1);
+        seed_u.set(0,0.25,-0.15,0.05);
+        seed_p(0) = 37.5;
+
+        const auto dat = std::filesystem::temp_directory_path() / "cfdx_native_restart_test.dat";
+        cfdx::io::write_dat_restart(dat.string(), m, seed_u, seed_p, 17, 2.5);
+
+        Field<double,Location::CELL> loaded_u(1,"U","m/s",3);
+        Field<double,Location::CELL> loaded_p(1,"p","Pa",1);
+        const auto state = cfdx::io::read_dat_restart(dat.string(), m, loaded_u, loaded_p);
+        EXPECT_TRUE(state.iteration == std::size_t{17});
+        EXPECT_NEAR(state.time, 2.5, 1e-14);
+        EXPECT_NEAR(loaded_u(0,0), 0.25, 1e-14);
+        EXPECT_NEAR(loaded_u(0,1), -0.15, 1e-14);
+        EXPECT_NEAR(loaded_u(0,2), 0.05, 1e-14);
+        EXPECT_NEAR(loaded_p(0), 37.5, 1e-14);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 1;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+
+        Field<double,Location::CELL> expected_u = loaded_u;
+        Field<double,Location::CELL> expected_p = loaded_p;
+        (void)solve_steady_incompressible(m, expected_u, expected_p, ubc, pbc, controls);
+
+        Field<double,Location::CELL> restart_u(1,"U","m/s",3);
+        Field<double,Location::CELL> restart_p(1,"p","Pa",1);
+        restart_u.fill(0.0);
+        restart_p.fill(0.0);
+        (void)solve_steady_incompressible(
+            m, restart_u, restart_p, ubc, pbc, controls, dat.string());
+
+        EXPECT_NEAR(restart_u(0,0), expected_u(0,0), 1e-14);
+        EXPECT_NEAR(restart_u(0,1), expected_u(0,1), 1e-14);
+        EXPECT_NEAR(restart_u(0,2), expected_u(0,2), 1e-14);
+        EXPECT_NEAR(restart_p(0), expected_p(0), 1e-14);
+
+        std::filesystem::remove(dat);
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);

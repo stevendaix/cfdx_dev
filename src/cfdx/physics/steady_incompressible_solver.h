@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
@@ -253,12 +254,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
-    const IncompressibleSolverControls& controls = {})
+    const IncompressibleSolverControls& controls = {},
+    const std::string& restart_path = {})
 {
     using namespace cfdx::core;
     if (U.dimension() != 3 || U.size() != mesh.n_cells() ||
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
+
+    if (!restart_path.empty())
+        (void)cfdx::io::read_dat_restart(restart_path, mesh, U, p);
 
     validate_incompressible_controls(controls, mesh.n_cells());
     const FvGeometry geometry = build_fv_geometry(mesh);

@@ -55,6 +55,20 @@ class ResultsSeriesPanel(QWidget):
             self.field.setCurrentIndex(0)
         self._update_status()
 
+    def set_checkpoint_fields(self, fields: list[str], iteration: int, time: float, source_name: str) -> None:
+        """Expose fields from a standalone CFDX DAT checkpoint."""
+        self.series = None
+        self.field.blockSignals(True)
+        self.field.clear()
+        self.field.addItems(fields)
+        self.field.blockSignals(False)
+        self.slider.setRange(0, 0)
+        self.status.setText(
+            f"Checkpoint — iteration={iteration}, t={time:g} — {source_name}"
+        )
+        if fields:
+            self.field.setCurrentIndex(0)
+
     def _select(self, index: int) -> None:
         if self.series is not None and 0 <= index < len(self.series.frames):
             self.status.setText(self._label(index))
