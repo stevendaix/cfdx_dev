@@ -3,6 +3,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -140,6 +141,70 @@ int main() {
         const auto yt = A.matvec_transpose(xt);
         EXPECT_NEAR(yt[0], 14.0, 1e-14);
         EXPECT_NEAR(yt[1], -2.0, 1e-14);
+    });
+
+    run_case("sparse_matrix_finalize_reorders_out_of_order_rows_and_columns", []() {
+        SparseMatrix A(3, 4);
+        A.push_back(2, 3, 30.0);
+        A.push_back(0, 2, 2.0);
+        A.push_back(1, 3, 13.0);
+        A.push_back(0, 0, 1.0);
+        A.push_back(2, 1, 21.0);
+        A.push_back(1, 0, 10.0);
+        A.finalize();
+        EXPECT_TRUE(A.is_consistent());
+        EXPECT_TRUE(A.row_offsets_data()[1] == 2);
+        EXPECT_TRUE(A.row_offsets_data()[2] == 4);
+        EXPECT_TRUE(A.row_offsets_data()[3] == 6);
+        EXPECT_TRUE(A(0, 0) == 1.0);
+        EXPECT_TRUE(A(0, 2) == 2.0);
+        EXPECT_TRUE(A(1, 0) == 10.0);
+        EXPECT_TRUE(A(1, 3) == 13.0);
+    });
+
+    run_case("sparse_matrix_duplicate_entries_accumulate_consistently", []() {
+        SparseMatrix A(1, 2);
+        A.push_back(0, 0, 1.5);
+        A.push_back(0, 0, 2.5);
+        A.push_back(0, 1, -1.0);
+        A.finalize();
+        EXPECT_TRUE(A.is_consistent());
+        EXPECT_NEAR(A(0, 0), 4.0, 1e-14);
+        Vector x(2);
+        x(0) = 2.0;
+        x(1) = 3.0;
+        EXPECT_NEAR(A.matvec(x)[0], 5.0, 1e-14);
+    });
+
+    run_case("sparse_matrix_finalize_is_idempotent", []() {
+        SparseMatrix A(1, 2);
+        A.push_back(0, 1, 2.0);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        A.finalize();
+        EXPECT_TRUE(A.is_consistent());
+        EXPECT_TRUE(A(0, 0) == 1.0);
+    });
+
+    run_case("sparse_matrix_rejects_nonfinite_assembly_value", []() {
+        SparseMatrix A(1, 1);
+        EXPECT_THROW(A.push_back(0, 0, std::nan("")), std::invalid_argument);
+        EXPECT_THROW(A.push_back(0, 0, std::numeric_limits<double>::infinity()), std::invalid_argument);
+    });
+
+    run_case("sparse_matrix_rejects_push_after_finalize", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        EXPECT_THROW(A.push_back(0, 0, 2.0), std::logic_error);
+    });
+
+    run_case("sparse_matrix_detects_mutated_nonfinite_storage", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        A.values_data()[0] = std::nan("");
+        EXPECT_FALSE(A.is_consistent());
     });
 
     run_case("sparse_matrix_clear_restores_empty_csr", []() {
