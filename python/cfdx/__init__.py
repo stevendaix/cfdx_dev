@@ -11,7 +11,7 @@ from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnosti
 from .validation import ValidationReport, validate_case
 from .mesh_model import MeshCatalog, MeshPatch, read_mesh_catalog
 from .physics_setup import PhysicsSpec, FieldSpec, physics_spec, default_parameters
-from .boundary_setup import BoundaryFieldSpec, BoundaryTypeSpec, fields_for_boundary_type, boundary_defaults
+from .boundary_setup import BoundaryFieldSpec, BoundaryTypeSpec, scalar_fields_for_boundary_type, boundary_defaults
 from .gui import CFDXMainWindow, create_application, launch
 
 __all__ = [
@@ -24,6 +24,6 @@ __all__ = [
     "SetupDiagnostic", "typed_parameter", "ValidationReport", "validate_case",
     "MeshCatalog", "MeshPatch", "read_mesh_catalog", "PhysicsSpec", "FieldSpec",
     "physics_spec", "default_parameters", "BoundaryFieldSpec", "BoundaryTypeSpec",
-    "fields_for_boundary_type", "boundary_defaults",
+    "scalar_fields_for_boundary_type", "boundary_defaults",
     "CFDXMainWindow", "create_application", "launch",
 ]
