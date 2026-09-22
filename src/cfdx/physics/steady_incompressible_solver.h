@@ -54,6 +54,7 @@ struct IncompressibleIteration {
     double continuity_linf = std::numeric_limits<double>::infinity();
     double continuity_normalized = std::numeric_limits<double>::infinity();
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
@@ -645,6 +646,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
         h.momentum_equation_residual = final_momentum_residual;
+        double momentum_rhs_scale = 1.0;
+        for (const auto* eq : {&final_ex, &final_ey, &final_ez}) {
+            for (std::size_t c = 0; c < nc; ++c)
+                momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
+        }
+        h.momentum_equation_residual_relative =
+            final_momentum_residual / momentum_rhs_scale;
         const double domain_volume =
             std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
         const double characteristic_area =
@@ -660,7 +668,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual <= controls.convergence.relative_tolerance &&
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
             h.continuity_linf <= controls.convergence.continuity_tolerance &&
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
