@@ -2,7 +2,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox,QComboBox,QDoubleSpinBox,QFormLayout,QHBoxLayout,QLineEdit,QListWidget,QPushButton,QTabWidget,QVBoxLayout,QWidget
-from .boundary_setup import SCALAR_TYPES, FIELD_SPECS
+from .boundary_setup import SCALAR_TYPES, VELOCITY_TYPES, FIELD_SPECS
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
 from .materials import MaterialSpec
@@ -86,6 +86,7 @@ class CaseSetupPanel(QWidget):
         vector = field == "velocity"
         for box in (self.boundary_x, self.boundary_y, self.boundary_z): box.setVisible(vector)
         self.boundary_value.setVisible(not vector); self.boundary_gradient.setVisible(not vector)
+        self.boundary_scalar_type.clear(); self.boundary_scalar_type.addItems(VELOCITY_TYPES if vector else SCALAR_TYPES)
 
     def _apply_boundary(self)->None:
         name=self.boundary_name.text().strip()
