@@ -257,7 +257,6 @@ void check_case(std::size_t nz)
     double max_transverse_velocity = 0.0;
     double max_axial_uniformity = 0.0;
     std::vector<double> plane_flow(nz, 0.0);
-    std::vector<double> plane_volume(nz, 0.0);
 
     const double mean_exact = dp * R * R / (8.0 * mu * L);
     const double max_exact = dp * R * R / (4.0 * mu * L);
@@ -275,7 +274,6 @@ void check_case(std::size_t nz)
 
         const std::size_t k = cell / (nr * ns);
         plane_flow[k] += U(cell, 2) * geometry.cell_volumes[cell];
-        plane_volume[k] += geometry.cell_volumes[cell];
         flow_rate += U(cell, 2) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
     }
