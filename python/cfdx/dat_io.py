@@ -1,8 +1,8 @@
-"""Reader for the native CFDX DAT numerical checkpoint format.
+"""Reader/writer for CFDX DAT numerical checkpoints.
 
-The reader is intentionally solver-independent: it discovers the fields present
-in a checkpoint and exposes them to the GUI/viewer without assuming that a
-particular physics model is enabled.
+DAT checkpoints support both the legacy text representation and an HDF5
+container representation. The HDF5 representation keeps the same logical
+checkpoint model while allowing large field arrays to be loaded efficiently.
 """
 
 from __future__ import annotations
@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import math
+
+import h5py
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -37,21 +40,29 @@ class DatRestart:
     fields: dict[str, DatField]
 
 
-def _read_tokens(path: Path) -> list[str]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        raise
-    tokens = text.split()
+def _validate(restart: DatRestart) -> DatRestart:
+    if restart.version not in (1, 2):
+        raise ValueError(f"unsupported DAT version {restart.version}")
+    if restart.cells < 0 or restart.iteration < 0:
+        raise ValueError("invalid DAT checkpoint metadata")
+    if not math.isfinite(restart.time):
+        raise ValueError("time must be finite")
+    if not restart.fields:
+        raise ValueError("DAT restart contains no fields")
+    for name, field in restart.fields.items():
+        if not name or field.dimension <= 0:
+            raise ValueError(f"invalid field {name!r}")
+        if len(field.values) != restart.cells * field.dimension:
+            raise ValueError(f"field {name!r} has an invalid value count")
+        if not all(math.isfinite(v) for v in field.values):
+            raise ValueError(f"field {name!r} contains non-finite values")
+    return restart
+
+
+def _read_text(path: Path) -> DatRestart:
+    tokens = path.read_text(encoding="utf-8").split()
     if not tokens:
         raise ValueError("empty DAT restart")
-    return tokens
-
-
-def read_dat_restart(path: str | Path) -> DatRestart:
-    """Parse a CFDX DAT checkpoint and discover all cell fields."""
-    path = Path(path)
-    tokens = _read_tokens(path)
     pos = 0
 
     def take(label: str) -> str:
@@ -77,8 +88,6 @@ def read_dat_restart(path: str | Path) -> DatRestart:
         cells = int(take("cell count"))
     except ValueError as exc:
         raise ValueError("invalid cell count") from exc
-    if cells < 0:
-        raise ValueError("cell count must be non-negative")
 
     if take("iteration key") != "iteration":
         raise ValueError("expected 'iteration'")
@@ -86,8 +95,6 @@ def read_dat_restart(path: str | Path) -> DatRestart:
         iteration = int(take("iteration"))
     except ValueError as exc:
         raise ValueError("invalid iteration") from exc
-    if iteration < 0:
-        raise ValueError("iteration must be non-negative")
 
     if take("time key") != "time":
         raise ValueError("expected 'time'")
@@ -95,35 +102,83 @@ def read_dat_restart(path: str | Path) -> DatRestart:
         time = float(take("time"))
     except ValueError as exc:
         raise ValueError("invalid time") from exc
-    if not math.isfinite(time):
-        raise ValueError("time must be finite")
 
     fields: dict[str, DatField] = {}
     while pos < len(tokens):
         if take("field key") != "field":
             raise ValueError("expected 'field'")
         name = take("field name")
-        if not name or name in fields:
-            raise ValueError(f"duplicate or empty field name: {name!r}")
+        if name in fields:
+            raise ValueError(f"duplicate field name: {name!r}")
         try:
             dimension = int(take(f"{name} dimension"))
         except ValueError as exc:
             raise ValueError(f"invalid dimension for field {name!r}") from exc
-        if dimension <= 0:
-            raise ValueError(f"field {name!r} dimension must be positive")
-
-        count = cells * dimension
         values: list[float] = []
-        for _ in range(count):
+        for _ in range(cells * dimension):
             try:
-                value = float(take(f"{name} values"))
+                values.append(float(take(f"{name} values")))
             except ValueError as exc:
                 raise ValueError(f"invalid value in field {name!r}") from exc
-            if not math.isfinite(value):
-                raise ValueError(f"non-finite value in field {name!r}")
-            values.append(value)
         fields[name] = DatField(name, dimension, values)
 
-    if not fields:
-        raise ValueError("DAT restart contains no fields")
-    return DatRestart(version, cells, iteration, time, fields)
+    return _validate(DatRestart(version, cells, iteration, time, fields))
+
+
+def _read_hdf5(path: Path) -> DatRestart:
+    with h5py.File(path, "r") as h5:
+        if h5.attrs.get("format", "") not in ("CFDX-DAT", b"CFDX-DAT"):
+            raise ValueError("not a CFDX DAT HDF5 checkpoint")
+        version = int(h5.attrs.get("version", 2))
+        cells = int(h5.attrs["cells"])
+        iteration = int(h5.attrs["iteration"])
+        time = float(h5.attrs["time"])
+        if "fields" not in h5:
+            raise ValueError("DAT HDF5 checkpoint has no fields group")
+        fields: dict[str, DatField] = {}
+        for name, dataset in h5["fields"].items():
+            values = np.asarray(dataset[()], dtype=float)
+            if values.ndim == 1:
+                dimension = 1
+                flat = values
+            elif values.ndim == 2:
+                dimension = int(values.shape[1])
+                flat = values.reshape(-1)
+            else:
+                raise ValueError(f"invalid HDF5 shape for field {name!r}")
+            if values.shape[0] != cells:
+                raise ValueError(f"field {name!r} cell count mismatch")
+            fields[name] = DatField(name, dimension, flat.tolist())
+    return _validate(DatRestart(version, cells, iteration, time, fields))
+
+
+def read_dat_restart(path: str | Path) -> DatRestart:
+    """Read a CFDX DAT checkpoint, detecting text or HDF5 representation."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    if h5py.is_hdf5(path):
+        return _read_hdf5(path)
+    return _read_text(path)
+
+
+def write_dat_hdf5(path: str | Path, restart: DatRestart) -> Path:
+    """Write a CFDX DAT checkpoint as an HDF5 container."""
+    path = Path(path)
+    _validate(restart)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-DAT"
+        h5.attrs["version"] = restart.version
+        h5.attrs["cells"] = restart.cells
+        h5.attrs["iteration"] = restart.iteration
+        h5.attrs["time"] = restart.time
+        group = h5.create_group("fields")
+        for name, field in restart.fields.items():
+            values = np.asarray(field.values, dtype=np.float64).reshape(
+                restart.cells, field.dimension
+            )
+            if field.dimension == 1:
+                values = values[:, 0]
+            group.create_dataset(name, data=values)
+    return path
