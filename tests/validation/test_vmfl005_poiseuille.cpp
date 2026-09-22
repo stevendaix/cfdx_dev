@@ -13,132 +13,192 @@ using namespace cfdx::testing;
 
 namespace {
 
-Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
+Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L, std::size_t nr)
 {
     Mesh m;
-    const std::size_t p_layer = ns + 1;
-    m.points().resize(p_layer * (nz + 1));
+    const std::size_t layer_points = 1 + nr * ns;
+    m.points().resize(layer_points * (nz + 1));
     constexpr double pi = 3.1415926535897932384626433832795;
     const double dz = L / static_cast<double>(nz);
 
+    auto point = [&](std::size_t k, std::size_t j, std::size_t s) -> std::size_t {
+        const std::size_t base = k * layer_points;
+        if (j == 0) return base;
+        return base + 1 + (j - 1) * ns + s;
+    };
+
     for (std::size_t k = 0; k <= nz; ++k) {
-        const std::size_t b = k * p_layer;
         const double z = dz * static_cast<double>(k);
-        m.points().set(b, 0.0, 0.0, z);
-        for (std::size_t s = 0; s < ns; ++s) {
-            const double a = 2.0 * pi * static_cast<double>(s) / static_cast<double>(ns);
-            m.points().set(b + 1 + s, R * std::cos(a), R * std::sin(a), z);
+        m.points().set(point(k, 0, 0), 0.0, 0.0, z);
+        for (std::size_t j = 1; j <= nr; ++j) {
+            const double r = R * static_cast<double>(j) / static_cast<double>(nr);
+            for (std::size_t s = 0; s < ns; ++s) {
+                const double a = 2.0 * pi * static_cast<double>(s) / static_cast<double>(ns);
+                m.points().set(point(k, j, s), r * std::cos(a), r * std::sin(a), z);
+            }
         }
     }
 
-    std::vector<std::vector<std::size_t>> end_faces(nz + 1, std::vector<std::size_t>(ns));
-    std::vector<std::vector<std::size_t>> radial(nz, std::vector<std::size_t>(ns));
+    using EndFaces = std::vector<std::vector<std::vector<std::size_t>>>;
+    using AxialFaces = std::vector<std::vector<std::vector<std::size_t>>>;
+    EndFaces end_faces(nz + 1,
+                       std::vector<std::vector<std::size_t>>(nr,
+                           std::vector<std::size_t>(ns)));
+    AxialFaces angular(nz,
+                      std::vector<std::vector<std::size_t>>(nr,
+                          std::vector<std::size_t>(ns)));
+    AxialFaces radial(nz,
+                     std::vector<std::vector<std::size_t>>(nr - 1,
+                         std::vector<std::size_t>(ns)));
     std::vector<std::vector<std::size_t>> wall(nz, std::vector<std::size_t>(ns));
 
-    // End triangles. k=0 points outward in -z; k=nz outward in +z.
+    // End faces: bottom outward in -z, top outward in +z.
     for (std::size_t k = 0; k <= nz; ++k) {
-        const std::size_t b = k * p_layer;
-        for (std::size_t s = 0; s < ns; ++s) {
-            const std::size_t sn = (s + 1) % ns;
-            end_faces[k][s] = m.faces().n_faces();
-            if (k == 0)
-                m.faces().push_face({b, b + 1 + sn, b + 1 + s});
-            else
-                m.faces().push_face({b, b + 1 + s, b + 1 + sn});
+        for (std::size_t j = 0; j < nr; ++j) {
+            for (std::size_t s = 0; s < ns; ++s) {
+                const std::size_t sn = (s + 1) % ns;
+                const auto c = point(k, 0, 0);
+                const auto a = point(k, j + 1, s);
+                const auto b = point(k, j + 1, sn);
+                end_faces[k][j][s] = m.faces().n_faces();
+                if (j == 0) {
+                    if (k == 0)
+                        m.faces().push_face({c, b, a});
+                    else
+                        m.faces().push_face({c, a, b});
+                } else if (k == 0) {
+                    m.faces().push_face({point(k, j, s), point(k, j + 1, s),
+                                         point(k, j + 1, sn), point(k, j, sn)});
+                } else {
+                    m.faces().push_face({point(k, j, s), point(k, j, sn),
+                                         point(k, j + 1, sn), point(k, j + 1, s)});
+                }
+            }
         }
     }
 
+    // Angular faces are radial planes. For sector s the lower face has an
+    // outward normal in the -tangential direction; the upper face is shared
+    // with sector s+1 and gets the opposite local orientation automatically.
     for (std::size_t k = 0; k < nz; ++k) {
-        const std::size_t b0 = k * p_layer;
-        const std::size_t b1 = (k + 1) * p_layer;
+        for (std::size_t j = 0; j < nr; ++j) {
+            for (std::size_t s = 0; s < ns; ++s) {
+                const auto lower = point(k, j == 0 ? 0 : j, s);
+                const auto upper = point(k, j + 1, s);
+                angular[k][j][s] = m.faces().n_faces();
+                m.faces().push_face({lower, upper, point(k + 1, j + 1, s),
+                                     point(k + 1, j == 0 ? 0 : j, s)});
+            }
+        }
+    }
+
+    // Radial interfaces at ring j+1. The outer cell is the owner and the
+    // face is oriented inward, i.e. outward from that owner cell.
+    for (std::size_t k = 0; k < nz; ++k) {
+        for (std::size_t j = 0; j + 1 < nr; ++j) {
+            const std::size_t ring = j + 1;
+            for (std::size_t s = 0; s < ns; ++s) {
+                const std::size_t sn = (s + 1) % ns;
+                radial[k][j][s] = m.faces().n_faces();
+                m.faces().push_face({point(k, ring, s), point(k + 1, ring, s),
+                                     point(k + 1, ring, sn), point(k, ring, sn)});
+            }
+        }
+
         for (std::size_t s = 0; s < ns; ++s) {
             const std::size_t sn = (s + 1) % ns;
-            // Radial interface at angle s. The ordering gives the outward
-            // normal of the owner sector s; the neighbour sector s-1 receives
-            // the opposite orientation through CellGeometry's owner/neighbour
-            // convention.
-            radial[k][s] = m.faces().n_faces();
-            m.faces().push_face({b0, b0 + 1 + s, b1 + 1 + s, b1});
-
-            // Circular wall face, outward in the radial direction.
             wall[k][s] = m.faces().n_faces();
-            m.faces().push_face({b0 + 1 + s, b0 + 1 + sn,
-                                 b1 + 1 + sn, b1 + 1 + s});
+            m.faces().push_face({point(k, nr, s), point(k, nr, sn),
+                                 point(k + 1, nr, sn), point(k + 1, nr, s)});
         }
     }
 
     m.ownership().resize(m.n_faces());
-    for (std::size_t s = 0; s < ns; ++s) {
-        for (std::size_t k = 0; k <= nz; ++k) {
-            const auto f = end_faces[k][s];
-            if (k == 0) {
-                // Each inlet triangle belongs to its own axial sector cell.
-                m.ownership().set_owner(f, s);
-                m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
-            } else if (k == nz) {
-                m.ownership().set_owner(f, (nz - 1) * ns + s);
-                m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
-            } else {
-                m.ownership().set_owner(f, (k - 1) * ns + s);
-                m.ownership().set_neighbour(f, static_cast<int>(k * ns + s));
+    const std::size_t cells_per_plane = nr * ns;
+    auto cell_id = [&](std::size_t k, std::size_t j, std::size_t s) {
+        return static_cast<CellIndex>(k * cells_per_plane + j * ns + s);
+    };
+
+    for (std::size_t k = 0; k <= nz; ++k) {
+        for (std::size_t j = 0; j < nr; ++j) {
+            for (std::size_t s = 0; s < ns; ++s) {
+                const auto f = end_faces[k][j][s];
+                if (k == 0) {
+                    m.ownership().set_owner(f, cell_id(0, j, s));
+                    m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+                } else if (k == nz) {
+                    m.ownership().set_owner(f, cell_id(nz - 1, j, s));
+                    m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+                } else {
+                    m.ownership().set_owner(f, cell_id(k - 1, j, s));
+                    m.ownership().set_neighbour(f, static_cast<std::int64_t>(cell_id(k, j, s)));
+                }
             }
-        }
-    }
-    for (std::size_t k = 0; k < nz; ++k) {
-        for (std::size_t s = 0; s < ns; ++s) {
-            const auto r = radial[k][s];
-            m.ownership().set_owner(r, k * ns + s);
-            m.ownership().set_neighbour(r, static_cast<int>(k * ns + ((s + ns - 1) % ns)));
-            m.ownership().set_owner(wall[k][s], k * ns + s);
-            m.ownership().set_neighbour(wall[k][s], FaceOwnership::BOUNDARY);
         }
     }
 
     for (std::size_t k = 0; k < nz; ++k) {
-        for (std::size_t s = 0; s < ns; ++s) {
-            const std::size_t sn = (s + 1) % ns;
-            m.cells().push_cell({
-                end_faces[k][s], end_faces[k + 1][s],
-                radial[k][s], wall[k][s], radial[k][sn]
-            });
+        for (std::size_t j = 0; j < nr; ++j) {
+            for (std::size_t s = 0; s < ns; ++s) {
+                const auto lower = angular[k][j][s];
+                const auto upper = angular[k][j][(s + 1) % ns];
+                m.ownership().set_owner(lower, cell_id(k, j, s));
+                m.ownership().set_neighbour(
+                    lower, static_cast<std::int64_t>(cell_id(k, j, (s + ns - 1) % ns)));
+                m.ownership().set_owner(upper, cell_id(k, j, (s + 1) % ns));
+                m.ownership().set_neighbour(
+                    upper, static_cast<std::int64_t>(cell_id(k, j, s)));
+
+                if (j + 1 < nr) {
+                    const auto r = radial[k][j][s];
+                    m.ownership().set_owner(r, cell_id(k, j + 1, s));
+                    m.ownership().set_neighbour(
+                        r, static_cast<std::int64_t>(cell_id(k, j, s)));
+                } else {
+                    const auto w = wall[k][s];
+                    m.ownership().set_owner(w, cell_id(k, j, s));
+                    m.ownership().set_neighbour(w, FaceOwnership::BOUNDARY);
+                }
+            }
+        }
+    }
+
+    for (std::size_t k = 0; k < nz; ++k) {
+        for (std::size_t j = 0; j < nr; ++j) {
+            for (std::size_t s = 0; s < ns; ++s) {
+                std::vector<FaceIndex> faces = {
+                    end_faces[k][j][s], end_faces[k + 1][j][s],
+                    angular[k][j][s], angular[k][j][(s + 1) % ns]
+                };
+                if (j > 0) faces.push_back(radial[k][j - 1][s]);
+                if (j + 1 < nr) faces.push_back(radial[k][j][s]);
+                else faces.push_back(wall[k][s]);
+                m.cells().push_cell(faces);
+            }
         }
     }
 
     Patch p;
     p.name = "inlet"; p.type = PatchType::INLET;
-    p.face_ids = end_faces[0]; m.boundary().add_patch(p);
+    for (std::size_t j = 0; j < nr; ++j)
+        for (const auto f : end_faces[0][j]) p.face_ids.push_back(f);
+    m.boundary().add_patch(p);
     p = {}; p.name = "outlet"; p.type = PatchType::OUTLET;
-    p.face_ids = end_faces[nz]; m.boundary().add_patch(p);
-    std::vector<std::size_t> wall_faces;
-    wall_faces.reserve(ns * nz);
-    for (const auto& row : wall) wall_faces.insert(wall_faces.end(), row.begin(), row.end());
+    for (std::size_t j = 0; j < nr; ++j)
+        for (const auto f : end_faces[nz][j]) p.face_ids.push_back(f);
+    m.boundary().add_patch(p);
     p = {}; p.name = "wall"; p.type = PatchType::WALL;
-    p.face_ids = std::move(wall_faces); m.boundary().add_patch(p);
+    p.face_ids.reserve(ns * nz);
+    for (const auto& row : wall)
+        p.face_ids.insert(p.face_ids.end(), row.begin(), row.end());
+    m.boundary().add_patch(p);
 
-    if (!m.ownership().is_consistent(m.n_cells()))
-        throw std::runtime_error("VMFL005: inconsistent face ownership");
-
-    // Validate the complete owner/neighbour <-> cell-face contract before the
-    // solver touches the mesh. This makes topology regressions local and
-    // reports the exact offending cell/face pair.
-    for (std::size_t c = 0; c < m.n_cells(); ++c) {
-        const auto off = m.cells().offsets_data()[c];
-        const auto count = m.cells().offsets_data()[c + 1] - off;
-        for (std::size_t j = 0; j < count; ++j) {
-            const auto f = m.cells().faces_data()[off + j];
-            const auto owner = m.ownership().owner(f);
-            const auto neighbour = m.ownership().neighbour(f);
-            if (owner != c && neighbour != static_cast<std::int64_t>(c)) {
-                throw std::runtime_error("VMFL005: face " + std::to_string(f) +
-                                         " is not attached to cell " + std::to_string(c) +
-                                         " (owner=" + std::to_string(owner) +
-                                         ", neighbour=" + std::to_string(neighbour) + ")");
-            }
-        }
+    const auto topology = m.topo_validate();
+    if (!topology.ok) {
+        throw std::runtime_error("VMFL005 topology invalid: " + topology.errors.front());
     }
     return m;
 }
-
 void check_case(std::size_t nz)
 {
     constexpr double R = 0.00125;
@@ -147,9 +207,10 @@ void check_case(std::size_t nz)
     constexpr double mu = 1.0e-5;
     constexpr double dp = 10.24;
     constexpr std::size_t ns = 32;
+    constexpr std::size_t nr = 8;
     constexpr double pi = 3.1415926535897932384626433832795;
 
-    Mesh mesh = make_pipe(ns, nz, R, L);
+    Mesh mesh = make_pipe(ns, nz, R, L, nr);
     Field<double,Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     Field<double,Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
     U.fill(0.0); p.fill(0.0);
@@ -199,7 +260,9 @@ void check_case(std::size_t nz)
         flow_rate += U(cell,2) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
     }
-    const double mean_u = flow_rate / volume;
+    const double area = volume / L;
+    flow_rate /= L;
+    const double mean_u = flow_rate / area;
     const double q_exact = pi * std::pow(R,4) * dp / (8.0 * mu * L);
     const double mean_exact = 2.0;
     const double rel_q = std::abs(flow_rate - q_exact) / q_exact;
