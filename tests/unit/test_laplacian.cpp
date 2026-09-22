@@ -93,7 +93,7 @@ int main() {
         auto lap = compute_laplacian(f, m);
         EXPECT_TRUE(lap.name() == "p_lap");
         EXPECT_TRUE(lap.loc() == Location::CELL);
-        EXPECT_TRUE(lap.metadata().unit == "1/s^2");
+        EXPECT_TRUE(lap.metadata().unit == "Pa/m^2");
     });
 
     run_case("laplacian_empty_mesh", []() {
@@ -101,6 +101,23 @@ int main() {
         ScalarCellField f(0, "p", "Pa", 1);
         auto lap = compute_laplacian(f, m);
         EXPECT_TRUE(lap.size() == 0);
+    });
+
+    run_case("laplacian_non_orthogonal_not_silently_accepted", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 1.0;
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
+    });
+
+    run_case("laplacian_reuses_geometry_cache", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 42.0;
+        const GeometryCache geometry = make_geometry_cache(m);
+        auto lap = compute_laplacian(f, m, geometry);
+        EXPECT_NEAR(lap(0), 0.0, 1e-12);
     });
 
     run_case("laplacian_scheme_from_string", []() {
