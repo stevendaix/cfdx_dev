@@ -125,8 +125,8 @@ int main() {
         m.points().set(11, 3.0, 0.0, 1.0);
 
         for (int i = 0; i < 4; ++i) {
-            m.faces().push_face({i, i+3, i+4, i+1});
-            m.faces().push_face({i+4, i+7, i+8, i+5});
+            m.faces().push_face({static_cast<std::size_t>(i), static_cast<std::size_t>(i + 3), static_cast<std::size_t>(i + 4), static_cast<std::size_t>(i + 1)});
+            m.faces().push_face({static_cast<std::size_t>(i + 4), static_cast<std::size_t>(i + 7), static_cast<std::size_t>(i + 8), static_cast<std::size_t>(i + 5)});
         }
 
         m.ownership().resize(8);
