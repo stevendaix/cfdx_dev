@@ -79,3 +79,26 @@ def test_read_dat_rejects_invalid_checkpoints(tmp_path: Path, payload: str) -> N
     path.write_text(payload, encoding="utf-8")
     with pytest.raises(ValueError):
         read_dat_restart(path)
+
+
+def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
+    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
+
+    restart = DatRestart(
+        version=2,
+        cells=2,
+        iteration=12,
+        time=4.5,
+        fields={
+            "U": DatField("U", 3, [1, 2, 3, 4, 5, 6]),
+            "p": DatField("p", 1, [10, 11]),
+            "T": DatField("T", 1, [300, 301]),
+            "k": DatField("k", 1, [0.1, 0.2]),
+            "omega": DatField("omega", 1, [2.0, 3.0]),
+        },
+    )
+    path = tmp_path / "checkpoint.dat"
+    write_dat_hdf5(path, restart)
+
+    loaded = read_dat_restart(path)
+    assert loaded == restart
