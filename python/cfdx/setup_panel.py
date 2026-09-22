@@ -1,7 +1,7 @@
 """Contract-driven Qt setup editor for CFDX cases."""
 from __future__ import annotations
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox,QComboBox,QDoubleSpinBox,QFormLayout,QHBoxLayout,QLineEdit,QListWidget,QPushButton,QTabWidget,QVBoxLayout,QWidget
+from PySide6.QtWidgets import QCheckBox,QComboBox,QDoubleSpinBox,QFormLayout,QHBoxLayout,QLineEdit,QListWidget,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
 from .boundary_setup import SCALAR_TYPES
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
@@ -73,15 +73,15 @@ class CaseSetupPanel(QWidget):
 
     def _apply_material(self)->None:
         name=self.material_name.text().strip()
-        if not name:return
+        if not name: QMessageBox.warning(self,"Material","Material name is required"); return
         material=MaterialSpec(name,self.material_density.value(),self.material_viscosity.value(),self.material_cp.value(),self.material_conductivity.value())
         try: material.validate()
-        except ValueError:return
+        except ValueError as exc: QMessageBox.warning(self,"Material validation",str(exc)); return
         self.case.materials[name]={"density":material.density,"dynamic_viscosity":material.dynamic_viscosity,"cp":material.cp,"conductivity":material.conductivity}; self.changed.emit()
 
     def _apply_boundary(self)->None:
         name=self.boundary_name.text().strip()
-        if not name:return
+        if not name: QMessageBox.warning(self,"Boundary","Boundary name is required"); return
         values={"type":self.boundary_type.currentText()}
         if values["type"] not in {"periodic","interface","empty"}:
             values.update({"scalar_type":self.boundary_scalar_type.currentText(),"value":self.boundary_value.value(),"gradient":self.boundary_gradient.value()})
@@ -105,5 +105,5 @@ class CaseSetupPanel(QWidget):
         mode=InitializationMode(self.initialization_mode.currentText()); field=self.initialization_field.text().strip()
         spec=InitializationSpec(mode,field,self.initialization_value.value() if mode is InitializationMode.UNIFORM else None)
         try: spec.validate()
-        except ValueError:return
+        except ValueError as exc: QMessageBox.warning(self,"Initialization validation",str(exc)); return
         self.case.physics["initialization"]={"mode":mode.value,"field":spec.field,"value":spec.value}; self.changed.emit()
