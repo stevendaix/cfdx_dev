@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -33,6 +34,7 @@ public:
     {
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A)) {
+            std::cerr << "AMG setup invalid fine matrix\\n";
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -44,6 +46,7 @@ public:
         Level fine;
         fine.A = A;
         if (!build_diagonal(fine)) {
+            std::cerr << "AMG setup fine diagonal failed\\n";
             levels_.clear();
             return false;
         }
@@ -61,6 +64,7 @@ public:
 
             SparseMatrix coarse = galerkin_coarse(levels_.back().A, aggregate, coarse_n);
             if (!matrix_is_valid(coarse)) {
+                std::cerr << "AMG setup coarse matrix failed level=" << levels_.size() << " size=" << coarse.n_rows() << "\\n";
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -73,6 +77,7 @@ public:
             Level next;
             next.A = std::move(coarse);
             if (!build_diagonal(next)) {
+                std::cerr << "AMG setup coarse diagonal failed level=" << levels_.size() << " size=" << next.A.n_rows() << "\\n";
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
