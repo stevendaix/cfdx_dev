@@ -1,4 +1,7 @@
 import importlib.util
+import sys
+from pathlib import Path
+
 import pytest
 
 from cfdx import CFDXSession, SimulationState
@@ -43,5 +46,41 @@ def test_gui_controls_and_parameters() -> None:
     assert session.state is SimulationState.PAUSED
     window.stop_button.click()
     assert session.state is SimulationState.STOPPED
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtWidgets import QFileDialog
+    from cfdx.case_io import save_case_with_dat
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-file-test"])
+    session = CFDXSession()
+    session.case.name = "channel"
+    session.case.execution.solver = sys.executable
+    window = CFDXMainWindow(session)
+
+    case_path = tmp_path / "channel.cfdx.h5"
+    dat_source = tmp_path / "solver.dat"
+    dat_source.write_text("restart\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *args, **kwargs: (str(case_path), "CFDX Case (*.cfdx.h5 *.h5)")),
+    )
+    assert window._save_case_as()
+    assert case_path.is_file()
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *args, **kwargs: (str(dat_source), "Solver restart (*.dat)")),
+    )
+    assert window._save_case_with_dat()
+    assert (tmp_path / "channel.dat").is_file()
+
     window.close()
     app.quit()
