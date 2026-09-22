@@ -15,6 +15,8 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <limits>
+#include <string>
 
 namespace cfdx {
 namespace core {
@@ -209,6 +211,47 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
     return plan;
 }
 
+inline void validate_halo_plan(const HaloPlan& plan, int size) {
+    if (size <= 0)
+        throw std::invalid_argument("validate_halo_plan: communicator size must be positive");
+
+    if (static_cast<int>(plan.send_faces.size()) != size ||
+        static_cast<int>(plan.recv_faces.size()) != size ||
+        static_cast<int>(plan.send_cells.size()) != size ||
+        static_cast<int>(plan.recv_cells.size()) != size)
+        throw std::invalid_argument("validate_halo_plan: plan size does not match communicator");
+
+    for (int r = 0; r < size; ++r) {
+        if (plan.send_faces[r].size() != plan.send_cells[r].size())
+            throw std::invalid_argument("validate_halo_plan: send face/cell counts differ");
+        if (plan.recv_faces[r].size() != plan.recv_cells[r].size())
+            throw std::invalid_argument("validate_halo_plan: recv face/cell counts differ");
+
+        for (const int peer : plan.send_faces[r]) {
+            if (peer < 0)
+                throw std::invalid_argument("validate_halo_plan: negative send face index");
+        }
+        for (const int peer : plan.recv_faces[r]) {
+            if (peer < 0)
+                throw std::invalid_argument("validate_halo_plan: negative recv face index");
+        }
+        for (const int cell : plan.send_cells[r]) {
+            if (cell < 0)
+                throw std::invalid_argument("validate_halo_plan: negative send cell index");
+        }
+        for (const int cell : plan.recv_cells[r]) {
+            if (cell < 0)
+                throw std::invalid_argument("validate_halo_plan: negative recv cell index");
+        }
+    }
+}
+
+inline int checked_mpi_count(std::size_t count, const char* context) {
+    if (count > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::overflow_error(std::string(context) + ": MPI count exceeds INT_MAX");
+    return static_cast<int>(count);
+}
+
 // Exchange halo data for a face field
 inline void exchange_halo_faces(
     Field<double, Location::FACE>& field,
@@ -218,6 +261,7 @@ inline void exchange_halo_faces(
     int rank = mpi_rank(comm);
     int size = mpi_size(comm);
     const std::size_t dim = field.dimension();
+    validate_halo_plan(plan, size);
     
     // Prepare send buffers
     std::vector<std::vector<double>> send_buffers(size);
@@ -235,12 +279,20 @@ inline void exchange_halo_faces(
     for (int r = 0; r < size; ++r) {
         if (r == rank) continue;
         
-        int send_count = static_cast<int>(plan.send_faces[r].size() * dim);
-        int recv_count = static_cast<int>(plan.recv_faces[r].size() * dim);
-        
-        std::vector<double> recv_buffer(recv_count);
-        
+        const int send_count = checked_mpi_count(plan.send_faces[r].size() * dim, "exchange_halo_faces send");
+        const int recv_count = checked_mpi_count(plan.recv_faces[r].size() * dim, "exchange_halo_faces recv");
+        int remote_send_count = 0;
+
         MPI_Status status;
+        MPI_Sendrecv(
+            &send_count, 1, MPI_INT, r, 2,
+            &remote_send_count, 1, MPI_INT, r, 2,
+            comm, &status
+        );
+        if (remote_send_count != recv_count)
+            throw std::runtime_error("exchange_halo_faces: asymmetric send/recv counts");
+
+        std::vector<double> recv_buffer(recv_count);
         MPI_Sendrecv(
             send_buffers[r].data(), send_count, MPI_DOUBLE, r, 0,
             recv_buffer.data(), recv_count, MPI_DOUBLE, r, 0,
@@ -266,9 +318,7 @@ inline void exchange_halo_cells(
     const int rank=mpi_rank(comm);
     const int size=mpi_size(comm);
     const std::size_t dim=field.dimension();
-    if(static_cast<int>(plan.send_cells.size())!=size ||
-       static_cast<int>(plan.recv_cells.size())!=size)
-        return;
+    validate_halo_plan(plan, size);
 
     for(int r=0;r<size;++r) {
         if(r==rank) continue;
@@ -280,9 +330,17 @@ inline void exchange_halo_cells(
             for(std::size_t comp=0;comp<dim;++comp)
                 send_buffer[i*dim+comp]=field(static_cast<std::size_t>(send[i]),comp);
 
+        const int send_count = checked_mpi_count(send_buffer.size(), "exchange_halo_cells send");
+        const int recv_count = checked_mpi_count(recv_buffer.size(), "exchange_halo_cells recv");
+        int remote_send_count = 0;
         MPI_Status status;
-        MPI_Sendrecv(send_buffer.data(),static_cast<int>(send_buffer.size()),MPI_DOUBLE,r,1,
-                     recv_buffer.data(),static_cast<int>(recv_buffer.size()),MPI_DOUBLE,r,1,
+        MPI_Sendrecv(&send_count, 1, MPI_INT, r, 3,
+                     &remote_send_count, 1, MPI_INT, r, 3,
+                     comm, &status);
+        if (remote_send_count != recv_count)
+            throw std::runtime_error("exchange_halo_cells: asymmetric send/recv counts");
+        MPI_Sendrecv(send_buffer.data(),send_count,MPI_DOUBLE,r,1,
+                     recv_buffer.data(),recv_count,MPI_DOUBLE,r,1,
                      comm,&status);
 
         for(std::size_t i=0;i<recv.size();++i)
