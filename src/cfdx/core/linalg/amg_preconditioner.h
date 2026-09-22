@@ -291,9 +291,71 @@ private:
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
     {
-        // The hierarchy is deliberately kept sparse. On the coarsest level,
-        // use more damped Jacobi sweeps to provide a stable small-system solve.
-        return smooth(level, r, x, 24);
+        // Solve the tiny coarsest problem directly. Using a fixed number of
+        // Jacobi sweeps leaves low-frequency error on small Poisson systems
+        // and makes the V-cycle quality depend on the arbitrary sweep count.
+        // The coarsest level is intentionally small, so a dense pivoted solve
+        // is both robust and negligible compared with the fine-grid work.
+        const auto& A = levels_[level].A;
+        const std::size_t n = A.n_rows();
+        if (r.size() != n || n == 0) return false;
+
+        std::vector<double> m(n * n, 0.0);
+        std::vector<double> b(n, 0.0);
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < n; ++i) {
+            b[i] = r(i);
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                m[i * n + col[k]] += val[k];
+            }
+        }
+
+        constexpr double pivot_tol = 1e-14;
+        for (std::size_t k = 0; k < n; ++k) {
+            std::size_t pivot = k;
+            double pivot_abs = std::abs(m[k * n + k]);
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double candidate = std::abs(m[i * n + k]);
+                if (candidate > pivot_abs) {
+                    pivot_abs = candidate;
+                    pivot = i;
+                }
+            }
+            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
+
+            if (pivot != k) {
+                for (std::size_t j = k; j < n; ++j) {
+                    std::swap(m[k * n + j], m[pivot * n + j]);
+                }
+                std::swap(b[k], b[pivot]);
+            }
+
+            const double diagonal = m[k * n + k];
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double factor = m[i * n + k] / diagonal;
+                if (!std::isfinite(factor)) return false;
+                m[i * n + k] = 0.0;
+                for (std::size_t j = k + 1; j < n; ++j) {
+                    m[i * n + j] -= factor * m[k * n + j];
+                }
+                b[i] -= factor * b[k];
+            }
+        }
+
+        if (x.size() != n) x.resize(n);
+        for (std::size_t ii = n; ii-- > 0;) {
+            double sum = b[ii];
+            for (std::size_t j = ii + 1; j < n; ++j) {
+                sum -= m[ii * n + j] * x(j);
+            }
+            const double diagonal = m[ii * n + ii];
+            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
+            x(ii) = sum / diagonal;
+            if (!std::isfinite(x(ii))) return false;
+        }
+        return x.is_valid();
     }
 
     const LinearOperatorBase& op_;
