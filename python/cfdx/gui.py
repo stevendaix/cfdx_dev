@@ -49,6 +49,7 @@ if QApplication is not None:
             self._case_path: Path | None = None
             self._restart_dat: Path | None = None
             self._result_source: Path | None = None
+            self._dirty = False
             self.signals = SessionSignals()
 
             self.setWindowTitle(f"CFDX — {self.session.case.name}")
@@ -129,6 +130,7 @@ if QApplication is not None:
             self.parameters.addRow("CFL", self.cfl)
 
             self.setup_panel = CaseSetupPanel(self.session.case)
+            self.setup_panel.changed.connect(self._mark_dirty)
             right = QVBoxLayout()
             right.addWidget(self.status)
             right.addWidget(self.file_status)
@@ -227,6 +229,10 @@ if QApplication is not None:
                 return True
             return self._save_case_as()
 
+        def _mark_dirty(self) -> None:
+            self._dirty = True
+            self._refresh_file_status()
+
         def _save_case_as(self) -> bool:
             path, _ = QFileDialog.getSaveFileName(
                 self, "Save CFDX Case", self.session.case.name + ".cfdx.h5",
@@ -237,6 +243,7 @@ if QApplication is not None:
             try:
                 self._case_path = save_case(self.session, Path(path))
                 self._restart_dat = None
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -248,6 +255,7 @@ if QApplication is not None:
                 return self._save_case_as()
             try:
                 save_case(self.session, self._case_path)
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -267,6 +275,7 @@ if QApplication is not None:
                 self._case_path, self._restart_dat = save_case_with_dat(
                     self.session, self._case_path, Path(dat_path)
                 )
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -284,6 +293,7 @@ if QApplication is not None:
                 self._replace_session(loaded)
                 self._case_path = Path(path)
                 self._restart_dat = None
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -307,6 +317,7 @@ if QApplication is not None:
                 self._replace_session(loaded)
                 self._case_path = Path(path)
                 self._restart_dat = restart
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -319,6 +330,11 @@ if QApplication is not None:
             self.session = session
             self.setWindowTitle(f"CFDX — {self.session.case.name}")
             self.setup_panel.set_case(self.session.case)
+            try:
+                self.setup_panel.changed.disconnect(self._mark_dirty)
+            except (RuntimeError, TypeError):
+                pass
+            self.setup_panel.changed.connect(self._mark_dirty)
             self.cfl.blockSignals(True)
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
             self.cfl.blockSignals(False)
@@ -340,10 +356,10 @@ if QApplication is not None:
 
         def _refresh_file_status(self) -> None:
             if self._case_path is None:
-                self.file_status.setText("Unsaved case")
+                self.file_status.setText("Unsaved case" + (" • Modified" if self._dirty else ""))
                 return
             restart = f" | DAT: {self._restart_dat.name}" if self._restart_dat else ""
-            self.file_status.setText(f"Case: {self._case_path}{restart}")
+            self.file_status.setText(f"Case: {self._case_path}{restart}" + (" • Modified" if self._dirty else ""))
 
         def _refresh_status(self, state: SimulationState, *_args) -> None:
             self.status.setText(
@@ -370,6 +386,7 @@ if QApplication is not None:
             if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
                 return
             self.session.edit("cfl", value, ChangeImpact.HOT)
+            self._mark_dirty()
 
         def _run(self) -> None:
             try:
