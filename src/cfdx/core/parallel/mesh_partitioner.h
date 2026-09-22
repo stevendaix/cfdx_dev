@@ -72,9 +72,13 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
+        if (n == 0)
+            throw std::invalid_argument("partition_geometric: cell has no faces");
         Vec3 centre;
         for (Offset k = 0; k < n; ++k) {
             const FaceIndex f = cell_faces[off + k];
+            if (f >= n_faces)
+                throw std::invalid_argument("partition_geometric: cell face index out of range");
             centre = centre + face_centres[f];
         }
         centre = centre * (1.0 / n);
@@ -138,7 +142,10 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
     // Set face owner ranks
     const FaceOwnership& own = m.ownership();
     for (std::size_t f = 0; f < n_faces; ++f) {
-        part.face_owner_rank[f] = part.cell_rank[own.owner(f)];
+        const CellIndex owner = own.owner(f);
+        if (owner >= n_cells)
+            throw std::invalid_argument("partition_geometric: face owner index out of range");
+        part.face_owner_rank[f] = part.cell_rank[owner];
     }
     
     // Determine ghost faces (faces shared with other ranks)
@@ -147,6 +154,8 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
         const int neighbour = own.neighbour(f);
         
         if (neighbour >= 0) {
+            if (static_cast<std::size_t>(neighbour) >= n_cells)
+                throw std::invalid_argument("partition_geometric: face neighbour index out of range");
             const int neighbour_rank = part.cell_rank[neighbour];
             if (neighbour_rank != owner_rank) {
                 part.face_ghost_rank[f] = neighbour_rank;
