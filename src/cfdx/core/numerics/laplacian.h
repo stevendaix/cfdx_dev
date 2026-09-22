@@ -154,3 +154,26 @@ inline Field<double, Location::CELL> compute_laplacian(
             }
 
             const double contribution = flux;
+
+            sum += (owner == c) ? contribution : -contribution;
+        }
+
+        const double volume = geometry.cell_volumes[c];
+        if (!(volume > 0.0) || !std::isfinite(volume))
+            throw std::runtime_error("compute_laplacian: non-positive cell volume");
+        out[c] = sum / volume;
+    }
+    return lap;
+}
+
+inline Field<double, Location::CELL> compute_laplacian(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL)
+{
+    const GeometryCache geometry = make_geometry_cache(mesh);
+    return compute_laplacian(cell_field, mesh, geometry, scheme);
+}
+
+}  // namespace core
+}  // namespace cfdx
