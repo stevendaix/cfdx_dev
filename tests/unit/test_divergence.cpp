@@ -84,6 +84,15 @@ int main() {
         EXPECT_TRUE(div(0) == 6.0);
     });
 
+    run_case("divergence_reuses_geometry_cache", []() {
+        Mesh m = make_unit_cube();
+        ScalarFaceField phi(6, "phi", "m^3/s", 1);
+        phi.fill(0.0);
+        const GeometryCache geometry = make_geometry_cache(m);
+        auto div = compute_divergence(phi, m, geometry);
+        EXPECT_NEAR(div(0), 0.0, 1e-12);
+    });
+
     run_case("divergence_size_mismatch", []() {
         Mesh m = make_unit_cube();
         ScalarFaceField phi(5, "phi", "m^3/s", 1);
