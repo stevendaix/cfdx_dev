@@ -135,11 +135,19 @@ inline SolverResult solve_cg(
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
 
-    if (rsold < tol_abs * tol_abs) {
+    double true_residual = 0.0;
+    for (std::size_t i = 0; i < n; ++i)
+        true_residual += r[i] * r[i];
+    true_residual = std::sqrt(true_residual);
+    if (!std::isfinite(true_residual)) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
+    if (true_residual <= tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
-        result.residual = std::sqrt(std::abs(rsold));
-        result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+        result.residual = true_residual;
+        result.residual_relative = (b_norm > 0.0) ? true_residual / b_norm : 0.0;
         return result;
     }
 
@@ -189,12 +197,20 @@ inline SolverResult solve_cg(
         }
 
         if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
-        const double res = std::sqrt(std::abs(rsnew));
-        if (res < tol_abs) {
+        true_residual = 0.0;
+        for (std::size_t i = 0; i < n; ++i)
+            true_residual += r[i] * r[i];
+        true_residual = std::sqrt(true_residual);
+        if (!std::isfinite(true_residual)) {
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iter;
+            return result;
+        }
+        if (true_residual <= tol_abs) {
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
-            result.residual = res;
-            result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+            result.residual = true_residual;
+            result.residual_relative = (b_norm > 0.0) ? true_residual / b_norm : 0.0;
             return result;
         }
 
@@ -211,8 +227,8 @@ inline SolverResult solve_cg(
 
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = max_iter;
-    result.residual = std::sqrt(std::abs(rsold));
-    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+    result.residual = true_residual;
+    result.residual_relative = (b_norm > 0.0) ? true_residual / b_norm : 0.0;
     return result;
 }
 
