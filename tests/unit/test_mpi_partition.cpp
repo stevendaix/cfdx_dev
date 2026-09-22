@@ -79,7 +79,7 @@ int main() {
 
         m.cells().push_cell({0});
 
-        m.topo_validate();
+        EXPECT_TRUE(m.topo_validate().ok);
 
         Partition part = partition_geometric(m, 2);
         EXPECT_TRUE(part.cell_rank.size() == 1);
@@ -155,7 +155,7 @@ int main() {
         m.faces().push_face({0,6,8,2});
         m.ownership().resize(8);
         for (std::size_t f=0; f<8; ++f) {
-            m.ownership().set_owner(f, f == 4 ? 1 : (f >= 6 ? 1 : 0));
+            m.ownership().set_owner(f, (f == 2 || f == 4 || f >= 6) ? 1 : 0);
             m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
         }
         m.ownership().set_owner(1, 0);
