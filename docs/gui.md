@@ -50,9 +50,12 @@ dependencies are not installed.
 The GUI exposes the same persistence contract as the headless API:
 
 - Read Case loads the HDF5 case without consuming a DAT restart artifact.
+- Read Case loads the HDF5 case and establishes the mesh/context required for checkpoint loading.
+- Read DAT Checkpoint is only enabled when a CFDX case is loaded; the DAT cell count and case association are validated before visualization.
 - Read Case + DAT validates the paired DAT SHA-256 before accepting it.
 - Save Case writes the HDF5 source of truth.
-- Save Case + DAT writes the HDF5 case and its canonical case.dat sibling.
+- Save Case + DAT writes the HDF5 case and its canonical case.dat sibling. The DAT may be stored as the compact HDF5 checkpoint representation.
+- DAT parsing is independent of the enabled physics model: all fields actually present in the checkpoint are exposed to the viewer.
 
 There is no GUI-specific checkpoint format. A modified case is marked in the
 window and the GUI asks whether to save before Run or Close.
