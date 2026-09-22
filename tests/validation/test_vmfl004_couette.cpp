@@ -131,7 +131,7 @@ void check_case(std::size_t n)
     c.convergence.relative_tolerance = 1e-9;
     c.convergence.continuity_tolerance = 1e-10;
     c.linear_max_iterations = 5000;
-    c.linear_tolerance = 1e-11;
+    c.linear_tolerance = 1e-9;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
     c.pressure_reference_cell = 0;
