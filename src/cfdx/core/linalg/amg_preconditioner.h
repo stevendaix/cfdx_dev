@@ -20,8 +20,8 @@ class MatrixFreeVcyclePreconditioner final : public Preconditioner {
 public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
                                    double omega = 0.7,
-                                   std::size_t pre = 2,
-                                   std::size_t post = 2)
+                                   std::size_t pre = 4,
+                                   std::size_t post = 4)
         : op_(op), omega_(omega), pre_(pre), post_(post)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0)) {
