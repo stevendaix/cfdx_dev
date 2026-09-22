@@ -377,6 +377,14 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
+        if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
+            # OpenMPI/hwloc allocates process-global state during MPI_Init which
+            # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
+            # ASan/UBSan active for the MPI regression, but exclude those
+            # external-library teardown allocations from the leak check.
+            set_tests_properties(test_mpi_partition PROPERTIES
+                ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
+        endif()
     endif()
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
