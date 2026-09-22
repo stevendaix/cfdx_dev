@@ -82,7 +82,8 @@ public:
         if (!z.is_valid())
             return false;
 
-        op_.apply(z, ws_.fine_A);
+        if (!op_.apply(z, ws_.fine_A) || !ws_.fine_A.is_valid())
+            return false;
         for (std::size_t i = 0; i < r.size(); ++i)
             ws_.fine_r(i) = r(i) - ws_.fine_A(i);
 
@@ -90,10 +91,11 @@ public:
         for (std::size_t i = 0; i < r.size(); ++i)
             ws_.coarse_r(aggregate_of_[i]) += ws_.fine_r(i);
 
-        for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c)
+        for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c) {
             ws_.coarse_x(c) = ws_.coarse_r(c) * ws_.coarse_inv_diag[c];
             if (!std::isfinite(ws_.coarse_x(c)))
                 return false;
+        }
 
         for (std::size_t i = 0; i < r.size(); ++i) {
             z(i) += ws_.coarse_x(aggregate_of_[i]);
@@ -141,12 +143,9 @@ private:
             if (matched[i]) continue;
             std::size_t best = n;
             double best_strength = -1.0;
-            const double di = std::abs(inv_diag_[i]);
-
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
                 if (j == i || j >= n || matched[j]) continue;
-                const double dj = std::abs(inv_diag_[j]);
                 const double denom = std::sqrt(std::max(
                     std::abs(1.0 / inv_diag_[i]) *
                     std::abs(1.0 / inv_diag_[j]), 1e-60));
@@ -195,7 +194,8 @@ private:
     void smooth(const Vector& r, Vector& x, std::size_t sweeps) const
     {
         for (std::size_t s = 0; s < sweeps; ++s) {
-            op_.apply(x, ws_.fine_A);
+            if (!op_.apply(x, ws_.fine_A) || !ws_.fine_A.is_valid())
+                return;
             for (std::size_t i = 0; i < r.size(); ++i)
                 x(i) += omega_ * inv_diag_[i] * (r(i) - ws_.fine_A(i));
         }
