@@ -128,5 +128,39 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("cg_exact_spd_3x3_reference_solution", []() {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 4.0); A.push_back(0, 1, 1.0);
+        A.push_back(1, 0, 1.0); A.push_back(1, 1, 3.0); A.push_back(1, 2, 1.0);
+        A.push_back(2, 1, 1.0); A.push_back(2, 2, 2.0);
+        A.finalize();
+
+        Vector x_exact(3);
+        x_exact(0) = 1.0; x_exact(1) = -2.0; x_exact(2) = 3.0;
+        const auto b = A.matvec(x_exact);
+        Vector x(3, 0.0);
+
+        const auto result = solve_cg(A, b, x, 20, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations <= 3);
+        EXPECT_TRUE(result.residual_relative < 1e-12);
+        for (std::size_t i = 0; i < 3; ++i) EXPECT_NEAR(x(i), x_exact(i), 1e-11);
+    });
+
+    run_case("cg_reports_non_spd_breakdown", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, -1.0);
+        A.finalize();
+
+        Vector b(2);
+        b(0) = 1.0; b(1) = 1.0;
+        Vector x(2, 0.0);
+
+        const auto result = solve_cg(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE ||
+                    result.status == SolverStatus::DIVERGED);
+    });
+
     return run_all();
 }
