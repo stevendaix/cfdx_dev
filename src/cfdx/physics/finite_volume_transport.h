@@ -355,15 +355,18 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
 
-    // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
-    // when the system is well posed. Retry from the original iterate with
-    // restarted GMRES rather than injecting an unconverged Krylov state into
-    // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    // BiCGStab can stagnate or break down on mildly nonsymmetric momentum
+    // matrices even when the linear system is well posed. A breakdown is a
+    // failure of that Krylov iteration, not evidence that the physical system
+    // diverged. Retry from the original iterate with restarted GMRES rather
+    // than injecting an unconverged Krylov state into the nonlinear solver.
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED ||
+        result.status == cfdx::core::SolverStatus::DIVERGED) {
         candidate = solution;
-        result = cfdx::core::solve_gmres(
+        const auto gmres_result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+        result = gmres_result;
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
