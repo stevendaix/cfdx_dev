@@ -328,16 +328,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             uz(c) = U.component_data(2)[c];
         }
 
+        const double rhs_scale = std::max({ex.rhs.norm2(), ey.rhs.norm2(), ez.rhs.norm2(), 1.0e-30});
         auto solve_momentum = [&](const ScalarEquation& equation, Vector& solution) {
             const double rhs_norm = equation.rhs.norm2();
             const double solution_norm = solution.norm2();
-            // A homogeneous momentum component already at zero is exactly
-            // solved. Avoid sending the zero Krylov problem through a solver
-            // that can report a breakdown on an otherwise valid CFD state.
-            if (rhs_norm <= controls.linear_tolerance &&
-                solution_norm <= controls.linear_tolerance) {
+            // If a component has zero velocity and a source many orders of
+            // magnitude below the active momentum forcing, its exact solution
+            // is zero for the present predictor. Do not spend thousands of
+            // Krylov iterations on a badly conditioned near-homogeneous
+            // convection-diffusion system (common for transverse components
+            // of a pipe flow).
+            if (solution_norm <= controls.linear_tolerance &&
+                rhs_norm <= controls.linear_tolerance * rhs_scale) {
                 return cfdx::core::SolverResult{
-                    cfdx::core::SolverStatus::CONVERGED, 0, rhs_norm, rhs_norm};
+                    cfdx::core::SolverStatus::CONVERGED, 0, rhs_norm, rhs_norm / rhs_scale};
             }
             return solve_scalar_equation(equation, solution, {
                 controls.linear_max_iterations,
