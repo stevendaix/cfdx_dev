@@ -77,6 +77,10 @@ class ResultsSeriesPanel(QWidget):
     def _label(self, index: int) -> str:
         frame = self.series.frame(index)
         time = f"t={frame.time:g}" if frame.time is not None else "time=unknown"
+        if frame.time_source == "filename":
+            time += " (filename fallback)"
+        if frame.iteration is not None:
+            time += f" | iteration={frame.iteration}"
         state = "" if frame.complete else " [incomplete]"
         field = f" — {self.field.currentText()}" if self.field.currentText() else ""
         return f"{index + 1}/{len(self.series.frames)} — {time}{state} — {frame.path.name}{field}"

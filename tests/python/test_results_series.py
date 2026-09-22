@@ -38,3 +38,38 @@ def test_zero_length_result_is_reported_as_incomplete(tmp_path):
     series = discover_result_series(tmp_path)
     assert len(series.frames) == 1
     assert series.frames[0].complete is False
+
+
+def test_filename_number_is_explicit_fallback_time(tmp_path):
+    path = tmp_path / "step_12.vtu"
+    path.write_text("", encoding="utf-8")
+    frame = discover_result_series(tmp_path).frames[0]
+    assert frame.time == 12.0
+    assert frame.time_source == "filename"
+    assert frame.iteration is None
+
+
+def test_vtk_metadata_overrides_filename_time(monkeypatch, tmp_path):
+    path = tmp_path / "step_12.vtu"
+    path.write_text("placeholder", encoding="utf-8")
+
+    class Array:
+        def __init__(self, value): self.value = value
+        def reshape(self, _shape): return [self.value]
+        def __len__(self): return 1
+        def __getitem__(self, index): return self.value
+
+    class Data:
+        point_data = {}
+        cell_data = {}
+        field_data = {"time": Array(0.125), "iteration": Array(42)}
+
+    class PV:
+        @staticmethod
+        def read(_path): return Data()
+
+    monkeypatch.setitem(__import__("sys").modules, "pyvista", PV)
+    frame = discover_result_series(tmp_path, inspect_fields=True).frames[0]
+    assert frame.time == 0.125
+    assert frame.time_source == "metadata"
+    assert frame.iteration == 42
