@@ -337,6 +337,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                                          controls.linear_tolerance,
                                                          controls.coupling.alpha_u});
 
+        auto require_linear_convergence = [](const char* component, const auto& solve) {
+            if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
+                throw std::runtime_error(
+                    std::string("solve_steady_incompressible: ") + component +
+                    " momentum solve did not converge (status=" +
+                    std::to_string(static_cast<int>(solve.status)) +
+                    ", iterations=" + std::to_string(solve.iterations) +
+                    ", residual=" + std::to_string(solve.residual) +
+                    ", relative=" + std::to_string(solve.residual_relative) + ")");
+            }
+        };
+        require_linear_convergence("Ux", rx);
+        require_linear_convergence("Uy", ry);
+        require_linear_convergence("Uz", rz);
+
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             U.component_data(0)[c] = ux(c);
             U.component_data(1)[c] = uy(c);
