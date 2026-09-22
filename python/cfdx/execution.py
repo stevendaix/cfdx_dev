@@ -1,4 +1,4 @@
-"""Execution controller connecting the session, runner and progress parser."""
+""""Execution controller connecting the session, runner and progress parser."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,17 +31,20 @@ class ExecutionController:
         self._stop_requested = False
 
     def restart(self, dat_path: str | Path) -> None:
-        """Restart through the runner using a concrete solver checkpoint."""
+        """Restart through the runner using the case-configured checkpoint option."""
         path = Path(dat_path)
         if not path.is_file():
             raise FileNotFoundError(path)
         if self.session.state in {SimulationState.RUNNING, SimulationState.PAUSED}:
             raise RuntimeError("cannot restart an active session")
+        restart_option = self.session.case.execution.restart_option
+        if restart_option is None:
+            raise ValueError("A DAT restart is loaded but no solver restart option is configured")
         self.session.run()
         self.error = None
         self.latest_metrics = None
         self._stop_requested = False
-        self.runner.start(self._output, self._complete, restart_path=path)
+        self.runner.start(self._output, self._complete, restart_path=path, restart_option=restart_option)
 
     def start(self) -> None:
         self.session.run()
@@ -87,10 +90,7 @@ class ExecutionController:
         self.session.run()
 
     def stop(self, timeout: float = 5.0) -> None:
-        if self.session.state not in {
-            SimulationState.RUNNING,
-            SimulationState.PAUSED,
-        }:
+        if self.session.state not in {SimulationState.RUNNING, SimulationState.PAUSED}:
             return
         self._stop_requested = True
         self.runner.stop(timeout)
