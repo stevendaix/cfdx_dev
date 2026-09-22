@@ -7,17 +7,10 @@ from .tui import TuiRenderer
 try:
     from PySide6.QtCore import QObject, Qt, Signal
     from PySide6.QtWidgets import (
-        QApplication,
-        QHBoxLayout,
-        QLabel,
-        QMainWindow,
-        QPlainTextEdit,
-        QTreeWidget,
-        QTreeWidgetItem,
-        QVBoxLayout,
-        QWidget,
+        QApplication, QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
+        QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
     )
-except ImportError:  # pragma: no cover - exercised through optional-dependency tests
+except ImportError:  # pragma: no cover
     QApplication = None
     QObject = object
     Signal = None
@@ -25,13 +18,11 @@ except ImportError:  # pragma: no cover - exercised through optional-dependency 
 
 if QApplication is not None:
     class SessionSignals(QObject):
-        """Qt bridge for state and log events."""
-
         state_changed = Signal(object)
         output = Signal(str, bool)
 
     class CFDXMainWindow(QMainWindow):
-        """Minimal Fluent-like shell: case tree, status and TUI/log pane."""
+        """Minimal Fluent-like shell with shared session controls."""
 
         def __init__(self, session: CFDXSession | None = None) -> None:
             super().__init__()
@@ -47,8 +38,16 @@ if QApplication is not None:
             self.log = QPlainTextEdit()
             self.log.setReadOnly(True)
             self.status = QLabel()
+            self.run_button = QPushButton("Run")
+            self.pause_button = QPushButton("Pause")
+            self.stop_button = QPushButton("Stop")
+            controls = QHBoxLayout()
+            controls.addWidget(self.run_button)
+            controls.addWidget(self.pause_button)
+            controls.addWidget(self.stop_button)
             right = QVBoxLayout()
             right.addWidget(self.status)
+            right.addLayout(controls)
             right.addWidget(self.log)
             layout.addWidget(self.tree, 1)
             container = QWidget()
@@ -58,6 +57,9 @@ if QApplication is not None:
 
             self.signals.state_changed.connect(self._refresh_status)
             self.signals.output.connect(self.append_output)
+            self.run_button.clicked.connect(self._run)
+            self.pause_button.clicked.connect(self._pause)
+            self.stop_button.clicked.connect(self._stop)
             self.refresh()
 
         def refresh(self) -> None:
@@ -73,10 +75,29 @@ if QApplication is not None:
                 f"State: {state.value} | Iteration: {self.session.iteration} | "
                 f"Time: {self.session.time:g}"
             )
+            self.run_button.setEnabled(state in {
+                SimulationState.CREATED, SimulationState.READY,
+                SimulationState.PAUSED, SimulationState.STOPPED,
+            })
+            self.pause_button.setEnabled(state is SimulationState.RUNNING)
+            self.stop_button.setEnabled(state in {
+                SimulationState.RUNNING, SimulationState.PAUSED,
+            })
+
+        def _run(self) -> None:
+            self.session.run()
+            self.signals.state_changed.emit(self.session.state)
+
+        def _pause(self) -> None:
+            self.session.pause()
+            self.signals.state_changed.emit(self.session.state)
+
+        def _stop(self) -> None:
+            self.session.stop()
+            self.signals.state_changed.emit(self.session.state)
 
         def append_output(self, line: str, is_stderr: bool = False) -> None:
-            prefix = "[stderr] " if is_stderr else ""
-            self.log.appendPlainText(prefix + line)
+            self.log.appendPlainText(("[stderr] " if is_stderr else "") + line)
 
         def render_tui(self) -> str:
             return TuiRenderer.render(self.session)
@@ -93,15 +114,11 @@ if QApplication is not None:
         return app.exec()
 else:
     class CFDXMainWindow:
-        """Placeholder that gives a clear error when GUI dependencies are absent."""
-
         def __init__(self, session: CFDXSession | None = None) -> None:
             raise RuntimeError("PySide6 is required for the CFDX GUI")
 
-
     def create_application(argv: list[str] | None = None):
         raise RuntimeError("PySide6 is required for the CFDX GUI")
-
 
     def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
         raise RuntimeError("PySide6 is required for the CFDX GUI")
