@@ -209,7 +209,7 @@ void check_case(std::size_t nz)
     constexpr double mu = 1.0e-5;
     constexpr double dp = 0.1024;
     constexpr std::size_t ns = 32;
-    constexpr std::size_t nr = 8;
+    constexpr std::size_t nr = 16;
     constexpr double pi = 3.1415926535897932384626433832795;
 
     Mesh mesh = make_pipe(ns, nz, R, L, nr);
@@ -264,7 +264,7 @@ void check_case(std::size_t nz)
     flow_rate /= L;
     const double mean_u = flow_rate / area;
     const double q_exact = pi * std::pow(R,4) * dp / (8.0 * mu * L);
-    const double mean_exact = 0.2;
+    const double mean_exact = 0.02;
     const double rel_q = std::abs(flow_rate - q_exact) / q_exact;
     const double rel_mean = std::abs(mean_u - mean_exact) / mean_exact;
     const auto& last = result.history.back();
