@@ -216,12 +216,6 @@ void check_case(std::size_t nz)
     Field<double,Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     Field<double,Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
     U.fill(0.0); p.fill(0.0);
-    const auto initial_geometry = build_fv_geometry(mesh);
-    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-        const double r = std::hypot(initial_geometry.cell_centres[cell].x,
-                                    initial_geometry.cell_centres[cell].y);
-        U(cell,2) = 0.5 * dp * (R * R - r * r) / (4.0 * mu * L);
-    }
 
     VelocityBoundaryConditions ubc;
     ubc["inlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0.0,0.0,0.0}};
