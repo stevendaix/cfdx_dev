@@ -80,7 +80,6 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
 def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from PySide6.QtWidgets import QFileDialog
-    from cfdx.case_io import save_case_with_dat
     from cfdx.gui import create_application
 
     app = create_application(["cfdx-file-test"])
