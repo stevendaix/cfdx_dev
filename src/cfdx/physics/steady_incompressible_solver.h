@@ -435,10 +435,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 b(c) = -continuity[c];
             }
 
-            // A fixed pressure patch supplies a Dirichlet pressure-correction
-            // contribution. Zero-gradient patches leave the pressure equation
-            // Neumann-like. This prevents silently treating a prescribed
-            // outlet/inlet pressure as a homogeneous Neumann condition.
+            // Assemble the pressure-correction boundary condition, not the
+            // physical pressure equation. For a prescribed pressure boundary,
+            // p' = 0; the physical pressure target is already represented by
+            // p and must not be injected again into the correction RHS.
+            bool has_fixed_pressure_boundary = false;
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 if (mesh.ownership().neighbour(f) >= 0)
                     continue;
@@ -451,6 +452,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     it->second.type != ScalarBoundaryType::FIXED_VALUE)
                     continue;
 
+                has_fixed_pressure_boundary = true;
                 const std::size_t o = mesh.ownership().owner(f);
                 const double distance =
                     (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
@@ -461,23 +463,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double coeff =
                     controls.density * rAU[o] * area / distance;
                 rows[o][o] += coeff;
-                b(o) += coeff * (it->second.value - p(o));
             }
 
-            // Pressure has a gauge freedom whenever only Neumann-type
-            // conditions are present. A single reference cell removes it.
-            const std::size_t ref = controls.pressure_reference_cell;
-            // Eliminate the reference pressure degree of freedom symmetrically:
-            // remove its column from all other rows as well as replacing its
-            // row by the gauge equation. The remaining pressure operator is
-            // symmetric positive definite and can be solved robustly by CG.
-            for (std::size_t row = 0; row < nc; ++row) {
-                if (row == ref) continue;
-                rows[row].erase(ref);
+            // Only a pure-Neumann pressure problem needs a gauge equation.
+            // Adding a reference constraint when a fixed-pressure boundary is
+            // already present over-constrains the correction system and breaks
+            // the discrete continuity/pressure-correction consistency.
+            if (!has_fixed_pressure_boundary) {
+                const std::size_t ref = controls.pressure_reference_cell;
+                for (std::size_t row = 0; row < nc; ++row) {
+                    if (row == ref) continue;
+                    rows[row].erase(ref);
+                }
+                rows[ref].clear();
+                rows[ref][ref] = 1.0;
+                b(ref) = 0.0;
             }
-            rows[ref].clear();
-            rows[ref][ref] = 1.0;
-            b(ref) = 0.0;
 
             for (std::size_t row = 0; row < nc; ++row) {
                 for (const auto& [col, value] : rows[row]) A.push_back(row, col, value);
@@ -512,18 +513,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 U.component_data(2)[c] -= rAU[c] * grad_pc.component_data(2)[c];
             }
 
-            // Consistent face-flux correction. Fixed-value velocity patches
-            // are left constrained by their prescribed face velocity.
+            // Apply the same pressure-correction flux operator used in
+            // the pressure equation. Internal faces use the owner/neighbour
+            // coefficient; fixed-pressure boundary faces use p'=0; Neumann
+            // pressure boundaries receive no normal correction.
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 const auto nraw = mesh.ownership().neighbour(f);
-                if (nraw < 0) continue;
                 const std::size_t o = mesh.ownership().owner(f);
-                const std::size_t n = static_cast<std::size_t>(nraw);
-                const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                 const double area = geometry.face_area_vectors[f].mag();
-                const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
-                mass_flux(f) -= controls.density * dface *
-                                (p_corr(n) - p_corr(o));
+                if (nraw >= 0) {
+                    const std::size_t n = static_cast<std::size_t>(nraw);
+                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
+                    const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
+                    mass_flux(f) -= controls.density * dface *
+                                    (p_corr(n) - p_corr(o));
+                    continue;
+                }
+
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch >= mesh.boundary().n_patches()) continue;
+                const auto& name = mesh.boundary().patch(patch).name;
+                const auto it = pressure_bcs.find(name);
+                if (it == pressure_bcs.end() ||
+                    it->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    continue;
+                const double d = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+                const double dface = rAU[o] * area / d;
+                // p'_boundary = 0 for a fixed physical pressure boundary.
+                mass_flux(f) += controls.density * dface * p_corr(o);
             }
         }
 
