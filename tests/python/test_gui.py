@@ -28,6 +28,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     window = CFDXMainWindow(session)
     nodes = session.case_tree()
     assert window.tree.topLevelItemCount() == len(nodes)
+    assert window.open_result_button is not None
     assert window.tree.topLevelItem(0).data(0, Qt.ItemDataRole.UserRole) == nodes[0].id
     window.cfl.setValue(12.5)
     assert session.case.numerics["cfl"] == 12.5
