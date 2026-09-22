@@ -53,9 +53,12 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
         const std::size_t b1 = (k + 1) * p_layer;
         for (std::size_t s = 0; s < ns; ++s) {
             const std::size_t sn = (s + 1) % ns;
-            // Outward normal for sector s along the radial edge center->ring_s.
+            // Radial interface at angle s. The ordering gives the outward
+            // normal of the owner sector s; the neighbour sector s-1 receives
+            // the opposite orientation through CellGeometry's owner/neighbour
+            // convention.
             radial[k][s] = m.faces().n_faces();
-            m.faces().push_face({b0, b1, b1 + 1 + s, b0 + 1 + s});
+            m.faces().push_face({b0, b0 + 1 + s, b1 + 1 + s, b1});
 
             // Circular wall face, outward in the radial direction.
             wall[k][s] = m.faces().n_faces();
