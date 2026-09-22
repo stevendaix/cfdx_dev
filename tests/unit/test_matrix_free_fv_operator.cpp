@@ -1,6 +1,7 @@
 // M0.8/M0.7 — Assembled vs matrix-free finite-volume diffusion equivalence
 
 #include "cfdx/core/linalg/matrix_free_fv_operator.h"
+#include "cfdx/core/numerics/matrix_free.h"
 #include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/core/solvers/scalar_diffusion.h"
 #include "common/test_harness.h"
@@ -59,6 +60,9 @@ int main() {
 
         constexpr double gamma = 2.5;
         FvDiffusionOperator mf(m, centres, Sf, gamma);
+        MatrixFreeFvDiffusionOperator mf_public(m, geometry, gamma);
+        EXPECT_TRUE(mf_public.rows() == m.n_cells());
+        EXPECT_TRUE(mf_public.cols() == m.n_cells());
 
         DirichletBoundary boundary;
         boundary.face_values.assign(m.n_faces(), std::numeric_limits<double>::quiet_NaN());
