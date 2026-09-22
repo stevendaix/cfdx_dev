@@ -10,6 +10,7 @@ from .case_io import read_case, read_case_with_dat, save_case, save_case_with_da
 from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnostic, typed_parameter
 from .validation import ValidationReport, validate_case
 from .mesh_model import MeshCatalog, MeshPatch, read_mesh_catalog
+from .physics_setup import PhysicsSpec, FieldSpec, physics_spec, default_parameters
 from .gui import CFDXMainWindow, create_application, launch
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "ExecutionController", "ExecutionError", "read_case", "read_case_with_dat",
     "save_case", "save_case_with_dat", "MeshSelection", "Parameter", "ParameterType",
     "SetupDiagnostic", "typed_parameter", "ValidationReport", "validate_case",
-    "MeshCatalog", "MeshPatch", "read_mesh_catalog",
+    "MeshCatalog", "MeshPatch", "read_mesh_catalog", "PhysicsSpec", "FieldSpec",
+    "physics_spec", "default_parameters",
     "CFDXMainWindow", "create_application", "launch",
 ]
