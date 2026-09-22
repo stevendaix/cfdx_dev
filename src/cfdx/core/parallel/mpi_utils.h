@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <stdexcept>
 #include <iostream>
+#include <limits>
 
 namespace cfdx {
 namespace core {
