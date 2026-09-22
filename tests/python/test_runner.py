@@ -60,3 +60,28 @@ def test_runner_stop_terminates_process() -> None:
     assert runner.running
     runner.stop()
     assert not runner.running
+
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX process groups provide pause semantics")
+def test_runner_pause_and_resume() -> None:
+    command = [sys.executable, "-u", "-c", "import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]"]
+    output: list[str] = []
+    runner = SolverRunner(command)
+    runner.start(on_output=lambda line, is_stderr: output.append(line))
+    deadline = time.monotonic() + 5
+    while len(output) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(output) >= 3
+    runner.pause()
+    assert runner.paused
+    paused_count = len(output)
+    time.sleep(0.2)
+    assert len(output) == paused_count
+    runner.resume()
+    assert not runner.paused
+    deadline = time.monotonic() + 5
+    while len(output) == paused_count and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(output) > paused_count
+    runner.stop()

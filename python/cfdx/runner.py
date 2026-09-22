@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
+import signal
 import subprocess
 import threading
 from typing import Callable, Sequence
@@ -21,8 +23,10 @@ CompletionCallback = Callable[[ProcessResult], None]
 class SolverRunner:
     """Own a local solver subprocess without blocking the application thread.
 
-    stdout and stderr are consumed independently. The second callback argument
-    identifies stderr, allowing a TUI/GUI to preserve stream semantics.
+    stdout and stderr are consumed independently. On POSIX systems the solver
+    is placed in its own process group so pause/resume/stop also apply to MPI
+    children. Windows exposes the lifecycle contract but reports pause/resume
+    as unsupported until a native process-suspension backend is added.
     """
 
     def __init__(self, command: Sequence[str], cwd: Path | None = None) -> None:
@@ -33,11 +37,20 @@ class SolverRunner:
         self._process: subprocess.Popen[str] | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._paused = False
 
     @property
     def running(self) -> bool:
         process = self._process
         return process is not None and process.poll() is None
+
+    @property
+    def paused(self) -> bool:
+        return self._paused and self.running
+
+    @property
+    def supports_pause(self) -> bool:
+        return os.name == "posix"
 
     def start(
         self,
@@ -47,6 +60,9 @@ class SolverRunner:
         with self._lock:
             if self.running:
                 raise RuntimeError("solver is already running")
+            kwargs = {}
+            if os.name == "posix":
+                kwargs["start_new_session"] = True
             self._process = subprocess.Popen(
                 self.command,
                 cwd=self.cwd,
@@ -54,7 +70,9 @@ class SolverRunner:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                **kwargs,
             )
+            self._paused = False
             process = self._process
 
         def consume(stream, is_stderr: bool) -> None:
@@ -95,16 +113,46 @@ class SolverRunner:
         )
         self._thread.start()
 
+    def _send_group_signal(self, sig: int) -> None:
+        process = self._process
+        if process is None or process.poll() is not None:
+            raise RuntimeError("solver is not running")
+        if os.name != "posix":
+            raise NotImplementedError("pause/resume is not supported on Windows")
+        os.killpg(process.pid, sig)
+
+    def pause(self) -> None:
+        if not self.supports_pause:
+            raise NotImplementedError("pause/resume is not supported on Windows")
+        if not self.paused:
+            self._send_group_signal(signal.SIGSTOP)
+            self._paused = True
+
+    def resume(self) -> None:
+        if not self.supports_pause:
+            raise NotImplementedError("pause/resume is not supported on Windows")
+        if not self.paused:
+            return
+        self._send_group_signal(signal.SIGCONT)
+        self._paused = False
+
     def stop(self, timeout: float = 5.0) -> None:
         process = self._process
         if process is None or process.poll() is not None:
             return
-        process.terminate()
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
         try:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            process.kill()
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
             process.wait()
+        self._paused = False
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=timeout)
