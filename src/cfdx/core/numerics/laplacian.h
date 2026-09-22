@@ -73,17 +73,34 @@ inline Field<double, Location::CELL> compute_laplacian(
     const double* gx = grad.component_data(0);
     const double* gy = grad.component_data(1);
     const double* gz = grad.component_data(2);
-    double* out = lap.component_data(0);
 
+    // Interpolate the cell-centred gradient to each face before taking the
+    // divergence. Using the current cell gradient directly would make the
+    // closed-surface sum collapse to zero for every linear field and would be
+    // incorrect for quadratic fields.
+    std::vector<Vec3> face_grad(geometry.face_Sf.size());
+    for (std::size_t f = 0; f < geometry.face_Sf.size(); ++f) {
+        const std::size_t owner = own.owner(f);
+        const Vec3 g_owner{gx[owner], gy[owner], gz[owner]};
+        const auto neighbour = own.neighbour(f);
+        if (neighbour >= 0) {
+            const std::size_t nb = static_cast<std::size_t>(neighbour);
+            const Vec3 g_neighbour{gx[nb], gy[nb], gz[nb]};
+            face_grad[f] = (g_owner + g_neighbour) * 0.5;
+        } else {
+            face_grad[f] = g_owner;
+        }
+    }
+
+    double* out = lap.component_data(0);
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
         for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
             const std::size_t f = cell_faces[k];
-            const Vec3 gf{gx[c], gy[c], gz[c]};
             const Vec3 Sf_cell = (own.owner(f) == c)
                 ? geometry.face_Sf[f]
                 : geometry.face_Sf[f] * (-1.0);
-            sum += gf.dot(Sf_cell);
+            sum += face_grad[f].dot(Sf_cell);
         }
         out[c] = sum / geometry.cell_volumes[c];
     }
