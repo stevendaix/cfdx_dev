@@ -13,7 +13,6 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
-#include <iostream>
 #include <map>
 #include <numeric>
 #include <stdexcept>
@@ -554,22 +553,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // p'_boundary = 0 for a fixed physical pressure boundary.
                 mass_flux(f) += controls.density * dface * p_corr(o);
             }
-        }
-
-        if (iter <= 2) {
-            double max_flux = 0.0;
-            double max_ux = 0.0;
-            double max_p = 0.0;
-            for (std::size_t f = 0; f < mesh.n_faces(); ++f)
-                max_flux = std::max(max_flux, std::abs(mass_flux(f)));
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-                max_ux = std::max(max_ux, std::abs(U.component_data(0)[c]));
-                max_p = std::max(max_p, std::abs(p(c)));
-            }
-            std::cerr << "VMFL004 DEBUG iter=" << iter
-                      << " max_flux=" << max_flux
-                      << " max_Ux=" << max_ux
-                      << " max_p=" << max_p << "\\n";
         }
 
         // Reassemble the final momentum equations after all pressure
