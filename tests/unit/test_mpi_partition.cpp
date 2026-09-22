@@ -260,6 +260,8 @@ int main() {
         plan.recv_cells.resize(size);
         // Keep send/receive cardinalities paired so plan validation passes;
         // the index itself is deliberately outside the field bounds.
+        plan.send_faces[1].push_back(0);
+        plan.recv_faces[1].push_back(0);
         plan.send_cells[1].push_back(1);
         plan.recv_cells[1].push_back(1);
 
