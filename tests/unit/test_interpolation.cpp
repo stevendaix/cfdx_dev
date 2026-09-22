@@ -133,6 +133,62 @@ int main() {
         EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::VANLEER) <= 100.0);
     });
 
+    run_case("apply_limiter_all_tvd_schemes_are_bounded", []() {
+        const LimiterType limiters[] = {
+            LimiterType::MINMOD,
+            LimiterType::VANLEER,
+            LimiterType::SUPERBEE,
+            LimiterType::VAN_ALBADA
+        };
+        for (const auto limiter : limiters) {
+            const double bounded = apply_limiter_tvd(0.0, 1.0, 2.0, limiter);
+            EXPECT_TRUE(std::isfinite(bounded));
+            EXPECT_TRUE(bounded >= 0.0);
+            EXPECT_TRUE(bounded <= 1.0);
+        }
+    });
+
+    run_case("apply_limiter_opposite_gradient_does_not_overshoot", []() {
+        const LimiterType limiters[] = {
+            LimiterType::MINMOD,
+            LimiterType::VANLEER,
+            LimiterType::SUPERBEE,
+            LimiterType::VAN_ALBADA
+        };
+        for (const auto limiter : limiters) {
+            const double bounded = apply_limiter_tvd(10.0, 20.0, 0.0, limiter);
+            EXPECT_TRUE(std::isfinite(bounded));
+            EXPECT_TRUE(bounded >= 10.0);
+            EXPECT_TRUE(bounded <= 20.0);
+        }
+    });
+
+    run_case("interpolate_limited_is_bounded_for_all_limiters", []() {
+        Mesh m = make_two_cell_mesh();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 10.0;
+        f(1) = 30.0;
+
+        auto U = make_constant_velocity(m);
+        auto phi = compute_flux(U, m);
+        auto grad = compute_gradient_gauss(f, m);
+        const LimiterType limiters[] = {
+            LimiterType::MINMOD,
+            LimiterType::VANLEER,
+            LimiterType::SUPERBEE,
+            LimiterType::VAN_ALBADA
+        };
+
+        for (const auto limiter : limiters) {
+            auto face_field = interpolate_cell_to_face(
+                f, m, InterpScheme::LIMITED, &phi, limiter, &grad);
+            EXPECT_TRUE(face_field(1) >= 10.0);
+            EXPECT_TRUE(face_field(1) <= 30.0);
+            EXPECT_TRUE(face_field(2) >= 10.0);
+            EXPECT_TRUE(face_field(2) <= 30.0);
+        }
+    });
+
     run_case("interpolate_vector_dim3", []() {
         Mesh m = make_two_cell_mesh();
         Field<double, Location::CELL> f(2, "U", "m/s", 3);
