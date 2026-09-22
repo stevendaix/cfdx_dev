@@ -1,4 +1,4 @@
-""""Non-blocking local solver runner for CFDX orchestration."""
+"""Non-blocking local solver runner for CFDX orchestration."""
 from __future__ import annotations
 
 from dataclasses import dataclass
