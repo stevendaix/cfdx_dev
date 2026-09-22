@@ -1,14 +1,15 @@
 """Optional PySide6 GUI shell backed by the headless CFDX session."""
 from __future__ import annotations
 
-from .session import CFDXSession, SimulationState
+from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
 
 try:
     from PySide6.QtCore import QObject, Qt, Signal
     from PySide6.QtWidgets import (
-        QApplication, QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
-        QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+        QApplication, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
+        QMainWindow, QPlainTextEdit, QPushButton, QTreeWidget,
+        QTreeWidgetItem, QVBoxLayout, QWidget,
     )
 except ImportError:  # pragma: no cover
     QApplication = None
@@ -29,7 +30,7 @@ if QApplication is not None:
             self.session = session or CFDXSession()
             self.signals = SessionSignals()
             self.setWindowTitle(f"CFDX — {self.session.case.name}")
-            self.resize(1000, 650)
+            self.resize(1100, 650)
 
             central = QWidget()
             layout = QHBoxLayout(central)
@@ -45,9 +46,19 @@ if QApplication is not None:
             controls.addWidget(self.run_button)
             controls.addWidget(self.pause_button)
             controls.addWidget(self.stop_button)
+
+            self.parameters = QFormLayout()
+            self.cfl = QDoubleSpinBox()
+            self.cfl.setRange(0.0, 1.0e6)
+            self.cfl.setDecimals(6)
+            self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
+            self.cfl.valueChanged.connect(self._set_cfl)
+            self.parameters.addRow("CFL", self.cfl)
+
             right = QVBoxLayout()
             right.addWidget(self.status)
             right.addLayout(controls)
+            right.addLayout(self.parameters)
             right.addWidget(self.log)
             layout.addWidget(self.tree, 1)
             container = QWidget()
@@ -84,6 +95,11 @@ if QApplication is not None:
                 SimulationState.RUNNING, SimulationState.PAUSED,
             })
 
+        def _set_cfl(self, value: float) -> None:
+            if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
+                return
+            self.session.edit("cfl", value, ChangeImpact.HOT)
+
         def _run(self) -> None:
             self.session.run()
             self.signals.state_changed.emit(self.session.state)
@@ -102,10 +118,8 @@ if QApplication is not None:
         def render_tui(self) -> str:
             return TuiRenderer.render(self.session)
 
-
     def create_application(argv: list[str] | None = None) -> QApplication:
         return QApplication.instance() or QApplication(argv or [])
-
 
     def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
         app = create_application(argv)
