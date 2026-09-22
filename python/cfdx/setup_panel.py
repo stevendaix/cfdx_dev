@@ -1,77 +1,109 @@
-"""Reusable Qt setup controls for CFDX case physics and boundaries."""
+"""Contract-driven Qt setup editor for CFDX cases."""
 from __future__ import annotations
-
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QFormLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtWidgets import QCheckBox,QComboBox,QDoubleSpinBox,QFormLayout,QHBoxLayout,QLineEdit,QListWidget,QPushButton,QTabWidget,QVBoxLayout,QWidget
+from .boundary_setup import SCALAR_TYPES
 from .case import Case
-
+from .initialization import InitializationMode, InitializationSpec
+from .materials import MaterialSpec
+from .physics_setup import PHYSICS_SPECS,TURBULENCE_MODELS
 
 class CaseSetupPanel(QWidget):
-    changed = Signal()
-    """Edit the public Python Case physics and boundary dictionaries."""
+    changed=Signal()
+    """Thin Qt adapter over the shared headless setup contracts."""
 
-    def __init__(self, case: Case, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.case = case
+    def __init__(self,case: Case,parent: QWidget|None=None)->None:
+        super().__init__(parent); self.case=case
+        tabs=QTabWidget(self)
+        tabs.addTab(self._physics_tab(),"Physics"); tabs.addTab(self._material_tab(),"Materials")
+        tabs.addTab(self._boundary_tab(),"Boundaries"); tabs.addTab(self._initialization_tab(),"Initialization")
+        layout=QVBoxLayout(self); layout.addWidget(tabs)
 
-        self.physics_model = QComboBox()
-        self.physics_model.addItems(["energy", "laminar", "k-epsilon", "k-omega"])
-        self.physics_enabled = QCheckBox("Enabled")
-        self.physics_button = QPushButton("Apply physics")
+    @staticmethod
+    def _real(value: float)->QDoubleSpinBox:
+        box=QDoubleSpinBox(); box.setRange(-1e300,1e300); box.setDecimals(10); box.setValue(value); return box
 
-        physics_form = QFormLayout()
-        physics_form.addRow("Model", self.physics_model)
-        physics_form.addRow("", self.physics_enabled)
-        physics_form.addRow("", self.physics_button)
+    def _physics_tab(self)->QWidget:
+        w=QWidget(); form=QFormLayout(w)
+        self.physics_model=QComboBox(); self.physics_model.addItems([s.key for s in PHYSICS_SPECS])
+        self.physics_enabled=QCheckBox("Enabled"); self.turbulence_model=QComboBox(); self.turbulence_model.addItems(TURBULENCE_MODELS)
+        self.physics_button=QPushButton("Apply physics")
+        form.addRow("Model",self.physics_model); form.addRow("",self.physics_enabled); form.addRow("Turbulence model",self.turbulence_model); form.addRow("",self.physics_button)
+        self.physics_model.currentTextChanged.connect(lambda m:self.turbulence_model.setEnabled(m=="turbulence"))
+        self.physics_button.clicked.connect(self._apply_physics); self.turbulence_model.setEnabled(False)
+        return w
 
-        self.boundary_name = QLineEdit()
-        self.boundary_type = QComboBox()
-        self.boundary_type.addItems(["inlet", "outlet", "wall", "symmetry"])
-        self.boundary_value = QLineEdit()
-        self.boundary_button = QPushButton("Apply boundary")
+    def _material_tab(self)->QWidget:
+        w=QWidget(); form=QFormLayout(w)
+        self.material_name=QLineEdit(); self.material_density=self._real(1.0); self.material_viscosity=self._real(1e-3)
+        self.material_cp=self._real(1000.0); self.material_conductivity=self._real(0.0); self.material_button=QPushButton("Apply material")
+        form.addRow("Name",self.material_name); form.addRow("Density [kg/m³]",self.material_density); form.addRow("Dynamic viscosity [Pa·s]",self.material_viscosity)
+        form.addRow("Cp [J/(kg·K)]",self.material_cp); form.addRow("Conductivity [W/(m·K)]",self.material_conductivity); form.addRow("",self.material_button)
+        self.material_button.clicked.connect(self._apply_material); return w
 
-        boundary_form = QFormLayout()
-        boundary_form.addRow("Name", self.boundary_name)
-        boundary_form.addRow("Type", self.boundary_type)
-        boundary_form.addRow("Value", self.boundary_value)
-        boundary_form.addRow("", self.boundary_button)
+    def _boundary_tab(self)->QWidget:
+        w=QWidget(); form=QFormLayout(w)
+        self.boundary_list=QListWidget(); self.boundary_name=QLineEdit(); self.boundary_type=QComboBox()
+        self.boundary_type.addItems(["inlet","outlet","wall","symmetry","periodic","interface","empty"])
+        self.boundary_scalar_type=QComboBox(); self.boundary_scalar_type.addItems(SCALAR_TYPES)
+        self.boundary_value=self._real(0.0); self.boundary_gradient=self._real(0.0)
+        self.boundary_button=QPushButton("Apply / Update"); self.boundary_remove_button=QPushButton("Remove selected")
+        form.addRow("Existing patches",self.boundary_list); form.addRow("Name",self.boundary_name); form.addRow("Patch type",self.boundary_type)
+        form.addRow("Scalar condition",self.boundary_scalar_type); form.addRow("Value",self.boundary_value); form.addRow("Gradient",self.boundary_gradient)
+        row=QHBoxLayout(); row.addWidget(self.boundary_button); row.addWidget(self.boundary_remove_button); form.addRow("",row)
+        self.boundary_button.clicked.connect(self._apply_boundary); self.boundary_remove_button.clicked.connect(self._remove_boundary)
+        self.boundary_list.currentTextChanged.connect(self._load_boundary); self._refresh_boundaries(); return w
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(physics_form)
-        layout.addLayout(boundary_form)
+    def _initialization_tab(self)->QWidget:
+        w=QWidget(); form=QFormLayout(w); self.initialization_mode=QComboBox()
+        self.initialization_mode.addItems([m.value for m in InitializationMode]); self.initialization_field=QLineEdit("U")
+        self.initialization_value=self._real(0.0); self.initialization_button=QPushButton("Apply initialization")
+        form.addRow("Mode",self.initialization_mode); form.addRow("Field",self.initialization_field); form.addRow("Uniform value",self.initialization_value); form.addRow("",self.initialization_button)
+        self.initialization_button.clicked.connect(self._apply_initialization)
+        self.initialization_mode.currentTextChanged.connect(lambda m:self.initialization_value.setEnabled(m=="uniform")); self.initialization_value.setEnabled(True)
+        return w
 
-        self.physics_button.clicked.connect(self._apply_physics)
-        self.boundary_button.clicked.connect(self._apply_boundary)
+    def set_case(self,case: Case)->None:
+        self.case=case; self._refresh_boundaries()
 
-    def set_case(self, case: Case) -> None:
-        """Rebind the panel to a newly opened case."""
-        self.case = case
-        self.physics_enabled.setChecked(False)
-        self.boundary_name.clear()
-        self.boundary_value.clear()
+    def _apply_physics(self)->None:
+        model=self.physics_model.currentText(); values={"enabled":self.physics_enabled.isChecked()}
+        if model=="turbulence": values["model"]=self.turbulence_model.currentText()
+        self.case.physics[model]=values; self.changed.emit()
 
-    def _apply_physics(self) -> None:
-        model = self.physics_model.currentText()
-        self.case.physics[model] = {"enabled": self.physics_enabled.isChecked()}
-        self.changed.emit()
+    def _apply_material(self)->None:
+        name=self.material_name.text().strip()
+        if not name:return
+        material=MaterialSpec(name,self.material_density.value(),self.material_viscosity.value(),self.material_cp.value(),self.material_conductivity.value())
+        try: material.validate()
+        except ValueError:return
+        self.case.materials[name]={"density":material.density,"dynamic_viscosity":material.dynamic_viscosity,"cp":material.cp,"conductivity":material.conductivity}; self.changed.emit()
 
-    def _apply_boundary(self) -> None:
-        name = self.boundary_name.text().strip()
-        if not name:
-            return
-        self.case.set_boundary(
-            name,
-            type=self.boundary_type.currentText(),
-            value=self.boundary_value.text(),
-        )
-        self.changed.emit()
+    def _apply_boundary(self)->None:
+        name=self.boundary_name.text().strip()
+        if not name:return
+        values={"type":self.boundary_type.currentText()}
+        if values["type"] not in {"periodic","interface","empty"}:
+            values.update({"scalar_type":self.boundary_scalar_type.currentText(),"value":self.boundary_value.value(),"gradient":self.boundary_gradient.value()})
+        self.case.set_boundary(name,**values); self._refresh_boundaries(); self.changed.emit()
+
+    def _remove_boundary(self)->None:
+        item=self.boundary_list.currentItem()
+        if item is not None: self.case.boundaries.pop(item.text(),None); self._refresh_boundaries(); self.changed.emit()
+
+    def _refresh_boundaries(self)->None:
+        self.boundary_list.blockSignals(True); self.boundary_list.clear(); self.boundary_list.addItems(list(self.case.boundaries)); self.boundary_list.blockSignals(False)
+
+    def _load_boundary(self,name: str)->None:
+        if not name:return
+        b=self.case.boundaries.get(name,{})
+        i=self.boundary_type.findText(str(b.get("type","wall"))); self.boundary_type.setCurrentIndex(max(0,i))
+        i=self.boundary_scalar_type.findText(str(b.get("scalar_type","ZERO_GRADIENT"))); self.boundary_scalar_type.setCurrentIndex(max(0,i))
+        self.boundary_value.setValue(float(b.get("value",0.0))); self.boundary_gradient.setValue(float(b.get("gradient",0.0))); self.boundary_name.setText(name)
+
+    def _apply_initialization(self)->None:
+        mode=InitializationMode(self.initialization_mode.currentText()); field=self.initialization_field.text().strip()
+        spec=InitializationSpec(mode,field,self.initialization_value.value() if mode is InitializationMode.UNIFORM else None)
+        try: spec.validate()
+        except ValueError:return
+        self.case.physics["initialization"]={"mode":mode.value,"field":spec.field,"value":spec.value}; self.changed.emit()
