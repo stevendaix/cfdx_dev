@@ -170,3 +170,28 @@ def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
     window._dirty = False
     window.close()
     app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_refuses_to_ignore_dat_when_restart_disabled(tmp_path: Path) -> None:
+    from cfdx.case_io import save_case_with_dat
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-restart-disabled-test"])
+    session = CFDXSession()
+    session.case.execution.solver = sys.executable
+    session.case.execution.restart_option = None
+    source = tmp_path / "solver.dat"
+    source.write_text("restart-state\n", encoding="utf-8")
+    case_path, dat_path = save_case_with_dat(session, tmp_path / "case.cfdx.h5", source)
+
+    window = CFDXMainWindow(session)
+    window._case_path = case_path
+    window._restart_dat = dat_path
+
+    with pytest.raises(ValueError, match="no solver restart option"):
+        window._solver_command()
+
+    window._dirty = False
+    window.close()
+    app.quit()
