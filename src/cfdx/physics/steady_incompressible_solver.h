@@ -648,7 +648,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_equation_residual = final_momentum_residual;
         double momentum_rhs_scale = 1.0;
         for (const auto* eq : {&final_ex, &final_ey, &final_ez}) {
-            for (std::size_t c = 0; c < nc; ++c)
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c)
                 momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
         }
         h.momentum_equation_residual_relative =
