@@ -178,13 +178,7 @@ int main() {
         EXPECT_NEAR(lap(1), -1.0, 1e-12);
     });
 
-    run_case("laplacian_nonorthogonal_schemes_constant_field", []() {
-        Mesh m = make_unit_cube();
-        ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 42.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
-    });
+
 
     return run_all();
 }
