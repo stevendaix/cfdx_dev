@@ -14,6 +14,7 @@ from .mesh_model import read_mesh_catalog
 from .mesh_browser_panel import MeshBrowserPanel
 from .results_series import discover_result_series
 from .results_series_panel import ResultsSeriesPanel
+from .validation import validate_case
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -95,6 +96,8 @@ if QApplication is not None:
             self.pause_action = run_menu.addAction("Pause")
             self.resume_action = run_menu.addAction("Resume")
             self.stop_action = run_menu.addAction("Stop")
+            run_menu.addSeparator()
+            self.check_case_action = run_menu.addAction("Check Case")
 
             self.open_case_action.triggered.connect(self._open_case)
             self.open_case_dat_action.triggered.connect(self._open_case_with_dat)
@@ -108,6 +111,7 @@ if QApplication is not None:
             self.pause_action.triggered.connect(self._pause)
             self.resume_action.triggered.connect(self._resume)
             self.stop_action.triggered.connect(self._stop)
+            self.check_case_action.triggered.connect(self._check_case)
 
         def _build_ui(self) -> None:
             central = QWidget()
@@ -124,11 +128,13 @@ if QApplication is not None:
             self.pause_button = QPushButton("Pause")
             self.resume_button = QPushButton("Resume")
             self.stop_button = QPushButton("Stop")
+            self.check_case_button = QPushButton("Check Case")
             controls = QHBoxLayout()
             controls.addWidget(self.run_button)
             controls.addWidget(self.pause_button)
             controls.addWidget(self.resume_button)
             controls.addWidget(self.stop_button)
+            controls.addWidget(self.check_case_button)
 
             self.parameters = QFormLayout()
             self.cfl = QDoubleSpinBox()
@@ -186,6 +192,7 @@ if QApplication is not None:
             self.pause_button.clicked.connect(self._pause)
             self.resume_button.clicked.connect(self._resume)
             self.stop_button.clicked.connect(self._stop)
+            self.check_case_button.clicked.connect(self._check_case)
             self.signals.state_changed.connect(self._refresh_status)
             self.signals.output.connect(self._queue_output)
             self.signals.metrics_changed.connect(self._refresh_metrics)
@@ -466,6 +473,25 @@ if QApplication is not None:
             self.session.edit("cfl", value, ChangeImpact.HOT)
             self._mark_dirty()
 
+        def _check_case(self) -> bool:
+            try:
+                mesh = self.mesh_browser.catalog
+                report = validate_case(self.session.case, mesh)
+                if report.ok:
+                    message = "Case is valid."
+                    if report.warnings:
+                        message += "\n\nWarnings:\n" + "\n".join(f"- {d.message}" for d in report.warnings)
+                    QMessageBox.information(self, "Check Case", message)
+                    return True
+                details = "\n".join(f"- [{d.code}] {d.message}" for d in report.errors)
+                if report.warnings:
+                    details += "\n\nWarnings:\n" + "\n".join(f"- {d.message}" for d in report.warnings)
+                QMessageBox.critical(self, "Check Case failed", details)
+                return False
+            except (TypeError, ValueError, OSError) as exc:
+                self._show_error("Check Case failed", str(exc))
+                return False
+
         def _run(self) -> None:
             try:
                 if self._dirty:
@@ -483,6 +509,8 @@ if QApplication is not None:
                     if choice is QMessageBox.StandardButton.Save and not self._save_case():
                         return
                 if not self._ensure_case_path():
+                    return
+                if not self._check_case():
                     return
                 controller = self._ensure_controller()
                 controller.start()
