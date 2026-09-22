@@ -28,6 +28,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     window = CFDXMainWindow(session)
     nodes = session.case_tree()
     assert window.tree.topLevelItemCount() == len(nodes)
+    assert window.open_result_button is not None
     assert window.tree.topLevelItem(0).data(0, Qt.ItemDataRole.UserRole) == nodes[0].id
     window.cfl.setValue(12.5)
     assert session.case.numerics["cfl"] == 12.5
@@ -65,6 +66,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
 
     window.controller = FakeController(session)
     window._case_path = tmp_path / "channel.cfdx.h5"
+    window._dirty = False
     window.run_button.click()
     assert session.state is SimulationState.RUNNING
     window.pause_button.click()
@@ -73,6 +75,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     assert session.state is SimulationState.RUNNING
     window.stop_button.click()
     assert session.state is SimulationState.STOPPED
+    window._dirty = False
     window.close()
     app.quit()
 
@@ -108,5 +111,38 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert window._save_case_with_dat()
     assert (tmp_path / "channel.dat").is_file()
 
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_real_execution_controller_roundtrip(tmp_path: Path) -> None:
+    from cfdx.gui import create_application
+
+    solver = tmp_path / "solver.py"
+    solver.write_text(
+        "import sys\n"
+        "print('Iteration 3 Time = 0.5 CFL: 0.4', flush=True)\n"
+        "assert sys.argv[1].endswith('.cfdx.h5')\n",
+        encoding="utf-8",
+    )
+    app = create_application(["cfdx-e2e-test"])
+    session = CFDXSession()
+    session.case.name = "e2e"
+    session.case.execution.solver = sys.executable
+    window = CFDXMainWindow(session)
+    window._case_path = tmp_path / "e2e.cfdx.h5"
+    from cfdx.case_io import save_case
+    save_case(session, window._case_path)
+    window._dirty = False
+
+    window.run_button.click()
+    assert window.controller is not None
+    assert window.controller.runner._thread is not None
+    window.controller.runner._thread.join(timeout=5)
+
+    assert session.state is SimulationState.CONVERGED
+    assert session.iteration == 3
+    assert session.time == pytest.approx(0.5)
     window.close()
     app.quit()
