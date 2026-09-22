@@ -65,5 +65,15 @@ int main() {
         EXPECT_TRUE(q.skewness <= 1.0);
     });
 
+    run_case("internal_face_uses_owner_neighbour_line", []() {
+        Vec3 owner{0.0, 0.0, 0.0};
+        Vec3 neighbour{1.0, 0.0, 0.0};
+        Vec3 face{0.5, 0.25, 0.0};
+        Vec3 Sf{1.0, 0.0, 0.0};
+        auto q = compute_face_quality(face, owner, neighbour, Sf);
+        EXPECT_NEAR(q.non_orthogonality, 0.0, 1e-12);
+        EXPECT_NEAR(q.skewness, 0.25, 1e-12);
+    });
+
     return run_all();
 }
