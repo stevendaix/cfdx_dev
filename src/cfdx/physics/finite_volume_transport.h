@@ -260,11 +260,12 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += diffusion_coefficient * area * bc.gradient;
                 div_phi[o] += F;
             } else {
-                // Zero-gradient upwind boundary: outflow contributes to the
-                // owner diagonal. For inflow, the external state is supplied
-                // by the boundary condition and must not make the diagonal
-                // negative.
-                diag[o] += std::max(F, 0.0);
+                // Zero-gradient means the boundary value equals the owner
+                // value. With bounded steady convection the boundary flux
+                // must therefore cancel exactly with -div(phi)*psi. Using
+                // max(F,0) here incorrectly leaves an artificial inflow sink.
+                // Keep the historical upwind form for the unbounded operator.
+                diag[o] += bounded_convection ? F : std::max(F, 0.0);
                 div_phi[o] += F;
             }
         }
