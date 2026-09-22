@@ -7,6 +7,7 @@ from .output import OutputThrottle
 from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
 from .watcher import ResultWatcher
+from .setup_panel import CaseSetupPanel
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -70,10 +71,12 @@ if QApplication is not None:
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
             self.cfl.valueChanged.connect(self._set_cfl)
             self.parameters.addRow("CFL", self.cfl)
+            self.setup_panel = CaseSetupPanel(self.session.case)
             right = QVBoxLayout()
             right.addWidget(self.status)
             right.addLayout(controls)
             right.addLayout(self.parameters)
+            right.addWidget(self.setup_panel)
             right.addWidget(self.log)
             layout.addWidget(self.tree, 1)
             container = QWidget()
