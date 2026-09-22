@@ -1,6 +1,6 @@
 # CFDX — Suivi des tâches
 
-Dernière mise à jour : 2026-09-21
+Dernière mise à jour : 2026-09-22
 
 La feuille de route opérationnelle est l'issue #34. Les statuts ci-dessous distinguent
 l'existence du code de sa vérification numérique et de sa validation solver-level.
@@ -29,6 +29,7 @@ l'existence du code de sa vérification numérique et de sa validation solver-le
 ## 🟡 En cours — validation / completion
 
 - [ ] M0 complete exit criteria: all mesh families + MMS + conservation + refinement
+- [~] Issue #34 Phase 0 baseline: master/PR/CI snapshot and SPEC→CODE→TEST→VALIDATION matrix established
 - [ ] Validation automation: MMS convergence must use measured solver errors
 - [ ] Validation reports: CI publishes machine-readable JUnit results
 - [ ] Full operator verification on orthogonal/non-orthogonal/skewed meshes
