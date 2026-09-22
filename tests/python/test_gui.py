@@ -1,7 +1,7 @@
 import importlib.util
 import pytest
 
-from cfdx import CFDXSession
+from cfdx import CFDXSession, SimulationState
 from cfdx.gui import CFDXMainWindow
 
 
@@ -11,7 +11,7 @@ def test_gui_module_is_importable() -> None:
 
 def test_gui_without_qt_has_clear_error() -> None:
     if importlib.util.find_spec("PySide6") is not None:
-        pytest.skip("optional GUI dependency is installed")
+        pytest.skip("PySide6 is installed")
     with pytest.raises(RuntimeError, match="PySide6 is required"):
         CFDXMainWindow(CFDXSession())
 
@@ -29,10 +29,10 @@ def test_gui_controls_and_parameters() -> None:
     window.cfl.setValue(12.5)
     assert session.case.numerics["cfl"] == 12.5
     window.run_button.click()
-    assert session.state is session.state.RUNNING
+    assert session.state is SimulationState.RUNNING
     window.pause_button.click()
-    assert session.state is session.state.PAUSED
+    assert session.state is SimulationState.PAUSED
     window.stop_button.click()
-    assert session.state is session.state.STOPPED
+    assert session.state is SimulationState.STOPPED
     window.close()
     app.quit()
