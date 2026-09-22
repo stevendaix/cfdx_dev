@@ -109,6 +109,10 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
 }
 
 static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
+    // Optional metadata must not emit an HDF5 diagnostic when absent.
+    // H5Aopen() reports an error through HDF5's automatic error stack even
+    // though a missing optional attribute is a normal compatibility case.
+    if (H5Aexists(loc_id, name) <= 0) return false;
     hid_t attr = H5Aopen(loc_id, name, H5P_DEFAULT);
     if (attr < 0) return false;
 
