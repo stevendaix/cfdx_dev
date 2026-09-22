@@ -109,12 +109,13 @@ int main() {
     run_case("cg_rejects_nonfinite_system", []() {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1.0);
-        A.push_back(1, 1, std::numeric_limits<double>::quiet_NaN());
-        A.finalize();
-        Vector b(2, 1.0);
-        Vector x(2, 0.0);
-        const auto result = solve_cg(A, b, x);
-        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        bool rejected = false;
+        try {
+            A.push_back(1, 1, std::numeric_limits<double>::quiet_NaN());
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
     });
 
     run_case("cg_dimension_mismatch", []() {
