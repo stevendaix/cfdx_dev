@@ -262,6 +262,8 @@ if QApplication is not None:
                     self.view3d.select(f"patch:{selection.index}")
                 except KeyError:
                     pass
+            if selection.kind == "patch" and selection.name:
+                self.setup_panel.select_mesh_patch(selection.name)
             self.result_status.setText(
                 f"Selected {selection.kind} {selection.index}"
                 + (f" ({selection.name})" if selection.name else "")
