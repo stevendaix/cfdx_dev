@@ -328,15 +328,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             uz(c) = U.component_data(2)[c];
         }
 
-        const auto rx = solve_scalar_equation(ex, ux, {controls.linear_max_iterations,
-                                                         controls.linear_tolerance,
-                                                         controls.coupling.alpha_u});
-        const auto ry = solve_scalar_equation(ey, uy, {controls.linear_max_iterations,
-                                                         controls.linear_tolerance,
-                                                         controls.coupling.alpha_u});
-        const auto rz = solve_scalar_equation(ez, uz, {controls.linear_max_iterations,
-                                                         controls.linear_tolerance,
-                                                         controls.coupling.alpha_u});
+        auto solve_momentum = [&](const ScalarEquation& equation, Vector& solution) {
+            const double rhs_norm = equation.rhs.norm2();
+            const double solution_norm = solution.norm2();
+            // A homogeneous momentum component already at zero is exactly
+            // solved. Avoid sending the zero Krylov problem through a solver
+            // that can report a breakdown on an otherwise valid CFD state.
+            if (rhs_norm <= controls.linear_tolerance &&
+                solution_norm <= controls.linear_tolerance) {
+                return cfdx::core::SolverResult{
+                    cfdx::core::SolverStatus::CONVERGED, 0, rhs_norm, rhs_norm};
+            }
+            return solve_scalar_equation(equation, solution, {
+                controls.linear_max_iterations,
+                controls.linear_tolerance,
+                controls.coupling.alpha_u});
+        };
+
+        const auto rx = solve_momentum(ex, ux);
+        const auto ry = solve_momentum(ey, uy);
+        const auto rz = solve_momentum(ez, uz);
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
             if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
