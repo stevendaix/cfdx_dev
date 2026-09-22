@@ -7,7 +7,6 @@ from .output import OutputThrottle
 from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
 from .watcher import ResultWatcher
-from .setup_panel import CaseSetupPanel
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -23,6 +22,8 @@ except ImportError:  # pragma: no cover
 
 
 if QApplication is not None:
+    from .setup_panel import CaseSetupPanel
+
     class SessionSignals(QObject):
         state_changed = Signal(object)
         output = Signal(str, bool)
