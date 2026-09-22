@@ -9,6 +9,11 @@
 #include <iostream>
 #include <limits>
 
+using cfdx::core::FunctionalLinearOperator;
+using cfdx::core::MatrixFreeVcyclePreconditioner;
+using cfdx::core::SparseMatrix;
+using cfdx::core::Vector;
+
 
 
 static SparseMatrix make_poisson_1d(std::size_t n) {
