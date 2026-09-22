@@ -138,8 +138,17 @@ void check_case(std::size_t n)
     c.pressure_reference_value = pin - (pin-pout)/(2.0*static_cast<double>(n));
 
     const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
-    if (!result.converged)
+    if (!result.converged) {
+        const auto& h = result.history.back();
+        std::cerr << "VMFL004 convergence iter=" << h.iteration
+                  << " momentum=" << h.momentum_residual
+                  << " pressure=" << h.pressure_residual
+                  << " momentum_eq=" << h.momentum_equation_residual
+                  << " continuity_inf=" << h.continuity_linf
+                  << " du=" << h.velocity_change_inf
+                  << " dp=" << h.pressure_change_inf << "\\n";
         throw std::runtime_error("VMFL004 coupled solver did not converge");
+    }
 
     const auto geometry = build_fv_geometry(mesh);
     double max_error = 0.0;
