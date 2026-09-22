@@ -52,27 +52,35 @@ Mesh make_channel(std::size_t n, double height, double length)
     }
 
     m.ownership().resize(m.n_faces());
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        m.ownership().set_owner(internal[i], i);
+        m.ownership().set_neighbour(internal[i], static_cast<int>(i + 1));
+    }
+    for (const auto f : bottom) {
+        m.ownership().set_owner(f, 0);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    for (const auto f : top) {
+        m.ownership().set_owner(f, n - 1);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
     for (std::size_t i = 0; i < n; ++i) {
-        const std::size_t b = 8 * i;
+        m.ownership().set_owner(x0[i], i);
+        m.ownership().set_neighbour(x0[i], FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(x1[i], i);
+        m.ownership().set_neighbour(x1[i], FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(z0[i], i);
+        m.ownership().set_neighbour(z0[i], FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(z1[i], i);
+        m.ownership().set_neighbour(z1[i], FaceOwnership::BOUNDARY);
+    }
+    for (std::size_t i = 0; i < n; ++i) {
         const std::vector<std::size_t> faces = {
             i == 0 ? bottom[0] : internal[i-1],
             i + 1 == n ? top[0] : internal[i],
             x0[i], x1[i], z0[i], z1[i]
         };
         m.cells().push_cell(faces);
-        for (const auto f : faces) {
-            const bool is_internal =
-                std::find(internal.begin(), internal.end(), f) != internal.end();
-            if (is_internal) {
-                if (m.ownership().owner(f) != FaceOwnership::UNASSIGNED)
-                    continue;
-                m.ownership().set_owner(f, i);
-                m.ownership().set_neighbour(f, static_cast<int>(i + 1));
-            } else {
-                m.ownership().set_owner(f, i);
-                m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
-            }
-        }
     }
 
     Patch p;
