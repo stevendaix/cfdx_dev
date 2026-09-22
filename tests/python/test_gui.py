@@ -32,10 +32,15 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     assert window.tree.topLevelItem(0).data(0, Qt.ItemDataRole.UserRole) == nodes[0].id
     window.cfl.setValue(12.5)
     assert session.case.numerics["cfl"] == 12.5
+    window.setup_panel.physics_model.setCurrentText("incompressible")
+    window.setup_panel.physics_enabled.setChecked(True)
+    window.setup_panel.physics_button.click()
     window.setup_panel.physics_model.setCurrentText("energy")
     window.setup_panel.physics_enabled.setChecked(True)
     window.setup_panel.physics_button.click()
     assert session.case.physics["energy"]["enabled"] is True
+    window.setup_panel.material_name.setText("water")
+    window.setup_panel.material_button.click()
     window.setup_panel.boundary_name.setText("inlet")
     window.setup_panel.boundary_type.setCurrentText("inlet")
     window.setup_panel.boundary_value.setText("1.0")
