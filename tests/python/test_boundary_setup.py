@@ -1,13 +1,12 @@
 import pytest
-from cfdx.boundary_setup import SCALAR_TYPES, boundary_defaults, scalar_fields_for_boundary_type
+from cfdx.boundary_setup import fields_for_field, validate_boundary_definition
 
-def test_scalar_boundary_contract_matches_cpp_types():
-    assert SCALAR_TYPES==("FIXED_VALUE","ZERO_GRADIENT","FIXED_GRADIENT")
-    fields={f.name:f for f in fields_for_boundary_type("inlet")}
-    assert fields["value"].default==0.0
-    assert fields["gradient"].kind.value=="real"
+def test_velocity_boundary_has_typed_components():
+    fields={f.name:f for f in fields_for_field("velocity")}
+    assert fields["value_x"].unit=="m/s"
 
-def test_boundary_defaults_are_type_specific():
-    assert boundary_defaults("periodic")=={}
-    assert set(boundary_defaults("wall"))=={"type","value","gradient"}
-    with pytest.raises(KeyError): fields_for_boundary_type("bogus")
+def test_unknown_boundary_type_is_rejected():
+    with pytest.raises(KeyError): validate_boundary_definition({"type":"not-supported"})
+
+def test_velocity_boundary_rejects_unknown_mode():
+    with pytest.raises(ValueError): validate_boundary_definition({"type":"inlet","velocity_type":"ROBIN"},known_fields=("velocity",))
