@@ -1,0 +1,167 @@
+"""Optional PySide6 GUI shell backed by the headless CFDX session."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from .output import OutputThrottle
+from .session import CFDXSession, SimulationState, ChangeImpact
+from .tui import TuiRenderer
+from .watcher import ResultWatcher
+
+try:
+    from PySide6.QtCore import QObject, QTimer, Qt, Signal
+    from PySide6.QtWidgets import (
+        QApplication, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
+        QMainWindow, QPlainTextEdit, QPushButton, QTreeWidget,
+        QTreeWidgetItem, QVBoxLayout, QWidget,
+    )
+except ImportError:  # pragma: no cover
+    QApplication = None
+    QObject = object
+    Signal = None
+
+
+if QApplication is not None:
+    class SessionSignals(QObject):
+        state_changed = Signal(object)
+        output = Signal(str, bool)
+        results_changed = Signal()
+
+    class CFDXMainWindow(QMainWindow):
+        """Fluent-like shell with shared case tree, controls and parameters."""
+
+        def __init__(
+            self,
+            session: CFDXSession | None = None,
+            results_dir: Path | None = None,
+        ) -> None:
+            super().__init__()
+            self.session = session or CFDXSession()
+            self.signals = SessionSignals()
+            self.setWindowTitle(f"CFDX — {self.session.case.name}")
+            self.resize(1100, 650)
+            self._output_throttle = OutputThrottle(self._append_output_now)
+            self._flush_timer = QTimer(self)
+            self._flush_timer.setInterval(50)
+            self._flush_timer.timeout.connect(self._output_throttle.flush)
+            self._flush_timer.start()
+            self._result_watcher = (
+                ResultWatcher(results_dir, self.signals.results_changed.emit)
+                if results_dir is not None else None
+            )
+            central = QWidget()
+            layout = QHBoxLayout(central)
+            self.tree = QTreeWidget()
+            self.tree.setHeaderLabels(["Case"])
+            self.log = QPlainTextEdit()
+            self.log.setReadOnly(True)
+            self.status = QLabel()
+            self.run_button = QPushButton("Run")
+            self.pause_button = QPushButton("Pause")
+            self.stop_button = QPushButton("Stop")
+            controls = QHBoxLayout()
+            controls.addWidget(self.run_button)
+            controls.addWidget(self.pause_button)
+            controls.addWidget(self.stop_button)
+            self.parameters = QFormLayout()
+            self.cfl = QDoubleSpinBox()
+            self.cfl.setRange(0.0, 1.0e6)
+            self.cfl.setDecimals(6)
+            self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
+            self.cfl.valueChanged.connect(self._set_cfl)
+            self.parameters.addRow("CFL", self.cfl)
+            right = QVBoxLayout()
+            right.addWidget(self.status)
+            right.addLayout(controls)
+            right.addLayout(self.parameters)
+            right.addWidget(self.log)
+            layout.addWidget(self.tree, 1)
+            container = QWidget()
+            container.setLayout(right)
+            layout.addWidget(container, 3)
+            self.setCentralWidget(central)
+            self.signals.state_changed.connect(self._refresh_status)
+            self.signals.output.connect(self._queue_output)
+            self.signals.results_changed.connect(self.refresh)
+            self.run_button.clicked.connect(self._run)
+            self.pause_button.clicked.connect(self._pause)
+            self.stop_button.clicked.connect(self._stop)
+            self.refresh()
+            if self._result_watcher is not None:
+                self._result_watcher.start()
+
+        def refresh(self) -> None:
+            self.tree.clear()
+            for node in self.session.case_tree():
+                item = QTreeWidgetItem([node.label])
+                item.setData(0, Qt.ItemDataRole.UserRole, node.id)
+                self.tree.addTopLevelItem(item)
+            self._refresh_status(self.session.state)
+
+        def _refresh_status(self, state: SimulationState) -> None:
+            self.status.setText(
+                f"State: {state.value} | Iteration: {self.session.iteration} | "
+                f"Time: {self.session.time:g}"
+            )
+            self.run_button.setEnabled(state in {
+                SimulationState.CREATED, SimulationState.READY,
+                SimulationState.PAUSED, SimulationState.STOPPED,
+            })
+            self.pause_button.setEnabled(state is SimulationState.RUNNING)
+            self.stop_button.setEnabled(state in {
+                SimulationState.RUNNING, SimulationState.PAUSED,
+            })
+
+        def _set_cfl(self, value: float) -> None:
+            if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
+                return
+            self.session.edit("cfl", value, ChangeImpact.HOT)
+
+        def _run(self) -> None:
+            self.session.run()
+            self.signals.state_changed.emit(self.session.state)
+
+        def _pause(self) -> None:
+            self.session.pause()
+            self.signals.state_changed.emit(self.session.state)
+
+        def _stop(self) -> None:
+            self.session.stop()
+            self.signals.state_changed.emit(self.session.state)
+
+        def _queue_output(self, line: str, is_stderr: bool = False) -> None:
+            self._output_throttle.push(line, is_stderr)
+
+        def append_output(self, line: str, is_stderr: bool = False) -> None:
+            self._queue_output(line, is_stderr)
+
+        def _append_output_now(self, line: str, is_stderr: bool) -> None:
+            self.log.appendPlainText(("[stderr] " if is_stderr else "") + line)
+
+        def render_tui(self) -> str:
+            return TuiRenderer.render(self.session)
+
+        def closeEvent(self, event) -> None:
+            self._flush_timer.stop()
+            if self._result_watcher is not None:
+                self._result_watcher.stop()
+            super().closeEvent(event)
+
+    def create_application(argv: list[str] | None = None) -> QApplication:
+        return QApplication.instance() or QApplication(argv or [])
+
+    def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
+        app = create_application(argv)
+        window = CFDXMainWindow(session)
+        window.show()
+        return app.exec()
+else:
+    class CFDXMainWindow:
+        def __init__(self, session: CFDXSession | None = None, results_dir: Path | None = None) -> None:
+            raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def create_application(argv: list[str] | None = None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
