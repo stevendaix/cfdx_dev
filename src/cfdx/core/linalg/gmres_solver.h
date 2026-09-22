@@ -26,7 +26,7 @@ inline SolverResult solve_gmres(
     int restart = 30,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    const Preconditioner* preconditioner = nullptr,
+    Preconditioner* preconditioner = nullptr,
     KrylovControls controls = {})
 {
     SolverResult result;
@@ -39,7 +39,16 @@ inline SolverResult solve_gmres(
     const std::size_t n = op.size;
     int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
     current_restart = std::min<int>(current_restart, static_cast<int>(n));
+    if (!std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
     const double b_norm = b.norm2();
+    if (!std::isfinite(b_norm)) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
     const double tol = tolerance * std::max(b_norm, 1.0);
 
     GmresWorkspace w;
@@ -213,7 +222,7 @@ inline SolverResult solve_gmres(
     int restart = 30,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    const Preconditioner* preconditioner = nullptr) {
+    Preconditioner* preconditioner = nullptr) {
     LinearOperator op;
     op.size = A.n_rows();
     op.apply = [&A](const Vector& in, Vector& out) {
@@ -228,6 +237,11 @@ inline SolverResult solve_gmres(
             out(i) = sum;
         }
     };
+    if (preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
     return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner);
 }
 
