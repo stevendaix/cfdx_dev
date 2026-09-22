@@ -130,7 +130,7 @@ def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
     window._restart_dat = dat_path
     command = window._solver_command()
 
-    assert command[-3:] == ["--restart", str(dat_path)]
+    assert command[-2:] == ["--restart", str(dat_path)]
     window._dirty = False
     window.close()
     app.quit()
