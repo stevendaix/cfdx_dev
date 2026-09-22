@@ -194,6 +194,9 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"VMFL003--005 parameters and targets are taken from the Ansys verification material; "
         r"VMFL004 and VMFL005 also have exact analytical solutions in the CFDX reference suite.",
         r"\section{Executable CFDX results}",
+        r"\textbf{Validation gate:} the report generator fails its process status "
+        r"when a required executable is missing or returns a non-zero status. "
+        r"The generated PDF remains available as a diagnostic artifact.",
     ]
 
     if plot_name:
@@ -212,7 +215,10 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for name, rc in suite_status.items():
-        lines.append(f"\\texttt{{{latex_escape(name)}}} & {rc}\\\\")
+        state = "PASS" if rc == 0 else ("MISSING" if rc == -1 else "FAIL")
+        lines.append(
+            f"\\texttt{{{latex_escape(name)}}} & {rc} ({state})\\\\"
+        )
     lines += [r"\bottomrule", r"\end{longtable}"]
 
     if ghia:
@@ -306,16 +312,43 @@ VALIDATION_EXECUTABLES = [
 ]
 
 def run_validation_suite(build_dir: Path, output_dir: Path) -> dict[str, int]:
+    """Run the executable validation suite and preserve failures for the report.
+
+    A missing executable is a validation failure, not a skipped case.  The
+    previous implementation generated a PDF and returned success even when
+    one or more validation executables were absent or failed, which could
+    hide regressions in CI.
+    """
     status: dict[str, int] = {}
     for name in VALIDATION_EXECUTABLES:
         exe = build_dir / name
         if not exe.exists():
             status[name] = -1
-            (output_dir / f"{name}.log").write_text("executable not found", encoding="utf-8")
+            (output_dir / f"{name}.log").write_text(
+                "VALIDATION_GATE: executable not found\n", encoding="utf-8"
+            )
             continue
         rc, _ = run_test(exe, output_dir / f"{name}.log")
         status[name] = rc
     return status
+
+
+def validation_gate_status(status: dict[str, int]) -> dict[str, object]:
+    """Return a machine-readable gate summary.
+
+    Zero is the only passing process status.  Missing executables are kept
+    distinct from runtime failures so the generated report can identify
+    infrastructure/build gaps rather than silently treating them as skips.
+    """
+    missing = sorted(name for name, rc in status.items() if rc == -1)
+    failed = sorted(name for name, rc in status.items() if rc not in (-1, 0))
+    passed = sorted(name for name, rc in status.items() if rc == 0)
+    return {
+        "status": "PASS" if not missing and not failed else "FAIL",
+        "passed": passed,
+        "failed": failed,
+        "missing": missing,
+    }
 
 
 def main() -> int:
@@ -331,6 +364,7 @@ def main() -> int:
 
     logs: dict[str, tuple[int, str]] = {}
     suite_status = run_validation_suite(args.build_dir, args.output_dir)
+    gate = validation_gate_status(suite_status)
     ref_exe = args.build_dir / "test_fluent_vmfl_reference"
     if ref_exe.exists():
         logs["test_fluent_vmfl_reference"] = run_test(ref_exe, args.output_dir / "test_fluent_vmfl_reference.log")
@@ -355,9 +389,18 @@ def main() -> int:
         logs["test_ghia_cavity"] = (-1, "executable not found")
 
     (args.output_dir / "results.json").write_text(
-        json.dumps({"generated": generated, "ghia": ghia, "model_results": model_results,
-                    "test_status": {k: v[0] for k, v in logs.items()},
-                    "validation_suite_status": suite_status}, indent=2),
+        json.dumps({
+            "generated": generated,
+            "ghia": ghia,
+            "model_results": model_results,
+            "test_status": {k: v[0] for k, v in logs.items()},
+            "validation_suite_status": suite_status,
+            "validation_gate": gate,
+            "fluent_reference_oracle": {
+                "status": "PASS" if logs["test_fluent_vmfl_reference"][0] == 0 else "FAIL",
+                "is_solver_validation": False,
+            },
+        }, indent=2),
         encoding="utf-8",
     )
 
@@ -379,6 +422,15 @@ def main() -> int:
     pdf = args.output_dir / "cfdx_validation_report.pdf"
     if not pdf.exists():
         raise RuntimeError(f"LaTeX completed without creating {pdf}")
+
+    # The PDF is still produced on failure so the diagnostic evidence is
+    # available to CI artifacts.  The process status must nevertheless fail.
+    if gate["status"] != "PASS":
+        print(
+            "VALIDATION_GATE: FAIL "
+            f"(missing={gate['missing']}, failed={gate['failed']})"
+        )
+        return 1
     return 0
 
 

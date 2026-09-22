@@ -43,3 +43,26 @@ The report intentionally distinguishes:
 A reference formula is therefore never promoted to a CFDX solver PASS.
 
 The current report contains the full VMFL001--VMFL078 matrix and executable results for the validation tests available in the build. As additional Fluent-aligned cases are implemented, the same reporting interface should consume their numerical result records rather than adding ad-hoc report code.
+
+## GitHub validation campaign
+
+The **CFDX VMFL validation campaign** workflow supports two triggers:
+
+- **Manual**: GitHub Actions → workflow → **Run workflow**.
+- **PR label**: add the **`validation`** label to a pull request. The campaign is then launched automatically for that PR.
+
+The label trigger is deliberately narrow: adding any other label does not run the campaign. This makes `validation` an explicit request for the expensive full numerical campaign rather than part of ordinary PR CI.
+
+The workflow builds the current validation suite, runs `scripts/validation_report.py`, and publishes the complete evidence as workflow artifacts.
+
+The artifact contains:
+
+- `cfdx_validation_report.pdf` — human-readable report;
+- `results.json` — machine-readable solver/reference status and validation gate;
+- executable stdout/stderr logs;
+- generated figures and LaTeX source;
+- CTest evidence from the build.
+
+A workflow run is intentionally diagnostic as well as gating: missing validation executables and non-zero solver exits remain visible in the report, while the workflow uploads the evidence before enforcing the validation gate.
+
+Use the `validation` label on a PR when a complete campaign is needed to investigate or validate a solver change. The campaign should not be interpreted as a solver PASS merely because the reference oracle succeeds.
