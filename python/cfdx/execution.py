@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .metrics import SolverMetrics, SolverMetricsParser
+from .monitors import MonitorSample, MonitorSeries
 from .runner import ProcessResult, SolverRunner
 from .session import CFDXSession, SimulationState
 
@@ -24,6 +25,7 @@ class ExecutionController:
         self.runner = runner
         self.parser = SolverMetricsParser()
         self.latest_metrics: SolverMetrics | None = None
+        self.monitor_series = MonitorSeries("solver", [])
         self.error: ExecutionError | None = None
         self.on_output: Callable[[str, bool], None] | None = None
         self.on_metrics: Callable[[SolverMetrics], None] | None = None
@@ -43,6 +45,7 @@ class ExecutionController:
         self.session.run()
         self.error = None
         self.latest_metrics = None
+        self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
         self.runner.start(self._output, self._complete, restart_path=path, restart_option=restart_option)
 
@@ -50,6 +53,7 @@ class ExecutionController:
         self.session.run()
         self.error = None
         self.latest_metrics = None
+        self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
         self.runner.start(self._output, self._complete)
 
@@ -61,6 +65,13 @@ class ExecutionController:
                 self.session.iteration = metrics.iteration
             if metrics.time is not None:
                 self.session.time = metrics.time
+            if metrics.iteration is not None or metrics.time is not None or metrics.residuals:
+                iteration = metrics.iteration if metrics.iteration is not None else (self.monitor_series.samples[-1].iteration if self.monitor_series.samples else 0)
+                time_value = metrics.time if metrics.time is not None else (self.monitor_series.samples[-1].time if self.monitor_series.samples else 0.0)
+                values = {name: value for name, value in metrics.residuals}
+                if metrics.cfl is not None:
+                    values["CFL"] = metrics.cfl
+                self.monitor_series.append(MonitorSample(iteration, time_value, values))
             if self.on_metrics:
                 self.on_metrics(metrics)
         if self.on_output:
