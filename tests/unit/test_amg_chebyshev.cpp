@@ -69,6 +69,46 @@ static bool check_amg(const SparseMatrix& A, Vector rhs, double max_ratio) {
     return std::isfinite(ratio) && ratio < max_ratio;
 }
 
+static SparseMatrix make_anisotropic_diffusion_2d(std::size_t nx, std::size_t ny,
+                                                   double ax, double ay) {
+    const std::size_t n = nx * ny;
+    SparseMatrix A(n, n);
+    for (std::size_t y = 0; y < ny; ++y) {
+        for (std::size_t x = 0; x < nx; ++x) {
+            const std::size_t i = y * nx + x;
+            double diag = 0.0;
+            if (x > 0) { A.push_back(i, i - 1, -ax); diag += ax; }
+            if (x + 1 < nx) { A.push_back(i, i + 1, -ax); diag += ax; }
+            if (y > 0) { A.push_back(i, i - nx, -ay); diag += ay; }
+            if (y + 1 < ny) { A.push_back(i, i + nx, -ay); diag += ay; }
+            A.push_back(i, i, diag);
+        }
+    }
+    A.finalize();
+    return A;
+}
+
+// Finite-volume-style cell-centred diffusion assembly: each internal face
+// contributes equal/opposite off-diagonal flux coefficients to its two cells.
+static SparseMatrix make_fvm_diffusion_2d(std::size_t nx, std::size_t ny,
+                                           double kx, double ky) {
+    const std::size_t n = nx * ny;
+    SparseMatrix A(n, n);
+    for (std::size_t y = 0; y < ny; ++y) {
+        for (std::size_t x = 0; x < nx; ++x) {
+            const std::size_t i = y * nx + x;
+            double diag = 0.0;
+            if (x > 0) { A.push_back(i, i - 1, -kx); diag += kx; }
+            if (x + 1 < nx) { A.push_back(i, i + 1, -kx); diag += kx; }
+            if (y > 0) { A.push_back(i, i - nx, -ky); diag += ky; }
+            if (y + 1 < ny) { A.push_back(i, i + nx, -ky); diag += ky; }
+            A.push_back(i, i, diag);
+        }
+    }
+    A.finalize();
+    return A;
+}
+
 int main() {
     using namespace cfdx::core;
 
@@ -141,6 +181,48 @@ int main() {
     if (!check_amg(poisson2d, rhs2d, 0.95)) {
         std::cerr << "2D Poisson AMG residual reduction failed\\n";
         return 10;
+    }
+
+    const SparseMatrix anisotropic = make_anisotropic_diffusion_2d(16, 16, 1.0, 1000.0);
+    Vector rhs_aniso(256, 1.0);
+    if (!check_amg(anisotropic, rhs_aniso, 0.99)) {
+        std::cerr << "Strongly anisotropic AMG regression failed\\n";
+        return 12;
+    }
+
+    // Exercise repeated V-cycles rather than only a single residual reduction.
+    FunctionalLinearOperator aniso_op(
+        anisotropic.n_rows(),
+        [&anisotropic](const Vector& x, Vector& y) {
+            const auto result = anisotropic.matvec(x);
+            for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
+        });
+    MatrixFreeVcyclePreconditioner repeated(aniso_op);
+    if (!repeated.setup(anisotropic)) return 13;
+    Vector repeated_rhs(256, 1.0);
+    Vector repeated_x(256, 0.0);
+    const double initial = std::sqrt(256.0);
+    double previous = initial;
+    for (std::size_t cycle = 0; cycle < 4; ++cycle) {
+        Vector correction;
+        if (!repeated.apply(repeated_rhs, correction)) return 14;
+        for (std::size_t i = 0; i < repeated_x.size(); ++i) repeated_x(i) += correction(i);
+        const auto residual = anisotropic.matvec(repeated_x);
+        double norm2 = 0.0;
+        for (std::size_t i = 0; i < repeated_rhs.size(); ++i) {
+            const double ri = repeated_rhs(i) - residual[i];
+            norm2 += ri * ri;
+        }
+        const double current = std::sqrt(norm2);
+        if (!std::isfinite(current) || current >= previous) return 15;
+        previous = current;
+    }
+
+    const SparseMatrix fvm_diffusion = make_fvm_diffusion_2d(16, 16, 1.0, 20.0);
+    Vector rhs_fvm(256, 1.0);
+    if (!check_amg(fvm_diffusion, rhs_fvm, 0.95)) {
+        std::cerr << "FVM diffusion AMG regression failed\\n";
+        return 16;
     }
 
     // Duplicate diagonal entries are a normal FVM assembly pattern and must
