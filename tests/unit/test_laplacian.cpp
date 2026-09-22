@@ -115,7 +115,8 @@ int main() {
         EXPECT_TRUE(laplacian_scheme_from_string("orthogonal") == LaplacianScheme::ORTHOGONAL);
         EXPECT_TRUE(laplacian_scheme_from_string("corrected") == LaplacianScheme::CORRECTED);
         EXPECT_TRUE(laplacian_scheme_from_string("limited") == LaplacianScheme::LIMITED);
-        EXPECT_TRUE(laplacian_scheme_from_string("uncorrected") == LaplacianScheme::UNCORRECTED);\n        EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
+        EXPECT_TRUE(laplacian_scheme_from_string("uncorrected") == LaplacianScheme::UNCORRECTED);
+        EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
     });
 
     return run_all();
