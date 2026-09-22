@@ -235,6 +235,7 @@ void check_case(std::size_t nz)
 
     IncompressibleSolverControls c;
     c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+    c.active_velocity_components = {false, false, true};
     c.convergence.max_iterations = 500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-10;
