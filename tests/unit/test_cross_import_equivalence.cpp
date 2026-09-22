@@ -14,7 +14,6 @@
 namespace {
 
 using cfdx::core::Mesh;
-using cfdx::core::Vec3;
 
 void write_file(const std::filesystem::path& path, const std::string& text) {
     std::ofstream out(path);
