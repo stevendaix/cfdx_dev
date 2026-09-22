@@ -118,18 +118,12 @@ int main() {
         EXPECT_TRUE(face_field(3) == 30.0);
     });
 
-    run_case("interpolate_limited_scalar", []() {
+    run_case("interpolate_limited_requires_gradient_and_flux", []() {
         Mesh m = make_two_cell_mesh();
         ScalarCellField f(2, "p", "Pa", 1);
         f(0) = 10.0;
         f(1) = 30.0;
-
-        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LIMITED);
-        // Limited = clamp(linear, min, max) = linear ici
-        EXPECT_TRUE(face_field(0) == 10.0);
-        EXPECT_TRUE(face_field(1) == 20.0);
-        EXPECT_TRUE(face_field(2) == 20.0);
-        EXPECT_TRUE(face_field(3) == 30.0);
+        EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::LIMITED), std::runtime_error);
     });
 
     run_case("apply_limiter_bounds_local_extrema", []() {
