@@ -58,6 +58,30 @@ Mesh make_channel(std::size_t n)
     }
 
     m.ownership().resize(m.n_faces());
+
+    // Ownership is a property of each face, not of each cell incidence.
+    // Internal face i is shared by cells i and i+1, so its owner/neighbour
+    // must be assigned once. Reassigning it while visiting the neighbour
+    // would overwrite the canonical owner and corrupt the topology.
+    m.ownership().set_owner(bottom[0], 0);
+    m.ownership().set_neighbour(bottom[0], FaceOwnership::BOUNDARY);
+    m.ownership().set_owner(top[0], n - 1);
+    m.ownership().set_neighbour(top[0], FaceOwnership::BOUNDARY);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t boundary_faces[] = {
+            x0[i], x1[i], z0[i], z1[i]
+        };
+        for (const auto f : boundary_faces) {
+            m.ownership().set_owner(f, i);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+    }
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        m.ownership().set_owner(internal[i], i);
+        m.ownership().set_neighbour(internal[i], static_cast<std::int64_t>(i + 1));
+    }
+
     std::vector<std::vector<std::size_t>> cell_faces(n);
     for (std::size_t i = 0; i < n; ++i) {
         cell_faces[i] = {
@@ -65,15 +89,6 @@ Mesh make_channel(std::size_t n)
             i + 1 == n ? top[0] : internal[i],
             x0[i], x1[i], z0[i], z1[i]
         };
-    }
-    for (std::size_t i = 0; i < n; ++i) {
-        for (const auto f : cell_faces[i]) {
-            m.ownership().set_owner(f, i);
-            const bool is_internal =
-                std::find(internal.begin(), internal.end(), f) != internal.end();
-            m.ownership().set_neighbour(
-                f, is_internal ? static_cast<int>(i + 1) : FaceOwnership::BOUNDARY);
-        }
     }
     for (const auto& faces : cell_faces) m.cells().push_cell(faces);
 
