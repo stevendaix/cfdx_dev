@@ -66,6 +66,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
 
     window.controller = FakeController(session)
     window._case_path = tmp_path / "channel.cfdx.h5"
+    window._dirty = False
     window.run_button.click()
     assert session.state is SimulationState.RUNNING
     window.pause_button.click()
@@ -74,6 +75,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     assert session.state is SimulationState.RUNNING
     window.stop_button.click()
     assert session.state is SimulationState.STOPPED
+    window._dirty = False
     window.close()
     app.quit()
 
