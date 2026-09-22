@@ -39,10 +39,23 @@ def _sort_key(path: Path) -> tuple[float,int,str]:
     value=float(values[-1]) if values else float("inf")
     return (value,0,path.name)
 
-def discover_result_series(directory: Path) -> ResultSeries:
-    """Discover completed VTK-family files in deterministic timestep order."""
+def discover_result_series(directory: Path, *, inspect_fields: bool = False) -> ResultSeries:
+    """Discover VTK-family files; optionally inspect field names through PyVista."""
     directory=Path(directory)
     if not directory.is_dir(): raise NotADirectoryError(directory)
     paths=sorted((p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _SUPPORTED),key=_sort_key)
-    frames=tuple(ResultFrame(p,i,_sort_key(p)[0] if _sort_key(p)[0] != float("inf") else None) for i,p in enumerate(paths))
+    frames=[]
+    for i,p in enumerate(paths):
+        if p.stat().st_size == 0:
+            continue
+        fields=()
+        if inspect_fields:
+            try:
+                import pyvista as pv
+                dataset=pv.read(p)
+                fields=tuple(sorted(set(dataset.point_data.keys()) | set(dataset.cell_data.keys())))
+            except (ImportError,OSError,RuntimeError,ValueError):
+                fields=()
+        frames.append(ResultFrame(p,len(frames),_sort_key(p)[0] if _sort_key(p)[0] != float("inf") else None,True,fields))
+    frames=tuple(frames)
     return ResultSeries(frames)
