@@ -87,10 +87,12 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc,true);
-        // Six unit-cube boundary faces contribute 12 through diffusion. A
-        // bounded zero-gradient convective flux must add no artificial sink.
-        EXPECT_NEAR(eq.diagonal[0],12.0,1e-12);
+        std::vector<double> extra_diagonal{10.0};
+        const auto eq = assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal);
+        // The positive diagonal is supplied independently. A bounded
+        // zero-gradient convective flux must not add an artificial sink.
+        EXPECT_NEAR(eq.diagonal[0],10.0,1e-12);
     });
 
     run_case("scalar_constant_state_is_exactly_preserved", [] {
