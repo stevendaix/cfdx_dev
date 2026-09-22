@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace cfdx {
 namespace core {
@@ -32,38 +33,69 @@ public:
 
     explicit SparseMatrix(std::size_t n_rows, std::size_t n_cols)
         : n_rows_(n_rows), n_cols_(n_cols),
-          row_offsets_(n_rows + 1, 0) {}
+          row_offsets_(n_rows + 1, 0), finalized_(false) {
+        if (n_rows > std::numeric_limits<Index>::max() ||
+            n_cols > std::numeric_limits<Index>::max()) {
+            throw std::overflow_error("SparseMatrix: dimensions exceed CSR index range");
+        }
+    }
 
     // --- Dimensions ---
 
     std::size_t n_rows() const noexcept { return n_rows_; }
     std::size_t n_cols() const noexcept { return n_cols_; }
-    std::size_t nnz() const noexcept { return values_.size(); }
+    std::size_t nnz() const noexcept { return finalized_ ? values_.size() : pending_values_.size(); }
 
     // --- Construction ---
 
-    // Ajoute une entrée (row, col, value). Doit être appelé par ligne,
-    // dans l'ordre des colonnes croissant.
+    // Add an entry (row, col, value). Assembly order is unrestricted;
+    // finalize() canonicalizes the staged entries into CSR.
     void push_back(std::size_t row, std::size_t col, Value value) {
+        if (finalized_) {
+            throw std::logic_error("SparseMatrix: push_back after finalize");
+        }
         if (row >= n_rows_) {
             throw std::out_of_range("SparseMatrix: row out of range");
         }
         if (col >= n_cols_) {
             throw std::out_of_range("SparseMatrix: column out of range");
         }
-        values_.push_back(value);
-        columns_.push_back(static_cast<Index>(col));
-        // row_offsets[row+1] sera mis à jour à la fin.
-        // On utilise un compteur séparé pour les entrées par ligne.
-        row_offsets_[row + 1]++;
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("SparseMatrix: non-finite value");
+        }
+        pending_rows_.push_back(row);
+        pending_columns_.push_back(static_cast<Index>(col));
+        pending_values_.push_back(value);
     }
 
-    // Finalise la structure CSR après l'ajout des entrées.
-    // row_offsets devient un préfixe sum.
+    // Finalise the COO assembly into canonical CSR.
     void finalize() {
-        for (std::size_t i = 0; i < n_rows_; ++i) {
-            row_offsets_[i + 1] += row_offsets_[i];
+        if (finalized_) return;
+        const std::size_t count = pending_values_.size();
+        if (count > std::numeric_limits<Index>::max()) {
+            throw std::overflow_error("SparseMatrix: nnz exceeds CSR index range");
         }
+        std::vector<std::size_t> order(count);
+        for (std::size_t k = 0; k < count; ++k) order[k] = k;
+        std::stable_sort(order.begin(), order.end(), [this](std::size_t a, std::size_t b) {
+            if (pending_rows_[a] != pending_rows_[b]) return pending_rows_[a] < pending_rows_[b];
+            return pending_columns_[a] < pending_columns_[b];
+        });
+        values_.resize(count);
+        columns_.resize(count);
+        row_offsets_.assign(n_rows_ + 1, 0);
+        for (const auto k : order) ++row_offsets_[pending_rows_[k] + 1];
+        for (std::size_t i = 0; i < n_rows_; ++i) row_offsets_[i + 1] += row_offsets_[i];
+        std::vector<Index> cursor = row_offsets_;
+        for (const auto k : order) {
+            const std::size_t row = pending_rows_[k];
+            const Index dst = cursor[row]++;
+            values_[dst] = pending_values_[k];
+            columns_[dst] = pending_columns_[k];
+        }
+        pending_rows_.clear();
+        pending_columns_.clear();
+        pending_values_.clear();
         finalized_ = true;
     }
 
@@ -74,13 +106,11 @@ public:
         check_row(row);
         const Index start = row_offsets_[row];
         const Index end = row_offsets_[row + 1];
-        // Les colonnes sont supposées triées.
+        Value sum = 0.0;
         for (Index k = start; k < end; ++k) {
-            if (columns_[k] == static_cast<Index>(col)) {
-                return values_[k];
-            }
+            if (columns_[k] == static_cast<Index>(col)) sum += values_[k];
         }
-        return 0.0;
+        return sum;
     }
 
     // --- Opérations ---
@@ -141,14 +171,23 @@ public:
     // --- Validation ---
 
     bool is_consistent() const noexcept {
+        if (!finalized_) {
+            return pending_rows_.empty() && pending_columns_.empty() && pending_values_.empty();
+        }
         if (row_offsets_.size() != n_rows_ + 1) return false;
         if (row_offsets_[0] != 0) return false;
         if (row_offsets_[n_rows_] != static_cast<Index>(values_.size())) return false;
         for (std::size_t i = 1; i <= n_rows_; ++i) {
             if (row_offsets_[i] < row_offsets_[i - 1]) return false;
         }
-        for (const auto c : columns_) {
-            if (c >= static_cast<Index>(n_cols_)) return false;
+        for (std::size_t i = 0; i < n_rows_; ++i) {
+            const Index begin = row_offsets_[i];
+            const Index end = row_offsets_[i + 1];
+            for (Index k = begin; k < end; ++k) {
+                if (columns_[k] >= static_cast<Index>(n_cols_)) return false;
+                if (!std::isfinite(values_[k])) return false;
+                if (k > begin && columns_[k] < columns_[k - 1]) return false;
+            }
         }
         return true;
     }
@@ -156,6 +195,9 @@ public:
     void clear() {
         values_.clear();
         columns_.clear();
+        pending_rows_.clear();
+        pending_columns_.clear();
+        pending_values_.clear();
         row_offsets_.assign(n_rows_ + 1, 0);
         finalized_ = false;
     }
@@ -172,6 +214,9 @@ private:
     std::vector<Value> values_;
     std::vector<std::uint32_t> columns_;
     std::vector<std::uint32_t> row_offsets_;
+    std::vector<std::size_t> pending_rows_;
+    std::vector<std::uint32_t> pending_columns_;
+    std::vector<Value> pending_values_;
     bool finalized_ = true;
 };
 
