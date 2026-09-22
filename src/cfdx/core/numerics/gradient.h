@@ -26,6 +26,8 @@
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
+#include <cstdint>
+#include <algorithm>
 
 namespace cfdx {
 namespace core {
@@ -69,7 +71,7 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
         throw std::runtime_error("compute_gradient_gauss: field must be scalar (dim=1)");
     }
 
-    Field<double, Location::CELL> grad(n_cells, cell_field.name() + "_grad", "1/s", 3);
+    Field<double, Location::CELL> grad(n_cells, cell_field.name() + "_grad", cell_field.metadata().unit + "/m", 3);
 
     const auto* cell_faces = mesh.cells().faces_data();
     const auto* cell_offsets = mesh.cells().offsets_data();
