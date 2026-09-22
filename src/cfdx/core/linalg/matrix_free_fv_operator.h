@@ -1,14 +1,16 @@
 #pragma once
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/mesh/mesh.h"
-#include "cfdx/core/geometry/face_geometry.h"\n#include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/geometry/face_geometry.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include <cmath>
 #include <stdexcept>
 #include <vector>
 namespace cfdx::core {
 class FvDiffusionOperator final:public LinearOperatorBase{
 public:
- FvDiffusionOperator(const Mesh& mesh,const std::vector<Vec3>& centres,const std::vector<Vec3>& Sf,double gamma):mesh_(mesh),cc_(centres),Sf_(Sf),gamma_(gamma){if(cc_.size()!=mesh_.n_cells()||Sf_.size()!=mesh_.n_faces()||gamma_<0.0)throw std::invalid_argument("invalid FvDiffusionOperator geometry");}\n FvDiffusionOperator(const Mesh& mesh,const GeometryCache& geometry,double gamma):FvDiffusionOperator(mesh,geometry.cell_centres,geometry.face_Sf,gamma){if(!is_valid(geometry,mesh))throw std::invalid_argument("invalid GeometryCache");}
+ FvDiffusionOperator(const Mesh& mesh,const std::vector<Vec3>& centres,const std::vector<Vec3>& Sf,double gamma):mesh_(mesh),cc_(centres),Sf_(Sf),gamma_(gamma){if(cc_.size()!=mesh_.n_cells()||Sf_.size()!=mesh_.n_faces()||gamma_<0.0)throw std::invalid_argument("invalid FvDiffusionOperator geometry");}
+ FvDiffusionOperator(const Mesh& mesh,const GeometryCache& geometry,double gamma):FvDiffusionOperator(mesh,geometry.cell_centres,geometry.face_Sf,gamma){if(!is_valid(geometry,mesh))throw std::invalid_argument("invalid GeometryCache");}
  std::size_t rows()const noexcept override{return mesh_.n_cells();}
  std::size_t cols()const noexcept override{return mesh_.n_cells();}
  bool has_diagonal()const noexcept override{return true;}
