@@ -198,7 +198,7 @@ if QApplication is not None:
             self.signals.state_changed.connect(self._refresh_status)
             self.signals.output.connect(self._queue_output)
             self.signals.metrics_changed.connect(self._refresh_metrics)
-            self.signals.results_changed.connect(self.refresh)
+            self.signals.results_changed.connect(self._refresh_results)
 
         def _open_mesh(self) -> bool:
             path, _ = QFileDialog.getOpenFileName(
@@ -216,6 +216,25 @@ if QApplication is not None:
             except (OSError, ValueError) as exc:
                 self._show_error("Open Mesh failed", str(exc))
                 return False
+
+        def _refresh_results(self) -> None:
+            """Refresh the live result series after a watched file change."""
+            watcher = self._result_watcher
+            if watcher is None or not watcher.directory.is_dir():
+                return
+            try:
+                current_index = self.results_series.slider.value()
+                series = discover_result_series(watcher.directory, inspect_fields=True)
+                self.results_series.set_series(series)
+                if series.frames:
+                    index = min(current_index, len(series.frames) - 1)
+                    self.results_series.slider.setValue(index)
+                    self._result_frame_changed(series.frames[index])
+                else:
+                    self._result_source = None
+                    self.result_status.setText("No VTK result files found")
+            except (OSError, ValueError) as exc:
+                self.result_status.setText(f"Results refresh failed: {exc}")
 
         def _open_results_directory(self) -> bool:
             directory = QFileDialog.getExistingDirectory(
