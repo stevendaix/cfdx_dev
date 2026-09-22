@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .output import OutputThrottle
 from .runner import SolverRunner
@@ -415,8 +416,19 @@ if QApplication is not None:
                 self._replace_session(loaded)
                 self._case_path = Path(path)
                 self._restart_dat = restart
+                checkpoint = read_dat_restart(restart)
+                if self.view3d is not None:
+                    fields = self.view3d.load_cfdx_dat(str(self._case_path), str(restart))
+                    self.results_series.set_checkpoint_fields(
+                        fields, checkpoint.iteration, checkpoint.time, restart.name
+                    )
+                    self._result_source = None
                 self._dirty = False
                 self._refresh_file_status()
+                self.result_status.setText(
+                    f"DAT checkpoint: {restart.name} | iteration={checkpoint.iteration} | "
+                    f"time={checkpoint.time:g} | fields={len(checkpoint.fields)}"
+                )
                 return True
             except (OSError, ValueError) as exc:
                 self._show_error("Read Case + DAT failed", str(exc))
