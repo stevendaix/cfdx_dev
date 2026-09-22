@@ -1,6 +1,7 @@
 // M0.7-T02 — Tests for divergence
 
 #include "cfdx/core/numerics/divergence.h"
+#include "cfdx/core/numerics/flux.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
 
@@ -91,6 +92,67 @@ int main() {
         const GeometryCache geometry = make_geometry_cache(m);
         auto div = compute_divergence(phi, m, geometry);
         EXPECT_NEAR(div(0), 0.0, 1e-12);
+    });
+
+    run_case("divergence_uniform_vector_field_is_zero", []() {
+        Mesh m = make_unit_cube();
+        Field<double, Location::FACE> U(m.n_faces(), "U", "m/s", 3);
+        U.fill(0.0);
+        U.component_data(0)[0] = 1.0;
+        U.component_data(0)[1] = 1.0;
+        U.component_data(0)[2] = 1.0;
+        U.component_data(0)[3] = 1.0;
+        U.component_data(0)[4] = 1.0;
+        U.component_data(0)[5] = 1.0;
+
+        auto phi = compute_flux(U, m);
+        auto div = compute_divergence(phi, m);
+        // A constant vector field has zero analytical divergence.
+        EXPECT_NEAR(div(0), 0.0, 1e-12);
+    });
+
+    run_case("divergence_internal_flux_is_conservative", []() {
+        // The same internal-face flux must enter one cell and leave the other.
+        // This is a discrete conservation invariant independent of the
+        // particular cell values.
+        Mesh m;
+        m.points().resize(12);
+        const double p[12][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
+        for (std::size_t i = 0; i < 12; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+        m.faces().push_face({0,6,9,3});
+        m.faces().push_face({0,1,7,6});
+        m.faces().push_face({3,9,10,4});
+        m.faces().push_face({0,3,4,1});
+        m.faces().push_face({6,7,10,9});
+        m.faces().push_face({7,10,4,1});
+        m.faces().push_face({2,5,11,8});
+        m.faces().push_face({1,2,8,7});
+        m.faces().push_face({4,10,11,5});
+        m.faces().push_face({1,4,5,2});
+        m.faces().push_face({7,8,11,10});
+        m.ownership().resize(11);
+        for (std::size_t f = 0; f < 5; ++f) {
+            m.ownership().set_owner(f, 0);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.ownership().set_owner(5, 0);
+        m.ownership().set_neighbour(5, 1);
+        for (std::size_t f = 6; f < 11; ++f) {
+            m.ownership().set_owner(f, 1);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.cells().push_cell({0,1,2,3,4,5});
+        m.cells().push_cell({5,6,7,8,9,10});
+
+        ScalarFaceField phi(m.n_faces(), "phi", "m^3/s", 1);
+        phi.fill(0.0);
+        phi(5) = 2.0;
+        auto div = compute_divergence(phi, m);
+        EXPECT_NEAR(div(0), 2.0, 1e-12);
+        EXPECT_NEAR(div(1), -2.0, 1e-12);
     });
 
     run_case("divergence_size_mismatch", []() {
