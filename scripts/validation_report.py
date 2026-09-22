@@ -310,6 +310,7 @@ VALIDATION_EXECUTABLES = [
     "test_m2_m4_solver_validation",
     "test_steady_incompressible_solver",
     "test_vmfl004_couette",
+    "test_vmfl005_poiseuille",
 ]
 
 def run_validation_suite(build_dir: Path, output_dir: Path) -> dict[str, int]:
