@@ -100,5 +100,36 @@ int main() {
         }
     });
 
+    run_case("gmres_exact_nonsymmetric_3x3_reference_solution", []() {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 4.0); A.push_back(0, 1, 1.0);
+        A.push_back(1, 0, -2.0); A.push_back(1, 1, 5.0); A.push_back(1, 2, 1.0);
+        A.push_back(2, 0, 1.0); A.push_back(2, 1, -1.0); A.push_back(2, 2, 3.0);
+        A.finalize();
+
+        Vector x_exact(3);
+        x_exact(0) = 1.0; x_exact(1) = -2.0; x_exact(2) = 0.5;
+        const auto b = A.matvec(x_exact);
+        Vector x(3, 0.0);
+
+        const auto result = solve_gmres(A, b, x, 3, 20, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.residual_relative < 1e-11);
+        for (std::size_t i = 0; i < 3; ++i) EXPECT_NEAR(x(i), x_exact(i), 1e-10);
+    });
+
+    run_case("gmres_rejects_invalid_controls", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 1, 3.0);
+        A.finalize();
+        Vector b(2, 1.0);
+        Vector x(2, 0.0);
+
+        EXPECT_TRUE(solve_gmres(A, b, x, 0, 20, 1e-12).status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(solve_gmres(A, b, x, 2, 0, 1e-12).status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
+    });
+
     return run_all();
 }
