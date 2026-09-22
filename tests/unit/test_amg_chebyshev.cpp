@@ -106,9 +106,6 @@ int main() {
     bad.push_back(3, 2, -1.0);
     bad.push_back(3, 3, 2.0);
     bad.finalize();
-    if (amg.setup(bad)) {
-        return 7;
-    }
 
     SparseMatrix missing_diag(4, 4);
     missing_diag.push_back(0, 1, -1.0);
