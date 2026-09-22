@@ -155,6 +155,24 @@ int main() {
         EXPECT_NEAR(div(1), -2.0, 1e-12);
     });
 
+    run_case("divergence_linear_vector_field_analytical", []() {
+        // U = (x, y, z) has analytical divergence 3.0.
+        // Face values are prescribed at the exact face centres of the unit cube.
+        Mesh m = make_unit_cube();
+        Field<double, Location::FACE> U(m.n_faces(), "U", "m/s", 3);
+        const double centres[6][3] = {
+            {0.5, 0.5, 0.0}, {0.5, 0.5, 1.0},
+            {0.5, 0.0, 0.5}, {0.5, 1.0, 0.5},
+            {0.0, 0.5, 0.5}, {1.0, 0.5, 0.5}
+        };
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            U.set(f, centres[f][0], centres[f][1], centres[f][2]);
+
+        const auto phi = compute_flux(U, m);
+        const auto div = compute_divergence(phi, m);
+        EXPECT_NEAR(div(0), 3.0, 1e-12);
+    });
+
     run_case("divergence_size_mismatch", []() {
         Mesh m = make_unit_cube();
         ScalarFaceField phi(5, "phi", "m^3/s", 1);
