@@ -37,7 +37,7 @@ std::string face_key(const Mesh& mesh, std::size_t face_id) {
     std::vector<std::string> points;
     points.reserve(static_cast<std::size_t>(end - begin));
     for (std::uint64_t i = begin; i < end; ++i) {
-        points.push_back(point_key(mesh.points().get(faces.vertices_data()[i])));
+        points.push_back(point_key(mesh, faces.vertices_data()[i]));
     }
     std::sort(points.begin(), points.end());
     std::ostringstream os;
