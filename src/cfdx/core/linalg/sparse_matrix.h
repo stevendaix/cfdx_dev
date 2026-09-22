@@ -33,7 +33,7 @@ public:
 
     explicit SparseMatrix(std::size_t n_rows, std::size_t n_cols)
         : n_rows_(n_rows), n_cols_(n_cols),
-          row_offsets_(n_rows + 1, 0) {
+          row_offsets_(n_rows + 1, 0), finalized_(false) {
         if (n_rows > std::numeric_limits<Index>::max() ||
             n_cols > std::numeric_limits<Index>::max()) {
             throw std::overflow_error("SparseMatrix: dimensions exceed CSR index range");
