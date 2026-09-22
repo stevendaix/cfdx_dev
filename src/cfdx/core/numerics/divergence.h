@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <cstdint>
 #include <vector>
 
 namespace cfdx {
