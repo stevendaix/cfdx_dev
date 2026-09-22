@@ -52,6 +52,23 @@ static double true_residual_ratio(const SparseMatrix& A, const Vector& rhs,
     return std::sqrt(after2 / before2);
 }
 
+static bool check_amg(const SparseMatrix& A, Vector rhs, double max_ratio) {
+    FunctionalLinearOperator op(
+        A.n_rows(),
+        [&A](const Vector& x, Vector& y) {
+            const auto result = A.matvec(x);
+            for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
+        });
+
+    MatrixFreeVcyclePreconditioner amg(op);
+    if (!amg.setup(A)) return false;
+
+    Vector correction;
+    if (!amg.apply(rhs, correction) || !correction.is_valid()) return false;
+    const double ratio = true_residual_ratio(A, rhs, correction);
+    return std::isfinite(ratio) && ratio < max_ratio;
+}
+
 int main() {
     using namespace cfdx::core;
 
@@ -109,6 +126,42 @@ int main() {
         std::cerr << "AMG did not reduce the true residual: "
                   << before_norm << " -> " << after_norm << "\n";
         return 6;
+    }
+
+    // Quantitative multilevel checks requested by Phase 4.7.
+    const SparseMatrix poisson1d = make_poisson_1d(32);
+    Vector rhs1d(32, 1.0);
+    if (!check_amg(poisson1d, rhs1d, 0.95)) {
+        std::cerr << "1D Poisson AMG residual reduction failed\\n";
+        return 9;
+    }
+
+    const SparseMatrix poisson2d = make_poisson_2d(8, 8);
+    Vector rhs2d(64, 1.0);
+    if (!check_amg(poisson2d, rhs2d, 0.95)) {
+        std::cerr << "2D Poisson AMG residual reduction failed\\n";
+        return 10;
+    }
+
+    // Duplicate diagonal entries are a normal FVM assembly pattern and must
+    // be accumulated by the Galerkin construction.
+    SparseMatrix duplicate_diag(4, 4);
+    duplicate_diag.push_back(0, 0, 1.0);
+    duplicate_diag.push_back(0, 0, 1.0);
+    duplicate_diag.push_back(0, 1, -1.0);
+    duplicate_diag.push_back(1, 0, -1.0);
+    duplicate_diag.push_back(1, 1, 2.0);
+    duplicate_diag.push_back(1, 2, -1.0);
+    duplicate_diag.push_back(2, 1, -1.0);
+    duplicate_diag.push_back(2, 2, 2.0);
+    duplicate_diag.push_back(2, 3, -1.0);
+    duplicate_diag.push_back(3, 2, -1.0);
+    duplicate_diag.push_back(3, 3, 2.0);
+    duplicate_diag.finalize();
+    Vector rhs_dup(4, 1.0);
+    if (!check_amg(duplicate_diag, rhs_dup, 0.95)) {
+        std::cerr << "Duplicate-diagonal AMG regression failed\\n";
+        return 11;
     }
 
     ChebyshevSmoother::Controls controls;
