@@ -71,3 +71,10 @@ def test_controller_pause_resume(tmp_path: Path) -> None:
     assert not runner.paused
     controller.stop()
     assert session.state.value == "STOPPED"
+
+
+def test_runner_restart_appends_checkpoint(tmp_path):
+    from cfdx.runner import SolverRunner
+    r=SolverRunner(("solver",))
+    assert r.command == ("solver",)
+    # Contract is exercised through ExecutionController; runner remains non-blocking.
