@@ -13,10 +13,10 @@
 // Première implémentation : orthogonal.
 //
 // Pour un champ scalaire φ (Field<double, CELL>) :
-//   ∇²φ_c = (1/V_c) Σ_f (∇φ)_f · Sf_f
-//
-//   - (∇φ)_f est interpolé linéairement à partir des gradients aux cellules.
-//   - Pour les faces de frontière, on utilise (∇φ)_f = (∇φ)_owner.
+//   For ORTHOGONAL/UNCORRECTED:
+//     ∇²φ_c = (1/V_c) Σ_internal_f (|Sf|/|d|) (φ_N - φ_P)
+//   where d is the owner-neighbour centre distance.
+//   Boundary faces have zero contribution because no BoundaryField value is supplied.
 //
 // Le résultat est un Field<double, CELL> de dimension 1.
 
@@ -91,44 +91,46 @@ inline Field<double, Location::CELL> compute_laplacian(
 
     Field<double, Location::CELL> lap(
         n_cells, cell_field.name() + "_lap", cell_field.metadata().unit + "/m^2", 1);
-    const auto grad = compute_gradient_gauss(cell_field, mesh, geometry);
     const auto* cell_faces = mesh.cells().faces_data();
     const auto* cell_offsets = mesh.cells().offsets_data();
     const FaceOwnership& own = mesh.ownership();
-    const double* gx = grad.component_data(0);
-    const double* gy = grad.component_data(1);
-    const double* gz = grad.component_data(2);
-
-    std::vector<Vec3> face_grad(geometry.face_Sf.size());
-    for (std::size_t f = 0; f < geometry.face_Sf.size(); ++f) {
-        const std::size_t owner = own.owner(f);
-        if (owner >= n_cells)
-            throw std::runtime_error("compute_laplacian: owner index out of range");
-        const Vec3 g_owner{gx[owner], gy[owner], gz[owner]};
-        const std::int64_t neighbour = own.neighbour(f);
-        if (neighbour >= 0) {
-            const std::size_t nb = static_cast<std::size_t>(neighbour);
-            if (nb >= n_cells)
-                throw std::runtime_error("compute_laplacian: neighbour index out of range");
-            const Vec3 g_neighbour{gx[nb], gy[nb], gz[nb]};
-            face_grad[f] = (g_owner + g_neighbour) * 0.5;
-        } else {
-            face_grad[f] = g_owner;
-        }
-    }
-
+    const double* phi = cell_field.component_data(0);
     double* out = lap.component_data(0);
+
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
         for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
             const std::size_t f = cell_faces[k];
-            if (own.owner(f) != c && own.neighbour(f) != static_cast<std::int64_t>(c))
+            const std::size_t owner = own.owner(f);
+            if (owner >= n_cells)
+                throw std::runtime_error("compute_laplacian: owner index out of range");
+            const std::int64_t neighbour = own.neighbour(f);
+            if (owner != c && neighbour != static_cast<std::int64_t>(c))
                 throw std::runtime_error("compute_laplacian: face is not attached to cell");
-            const Vec3 Sf_cell = (own.owner(f) == c)
-                ? geometry.face_Sf[f]
-                : geometry.face_Sf[f] * (-1.0);
-            sum += face_grad[f].dot(Sf_cell);
+
+            // Orthogonal two-point finite-volume contribution:
+            //   Gamma_f = |Sf| / |C_N - C_P|
+            //   flux_f = Gamma_f * (phi_N - phi_P)
+            // Boundary faces have zero normal gradient in this Module-0
+            // operator because no BoundaryField value is supplied.
+            if (neighbour < 0)
+                continue;
+
+            const std::size_t nb = static_cast<std::size_t>(neighbour);
+            if (nb >= n_cells)
+                throw std::runtime_error("compute_laplacian: neighbour index out of range");
+
+            const double d = (geometry.cell_centres[nb] - geometry.cell_centres[owner]).mag();
+            const double area = geometry.face_Sf[f].mag();
+            if (!(d > 1e-14) || !(area > 0.0) ||
+                !std::isfinite(d) || !std::isfinite(area))
+                throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
+
+            const double conductance = area / d;
+            const double contribution = conductance * (phi[nb] - phi[owner]);
+            sum += (owner == c) ? contribution : -contribution;
         }
+
         const double volume = geometry.cell_volumes[c];
         if (!(volume > 0.0) || !std::isfinite(volume))
             throw std::runtime_error("compute_laplacian: non-positive cell volume");
