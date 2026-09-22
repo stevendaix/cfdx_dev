@@ -1,5 +1,6 @@
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/numerics/divergence.h"
+#include "cfdx/core/numerics/flux.h"
 #include "cfdx/core/numerics/integrate.h"
 #include "common/test_harness.h"
 
@@ -66,6 +67,21 @@ int main()
         const auto div = compute_divergence(flux,m);
         EXPECT_NEAR(div(0),0.0,1e-12);
         EXPECT_NEAR(div(1),0.0,1e-12);
+    });
+
+    run_case("flux_divergence_conserves_internal_face_flux", [] {
+        const Mesh m = make_two_cell_cartesian();
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","m3/s",1);
+        phi.fill(0.0);
+        phi(5) = 1.0;
+
+        const auto div = compute_divergence(phi,m);
+
+        // Only the shared internal face carries flux. Owner and neighbour
+        // must receive equal and opposite contributions.
+        EXPECT_NEAR(div(0), 1.0, 1e-12);
+        EXPECT_NEAR(div(1), -1.0, 1e-12);
+        EXPECT_NEAR(div(0) + div(1), 0.0, 1e-12);
     });
 
     run_case("volume_integral_uses_oriented_cell_volumes", [] {
