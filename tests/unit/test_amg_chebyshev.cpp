@@ -84,6 +84,9 @@ static SparseMatrix make_anisotropic_diffusion_2d(std::size_t nx, std::size_t ny
             A.push_back(i, i, diag);
         }
     }
+    // Small positive reaction term removes the pure-Neumann nullspace while
+    // retaining strong directional anisotropy.
+    for (std::size_t i = 0; i < n; ++i) A.push_back(i, i, 1.0);
     A.finalize();
     return A;
 }
@@ -102,7 +105,7 @@ static SparseMatrix make_fvm_diffusion_2d(std::size_t nx, std::size_t ny,
             if (x + 1 < nx) { A.push_back(i, i + 1, -kx); diag += kx; }
             if (y > 0) { A.push_back(i, i - nx, -ky); diag += ky; }
             if (y + 1 < ny) { A.push_back(i, i + nx, -ky); diag += ky; }
-            A.push_back(i, i, diag);
+            A.push_back(i, i, diag + 1.0);
         }
     }
     A.finalize();
