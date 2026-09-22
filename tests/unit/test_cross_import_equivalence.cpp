@@ -1,11 +1,14 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/io/mesh/mesh_importer.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -21,10 +24,11 @@ void write_file(const std::filesystem::path& path, const std::string& text) {
     out << text;
 }
 
-std::string point_key(const Vec3& p) {
+std::string point_key(const Mesh& mesh, std::uint64_t point_id) {
+    const auto& points = mesh.points();
     std::ostringstream os;
     os.precision(17);
-    os << p.x << "," << p.y << "," << p.z;
+    os << points.x(point_id) << "," << points.y(point_id) << "," << points.z(point_id);
     return os.str();
 }
 
