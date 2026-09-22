@@ -234,5 +234,27 @@ int main()
         EXPECT_NEAR(p(0),100.0,1e-12);
     });
 
+
+    run_case("dat_restart_roundtrip_thermal_and_turbulence_fields", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        Field<double,Location::CELL> T(1,"T","K",1), k(1,"k","m2/s2",1), second(1,"omega","1/s",1);
+        U.set(0,1.0,2.0,3.0); p(0)=42.0; T(0)=315.0; k(0)=0.12; second(0)=4.5;
+        const auto dat = std::filesystem::temp_directory_path() / "cfdx_thermal_turbulence_restart.dat";
+        cfdx::io::DatRestartFields out_fields{&T,&k,&second};
+        cfdx::io::write_dat_restart_fields(dat.string(),m,U,p,out_fields,23,1.75);
+
+        Field<double,Location::CELL> loaded_u(1,"U","m/s",3), loaded_p(1,"p","Pa",1);
+        Field<double,Location::CELL> loaded_T(1,"T","K",1), loaded_k(1,"k","m2/s2",1), loaded_second(1,"omega","1/s",1);
+        cfdx::io::DatRestartFields in_fields{&loaded_T,&loaded_k,&loaded_second};
+        const auto state=cfdx::io::read_dat_restart_fields(dat.string(),m,loaded_u,loaded_p,in_fields);
+        EXPECT_TRUE(state.iteration==23);
+        EXPECT_NEAR(state.time,1.75,1e-14);
+        EXPECT_NEAR(loaded_T(0),315.0,1e-14);
+        EXPECT_NEAR(loaded_k(0),0.12,1e-14);
+        EXPECT_NEAR(loaded_second(0),4.5,1e-14);
+        std::filesystem::remove(dat);
+    });
+
     return run_all();
 }
