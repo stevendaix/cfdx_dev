@@ -153,30 +153,34 @@ int main() {
 
     run_case("mpi_halo_cell_exchange_is_rank_consistent", []() {
         Mesh m;
-        m.points().resize(12);
-        const double p[12][3] = {
-            {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
-            {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
-        for (std::size_t i=0;i<12;++i) m.points().set(i,p[i][0],p[i][1],p[i][2]);
-        m.faces().push_face({0,3,9,6});
-        m.faces().push_face({1,4,10,7});
-        m.faces().push_face({2,5,11,8});
-        m.faces().push_face({0,1,7,6});
-        m.faces().push_face({1,2,8,7});
-        m.faces().push_face({3,9,10,4});
-        m.faces().push_face({4,10,11,5});
-        m.faces().push_face({0,6,8,2});
-        m.ownership().resize(8);
-        for (std::size_t f=0; f<8; ++f) {
-            m.ownership().set_owner(f, (f == 2 || f == 4 || f >= 6) ? 1 : 0);
-            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
-        }
+        // Minimal valid two-cell mesh: one internal face is the MPI interface.
+        m.points().resize(9);
+        m.points().set(0, 0.0, 0.0, 0.0);
+        m.points().set(1, 1.0, 0.0, 0.0);
+        m.points().set(2, 2.0, 0.0, 0.0);
+        m.points().set(3, 0.0, 1.0, 0.0);
+        m.points().set(4, 1.0, 1.0, 0.0);
+        m.points().set(5, 2.0, 1.0, 0.0);
+        m.points().set(6, 0.0, 2.0, 0.0);
+        m.points().set(7, 1.0, 2.0, 0.0);
+        m.points().set(8, 2.0, 2.0, 0.0);
+
+        m.faces().push_face({0, 3, 2, 1});
+        m.faces().push_face({1, 2, 5, 4});
+        m.faces().push_face({3, 4, 7, 6});
+
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({1, 2});
+
+        m.ownership().resize(3);
+        m.ownership().set_owner(0, 0);
+        m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
         m.ownership().set_owner(1, 0);
         m.ownership().set_neighbour(1, 1);
-        m.ownership().set_neighbour(7, 0);
-        // Boundary faces 0, 2, 3, 4, 5, 6 are physical walls; face 1 is the MPI interface.\n        m.boundary().add_patch(make_wall_patch("wall", {0, 2, 3, 4, 5, 6}));
-        m.cells().push_cell({0,1,3,5,7});
-        m.cells().push_cell({1,2,4,6,7});
+        m.ownership().set_owner(2, 1);
+        m.ownership().set_neighbour(2, FaceOwnership::BOUNDARY);
+        m.boundary().add_patch(make_wall_patch("wall", {0, 2}));
+
         EXPECT_TRUE(m.topo_validate().ok);
 
         const int rank = mpi_rank(MPI_COMM_WORLD);
@@ -201,7 +205,7 @@ int main() {
                                 static_cast<double>(owner_rank), 1e-14);
             }
         }
-    });
+    });;
 
     const int rc = run_all();
     MPI_Finalize();
