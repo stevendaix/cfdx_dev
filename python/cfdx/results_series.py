@@ -45,17 +45,19 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False) -> 
     if not directory.is_dir(): raise NotADirectoryError(directory)
     paths=sorted((p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _SUPPORTED),key=_sort_key)
     frames=[]
-    for i,p in enumerate(paths):
+    for p in paths:
         if p.stat().st_size == 0:
             continue
         fields=()
+        complete=True
         if inspect_fields:
             try:
                 import pyvista as pv
                 dataset=pv.read(p)
                 fields=tuple(sorted(set(dataset.point_data.keys()) | set(dataset.cell_data.keys())))
             except (ImportError,OSError,RuntimeError,ValueError):
-                fields=()
-        frames.append(ResultFrame(p,len(frames),_sort_key(p)[0] if _sort_key(p)[0] != float("inf") else None,True,fields))
+                complete=False
+        value=_sort_key(p)[0]
+        frames.append(ResultFrame(p,len(frames),value if value != float("inf") else None,complete,fields))
     frames=tuple(frames)
     return ResultSeries(frames)
