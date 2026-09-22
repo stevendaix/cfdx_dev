@@ -324,6 +324,21 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             bp.add_patch(std::move(patch));
         }
         mesh.set_boundary(bp);
+    } else {
+        // Legacy/third-party CFDX-HDF5 meshes may omit boundary metadata.
+        // Reconstruct a conservative generic boundary patch from the face
+        // ownership array so the imported topology remains valid and usable.
+        cfdx::core::BoundaryPatches bp;
+        cfdx::core::Patch patch;
+        patch.name = "boundary";
+        patch.type = cfdx::core::PatchType::WALL;
+        for (std::size_t f = 0; f < neighbour.size(); ++f) {
+            if (neighbour[f] < 0)
+                patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(f));
+        }
+        if (!patch.face_ids.empty())
+            bp.add_patch(std::move(patch));
+        mesh.set_boundary(bp);
     }
 
     const bool valid = mesh.topo_validate().ok;
