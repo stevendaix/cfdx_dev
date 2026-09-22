@@ -2,7 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
-#include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/cg_solver.h"\n#include "cfdx/core/linalg/advanced_preconditioners.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
