@@ -109,8 +109,14 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (owner != c && neighbour != static_cast<std::int64_t>(c))
                 throw std::runtime_error("compute_laplacian: face is not attached to cell");
 
+            if (neighbour < 0)
+                continue;
+            const std::size_t nb = static_cast<std::size_t>(neighbour);
+            if (nb >= n_cells)
+                throw std::runtime_error("compute_laplacian: neighbour index out of range");
+
             // Two-point orthogonal contribution plus an optional
-            // non-orthogonal correction.  d is the owner->neighbour vector,
+            // non-orthogonal correction. d is the owner->neighbour vector,
             // while Sf is the canonical owner->exterior area vector.
             const Vec3 dvec = geometry.cell_centres[nb] - geometry.cell_centres[owner];
             const double d2 = dvec.x * dvec.x + dvec.y * dvec.y + dvec.z * dvec.z;
@@ -126,8 +132,6 @@ inline Field<double, Location::CELL> compute_laplacian(
             double flux = orth_coeff * delta_phi;
 
             if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED) {
-                // Reconstruct the face gradient from the two cell gradients.
-                // The correction acts only on the tangential part of Sf.
                 const Vec3 grad_owner{grad.component_data(0)[owner],
                                       grad.component_data(1)[owner],
                                       grad.component_data(2)[owner]};
@@ -142,9 +146,6 @@ inline Field<double, Location::CELL> compute_laplacian(
                                           grad_face.z * Sf_nonorth.z;
                 double correction_factor = 1.0;
                 if (scheme == LaplacianScheme::LIMITED) {
-                    // Bound the non-orthogonal correction by the magnitude of
-                    // the orthogonal contribution.  This is a deterministic
-                    // limiter and avoids correction-driven flux reversal.
                     const double orth_abs = std::abs(orth_coeff * delta_phi);
                     if (std::abs(correction) > 0.0)
                         correction_factor = std::min(1.0, orth_abs / std::abs(correction));
