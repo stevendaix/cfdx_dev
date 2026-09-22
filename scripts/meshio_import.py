@@ -133,7 +133,7 @@ def write(path, mesh, topo):
         h.create_dataset("points",data=points); h.create_dataset("face_vertices",data=fv); h.create_dataset("face_offsets",data=fo)
         h.create_dataset("owner",data=np.asarray(owner,dtype=np.uint64)); h.create_dataset("neighbour",data=np.asarray(neighbour,dtype=np.int64))
         h.create_dataset("cell_faces",data=cf); h.create_dataset("cell_offsets",data=co)
-        # The native C++ reader expects a fixed-width string attribute.\n        # h5py scalar Python strings are variable-length and the reader\n        # bounds reads by H5Tget_size(), which would truncate metadata.\n        h.attrs["boundary_patches"] = np.bytes_(";".join(meta))
+        # The native C++ reader expects a fixed-width string attribute.\n        # h5py scalar Python strings are variable-length and the reader\n        # bounds reads by H5Tget_size(), which would truncate metadata.\n        boundary_metadata = ";".join(meta)\n        h.attrs["boundary_patches"] = np.array(boundary_metadata, dtype=f"S{len(boundary_metadata) + 1}")
         h.create_dataset("patch_face_ids",data=np.asarray(ids,dtype=np.uint64))
         h.create_dataset("patch_face_offsets",data=np.asarray(offsets,dtype=np.uint64))
     if skipped:
