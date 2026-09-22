@@ -19,7 +19,8 @@ using cfdx::core::Vector;
 static SparseMatrix make_poisson_1d(std::size_t n) {
     SparseMatrix A(n, n);
     for (std::size_t i = 0; i < n; ++i) {
-        A.push_back(i, i, 2.0);
+        const double diagonal = (i == 0 || i + 1 == n) ? 1.0 : 2.0;
+        A.push_back(i, i, diagonal);
         if (i > 0) A.push_back(i, i - 1, -1.0);
         if (i + 1 < n) A.push_back(i, i + 1, -1.0);
     }
@@ -33,7 +34,8 @@ static SparseMatrix make_poisson_2d(std::size_t nx, std::size_t ny) {
     for (std::size_t y = 0; y < ny; ++y) {
         for (std::size_t x = 0; x < nx; ++x) {
             const std::size_t i = y * nx + x;
-            A.push_back(i, i, 4.0);
+            const bool boundary = x == 0 || x + 1 == nx || y == 0 || y + 1 == ny;
+            A.push_back(i, i, boundary ? 5.0 : 4.0);
             if (x > 0) A.push_back(i, i - 1, -1.0);
             if (x + 1 < nx) A.push_back(i, i + 1, -1.0);
             if (y > 0) A.push_back(i, i - nx, -1.0);
