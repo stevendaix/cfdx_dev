@@ -223,10 +223,11 @@ if QApplication is not None:
             if watcher is None or not watcher.directory.is_dir():
                 return
             try:
+                current_index = self.results_series.slider.value()
                 series = discover_result_series(watcher.directory, inspect_fields=True)
                 self.results_series.set_series(series)
                 if series.frames:
-                    index = min(self.results_series.slider.value(), len(series.frames) - 1)
+                    index = min(current_index, len(series.frames) - 1)
                     self.results_series.slider.setValue(index)
                     self._result_frame_changed(series.frames[index])
                 else:
