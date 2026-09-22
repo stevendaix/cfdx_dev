@@ -8,6 +8,7 @@ import signal
 import subprocess
 import threading
 from typing import Callable, Sequence
+import shlex
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,9 @@ class SolverRunner:
         self,
         on_output: OutputCallback | None = None,
         on_complete: CompletionCallback | None = None,
+        restart_path: Path | None = None,
     ) -> None:
+        command = self.command if restart_path is None else self.command + ("--restart", str(restart_path))
         with self._lock:
             if self.running:
                 raise RuntimeError("solver is already running")
@@ -64,7 +67,7 @@ class SolverRunner:
             if os.name == "posix":
                 kwargs["start_new_session"] = True
             self._process = subprocess.Popen(
-                self.command,
+                command,
                 cwd=self.cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -104,7 +107,7 @@ class SolverRunner:
             for reader in readers:
                 reader.join()
             if on_complete:
-                on_complete(ProcessResult(returncode, self.command))
+                on_complete(ProcessResult(returncode, command))
 
         self._thread = threading.Thread(
             target=monitor,
