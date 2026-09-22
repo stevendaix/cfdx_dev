@@ -3,137 +3,82 @@
 // Spécification CFDX v0.7 §28 :
 //   Première implémentation : Gauss linear.
 //
-// Pour un champ scalaire φ (Field<double, CELL>) :
-//   ∇φ_c = (1/V_c) Σ_f φ_f Sf_f
-//
-//   - φ_f est interpolé géométriquement à partir des cellules owner/neighbour.
-//     φ_f = (1-w) * φ_owner + w * φ_neighbour
-//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondération géométrique)
-//   - Pour les faces de frontière, on utilise φ_f = φ_owner (zero-gradient).
-//
-// Le résultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
-// 3D par cellule). Le stockage est SoA (x, y, z contigus).
+// The GeometryCache overload is the production path: geometry is derived once
+// per mesh and reused by repeated operator evaluations. The Mesh-only overload
+// is retained as a convenience API and builds a temporary cache.
 
 #pragma once
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
-#include "cfdx/core/geometry/face_geometry.h"
-#include "cfdx/core/geometry/cell_geometry.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/core/mesh/index_types.h"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
-#include <vector>
+#include <algorithm>
 
 namespace cfdx {
 namespace core {
 
-// Calcule le poids d'interpolation géométrique pour une face.
-// w = |Cf - C_owner| / |C_neighbour - C_owner|
-// Pour face frontière : w = 0 (zero gradient)
 inline double geometric_interpolation_weight(
     const Vec3& face_centre,
     const Vec3& owner_centre,
     const Vec3* neighbour_centre)
 {
-    if (!neighbour_centre) return 0.0;  // Boundary face
+    if (!neighbour_centre) return 0.0;
 
     const Vec3 d_owner = face_centre - owner_centre;
     const Vec3 d_neigh = *neighbour_centre - owner_centre;
     const double dist_owner = d_owner.mag();
     const double dist_total = d_neigh.mag();
-
     if (!std::isfinite(dist_total) || dist_total < 1e-15)
         throw std::runtime_error("geometric_interpolation_weight: degenerate cell-centre distance");
     return std::min(1.0, std::max(0.0, dist_owner / dist_total));
 }
 
-// Calcule le gradient d'un champ scalaire cellulaire par la méthode Gauss.
-//
 inline Field<double, Location::CELL> compute_gradient_gauss(
     const Field<double, Location::CELL>& cell_field,
-    const Mesh& mesh)
+    const Mesh& mesh,
+    const GeometryCache& geometry)
 {
     const std::size_t n_cells = mesh.n_cells();
     const std::size_t n_faces = mesh.n_faces();
-
-    if (cell_field.size() != n_cells) {
+    if (!is_valid(geometry, mesh))
+        throw std::invalid_argument("compute_gradient_gauss: invalid geometry cache");
+    if (cell_field.size() != n_cells)
         throw std::runtime_error("compute_gradient_gauss: field size != n_cells");
-    }
-    if (cell_field.dimension() != 1) {
+    if (cell_field.dimension() != 1)
         throw std::runtime_error("compute_gradient_gauss: field must be scalar (dim=1)");
-    }
 
-    Field<double, Location::CELL> grad(n_cells, cell_field.name() + "_grad", "1/s", 3);
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad", cell_field.metadata().unit + "/m", 3);
 
-    // 1. Géométrie des faces : centre + Sf.
-    std::vector<Vec3> face_centres(n_faces);
-    std::vector<Vec3> face_Sf(n_faces);
-
-    const PointCloud& pts = mesh.points();
-    const double* px = pts.x_data();
-    const double* py = pts.y_data();
-    const double* pz = pts.z_data();
-    const auto* verts = mesh.faces().vertices_data();
-    const auto* offsets = mesh.faces().offsets_data();
-
-    for (std::size_t f = 0; f < n_faces; ++f) {
-        const VertexIndex off = offsets[f];
-        const VertexIndex n = offsets[f + 1] - off;
-        const FaceGeometry fg = compute_face_geometry(px, py, pz, verts, off, n);
-        face_centres[f] = fg.centre;
-        face_Sf[f] = fg.Sf;
-    }
-
-    // 2. Géométrie des cellules : centre + volume.
-    std::vector<double> cell_volume(n_cells, 0.0);
-    std::vector<Vec3> cell_centre(n_cells);
-
-    const CellConnectivity& cells = mesh.cells();
-    const auto* cell_faces = cells.faces_data();
-    const auto* cell_offsets = cells.offsets_data();
-
-    for (std::size_t c = 0; c < n_cells; ++c) {
-        const Offset off = cell_offsets[c];
-        const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry_oriented(
-            face_centres.data(), face_Sf.data(), cell_faces + off, n,
-            static_cast<CellIndex>(c), mesh.ownership());
-        cell_centre[c] = cg.centre;
-        cell_volume[c] = cg.volume;
-    }
-
-    // 3. Interpolation cellule → face avec pondération géométrique.
-    std::vector<double> face_field_values(n_faces, 0.0);
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
     const FaceOwnership& own = mesh.ownership();
     const double* cell_values = cell_field.component_data(0);
 
+    // Interpolate cell values to faces once. Geometry is read-only and reused.
+    std::vector<double> face_values(n_faces, 0.0);
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::size_t owner = own.owner(f);
-        const bool is_internal = (own.neighbour(f) >= 0);
-        const std::size_t neighbour = is_internal
-            ? static_cast<std::size_t>(own.neighbour(f))
-            : owner;
-
-        const Vec3* neigh_ptr = is_internal ? &cell_centre[neighbour] : nullptr;
-        const double w = geometric_interpolation_weight(face_centres[f], cell_centre[owner], neigh_ptr);
-
-        face_field_values[f] = (1.0 - w) * cell_values[owner] + w * cell_values[neighbour];
+        const std::int64_t neighbour = own.neighbour(f);
+        if (owner >= n_cells)
+            throw std::runtime_error("compute_gradient_gauss: owner index out of range");
+        if (neighbour >= 0) {
+            const std::size_t nb = static_cast<std::size_t>(neighbour);
+            if (nb >= n_cells)
+                throw std::runtime_error("compute_gradient_gauss: neighbour index out of range");
+            const double w = geometric_interpolation_weight(
+                geometry.face_centres[f], geometry.cell_centres[owner],
+                &geometry.cell_centres[nb]);
+            face_values[f] = (1.0 - w) * cell_values[owner] + w * cell_values[nb];
+        } else {
+            face_values[f] = cell_values[owner];
+        }
     }
-
-    // 4. Boucle de calcul du gradient :
-    //    ∇φ_c = (1/V_c) Σ_f φ_f Sf_f
-    //
-    //    Pour chaque face f de la cellule c, la contribution est φ_f * Sf_f
-    //    où Sf_f est orienté vers l'extérieur de la cellule.
-    //
-    //    Pour une face interne :
-    //      - si c est le owner, Sf est déjà vers l'extérieur.
-    //      - si c est le voisin, Sf est vers l'intérieur → on utilise −Sf.
-    //
-    //    Pour une face de frontière, c est le owner → Sf vers l'extérieur.
 
     double* gx = grad.component_data(0);
     double* gy = grad.component_data(1);
@@ -141,27 +86,33 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-
         Vec3 sum;
         for (Offset k = 0; k < n; ++k) {
             const std::size_t f = cell_faces[off + k];
-            const double phi_f = face_field_values[f];
-
-            // Déterminer si Sf est orienté vers l'extérieur de cette cellule.
-            const bool is_owner = (own.owner(f) == c);
-            Vec3 Sf_cell = is_owner ? face_Sf[f] : face_Sf[f] * (-1.0);
-
-            sum = sum + Sf_cell * phi_f;
+            const Vec3 Sf_cell = (own.owner(f) == c)
+                ? geometry.face_Sf[f]
+                : geometry.face_Sf[f] * (-1.0);
+            sum = sum + Sf_cell * face_values[f];
         }
-        if (!(cell_volume[c] > 0.0) || !std::isfinite(cell_volume[c]))
+        const double volume = geometry.cell_volumes[c];
+        if (!(volume > 0.0) || !std::isfinite(volume))
             throw std::runtime_error("compute_gradient_gauss: non-positive cell volume");
-        const double inv_vol = 1.0 / cell_volume[c];
-        gx[c] = sum.x * inv_vol;
-        gy[c] = sum.y * inv_vol;
-        gz[c] = sum.z * inv_vol;
+        const double inv_volume = 1.0 / volume;
+        gx[c] = sum.x * inv_volume;
+        gy[c] = sum.y * inv_volume;
+        gz[c] = sum.z * inv_volume;
     }
-
     return grad;
+}
+
+// Convenience overload. Repeated solver paths should construct one GeometryCache
+// and call the overload above instead of rebuilding geometry every iteration.
+inline Field<double, Location::CELL> compute_gradient_gauss(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const GeometryCache geometry = make_geometry_cache(mesh);
+    return compute_gradient_gauss(cell_field, mesh, geometry);
 }
 
 }  // namespace core
