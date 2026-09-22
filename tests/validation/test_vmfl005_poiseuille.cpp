@@ -68,12 +68,12 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L, std::size_t n
                         m.faces().push_face({c, a, b});
                 } else if (k == 0) {
                     // Bottom annulus: outward normal is -z.
-                    m.faces().push_face({point(k, j, s), point(k, j + 1, s),
-                                         point(k, j + 1, sn), point(k, j, sn)});
-                } else {
-                    // Top annulus: outward normal is +z.
                     m.faces().push_face({point(k, j, s), point(k, j, sn),
                                          point(k, j + 1, sn), point(k, j + 1, s)});
+                } else {
+                    // Top annulus: outward normal is +z.
+                    m.faces().push_face({point(k, j, s), point(k, j + 1, s),
+                                         point(k, j + 1, sn), point(k, j, sn)});
                 }
             }
         }
