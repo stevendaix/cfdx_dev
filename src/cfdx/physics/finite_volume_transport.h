@@ -4,6 +4,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -259,11 +260,12 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += diffusion_coefficient * area * bc.gradient;
                 div_phi[o] += F;
             } else {
-                // Zero-gradient upwind boundary: outflow contributes to the
-                // owner diagonal. For inflow, the external state is supplied
-                // by the boundary condition and must not make the diagonal
-                // negative.
-                diag[o] += std::max(F, 0.0);
+                // Zero-gradient means the boundary value equals the owner
+                // value. With bounded steady convection the boundary flux
+                // must therefore cancel exactly with -div(phi)*psi. Using
+                // max(F,0) here incorrectly leaves an artificial inflow sink.
+                // Keep the historical upwind form for the unbounded operator.
+                diag[o] += bounded_convection ? F : std::max(F, 0.0);
                 div_phi[o] += F;
             }
         }
@@ -353,8 +355,18 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
 
-    if (result.status == cfdx::core::SolverStatus::CONVERGED ||
-        result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
+    // when the system is well posed. Retry from the original iterate with
+    // restarted GMRES rather than injecting an unconverged Krylov state into
+    // the nonlinear solver.
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+        candidate = solution;
+        result = cfdx::core::solve_gmres(
+            equation.matrix, equation.rhs, candidate,
+            64, controls.max_iterations, controls.tolerance);
+    }
+
+    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
             if (!std::isfinite(candidate(i))) {
                 result.status = cfdx::core::SolverStatus::DIVERGED;
@@ -368,6 +380,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
     }
+    // A MAX_ITER_REACHED result is not an acceptable predictor solution.
+    // Do not inject an unconverged Krylov iterate into the nonlinear solver:
+    // doing so can create an apparently finite but numerically meaningless
+    // state that subsequently corrupts the face mass flux.
     return result;
 }
 

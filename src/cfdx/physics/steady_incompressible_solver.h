@@ -53,6 +53,7 @@ struct IncompressibleIteration {
     double continuity_linf = std::numeric_limits<double>::infinity();
     double continuity_normalized = std::numeric_limits<double>::infinity();
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
@@ -337,6 +338,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                                          controls.linear_tolerance,
                                                          controls.coupling.alpha_u});
 
+        auto require_linear_convergence = [](const char* component, const auto& solve) {
+            if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
+                throw std::runtime_error(
+                    std::string("solve_steady_incompressible: ") + component +
+                    " momentum solve did not converge (status=" +
+                    std::to_string(static_cast<int>(solve.status)) +
+                    ", iterations=" + std::to_string(solve.iterations) +
+                    ", residual=" + std::to_string(solve.residual) +
+                    ", relative=" + std::to_string(solve.residual_relative) + ")");
+            }
+        };
+        require_linear_convergence("Ux", rx);
+        require_linear_convergence("Uy", ry);
+        require_linear_convergence("Uz", rz);
+
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             U.component_data(0)[c] = ux(c);
             U.component_data(1)[c] = uy(c);
@@ -377,6 +393,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
+        bool has_fixed_pressure_boundary = false;
+        for (const auto& [name, bc] : pressure_bcs) {
+            (void)name;
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                has_fixed_pressure_boundary = true;
+                break;
+            }
+        }
 
         for (std::size_t corr = 0; corr < pcorr; ++corr) {
             // Assemble the pressure-correction Laplacian with the same
@@ -420,10 +444,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 b(c) = -continuity[c];
             }
 
-            // A fixed pressure patch supplies a Dirichlet pressure-correction
-            // contribution. Zero-gradient patches leave the pressure equation
-            // Neumann-like. This prevents silently treating a prescribed
-            // outlet/inlet pressure as a homogeneous Neumann condition.
+            // Assemble the pressure-correction boundary condition, not the
+            // physical pressure equation. For a prescribed pressure boundary,
+            // p' = 0; the physical pressure target is already represented by
+            // p and must not be injected again into the correction RHS.
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 if (mesh.ownership().neighbour(f) >= 0)
                     continue;
@@ -446,23 +470,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double coeff =
                     controls.density * rAU[o] * area / distance;
                 rows[o][o] += coeff;
-                b(o) += coeff * (it->second.value - p(o));
             }
 
-            // Pressure has a gauge freedom whenever only Neumann-type
-            // conditions are present. A single reference cell removes it.
-            const std::size_t ref = controls.pressure_reference_cell;
-            // Eliminate the reference pressure degree of freedom symmetrically:
-            // remove its column from all other rows as well as replacing its
-            // row by the gauge equation. The remaining pressure operator is
-            // symmetric positive definite and can be solved robustly by CG.
-            for (std::size_t row = 0; row < nc; ++row) {
-                if (row == ref) continue;
-                rows[row].erase(ref);
+            // Only a pure-Neumann pressure problem needs a gauge equation.
+            // Adding a reference constraint when a fixed-pressure boundary is
+            // already present over-constrains the correction system and breaks
+            // the discrete continuity/pressure-correction consistency.
+            if (!has_fixed_pressure_boundary) {
+                const std::size_t ref = controls.pressure_reference_cell;
+                for (std::size_t row = 0; row < nc; ++row) {
+                    if (row == ref) continue;
+                    rows[row].erase(ref);
+                }
+                rows[ref].clear();
+                rows[ref][ref] = 1.0;
+                b(ref) = 0.0;
             }
-            rows[ref].clear();
-            rows[ref][ref] = 1.0;
-            b(ref) = 0.0;
 
             for (std::size_t row = 0; row < nc; ++row) {
                 for (const auto& [col, value] : rows[row]) A.push_back(row, col, value);
@@ -477,8 +500,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += controls.coupling.alpha_p * p_corr(c);
-            // Explicitly enforce the selected pressure gauge after relaxation.
-            p(controls.pressure_reference_cell) = controls.pressure_reference_value;
+            // With prescribed pressure boundaries the physical pressure gauge
+            // is already fixed by the boundary data; resetting an arbitrary
+            // cell would inject an artificial pressure discontinuity. A cell
+            // reference is needed only for a pure-Neumann pressure problem.
+            if (!has_fixed_pressure_boundary)
+                p(controls.pressure_reference_cell) = controls.pressure_reference_value;
 
             Field<double, Location::CELL> p_corr_field(
                 nc, "p_corr", "Pa", 1);
@@ -497,18 +524,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 U.component_data(2)[c] -= rAU[c] * grad_pc.component_data(2)[c];
             }
 
-            // Consistent face-flux correction. Fixed-value velocity patches
-            // are left constrained by their prescribed face velocity.
+            // Apply the same pressure-correction flux operator used in
+            // the pressure equation. Internal faces use the owner/neighbour
+            // coefficient; fixed-pressure boundary faces use p'=0; Neumann
+            // pressure boundaries receive no normal correction.
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 const auto nraw = mesh.ownership().neighbour(f);
-                if (nraw < 0) continue;
                 const std::size_t o = mesh.ownership().owner(f);
-                const std::size_t n = static_cast<std::size_t>(nraw);
-                const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                 const double area = geometry.face_area_vectors[f].mag();
-                const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
-                mass_flux(f) -= controls.density * dface *
-                                (p_corr(n) - p_corr(o));
+                if (nraw >= 0) {
+                    const std::size_t n = static_cast<std::size_t>(nraw);
+                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
+                    const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
+                    mass_flux(f) -= controls.density * dface *
+                                    (p_corr(n) - p_corr(o));
+                    continue;
+                }
+
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch >= mesh.boundary().n_patches()) continue;
+                const auto& name = mesh.boundary().patch(patch).name;
+                const auto it = pressure_bcs.find(name);
+                if (it == pressure_bcs.end() ||
+                    it->second.type != ScalarBoundaryType::FIXED_VALUE)
+                    continue;
+                const double d = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+                const double dface = rAU[o] * area / d;
+                // p'_boundary = 0 for a fixed physical pressure boundary.
+                mass_flux(f) += controls.density * dface * p_corr(o);
             }
         }
 
@@ -586,6 +629,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
         h.momentum_equation_residual = final_momentum_residual;
+        double momentum_rhs_scale = 1.0;
+        for (const auto* eq : {&final_ex, &final_ey, &final_ez}) {
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+                momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
+        }
+        h.momentum_equation_residual_relative =
+            final_momentum_residual / momentum_rhs_scale;
         const double domain_volume =
             std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
         const double characteristic_area =
@@ -601,7 +651,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual <= controls.convergence.relative_tolerance &&
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
             h.continuity_linf <= controls.convergence.continuity_tolerance &&
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
