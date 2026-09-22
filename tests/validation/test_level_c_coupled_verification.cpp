@@ -81,7 +81,6 @@ void require_close(double value, double reference, double tolerance,
 int main()
 {
     try {
-        std::cout<<"LEVEL_C-01 turbulence\n";
         // Level C-01: turbulence transport must preserve positivity while
         // receiving a non-zero source on an actual CFDX mesh.
         {
@@ -115,7 +114,6 @@ int main()
                 throw std::runtime_error("turbulence transport positivity gate failed");
         }
 
-        std::cout<<"LEVEL_C-02 radiation-energy\n";
         // Level C-02: radiation/energy must converge on the same physical
         // source state, and the reported energy-balance residual must close.
         {
@@ -127,14 +125,19 @@ int main()
             Field<double,Location::CELL> irradiation(1,"G","W/m2",1);
             T(0)=800.0; source(0)=0.0; irradiation(0)=0.0;
 
+            ScalarBoundaryConditions radiation_bc;
             ScalarBoundaryConditions thermal_bc;
-            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"})
+            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"}) {
+                radiation_bc[name]={
+                    ScalarBoundaryType::FIXED_VALUE,
+                    blackbody_intensity(800.0),0.0};
                 thermal_bc[name]={
                     ScalarBoundaryType::FIXED_VALUE,
                     800.0,0.0};
+            }
 
             RadiationEnergyCouplingControls controls;
-            controls.radiation.absorption=1e-6;
+            controls.radiation.absorption=0.5;
             controls.radiation.max_iterations=100;
             controls.radiation.tolerance=1e-10;
             controls.energy.conductivity=1.0;
@@ -147,14 +150,13 @@ int main()
 
             const auto r=solve_radiation_energy_coupled(
                 m,g,mass_flux,T,source,irradiation,isotropic_directions(),
-                controls,thermal_bc,thermal_bc);
+                controls,radiation_bc,thermal_bc);
             if (!r.converged || r.energy_balance_residuals.empty())
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
                            "radiation-energy energy-balance gate failed");
         }
 
-        std::cout<<"LEVEL_C-03 CHT\n";
         // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
