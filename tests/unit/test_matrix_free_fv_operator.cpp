@@ -5,6 +5,7 @@
 #include "cfdx/core/solvers/scalar_diffusion.h"
 #include "common/test_harness.h"
 #include <limits>
+#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -63,7 +64,7 @@ int main() {
         boundary.face_values.assign(m.n_faces(), std::numeric_limits<double>::quiet_NaN());
         Vector rhs;
         SparseMatrix A = assemble_cell_diffusion_matrix(
-            m, boundary, gamma, {0.0, 0.0}, rhs);
+            m, boundary, gamma, {0.0, 0.0}, rhs, geometry);
 
         Vector x(2);
         x(0) = 3.0;
