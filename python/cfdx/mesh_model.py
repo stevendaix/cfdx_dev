@@ -84,6 +84,12 @@ def read_mesh_catalog(path: Path) -> MeshCatalog:
         metadata = _parse_patch_metadata(h5.attrs.get("boundary_patches", ""))
         if len(offsets) != len(metadata) + 1:
             raise ValueError("boundary patch metadata/offset count mismatch")
+        if len(offsets) == 0 or int(offsets[0]) != 0:
+            raise ValueError("boundary patch offsets must start at zero")
+        if any(int(offsets[i + 1]) < int(offsets[i]) for i in range(len(offsets) - 1)):
+            raise ValueError("boundary patch offsets must be monotonic")
+        if any(int(fid) < 0 or int(fid) >= n_faces for fid in face_ids):
+            raise ValueError("boundary patch contains an out-of-range face id")
         patches=[]
         for i,(name,type_code) in enumerate(metadata):
             start,end=int(offsets[i]),int(offsets[i+1])
