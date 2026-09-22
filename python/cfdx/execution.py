@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from .metrics import SolverMetrics, SolverMetricsParser
@@ -28,6 +29,19 @@ class ExecutionController:
         self.on_metrics: Callable[[SolverMetrics], None] | None = None
         self.on_complete: Callable[[ProcessResult], None] | None = None
         self._stop_requested = False
+
+    def restart(self, dat_path: str | Path) -> None:
+        """Restart through the runner using a concrete solver checkpoint."""
+        path = Path(dat_path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if self.session.state in {SimulationState.RUNNING, SimulationState.PAUSED}:
+            raise RuntimeError("cannot restart an active session")
+        self.session.run()
+        self.error = None
+        self.latest_metrics = None
+        self._stop_requested = False
+        self.runner.start(self._output, self._complete, restart_path=path)
 
     def start(self) -> None:
         self.session.run()
