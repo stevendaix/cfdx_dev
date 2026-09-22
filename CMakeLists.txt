@@ -171,6 +171,7 @@ set(CFDX_TRANSPORT_SOURCES
 )
 
 set(CFDX_CORE_SOURCES
+    src/cfdx/application/simulation_controller.cpp
     ${CFDX_MESH_SOURCES}
     ${CFDX_GEOMETRY_SOURCES}
     ${CFDX_FIELD_SOURCES}
@@ -341,6 +342,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
+    add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
