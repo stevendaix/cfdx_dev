@@ -141,8 +141,6 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
     const std::size_t n_cells = mesh.n_cells();
     const std::size_t dim = cell_field.dimension();
 
-    if (!is_valid(geometry, mesh))
-        throw std::invalid_argument("interpolate_cell_to_face: invalid geometry cache");
     if (cell_field.size() != n_cells)
         throw std::runtime_error("interpolate_cell_to_face: field size != n_cells");
     if (dim == 0)
@@ -160,6 +158,8 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
             cell_gradient->size() != n_cells)
             throw std::runtime_error(
                 "interpolate_cell_to_face: LIMITED currently supports scalar fields with a 3-component gradient");
+        if (!is_valid(geometry, mesh))
+            throw std::invalid_argument("interpolate_cell_to_face: invalid geometry cache");
     }
 
     Field<double, Location::FACE> result(
@@ -252,7 +252,13 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
     LimiterType limiter_type = LimiterType::NONE,
     const Field<double, Location::CELL>* cell_gradient = nullptr)
 {
-    const GeometryCache geometry = make_geometry_cache(mesh);
+    if (scheme == InterpScheme::LIMITED) {
+        const GeometryCache geometry = make_geometry_cache(mesh);
+        return interpolate_cell_to_face(
+            cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
+    }
+    // Linear/upwind interpolation only needs topology and ownership.
+    GeometryCache geometry;
     return interpolate_cell_to_face(
         cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
 }
