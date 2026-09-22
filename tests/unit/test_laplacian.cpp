@@ -157,8 +157,18 @@ int main() {
         f(0) = 0.5;
         f(1) = 1.5;
         GeometryCache geometry = make_geometry_cache(m);
+        // Synthetic skewed geometry: the internal face has a tangential
+        // component and the owner-side boundary face is perturbed so the
+        // Gauss gradients have a non-zero tangential component.
         geometry.face_Sf[5].y = 0.25;
+        geometry.face_Sf[2].y = 1.25;
+        auto orth = compute_laplacian(f, m, geometry, LaplacianScheme::ORTHOGONAL);
         auto corrected = compute_laplacian(f, m, geometry, LaplacianScheme::CORRECTED);
+        // For phi=x, the orthogonal contribution is 1.0. The Gauss
+        // tangential correction is 0.25 * ((0.375 + -0.25) / 2)
+        // = 0.015625, giving the quantitative corrected result below.
+        EXPECT_NEAR(orth(0), 1.0, 1e-12);
+        EXPECT_NEAR(corrected(0), 1.015625, 1e-12);
         EXPECT_NEAR(corrected(0) + corrected(1), 0.0, 1e-12);
         EXPECT_TRUE(std::isfinite(corrected(0)));
         EXPECT_TRUE(std::isfinite(corrected(1)));
