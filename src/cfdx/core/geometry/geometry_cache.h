@@ -96,6 +96,8 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
     // neighbour cell therefore needs the oriented geometry helper so its
     // local face normals are outward as well.
     const FaceOwnership& own = m.ownership();
+    if (!own.is_consistent(n_cells))
+        throw std::runtime_error("compute_geometry_cache: inconsistent face ownership");
     const CellConnectivity& cells = m.cells();
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
