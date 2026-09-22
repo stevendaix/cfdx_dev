@@ -10,11 +10,11 @@ using namespace cfdx::core::parallel;
 using namespace cfdx::testing;
 
 namespace {
-Patch make_wall_patch(const std::string& name, std::vector<int> face_ids) {
+Patch make_wall_patch(const std::string& name, std::initializer_list<std::size_t> face_ids) {
     Patch patch;
     patch.name = name;
     patch.type = PatchType::WALL;
-    patch.face_ids = std::move(face_ids);
+    patch.face_ids.assign(face_ids.begin(), face_ids.end());
     return patch;
 }
 }  // namespace
