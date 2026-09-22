@@ -391,7 +391,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // retain the symmetric three-component Rhie-Chow coupling rather than
         // rejecting an otherwise valid zero-flow problem.
         if (active_count == 0) {
+            // Symmetric fallback for a legitimate quiescent problem.
+            // The flags must also be enabled so that the selected diagonals
+            // are actually accumulated below.
             active_count = 3;
+            active_x = true;
+            active_y = true;
+            active_z = true;
         }
 
         for (std::size_t c=0;c<mesh.n_cells();++c) {
