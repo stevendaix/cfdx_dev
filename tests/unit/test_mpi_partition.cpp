@@ -32,8 +32,8 @@ int main() {
         m.faces().push_face({1, 2, 5, 4});
         m.faces().push_face({3, 4, 7, 6});
 
-        m.cells().push_cell({0, 1, 2, 3, 4});
-        m.cells().push_cell({1, 2, 5, 4});
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({1, 2});
 
         m.ownership().resize(3);
         m.ownership().set_owner(0, 0); m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
@@ -77,7 +77,7 @@ int main() {
         m.ownership().set_owner(0, 0);
         m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
 
-        m.cells().push_cell({0, 1, 2, 3});
+        m.cells().push_cell({0});
 
         m.topo_validate();
 
@@ -125,11 +125,11 @@ int main() {
         m.ownership().set_neighbour(3, 1);
         m.ownership().set_neighbour(7, 3);
 
-        m.cells().push_cell({0, 1, 5, 4});
-        m.cells().push_cell({1, 2, 6, 5});
-        m.cells().push_cell({2, 3, 7, 6});
-        m.cells().push_cell({4, 5, 9, 8});
-        m.cells().push_cell({5, 6, 10, 9});
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({2, 3});
+        m.cells().push_cell({4, 5});
+        m.cells().push_cell({6, 7});
+        m.cells().push_cell({0, 2});
 
         m.topo_validate();
 
