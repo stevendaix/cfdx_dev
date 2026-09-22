@@ -46,8 +46,9 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
         if not isinstance(boundary, dict):
             diagnostics.append(SetupDiagnostic("error", "BOUNDARY_TYPE", "boundary definition must be a mapping", f"boundaries.{name}"))
             continue
-        if boundary.get("type") not in allowed:
-            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_KIND", f"unsupported boundary type {boundary.get("type")!r}", f"boundaries.{name}.type"))
+        boundary_type = boundary.get("type")
+        if boundary_type not in allowed:
+            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_KIND", f"unsupported boundary type {boundary_type!r}", f"boundaries.{name}.type"))
     if mesh is not None:
         if mesh.n_cells <= 0:
             diagnostics.append(SetupDiagnostic("error", "EMPTY_MESH", "mesh contains no cells", "mesh"))
