@@ -116,6 +116,7 @@ void check_case(std::size_t nz)
     constexpr double mu = 1.0e-5;
     constexpr double dp = 10.24;
     constexpr std::size_t ns = 32;
+    constexpr double pi = 3.1415926535897932384626433832795;
 
     Mesh mesh = make_pipe(ns, nz, R, L);
     Field<double,Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
