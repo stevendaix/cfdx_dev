@@ -86,8 +86,6 @@ inline Field<double, Location::CELL> compute_laplacian(
         throw std::runtime_error("compute_laplacian: field size != n_cells");
     if (cell_field.dimension() != 1)
         throw std::runtime_error("compute_laplacian: field must be scalar (dim=1)");
-    if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED)
-        throw std::runtime_error("compute_laplacian: requested non-orthogonal scheme is not implemented");
 
     Field<double, Location::CELL> lap(
         n_cells, cell_field.name() + "_lap", cell_field.metadata().unit + "/m^2", 1);
@@ -108,45 +106,48 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (owner != c && neighbour != static_cast<std::int64_t>(c))
                 throw std::runtime_error("compute_laplacian: face is not attached to cell");
 
-            // Orthogonal two-point finite-volume contribution:
-            //   Gamma_f = |Sf| / |C_N - C_P|
-            //   flux_f = Gamma_f * (phi_N - phi_P)
-            // Boundary faces have zero normal gradient in this Module-0
-            // operator because no BoundaryField value is supplied.
-            if (neighbour < 0)
-                continue;
-
-            const std::size_t nb = static_cast<std::size_t>(neighbour);
-            if (nb >= n_cells)
-                throw std::runtime_error("compute_laplacian: neighbour index out of range");
-
-            const double d = (geometry.cell_centres[nb] - geometry.cell_centres[owner]).mag();
+            // Two-point orthogonal contribution plus an optional
+            // non-orthogonal correction.  d is the owner->neighbour vector,
+            // while Sf is the canonical owner->exterior area vector.
+            const Vec3 dvec = geometry.cell_centres[nb] - geometry.cell_centres[owner];
+            const double d2 = dvec.mag2();
             const double area = geometry.face_Sf[f].mag();
-            if (!(d > 1e-14) || !(area > 0.0) ||
-                !std::isfinite(d) || !std::isfinite(area))
+            if (!(d2 > 1e-28) || !(area > 0.0) ||
+                !std::isfinite(d2) || !std::isfinite(area))
                 throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
 
-            const double conductance = area / d;
-            const double contribution = conductance * (phi[nb] - phi[owner]);
-            sum += (owner == c) ? contribution : -contribution;
-        }
+            const Vec3 Sf = geometry.face_Sf[f];
+            const double d_dot_Sf = dvec.x * Sf.x + dvec.y * Sf.y + dvec.z * Sf.z;
+            const double orth_coeff = d_dot_Sf / d2;
+            const double delta_phi = phi[nb] - phi[owner];
+            double flux = orth_coeff * delta_phi;
 
-        const double volume = geometry.cell_volumes[c];
-        if (!(volume > 0.0) || !std::isfinite(volume))
-            throw std::runtime_error("compute_laplacian: non-positive cell volume");
-        out[c] = sum / volume;
-    }
-    return lap;
-}
+            if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED) {
+                // Reconstruct the face gradient from the two cell gradients.
+                // The correction acts only on the tangential part of Sf.
+                const auto grad = compute_gradient_gauss(cell_field, mesh, geometry);
+                const Vec3 grad_owner{grad.component_data(0)[owner],
+                                      grad.component_data(1)[owner],
+                                      grad.component_data(2)[owner]};
+                const Vec3 grad_nb{grad.component_data(0)[nb],
+                                   grad.component_data(1)[nb],
+                                   grad.component_data(2)[nb]};
+                const Vec3 grad_face = (grad_owner + grad_nb) * 0.5;
+                const Vec3 Sf_orth = dvec * orth_coeff;
+                const Vec3 Sf_nonorth = Sf - Sf_orth;
+                const double correction = grad_face.x * Sf_nonorth.x +
+                                          grad_face.y * Sf_nonorth.y +
+                                          grad_face.z * Sf_nonorth.z;
+                double correction_factor = 1.0;
+                if (scheme == LaplacianScheme::LIMITED) {
+                    // Bound the non-orthogonal correction by the magnitude of
+                    // the orthogonal contribution.  This is a deterministic
+                    // limiter and avoids correction-driven flux reversal.
+                    const double orth_abs = std::abs(orth_coeff * delta_phi);
+                    if (std::abs(correction) > 0.0)
+                        correction_factor = std::min(1.0, orth_abs / std::abs(correction));
+                }
+                flux += correction_factor * correction;
+            }
 
-inline Field<double, Location::CELL> compute_laplacian(
-    const Field<double, Location::CELL>& cell_field,
-    const Mesh& mesh,
-    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL)
-{
-    const GeometryCache geometry = make_geometry_cache(mesh);
-    return compute_laplacian(cell_field, mesh, geometry, scheme);
-}
-
-}  // namespace core
-}  // namespace cfdx
+            const double contribution = flux;
