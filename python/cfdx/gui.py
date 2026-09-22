@@ -149,6 +149,7 @@ if QApplication is not None:
             self.mesh_browser.selection_changed.connect(self._mesh_selection_changed)
             self.results_series = ResultsSeriesPanel()
             self.results_series.frame_changed.connect(self._result_frame_changed)
+            self.results_series.field_changed.connect(self._result_field_changed)
 
             self.setup_panel = CaseSetupPanel(self.session.case)
             self.setup_panel.changed.connect(self._mark_dirty)
@@ -245,6 +246,15 @@ if QApplication is not None:
                 self.result_status.setText(str(frame.path))
             except (OSError, RuntimeError, ValueError) as exc:
                 self._show_error("Open 3D result failed", str(exc))
+
+        def _result_field_changed(self, field: str) -> None:
+            if self.view3d is None or self._result_source is None:
+                return
+            try:
+                self.view3d.set_field(field)
+                self.result_status.setText(f"{self._result_source} | field={field}")
+            except (KeyError, RuntimeError, OSError, ValueError) as exc:
+                self._show_error("Select result field failed", str(exc))
 
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":
