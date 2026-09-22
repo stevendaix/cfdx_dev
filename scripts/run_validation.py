@@ -13,6 +13,7 @@ LEVELS = {
     "A": ["test_analytical_benchmarks", "test_benchmark_matrix"],
     "B": ["test_level_b_reference_benchmarks"],
     "C": ["test_level_c_coupled_verification"],
+    "VMFL": ["test_vmfl004_couette"],
 }
 
 
