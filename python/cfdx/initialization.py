@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+from .setup_model import ChangeImpact
 
 class InitializationMode(str, Enum):
     UNIFORM = "uniform"
@@ -12,6 +13,10 @@ class InitializationSpec:
     mode: InitializationMode
     field: str | None = None
     value: float | None = None
+
+    @property
+    def change_impact(self) -> ChangeImpact:
+        return ChangeImpact.REQUIRES_RESTART
 
     def validate(self) -> None:
         if self.mode is InitializationMode.UNIFORM:
