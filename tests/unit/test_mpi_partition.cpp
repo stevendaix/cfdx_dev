@@ -258,7 +258,10 @@ int main() {
         plan.recv_faces.resize(size);
         plan.send_cells.resize(size);
         plan.recv_cells.resize(size);
+        // Keep send/receive cardinalities paired so plan validation passes;
+        // the index itself is deliberately outside the field bounds.
         plan.send_cells[1].push_back(1);
+        plan.recv_cells[1].push_back(1);
 
         Field<double, Location::CELL> values(1, "phi", "1", 1);
         values.fill(0.0);
