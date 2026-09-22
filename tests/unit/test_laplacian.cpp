@@ -144,8 +144,8 @@ int main() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
         f(0) = 1.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
+        EXPECT_NEAR(compute_laplacian(f, m, LaplacianScheme::CORRECTED)(0), 0.0, 1e-12);
+        EXPECT_NEAR(compute_laplacian(f, m, LaplacianScheme::LIMITED)(0), 0.0, 1e-12);
     });
 
     run_case("laplacian_reuses_geometry_cache", []() {
@@ -178,7 +178,7 @@ int main() {
         EXPECT_NEAR(lap(1), -1.0, 1e-12);
     });
 
-    run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
+    run_case("laplacian_nonorthogonal_schemes_constant_field", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
         f(0) = 42.0;
