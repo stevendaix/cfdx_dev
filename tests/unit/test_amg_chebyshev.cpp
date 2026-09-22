@@ -87,20 +87,32 @@ int main() {
 
     // Setup must reject malformed matrix data rather than silently falling
     // back to an identity diagonal.
-    SparseMatrix bad(2, 2);
+    SparseMatrix bad(4, 4);
     bad.push_back(0, 0, std::numeric_limits<double>::quiet_NaN());
     bad.push_back(0, 1, -1.0);
     bad.push_back(1, 0, -1.0);
     bad.push_back(1, 1, 2.0);
+    bad.push_back(1, 2, -1.0);
+    bad.push_back(2, 1, -1.0);
+    bad.push_back(2, 2, 2.0);
+    bad.push_back(2, 3, -1.0);
+    bad.push_back(3, 2, -1.0);
+    bad.push_back(3, 3, 2.0);
     bad.finalize();
     if (amg.setup(bad)) {
         return 7;
     }
 
-    SparseMatrix missing_diag(2, 2);
+    SparseMatrix missing_diag(4, 4);
     missing_diag.push_back(0, 1, -1.0);
     missing_diag.push_back(1, 0, -1.0);
     missing_diag.push_back(1, 1, 2.0);
+    missing_diag.push_back(1, 2, -1.0);
+    missing_diag.push_back(2, 1, -1.0);
+    missing_diag.push_back(2, 2, 2.0);
+    missing_diag.push_back(2, 3, -1.0);
+    missing_diag.push_back(3, 2, -1.0);
+    missing_diag.push_back(3, 3, 2.0);
     missing_diag.finalize();
     if (amg.setup(missing_diag)) {
         return 8;
