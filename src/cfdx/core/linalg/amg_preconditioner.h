@@ -33,7 +33,6 @@ public:
     {
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A)) {
-            std::cerr << "AMG setup: fine matrix invalid\\n";
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -251,7 +250,7 @@ private:
         Vector Ax(r.size());
         const auto& inv_diag = levels_[level].inv_diag;
         for (std::size_t s = 0; s < sweeps; ++s) {
-            if (!apply_operator(level, x, Ax)) { std::cerr << "AMG operator failure level=" << level << "\n"; return false; }
+            if (!apply_operator(level, x, Ax)) return false;
             for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
                 if (!std::isfinite(x(i))) return false;
@@ -267,7 +266,7 @@ private:
             return smooth_coarsest(level, r, x);
         }
 
-        if (!smooth(level, r, x, pre_)) { std::cerr << "AMG pre-smooth failure level=" << level << "\n"; return false; }
+        if (!smooth(level, r, x, pre_)) return false;
 
         Vector Ax(r.size());
         if (!apply_operator(level, x, Ax)) return false;
@@ -280,7 +279,7 @@ private:
         }
 
         Vector coarse_x(nc, 0.0);
-        if (!vcycle(level + 1, coarse_r, coarse_x)) { std::cerr << "AMG coarse-cycle failure level=" << level << "\n"; return false; }
+        if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
 
         for (std::size_t i = 0; i < r.size(); ++i) {
             x(i) += coarse_x(aggregate[i]);
