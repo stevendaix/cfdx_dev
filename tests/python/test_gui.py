@@ -110,3 +110,27 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     window.close()
     app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
+    from cfdx.case_io import save_case_with_dat
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-restart-test"])
+    session = CFDXSession()
+    session.case.name = "restart"
+    session.case.execution.solver = sys.executable
+    source = tmp_path / "solver.dat"
+    source.write_text("restart-state\n", encoding="utf-8")
+    case_path, dat_path = save_case_with_dat(session, tmp_path / "restart.cfdx.h5", source)
+
+    window = CFDXMainWindow(session)
+    window._case_path = case_path
+    window._restart_dat = dat_path
+    command = window._solver_command()
+
+    assert command[-3:] == ["--restart", str(dat_path)]
+    window._dirty = False
+    window.close()
+    app.quit()
