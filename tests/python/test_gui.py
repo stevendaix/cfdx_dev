@@ -46,6 +46,10 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     window.setup_panel.boundary_value.setText("1.0")
     window.setup_panel.boundary_button.click()
     assert session.case.boundaries["inlet"] == {"type": "inlet", "value": "1.0"}
+    session.case.boundaries["inlet"]["vendor_extension"] = {"keep": True}
+    window.setup_panel.boundary_value.setValue(2.0)
+    window.setup_panel.boundary_button.click()
+    assert session.case.boundaries["inlet"]["vendor_extension"] == {"keep": True}
     class FakeRunner:
         running = False
 
