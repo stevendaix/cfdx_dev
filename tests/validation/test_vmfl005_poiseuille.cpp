@@ -252,21 +252,47 @@ void check_case(std::size_t nz)
     double flow_rate = 0.0;
     double volume = 0.0;
     double max_profile_error = 0.0;
+    double profile_l2_sum = 0.0;
+    double exact_l2_sum = 0.0;
+    double max_transverse_velocity = 0.0;
+    double max_axial_uniformity = 0.0;
+    std::vector<double> plane_flow(nz, 0.0);
+    std::vector<double> plane_volume(nz, 0.0);
+
+    const double mean_exact = dp * R * R / (8.0 * mu * L);
+    const double max_exact = dp * R * R / (4.0 * mu * L);
+
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
         const double r = std::hypot(geometry.cell_centres[cell].x,
                                     geometry.cell_centres[cell].y);
         const double exact = dp * (R * R - r * r) / (4.0 * mu * L);
-        max_profile_error = std::max(max_profile_error, std::abs(U(cell,2) - exact));
-        flow_rate += U(cell,2) * geometry.cell_volumes[cell];
+        const double error = U(cell, 2) - exact;
+        max_profile_error = std::max(max_profile_error, std::abs(error));
+        profile_l2_sum += error * error * geometry.cell_volumes[cell];
+        exact_l2_sum += exact * exact * geometry.cell_volumes[cell];
+        max_transverse_velocity = std::max(
+            max_transverse_velocity, std::hypot(U(cell, 0), U(cell, 1)));
+
+        const std::size_t k = cell / (nr * ns);
+        plane_flow[k] += U(cell, 2) * geometry.cell_volumes[cell];
+        plane_volume[k] += geometry.cell_volumes[cell];
+        flow_rate += U(cell, 2) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
     }
     const double area = volume / L;
     flow_rate /= L;
     const double mean_u = flow_rate / area;
-    const double q_exact = pi * std::pow(R,4) * dp / (8.0 * mu * L);
-    const double mean_exact = 0.02;
+    const double q_exact = pi * std::pow(R, 4) * dp / (8.0 * mu * L);
     const double rel_q = std::abs(flow_rate - q_exact) / q_exact;
     const double rel_mean = std::abs(mean_u - mean_exact) / mean_exact;
+    const double rel_profile_l2 = std::sqrt(profile_l2_sum / exact_l2_sum);
+
+    for (std::size_t k = 0; k < nz; ++k) {
+        const double q_plane = plane_flow[k] / (L / static_cast<double>(nz));
+        max_axial_uniformity = std::max(
+            max_axial_uniformity, std::abs(q_plane - flow_rate) / q_exact);
+    }
+
     const auto& last = result.history.back();
 
     std::cout << "VMFL005 nz=" << nz
@@ -275,13 +301,21 @@ void check_case(std::size_t nz)
               << " mean_velocity=" << mean_u
               << " mean_rel_error=" << rel_mean
               << " profile_abs_error=" << max_profile_error
+              << " profile_l2_rel_error=" << rel_profile_l2
+              << " max_transverse_velocity=" << max_transverse_velocity
+              << " axial_flow_uniformity=" << max_axial_uniformity
               << " continuity_linf=" << last.continuity_linf
               << " iterations=" << result.iterations << "\n";
 
-    const double max_exact = dp * R * R / (4.0 * mu * L);
     const double rel_profile = max_profile_error / max_exact;
-    if (rel_q > 5e-2 || rel_mean > 5e-2 || rel_profile > 5e-2)
+    const double velocity_scale = std::max(mean_exact, max_exact);
+    if (rel_q > 5e-2 || rel_mean > 5e-2 ||
+        rel_profile > 5e-2 || rel_profile_l2 > 5e-2)
         throw std::runtime_error("VMFL005 quantitative mismatch");
+    if (max_transverse_velocity > 1e-12 * velocity_scale)
+        throw std::runtime_error("VMFL005 transverse velocity is not zero");
+    if (max_axial_uniformity > 1e-6)
+        throw std::runtime_error("VMFL005 axial flow is not uniform");
     if (last.continuity_linf > 1e-8)
         throw std::runtime_error("VMFL005 continuity error too large");
 }
