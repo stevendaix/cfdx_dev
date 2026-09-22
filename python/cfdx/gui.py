@@ -22,6 +22,8 @@ except ImportError:  # pragma: no cover
 
 
 if QApplication is not None:
+    from .setup_panel import CaseSetupPanel
+
     class SessionSignals(QObject):
         state_changed = Signal(object)
         output = Signal(str, bool)
@@ -70,10 +72,12 @@ if QApplication is not None:
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
             self.cfl.valueChanged.connect(self._set_cfl)
             self.parameters.addRow("CFL", self.cfl)
+            self.setup_panel = CaseSetupPanel(self.session.case)
             right = QVBoxLayout()
             right.addWidget(self.status)
             right.addLayout(controls)
             right.addLayout(self.parameters)
+            right.addWidget(self.setup_panel)
             right.addWidget(self.log)
             layout.addWidget(self.tree, 1)
             container = QWidget()
