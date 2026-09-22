@@ -39,6 +39,16 @@ def _validate_path(path: Path) -> Path:
     return path
 
 
+def _paired_dat_path(case_path: Path) -> Path:
+    """Return the canonical DAT sibling for case.cfdx.h5."""
+    name = case_path.name
+    if name.lower().endswith(".cfdx.h5"):
+        name = name[:-len(".cfdx.h5")]
+    else:
+        name = case_path.stem
+    return case_path.with_name(f"{name}.dat")
+
+
 def save_case(session: CFDXSession, path: Path) -> Path:
     """Save the case configuration and application checkpoint to HDF5."""
     path = _validate_path(path)
@@ -79,7 +89,7 @@ def save_case_with_dat(
         raise FileNotFoundError(dat_path)
 
     case_path = save_case(session, path)
-    target_dat = case_path.with_suffix(".dat")
+    target_dat = _paired_dat_path(case_path)
     shutil.copy2(dat_path, target_dat)
 
     with h5py.File(case_path, "r+") as h5:
@@ -97,7 +107,10 @@ def _read_session(path: Path) -> CFDXSession:
         raise FileNotFoundError(path)
 
     with h5py.File(path, "r") as h5:
-        if h5.attrs.get("format") != _FORMAT:
+        file_format = h5.attrs.get("format")
+        if isinstance(file_format, bytes):
+            file_format = file_format.decode("utf-8")
+        if file_format != _FORMAT:
             raise ValueError("not a CFDX HDF5 case")
         if int(h5.attrs.get("schema_version", -1)) != _SCHEMA_VERSION:
             raise ValueError("unsupported CFDX HDF5 case schema")
