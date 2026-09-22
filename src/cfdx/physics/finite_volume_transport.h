@@ -361,10 +361,21 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // the nonlinear solver.
     if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED ||
         result.status == cfdx::core::SolverStatus::DIVERGED) {
+        // Diffusion-dominated momentum matrices are often SPD. CG is much
+        // cheaper and more robust on that subset than repeatedly restarting
+        // a nonsymmetric Krylov method.
         candidate = solution;
-        result = cfdx::core::solve_gmres(
+        auto cg_result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
-            64, controls.max_iterations, controls.tolerance);
+            controls.max_iterations, controls.tolerance);
+        if (cg_result.status == cfdx::core::SolverStatus::CONVERGED) {
+            result = cg_result;
+        } else {
+            candidate = solution;
+            result = cfdx::core::solve_gmres(
+                equation.matrix, equation.rhs, candidate,
+                64, controls.max_iterations, controls.tolerance);
+        }
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
