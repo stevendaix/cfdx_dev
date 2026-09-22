@@ -2,6 +2,7 @@
 from .case import Case, ExecutionConfig
 from .session import CFDXSession, CaseNode, ChangeImpact, Checkpoint, SimulationState
 from .tui import TuiRenderer
+from .runner import ProcessResult, SolverRunner
 
 __all__ = [
     "Case",
@@ -12,4 +13,6 @@ __all__ = [
     "Checkpoint",
     "SimulationState",
     "TuiRenderer",
+    "ProcessResult",
+    "SolverRunner",
 ]
