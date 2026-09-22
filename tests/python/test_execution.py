@@ -73,8 +73,23 @@ def test_controller_pause_resume(tmp_path: Path) -> None:
     assert session.state.value == "STOPPED"
 
 
-def test_runner_restart_appends_checkpoint(tmp_path):
-    from cfdx.runner import SolverRunner
-    r=SolverRunner(("solver",))
-    assert r.command == ("solver",)
-    # Contract is exercised through ExecutionController; runner remains non-blocking.
+def test_controller_restart_uses_configured_option(tmp_path: Path) -> None:
+    script = tmp_path / "solver.py"
+    script.write_text(
+        "import sys\n"
+        "assert sys.argv[1:] == ['--from-dat', 'checkpoint.dat']\n"
+        "print('Iteration 12 Time = 3.5')\n",
+        encoding="utf-8",
+    )
+    dat = tmp_path / "checkpoint.dat"
+    dat.write_text("CFDX DAT restart\n", encoding="utf-8")
+    session = CFDXSession()
+    session.case.execution.restart_option = "--from-dat"
+    runner = SolverRunner([sys.executable, str(script)], cwd=tmp_path)
+    controller = ExecutionController(session, runner)
+    controller.restart(dat)
+    assert runner._thread is not None
+    runner._thread.join(timeout=5)
+    assert session.state.value == "CONVERGED"
+    assert session.iteration == 12
+    assert session.time == 3.5
