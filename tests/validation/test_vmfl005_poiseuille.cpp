@@ -173,6 +173,11 @@ void check_case(std::size_t nz)
     c.linear_tolerance = 1e-8;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
+    // The Poiseuille case is laminar and pressure-driven; disable the
+    // bounded-convection correction so the validation isolates the viscous
+    // pressure-driven solution without a nonlinear convective stabilization
+    // term dominating the nearly zero transverse fluxes.
+    c.use_bounded_convection = false;
 
     const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!result.converged)
@@ -186,8 +191,8 @@ void check_case(std::size_t nz)
         const double r = std::hypot(geometry.cell_centres[cell].x,
                                     geometry.cell_centres[cell].y);
         const double exact = dp * (R * R - r * r) / (4.0 * mu * L);
-        max_profile_error = std::max(max_profile_error, std::abs(U(cell,0) - exact));
-        flow_rate += U(cell,0) * geometry.cell_volumes[cell];
+        max_profile_error = std::max(max_profile_error, std::abs(U(cell,2) - exact));
+        flow_rate += U(cell,2) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
     }
     const double mean_u = flow_rate / volume;
