@@ -30,18 +30,29 @@ public:
 
     bool setup(const SparseMatrix& A) override
     {
-        if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols()) return false;
+        if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
+            A.n_rows() == 0)
+            return false;
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
-        inv_diag_.assign(A.n_rows(), 1.0);
+        inv_diag_.assign(A.n_rows(), 0.0);
         for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            bool found_diagonal = false;
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] == i && std::abs(val[k]) > 1e-30) {
+                if (col[k] >= A.n_cols() || !std::isfinite(val[k]))
+                    return false;
+                if (col[k] == i) {
+                    if (found_diagonal || std::abs(val[k]) <= 1e-30)
+                        return false;
                     inv_diag_[i] = 1.0 / val[k];
-                    break;
+                    if (!std::isfinite(inv_diag_[i]))
+                        return false;
+                    found_diagonal = true;
                 }
             }
+            if (!found_diagonal)
+                return false;
         }
         build_connectivity_aware_aggregation(A);
         resize_workspace();
@@ -60,12 +71,21 @@ public:
 
     bool apply(const Vector& r, Vector& z) const override
     {
-        if (r.size() != op_.rows()) return false;
+        if (r.size() != op_.rows() || inv_diag_.size() != r.size() ||
+            aggregate_of_.size() != r.size() || coarse_to_fine_.empty())
+            return false;
+        if (!r.is_valid())
+            return false;
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
-        smooth(r, z, pre_);
+        if (!smooth(r, z, pre_))
+            return false;
+        if (!z.is_valid())
+            return false;
 
         op_.apply(z, ws_.fine_A);
+        if (!ws_.fine_A.is_valid())
+            return false;
         for (std::size_t i = 0; i < r.size(); ++i)
             ws_.fine_r(i) = r(i) - ws_.fine_A(i);
 
@@ -73,14 +93,21 @@ public:
         for (std::size_t i = 0; i < r.size(); ++i)
             ws_.coarse_r(aggregate_of_[i]) += ws_.fine_r(i);
 
-        for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c)
+        for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c) {
             ws_.coarse_x(c) = ws_.coarse_r(c) * ws_.coarse_inv_diag[c];
+            if (!std::isfinite(ws_.coarse_x(c)))
+                return false;
+        }
 
-        for (std::size_t i = 0; i < r.size(); ++i)
+        for (std::size_t i = 0; i < r.size(); ++i) {
             z(i) += ws_.coarse_x(aggregate_of_[i]);
+            if (!std::isfinite(z(i)))
+                return false;
+        }
 
-        smooth(r, z, post_);
-        return true;
+        if (!smooth(r, z, post_))
+            return false;
+        return z.is_valid();
     }
 
     const char* name() const override { return "matrix-free-agglomerated-vcycle"; }
@@ -119,13 +146,12 @@ private:
             if (matched[i]) continue;
             std::size_t best = n;
             double best_strength = -1.0;
-            const double di = std::abs(inv_diag_[i]);
-
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
                 if (j == i || j >= n || matched[j]) continue;
-                const double dj = std::abs(inv_diag_[j]);
-                const double denom = std::sqrt(std::max(di * dj, 1e-60));
+                const double denom = std::sqrt(std::max(
+                    std::abs(1.0 / inv_diag_[i]) *
+                    std::abs(1.0 / inv_diag_[j]), 1e-60));
                 const double strength = std::abs(val[k]) / denom;
                 if (strength > best_strength) {
                     best_strength = strength;
@@ -168,13 +194,19 @@ private:
         ws_.coarse_x.fill(0.0);
     }
 
-    void smooth(const Vector& r, Vector& x, std::size_t sweeps) const
+    bool smooth(const Vector& r, Vector& x, std::size_t sweeps) const
     {
         for (std::size_t s = 0; s < sweeps; ++s) {
             op_.apply(x, ws_.fine_A);
-            for (std::size_t i = 0; i < r.size(); ++i)
+            if (!ws_.fine_A.is_valid())
+                return false;
+            for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag_[i] * (r(i) - ws_.fine_A(i));
+                if (!std::isfinite(x(i)))
+                    return false;
+            }
         }
+        return true;
     }
 
     const LinearOperatorBase& op_;
