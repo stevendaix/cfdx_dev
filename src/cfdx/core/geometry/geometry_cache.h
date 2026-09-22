@@ -104,23 +104,33 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         cache.face_normals[f] = fg.normal;
     }
 
-    // --- 2. Cell geometry using owner-relative face orientation ---
+    // --- 2. Provisional cell centres ---
+    // Face orientation is not yet known. A face-area-weighted centre is
+    // orientation-independent and provides the reference needed to orient
+    // every face owner -> neighbour before the volume calculation.
     const CellConnectivity& cells = m.cells();
     const auto* cell_faces = cells.faces_data();
     const auto* cell_offsets = cells.offsets_data();
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
-        const CellGeometry cg = compute_cell_geometry_oriented(
-            cache.face_centres.data(), cache.face_Sf.data(),
-            cell_faces + off, n, static_cast<CellIndex>(c), m.ownership());
-        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume) ||
-            !std::isfinite(cg.signed_volume)) {
-            throw std::runtime_error("GeometryCache: non-positive or non-finite cell volume at cell " +
+        if (n == 0)
+            throw std::runtime_error("GeometryCache: empty cell at cell " +
                                      std::to_string(c));
+        Vec3 weighted_sum;
+        double total_area = 0.0;
+        for (Offset k = 0; k < n; ++k) {
+            const FaceIndex f = cell_faces[off + k];
+            if (f >= n_faces)
+                throw std::runtime_error("GeometryCache: cell face index out of range");
+            const double area = cache.face_areas[f];
+            weighted_sum = weighted_sum + cache.face_centres[f] * area;
+            total_area += area;
         }
-        cache.cell_centres[c] = cg.centre;
-        cache.cell_volumes[c] = cg.volume;
+        if (!(total_area > 0.0) || !std::isfinite(total_area))
+            throw std::runtime_error("GeometryCache: invalid total face area at cell " +
+                                     std::to_string(c));
+        cache.cell_centres[c] = weighted_sum * (1.0 / total_area);
     }
 
     // --- 3. Canonical owner-oriented face vectors ---
@@ -147,6 +157,31 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
             cache.face_Sf[f], cache.face_centres[f], cache.cell_centres[owner],
             neighbour_centre);
         cache.face_normals[f] = cache.face_Sf[f].normalized();
+    }
+
+    // --- 4. Final cell geometry ---
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const Offset off = cell_offsets[c];
+        const Offset n = cell_offsets[c + 1] - off;
+        const CellGeometry cg = compute_cell_geometry_oriented(
+            cache.face_centres.data(), cache.face_Sf.data(),
+            cell_faces + off, n, static_cast<CellIndex>(c), own);
+        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume) ||
+            !std::isfinite(cg.signed_volume)) {
+            throw std::runtime_error("GeometryCache: non-positive or non-finite cell volume at cell " +
+                                     std::to_string(c));
+        }
+        cache.cell_centres[c] = cg.centre;
+        cache.cell_volumes[c] = cg.volume;
+    }
+
+    // --- 5. Face quality and distance metrics ---
+    for (std::size_t f = 0; f < n_faces; ++f) {
+        const std::size_t owner = own.owner(f);
+        const std::int64_t neighbour = own.neighbour(f);
+        const Vec3* neighbour_centre = nullptr;
+        if (neighbour >= 0)
+            neighbour_centre = &cache.cell_centres[static_cast<std::size_t>(neighbour)];
 
         const FaceQuality q = neighbour_centre
             ? compute_face_quality(cache.face_centres[f], cache.cell_centres[owner],
@@ -159,12 +194,11 @@ inline void compute_geometry_cache(const Mesh& m, GeometryCache& cache) {
         cache.max_skewness = std::max(cache.max_skewness, q.skewness);
         cache.max_non_orthogonality_deg =
             std::max(cache.max_non_orthogonality_deg, q.non_orthogonality_deg);
-
         cache.delta_coeffs[f] =
             face_cell_distance(cache.face_centres[f], cache.cell_centres[owner]);
     }
 
-    // --- 4. Surface closure with the correct orientation for each cell ---
+    // --- 6. Surface closure with the correct orientation for each cell ---
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Offset off = cell_offsets[c];
         const Offset n = cell_offsets[c + 1] - off;
