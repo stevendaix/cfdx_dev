@@ -146,7 +146,7 @@ if QApplication is not None:
             self.stop_button.clicked.connect(self._stop)
             self.signals.state_changed.connect(self._refresh_status)
             self.signals.output.connect(self._queue_output)
-            self.signals.metrics_changed.connect(self._refresh_status)
+            self.signals.metrics_changed.connect(self._refresh_metrics)
             self.signals.results_changed.connect(self.refresh)
 
         def _connect_controller(self) -> None:
@@ -272,6 +272,7 @@ if QApplication is not None:
             if self.controller is not None and self.controller.runner.running:
                 raise RuntimeError("Cannot replace an active session")
             self.session = session
+            self.setWindowTitle(f"CFDX — {self.session.case.name}")
             self.setup_panel.set_case(self.session.case)
             self.cfl.blockSignals(True)
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
@@ -287,6 +288,9 @@ if QApplication is not None:
                 item.setData(0, Qt.ItemDataRole.UserRole, node.id)
                 self.tree.addTopLevelItem(item)
             self._refresh_file_status()
+            self._refresh_status(self.session.state)
+
+        def _refresh_metrics(self, _metrics) -> None:
             self._refresh_status(self.session.state)
 
         def _refresh_file_status(self) -> None:
