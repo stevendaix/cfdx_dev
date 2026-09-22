@@ -382,11 +382,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool active_x = equation_has_drive(ex);
         const bool active_y = equation_has_drive(ey);
         const bool active_z = equation_has_drive(ez);
-        const std::size_t active_count = static_cast<std::size_t>(active_x) +
-                                          static_cast<std::size_t>(active_y) +
-                                          static_cast<std::size_t>(active_z);
-        if (active_count == 0)
-            throw std::runtime_error("solve_steady_incompressible: no driven momentum component");
+        std::size_t active_count = static_cast<std::size_t>(active_x) +
+                                    static_cast<std::size_t>(active_y) +
+                                    static_cast<std::size_t>(active_z);
+        // A quiescent state with no body force or imposed pressure gradient is
+        // a legitimate fixed point (and is required by the solver contract).
+        // In that case there is no uniquely "driven" component to select, so
+        // retain the symmetric three-component Rhie-Chow coupling rather than
+        // rejecting an otherwise valid zero-flow problem.
+        if (active_count == 0) {
+            active_count = 3;
+        }
 
         for (std::size_t c=0;c<mesh.n_cells();++c) {
             const double ax=std::max(ex.diagonal[c],1e-30);
