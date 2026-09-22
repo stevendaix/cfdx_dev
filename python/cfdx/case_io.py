@@ -126,6 +126,7 @@ def _read_session(path: Path) -> CFDXSession:
                 physics=dict(data["physics"]),
                 numerics=dict(data["numerics"]),
                 boundaries=dict(data["boundaries"]),
+                materials=dict(data.get("materials", {})),
                 execution=execution,
             )
             checkpoint = h5[_CHECKPOINT_GROUP].attrs
