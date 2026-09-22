@@ -44,7 +44,7 @@ public:
 
         Level fine;
         fine.A = A;
-        if (!build_diagonal(fine)) {
+        if (!build_diagonal(fine)) { std::cerr << "AMG setup: fine diagonal invalid\\n";
             levels_.clear();
             return false;
         }
@@ -61,7 +61,7 @@ public:
             }
 
             SparseMatrix coarse = galerkin_coarse(levels_.back().A, aggregate, coarse_n);
-            if (!matrix_is_valid(coarse)) {
+            if (!matrix_is_valid(coarse)) { std::cerr << "AMG setup: coarse matrix invalid level=" << levels_.size() << "\\n";
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -73,7 +73,7 @@ public:
 
             Level next;
             next.A = std::move(coarse);
-            if (!build_diagonal(next)) {
+            if (!build_diagonal(next)) { std::cerr << "AMG setup: coarse diagonal invalid level=" << levels_.size() << "\\n";
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
