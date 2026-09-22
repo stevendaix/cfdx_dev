@@ -51,7 +51,7 @@ int main() {
         m.boundary().add_patch(p1);
         m.boundary().add_patch(p2);
 
-        m.topo_validate();
+        EXPECT_TRUE(m.topo_validate().ok);
 
         Partition part = partition_geometric(m, 2);
 
@@ -122,14 +122,14 @@ int main() {
             m.ownership().set_owner(i, i/2);
             m.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
         }
-        m.ownership().set_neighbour(3, 1);
-        m.ownership().set_neighbour(7, 3);
+        // Keep this partition fixture topologically valid and independent of halo semantics.
+
 
         m.cells().push_cell({0, 1});
         m.cells().push_cell({2, 3});
         m.cells().push_cell({4, 5});
         m.cells().push_cell({6, 7});
-        m.topo_validate();
+        EXPECT_TRUE(m.topo_validate().ok);
 
         Partition part = partition_geometric(m, 4);
         EXPECT_TRUE(part.n_parts == 4);
@@ -160,9 +160,10 @@ int main() {
         }
         m.ownership().set_owner(1, 0);
         m.ownership().set_neighbour(1, 1);
+        m.ownership().set_neighbour(7, 0);
         m.cells().push_cell({0,1,3,5,7});
         m.cells().push_cell({1,2,4,6,7});
-        m.topo_validate();
+        EXPECT_TRUE(m.topo_validate().ok);
 
         const int rank = mpi_rank(MPI_COMM_WORLD);
         const Partition part = partition_geometric(m, 2);
