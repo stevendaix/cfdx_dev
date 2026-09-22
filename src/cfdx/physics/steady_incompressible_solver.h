@@ -365,11 +365,38 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         std::vector<double> rAU(mesh.n_cells());
+        // Rhie-Chow pressure coupling must use the momentum equation(s) that
+        // actually participate in the current pressure-driven flow. Averaging
+        // all three component diagonals is incorrect for strongly anisotropic
+        // cases such as axial Poiseuille flow: the transverse equations can
+        // have very large diffusion diagonals but zero driving term, diluting
+        // the active axial inverse diagonal by roughly a factor of three.
+        // Detect active components from the assembled equation RHS and use the
+        // active-component diagonal sum for the face pressure coupling.
+        const auto equation_has_drive = [](const ScalarEquation& eq) {
+            double scale = 0.0;
+            for (std::size_t i = 0; i < eq.rhs.size(); ++i)
+                scale = std::max(scale, std::abs(eq.rhs(i)));
+            return scale > 1e-14 * std::max(1.0, eq.rhs.norm2());
+        };
+        const bool active_x = equation_has_drive(ex);
+        const bool active_y = equation_has_drive(ey);
+        const bool active_z = equation_has_drive(ez);
+        const std::size_t active_count = static_cast<std::size_t>(active_x) +
+                                          static_cast<std::size_t>(active_y) +
+                                          static_cast<std::size_t>(active_z);
+        if (active_count == 0)
+            throw std::runtime_error("solve_steady_incompressible: no driven momentum component");
+
         for (std::size_t c=0;c<mesh.n_cells();++c) {
             const double ax=std::max(ex.diagonal[c],1e-30);
             const double ay=std::max(ey.diagonal[c],1e-30);
             const double az=std::max(ez.diagonal[c],1e-30);
-            double momentum_diagonal=(ax+ay+az)/3.0;
+            double momentum_diagonal = 0.0;
+            if (active_x) momentum_diagonal += ax;
+            if (active_y) momentum_diagonal += ay;
+            if (active_z) momentum_diagonal += az;
+            momentum_diagonal /= static_cast<double>(active_count);
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
                 auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
