@@ -25,8 +25,18 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._pv = pv
         self.plotter = QtInteractor(self)
         self._actors: dict[str, object] = {}
+        self._current_result: Path | None = None
+        self._selected_field: str | None = None
         layout = QVBoxLayout(self)
         layout.addWidget(self.plotter)
+
+    def _dataset(self):
+        if self._current_result is None:
+            raise RuntimeError("no result dataset loaded")
+        return self._pv.read(self._current_result)
+
+    def _available_fields(self, dataset) -> set[str]:
+        return set(dataset.point_data.keys()) | set(dataset.cell_data.keys())
 
     def load(self, source: str) -> None:
         path = Path(source)
@@ -35,10 +45,10 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.clear()
         self._actors.clear()
         self._current_result = path
-        self.plotter.add_mesh(self._pv.read(path))
+        dataset = self._dataset()
+        self.plotter.add_mesh(dataset, scalars=self._selected_field if self._selected_field in self._available_fields(dataset) else None)
         self.plotter.reset_camera()
         self.plotter.render()
-
 
     def load_cfdx_mesh(self, source: str) -> None:
         """Load real CFDX HDF5 mesh patches as selectable 3D actors."""
@@ -80,29 +90,44 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self.plotter.reset_camera()
             self.plotter.render()
 
+    def set_field(self, field: str) -> None:
+        """Display a selected result field on the current dataset."""
+        dataset = self._dataset()
+        if field not in self._available_fields(dataset):
+            raise KeyError(field)
+        self._selected_field = field
+        self.plotter.clear()
+        self.plotter.add_mesh(dataset, scalars=field)
+        self.plotter.render()
 
     def contour(self, scalars: str, isosurfaces: int = 10) -> None:
-        if not hasattr(self, "_current_result"):
-            raise RuntimeError("no result dataset loaded")
-        mesh = self._pv.read(self._current_result)
+        dataset = self._dataset()
+        if scalars not in self._available_fields(dataset):
+            raise KeyError(scalars)
         self.plotter.clear()
-        self.plotter.add_mesh(mesh.contour(isosurfaces=isosurfaces, scalars=scalars))
+        self.plotter.add_mesh(dataset.contour(isosurfaces=isosurfaces, scalars=scalars))
         self.plotter.render()
 
     def slice(self, normal: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> None:
-        if not hasattr(self, "_current_result"):
-            raise RuntimeError("no result dataset loaded")
-        mesh = self._pv.read(self._current_result)
+        dataset = self._dataset()
         self.plotter.clear()
-        self.plotter.add_mesh(mesh.slice(normal=normal))
+        self.plotter.add_mesh(dataset.slice(normal=normal))
         self.plotter.render()
 
     def glyph(self, scalars: str, factor: float = 1.0) -> None:
-        if not hasattr(self, "_current_result"):
-            raise RuntimeError("no result dataset loaded")
-        mesh = self._pv.read(self._current_result)
+        dataset = self._dataset()
+        if scalars not in self._available_fields(dataset):
+            raise KeyError(scalars)
+        array = dataset.point_data.get(scalars)
+        if array is None:
+            array = dataset.cell_data.get(scalars)
+        if array is None:
+            raise KeyError(scalars)
         self.plotter.clear()
-        self.plotter.add_mesh(mesh.glyph(orient=True, scale=scalars, factor=factor))
+        kwargs = {"scale": scalars, "factor": factor}
+        if getattr(array, "ndim", 1) == 2 and array.shape[1] == 3:
+            kwargs["orient"] = scalars
+        self.plotter.add_mesh(dataset.glyph(**kwargs))
         self.plotter.render()
 
     def select(self, object_id: str) -> None:
@@ -116,6 +141,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
     def clear(self) -> None:
         self.plotter.clear()
         self._actors.clear()
+        self._current_result = None
+        self._selected_field = None
 
     def closeEvent(self, event) -> None:
         self.plotter.close()
