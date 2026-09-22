@@ -43,3 +43,26 @@ The report intentionally distinguishes:
 A reference formula is therefore never promoted to a CFDX solver PASS.
 
 The current report contains the full VMFL001--VMFL078 matrix and executable results for the validation tests available in the build. As additional Fluent-aligned cases are implemented, the same reporting interface should consume their numerical result records rather than adding ad-hoc report code.
+
+## GitHub on-demand campaign
+
+The complete validation campaign can be launched manually from GitHub Actions with the
+**CFDX VMFL validation campaign** workflow. It builds the current validation suite, runs
+`scripts/validation_report.py`, and publishes the complete evidence as workflow artifacts.
+
+The artifact contains:
+
+- `cfdx_validation_report.pdf` — human-readable validation report;
+- `results.json` — machine-readable solver/reference status and validation gate;
+- executable stdout/stderr logs;
+- generated figures and LaTeX source;
+- CTest evidence from the build.
+
+A workflow run is intentionally diagnostic as well as gating: missing validation
+executables and non-zero solver exits remain visible in the report, while the workflow
+uploads the evidence before enforcing the validation gate.
+
+This workflow is **manual (`workflow_dispatch`)** so the full campaign can be run on
+demand without consuming CI resources on every commit. It should be used after a
+validation implementation, numerical fix, or solver change to inspect the complete
+campaign and identify regressions.
