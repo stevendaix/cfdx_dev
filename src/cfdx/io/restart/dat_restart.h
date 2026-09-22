@@ -38,18 +38,18 @@ inline void write_dat_restart(
         throw std::runtime_error("write_dat_restart: cannot open " + path);
 
     out.precision(std::numeric_limits<double>::max_digits10);
-    out << "CFDX-DAT 1\\n";
-    out << "cells " << mesh.n_cells() << "\\n";
-    out << "iteration " << iteration << "\\n";
-    out << "time " << time << "\\n";
-    out << "field U 3\\n";
+    out << "CFDX-DAT 1\n";
+    out << "cells " << mesh.n_cells() << "\n";
+    out << "iteration " << iteration << "\n";
+    out << "time " << time << "\n";
+    out << "field U 3\n";
     for (std::size_t c = 0; c < mesh.n_cells(); ++c)
         out << U.component_data(0)[c] << ' '
             << U.component_data(1)[c] << ' '
-            << U.component_data(2)[c] << "\\n";
-    out << "field p 1\\n";
+            << U.component_data(2)[c] << "\n";
+    out << "field p 1\n";
     for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-        out << p(c) << "\\n";
+        out << p(c) << "\n";
     if (!out)
         throw std::runtime_error("write_dat_restart: write failed for " + path);
 }
