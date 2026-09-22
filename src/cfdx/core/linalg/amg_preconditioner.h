@@ -78,7 +78,8 @@ public:
             return false;
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
-        smooth(r, z, pre_);
+        if (!smooth(r, z, pre_))
+            return false;
         if (!z.is_valid())
             return false;
 
@@ -103,8 +104,9 @@ public:
                 return false;
         }
 
-        smooth(r, z, post_);
-        return true;
+        if (!smooth(r, z, post_))
+            return false;
+        return z.is_valid();
     }
 
     const char* name() const override { return "matrix-free-agglomerated-vcycle"; }
@@ -191,14 +193,18 @@ private:
         ws_.coarse_x.fill(0.0);
     }
 
-    void smooth(const Vector& r, Vector& x, std::size_t sweeps) const
+    bool smooth(const Vector& r, Vector& x, std::size_t sweeps) const
     {
         for (std::size_t s = 0; s < sweeps; ++s) {
             if (!op_.apply(x, ws_.fine_A) || !ws_.fine_A.is_valid())
-                return;
-            for (std::size_t i = 0; i < r.size(); ++i)
+                return false;
+            for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag_[i] * (r(i) - ws_.fine_A(i));
+                if (!std::isfinite(x(i)))
+                    return false;
+            }
         }
+        return true;
     }
 
     const LinearOperatorBase& op_;
