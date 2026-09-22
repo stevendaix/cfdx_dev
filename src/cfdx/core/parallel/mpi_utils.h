@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <type_traits>
 #include <stdexcept>
 #include <iostream>
 
@@ -99,23 +100,32 @@ inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm c
     int rank = mpi_rank(comm);
     int size = mpi_size(comm);
     
+    static_assert(std::is_trivially_copyable_v<T>, "mpi_allgather requires trivially copyable T");
     std::vector<int> recv_counts(size);
     std::vector<int> displs(size);
-    
-    int local_count = static_cast<int>(local_data.size());
+
+    const auto local_bytes = local_data.size() * sizeof(T);
+    if (local_bytes > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::overflow_error("mpi_allgather: local buffer too large for MPI int counts");
+
+    const int local_count = static_cast<int>(local_bytes);
     MPI_Allgather(&local_count, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, comm);
-    
+
     displs[0] = 0;
     for (int i = 1; i < size; ++i) {
+        if (recv_counts[i - 1] > std::numeric_limits<int>::max() - displs[i - 1])
+            throw std::overflow_error("mpi_allgather: receive buffer too large for MPI int displacements");
         displs[i] = displs[i - 1] + recv_counts[i - 1];
     }
-    
-    int total_count = displs[size - 1] + recv_counts[size - 1];
-    std::vector<T> result(total_count);
-    
-    MPI_Allgatherv(local_data.data(), local_count, MPI_BYTE,
-                   result.data(), recv_counts.data(), displs.data(), MPI_BYTE, comm);
-    
+
+    const int total_bytes = displs[size - 1] + recv_counts[size - 1];
+    if (total_bytes < 0 || static_cast<std::size_t>(total_bytes) % sizeof(T) != 0)
+        throw std::runtime_error("mpi_allgather: invalid byte count alignment");
+    std::vector<T> result(static_cast<std::size_t>(total_bytes) / sizeof(T));
+
+    MPI_Allgatherv(local_data.empty() ? nullptr : local_data.data(), local_count, MPI_BYTE,
+                   result.empty() ? nullptr : result.data(), recv_counts.data(), displs.data(), MPI_BYTE, comm);
+
     return result;
 }
 
