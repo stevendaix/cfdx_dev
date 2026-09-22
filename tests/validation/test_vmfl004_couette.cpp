@@ -171,7 +171,6 @@ void check_case(std::size_t n)
     double max_error = 0.0;
     double mean_u = 0.0;
     double volume = 0.0;
-    const auto geometry = build_fv_geometry(mesh);
     for (std::size_t i = 0; i < mesh.n_cells(); ++i) {
         const double y = geometry.cell_centres[i].y;
         const double exact = Uwall*y/H + (-12.0)/(2.0*mu)*y*(y-H);
