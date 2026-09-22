@@ -11,7 +11,7 @@ This document defines the first vertical slice of the application architecture.
 5. Run a steady iteration target or transient time target.
 6. Pause or stop and inspect monitors/checkpoints.
 7. Edit hot parameters directly, or edit restart/rebuild parameters with an explicit warning.
-8. Resume/restart from the checkpoint.
+8. Save/load the HDF5 case, optionally with its paired DAT restart artifact, and resume/restart from the validated state.
 9. Register derived fields, monitors and reports.
 10. Render the same case through GUI, TUI or automation.
 
@@ -26,7 +26,7 @@ The application layer currently contains:
 - `PostProcessor`: derived-field and report registration.
 - `TuiRenderer`: a dependency-free status view suitable for a terminal frontend.
 
-The GUI/VTK renderer and the concrete CFD solver adapter intentionally remain separate. This keeps the core usable on HPC nodes without a display server and allows a future Qt/VTK frontend to use the same controller API.
+The GUI/VTK renderer, case persistence service and concrete CFD solver adapter intentionally remain separate. This keeps the core usable on HPC nodes without a display server and allows a future Qt/VTK frontend to use the same controller API.
 
 ## Validation
 
