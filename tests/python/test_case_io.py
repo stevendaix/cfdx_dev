@@ -56,6 +56,7 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
         make_session(), tmp_path / "channel.cfdx.h5", source
     )
 
+    assert dat_path.name == "channel.dat"
     loaded, loaded_dat = read_case_with_dat(case_path)
 
     assert loaded.case.as_dict() == make_session().case.as_dict()
