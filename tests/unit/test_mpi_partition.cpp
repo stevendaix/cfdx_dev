@@ -5,6 +5,10 @@
 #include "cfdx/core/geometry/geometry_cache.h"
 #include "common/test_harness.h"
 
+using namespace cfdx::core;
+using namespace cfdx::core::parallel;
+using namespace cfdx::testing;
+
 namespace {
 Patch make_wall_patch(const std::string& name, std::vector<int> face_ids) {
     Patch patch;
@@ -14,10 +18,6 @@ Patch make_wall_patch(const std::string& name, std::vector<int> face_ids) {
     return patch;
 }
 }  // namespace
-
-using namespace cfdx::core;
-using namespace cfdx::core::parallel;
-using namespace cfdx::testing;
 
 int main() {
     int argc = 0;
