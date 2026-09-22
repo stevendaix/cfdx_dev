@@ -222,7 +222,7 @@ inline SolverResult solve_gmres(
     int restart = 30,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    const Preconditioner* preconditioner = nullptr) {
+    Preconditioner* preconditioner = nullptr) {
     LinearOperator op;
     op.size = A.n_rows();
     op.apply = [&A](const Vector& in, Vector& out) {
