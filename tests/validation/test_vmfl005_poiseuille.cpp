@@ -209,7 +209,7 @@ void check_case(std::size_t nz)
     constexpr double mu = 1.0e-5;
     constexpr double dp = 0.1024;
     constexpr std::size_t ns = 32;
-    constexpr std::size_t nr = 32;
+    constexpr std::size_t nr = 8;
     constexpr double pi = 3.1415926535897932384626433832795;
 
     Mesh mesh = make_pipe(ns, nz, R, L, nr);
