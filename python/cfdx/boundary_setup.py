@@ -19,12 +19,6 @@ class BoundaryTypeSpec:
 
 SCALAR_TYPES=("FIXED_VALUE","ZERO_GRADIENT","FIXED_GRADIENT")
 
-BOUNDARY_SPECS={
- "wall": BoundaryTypeSpec("wall",(
-   BoundaryFieldSpec("velocity_type",ParameterType.CHOICE,choices if False else None,"FIXED_VALUE"),
-  )),
-}
-
 # The scalar contract mirrors cfdx::physics::ScalarBoundaryCondition.
 SCALAR_FIELDS=(
  BoundaryFieldSpec("type",ParameterType.CHOICE,None,"ZERO_GRADIENT"),
@@ -42,11 +36,11 @@ BOUNDARY_FIELD_SPECS={
  "empty": (),
 }
 
-def fields_for_boundary_type(boundary_type: str) -> tuple[BoundaryFieldSpec,...]:
+def scalar_fields_for_boundary_type(boundary_type: str) -> tuple[BoundaryFieldSpec,...]:
     try:
         return BOUNDARY_FIELD_SPECS[boundary_type]
     except KeyError as exc:
         raise KeyError(f"unsupported boundary type: {boundary_type}") from exc
 
 def boundary_defaults(boundary_type: str) -> dict[str,object]:
-    return {field.name:field.default for field in fields_for_boundary_type(boundary_type)}
+    return {field.name:field.default for field in scalar_fields_for_boundary_type(boundary_type)}
