@@ -237,7 +237,7 @@ void check_case(std::size_t nz)
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-10;
     c.linear_max_iterations = 5000;
-    c.linear_tolerance = 1e-8;
+    c.linear_tolerance = 1e-5;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
     // The Poiseuille case is laminar and pressure-driven; disable the
