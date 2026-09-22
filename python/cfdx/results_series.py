@@ -54,7 +54,31 @@ def _metadata_scalar(field_data, names: tuple[str, ...]) -> float | None:
             return value
     return None
 
-def validate_physical_time_provenance(series: ResultSeries) -> None:\n    """Require every non-empty result frame to carry authoritative physical time.\n\n    Filename-derived values remain available for browsing legacy output, but a\n    solver-facing acceptance path must reject them because filenames are not a\n    numerical time provenance contract.\n    """\n    missing = [frame.path.name for frame in series.frames if frame.complete and frame.time_source != "metadata"]\n    if missing:\n        raise ValueError("authoritative physical-time metadata missing for: " + ", ".join(missing))\n    times = [frame.time for frame in series.frames if frame.complete and frame.time is not None]\n    if any(b < a for a, b in zip(times, times[1:])):\n        raise ValueError("physical-time metadata must be monotonic")\n\n\ndef discover_result_series(directory: Path, *, inspect_fields: bool = False, require_physical_time: bool = False) -> ResultSeries:
+def validate_physical_time_provenance(series: ResultSeries) -> None:
+    """Require every non-empty result frame to carry authoritative physical time.
+
+    Filename-derived values remain available for browsing legacy output, but a
+    solver-facing acceptance path must reject them because filenames are not a
+    numerical time provenance contract.
+    """
+    missing = [
+        frame.path.name
+        for frame in series.frames
+        if frame.complete and frame.time_source != "metadata"
+    ]
+    if missing:
+        raise ValueError(
+            "authoritative physical-time metadata missing for: " + ", ".join(missing)
+        )
+    times = [
+        frame.time for frame in series.frames
+        if frame.complete and frame.time is not None
+    ]
+    if any(b < a for a, b in zip(times, times[1:])):
+        raise ValueError("physical-time metadata must be monotonic")
+
+
+def discover_result_series(directory: Path, *, inspect_fields: bool = False, require_physical_time: bool = False) -> ResultSeries:
     """Discover VTK-family files; preserve explicit time/iteration metadata when available."""
     directory=Path(directory)
     if not directory.is_dir(): raise NotADirectoryError(directory)
@@ -80,4 +104,7 @@ def validate_physical_time_provenance(series: ResultSeries) -> None:\n    """Req
         frame_time=metadata_time if metadata_time is not None else filename_time
         time_source="metadata" if metadata_time is not None else ("filename" if filename_time is not None else None)
         frames.append(ResultFrame(p,len(frames),frame_time,complete,fields,iteration,time_source))
-    return ResultSeries(tuple(frames))
+    series = ResultSeries(tuple(frames))
+    if require_physical_time:
+        validate_physical_time_provenance(series)
+    return series
