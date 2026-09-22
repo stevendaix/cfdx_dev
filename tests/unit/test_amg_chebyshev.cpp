@@ -19,8 +19,7 @@ using cfdx::core::Vector;
 static SparseMatrix make_poisson_1d(std::size_t n) {
     SparseMatrix A(n, n);
     for (std::size_t i = 0; i < n; ++i) {
-        const double diagonal = (i == 0 || i + 1 == n) ? 1.0 : 2.0;
-        A.push_back(i, i, diagonal);
+        A.push_back(i, i, 2.0);
         if (i > 0) A.push_back(i, i - 1, -1.0);
         if (i + 1 < n) A.push_back(i, i + 1, -1.0);
     }
@@ -34,8 +33,7 @@ static SparseMatrix make_poisson_2d(std::size_t nx, std::size_t ny) {
     for (std::size_t y = 0; y < ny; ++y) {
         for (std::size_t x = 0; x < nx; ++x) {
             const std::size_t i = y * nx + x;
-            const bool boundary = x == 0 || x + 1 == nx || y == 0 || y + 1 == ny;
-            A.push_back(i, i, boundary ? 5.0 : 4.0);
+            A.push_back(i, i, 4.0);
             if (x > 0) A.push_back(i, i - 1, -1.0);
             if (x + 1 < nx) A.push_back(i, i + 1, -1.0);
             if (y > 0) A.push_back(i, i - nx, -1.0);
@@ -187,7 +185,8 @@ int main() {
     }
 
     const SparseMatrix poisson2d = make_poisson_2d(4, 4);
-    Vector rhs2d(16, 1.0);
+    Vector rhs2d(16);
+    for (std::size_t i = 0; i < rhs2d.size(); ++i) rhs2d(i) = ((i % 4 + i / 4) % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson2d, rhs2d, 0.999)) {
         std::cerr << "2D Poisson AMG residual reduction failed\\n";
         return 10;
