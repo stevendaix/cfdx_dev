@@ -1,13 +1,11 @@
 """Optional PySide6 GUI shell backed by the headless CFDX session."""
 from __future__ import annotations
 
-from typing import Callable
-
 from .session import CFDXSession, SimulationState
 from .tui import TuiRenderer
 
 try:
-    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtCore import QObject, Qt, Signal
     from PySide6.QtWidgets import (
         QApplication,
         QHBoxLayout,
@@ -66,7 +64,7 @@ if QApplication is not None:
             self.tree.clear()
             for node in self.session.case_tree():
                 item = QTreeWidgetItem([node.label])
-                item.setData(0, 32, node.id)
+                item.setData(0, Qt.ItemDataRole.UserRole, node.id)
                 self.tree.addTopLevelItem(item)
             self._refresh_status(self.session.state)
 
