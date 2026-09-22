@@ -82,3 +82,14 @@ def test_read_case_with_dat_requires_paired_restart(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="paired DAT"):
         read_case_with_dat(case_path)
+
+
+def test_save_case_preserves_existing_hdf5_mesh_data(tmp_path: Path) -> None:
+    path = tmp_path / "channel.cfdx.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("points", data=[0.0, 1.0, 2.0])
+
+    save_case(make_session(), path)
+
+    with h5py.File(path, "r") as h5:
+        assert list(h5["points"][()]) == [0.0, 1.0, 2.0]
