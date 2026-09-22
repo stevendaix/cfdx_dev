@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-_SUPPORTED={".vtu",".vtk",".vtp",".pvtu"}
+_SUPPORTED={" .vtu".strip(),".vtk",".vtp",".pvtu"}
 _NUMBER=re.compile(r"(?<![A-Za-z])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z])")
 
 @dataclass(frozen=True)
@@ -40,17 +40,15 @@ def _sort_key(path: Path) -> tuple[float,int,str]:
     return (value,0,path.name)
 
 def discover_result_series(directory: Path, *, inspect_fields: bool = False) -> ResultSeries:
-    """Discover VTK-family files; optionally inspect field names through PyVista."""
+    """Discover VTK-family files; keep files being written as incomplete frames."""
     directory=Path(directory)
     if not directory.is_dir(): raise NotADirectoryError(directory)
     paths=sorted((p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _SUPPORTED),key=_sort_key)
     frames=[]
     for p in paths:
-        if p.stat().st_size == 0:
-            continue
+        complete=p.stat().st_size > 0
         fields=()
-        complete=True
-        if inspect_fields:
+        if inspect_fields and complete:
             try:
                 import pyvista as pv
                 dataset=pv.read(p)
@@ -59,5 +57,4 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False) -> 
                 complete=False
         value=_sort_key(p)[0]
         frames.append(ResultFrame(p,len(frames),value if value != float("inf") else None,complete,fields))
-    frames=tuple(frames)
-    return ResultSeries(frames)
+    return ResultSeries(tuple(frames))
