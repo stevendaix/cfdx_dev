@@ -197,9 +197,91 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("read_mesh_hdf5_rejects_wrong_dataset_rank", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_roundtrip_wrong_rank.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Ldelete(file, "points", H5P_DEFAULT) >= 0);
+        const hsize_t dims[1] = {24};
+        hid_t space = H5Screate_simple(1, dims, nullptr);
+        hid_t ds = H5Dcreate2(file, "points", H5T_NATIVE_DOUBLE, space,
+                              H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(ds >= 0);
+        if (ds >= 0) {
+            double values[24] = {};
+            EXPECT_TRUE(H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                                 H5P_DEFAULT, values) >= 0);
+            H5Dclose(ds);
+        }
+        H5Sclose(space);
+        H5Fclose(file);
+
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_rejects_wrong_integer_dtype", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_roundtrip_wrong_dtype.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Ldelete(file, "owner", H5P_DEFAULT) >= 0);
+        const hsize_t dims[1] = {6};
+        hid_t space = H5Screate_simple(1, dims, nullptr);
+        hid_t ds = H5Dcreate2(file, "owner", H5T_NATIVE_INT32, space,
+                              H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(ds >= 0);
+        if (ds >= 0) {
+            std::int32_t values[6] = {0,0,0,0,0,0};
+            EXPECT_TRUE(H5Dwrite(ds, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+                                 H5P_DEFAULT, values) >= 0);
+            H5Dclose(ds);
+        }
+        H5Sclose(space);
+        H5Fclose(file);
+
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
     run_case("read_mesh_hdf5_missing_file", []() {
         Mesh m;
         EXPECT_FALSE(read_mesh_hdf5("/tmp/cfdx_nonexistent_file.h5", m));
+    });
+
+    run_case("read_field_hdf5_rejects_invalid_dimension", []() {
+        Mesh m = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_roundtrip_bad_field_dim.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, m));
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 1.0; f(1) = 2.0;
+        EXPECT_TRUE(write_field_hdf5(filename, f));
+
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        hid_t grp = H5Gopen2(file, "fields", H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0 && grp >= 0);
+        hid_t attr = H5Aopen(grp, "dimension", H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        hid_t type = H5Aget_type(attr);
+        H5Awrite(attr, type, "0");
+        H5Tclose(type);
+        H5Aclose(attr);
+        H5Gclose(grp);
+        H5Fclose(file);
+
+        ScalarCellField loaded;
+        EXPECT_FALSE(read_field_hdf5(filename, loaded));
+        std::remove(filename.c_str());
     });
 
     run_case("read_field_hdf5_missing_group", []() {

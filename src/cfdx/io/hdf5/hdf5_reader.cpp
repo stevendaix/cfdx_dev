@@ -23,18 +23,32 @@ namespace cfdx {
 namespace io {
 
 static bool read_dataset_double(hid_t loc_id, const char* name,
-                                std::vector<double>& out) {
+                                std::vector<double>& out,
+                                int expected_rank = -1) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
-    hsize_t dims[2];
-    int rank = H5Sget_simple_extent_dims(space, dims, nullptr);
+    hid_t type = H5Dget_type(ds);
+    if (space < 0 || type < 0) {
+        if (type >= 0) H5Tclose(type);
+        if (space >= 0) H5Sclose(space);
+        H5Dclose(ds);
+        return false;
+    }
+    const int rank = H5Sget_simple_extent_ndims(space);
+    if (rank < 0 || (expected_rank >= 0 && rank != expected_rank) ||
+        H5Tget_class(type) != H5T_FLOAT || H5Tget_size(type) != sizeof(double)) {
+        H5Tclose(type); H5Sclose(space); H5Dclose(ds);
+        return false;
+    }
+    std::vector<hsize_t> dims(static_cast<std::size_t>(rank));
+    H5Sget_simple_extent_dims(space, dims.data(), nullptr);
     hsize_t total = 1;
-    for (int i = 0; i < rank; ++i) total *= dims[i];
-    out.resize(total);
-    herr_t status = total == 0 ? 0 : H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
-    H5Sclose(space);
-    H5Dclose(ds);
+    for (hsize_t d : dims) total *= d;
+    out.resize(static_cast<std::size_t>(total));
+    herr_t status = total == 0 ? 0 :
+        H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
+    H5Tclose(type); H5Sclose(space); H5Dclose(ds);
     return status >= 0;
 }
 
@@ -43,14 +57,26 @@ static bool read_dataset_u64(hid_t loc_id, const char* name,
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
-    hsize_t dims[2];
-    int rank = H5Sget_simple_extent_dims(space, dims, nullptr);
-    hsize_t total = 1;
-    for (int i = 0; i < rank; ++i) total *= dims[i];
-    out.resize(total);
-    herr_t status = total == 0 ? 0 : H5Dread(ds, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
-    H5Sclose(space);
-    H5Dclose(ds);
+    hid_t type = H5Dget_type(ds);
+    if (space < 0 || type < 0) {
+        if (type >= 0) H5Tclose(type);
+        if (space >= 0) H5Sclose(space);
+        H5Dclose(ds);
+        return false;
+    }
+    const int rank = H5Sget_simple_extent_ndims(space);
+    if (rank != 1 || H5Tget_class(type) != H5T_INTEGER ||
+        H5Tget_size(type) != sizeof(std::uint64_t) ||
+        H5Tget_sign(type) != H5T_SGN_NONE) {
+        H5Tclose(type); H5Sclose(space); H5Dclose(ds);
+        return false;
+    }
+    hsize_t dim = 0;
+    H5Sget_simple_extent_dims(space, &dim, nullptr);
+    out.resize(static_cast<std::size_t>(dim));
+    herr_t status = dim == 0 ? 0 :
+        H5Dread(ds, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
+    H5Tclose(type); H5Sclose(space); H5Dclose(ds);
     return status >= 0;
 }
 
@@ -59,14 +85,26 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
-    hsize_t dims[2];
-    int rank = H5Sget_simple_extent_dims(space, dims, nullptr);
-    hsize_t total = 1;
-    for (int i = 0; i < rank; ++i) total *= dims[i];
-    out.resize(total);
-    herr_t status = total == 0 ? 0 : H5Dread(ds, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
-    H5Sclose(space);
-    H5Dclose(ds);
+    hid_t type = H5Dget_type(ds);
+    if (space < 0 || type < 0) {
+        if (type >= 0) H5Tclose(type);
+        if (space >= 0) H5Sclose(space);
+        H5Dclose(ds);
+        return false;
+    }
+    const int rank = H5Sget_simple_extent_ndims(space);
+    if (rank != 1 || H5Tget_class(type) != H5T_INTEGER ||
+        H5Tget_size(type) != sizeof(std::int64_t) ||
+        H5Tget_sign(type) != H5T_SGN_2) {
+        H5Tclose(type); H5Sclose(space); H5Dclose(ds);
+        return false;
+    }
+    hsize_t dim = 0;
+    H5Sget_simple_extent_dims(space, &dim, nullptr);
+    out.resize(static_cast<std::size_t>(dim));
+    herr_t status = dim == 0 ? 0 :
+        H5Dread(ds, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, out.data());
+    H5Tclose(type); H5Sclose(space); H5Dclose(ds);
     return status >= 0;
 }
 
@@ -142,7 +180,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     std::vector<std::int64_t> neighbour;
 
     // A CFDX mesh is valid only if all core topology datasets are present.
-    if (!read_dataset_double(file, "points", pts) ||
+    if (!read_dataset_double(file, "points", pts, 2) ||
         !read_dataset_u64(file, "face_vertices", fv) ||
         !read_dataset_u64(file, "face_offsets", fo) ||
         !read_dataset_u64(file, "owner", owner) ||
@@ -307,10 +345,15 @@ bool read_field_hdf5(const std::string& filename,
     read_attr_str(grp, "unit", unit);
     read_attr_str(grp, "dimension", dim_str);
 
-    std::size_t dim = 1;
+    std::size_t dim = 0;
     try {
         dim = std::stoul(dim_str);
-    } catch (...) { dim = 1; }
+    } catch (...) {
+        H5Gclose(grp); H5Fclose(file); return false;
+    }
+    if (dim == 0 || flat_values.size() % dim != 0) {
+        H5Gclose(grp); H5Fclose(file); return false;
+    }
 
     const std::size_t n = flat_values.size() / dim;
     field.set_dimension(dim);
