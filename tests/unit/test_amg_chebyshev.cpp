@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 
 int main() {
     using namespace cfdx::core;
@@ -49,6 +50,22 @@ int main() {
     if (!amg.apply(rhs, correction) || !correction.is_valid()) {
         return 3;
     }
+    const auto Az = A.matvec(correction);
+    double before2 = 0.0;
+    double after2 = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i) {
+        const double before = rhs(i);
+        const double after = rhs(i) - Az[i];
+        before2 += before * before;
+        after2 += after * after;
+    }
+    const double before_norm = std::sqrt(before2);
+    const double after_norm = std::sqrt(after2);
+    if (!(after_norm < before_norm) || !std::isfinite(after_norm)) {
+        std::cerr << "AMG did not reduce the true residual: "
+                  << before_norm << " -> " << after_norm << "\n";
+        return 6;
+    }
 
     ChebyshevSmoother::Controls controls;
     controls.lambda_max = 0.0;
@@ -66,6 +83,27 @@ int main() {
 
     if (!x.is_valid()) {
         return 5;
+    }
+
+    // Setup must reject malformed matrix data rather than silently falling
+    // back to an identity diagonal.
+    SparseMatrix bad(2, 2);
+    bad.push_back(0, 0, std::numeric_limits<double>::quiet_NaN());
+    bad.push_back(0, 1, -1.0);
+    bad.push_back(1, 0, -1.0);
+    bad.push_back(1, 1, 2.0);
+    bad.finalize();
+    if (amg.setup(bad)) {
+        return 7;
+    }
+
+    SparseMatrix missing_diag(2, 2);
+    missing_diag.push_back(0, 1, -1.0);
+    missing_diag.push_back(1, 0, -1.0);
+    missing_diag.push_back(1, 1, 2.0);
+    missing_diag.finalize();
+    if (amg.setup(missing_diag)) {
+        return 8;
     }
 
     std::cout << "AMG/Chebyshev runtime: PASS\n";
