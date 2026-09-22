@@ -328,6 +328,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             uz(c) = U.component_data(2)[c];
         }
 
+        if (iter == 2) {
+            const std::size_t dc = mesh.n_cells() - 1;
+            std::cerr << "VMFL004 DEBUG Ux diag first=" << ex.diagonal.front()
+                      << " last=" << ex.diagonal.back()
+                      << " row_last=";
+            const auto rb = ex.matrix.row_offsets_data()[dc];
+            const auto re = ex.matrix.row_offsets_data()[dc + 1];
+            for (std::uint32_t k = rb; k < re; ++k)
+                std::cerr << " (" << ex.matrix.columns_data()[k]
+                          << "," << ex.matrix.values_data()[k] << ")";
+            std::cerr << " rhs_last=" << ex.rhs(dc) << "\\n";
+        }
+
         const auto rx = solve_scalar_equation(ex, ux, {controls.linear_max_iterations,
                                                          controls.linear_tolerance,
                                                          controls.coupling.alpha_u});
