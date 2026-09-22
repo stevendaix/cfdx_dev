@@ -114,7 +114,9 @@ public:
         }
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
-        return vcycle(0, r, z);
+        const bool ok = vcycle(0, r, z);
+        if (!ok) std::cerr << "AMG apply vcycle failed\\n";
+        return ok;
     }
 
     const char* name() const override { return "galerkin-agglomerated-amg"; }
@@ -255,7 +257,7 @@ private:
         Vector Ax(r.size());
         const auto& inv_diag = levels_[level].inv_diag;
         for (std::size_t s = 0; s < sweeps; ++s) {
-            if (!apply_operator(level, x, Ax)) return false;
+            if (!apply_operator(level, x, Ax)) { std::cerr << "AMG smooth operator failed level=" << level << "\\n"; return false; }
             for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
                 if (!std::isfinite(x(i))) return false;
@@ -271,7 +273,7 @@ private:
             return smooth_coarsest(level, r, x);
         }
 
-        if (!smooth(level, r, x, pre_)) return false;
+        if (!smooth(level, r, x, pre_)) { std::cerr << "AMG pre-smooth failed level=" << level << "\\n"; return false; }
 
         Vector Ax(r.size());
         if (!apply_operator(level, x, Ax)) return false;
@@ -284,14 +286,14 @@ private:
         }
 
         Vector coarse_x(nc, 0.0);
-        if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
+        if (!vcycle(level + 1, coarse_r, coarse_x)) { std::cerr << "AMG recursive coarse cycle failed level=" << level << "\\n"; return false; }
 
         for (std::size_t i = 0; i < r.size(); ++i) {
             x(i) += coarse_x(aggregate[i]);
             if (!std::isfinite(x(i))) return false;
         }
 
-        if (!smooth(level, r, x, post_)) return false;
+        if (!smooth(level, r, x, post_)) { std::cerr << "AMG post-smooth failed level=" << level << "\\n"; return false; }
         return true;
     }
 
@@ -361,6 +363,7 @@ private:
             x(ii) = sum / diagonal;
             if (!std::isfinite(x(ii))) return false;
         }
+        if (!x.is_valid()) std::cerr << "AMG coarsest solution invalid level=" << level << "\\n";
         return x.is_valid();
     }
 
