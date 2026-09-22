@@ -11,16 +11,18 @@ except ImportError:
 
 
 class PyVistaQtView(QWidget if QWidget is not None else object):
-    """Qt container around pyvistaqt with the CFDX renderer contract."""
+    """Qt container around pyvistaqt for CFDX result visualization."""
 
     def __init__(self, parent: Any = None) -> None:
         if QWidget is None:
             raise RuntimeError("PySide6 is required for the 3D GUI")
         super().__init__(parent)
         try:
+            import pyvista as pv
             from pyvistaqt import QtInteractor
         except ImportError as exc:
-            raise RuntimeError("pyvistaqt is required for the 3D GUI") from exc
+            raise RuntimeError("PyVista and pyvistaqt are required for the 3D GUI") from exc
+        self._pv = pv
         self.plotter = QtInteractor(self)
         layout = QVBoxLayout(self)
         layout.addWidget(self.plotter)
@@ -30,7 +32,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         if not path.exists():
             raise FileNotFoundError(source)
         self.plotter.clear()
-        self.plotter.add_mesh(self.plotter.reader(path).read())
+        self.plotter.add_mesh(self._pv.read(path))
         self.plotter.reset_camera()
         self.plotter.render()
 
