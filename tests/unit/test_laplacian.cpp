@@ -144,7 +144,8 @@ int main() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
         f(0) = 1.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        auto corrected = compute_laplacian(f, m, LaplacianScheme::CORRECTED);
+        EXPECT_NEAR(corrected(0), 0.0, 1e-12);
         EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
     });
 
@@ -176,6 +177,17 @@ int main() {
         // boundaries, the two rows receive equal and opposite fluxes.
         EXPECT_NEAR(lap(0), 1.0, 1e-12);
         EXPECT_NEAR(lap(1), -1.0, 1e-12);
+    });
+
+    run_case("laplacian_corrected_matches_orthogonal_on_orthogonal_mesh", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        auto orth = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
+        auto corrected = compute_laplacian(f, m, LaplacianScheme::CORRECTED);
+        EXPECT_NEAR(corrected(0), orth(0), 1e-12);
+        EXPECT_NEAR(corrected(1), orth(1), 1e-12);
     });
 
     run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
