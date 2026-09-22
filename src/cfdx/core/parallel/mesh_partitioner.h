@@ -246,10 +246,31 @@ inline void validate_halo_plan(const HaloPlan& plan, int size) {
     }
 }
 
+inline std::size_t checked_mpi_product(std::size_t lhs, std::size_t rhs, const char* context) {
+    if (rhs != 0 && lhs > std::numeric_limits<std::size_t>::max() / rhs)
+        throw std::overflow_error(std::string(context) + ": size multiplication overflow");
+    return lhs * rhs;
+}
+
 inline int checked_mpi_count(std::size_t count, const char* context) {
     if (count > static_cast<std::size_t>(std::numeric_limits<int>::max()))
         throw std::overflow_error(std::string(context) + ": MPI count exceeds INT_MAX");
     return static_cast<int>(count);
+}
+
+inline void validate_halo_plan_collective(const HaloPlan& plan, int size, MPI_Comm comm) {
+    int local_error = 0;
+    try {
+        validate_halo_plan(plan, size);
+    } catch (const std::exception&) {
+        local_error = 1;
+    }
+
+    int global_error = 0;
+    MPI_Allreduce(&local_error, &global_error, 1, MPI_INT, MPI_MAX, comm);
+    if (global_error != 0)
+        throw std::invalid_argument(
+            "validate_halo_plan_collective: at least one MPI rank has an invalid halo plan");
 }
 
 // Exchange halo data for a face field
@@ -261,13 +282,13 @@ inline void exchange_halo_faces(
     int rank = mpi_rank(comm);
     int size = mpi_size(comm);
     const std::size_t dim = field.dimension();
-    validate_halo_plan(plan, size);
+    validate_halo_plan_collective(plan, size, comm);
     
     // Prepare send buffers
     std::vector<std::vector<double>> send_buffers(size);
     for (int r = 0; r < size; ++r) {
         const auto& faces = plan.send_faces[r];
-        send_buffers[r].resize(faces.size() * dim);
+        send_buffers[r].resize(checked_mpi_product(faces.size(), dim, "exchange_halo_faces buffer"));
         for (std::size_t i = 0; i < faces.size(); ++i) {
             int f = faces[i];
             for (std::size_t comp=0; comp<dim; ++comp)
@@ -279,8 +300,8 @@ inline void exchange_halo_faces(
     for (int r = 0; r < size; ++r) {
         if (r == rank) continue;
         
-        const int send_count = checked_mpi_count(plan.send_faces[r].size() * dim, "exchange_halo_faces send");
-        const int recv_count = checked_mpi_count(plan.recv_faces[r].size() * dim, "exchange_halo_faces recv");
+        const int send_count = checked_mpi_count(checked_mpi_product(plan.send_faces[r].size(), dim, "exchange_halo_faces send"), "exchange_halo_faces send");
+        const int recv_count = checked_mpi_count(checked_mpi_product(plan.recv_faces[r].size(), dim, "exchange_halo_faces recv"), "exchange_halo_faces recv");
         int remote_send_count = 0;
 
         MPI_Status status;
@@ -318,14 +339,14 @@ inline void exchange_halo_cells(
     const int rank=mpi_rank(comm);
     const int size=mpi_size(comm);
     const std::size_t dim=field.dimension();
-    validate_halo_plan(plan, size);
+    validate_halo_plan_collective(plan, size, comm);
 
     for(int r=0;r<size;++r) {
         if(r==rank) continue;
         const auto& send=plan.send_cells[r];
         const auto& recv=plan.recv_cells[r];
-        std::vector<double> send_buffer(send.size()*dim);
-        std::vector<double> recv_buffer(recv.size()*dim);
+        std::vector<double> send_buffer(checked_mpi_product(send.size(), dim, "exchange_halo_cells send buffer"));
+        std::vector<double> recv_buffer(checked_mpi_product(recv.size(), dim, "exchange_halo_cells recv buffer"));
         for(std::size_t i=0;i<send.size();++i)
             for(std::size_t comp=0;comp<dim;++comp)
                 send_buffer[i*dim+comp]=field(static_cast<std::size_t>(send[i]),comp);
