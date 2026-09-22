@@ -2,17 +2,20 @@ name: CFDX VMFL validation campaign
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
 
 concurrency:
-  group: cfdx-vmfl-validation
+  group: cfdx-vmfl-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   validation:
     name: Full validation campaign
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'validation')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -75,13 +78,14 @@ jobs:
           status = data.get("validation_suite_status", {})
           failures = [k for k, v in status.items() if v != 0]
           print(f"- Validation gate: **{gate}**")
+          print(f"- Trigger: **{data.get('trigger', 'unknown')}**")
           print(f"- Executables checked: **{len(status)}**")
           print(f"- Non-zero/missing executables: **{len(failures)}**")
           if failures:
               print("")
               print("### Cases requiring investigation")
               for name in failures:
-                  print(f"- `{name}`: exit code {status[name]}")
+                  print(f"- \`{name}\`: exit code {status[name]}")
           print("")
           print("The complete PDF, machine-readable results, logs and figures are attached as a workflow artifact.")
           PY
