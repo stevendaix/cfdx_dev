@@ -134,8 +134,6 @@ void check_case(std::size_t n)
     c.linear_tolerance = 1e-8;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
-    c.pressure_reference_cell = 0;
-    c.pressure_reference_value = pin - (pin-pout)/(2.0*static_cast<double>(n));
 
     const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if (!result.converged)
