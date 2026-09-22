@@ -359,11 +359,17 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // when the system is well posed. Retry from the original iterate with
     // restarted GMRES rather than injecting an unconverged Krylov state into
     // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED ||
+        result.status == cfdx::core::SolverStatus::DIVERGED) {
         candidate = solution;
+        const auto bicgstab_status = result.status;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+        // Propagate the fallback result and its metrics. A BiCGStab
+        // breakdown is not the final solver outcome when GMRES is able to
+        // solve the same linear system from the original iterate.
+        (void)bicgstab_status;
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
