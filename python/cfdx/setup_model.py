@@ -11,6 +11,11 @@ from enum import Enum
 import math
 from typing import Any, Callable
 
+class ChangeImpact(str, Enum):
+    HOT = "Hot"
+    REQUIRES_RESTART = "RequiresRestart"
+    REQUIRES_REBUILD = "RequiresRebuild"
+
 class ParameterType(str, Enum):
     BOOL = "bool"
     INTEGER = "integer"
@@ -29,6 +34,7 @@ class Parameter:
     unit: str | None = None
     choices: tuple[Any, ...] = ()
     validator: Validator | None = None
+    impact: ChangeImpact = ChangeImpact.HOT
 
     def validate(self) -> None:
         if self.kind is ParameterType.BOOL and not isinstance(self.value, bool):
@@ -70,7 +76,7 @@ class SetupDiagnostic:
         if self.severity not in {"error", "warning"}:
             raise ValueError("severity must be error or warning")
 
-def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: tuple[Any, ...] = ()) -> Parameter:
+def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: tuple[Any, ...] = (), impact: ChangeImpact = ChangeImpact.HOT) -> Parameter:
     """Infer the supported user-facing parameter type."""
     if isinstance(value, bool):
         kind = ParameterType.BOOL
@@ -82,6 +88,6 @@ def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: 
         kind = ParameterType.CHOICE if choices else ParameterType.STRING
     else:
         raise TypeError(f"unsupported parameter value type: {type(value).__name__}")
-    parameter = Parameter(name, value, kind, unit, choices)
+    parameter = Parameter(name, value, kind, unit, choices, None, impact)
     parameter.validate()
     return parameter
