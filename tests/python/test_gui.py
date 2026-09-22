@@ -1,4 +1,7 @@
 import importlib.util
+import sys
+from pathlib import Path
+
 import pytest
 
 from cfdx import CFDXSession, SimulationState
@@ -17,7 +20,7 @@ def test_gui_without_qt_has_clear_error() -> None:
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
-def test_gui_controls_and_parameters() -> None:
+def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     from PySide6.QtCore import Qt
     from cfdx.gui import create_application
     app = create_application(["cfdx-test"])
@@ -37,11 +40,73 @@ def test_gui_controls_and_parameters() -> None:
     window.setup_panel.boundary_value.setText("1.0")
     window.setup_panel.boundary_button.click()
     assert session.case.boundaries["inlet"] == {"type": "inlet", "value": "1.0"}
+    class FakeRunner:
+        running = False
+
+    class FakeController:
+        def __init__(self, session):
+            self.session = session
+            self.runner = FakeRunner()
+            self.on_output = None
+            self.on_metrics = None
+            self.on_complete = None
+
+        def start(self):
+            self.session.run()
+
+        def pause(self):
+            self.session.pause()
+
+        def resume(self):
+            self.session.run()
+
+        def stop(self):
+            self.session.stop()
+
+    window.controller = FakeController(session)
+    window._case_path = tmp_path / "channel.cfdx.h5"
     window.run_button.click()
     assert session.state is SimulationState.RUNNING
     window.pause_button.click()
     assert session.state is SimulationState.PAUSED
+    window.resume_button.click()
+    assert session.state is SimulationState.RUNNING
     window.stop_button.click()
     assert session.state is SimulationState.STOPPED
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtWidgets import QFileDialog
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-file-test"])
+    session = CFDXSession()
+    session.case.name = "channel"
+    session.case.execution.solver = sys.executable
+    window = CFDXMainWindow(session)
+
+    case_path = tmp_path / "channel.cfdx.h5"
+    dat_source = tmp_path / "solver.dat"
+    dat_source.write_text("restart\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *args, **kwargs: (str(case_path), "CFDX Case (*.cfdx.h5 *.h5)")),
+    )
+    assert window._save_case_as()
+    assert case_path.is_file()
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *args, **kwargs: (str(dat_source), "Solver restart (*.dat)")),
+    )
+    assert window._save_case_with_dat()
+    assert (tmp_path / "channel.dat").is_file()
+
     window.close()
     app.quit()
