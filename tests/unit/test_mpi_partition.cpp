@@ -207,6 +207,26 @@ int main() {
         }
     });;
 
+    run_case("mpi_halo_plan_rejects_malformed_counts", []() {
+        const int size = mpi_size(MPI_COMM_WORLD);
+        HaloPlan plan;
+        plan.send_faces.resize(size);
+        plan.recv_faces.resize(size);
+        plan.send_cells.resize(size);
+        plan.recv_cells.resize(size);
+
+        if (size >= 2) {
+            plan.send_faces[1].push_back(0);
+            bool rejected = false;
+            try {
+                validate_halo_plan(plan, size);
+            } catch (const std::invalid_argument&) {
+                rejected = true;
+            }
+            EXPECT_TRUE(rejected);
+        }
+    });
+
     const int rc = run_all();
     MPI_Finalize();
     return rc;
