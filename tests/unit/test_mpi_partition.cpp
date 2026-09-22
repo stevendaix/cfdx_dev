@@ -174,7 +174,7 @@ int main() {
         m.ownership().set_owner(1, 0);
         m.ownership().set_neighbour(1, 1);
         m.ownership().set_neighbour(7, 0);
-        m.boundary().add_patch(walls);
+        // Boundary faces 0, 2, 3, 4, 5, 6 are physical walls; face 1 is the MPI interface.\n        m.boundary().add_patch(make_wall_patch("wall", {0, 2, 3, 4, 5, 6}));
         m.cells().push_cell({0,1,3,5,7});
         m.cells().push_cell({1,2,4,6,7});
         EXPECT_TRUE(m.topo_validate().ok);
