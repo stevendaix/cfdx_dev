@@ -35,6 +35,26 @@ inline SolverResult solve_bicgstab(
     };
     for(std::size_t k=0;k<A.nnz();++k)
         if(!std::isfinite(Av[k])){result.status=SolverStatus::DIVERGED;return result;}
+    // Preserve the solver's established applicability contract: BiCGStab
+    // requires a finite, nonzero diagonal even when no explicit
+    // preconditioner is supplied.
+    for (std::size_t i = 0; i < n; ++i) {
+        bool found_diagonal = false;
+        for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+            if (Ac[k] == i) {
+                if (!std::isfinite(Av[k]) || Av[k] == 0.0) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    return result;
+                }
+                found_diagonal = true;
+                break;
+            }
+        }
+        if (!found_diagonal) {
+            result.status = SolverStatus::NOT_APPLICABLE;
+            return result;
+        }
+    }
     if(!finite_vector(b)||!finite_vector(x)){result.status=SolverStatus::DIVERGED;return result;}
 
     auto matvec=[&](const Vector& in,Vector& out){
