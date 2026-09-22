@@ -33,11 +33,26 @@ jobs:
 
       - name: Build validation executables
         run: |
-          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_level_b_reference_benchmarks             test_level_c_coupled_verification             --parallel 2
+          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_level_b_reference_benchmarks             test_level_c_coupled_verification             test_vmfl004_couette             --parallel 2
 
       - name: Run validation tests
         run: |
-          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
+          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|vmfl004_couette)             --output-on-failure
+
+      - name: Run campaign driver
+        run: |
+          python3 scripts/run_validation.py --build-dir build-validation --junit build-validation/validation-junit.xml
+
+      - name: Upload validation JUnit\n        if: always()\n        uses: actions/upload-artifact@v4\n        with:\n          name: cfdx-validation-junit\n          path: build-validation/validation-junit.xml\n          if-no-files-found: error\n\n      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-validation-logs
+          path: |
+            build-validation/Testing/
+            build-validation/**/*.log
+          if-no-files-found: ignore
+             --output-on-failure
 
       - name: Run campaign driver
         run: |
