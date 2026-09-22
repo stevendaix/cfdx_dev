@@ -140,11 +140,44 @@ int main() {
         EXPECT_TRUE(lap.size() == 0);
     });
 
-    run_case("laplacian_non_orthogonal_not_silently_accepted", []() {
+    run_case("laplacian_corrected_matches_orthogonal_on_orthogonal_mesh", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        auto orth = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
+        auto corrected = compute_laplacian(f, m, LaplacianScheme::CORRECTED);
+        EXPECT_NEAR(corrected(0), orth(0), 1e-12);
+        EXPECT_NEAR(corrected(1), orth(1), 1e-12);
+    });
+
+    run_case("laplacian_corrected_nonzero_skew_correction", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        GeometryCache geometry = make_geometry_cache(m);
+        // Synthetic skewed geometry: the internal face has a tangential
+        // component and the owner-side boundary face is perturbed so the
+        // Gauss gradients have a non-zero tangential component.
+        geometry.face_Sf[5].y = 0.25;
+        geometry.face_Sf[2].y = 1.25;
+        auto orth = compute_laplacian(f, m, geometry, LaplacianScheme::ORTHOGONAL);
+        auto corrected = compute_laplacian(f, m, geometry, LaplacianScheme::CORRECTED);
+        // For phi=x, the orthogonal contribution is 1.0. The Gauss
+        // tangential correction is 0.25 * ((0.375 + -0.25) / 2)
+        // = 0.015625, giving the quantitative corrected result below.
+        EXPECT_NEAR(orth(0), 1.0, 1e-12);
+        EXPECT_NEAR(corrected(0), 1.015625, 1e-12);
+        EXPECT_NEAR(corrected(0) + corrected(1), 0.0, 1e-12);
+        EXPECT_TRUE(std::isfinite(corrected(0)));
+        EXPECT_TRUE(std::isfinite(corrected(1)));
+    });
+
+    run_case("laplacian_limited_scheme_is_explicitly_unsupported", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 1.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        f(0) = 42.0;
         EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
     });
 
@@ -176,14 +209,6 @@ int main() {
         // boundaries, the two rows receive equal and opposite fluxes.
         EXPECT_NEAR(lap(0), 1.0, 1e-12);
         EXPECT_NEAR(lap(1), -1.0, 1e-12);
-    });
-
-    run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
-        Mesh m = make_unit_cube();
-        ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 42.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
     });
 
     return run_all();
