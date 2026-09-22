@@ -259,7 +259,7 @@ if QApplication is not None:
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":
                 try:
-                    self.view3d.select(f"patch:{selection.index}")
+                    self.view3d.select(selection.stable_id or f"patch:{selection.index}")
                 except KeyError:
                     pass
             if selection.kind == "patch" and selection.name:

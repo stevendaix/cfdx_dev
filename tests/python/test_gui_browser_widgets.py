@@ -37,3 +37,12 @@ def test_results_series_panel_exposes_field_and_playback_controls():
     panel.timer.stop()
     panel.deleteLater()
     app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="optional Qt stack")
+def test_3d_patch_actor_id_uses_stable_identity():
+    from cfdx.gui_3d import PyVistaQtView
+
+    assert PyVistaQtView.patch_actor_id("patch:inlet") == "patch:inlet"
+    with pytest.raises(ValueError, match="invalid patch stable ID"):
+        PyVistaQtView.patch_actor_id("patch:")
