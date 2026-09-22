@@ -11,3 +11,7 @@ def test_uniform_initialization_requires_field_and_value():
 def test_field_initialization_requires_source():
     InitializationSpec(InitializationMode.FIELD,"restart/U").validate()
     with pytest.raises(ValueError): InitializationSpec(InitializationMode.FIELD).validate()
+
+def test_initialization_requires_restart():
+    from cfdx.setup_model import ChangeImpact
+    assert InitializationSpec(InitializationMode.UNIFORM,"U",1.0).change_impact is ChangeImpact.REQUIRES_RESTART
