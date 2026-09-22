@@ -419,10 +419,10 @@ if QApplication is not None:
                 checkpoint = read_dat_restart(restart)
                 if self.view3d is not None:
                     fields = self.view3d.load_cfdx_dat(str(self._case_path), str(restart))
+                    self._result_source = restart
                     self.results_series.set_checkpoint_fields(
                         fields, checkpoint.iteration, checkpoint.time, restart.name
                     )
-                    self._result_source = None
                 self._dirty = False
                 self._refresh_file_status()
                 self.result_status.setText(
