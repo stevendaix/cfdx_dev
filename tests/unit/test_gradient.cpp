@@ -78,6 +78,17 @@ int main() {
         EXPECT_NEAR(gz, 0.0, 1e-12);
     });
 
+    run_case("gradient_reuses_geometry_cache", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 42.0;
+        const GeometryCache geometry = make_geometry_cache(m);
+        auto grad = compute_gradient_gauss(f, m, geometry);
+        EXPECT_NEAR(grad(0, 0), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
     run_case("gradient_size_mismatch", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(2, "p", "Pa", 1);
