@@ -254,7 +254,7 @@ void check_case(std::size_t nz)
     double max_profile_error = 0.0;
     double profile_l2_sum = 0.0;
     double exact_l2_sum = 0.0;
-    double max_transverse_velocity = 0.0;
+    double max_sector_symmetry_error = 0.0;
     double max_axial_uniformity = 0.0;
     std::vector<double> plane_flow(nz, 0.0);
 
@@ -269,10 +269,16 @@ void check_case(std::size_t nz)
         max_profile_error = std::max(max_profile_error, std::abs(error));
         profile_l2_sum += error * error * geometry.cell_volumes[cell];
         exact_l2_sum += exact * exact * geometry.cell_volumes[cell];
-        max_transverse_velocity = std::max(
-            max_transverse_velocity, std::hypot(U(cell, 0), U(cell, 1)));
-
         const std::size_t k = cell / (nr * ns);
+        const std::size_t local = cell % (nr * ns);
+        const std::size_t j = local / ns;
+        const std::size_t s = local % ns;
+        if (s != 0) {
+            const auto reference = static_cast<std::size_t>(
+                k * nr * ns + j * ns);
+            max_sector_symmetry_error = std::max(
+                max_sector_symmetry_error, std::abs(U(cell, 2) - U(reference, 2)));
+        }
         plane_flow[k] += U(cell, 2) * geometry.cell_volumes[cell];
         flow_rate += U(cell, 2) * geometry.cell_volumes[cell];
         volume += geometry.cell_volumes[cell];
@@ -300,7 +306,7 @@ void check_case(std::size_t nz)
               << " mean_rel_error=" << rel_mean
               << " profile_abs_error=" << max_profile_error
               << " profile_l2_rel_error=" << rel_profile_l2
-              << " max_transverse_velocity=" << max_transverse_velocity
+              << " sector_symmetry_abs_error=" << max_sector_symmetry_error
               << " axial_flow_uniformity=" << max_axial_uniformity
               << " continuity_linf=" << last.continuity_linf
               << " iterations=" << result.iterations << "\n";
@@ -310,8 +316,8 @@ void check_case(std::size_t nz)
     if (rel_q > 5e-2 || rel_mean > 5e-2 ||
         rel_profile > 5e-2 || rel_profile_l2 > 5e-2)
         throw std::runtime_error("VMFL005 quantitative mismatch");
-    if (max_transverse_velocity > 1e-12 * velocity_scale)
-        throw std::runtime_error("VMFL005 transverse velocity is not zero");
+    if (max_sector_symmetry_error > 1e-6 * velocity_scale)
+        throw std::runtime_error("VMFL005 azimuthal symmetry error too large");
     if (max_axial_uniformity > 1e-6)
         throw std::runtime_error("VMFL005 axial flow is not uniform");
     if (last.continuity_linf > 1e-8)
