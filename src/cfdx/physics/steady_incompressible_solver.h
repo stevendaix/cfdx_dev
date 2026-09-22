@@ -10,6 +10,7 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -43,6 +44,10 @@ struct IncompressibleSolverControls {
     double pressure_reference_value = 0.0;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
+    // Components that participate in the momentum predictor. Disabling a
+    // component is useful for reduced-order validations where the geometry
+    // and forcing make that component identically zero.
+    std::array<bool, 3> active_velocity_components{true, true, true};
 };
 
 struct IncompressibleIteration {
@@ -328,20 +333,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             uz(c) = U.component_data(2)[c];
         }
 
-        const double rhs_scale = std::max({ex.rhs.norm2(), ey.rhs.norm2(), ez.rhs.norm2(), 1.0e-30});
-        auto solve_momentum = [&](const ScalarEquation& equation, Vector& solution) {
-            const double rhs_norm = equation.rhs.norm2();
-            const double solution_norm = solution.norm2();
-            // If a component has zero velocity and a source many orders of
-            // magnitude below the active momentum forcing, its exact solution
-            // is zero for the present predictor. Do not spend thousands of
-            // Krylov iterations on a badly conditioned near-homogeneous
-            // convection-diffusion system (common for transverse components
-            // of a pipe flow).
-            if (solution_norm <= controls.linear_tolerance &&
-                rhs_norm <= 5.0e-2 * rhs_scale) {
+        auto solve_momentum = [&](const ScalarEquation& equation, Vector& solution,
+                                 bool active) {
+            if (!active) {
+                solution.fill(0.0);
                 return cfdx::core::SolverResult{
-                    cfdx::core::SolverStatus::CONVERGED, 0, rhs_norm, rhs_norm / rhs_scale};
+                    cfdx::core::SolverStatus::CONVERGED, 0, 0.0, 0.0};
             }
             return solve_scalar_equation(equation, solution, {
                 controls.linear_max_iterations,
@@ -349,9 +346,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.alpha_u});
         };
 
-        const auto rx = solve_momentum(ex, ux);
-        const auto ry = solve_momentum(ey, uy);
-        const auto rz = solve_momentum(ez, uz);
+        const auto rx = solve_momentum(ex, ux, controls.active_velocity_components[0]);
+        const auto ry = solve_momentum(ey, uy, controls.active_velocity_components[1]);
+        const auto rz = solve_momentum(ez, uz, controls.active_velocity_components[2]);
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
             if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
