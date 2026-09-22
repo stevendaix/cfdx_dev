@@ -137,6 +137,33 @@ void check_case(std::size_t n)
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = pin - (pin-pout)/(2.0*static_cast<double>(n));
 
+    // Isolate the first Ux predictor before entering SIMPLE. This distinguishes
+    // a momentum linear-system failure from a pressure-correction failure.
+    const auto geometry = build_fv_geometry(mesh);
+    const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+    Field<double,Location::CELL> body(mesh.n_cells(), "body", "N/m3", 1);
+    body.fill(0.0);
+    ScalarBoundaryConditions ubc_x;
+    for (const auto& [name, bc] : ubc)
+        ubc_x[name] = {bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
+                           ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::ZERO_GRADIENT,
+                       bc.value.x, 0.0};
+    Field<double,Location::FACE> zero_flux(mesh.n_faces(), "phi", "kg/s", 1);
+    zero_flux.fill(0.0);
+    const auto predictor = assemble_momentum_component(
+        mesh, geometry, zero_flux, grad_p, body, mu, ubc_x, 0, true,
+        ConvectionScheme::UPWIND, &U);
+    Vector predictor_u(mesh.n_cells(), 0.0);
+    const auto predictor_result = solve_scalar_equation(
+        predictor, predictor_u, {c.linear_max_iterations, c.linear_tolerance, c.coupling.alpha_u});
+    std::cout << "VMFL004 predictor Ux status="
+              << to_string(predictor_result.status)
+              << " iterations=" << predictor_result.iterations
+              << " residual=" << predictor_result.residual
+              << " relative=" << predictor_result.residual_relative << "\\n";
+    if (predictor_result.status != SolverStatus::CONVERGED)
+        throw std::runtime_error("VMFL004 isolated Ux predictor did not converge");
+
     const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if (!result.converged)
         throw std::runtime_error("VMFL004 coupled solver did not converge");
