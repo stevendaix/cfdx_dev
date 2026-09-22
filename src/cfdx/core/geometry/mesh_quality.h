@@ -24,18 +24,7 @@ struct FaceQuality {
     double non_orthogonality_deg = 0.0;
 };
 
-// Calcule le skewness et la non-orthogonalité d'une face.
-//
-// Non-orthogonalité (angle entre Sf et le vecteur C_cell → C_face) :
-//   cos(θ) = (Cf - Cc) · Sf / (|Cf - Cc| * |Sf|)
-//   non_orthogonality = acos(cos(θ))   [radians]
-//
-// Skewness (approximation basée sur la projection) :
-//   Le skewness mesure à quel point la normale de la face s'écarte de la
-//   direction idéale (Cf - Cc). Pour une face parfaitement orthogonale,
-//   skewness = 0.
-//   skewness = | (Cf - Cc) - ((Cf - Cc) · n) * n | / |Cf - Cc|
-//   où n = Sf / |Sf| est la normale unitaire de la face.
+// Calcule la qualité d'une face frontière à partir du segment cellule -> face.
 inline FaceQuality compute_face_quality(
     const Vec3& face_centre,
     const Vec3& cell_centre,
@@ -48,25 +37,51 @@ inline FaceQuality compute_face_quality(
     const double Sf_mag = Sf.mag();
 
     if (d_mag <= 0.0 || Sf_mag <= 0.0) {
-        return q;  // valeurs par défaut (0)
+        return q;
     }
 
-    // Non-orthogonalité.
     const double cos_theta = d.dot(Sf) / (d_mag * Sf_mag);
-    // Éviter les erreurs numériques hors de [-1, 1].
-    double clamped = cos_theta;
-    if (clamped > 1.0) clamped = 1.0;
-    if (clamped < -1.0) clamped = -1.0;
+    const double clamped = std::max(-1.0, std::min(1.0, cos_theta));
     q.non_orthogonality = std::acos(clamped);
     q.non_orthogonality_deg = q.non_orthogonality * 180.0 / std::acos(-1.0);
 
-    // Skewness : composante de d perpendiculaire à la normale, normalisée.
     const Vec3 n = Sf.normalized();
     const double d_parallel = d.dot(n);
     const Vec3 d_perp = d - n * d_parallel;
-    const double d_perp_mag = d_perp.mag();
-    q.skewness = d_perp_mag / d_mag;
+    q.skewness = d_perp.mag() / d_mag;
+    return q;
+}
 
+// Calcule la qualité d'une face interne à partir de la ligne des centres
+// owner -> neighbour. C'est cette direction qui définit l'orthogonalité FV
+// interne; utiliser uniquement owner -> face surestime ou masque la
+// non-orthogonalité sur un maillage skewed.
+inline FaceQuality compute_face_quality(
+    const Vec3& face_centre,
+    const Vec3& owner_centre,
+    const Vec3& neighbour_centre,
+    const Vec3& Sf)
+{
+    FaceQuality q;
+
+    const Vec3 d = neighbour_centre - owner_centre;
+    const double d_mag = d.mag();
+    const double Sf_mag = Sf.mag();
+    if (d_mag <= 0.0 || Sf_mag <= 0.0) {
+        return q;
+    }
+
+    const double cos_theta = d.dot(Sf) / (d_mag * Sf_mag);
+    const double clamped = std::max(-1.0, std::min(1.0, cos_theta));
+    q.non_orthogonality = std::acos(clamped);
+    q.non_orthogonality_deg = q.non_orthogonality * 180.0 / std::acos(-1.0);
+
+    // Skewness: distance between the face centre and the projection of the
+    // face centre onto the owner-neighbour line, normalized by |d|.
+    const Vec3 owner_to_face = face_centre - owner_centre;
+    const double projection = owner_to_face.dot(d) / (d_mag * d_mag);
+    const Vec3 projected = owner_centre + d * projection;
+    q.skewness = (face_centre - projected).mag() / d_mag;
     return q;
 }
 

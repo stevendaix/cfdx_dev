@@ -156,5 +156,64 @@ int main() {
         EXPECT_TRUE(cache.cell_centres.empty());
     });
 
+    run_case("geometry_cache_internal_face_closure_and_quality", []() {
+        Mesh m;
+        m.points().resize(12);
+        const double p[12][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{0,1,1},{1,1,1},{2,1,1}};
+        for (std::size_t i = 0; i < 12; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        // Two unit cubes sharing x=1. The shared face is deliberately stored
+        // with the wrong winding; GeometryCache must canonicalize owner->neighbour.
+        m.faces().push_face({0,6,9,3});       // left
+        m.faces().push_face({0,1,7,6});       // bottom 0
+        m.faces().push_face({3,9,10,4});      // top 0
+        m.faces().push_face({0,3,4,1});       // front 0
+        m.faces().push_face({6,7,10,9});      // back 0
+        m.faces().push_face({7,10,4,1});      // shared, reversed winding
+        m.faces().push_face({2,5,11,8});      // right
+        m.faces().push_face({1,2,8,7});       // bottom 1
+        m.faces().push_face({4,10,11,5});     // top 1
+        m.faces().push_face({1,4,5,2});       // front 1
+        m.faces().push_face({7,8,11,10});     // back 1
+
+        m.ownership().resize(11);
+        for (std::size_t f = 0; f < 5; ++f) {
+            m.ownership().set_owner(f, 0);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.ownership().set_owner(5, 0);
+        m.ownership().set_neighbour(5, 1);
+        for (std::size_t f = 6; f < 11; ++f) {
+            m.ownership().set_owner(f, 1);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+        m.cells().push_cell({0,1,2,3,4,5});
+        m.cells().push_cell({5,6,7,8,9,10});
+
+        BoundaryPatches bp;
+        Patch wall;
+        wall.name = "walls";
+        wall.type = PatchType::WALL;
+        wall.face_ids = {0,1,2,3,4,6,7,8,9,10};
+        bp.add_patch(wall);
+        m.set_boundary(bp);
+
+        GeometryCache cache = make_geometry_cache(m);
+        EXPECT_TRUE(is_valid(cache, m));
+        EXPECT_NEAR(cache.cell_volumes[0], 1.0, 1e-12);
+        EXPECT_NEAR(cache.cell_volumes[1], 1.0, 1e-12);
+        EXPECT_NEAR(cache.surface_closure_error[0], 0.0, 1e-12);
+        EXPECT_NEAR(cache.surface_closure_error[1], 0.0, 1e-12);
+        EXPECT_NEAR(cache.global_surface_closure_error, 0.0, 1e-12);
+        EXPECT_NEAR(cache.face_Sf[5].x, 1.0, 1e-12);
+        EXPECT_NEAR(cache.face_Sf[5].y, 0.0, 1e-12);
+        EXPECT_NEAR(cache.face_Sf[5].z, 0.0, 1e-12);
+        EXPECT_NEAR(cache.face_non_orthogonality_deg[5], 0.0, 1e-12);
+        EXPECT_NEAR(cache.face_skewness[5], 0.0, 1e-12);
+    });
+
     return run_all();
 }
