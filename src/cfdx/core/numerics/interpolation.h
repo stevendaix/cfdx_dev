@@ -21,7 +21,11 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include <cstddef>
+#include <cstdint>
+#include <cmath>
+#include <string>
 #include <algorithm>
 #include <stdexcept>
 
@@ -127,88 +131,136 @@ inline double apply_limiter_tvd(double v_owner, double v_upwind, double v_extrap
 inline Field<double, Location::FACE> interpolate_cell_to_face(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
+    const GeometryCache& geometry,
     InterpScheme scheme,
     const Field<double, Location::FACE>* face_flux = nullptr,
     LimiterType limiter_type = LimiterType::NONE,
-    const Field<double, Location::CELL>* cell_gradient = nullptr) // NOUVEAU : pour schéma LIMITED
+    const Field<double, Location::CELL>* cell_gradient = nullptr)
 {
     const std::size_t n_faces = mesh.n_faces();
+    const std::size_t n_cells = mesh.n_cells();
     const std::size_t dim = cell_field.dimension();
-    if (dim == 0) throw std::runtime_error("interpolate_cell_to_face: dimension must be >= 1");
 
-    if (scheme == InterpScheme::UPWIND && !face_flux) {
-        throw std::runtime_error("interpolate_cell_to_face: UPWIND scheme requires face_flux argument");
-    }
-    if (scheme == InterpScheme::LIMITED && !cell_gradient) {
-        // Fallback sécurisé : si pas de gradient, retombe sur LINEAR
-        scheme = InterpScheme::LINEAR; 
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("interpolate_cell_to_face: field size != n_cells");
+    if (dim == 0)
+        throw std::runtime_error("interpolate_cell_to_face: dimension must be >= 1");
+    if (face_flux && (face_flux->size() != n_faces || face_flux->dimension() != 1))
+        throw std::runtime_error("interpolate_cell_to_face: face_flux must be scalar with n_faces values");
+    if (scheme == InterpScheme::UPWIND && !face_flux)
+        throw std::runtime_error("interpolate_cell_to_face: UPWIND requires face_flux");
+    if (scheme == InterpScheme::LIMITED) {
+        if (!face_flux)
+            throw std::runtime_error("interpolate_cell_to_face: LIMITED requires face_flux");
+        if (!cell_gradient)
+            throw std::runtime_error("interpolate_cell_to_face: LIMITED requires cell_gradient");
+        if (cell_field.dimension() != 1 || cell_gradient->dimension() != 3 ||
+            cell_gradient->size() != n_cells)
+            throw std::runtime_error(
+                "interpolate_cell_to_face: LIMITED currently supports scalar fields with a 3-component gradient");
+        if (!is_valid(geometry, mesh))
+            throw std::invalid_argument("interpolate_cell_to_face: invalid geometry cache");
     }
 
     Field<double, Location::FACE> result(
         n_faces, cell_field.name(), cell_field.metadata().unit, dim);
 
     const FaceOwnership& own = mesh.ownership();
-
     const double* flux = face_flux ? face_flux->component_data(0) : nullptr;
 
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::size_t owner = own.owner(f);
-        if (owner >= mesh.n_cells()) {
+        if (owner >= n_cells)
             throw std::runtime_error("interpolate_cell_to_face: owner index out of range");
-        }
 
-        const bool is_internal = (own.neighbour(f) >= 0);
-        const std::size_t neighbour = is_internal
-            ? static_cast<std::size_t>(own.neighbour(f))
-            : owner;
-
-        if (is_internal && neighbour >= mesh.n_cells()) {
+        const std::int64_t nb_i = own.neighbour(f);
+        const bool internal = nb_i >= 0;
+        if (internal && static_cast<std::size_t>(nb_i) >= n_cells)
             throw std::runtime_error("interpolate_cell_to_face: neighbour index out of range");
-        }
+        const std::size_t neighbour = internal ? static_cast<std::size_t>(nb_i) : owner;
 
         for (std::size_t d = 0; d < dim; ++d) {
-            // Field uses SoA layout: component_data(d) gives array for component d
-            const double v_owner = cell_field.component_data(d)[owner];
-            const double v_neigh = cell_field.component_data(d)[neighbour];
-            double v;
+            const double vo = cell_field.component_data(d)[owner];
+            const double vn = cell_field.component_data(d)[neighbour];
+            double v = vo;
 
-            switch (scheme) {
-                case InterpScheme::UPWIND: {
-                    // Upwind basé sur le signe du flux : phi_f = U_f · Sf_f
-                    // flux > 0 : flux sortant de owner → owner
-                    // flux < 0 : flux entrant dans owner → neighbour
-                    const double phi_f = flux[f];
-                    v = (phi_f >= 0.0) ? v_owner : v_neigh;
-                    break;
+            if (!internal) {
+                v = vo;
+            } else if (scheme == InterpScheme::LINEAR) {
+                v = 0.5 * (vo + vn);
+            } else if (scheme == InterpScheme::UPWIND) {
+                v = (flux[f] >= 0.0) ? vo : vn;
+            } else if (scheme == InterpScheme::LIMITED) {
+                // Reconstruct from the upwind cell to the actual face centre.
+                // The limiter is applied to the directional ratio along the
+                // owner-neighbour line; the final value is strictly bounded by
+                // the two adjacent cell values.
+                const bool owner_upwind = flux[f] >= 0.0;
+                const std::size_t up = owner_upwind ? owner : neighbour;
+                const std::size_t down = owner_upwind ? neighbour : owner;
+                const double v_up = cell_field.component_data(0)[up];
+                const double v_down = cell_field.component_data(0)[down];
+
+                const double* gx = cell_gradient->component_data(0);
+                const double* gy = cell_gradient->component_data(1);
+                const double* gz = cell_gradient->component_data(2);
+                const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[up];
+                const double delta_extrap =
+                    gx[up] * dface.x + gy[up] * dface.y + gz[up] * dface.z;
+
+                const double delta_neighbour = v_down - v_up;
+                const double r = (std::abs(delta_extrap) > 1e-14)
+                    ? delta_neighbour / delta_extrap
+                    : 0.0;
+
+                double psi = 1.0;
+                switch (limiter_type) {
+                    case LimiterType::NONE:
+                        psi = 1.0;
+                        break;
+                    case LimiterType::MINMOD:
+                        psi = std::max(0.0, std::min(1.0, r));
+                        break;
+                    case LimiterType::VANLEER:
+                        psi = (r + std::abs(r)) / (1.0 + std::abs(r) + 1e-15);
+                        break;
+                    case LimiterType::SUPERBEE:
+                        psi = std::max(0.0,
+                            std::max(std::min(1.0, 2.0 * r),
+                                     std::min(2.0, r)));
+                        break;
+                    case LimiterType::VAN_ALBADA:
+                        psi = (r * r + r) / (r * r + 1.0 + 1e-15);
+                        break;
                 }
-                case InterpScheme::LINEAR:
-                    v = 0.5 * (v_owner + v_neigh);
-                    break;
-                case InterpScheme::LIMITED: {
-                    const double linear = 0.5 * (v_owner + v_neigh);
-                    // Si un gradient cellulaire est fourni, on calcule v_extrap = v_owner + grad · d_face
-                    // et on applique le limiteur TVD sur (v_owner, v_upwind, v_extrap)
-                    if (cell_gradient) {
-                        // Approximation du gradient projeté le long de la ligne owner-neighbour
-                        // Note: Une implémentation complète nécessiterait le vecteur géométrique d_face (C_neigh - C_owner)
-                        // Ici, on utilise une approximation 1D le long de la ligne de connexion pour garder le code fonctionnel
-                        const double v_upwind = (v_owner > v_neigh) ? v_owner : v_neigh; // Approximation upwind
-                        const double v_extrap_approx = v_owner + (v_neigh - v_owner) * 0.5; // Approximation linéaire
-                        v = apply_limiter_tvd(v_owner, v_upwind, v_extrap_approx, limiter_type);
-                    } else {
-                        v = apply_limiter_tvd(v_owner, v_neigh, v_owner + (v_neigh - v_owner) * 0.5, limiter_type);
-                    }
-                    break;
-                }
-                default:
-                    throw std::runtime_error("interpolate_cell_to_face: unknown scheme");
+
+                const double reconstructed = v_up + psi * delta_extrap;
+                v = std::max(std::min(v_up, v_down),
+                             std::min(std::max(v_up, v_down), reconstructed));
             }
-            // Result uses SoA layout too
             result.component_data(d)[f] = v;
         }
     }
-
     return result;
+}
+
+inline Field<double, Location::FACE> interpolate_cell_to_face(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    InterpScheme scheme,
+    const Field<double, Location::FACE>* face_flux = nullptr,
+    LimiterType limiter_type = LimiterType::NONE,
+    const Field<double, Location::CELL>* cell_gradient = nullptr)
+{
+    if (scheme == InterpScheme::LIMITED) {
+        const GeometryCache geometry = make_geometry_cache(mesh);
+        return interpolate_cell_to_face(
+            cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
+    }
+    // Linear/upwind interpolation only needs topology and ownership.
+    GeometryCache geometry;
+    return interpolate_cell_to_face(
+        cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
 }
 
 }  // namespace core

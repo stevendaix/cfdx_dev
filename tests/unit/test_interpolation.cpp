@@ -1,6 +1,8 @@
 // M0.6-T01 — Tests for cell→face interpolation
 
 #include "cfdx/core/numerics/interpolation.h"
+#include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
 #include "cfdx/core/numerics/flux.h"
@@ -116,31 +118,19 @@ int main() {
         EXPECT_TRUE(face_field(3) == 30.0);
     });
 
-    run_case("interpolate_limited_scalar", []() {
+    run_case("interpolate_limited_requires_gradient_and_flux", []() {
         Mesh m = make_two_cell_mesh();
         ScalarCellField f(2, "p", "Pa", 1);
         f(0) = 10.0;
         f(1) = 30.0;
-
-        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LIMITED);
-        // Limited = clamp(linear, min, max) = linear ici
-        EXPECT_TRUE(face_field(0) == 10.0);
-        EXPECT_TRUE(face_field(1) == 20.0);
-        EXPECT_TRUE(face_field(2) == 20.0);
-        EXPECT_TRUE(face_field(3) == 30.0);
+        EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::LIMITED), std::runtime_error);
     });
 
-    run_case("interpolate_limited_clamps", []() {
-        // Limited doit borner la valeur linéaire dans [min, max].
-        Mesh m = make_two_cell_mesh();
-        ScalarCellField f(2, "p", "Pa", 1);
-        f(0) = 0.0;
-        f(1) = 100.0;
-
-        auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LIMITED);
-        // linear = 50.0, borné par [0, 100] → 50.0
-        EXPECT_TRUE(face_field(1) == 50.0);
-        EXPECT_TRUE(face_field(2) == 50.0);
+    run_case("apply_limiter_bounds_local_extrema", []() {
+        EXPECT_NEAR(apply_limiter_tvd(0.0, 100.0, 150.0, LimiterType::NONE), 100.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(100.0, 0.0, -50.0, LimiterType::NONE), 0.0, 1e-12);
+        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::MINMOD) >= 0.0);
+        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::VANLEER) <= 100.0);
     });
 
     run_case("interpolate_vector_dim3", []() {
