@@ -227,7 +227,7 @@ void check_case(std::size_t nz)
     ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
 
     ScalarBoundaryConditions pbc;
-    pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+    pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,dp,0.0};
     pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
     pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
 
@@ -240,7 +240,6 @@ void check_case(std::size_t nz)
     c.linear_tolerance = 1e-8;
     c.density = rho;
     c.kinematic_viscosity = mu / rho;
-    c.body_force = {0.0, 0.0, dp / L};
     // The Poiseuille case is laminar and pressure-driven; disable the
     // bounded-convection correction so the validation isolates the viscous
     // pressure-driven solution without a nonlinear convective stabilization
