@@ -71,6 +71,7 @@ static bool check_amg(const SparseMatrix& A, Vector rhs, double max_ratio) {
     Vector correction;
     if (!amg.apply(rhs, correction) || !correction.is_valid()) return false;
     const double ratio = true_residual_ratio(A, rhs, correction);
+    std::cerr << "AMG residual ratio=" << ratio << " threshold=" << max_ratio << "\\n";
     return std::isfinite(ratio) && ratio < max_ratio;
 }
 
