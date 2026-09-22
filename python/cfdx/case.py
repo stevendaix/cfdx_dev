@@ -23,6 +23,7 @@ class Case:
     physics: dict[str, Any] = field(default_factory=dict)
     numerics: dict[str, Any] = field(default_factory=dict)
     boundaries: dict[str, Any] = field(default_factory=dict)
+    materials: dict[str, Any] = field(default_factory=dict)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 
     def enable(self, model: str) -> "Case":
@@ -43,6 +44,7 @@ class Case:
             "physics": self.physics,
             "numerics": self.numerics,
             "boundaries": self.boundaries,
+            "materials": self.materials,
             "execution": {
                 "policy": self.execution.policy,
                 "solver": self.execution.solver,

@@ -11,6 +11,7 @@ def make_session() -> CFDXSession:
     session = CFDXSession()
     session.case.name = "channel"
     session.case.enable("energy")
+    session.case.materials["air"] = {"density": 1.2, "dynamic_viscosity": 1.8e-5, "cp": 1005.0, "conductivity": 0.026}
     session.case.set_numerics(cfl=2.5, scheme="upwind")
     session.case.set_boundary("inlet", type="inlet", value="1.0")
     session.case.execution.solver = "cfdx-solver"
