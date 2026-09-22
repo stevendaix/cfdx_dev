@@ -1,4 +1,4 @@
-""""Execution controller connecting the session, runner and progress parser."""
+"""Execution controller connecting the session, runner and progress parser."""
 from __future__ import annotations
 
 from dataclasses import dataclass
