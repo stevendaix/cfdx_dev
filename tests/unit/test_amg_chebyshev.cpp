@@ -2,6 +2,7 @@
 #include "cfdx/core/linalg/chebyshev_smoother.h"
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
+#include "cfdx/core/linalg/vector.h"
 
 #include <cmath>
 #include <cstddef>
