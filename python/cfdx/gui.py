@@ -83,6 +83,7 @@ if QApplication is not None:
             file_menu = self.menuBar().addMenu("File")
             self.open_case_action = file_menu.addAction("Read Case…")
             self.open_case_dat_action = file_menu.addAction("Read Case + DAT…")
+            self.open_dat_action = file_menu.addAction("Read DAT Checkpoint…")
             file_menu.addSeparator()
             self.save_case_action = file_menu.addAction("Save Case")
             self.save_case_as_action = file_menu.addAction("Save Case As…")
@@ -103,6 +104,7 @@ if QApplication is not None:
 
             self.open_case_action.triggered.connect(self._open_case)
             self.open_case_dat_action.triggered.connect(self._open_case_with_dat)
+            self.open_dat_action.triggered.connect(self._open_dat_checkpoint)
             self.save_case_action.triggered.connect(self._save_case)
             self.save_case_as_action.triggered.connect(self._save_case_as)
             self.save_case_dat_action.triggered.connect(self._save_case_with_dat)
@@ -399,6 +401,49 @@ if QApplication is not None:
                 self._show_error("Read Case failed", str(exc))
                 return False
 
+        def _open_dat_checkpoint(self) -> bool:
+            """Load a DAT checkpoint only after a CFDX case is loaded."""
+            if self._case_path is None:
+                self._show_error(
+                    "Read DAT failed",
+                    "Load a CFDX case before loading a DAT checkpoint.",
+                )
+                return False
+            dat_path, _ = QFileDialog.getOpenFileName(
+                self, "Read DAT Checkpoint", str(self._case_path.parent),
+                "CFDX DAT (*.dat);;All files (*)"
+            )
+            if not dat_path:
+                return False
+            try:
+                restart = Path(dat_path)
+                loaded = read_dat_restart(restart)
+                with __import__("h5py").File(self._case_path, "r") as h5:
+                    if "points" in h5:
+                        mesh_cells = len(h5["cell_offsets"]) - 1
+                        if loaded.cells != mesh_cells:
+                            raise ValueError(
+                                f"DAT cell count {loaded.cells} does not match loaded case mesh cell count {mesh_cells}"
+                            )
+                self._restart_dat = restart
+                if self.view3d is not None:
+                    fields = self.view3d.load_cfdx_dat(
+                        str(self._case_path), str(restart)
+                    )
+                    self._result_source = restart
+                    self.results_series.set_checkpoint_fields(
+                        fields, loaded.iteration, loaded.time, restart.name
+                    )
+                self.result_status.setText(
+                    f"DAT checkpoint: {restart.name} | iteration={loaded.iteration} | "
+                    f"time={loaded.time:g} | fields={len(loaded.fields)}"
+                )
+                self._refresh_file_status()
+                return True
+            except (OSError, ValueError) as exc:
+                self._show_error("Read DAT failed", str(exc))
+                return False
+
         def _open_case_with_dat(self) -> bool:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Read CFDX Case + DAT", "", "CFDX Case (*.cfdx.h5 *.h5)"
@@ -505,7 +550,8 @@ if QApplication is not None:
             self.stop_action.setEnabled(state in {SimulationState.RUNNING, SimulationState.PAUSED})
             self.save_case_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
             self.save_case_as_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
-            self.save_case_dat_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
+            self.save_case_dat_action.setEnabled(state not in {SimulationState.RUNNING, SimulationState.VALIDATING} and self._case_path is not None)
+            self.open_dat_action.setEnabled(self._case_path is not None and state not in {SimulationState.RUNNING, SimulationState.VALIDATING})
 
         def _set_cfl(self, value: float) -> None:
             if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
