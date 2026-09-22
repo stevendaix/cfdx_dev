@@ -42,23 +42,35 @@ inline void write_dat_restart_fields(
     std::size_t iteration = 0,
     double time = 0.0)
 {
+    if (U.dimension() != 3 || U.size() != mesh.n_cells())
+        throw std::invalid_argument("write_dat_restart_fields: invalid velocity field");
+    if (p.dimension() != 1 || p.size() != mesh.n_cells())
+        throw std::invalid_argument("write_dat_restart_fields: invalid pressure field");
+    if (!std::isfinite(time))
+        throw std::invalid_argument("write_dat_restart_fields: non-finite time");
     validate_optional_restart_field(mesh, fields.temperature, "temperature");
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
-    write_dat_restart(path, mesh, U, p, iteration, time);
-    if (!fields.temperature && !fields.k && !fields.second_turbulence) return;
 
-    std::ofstream out(path, std::ios::app);
-    if (!out) throw std::runtime_error("DAT restart: cannot append optional fields");
+    std::ofstream out(path);
+    if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
+    out.precision(std::numeric_limits<double>::max_digits10);
+    out << "CFDX-DAT 2\n";
+    out << "cells " << mesh.n_cells() << "\n";
+    out << "iteration " << iteration << "\n";
+    out << "time " << time << "\n";
+    out << "field U 3\n";
+    for (std::size_t c=0;c<mesh.n_cells();++c)
+        out << U.component_data(0)[c] << ' ' << U.component_data(1)[c] << ' ' << U.component_data(2)[c] << "\n";
+    out << "field p 1\n";
+    for (std::size_t c=0;c<mesh.n_cells();++c) out << p(c) << "\n";
     out << "optional_fields\n";
-    const auto write_field = [&](const char* name,
-                                 const cfdx::core::Field<double, cfdx::core::Location::CELL>* field) {
+    const auto write_field = [&](const char* name, const cfdx::core::Field<double,cfdx::core::Location::CELL>* field) {
         if (!field) return;
         out << "field " << name << " 1\n";
-        out.precision(std::numeric_limits<double>::max_digits10);
-        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
             if (!std::isfinite((*field)(c)))
-                throw std::invalid_argument(std::string("DAT restart: non-finite ") + name);
+                throw std::invalid_argument(std::string("write_dat_restart_fields: non-finite ") + name);
             out << (*field)(c) << "\n";
         }
     };
@@ -66,7 +78,6 @@ inline void write_dat_restart_fields(
     write_field("k", fields.k);
     write_field("second_turbulence", fields.second_turbulence);
 }
-
 inline DatRestartState read_dat_restart_fields(
     const std::string& path,
     const cfdx::core::Mesh& mesh,
