@@ -100,7 +100,8 @@ inline SolverResult solve_bicgstab(
 
     for(std::size_t iter=1;iter<=max_iter;++iter){
         double rho_new=0.0;for(std::size_t i=0;i<n;++i)rho_new+=w.r_hat(i)*w.r(i);
-        if(!std::isfinite(rho_new)||std::abs(rho_new)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
+        const double rho_scale = w.r_hat.norm2() * w.r.norm2();
+        if(!std::isfinite(rho_scale) || std::abs(rho_new) <= 1e-30 * std::max(rho_scale, 1e-300)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
         const double beta=(rho!=0.0)?(rho_new/rho)*(alpha/omega):0.0;
         if(!std::isfinite(beta)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
         for(std::size_t i=0;i<n;++i)w.p(i)=w.r(i)+beta*(w.p(i)-omega*w.v(i));
@@ -114,7 +115,8 @@ inline SolverResult solve_bicgstab(
         if(!finite_vector(w.v)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
         double rv=0.0;for(std::size_t i=0;i<n;++i)rv+=w.r_hat(i)*w.v(i);
-        if(!std::isfinite(rv)||std::abs(rv)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        const double rv_scale = w.r_hat.norm2() * w.v.norm2();
+        if(!std::isfinite(rv_scale) || std::abs(rv) <= 1e-30 * std::max(rv_scale, 1e-300)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         alpha=rho_new/rv;
         if(!std::isfinite(alpha)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i)w.s(i)=w.r(i)-alpha*w.v(i);
