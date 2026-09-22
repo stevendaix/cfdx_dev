@@ -52,7 +52,7 @@ int main()
         Field<double,Location::CELL> loaded_u(1,"U","m/s",3);
         Field<double,Location::CELL> loaded_p(1,"p","Pa",1);
         const auto state = cfdx::io::read_dat_restart(dat.string(), m, loaded_u, loaded_p);
-        EXPECT_EQ(state.iteration, std::size_t{17});
+        EXPECT_TRUE(state.iteration == std::size_t{17});
         EXPECT_NEAR(state.time, 2.5, 1e-14);
         EXPECT_NEAR(loaded_u(0,0), 0.25, 1e-14);
         EXPECT_NEAR(loaded_u(0,1), -0.15, 1e-14);
