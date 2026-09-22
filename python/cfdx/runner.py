@@ -14,8 +14,16 @@ class ProcessResult:
     command: tuple[str, ...]
 
 
+OutputCallback = Callable[[str, bool], None]
+CompletionCallback = Callable[[ProcessResult], None]
+
+
 class SolverRunner:
-    """Own a solver subprocess without blocking the application thread."""
+    """Own a local solver subprocess without blocking the application thread.
+
+    stdout and stderr are consumed independently. The second callback argument
+    identifies stderr, allowing a TUI/GUI to preserve stream semantics.
+    """
 
     def __init__(self, command: Sequence[str], cwd: Path | None = None) -> None:
         if not command:
@@ -24,47 +32,79 @@ class SolverRunner:
         self.cwd = cwd
         self._process: subprocess.Popen[str] | None = None
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
 
     @property
     def running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        process = self._process
+        return process is not None and process.poll() is None
 
     def start(
         self,
-        on_output: Callable[[str, bool], None] | None = None,
-        on_complete: Callable[[ProcessResult], None] | None = None,
+        on_output: OutputCallback | None = None,
+        on_complete: CompletionCallback | None = None,
     ) -> None:
-        if self.running:
-            raise RuntimeError("solver is already running")
+        with self._lock:
+            if self.running:
+                raise RuntimeError("solver is already running")
+            self._process = subprocess.Popen(
+                self.command,
+                cwd=self.cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+            process = self._process
 
-        self._process = subprocess.Popen(
-            self.command,
-            cwd=self.cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-
-        def consume() -> None:
-            assert self._process is not None
-            assert self._process.stdout is not None
-            for line in self._process.stdout:
+        def consume(stream, is_stderr: bool) -> None:
+            for line in iter(stream.readline, ""):
                 if on_output:
-                    on_output(line.rstrip("\n"), False)
-            returncode = self._process.wait()
+                    on_output(line.rstrip("\r\n"), is_stderr)
+            stream.close()
+
+        def monitor() -> None:
+            assert process.stdout is not None
+            assert process.stderr is not None
+            readers = [
+                threading.Thread(
+                    target=consume,
+                    args=(process.stdout, False),
+                    name="cfdx-solver-stdout",
+                    daemon=True,
+                ),
+                threading.Thread(
+                    target=consume,
+                    args=(process.stderr, True),
+                    name="cfdx-solver-stderr",
+                    daemon=True,
+                ),
+            ]
+            for reader in readers:
+                reader.start()
+            returncode = process.wait()
+            for reader in readers:
+                reader.join()
             if on_complete:
                 on_complete(ProcessResult(returncode, self.command))
 
-        self._thread = threading.Thread(target=consume, name="cfdx-solver-output", daemon=True)
+        self._thread = threading.Thread(
+            target=monitor,
+            name="cfdx-solver-monitor",
+            daemon=True,
+        )
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        if not self._process or self._process.poll() is not None:
+        process = self._process
+        if process is None or process.poll() is not None:
             return
-        self._process.terminate()
+        process.terminate()
         try:
-            self._process.wait(timeout=timeout)
+            process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            self._process.kill()
-            self._process.wait()
+            process.kill()
+            process.wait()
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=timeout)
