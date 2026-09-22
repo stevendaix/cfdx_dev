@@ -7,6 +7,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace cfdx::application {
 
@@ -25,8 +26,10 @@ public:
     explicit SimulationController(CaseModel model = {});
 
     SimulationState state() const;
-    const CaseModel& model() const noexcept { return model_; }
-    const Checkpoint& checkpoint() const noexcept { return checkpoint_; }
+    // Return copies so callers cannot retain references into state mutated by run/edit.
+    CaseModel model() const;
+    Checkpoint checkpoint() const;
+    CaseSnapshot snapshot() const;
 
     void validate();
     void run(RunTarget target);
@@ -36,14 +39,14 @@ public:
     // Apply a case edit while paused/stopped. Hot edits can continue directly;
     // restart/rebuild edits are recorded and exposed through requires_restart().
     ChangeImpact edit(const std::string& key, Parameter parameter);
-    bool requires_restart() const noexcept { return requires_restart_; }
+    bool requires_restart() const;
     void acknowledge_restart();
 
     void create_checkpoint();
-    const Checkpoint& latest_checkpoint() const noexcept { return checkpoint_; }
+    Checkpoint latest_checkpoint() const;
 
     using IterationCallback = std::function<bool(std::size_t, double)>;
-    void set_iteration_callback(IterationCallback callback) { callback_ = std::move(callback); }
+    void set_iteration_callback(IterationCallback callback);
 
 private:
     mutable std::mutex mutex_;
