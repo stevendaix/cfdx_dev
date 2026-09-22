@@ -66,12 +66,18 @@ class ExecutionController:
             if metrics.time is not None:
                 self.session.time = metrics.time
             if metrics.iteration is not None or metrics.time is not None or metrics.residuals:
-                iteration = metrics.iteration if metrics.iteration is not None else (self.monitor_series.samples[-1].iteration if self.monitor_series.samples else 0)
-                time_value = metrics.time if metrics.time is not None else (self.monitor_series.samples[-1].time if self.monitor_series.samples else 0.0)
+                iteration = metrics.iteration if metrics.iteration is not None else (
+                    self.monitor_series.samples[-1].iteration
+                    if self.monitor_series.samples else 0
+                )
+                time_value = metrics.time if metrics.time is not None else (
+                    self.monitor_series.samples[-1].time
+                    if self.monitor_series.samples else 0.0
+                )
                 values = {name: value for name, value in metrics.residuals}
                 if metrics.cfl is not None:
                     values["CFL"] = metrics.cfl
-                self.monitor_series.append(MonitorSample(iteration, time_value, values))
+                self.monitor_series.upsert(MonitorSample(iteration, time_value, values))
             if self.on_metrics:
                 self.on_metrics(metrics)
         if self.on_output:

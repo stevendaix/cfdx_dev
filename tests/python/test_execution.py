@@ -113,3 +113,23 @@ def test_controller_builds_monitor_series_from_solver_metrics(tmp_path: Path) ->
     assert controller.monitor_series.samples[-1].time == pytest.approx(0.2)
     assert controller.monitor_series.at(2).values["p"] == pytest.approx(2.0e-3)
     assert controller.monitor_series.at(2).values["CFL"] == pytest.approx(0.3)
+
+def test_controller_merges_metrics_emitted_on_separate_lines(tmp_path: Path) -> None:
+    script = tmp_path / "solver.py"
+    script.write_text(
+        "print('Iteration 7 Time = 0.7', flush=True)\n"
+        "print('CFL: 0.4', flush=True)\n"
+        "print('residual p = 3.0e-4', flush=True)\n",
+        encoding="utf-8",
+    )
+    session = CFDXSession()
+    runner = SolverRunner([sys.executable, str(script)])
+    controller = ExecutionController(session, runner)
+    controller.start()
+    assert runner._thread is not None
+    runner._thread.join(timeout=5)
+    assert len(controller.monitor_series.samples) == 1
+    sample = controller.monitor_series.at(7)
+    assert sample.time == pytest.approx(0.7)
+    assert sample.values["CFL"] == pytest.approx(0.4)
+    assert sample.values["p"] == pytest.approx(3.0e-4)
