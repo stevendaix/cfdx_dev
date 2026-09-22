@@ -34,6 +34,7 @@ public:
     {
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A)) {
+            std::cerr << "AMG setup: fine matrix invalid\\n";
             levels_.clear();
             first_aggregate_.clear();
             return false;
