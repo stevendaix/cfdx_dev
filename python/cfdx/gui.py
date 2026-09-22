@@ -391,7 +391,7 @@ if QApplication is not None:
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
                 self, "Select solver DAT restart", str(self._case_path.parent),
-                "Solver restart (*.dat);;All files (*)"
+                "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
             )
             if not dat_path:
                 return False
@@ -475,7 +475,7 @@ if QApplication is not None:
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
                 self, "Select paired solver DAT", str(Path(path).parent),
-                "Solver restart (*.dat);;All files (*)"
+                "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
             )
             if not dat_path:
                 return False
