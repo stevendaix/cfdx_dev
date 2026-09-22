@@ -190,11 +190,10 @@ int main() {
         EXPECT_NEAR(corrected(1), orth(1), 1e-12);
     });
 
-    run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
+    run_case("laplacian_limited_scheme_is_explicitly_unsupported", []() {
         Mesh m = make_unit_cube();
         ScalarCellField f(1, "p", "Pa", 1);
         f(0) = 42.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
         EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
     });
 
