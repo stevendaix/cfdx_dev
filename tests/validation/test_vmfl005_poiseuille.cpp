@@ -72,7 +72,8 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
         for (std::size_t k = 0; k <= nz; ++k) {
             const auto f = end_faces[k][s];
             if (k == 0) {
-                m.ownership().set_owner(f, 0);
+                // Each inlet triangle belongs to its own axial sector cell.
+                m.ownership().set_owner(f, s);
                 m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
             } else if (k == nz) {
                 m.ownership().set_owner(f, (nz - 1) * ns + s);
