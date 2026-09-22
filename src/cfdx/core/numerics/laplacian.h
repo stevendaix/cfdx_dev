@@ -96,6 +96,9 @@ inline Field<double, Location::CELL> compute_laplacian(
     const FaceOwnership& own = mesh.ownership();
     const double* phi = cell_field.component_data(0);
     double* out = lap.component_data(0);
+    Field<double, Location::CELL> gradients;
+    if (scheme == LaplacianScheme::CORRECTED)
+        gradients = compute_gradient_gauss(cell_field, mesh, geometry);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
@@ -140,7 +143,6 @@ inline Field<double, Location::CELL> compute_laplacian(
 
             if (scheme == LaplacianScheme::CORRECTED) {
                 const Vec3 Sf_corr = Sf - Sf_orth;
-                const auto gradients = compute_gradient_gauss(cell_field, mesh, geometry);
                 const Vec3 grad_face =
                     (gradients[owner] + gradients[nb]) * 0.5;
                 contribution += Sf_corr.dot(grad_face);
