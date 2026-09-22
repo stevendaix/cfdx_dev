@@ -289,7 +289,14 @@ class CaseSetupPanel(QWidget):
                         "gradient": self.boundary_gradient.value(),
                     }
                 )
-        self.case.set_boundary(name, **values)
+        existing = dict(self.case.boundaries.get(name, {}))
+        supported_keys = {
+            "type", "fields", "scalar_type", "value", "gradient",
+            "velocity_type", "velocity_value",
+        }
+        preserved = {key: value for key, value in existing.items() if key not in supported_keys}
+        preserved.update(values)
+        self.case.set_boundary(name, **preserved)
         self._refresh_boundaries()
         self.changed.emit()
 
