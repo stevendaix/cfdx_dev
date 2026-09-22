@@ -10,7 +10,8 @@
 //     non-orthogonal limited
 //     uncorrected
 //
-// Première implémentation : orthogonal.
+// ORTHOGONAL/UNCORRECTED use the two-point contribution; CORRECTED adds
+// the tangential non-orthogonal correction from cell gradients.
 //
 // Pour un champ scalaire φ (Field<double, CELL>) :
 //   For ORTHOGONAL/UNCORRECTED:
@@ -86,8 +87,8 @@ inline Field<double, Location::CELL> compute_laplacian(
         throw std::runtime_error("compute_laplacian: field size != n_cells");
     if (cell_field.dimension() != 1)
         throw std::runtime_error("compute_laplacian: field must be scalar (dim=1)");
-    if (scheme == LaplacianScheme::CORRECTED || scheme == LaplacianScheme::LIMITED)
-        throw std::runtime_error("compute_laplacian: requested non-orthogonal scheme is not implemented");
+    if (scheme == LaplacianScheme::LIMITED)
+        throw std::runtime_error("compute_laplacian: limited non-orthogonal scheme is not implemented");
 
     Field<double, Location::CELL> lap(
         n_cells, cell_field.name() + "_lap", cell_field.metadata().unit + "/m^2", 1);
@@ -96,6 +97,9 @@ inline Field<double, Location::CELL> compute_laplacian(
     const FaceOwnership& own = mesh.ownership();
     const double* phi = cell_field.component_data(0);
     double* out = lap.component_data(0);
+    Field<double, Location::CELL> gradients;
+    if (scheme == LaplacianScheme::CORRECTED)
+        gradients = compute_gradient_gauss(cell_field, mesh, geometry);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
@@ -120,14 +124,28 @@ inline Field<double, Location::CELL> compute_laplacian(
             if (nb >= n_cells)
                 throw std::runtime_error("compute_laplacian: neighbour index out of range");
 
-            const double d = (geometry.cell_centres[nb] - geometry.cell_centres[owner]).mag();
-            const double area = geometry.face_Sf[f].mag();
+            const Vec3 dvec = geometry.cell_centres[nb] - geometry.cell_centres[owner];
+            const Vec3 Sf = geometry.face_Sf[f];
+            const double d2 = dvec.dot(dvec);
+            const double d = std::sqrt(d2);
+            const double area = Sf.mag();
             if (!(d > 1e-14) || !(area > 0.0) ||
                 !std::isfinite(d) || !std::isfinite(area))
                 throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
 
-            const double conductance = area / d;
-            const double contribution = conductance * (phi[nb] - phi[owner]);
+            const double orth_dot = Sf.dot(dvec);
+            const Vec3 Sf_orth = dvec * (orth_dot / d2);
+            const double orth_conductance = orth_dot / d2;
+            double contribution = orth_conductance * (phi[nb] - phi[owner]);
+            if (scheme == LaplacianScheme::CORRECTED) {
+                const Vec3 Sf_corr = Sf - Sf_orth;
+                const Vec3 grad_face{
+                    0.5 * (gradients(owner, 0) + gradients(nb, 0)),
+                    0.5 * (gradients(owner, 1) + gradients(nb, 1)),
+                    0.5 * (gradients(owner, 2) + gradients(nb, 2))
+                };
+                contribution += Sf_corr.dot(grad_face);
+            }
             sum += (owner == c) ? contribution : -contribution;
         }
 
