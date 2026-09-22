@@ -5,6 +5,16 @@
 #include "cfdx/core/geometry/geometry_cache.h"
 #include "common/test_harness.h"
 
+namespace {
+Patch make_wall_patch(const std::string& name, std::vector<int> face_ids) {
+    Patch patch;
+    patch.name = name;
+    patch.type = PatchType::WALL;
+    patch.face_ids = std::move(face_ids);
+    return patch;
+}
+}  // namespace
+
 using namespace cfdx::core;
 using namespace cfdx::core::parallel;
 using namespace cfdx::testing;
@@ -77,11 +87,7 @@ int main() {
         m.ownership().set_owner(0, 0);
         m.ownership().set_neighbour(0, FaceOwnership::BOUNDARY);
 
-        Patch boundary;
-        boundary.name = "wall";
-        boundary.type = PatchType::WALL;
-        boundary.face_ids = {0};
-        m.boundary().add_patch(boundary);
+        m.boundary().add_patch(make_wall_patch("wall", {0}));
 
         m.cells().push_cell({0});
 
@@ -128,11 +134,7 @@ int main() {
             m.ownership().set_owner(i, i/2);
             m.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
         }
-        Patch walls;
-        walls.name = "walls";
-        walls.type = PatchType::WALL;
-        walls.face_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-        m.boundary().add_patch(walls);
+        m.boundary().add_patch(make_wall_patch("wall", {0, 1, 2, 3, 4, 5, 6, 7}));
         // Keep this partition fixture topologically valid and independent of halo semantics.
 
 
@@ -172,10 +174,6 @@ int main() {
         m.ownership().set_owner(1, 0);
         m.ownership().set_neighbour(1, 1);
         m.ownership().set_neighbour(7, 0);
-        Patch walls;
-        walls.name = "walls";
-        walls.type = PatchType::WALL;
-        walls.face_ids = {0, 2, 3, 4, 5, 6};
         m.boundary().add_patch(walls);
         m.cells().push_cell({0,1,3,5,7});
         m.cells().push_cell({1,2,4,6,7});
