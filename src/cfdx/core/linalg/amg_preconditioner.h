@@ -71,7 +71,11 @@ public:
 
     bool apply(const Vector& r, Vector& z) const override
     {
-        if (r.size() != op_.rows()) return false;
+        if (r.size() != op_.rows() || inv_diag_.size() != r.size() ||
+            aggregate_of_.size() != r.size() || coarse_to_fine_.empty())
+            return false;
+        if (!r.is_valid())
+            return false;
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
         smooth(r, z, pre_);
@@ -88,9 +92,14 @@ public:
 
         for (std::size_t c = 0; c < ws_.coarse_x.size(); ++c)
             ws_.coarse_x(c) = ws_.coarse_r(c) * ws_.coarse_inv_diag[c];
+            if (!std::isfinite(ws_.coarse_x(c)))
+                return false;
 
-        for (std::size_t i = 0; i < r.size(); ++i)
+        for (std::size_t i = 0; i < r.size(); ++i) {
             z(i) += ws_.coarse_x(aggregate_of_[i]);
+            if (!std::isfinite(z(i)))
+                return false;
+        }
 
         smooth(r, z, post_);
         return true;
