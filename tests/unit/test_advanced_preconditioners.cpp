@@ -1,5 +1,6 @@
 #include "cfdx/core/linalg/advanced_preconditioners.h"
 #include "common/test_harness.h"
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -78,7 +79,8 @@ int main() {
         zero.push_back(0,0,0.0); zero.push_back(1,1,1.0); zero.finalize();
         ILU0Preconditioner p;
         EXPECT_TRUE(!p.setup(missing));
-        EXPECT_TRUE(!p.apply(Vector(2,1.0), Vector(2,0.0)));
+        Vector r(2,1.0), z(2,0.0);
+        EXPECT_TRUE(!p.apply(r,z));
         EXPECT_TRUE(!p.setup(zero));
     });
 
