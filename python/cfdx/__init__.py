@@ -6,6 +6,7 @@ from .runner import ProcessResult, SolverRunner
 from .metrics import SolverMetrics, SolverMetricsParser
 from .renderer import Renderer, RenderObject, NullRenderer
 from .execution import ExecutionController, ExecutionError
+from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
 from .gui import CFDXMainWindow, create_application, launch
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "Checkpoint", "SimulationState", "TuiRenderer", "ProcessResult",
     "SolverRunner", "SolverMetrics", "SolverMetricsParser",
     "Renderer", "RenderObject", "NullRenderer",
-    "ExecutionController", "ExecutionError",
+    "ExecutionController", "ExecutionError", "read_case", "read_case_with_dat",
+    "save_case", "save_case_with_dat",
     "CFDXMainWindow", "create_application", "launch",
 ]
