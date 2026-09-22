@@ -113,3 +113,36 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     window.close()
     app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_real_execution_controller_roundtrip(tmp_path: Path) -> None:
+    from cfdx.gui import create_application
+
+    solver = tmp_path / "solver.py"
+    solver.write_text(
+        "import sys\n"
+        "print('Iteration 3 Time = 0.5 CFL: 0.4', flush=True)\n"
+        "assert sys.argv[1].endswith('.cfdx.h5')\n",
+        encoding="utf-8",
+    )
+    app = create_application(["cfdx-e2e-test"])
+    session = CFDXSession()
+    session.case.name = "e2e"
+    session.case.execution.solver = sys.executable
+    window = CFDXMainWindow(session)
+    window._case_path = tmp_path / "e2e.cfdx.h5"
+    from cfdx.case_io import save_case
+    save_case(session, window._case_path)
+    window._dirty = False
+
+    window.run_button.click()
+    assert window.controller is not None
+    assert window.controller.runner._thread is not None
+    window.controller.runner._thread.join(timeout=5)
+
+    assert session.state is SimulationState.CONVERGED
+    assert session.iteration == 3
+    assert session.time == pytest.approx(0.5)
+    window.close()
+    app.quit()
