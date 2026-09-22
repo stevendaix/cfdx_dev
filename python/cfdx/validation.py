@@ -6,6 +6,7 @@ from math import isfinite
 from typing import Protocol
 
 from .case import Case
+from .boundary_setup import validate_boundary_definition
 from .setup_model import SetupDiagnostic
 
 class MeshInfo(Protocol):
@@ -39,6 +40,12 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
         diagnostics.append(SetupDiagnostic("error", "CFL", "CFL must be a finite positive number", "numerics.cfl"))
     if not case.execution.solver:
         diagnostics.append(SetupDiagnostic("warning", "SOLVER_UNSET", "no solver executable is configured", "execution.solver"))
+    if mesh is not None and mesh.n_cells <= 0:
+        diagnostics.append(SetupDiagnostic("error", "EMPTY_MESH", "mesh contains no cells", "mesh"))
+    if not case.physics:
+        diagnostics.append(SetupDiagnostic("error", "PHYSICS_UNSET", "no physics model is configured", "physics"))
+    if not case.materials and any(k in case.physics for k in ("incompressible","energy","turbulence")):
+        diagnostics.append(SetupDiagnostic("error", "MATERIAL_UNSET", "physics requires at least one material", "materials"))
     allowed = {"inlet", "outlet", "wall", "symmetry", "periodic", "interface", "empty"}
     for name, boundary in case.boundaries.items():
         if not name.strip():
@@ -49,9 +56,12 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
         boundary_type = boundary.get("type")
         if boundary_type not in allowed:
             diagnostics.append(SetupDiagnostic("error", "BOUNDARY_KIND", f"unsupported boundary type {boundary_type!r}", f"boundaries.{name}.type"))
+    for name, boundary in case.boundaries.items():
+        try:
+            validate_boundary_definition(boundary, known_fields=tuple(boundary.get("fields", ())) if isinstance(boundary, dict) else ())
+        except (KeyError, ValueError) as exc:
+            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_SCHEMA", str(exc), f"boundaries.{name}"))
     if mesh is not None:
-        if mesh.n_cells <= 0:
-            diagnostics.append(SetupDiagnostic("error", "EMPTY_MESH", "mesh contains no cells", "mesh"))
         mesh_patches = set(mesh.patches)
         for name in case.boundaries:
             if name not in mesh_patches:
