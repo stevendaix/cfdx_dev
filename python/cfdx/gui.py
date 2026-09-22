@@ -131,11 +131,8 @@ if QApplication is not None:
             self.stop_button = QPushButton("Stop")
             self.check_case_button = QPushButton("Check Case")
             controls = QHBoxLayout()
-            controls.addWidget(self.run_button)
-            controls.addWidget(self.pause_button)
-            controls.addWidget(self.resume_button)
-            controls.addWidget(self.stop_button)
-            controls.addWidget(self.check_case_button)
+            for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button, self.check_case_button):
+                controls.addWidget(button)
 
             self.parameters = QFormLayout()
             self.cfl = QDoubleSpinBox()
@@ -150,20 +147,22 @@ if QApplication is not None:
             self.results_series = ResultsSeriesPanel()
             self.results_series.frame_changed.connect(self._result_frame_changed)
             self.results_series.field_changed.connect(self._result_field_changed)
-
             self.setup_panel = CaseSetupPanel(self.session.case)
             self.setup_panel.changed.connect(self._mark_dirty)
-            right = QVBoxLayout()
-            right.addWidget(self.status)
-            right.addWidget(self.file_status)
-            right.addLayout(controls)
-            right.addLayout(self.parameters)
-            right.addWidget(self.mesh_browser)
-            right.addWidget(self.setup_panel)
-            right.addWidget(self.log)
 
             setup_container = QWidget()
-            setup_container.setLayout(right)
+            setup_layout = QVBoxLayout(setup_container)
+            setup_layout.addWidget(QLabel("Mesh and case definition"))
+            setup_layout.addWidget(self.mesh_browser)
+            setup_layout.addWidget(self.setup_panel, 1)
+
+            run_container = QWidget()
+            run_layout = QVBoxLayout(run_container)
+            run_layout.addWidget(self.status)
+            run_layout.addWidget(self.file_status)
+            run_layout.addLayout(controls)
+            run_layout.addLayout(self.parameters)
+            run_layout.addWidget(self.log, 1)
 
             visualization = QWidget()
             visualization_layout = QVBoxLayout(visualization)
@@ -182,8 +181,9 @@ if QApplication is not None:
                 self.result_status.setText(str(exc))
 
             tabs = QTabWidget()
-            tabs.addTab(setup_container, "Case / Run")
-            tabs.addTab(visualization, "3D Results")
+            tabs.addTab(setup_container, "Setup")
+            tabs.addTab(run_container, "Run")
+            tabs.addTab(visualization, "Results")
 
             layout.addWidget(self.tree, 1)
             layout.addWidget(tabs, 3)
