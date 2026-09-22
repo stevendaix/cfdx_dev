@@ -116,7 +116,14 @@ inline SolverResult solve_bicgstab(
             // The recurrence residual s can be below tolerance while the
             // recomputed true residual is not. Continue from the recomputed
             // residual; never mix the two residual states.
-            rho = rho_new;
+            for (std::size_t i = 0; i < n; ++i) {
+                w.r_hat(i) = w.r(i);
+                w.p(i) = 0.0;
+                w.v(i) = 0.0;
+            }
+            rho = 1.0;
+            alpha = 1.0;
+            omega = 1.0;
             continue;
         }
 
