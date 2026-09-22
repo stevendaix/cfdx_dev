@@ -80,6 +80,21 @@ int main() {
         EXPECT_NEAR(y_mf(0), y_a[0], 1e-12);
         EXPECT_NEAR(y_mf(1), y_a[1], 1e-12);
         EXPECT_NEAR(y_mf(0) + y_mf(1), 0.0, 1e-12);
+
+        Vector diagonal;
+        mf_public.diagonal(diagonal);
+        EXPECT_NEAR(diagonal(0), gamma, 1e-12);
+        EXPECT_NEAR(diagonal(1), gamma, 1e-12);
+
+        Vector x2(2);
+        x2(0) = -2.0;
+        x2(1) = 5.0;
+        Vector y_mf2;
+        mf_public.apply(x2, y_mf2);
+        const std::vector<double> y_a2 = A.matvec(x2);
+        EXPECT_NEAR(y_mf2(0), y_a2[0], 1e-12);
+        EXPECT_NEAR(y_mf2(1), y_a2[1], 1e-12);
+        EXPECT_NEAR(y_mf2(0) + y_mf2(1), 0.0, 1e-12);
     });
 
     return run_all();
