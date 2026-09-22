@@ -1,6 +1,6 @@
 """Contract-driven Qt setup editor for CFDX cases."""
 from __future__ import annotations
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QCheckBox,QComboBox,QDoubleSpinBox,QFormLayout,QHBoxLayout,QLineEdit,QListWidget,QMessageBox,QPushButton,QTabWidget,QVBoxLayout,QWidget
 from .boundary_setup import SCALAR_TYPES, VELOCITY_TYPES, FIELD_SPECS
 from .case import Case
@@ -68,6 +68,15 @@ class CaseSetupPanel(QWidget):
 
     def set_case(self,case: Case)->None:
         self.case=case; self._refresh_boundaries()
+
+    def select_mesh_patch(self, name: str) -> None:
+        """Bind the boundary editor to a patch selected from the real mesh browser."""
+        if not name.strip():
+            return
+        self.boundary_name.setText(name)
+        matches = self.boundary_list.findItems(name, Qt.MatchExactly)
+        if matches:
+            self.boundary_list.setCurrentItem(matches[0])
 
     def _apply_physics(self)->None:
         model=self.physics_model.currentText(); values={"enabled":self.physics_enabled.isChecked()}
