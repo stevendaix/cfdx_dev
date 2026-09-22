@@ -26,7 +26,7 @@ def test_controller_propagates_failure(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
     script.write_text("raise SystemExit(3)\n", encoding="utf-8")
     session = CFDXSession()
-    runner = SolverRunner(["python", str(script)])
+    runner = SolverRunner([sys.executable, str(script)])
     controller = ExecutionController(session, runner)
     controller.start()
     assert runner._thread is not None
@@ -36,12 +36,11 @@ def test_controller_propagates_failure(tmp_path: Path) -> None:
     assert controller.error.returncode == 3
 
 
-
 def test_controller_stop_reports_stopped(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
     script.write_text("import time; time.sleep(30)\n", encoding="utf-8")
     session = CFDXSession()
-    runner = SolverRunner(["python", str(script)])
+    runner = SolverRunner([sys.executable, str(script)])
     controller = ExecutionController(session, runner)
     controller.start()
     deadline = time.monotonic() + 5
