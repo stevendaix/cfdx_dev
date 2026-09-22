@@ -181,7 +181,7 @@ void check_case(std::size_t nz)
               << " mean_rel_error=" << rel_mean
               << " profile_abs_error=" << max_profile_error
               << " continuity_linf=" << last.continuity_linf
-              << " iterations=" << result.iterations << "\\n";
+              << " iterations=" << result.iterations << "\n";
 
     const double max_exact = dp * R * R / (4.0 * mu * L);
     const double rel_profile = max_profile_error / max_exact;
@@ -201,7 +201,7 @@ int main()
         std::cout << "VMFL005_VALIDATION: PASS\\n";
         return 0;
     } catch (const std::exception& e) {
-        std::cerr << "VMFL005_VALIDATION: FAIL: " << e.what() << "\\n";
+        std::cerr << "VMFL005_VALIDATION: FAIL: " << e.what() << "\n";
         return 1;
     }
 }
