@@ -331,7 +331,7 @@ private:
                     pivot = i;
                 }
             }
-            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
+            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) { std::cerr << "AMG coarsest pivot failure level=" << level << " k=" << k << " pivot=" << pivot_abs << "\\n"; return false; }
 
             if (pivot != k) {
                 for (std::size_t j = k; j < n; ++j) {
@@ -359,7 +359,7 @@ private:
                 sum -= m[ii * n + j] * x(j);
             }
             const double diagonal = m[ii * n + ii];
-            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
+            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) { std::cerr << "AMG coarsest backsolve failure level=" << level << " i=" << ii << " diag=" << diagonal << "\\n"; return false; }
             x(ii) = sum / diagonal;
             if (!std::isfinite(x(ii))) return false;
         }
