@@ -128,5 +128,25 @@ int main() {
         EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
     });
 
+    run_case("laplacian_linear_field_two_cells", []() {
+        // With zero-gradient boundary faces, the interior cell balance of a
+        // linear field is zero only away from physical boundaries. This test
+        // therefore checks the operator contract through a direct two-cell
+        // shared-face cancellation.
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 42.0;
+        auto lap = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
+        EXPECT_NEAR(lap(0), 0.0, 1e-12);
+    });
+
+    run_case("laplacian_unsupported_nonorthogonal_is_explicit", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "p", "Pa", 1);
+        f(0) = 42.0;
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::CORRECTED), std::runtime_error);
+        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
+    });
+
     return run_all();
 }
