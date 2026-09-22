@@ -171,6 +171,7 @@ set(CFDX_TRANSPORT_SOURCES
 )
 
 set(CFDX_CORE_SOURCES
+    src/cfdx/application/simulation_controller.cpp
     ${CFDX_MESH_SOURCES}
     ${CFDX_GEOMETRY_SOURCES}
     ${CFDX_FIELD_SOURCES}
