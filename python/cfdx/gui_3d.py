@@ -34,6 +34,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             raise FileNotFoundError(source)
         self.plotter.clear()
         self._actors.clear()
+        self._current_result = path
         self.plotter.add_mesh(self._pv.read(path))
         self.plotter.reset_camera()
         self.plotter.render()
@@ -78,6 +79,31 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 self._actors[actor_id] = self.plotter.add_mesh(mesh, name=actor_id)
             self.plotter.reset_camera()
             self.plotter.render()
+
+
+    def contour(self, scalars: str, isosurfaces: int = 10) -> None:
+        if not hasattr(self, "_current_result"):
+            raise RuntimeError("no result dataset loaded")
+        mesh = self._pv.read(self._current_result)
+        self.plotter.clear()
+        self.plotter.add_mesh(mesh.contour(isosurfaces=isosurfaces, scalars=scalars))
+        self.plotter.render()
+
+    def slice(self, normal: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> None:
+        if not hasattr(self, "_current_result"):
+            raise RuntimeError("no result dataset loaded")
+        mesh = self._pv.read(self._current_result)
+        self.plotter.clear()
+        self.plotter.add_mesh(mesh.slice(normal=normal))
+        self.plotter.render()
+
+    def glyph(self, scalars: str, factor: float = 1.0) -> None:
+        if not hasattr(self, "_current_result"):
+            raise RuntimeError("no result dataset loaded")
+        mesh = self._pv.read(self._current_result)
+        self.plotter.clear()
+        self.plotter.add_mesh(mesh.glyph(orient=True, scale=scalars, factor=factor))
+        self.plotter.render()
 
     def select(self, object_id: str) -> None:
         """Highlight a stable patch actor by application selection ID."""
