@@ -29,6 +29,15 @@ bool read_text(const std::filesystem::path& path, std::string& text) {
     return true;
 }
 
+
+bool read_declared_count(const std::string& text, std::size_t& count) {
+    static const std::regex count_re(R"(\n\s*(\d+)\s*\()");
+    std::smatch m;
+    if (!std::regex_search(text, m, count_re)) return false;
+    count = static_cast<std::size_t>(std::stoull(m[1].str()));
+    return true;
+}
+
 bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3>& points) {
     std::string text;
     if (!read_text(path, text)) return false;
@@ -36,6 +45,8 @@ bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3
     const auto end = text.rfind(')');
     if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
 
+    std::size_t declared = 0;
+    if (!read_declared_count(text, declared)) return false;
     const std::string body = text.substr(begin + 1, end - begin - 1);
     std::regex point_re(R"(\(\s*([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*\))");
     for (std::sregex_iterator it(body.begin(), body.end(), point_re), e; it != e; ++it) {
@@ -44,7 +55,7 @@ bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3
             std::stod((*it)[2].str()),
             std::stod((*it)[3].str()));
     }
-    return !points.empty();
+    return points.size() == declared && declared > 0;
 }
 
 bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
@@ -66,6 +77,8 @@ bool read_faces(const std::filesystem::path& path,
     const auto begin = text.find('(');
     const auto end = text.rfind(')');
     if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
+    std::size_t declared = 0;
+    if (!read_declared_count(text, declared)) return false;
     const std::string body = text.substr(begin + 1, end - begin - 1);
 
     std::regex face_re(R"(\b(\d+)\s*\(([^()]*)\))");
@@ -81,7 +94,7 @@ bool read_faces(const std::filesystem::path& path,
         if (face.size() != count || face.size() < 3) return false;
         faces.push_back(std::move(face));
     }
-    return !faces.empty();
+    return faces.size() == declared && declared > 0;
 }
 
 cfdx::core::PatchType patch_type(const std::string& type) {
@@ -120,9 +133,8 @@ bool read_boundary(const std::filesystem::path& path,
         patch.name = name;
         patch.type = patch_type(type_match[1].str());
         patch.face_ids.reserve(nfaces);
-        for (std::size_t i = 0; i < nfaces; ++i) {
+        for (std::size_t i = 0; i < nfaces; ++i)
             patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start + i));
-        }
         boundary.add_patch(patch);
         found = true;
     }
@@ -155,6 +167,10 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     mesh.points().resize(points.size());
     for (std::size_t i = 0; i < points.size(); ++i)
         mesh.points().set(i, points[i].x, points[i].y, points[i].z);
+
+    for (const auto& face : faces)
+        for (const auto vertex : face)
+            if (vertex >= points.size()) return false;
 
     std::vector<std::vector<cfdx::core::FaceIndex>> face_vertices;
     face_vertices.reserve(faces.size());
@@ -201,6 +217,11 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     const fs::path boundary_file = poly / "boundary";
     if (!fs::exists(boundary_file) || !read_boundary(boundary_file, boundary))
         return false;
+    for (std::size_t p = 0; p < boundary.n_patches(); ++p) {
+        const auto& patch = boundary.patch(p);
+        for (const auto face_id : patch.face_ids)
+            if (face_id >= faces.size()) return false;
+    }
     mesh.set_boundary(boundary);
 
     const auto validation = mesh.topo_validate();

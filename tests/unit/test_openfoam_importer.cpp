@@ -73,6 +73,44 @@ wall
                        stats.n_cells == 1 && stats.n_boundary_faces == 4 &&
                        mesh.boundary().n_patches() == 1;
 
+    if (!valid) {
+        std::cerr << "OpenFOAM reader test failed\n";
+        fs::remove_all(root);
+        return 1;
+    }
+
+    const bool bad_count_written = write(poly / "faces", R"(FoamFile { version 2.0; format ascii; class faceList; object faces; }
+5
+(
+3(0 2 1)
+3(0 1 3)
+3(1 2 3)
+3(2 0 3)
+)
+)");
+    cfdx::core::Mesh bad_count_mesh;
+    if (!bad_count_written || cfdx::io::openfoam::import_openfoam_case(root.string(), bad_count_mesh)) {
+        std::cerr << "OpenFOAM malformed count was accepted\n";
+        fs::remove_all(root);
+        return 1;
+    }
+
+    const bool bad_vertex_written = write(poly / "faces", R"(FoamFile { version 2.0; format ascii; class faceList; object faces; }
+4
+(
+3(0 2 99)
+3(0 1 3)
+3(1 2 3)
+3(2 0 3)
+)
+)");
+    cfdx::core::Mesh bad_vertex_mesh;
+    if (!bad_vertex_written || cfdx::io::openfoam::import_openfoam_case(root.string(), bad_vertex_mesh)) {
+        std::cerr << "OpenFOAM out-of-range vertex was accepted\n";
+        fs::remove_all(root);
+        return 1;
+    }
+
     fs::remove_all(root);
     if (!valid) {
         std::cerr << "OpenFOAM reader test failed\n";
