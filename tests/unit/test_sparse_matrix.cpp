@@ -1,4 +1,4 @@
-// M0.8-T01 — Tests for SparseMatrix (CSR)
+// M0.8-T01 — Tests for SparseMatrix (CSR)\n// Includes assembly-order and storage-invariant regressions.
 
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
