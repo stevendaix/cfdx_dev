@@ -133,10 +133,8 @@ bool read_boundary(const std::filesystem::path& path,
         patch.name = name;
         patch.type = patch_type(type_match[1].str());
         patch.face_ids.reserve(nfaces);
-        for (std::size_t i = 0; i < nfaces; ++i) {
-            if (start + i >= faces.size()) return false;
+        for (std::size_t i = 0; i < nfaces; ++i)
             patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start + i));
-        }
         boundary.add_patch(patch);
         found = true;
     }
@@ -219,6 +217,11 @@ bool import_openfoam_case(const std::string& case_path, cfdx::core::Mesh& mesh) 
     const fs::path boundary_file = poly / "boundary";
     if (!fs::exists(boundary_file) || !read_boundary(boundary_file, boundary))
         return false;
+    for (std::size_t p = 0; p < boundary.n_patches(); ++p) {
+        const auto& patch = boundary.patch(p);
+        for (const auto face_id : patch.face_ids)
+            if (face_id >= faces.size()) return false;
+    }
     mesh.set_boundary(boundary);
 
     const auto validation = mesh.topo_validate();
