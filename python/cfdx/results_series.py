@@ -12,6 +12,8 @@ class ResultFrame:
     path: Path
     sequence: int
     time: float | None = None
+    complete: bool = True
+    fields: tuple[str,...] = ()
 
 @dataclass(frozen=True)
 class ResultSeries:
@@ -24,6 +26,9 @@ class ResultSeries:
     @property
     def paths(self) -> tuple[Path,...]:
         return tuple(frame.path for frame in self.frames)
+
+    def field_names(self) -> tuple[str,...]:
+        return tuple(sorted({field for frame in self.frames for field in frame.fields}))
 
     def frame(self,index: int) -> ResultFrame:
         try: return self.frames[index]
