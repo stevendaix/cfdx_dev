@@ -73,6 +73,7 @@ if QApplication is not None:
             self._build_actions()
             self._build_ui()
             self._connect_controller()
+            self._install_shortcuts()
             self.refresh()
             if self._result_watcher is not None:
                 self._result_watcher.start()
@@ -435,6 +436,21 @@ if QApplication is not None:
                 self.tree.addTopLevelItem(item)
             self._refresh_file_status()
             self._refresh_status(self.session.state)
+
+        def _install_shortcuts(self) -> None:
+            # Standard application actions remain accessible without mouse-only navigation.
+            from PySide6.QtGui import QKeySequence, QShortcut
+            QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save_case)
+            QShortcut(QKeySequence("F5"), self, activated=self._run)
+            QShortcut(QKeySequence("F6"), self, activated=self._check_case)
+            QShortcut(QKeySequence("Space"), self, activated=self._pause_or_resume)
+            self._shortcuts_installed = True
+
+        def _pause_or_resume(self) -> None:
+            if self.session.state is SimulationState.RUNNING:
+                self._pause()
+            elif self.session.state is SimulationState.PAUSED:
+                self._resume()
 
         def _refresh_metrics(self, _metrics) -> None:
             self._refresh_status(self.session.state)
