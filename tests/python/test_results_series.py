@@ -14,3 +14,10 @@ def test_result_series_ignores_unsupported_files(tmp_path):
     series=discover_result_series(tmp_path)
     assert len(series.frames)==1
     assert series.frame(0).time is None
+
+def test_empty_result_files_are_ignored(tmp_path):
+    from cfdx.results_series import discover_result_series
+    (tmp_path/"step_0.vtu").write_text("",encoding="utf-8")
+    (tmp_path/"step_1.vtu").write_text("<dummy>",encoding="utf-8")
+    series=discover_result_series(tmp_path)
+    assert [f.path.name for f in series.frames]==["step_1.vtu"]

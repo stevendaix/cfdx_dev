@@ -9,15 +9,15 @@ class ResultsSeriesPanel(QWidget):
 
     def __init__(self,parent: QWidget | None=None) -> None:
         super().__init__(parent); self.series: ResultSeries | None=None
-        self.play=QPushButton("Play"); self.speed=QComboBox(); self.speed.addItems(["0.5x","1x","2x","4x"])
+        self.play=QPushButton("Play"); self.speed=QComboBox(); self.field=QComboBox(); self.field.currentTextChanged.connect(self._field_changed); self.speed.addItems(["0.5x","1x","2x","4x"])
         self.slider=QSlider(); self.slider.setOrientation(Qt.Orientation.Horizontal); self.slider.valueChanged.connect(self._select)
         self.status=QLabel("No result series loaded")
-        row=QHBoxLayout(); row.addWidget(self.play); row.addWidget(self.speed)
+        row=QHBoxLayout(); row.addWidget(self.play); row.addWidget(self.speed); row.addWidget(self.field)
         layout=QVBoxLayout(self); layout.addWidget(self.status); layout.addLayout(row); layout.addWidget(self.slider)
         self.timer=QTimer(self); self.timer.timeout.connect(self._advance); self.play.clicked.connect(self._toggle)
 
     def set_series(self, series: ResultSeries) -> None:
-        self.series=series; self.slider.setRange(0,max(0,len(series.frames)-1)); self.slider.setValue(0)
+        self.series=series; self.field.blockSignals(True); self.field.clear(); self.field.addItems(series.field_names()); self.field.blockSignals(False); self.slider.setRange(0,max(0,len(series.frames)-1)); self.slider.setValue(0)
         self._update_status()
 
     def _select(self,index: int) -> None:
@@ -42,3 +42,7 @@ class ResultsSeriesPanel(QWidget):
     def _advance(self) -> None:
         if self.series is None or not self.series.frames: return
         nxt=(self.slider.value()+1)%len(self.series.frames); self.slider.setValue(nxt)
+
+    def _field_changed(self, field: str) -> None:
+        if field:
+            self.status.setText(self.status.text() + f" | field={field}")

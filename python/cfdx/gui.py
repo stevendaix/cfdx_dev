@@ -224,7 +224,7 @@ if QApplication is not None:
             if not directory:
                 return False
             try:
-                series = discover_result_series(Path(directory))
+                series = discover_result_series(Path(directory), inspect_fields=True)
                 self.results_series.set_series(series)
                 if series.frames:
                     self._result_frame_changed(series.frames[0])
