@@ -135,5 +135,25 @@ int main() {
         EXPECT_TRUE(v.empty());
     });
 
+    run_case("vector_dimension_mismatch_addition_and_subtraction", []() {
+        Vector a(3);
+        Vector b(2);
+        EXPECT_THROW(a += b, std::runtime_error);
+        EXPECT_THROW(a -= b, std::runtime_error);
+        EXPECT_THROW(a + b, std::runtime_error);
+        EXPECT_THROW(a - b, std::runtime_error);
+    });
+
+    run_case("vector_norms_are_consistent", []() {
+        Vector v(3);
+        v(0) = -3.0;
+        v(1) = 4.0;
+        v(2) = -12.0;
+        EXPECT_NEAR(v.norm1(), 19.0, 1e-14);
+        EXPECT_NEAR(v.norm2(), 13.0, 1e-14);
+        EXPECT_NEAR(v.norm_inf(), 12.0, 1e-14);
+        EXPECT_NEAR(v.dot(v), 169.0, 1e-14);
+    });
+
     return run_all();
 }

@@ -100,5 +100,65 @@ int main() {
         EXPECT_TRUE(A.is_consistent());
     });
 
+    run_case("sparse_matrix_transpose_dimension_mismatch", []() {
+        SparseMatrix A(2, 3);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 2, 2.0);
+        A.finalize();
+
+        Vector wrong(3);
+        EXPECT_THROW(A.matvec_transpose(wrong), std::runtime_error);
+    });
+
+    run_case("sparse_matrix_csr_row_offsets_and_transpose_are_exact", []() {
+        SparseMatrix A(3, 2);
+        A.push_back(0, 0, 2.0);
+        A.push_back(0, 1, -1.0);
+        A.push_back(1, 0, 4.0);
+        A.push_back(2, 1, 3.0);
+        A.finalize();
+
+        EXPECT_TRUE(A.is_consistent());
+        EXPECT_TRUE(A.nnz() == 4);
+        EXPECT_TRUE(A.row_offsets_data()[0] == 0);
+        EXPECT_TRUE(A.row_offsets_data()[1] == 2);
+        EXPECT_TRUE(A.row_offsets_data()[2] == 3);
+        EXPECT_TRUE(A.row_offsets_data()[3] == 4);
+
+        Vector x(2);
+        x(0) = 5.0;
+        x(1) = 7.0;
+        const auto y = A.matvec(x);
+        EXPECT_NEAR(y[0], 3.0, 1e-14);
+        EXPECT_NEAR(y[1], 20.0, 1e-14);
+        EXPECT_NEAR(y[2], 21.0, 1e-14);
+
+        Vector xt(3);
+        xt(0) = 11.0;
+        xt(1) = -2.0;
+        xt(2) = 3.0;
+        const auto yt = A.matvec_transpose(xt);
+        EXPECT_NEAR(yt[0], 14.0, 1e-14);
+        EXPECT_NEAR(yt[1], -2.0, 1e-14);
+    });
+
+    run_case("sparse_matrix_clear_restores_empty_csr", []() {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 2.0);
+        A.push_back(2, 2, 3.0);
+        A.finalize();
+        A.clear();
+
+        EXPECT_TRUE(A.n_rows() == 3);
+        EXPECT_TRUE(A.n_cols() == 3);
+        EXPECT_TRUE(A.nnz() == 0);
+        EXPECT_TRUE(A.row_offsets_data()[0] == 0);
+        EXPECT_TRUE(A.row_offsets_data()[1] == 0);
+        EXPECT_TRUE(A.row_offsets_data()[2] == 0);
+        EXPECT_TRUE(A.row_offsets_data()[3] == 0);
+        EXPECT_TRUE(A.is_consistent());
+    });
+
     return run_all();
 }
