@@ -402,6 +402,7 @@ if(CFDX_BUILD_TESTS)
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
+    add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
