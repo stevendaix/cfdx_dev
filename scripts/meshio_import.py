@@ -128,12 +128,12 @@ def write(path, mesh, topo):
         meta.append(f"{name}:0:{len(values)}:{patch_type(name)}")
     with h5py.File(path,"w") as h:
         h.attrs["format"]="CFDX-HDF5-mesh-v1"
-        h.attrs["schema_version"]="1"
+        h.attrs.create("schema_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2))
         h.attrs["n_points"]=str(len(points)); h.attrs["n_faces"]=str(len(faces)); h.attrs["n_cells"]=str(len(cell_faces))
         h.create_dataset("points",data=points); h.create_dataset("face_vertices",data=fv); h.create_dataset("face_offsets",data=fo)
         h.create_dataset("owner",data=np.asarray(owner,dtype=np.uint64)); h.create_dataset("neighbour",data=np.asarray(neighbour,dtype=np.int64))
         h.create_dataset("cell_faces",data=cf); h.create_dataset("cell_offsets",data=co)
-        # The native C++ reader expects a fixed-width string attribute.\n        # h5py scalar Python strings are variable-length and the reader\n        # bounds reads by H5Tget_size(), which would truncate metadata.\n        boundary_metadata = ";".join(meta)\n        h.attrs["boundary_patches"] = np.array(boundary_metadata, dtype=f"S{len(boundary_metadata) + 1}")
+        # The native C++ reader expects a fixed-width string attribute.\n        # h5py scalar Python strings are variable-length and the reader\n        # bounds reads by H5Tget_size(), which would truncate metadata.\n        boundary_metadata = ";".join(meta)\n        h.attrs.create("boundary_patches", boundary_metadata, dtype=h5py.string_dtype(encoding="ascii", length=len(boundary_metadata) + 1))
         h.create_dataset("patch_face_ids",data=np.asarray(ids,dtype=np.uint64))
         h.create_dataset("patch_face_offsets",data=np.asarray(offsets,dtype=np.uint64))
     if skipped:
