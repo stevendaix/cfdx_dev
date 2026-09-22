@@ -16,10 +16,10 @@ namespace {
 Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
 {
     Mesh m;
-    const std::size_t p_layer = 1 + ns;
+    const std::size_t p_layer = ns + 1;
     m.points().resize(p_layer * (nz + 1));
-    const double dz = L / static_cast<double>(nz);
     constexpr double pi = 3.1415926535897932384626433832795;
+    const double dz = L / static_cast<double>(nz);
 
     for (std::size_t k = 0; k <= nz; ++k) {
         const std::size_t b = k * p_layer;
@@ -31,14 +31,16 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
         }
     }
 
-    std::vector<std::vector<std::size_t>> tri(nz + 1, std::vector<std::size_t>(ns));
+    std::vector<std::vector<std::size_t>> end_faces(nz + 1, std::vector<std::size_t>(ns));
+    std::vector<std::vector<std::size_t>> radial(nz, std::vector<std::size_t>(ns));
     std::vector<std::vector<std::size_t>> wall(nz, std::vector<std::size_t>(ns));
 
+    // End triangles. k=0 points outward in -z; k=nz outward in +z.
     for (std::size_t k = 0; k <= nz; ++k) {
         const std::size_t b = k * p_layer;
         for (std::size_t s = 0; s < ns; ++s) {
             const std::size_t sn = (s + 1) % ns;
-            tri[k][s] = m.faces().n_faces();
+            end_faces[k][s] = m.faces().n_faces();
             if (k == 0)
                 m.faces().push_face({b, b + 1 + sn, b + 1 + s});
             else
@@ -51,6 +53,11 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
         const std::size_t b1 = (k + 1) * p_layer;
         for (std::size_t s = 0; s < ns; ++s) {
             const std::size_t sn = (s + 1) % ns;
+            // Outward normal for sector s along the radial edge center->ring_s.
+            radial[k][s] = m.faces().n_faces();
+            m.faces().push_face({b0, b0 + 1 + s, b1 + 1 + s, b1});
+
+            // Circular wall face, outward in the radial direction.
             wall[k][s] = m.faces().n_faces();
             m.faces().push_face({b0 + 1 + s, b0 + 1 + sn,
                                  b1 + 1 + sn, b1 + 1 + s});
@@ -60,37 +67,132 @@ Mesh make_pipe(std::size_t ns, std::size_t nz, double R, double L)
     m.ownership().resize(m.n_faces());
     for (std::size_t k = 0; k <= nz; ++k) {
         for (std::size_t s = 0; s < ns; ++s) {
-            const auto f = tri[k][s];
+            const auto f = end_faces[k][s];
+            m.ownership().set_owner(f, k == 0 ? 0 : (k - 1) * ns + s);
             m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
-            m.ownership().set_owner(f, k == 0 ? 0 : k - 1);
-            if (k > 0 && k < nz)
-                m.ownership().set_neighbour(f, static_cast<int>(k));
         }
     }
     for (std::size_t k = 0; k < nz; ++k) {
         for (std::size_t s = 0; s < ns; ++s) {
-            m.ownership().set_owner(wall[k][s], k);
+            const auto r = radial[k][s];
+            m.ownership().set_owner(r, k * ns + s);
+            m.ownership().set_neighbour(r, static_cast<int>(k * ns + ((s + ns - 1) % ns)));
+            m.ownership().set_owner(wall[k][s], k * ns + s);
             m.ownership().set_neighbour(wall[k][s], FaceOwnership::BOUNDARY);
         }
     }
 
     for (std::size_t k = 0; k < nz; ++k) {
-        std::vector<std::size_t> faces = {
-            tri[k][0], tri[k + 1][0], wall[k][0], wall[k][1], wall[k][ns - 1]
-        };
-        m.cells().push_cell(faces);
-        // Each triangular prism is represented by the first sector's two end
-        // triangles plus its two neighbouring wall sectors. The remaining
-        // wall faces are attached below by adding all cells sector-wise.
-        m.cells().pop_last_face_placeholder();
+        for (std::size_t s = 0; s < ns; ++s) {
+            const std::size_t sn = (s + 1) % ns;
+            m.cells().push_cell({
+                end_faces[k][s], end_faces[k + 1][s],
+                radial[k][s], wall[k][s], radial[k][sn]
+            });
+        }
     }
-    throw std::runtime_error("VMFL005: cell connectivity construction placeholder");
+
+    Patch p;
+    p.name = "inlet"; p.type = PatchType::INLET;
+    p.face_ids = end_faces[0]; m.boundary().add_patch(p);
+    p = {}; p.name = "outlet"; p.type = PatchType::OUTLET;
+    p.face_ids = end_faces[nz]; m.boundary().add_patch(p);
+    std::vector<std::size_t> wall_faces;
+    wall_faces.reserve(ns * nz);
+    for (const auto& row : wall) wall_faces.insert(wall_faces.end(), row.begin(), row.end());
+    p = {}; p.name = "wall"; p.type = PatchType::WALL;
+    p.face_ids = std::move(wall_faces); m.boundary().add_patch(p);
+
+    if (!m.ownership().is_consistent(m.n_cells()))
+        throw std::runtime_error("VMFL005: inconsistent face ownership");
+    return m;
+}
+
+void check_case(std::size_t nz)
+{
+    constexpr double R = 0.00125;
+    constexpr double L = 0.1;
+    constexpr double rho = 1.0;
+    constexpr double mu = 1.0e-5;
+    constexpr double dp = 10.24;
+    constexpr std::size_t ns = 32;
+
+    Mesh mesh = make_pipe(ns, nz, R, L);
+    Field<double,Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+    Field<double,Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+    U.fill(0.0); p.fill(0.0);
+
+    VelocityBoundaryConditions ubc;
+    ubc["inlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0.0,0.0,0.0}};
+    ubc["outlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0.0,0.0,0.0}};
+    ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+
+    ScalarBoundaryConditions pbc;
+    pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,dp,0.0};
+    pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+    pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+    IncompressibleSolverControls c;
+    c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+    c.convergence.max_iterations = 500;
+    c.convergence.relative_tolerance = 1e-8;
+    c.convergence.continuity_tolerance = 1e-10;
+    c.linear_max_iterations = 5000;
+    c.linear_tolerance = 1e-8;
+    c.density = rho;
+    c.kinematic_viscosity = mu / rho;
+    c.pressure_reference_cell = 0;
+    c.pressure_reference_value = dp;
+
+    const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+    if (!result.converged)
+        throw std::runtime_error("VMFL005 coupled solver did not converge");
+
+    const auto geometry = build_fv_geometry(mesh);
+    double flow_rate = 0.0;
+    double volume = 0.0;
+    double max_profile_error = 0.0;
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        const double r = std::hypot(geometry.cell_centres[cell].x,
+                                    geometry.cell_centres[cell].y);
+        const double exact = dp * (R * R - r * r) / (2.0 * mu * L);
+        max_profile_error = std::max(max_profile_error, std::abs(U(cell,0) - exact));
+        flow_rate += U(cell,0) * geometry.cell_volumes[cell];
+        volume += geometry.cell_volumes[cell];
+    }
+    const double mean_u = flow_rate / volume;
+    const double q_exact = pi * std::pow(R,4) * dp / (8.0 * mu * L);
+    const double mean_exact = 2.0;
+    const double rel_q = std::abs(flow_rate - q_exact) / q_exact;
+    const double rel_mean = std::abs(mean_u - mean_exact) / mean_exact;
+    const auto& last = result.history.back();
+
+    std::cout << "VMFL005 nz=" << nz
+              << " flow_rate=" << flow_rate
+              << " q_rel_error=" << rel_q
+              << " mean_velocity=" << mean_u
+              << " mean_rel_error=" << rel_mean
+              << " profile_abs_error=" << max_profile_error
+              << " continuity_linf=" << last.continuity_linf
+              << " iterations=" << result.iterations << "\\n";
+
+    if (rel_q > 5e-2 || rel_mean > 5e-2 || max_profile_error / mean_exact > 5e-2)
+        throw std::runtime_error("VMFL005 quantitative mismatch");
+    if (last.continuity_linf > 1e-8)
+        throw std::runtime_error("VMFL005 continuity error too large");
 }
 
 } // namespace
 
 int main()
 {
-    std::cout << "VMFL005_VALIDATION: NOT_IMPLEMENTED\n";
-    return 1;
+    try {
+        check_case(16);
+        check_case(32);
+        std::cout << "VMFL005_VALIDATION: PASS\\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "VMFL005_VALIDATION: FAIL: " << e.what() << "\\n";
+        return 1;
+    }
 }
