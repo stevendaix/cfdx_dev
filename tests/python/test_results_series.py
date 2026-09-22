@@ -73,3 +73,36 @@ def test_vtk_metadata_overrides_filename_time(monkeypatch, tmp_path):
     assert frame.time == 0.125
     assert frame.time_source == "metadata"
     assert frame.iteration == 42
+
+
+def test_physical_time_acceptance_rejects_filename_fallback(tmp_path):
+    from cfdx.results_series import discover_result_series
+    series = discover_result_series(tmp_path)
+    assert series.frames == ()
+    (tmp_path / "step_1.vtu").write_text("", encoding="utf-8")
+    series = discover_result_series(tmp_path)
+    from cfdx.results_series import validate_physical_time_provenance
+    import pytest
+    with pytest.raises(ValueError, match="authoritative physical-time"):
+        validate_physical_time_provenance(series)
+
+
+def test_physical_time_acceptance_can_be_requested_during_discovery(monkeypatch, tmp_path):
+    path = tmp_path / "step_12.vtu"
+    path.write_text("placeholder", encoding="utf-8")
+    class Array:
+        def __init__(self, value): self.value = value
+        def reshape(self, _shape): return [self.value]
+        def __len__(self): return 1
+        def __getitem__(self, index): return self.value
+    class Data:
+        point_data = {}
+        cell_data = {}
+        field_data = {"physical_time": Array(0.25), "iteration": Array(12)}
+    class PV:
+        @staticmethod
+        def read(_path): return Data()
+    monkeypatch.setitem(__import__("sys").modules, "pyvista", PV)
+    series = discover_result_series(tmp_path, inspect_fields=True, require_physical_time=True)
+    assert series.frames[0].time == 0.25
+    assert series.frames[0].time_source == "metadata"
