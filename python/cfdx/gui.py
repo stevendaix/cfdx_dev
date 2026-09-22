@@ -201,6 +201,8 @@ if QApplication is not None:
             try:
                 catalog = read_mesh_catalog(Path(path))
                 self.mesh_browser.set_catalog(catalog)
+                if self.view3d is not None:
+                    self.view3d.load_cfdx_mesh(path)
                 return True
             except (OSError, ValueError) as exc:
                 self._show_error("Open Mesh failed", str(exc))
@@ -237,6 +239,11 @@ if QApplication is not None:
                 self._show_error("Open 3D result failed", str(exc))
 
         def _mesh_selection_changed(self, selection) -> None:
+            if self.view3d is not None and selection.kind == "patch":
+                try:
+                    self.view3d.select(f"patch:{selection.index}")
+                except KeyError:
+                    pass
             self.result_status.setText(
                 f"Selected {selection.kind} {selection.index}"
                 + (f" ({selection.name})" if selection.name else "")
