@@ -353,8 +353,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
 
-    if (result.status == cfdx::core::SolverStatus::CONVERGED ||
-        result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
             if (!std::isfinite(candidate(i))) {
                 result.status = cfdx::core::SolverStatus::DIVERGED;
@@ -368,6 +367,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
     }
+    // A MAX_ITER_REACHED result is not an acceptable predictor solution.
+    // Do not inject an unconverged Krylov iterate into the nonlinear solver:
+    // doing so can create an apparently finite but numerically meaningless
+    // state that subsequently corrupts the face mass flux.
     return result;
 }
 
