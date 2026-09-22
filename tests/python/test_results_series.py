@@ -28,3 +28,11 @@ def test_unreadable_latest_frame_is_marked_incomplete(tmp_path):
     series = discover_result_series(tmp_path, inspect_fields=True)
     assert len(series.frames) == 1
     assert series.frames[0].complete is False
+
+
+def test_zero_length_result_is_reported_as_incomplete(tmp_path):
+    path = tmp_path / "2.vtu"
+    path.write_bytes(b"")
+    series = discover_result_series(tmp_path)
+    assert len(series.frames) == 1
+    assert series.frames[0].complete is False
