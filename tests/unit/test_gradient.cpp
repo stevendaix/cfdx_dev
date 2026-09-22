@@ -98,7 +98,7 @@ int main() {
         auto grad = compute_gradient_gauss(f, m);
         EXPECT_TRUE(grad.name() == "p_grad");
         EXPECT_TRUE(grad.loc() == Location::CELL);
-        EXPECT_TRUE(grad.metadata().unit == "1/s");
+        EXPECT_TRUE(grad.metadata().unit == "Pa/m");
     });
 
     run_case("least_squares_exact_linear_2d", []() {
