@@ -1,5 +1,5 @@
 import pytest
-from cfdx.boundary_setup import SCALAR_TYPES, boundary_defaults, fields_for_boundary_type
+from cfdx.boundary_setup import SCALAR_TYPES, boundary_defaults, scalar_fields_for_boundary_type
 
 def test_scalar_boundary_contract_matches_cpp_types():
     assert SCALAR_TYPES==("FIXED_VALUE","ZERO_GRADIENT","FIXED_GRADIENT")
