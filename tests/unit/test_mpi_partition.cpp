@@ -248,6 +248,30 @@ int main() {
         }
     });
 
+    run_case("mpi_halo_exchange_rejects_out_of_range_indices", []() {
+        const int size = mpi_size(MPI_COMM_WORLD);
+        if (size != 2)
+            return;
+
+        HaloPlan plan;
+        plan.send_faces.resize(size);
+        plan.recv_faces.resize(size);
+        plan.send_cells.resize(size);
+        plan.recv_cells.resize(size);
+        plan.send_cells[1].push_back(1);
+
+        Field<double, Location::CELL> values(1, "phi", "1", 1);
+        values.fill(0.0);
+
+        bool rejected = false;
+        try {
+            exchange_halo_cells(values, plan);
+        } catch (const std::out_of_range&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("mpi_halo_exchange_rejects_asymmetric_counts", []() {
         const int size = mpi_size(MPI_COMM_WORLD);
         if (size != 2)
