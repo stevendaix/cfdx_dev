@@ -16,7 +16,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
         QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-        QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+        QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
     )
 except ImportError:  # pragma: no cover
     QApplication = None
@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover
 
 if QApplication is not None:
     from .setup_panel import CaseSetupPanel
+    from .gui_3d import PyVistaQtView
 
     class SessionSignals(QObject):
         state_changed = Signal(object)
@@ -47,6 +48,8 @@ if QApplication is not None:
             self.controller = execution_controller
             self._case_path: Path | None = None
             self._restart_dat: Path | None = None
+            self._result_source: Path | None = None
+            self._dirty = False
             self.signals = SessionSignals()
 
             self.setWindowTitle(f"CFDX — {self.session.case.name}")
@@ -127,6 +130,7 @@ if QApplication is not None:
             self.parameters.addRow("CFL", self.cfl)
 
             self.setup_panel = CaseSetupPanel(self.session.case)
+            self.setup_panel.changed.connect(self._mark_dirty)
             right = QVBoxLayout()
             right.addWidget(self.status)
             right.addWidget(self.file_status)
@@ -134,11 +138,33 @@ if QApplication is not None:
             right.addLayout(self.parameters)
             right.addWidget(self.setup_panel)
             right.addWidget(self.log)
+
+            setup_container = QWidget()
+            setup_container.setLayout(right)
+
+            visualization = QWidget()
+            visualization_layout = QVBoxLayout(visualization)
+            result_controls = QHBoxLayout()
+            self.open_result_button = QPushButton("Open VTU / VTK…")
+            self.result_status = QLabel("No result loaded")
+            result_controls.addWidget(self.open_result_button)
+            result_controls.addWidget(self.result_status, 1)
+            visualization_layout.addLayout(result_controls)
+            try:
+                self.view3d = PyVistaQtView()
+                visualization_layout.addWidget(self.view3d, 1)
+            except RuntimeError as exc:
+                self.view3d = None
+                self.result_status.setText(str(exc))
+
+            tabs = QTabWidget()
+            tabs.addTab(setup_container, "Case / Run")
+            tabs.addTab(visualization, "3D Results")
+
             layout.addWidget(self.tree, 1)
-            container = QWidget()
-            container.setLayout(right)
-            layout.addWidget(container, 3)
+            layout.addWidget(tabs, 3)
             self.setCentralWidget(central)
+            self.open_result_button.clicked.connect(self._open_result)
 
             self.run_button.clicked.connect(self._run)
             self.pause_button.clicked.connect(self._pause)
@@ -148,6 +174,27 @@ if QApplication is not None:
             self.signals.output.connect(self._queue_output)
             self.signals.metrics_changed.connect(self._refresh_metrics)
             self.signals.results_changed.connect(self.refresh)
+
+        def _open_result(self) -> bool:
+            if self.view3d is None:
+                self._show_error("3D view unavailable", self.result_status.text())
+                return False
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open CFDX Result",
+                str(self._case_path.parent if self._case_path else ""),
+                "VTK results (*.vtu *.vtk *.vtp *.pvtu);;All files (*)",
+            )
+            if not path:
+                return False
+            try:
+                self.view3d.load(path)
+                self._result_source = Path(path)
+                self.result_status.setText(str(self._result_source))
+                return True
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._show_error("Open 3D result failed", str(exc))
+                return False
 
         def _connect_controller(self) -> None:
             if self.controller is None:
@@ -182,6 +229,10 @@ if QApplication is not None:
                 return True
             return self._save_case_as()
 
+        def _mark_dirty(self) -> None:
+            self._dirty = True
+            self._refresh_file_status()
+
         def _save_case_as(self) -> bool:
             path, _ = QFileDialog.getSaveFileName(
                 self, "Save CFDX Case", self.session.case.name + ".cfdx.h5",
@@ -192,6 +243,7 @@ if QApplication is not None:
             try:
                 self._case_path = save_case(self.session, Path(path))
                 self._restart_dat = None
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -203,6 +255,7 @@ if QApplication is not None:
                 return self._save_case_as()
             try:
                 save_case(self.session, self._case_path)
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -222,6 +275,7 @@ if QApplication is not None:
                 self._case_path, self._restart_dat = save_case_with_dat(
                     self.session, self._case_path, Path(dat_path)
                 )
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -239,6 +293,7 @@ if QApplication is not None:
                 self._replace_session(loaded)
                 self._case_path = Path(path)
                 self._restart_dat = None
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -262,6 +317,7 @@ if QApplication is not None:
                 self._replace_session(loaded)
                 self._case_path = Path(path)
                 self._restart_dat = restart
+                self._dirty = False
                 self._refresh_file_status()
                 return True
             except (OSError, ValueError) as exc:
@@ -274,6 +330,11 @@ if QApplication is not None:
             self.session = session
             self.setWindowTitle(f"CFDX — {self.session.case.name}")
             self.setup_panel.set_case(self.session.case)
+            try:
+                self.setup_panel.changed.disconnect(self._mark_dirty)
+            except (RuntimeError, TypeError):
+                pass
+            self.setup_panel.changed.connect(self._mark_dirty)
             self.cfl.blockSignals(True)
             self.cfl.setValue(float(self.session.case.numerics.get("cfl", 1.0)))
             self.cfl.blockSignals(False)
@@ -295,10 +356,10 @@ if QApplication is not None:
 
         def _refresh_file_status(self) -> None:
             if self._case_path is None:
-                self.file_status.setText("Unsaved case")
+                self.file_status.setText("Unsaved case" + (" • Modified" if self._dirty else ""))
                 return
             restart = f" | DAT: {self._restart_dat.name}" if self._restart_dat else ""
-            self.file_status.setText(f"Case: {self._case_path}{restart}")
+            self.file_status.setText(f"Case: {self._case_path}{restart}" + (" • Modified" if self._dirty else ""))
 
         def _refresh_status(self, state: SimulationState, *_args) -> None:
             self.status.setText(
@@ -325,9 +386,24 @@ if QApplication is not None:
             if self.session.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
                 return
             self.session.edit("cfl", value, ChangeImpact.HOT)
+            self._mark_dirty()
 
         def _run(self) -> None:
             try:
+                if self._dirty:
+                    choice = QMessageBox.question(
+                        self,
+                        "Unsaved changes",
+                        "Save the case before starting the solver?",
+                        QMessageBox.StandardButton.Save
+                        | QMessageBox.StandardButton.Discard
+                        | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Save,
+                    )
+                    if choice is QMessageBox.StandardButton.Cancel:
+                        return
+                    if choice is QMessageBox.StandardButton.Save and not self._save_case():
+                        return
                 if not self._ensure_case_path():
                     return
                 controller = self._ensure_controller()
@@ -374,6 +450,22 @@ if QApplication is not None:
             return TuiRenderer.render(self.session)
 
         def closeEvent(self, event) -> None:
+            if self._dirty and (self.controller is None or not self.controller.runner.running):
+                choice = QMessageBox.question(
+                    self,
+                    "Unsaved changes",
+                    "Save changes before closing?",
+                    QMessageBox.StandardButton.Save
+                    | QMessageBox.StandardButton.Discard
+                    | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Save,
+                )
+                if choice is QMessageBox.StandardButton.Cancel:
+                    event.ignore()
+                    return
+                if choice is QMessageBox.StandardButton.Save and not self._save_case():
+                    event.ignore()
+                    return
             if self.controller is not None and self.controller.runner.running:
                 choice = QMessageBox.question(
                     self, "Solver still running",
@@ -388,6 +480,8 @@ if QApplication is not None:
             self._flush_timer.stop()
             if self._result_watcher is not None:
                 self._result_watcher.stop()
+            if self.view3d is not None:
+                self.view3d.close()
             super().closeEvent(event)
 
     def create_application(argv: list[str] | None = None) -> QApplication:
