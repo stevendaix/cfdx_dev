@@ -359,7 +359,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // when the system is well posed. Retry from the original iterate with
     // restarted GMRES rather than injecting an unconverged Krylov state into
     // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED ||
+        result.status == cfdx::core::SolverStatus::DIVERGED) {
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
