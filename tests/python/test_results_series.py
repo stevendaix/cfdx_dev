@@ -21,3 +21,10 @@ def test_empty_result_files_are_ignored(tmp_path):
     (tmp_path/"step_1.vtu").write_text("<dummy>",encoding="utf-8")
     series=discover_result_series(tmp_path)
     assert [f.path.name for f in series.frames]==["step_1.vtu"]
+
+
+def test_unreadable_latest_frame_is_marked_incomplete(tmp_path):
+    (tmp_path / "step_0.vtu").write_text("<not-a-vtk-file>", encoding="utf-8")
+    series = discover_result_series(tmp_path, inspect_fields=True)
+    assert len(series.frames) == 1
+    assert series.frames[0].complete is False
