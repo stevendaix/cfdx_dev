@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -250,7 +251,7 @@ private:
         Vector Ax(r.size());
         const auto& inv_diag = levels_[level].inv_diag;
         for (std::size_t s = 0; s < sweeps; ++s) {
-            if (!apply_operator(level, x, Ax)) return false;
+            if (!apply_operator(level, x, Ax)) { std::cerr << "AMG operator failure level=" << level << "\\n"; return false; }
             for (std::size_t i = 0; i < r.size(); ++i) {
                 x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
                 if (!std::isfinite(x(i))) return false;
@@ -266,7 +267,7 @@ private:
             return smooth_coarsest(level, r, x);
         }
 
-        if (!smooth(level, r, x, pre_)) return false;
+        if (!smooth(level, r, x, pre_)) { std::cerr << "AMG pre-smooth failure level=" << level << "\\n"; return false; }
 
         Vector Ax(r.size());
         if (!apply_operator(level, x, Ax)) return false;
@@ -279,14 +280,14 @@ private:
         }
 
         Vector coarse_x(nc, 0.0);
-        if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
+        if (!vcycle(level + 1, coarse_r, coarse_x)) { std::cerr << "AMG coarse-cycle failure level=" << level << "\\n"; return false; }
 
         for (std::size_t i = 0; i < r.size(); ++i) {
             x(i) += coarse_x(aggregate[i]);
             if (!std::isfinite(x(i))) return false;
         }
 
-        return smooth(level, r, x, post_);
+        if (!smooth(level, r, x, post_)) { std::cerr << "AMG post-smooth failure level=" << level << "\\n"; return false; }\n        return true;
     }
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
@@ -323,7 +324,7 @@ private:
                     pivot = i;
                 }
             }
-            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
+            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) { std::cerr << "AMG coarsest pivot failure level=" << level << " k=" << k << " pivot=" << pivot_abs << "\\n"; return false; }
 
             if (pivot != k) {
                 for (std::size_t j = k; j < n; ++j) {
@@ -351,7 +352,7 @@ private:
                 sum -= m[ii * n + j] * x(j);
             }
             const double diagonal = m[ii * n + ii];
-            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
+            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) { std::cerr << "AMG coarsest backsolve failure level=" << level << " i=" << ii << " diag=" << diagonal << "\\n"; return false; }
             x(ii) = sum / diagonal;
             if (!std::isfinite(x(ii))) return false;
         }
