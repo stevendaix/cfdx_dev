@@ -15,7 +15,7 @@ namespace cfdx::core {
 // Galerkin coarse operators. The finest operator remains matrix-free during
 // apply(); SparseMatrix is used during setup to build the hierarchy.
 // This is a lightweight AMG implementation: aggregation is pairwise and
-// coarsest solves use damped Jacobi rather than a direct sparse factorization.
+// the tiny coarsest problem is solved directly with pivoted Gaussian elimination.
 class MatrixFreeVcyclePreconditioner final : public Preconditioner {
 public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
