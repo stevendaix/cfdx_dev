@@ -4,7 +4,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
-#include "cfdx/core/linalg/gmres_solver.h"
+#include "cfdx/core/linalg/gmres_solver.h"\n#include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -359,11 +359,17 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // when the system is well posed. Retry from the original iterate with
     // restarted GMRES rather than injecting an unconverged Krylov state into
     // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+    }
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        candidate = solution;
+        result = cfdx::core::solve_cg(
+            equation.matrix, equation.rhs, candidate,
+            controls.max_iterations, controls.tolerance);
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
