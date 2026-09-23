@@ -1,7 +1,6 @@
 #include "cfdx/core/parallel/distributed_execution.h"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -9,6 +8,12 @@
 
 int main(int argc, char** argv) {
     using namespace cfdx::core::parallel;
+    auto require = [&](bool condition, const char* message) {
+        if (!condition) {
+            std::fprintf(stderr, "rank %d: %s\n", mpi_rank(), message);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+    };
     mpi_init(&argc, &argv);
     const int rank = mpi_rank();
     const int size = mpi_size();
@@ -39,7 +44,7 @@ int main(int argc, char** argv) {
         return s;
     }();
     const double global_sum = mpi_deterministic_sum(local_sum);
-    assert(std::abs(global_sum - 36.0) < 1e-14);
+    require(std::abs(global_sum - 36.0) < 1e-14, "deterministic reduction mismatch");
 
     // Two cells with one MPI interface face.
     cfdx::core::Mesh mesh;
@@ -70,8 +75,9 @@ int main(int argc, char** argv) {
 
     const auto halo = build_distributed_halo(mesh, partition, local_state);
     const auto received = exchange_distributed_cell_halo(local_state, halo);
-    assert(received.size() == 1);
-    assert(std::abs(received.front() - static_cast<double>(rank == 0 ? 2 : 1)) < 1e-14);
+    require(received.size() == 1, "halo receive count mismatch");
+    require(std::abs(received.front() - static_cast<double>(rank == 0 ? 2 : 1)) < 1e-14,
+            "halo value mismatch");
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
     const std::string path = "phase5_distributed_checkpoint.h5";
@@ -81,7 +87,7 @@ int main(int argc, char** argv) {
     DistributedCellField restored(global_n, ids, 1, "phi");
     read_distributed_checkpoint(path, restored);
     for (std::size_t i = 0; i < restored.local_size(); ++i)
-        assert(std::abs(restored(i) - state(i)) < 1e-14);
+        require(std::abs(restored(i) - state(i)) < 1e-14, "checkpoint round-trip mismatch");
 
     // Rank-independent restart: target ownership is a different partition
     // (even/odd IDs), proving that values are mapped by persistent global ID.
@@ -91,8 +97,9 @@ int main(int argc, char** argv) {
     DistributedCellField permuted(global_n, target_ids, 1, "phi");
     read_distributed_checkpoint(path, permuted);
     for (std::size_t i = 0; i < permuted.local_size(); ++i)
-        assert(std::abs(permuted(i) -
-                        (static_cast<double>(permuted.global_ids()[i]) + 1.0)) < 1e-14);
+        require(std::abs(permuted(i) -
+                        (static_cast<double>(permuted.global_ids()[i]) + 1.0)) < 1e-14,
+                "rank-independent restart mismatch");
 
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0) std::remove(path.c_str());
