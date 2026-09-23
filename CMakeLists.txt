@@ -485,8 +485,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_production_solver_e2e
-                 COMMAND ${Python3_EXECUTABLE} -m pytest
-                         ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py -q)
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
         set_tests_properties(test_production_solver_e2e PROPERTIES
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh")
         add_test(NAME test_meshio_bridge
