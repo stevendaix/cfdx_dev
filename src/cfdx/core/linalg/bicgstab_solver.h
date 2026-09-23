@@ -61,6 +61,7 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(b)||!finite_vector(x)){result.status=SolverStatus::DIVERGED;return result;}
 
     auto matvec=[&](const Vector& in,Vector& out){
+        if (mp32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
         if(out.size()!=n) out.resize(n);
         for(std::size_t i=0;i<n;++i){
             double s=0.0;
