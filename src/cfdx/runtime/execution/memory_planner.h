@@ -1,5 +1,8 @@
 #pragma once
 
+#include "cfdx/core/memory/memory_planner.h"
+#include "cfdx/runtime/execution/execution_policy.h"
+
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
@@ -67,32 +70,48 @@ public:
         out.budget_bytes = available_memory_bytes;
         out.runtime_reserve_bytes = config_.runtime_reserve_bytes;
 
-        std::size_t total = 0;
-        for (const auto& c : components_) {
-            if (c.bytes > std::numeric_limits<std::size_t>::max() - total) {
-                out.overflow = true;
-                out.estimated_bytes = std::numeric_limits<std::size_t>::max();
-                break;
-            }
-            total += c.bytes;
-        }
-        out.estimated_bytes = total;
+        cfdx::core::memory::MemoryPlanner core_planner;
+        std::vector<cfdx::core::memory::BufferDescriptor> buffers;
+        buffers.reserve(components_.size());
 
-        if (out.overflow) {
+        for (std::size_t i = 0; i < components_.size(); ++i) {
+            const auto& component = components_[i];
+            cfdx::core::memory::BufferType type = to_buffer_type(component.kind);
+            buffers.push_back({
+                {static_cast<std::uint64_t>(i + 1), component.name},
+                type,
+                component.bytes,
+                cfdx::core::memory::MemoryLocation::DEVICE,
+                0,
+                0,
+                {}
+            });
+        }
+
+        const auto core_plan = core_planner.plan(
+            buffers, 0, 1, 1, 1, 1);
+
+        out.estimated_bytes = core_plan.budget.peak_vram;
+        if (!core_plan.feasible && !components_.empty()) {
+            out.overflow = true;
             out.peak_bytes = std::numeric_limits<std::size_t>::max();
             return out;
         }
 
         const std::size_t proportional =
-            static_cast<std::size_t>(static_cast<long double>(total) *
-                                     config_.safety_margin_fraction);
-        out.safety_margin_bytes = proportional > config_.safety_margin_bytes
-            ? proportional : config_.safety_margin_bytes;
+            static_cast<std::size_t>(
+                static_cast<long double>(out.estimated_bytes) *
+                config_.safety_margin_fraction);
+        out.safety_margin_bytes =
+            proportional > config_.safety_margin_bytes
+                ? proportional : config_.safety_margin_bytes;
 
         if (out.estimated_bytes >
-            std::numeric_limits<std::size_t>::max() - out.runtime_reserve_bytes ||
+                std::numeric_limits<std::size_t>::max() -
+                    out.runtime_reserve_bytes ||
             out.estimated_bytes + out.runtime_reserve_bytes >
-            std::numeric_limits<std::size_t>::max() - out.safety_margin_bytes) {
+                std::numeric_limits<std::size_t>::max() -
+                    out.safety_margin_bytes) {
             out.overflow = true;
             out.peak_bytes = std::numeric_limits<std::size_t>::max();
             return out;
@@ -105,6 +124,24 @@ public:
     }
 
 private:
+    static cfdx::core::memory::BufferType to_buffer_type(MemoryKind kind) {
+        using BT = cfdx::core::memory::BufferType;
+        switch (kind) {
+            case MemoryKind::Mesh:
+            case MemoryKind::Geometry:
+            case MemoryKind::Fields:
+            case MemoryKind::LinearAlgebra:
+            case MemoryKind::Preconditioner:
+            case MemoryKind::Temporary:
+            case MemoryKind::MPI:
+            case MemoryKind::CUDAWorkspace:
+            case MemoryKind::Halo:
+            case MemoryKind::Output:
+                return BT::TEMPORARY;
+        }
+        return BT::TEMPORARY;
+    }
+
     MemoryPlannerConfig config_;
     std::vector<MemoryEstimate> components_;
 };
