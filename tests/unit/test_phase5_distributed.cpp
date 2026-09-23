@@ -37,6 +37,15 @@ int main(int argc, char** argv) {
     const double global_sum = mpi_deterministic_sum(local_sum);
     assert(std::abs(global_sum - 36.0) < 1e-14);
 
+    // The distributed halo layer must expose the opposite rank's interface\n    // value without requiring a replicated Field.\n    cfdx::core::Mesh mesh;\n    mesh.faces().push_face({0,1,2});\n    mesh.faces().push_face({1,2,3});\n    mesh.faces().push_face({2,3,4});\n    mesh.ownership().resize(3);\n    mesh.ownership().set_owner(0, 0);\n    mesh.ownership().set_neighbour(0, cfdx::core::FaceOwnership::BOUNDARY);\n    mesh.ownership().set_owner(1, 0);\n    mesh.ownership().set_neighbour(1, 1);\n    mesh.ownership().set_owner(2, 1);\n    mesh.ownership().set_neighbour(2, cfdx::core::FaceOwnership::BOUNDARY);\n    mesh.cells().push_cell({0, 1});\n    mesh.cells().push_cell({1, 2});\n\n    // Deterministic reduction is exercised on the owned contribution only.
+    const double local_sum = [&]() {
+        double s = 0.0;
+        for (std::size_t i = 0; i < state.local_size(); ++i) s += state(i);
+        return s;
+    }();
+    const double global_sum = mpi_deterministic_sum(local_sum);
+    assert(std::abs(global_sum - 36.0) < 1e-14);
+
     // The distributed halo layer must expose the opposite rank's interface
     // value without requiring a replicated Field.
     cfdx::core::Mesh mesh;
