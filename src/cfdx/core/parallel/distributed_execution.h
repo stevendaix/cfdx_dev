@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <utility>
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
 #include <H5Dpublic.h>
