@@ -67,6 +67,18 @@ int main()
         EXPECT_NEAR(T(0),300.0 + 1000.0/(1000.0+12.0),1e-8);
     });
 
+    run_case("p1_isothermal_blackbody_equilibrium",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
+        T(0)=1000.0; G(0)=4.0*M_PI*blackbody_intensity(1000.0); q(0)=0.0;
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,4.0*M_PI*blackbody_intensity(1000.0),0.0};
+        const auto r=solve_p1_radiation(m,g,T,G,q,1.0,0.0,bc,2000,1e-12);
+        EXPECT_TRUE(r.converged);
+        EXPECT_NEAR(q(0),0.0,1e-8*blackbody_emissive_power(1000.0));
+        EXPECT_NEAR(G(0),4.0*M_PI*blackbody_intensity(1000.0),1e-10*G(0));
+    });
+
     run_case("dom_isotropic_blackbody_equilibrium",[] {
         Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
