@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
@@ -43,7 +44,8 @@ struct PoissonBoundaryCondition {
     {
         return {
             PoissonBoundaryType::DIRICHLET,
-            std::vector<double>(n_faces, std::numeric_limits<double>::quiet_NaN())
+            std::vector<double>(
+                n_faces, std::numeric_limits<double>::quiet_NaN())
         };
     }
 
@@ -51,7 +53,8 @@ struct PoissonBoundaryCondition {
     {
         return {
             PoissonBoundaryType::NEUMANN,
-            std::vector<double>(n_faces, std::numeric_limits<double>::quiet_NaN())
+            std::vector<double>(
+                n_faces, std::numeric_limits<double>::quiet_NaN())
         };
     }
 
@@ -59,7 +62,14 @@ struct PoissonBoundaryCondition {
     {
         if (face_values.size() != n_faces)
             throw std::invalid_argument(
-                "PoissonBoundaryCondition: face_values size must equal mesh.n_faces()");
+                "PoissonBoundaryCondition: face_values size must equal "
+                "mesh.n_faces()");
+        for (double value : face_values) {
+            if (!std::isfinite(value) && !std::isnan(value))
+                throw std::invalid_argument(
+                    "PoissonBoundaryCondition: face values must be finite "
+                    "or NaN (unprescribed)");
+        }
     }
 };
 
@@ -74,12 +84,17 @@ struct PoissonProblem {
 
     void validate(std::size_t n_cells, std::size_t n_faces) const
     {
-        if (!(diffusivity > 0.0))
+        if (!(diffusivity > 0.0) || !std::isfinite(diffusivity))
             throw std::invalid_argument(
-                "PoissonProblem: diffusivity must be positive");
+                "PoissonProblem: diffusivity must be finite and positive");
         if (source.size() != n_cells)
             throw std::invalid_argument(
                 "PoissonProblem: source size must equal mesh.n_cells()");
+        for (double value : source) {
+            if (!std::isfinite(value))
+                throw std::invalid_argument(
+                    "PoissonProblem: source values must be finite");
+        }
         boundary.validate(n_faces);
     }
 };
