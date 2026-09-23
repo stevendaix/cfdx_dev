@@ -79,12 +79,12 @@ Mesh make_channel_mesh(std::size_t nx, std::size_t ny)
 
     for (const auto& faces : cell_faces) mesh.cells().push_cell(faces);
 
-    Patch inlet{"inlet", PatchType::PATCH, {}};
-    Patch outlet{"outlet", PatchType::PATCH, {}};
+    Patch inlet{"inlet", PatchType::INLET, {}};
+    Patch outlet{"outlet", PatchType::OUTLET, {}};
     Patch bottom{"bottom", PatchType::WALL, {}};
     Patch top{"top", PatchType::WALL, {}};
-    Patch front{"front", PatchType::PATCH, {}};
-    Patch back{"back", PatchType::PATCH, {}};
+    Patch front{"front", PatchType::EMPTY, {}};
+    Patch back{"back", PatchType::EMPTY, {}};
 
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         if (mesh.ownership().neighbour(f) >= 0) continue;
