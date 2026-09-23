@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include <cmath>
+#include <stdexcept>
 
 namespace cfdx {
 namespace io {
