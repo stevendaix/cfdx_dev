@@ -425,7 +425,7 @@ if(CFDX_BUILD_TESTS)
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
             add_test(NAME test_phase5_restart_reader
-                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_reader> ${MPIEXEC_POSTFLAGS})
             set_tests_properties(test_phase5_restart_reader PROPERTIES DEPENDS test_phase5_restart_writer)
         endif()
