@@ -8,6 +8,7 @@
 #include "cfdx/runtime/ooc/async_transfer.h"
 #ifdef CFDX_ENABLE_GPU
 #include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
+#include "cfdx/runtime/gpu/cuda_double_buffer.h"
 #endif
 #include "common/test_harness.h"
 #include <cstdint>
@@ -389,6 +390,36 @@ int main() {
 
         for (std::size_t i = 0; i < 4; ++i)
             EXPECT_NEAR(destination[i], source[i], 0.0);
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cuda_double_buffer_has_two_independent_streams_and_buffers", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+        gpu::CudaDoubleBuffer db(256);
+        EXPECT_TRUE(gpu::CudaDoubleBuffer::slot_count() == 2);
+        EXPECT_TRUE(db.bytes() == 256);
+        EXPECT_TRUE(db.buffer(0).data() != db.buffer(1).data());
+        EXPECT_TRUE(db.stream(0).get() != db.stream(1).get());
+        const int src0[4] = {1,2,3,4};
+        const int src1[4] = {5,6,7,8};
+        gpu::async_copy_h2d(db.buffer(0), src0, sizeof(src0), db.stream(0).get());
+        gpu::async_copy_h2d(db.buffer(1), src1, sizeof(src1), db.stream(1).get());
+        db.synchronize(0);
+        db.synchronize(1);
+        int out0[4] = {}, out1[4] = {};
+        gpu::async_copy_d2h(db.buffer(0), out0, sizeof(out0), db.stream(0).get());
+        gpu::async_copy_d2h(db.buffer(1), out1, sizeof(out1), db.stream(1).get());
+        db.synchronize(0);
+        db.synchronize(1);
+        for (int i = 0; i < 4; ++i) {
+            EXPECT_TRUE(out0[i] == src0[i]);
+            EXPECT_TRUE(out1[i] == src1[i]);
+        }
 #else
         EXPECT_TRUE(true);
 #endif
