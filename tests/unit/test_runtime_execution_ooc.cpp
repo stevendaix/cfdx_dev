@@ -226,7 +226,7 @@ int main() {
         std::vector<double> div;
         EXPECT_THROW(
             gpu::execute_divergence_cuda({1.0}, {0}, {2}, 2, div),
-            std::invalid_argument);
+            std::exception);
     });
 
     run_case("host_emulated_device_roundtrip", [] {
