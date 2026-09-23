@@ -396,8 +396,14 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_executable(test_phase5_distributed tests/unit/test_phase5_distributed.cpp)
+            add_executable(test_phase5_restart_writer tests/unit/test_phase5_restart_writer.cpp)
+            add_executable(test_phase5_restart_reader tests/unit/test_phase5_restart_reader.cpp)
             target_link_libraries(test_phase5_distributed PRIVATE cfdx_core MPI::MPI_CXX)
+            target_link_libraries(test_phase5_restart_writer PRIVATE cfdx_core MPI::MPI_CXX)
+            target_link_libraries(test_phase5_restart_reader PRIVATE cfdx_core MPI::MPI_CXX)
             target_include_directories(test_phase5_distributed PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            target_include_directories(test_phase5_restart_writer PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            target_include_directories(test_phase5_restart_reader PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         endif()
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
@@ -426,6 +432,13 @@ if(CFDX_BUILD_TESTS)
             add_test(NAME test_phase5_distributed
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_distributed> ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_phase5_restart_writer
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_phase5_restart_reader
+                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_reader> ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_phase5_restart_reader PROPERTIES DEPENDS test_phase5_restart_writer)
         endif()
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
             # OpenMPI/hwloc allocates process-global state during MPI_Init which
