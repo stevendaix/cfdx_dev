@@ -170,6 +170,9 @@ $EndElements
         }
         if (!cfdx::io::mesh::import_mesh(gmsh.string(), gmsh_mesh)) {
             std::cerr << "Gmsh/meshio import failed\n";
+            const auto validation = gmsh_mesh.topo_validate();
+            for (const auto& error : validation.errors)
+                std::cerr << "  imported-mesh validation: " << error << "\n";
             fs::remove_all(root);
             return 1;
         }
