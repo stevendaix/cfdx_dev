@@ -204,9 +204,11 @@ inline std::vector<double> exchange_distributed_cell_halo(
 
     std::vector<double> result;
     result.reserve(received.size());
-    for (const auto& [id, value] : received) {
-        (void)id;
-        result.push_back(value);
+    for (const auto id : halo.recv_global_ids) {
+        for (const auto gid : id) {
+            const auto it = received.find(gid);
+            if (it != received.end()) result.push_back(it->second);
+        }
     }
     return result;
 }
