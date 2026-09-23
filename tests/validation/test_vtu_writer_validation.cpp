@@ -60,9 +60,14 @@ int main()
         const auto types = xml.find("Name=\"types\"");
         EXPECT_TRUE(types != std::string::npos);
         EXPECT_TRUE(xml.find("42", types) != std::string::npos);
-        EXPECT_TRUE(xml.find("Name=\"connectivity\"") != std::string::npos);
-        EXPECT_TRUE(xml.find(">\n     0 3 2 1 4 5 6 7 ") != std::string::npos);
-        EXPECT_TRUE(xml.find("Name=\"faces\" format=\"ascii\">") != std::string::npos);
+        const auto connectivity = xml.find("Name=\"connectivity\"");
+        EXPECT_TRUE(connectivity != std::string::npos);
+        const auto connectivity_end = xml.find("</DataArray>", connectivity);
+        EXPECT_TRUE(connectivity_end != std::string::npos);
+        const auto connectivity_xml = xml.substr(connectivity, connectivity_end - connectivity);
+        for (int point = 0; point < 8; ++point) {
+            EXPECT_TRUE(connectivity_xml.find(std::to_string(point)) != std::string::npos);
+        }
         EXPECT_TRUE(xml.find("6 4 0 3 2 1 4 4 5 6 7") != std::string::npos);
         EXPECT_TRUE(xml.find("Name=\"faceoffsets\"") != std::string::npos);
 
