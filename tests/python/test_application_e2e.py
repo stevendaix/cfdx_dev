@@ -137,6 +137,10 @@ def main(driver: str) -> int:
     assert session.state.value == "RUNNING" and not runner.paused
     assert runner._thread is not None
     runner._thread.join(timeout=15)
+    # Completion is delivered by the runner monitor thread after stdout/stderr readers drain.
+    deadline = time.monotonic() + 2.0
+    while session.state.value == "RUNNING" and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert session.state.value == "CONVERGED"
     assert session.iteration == 2
     assert len(controller.monitor_series.samples) == 2
