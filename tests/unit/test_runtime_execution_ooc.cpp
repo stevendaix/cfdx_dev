@@ -78,6 +78,30 @@ int main() {
             std::runtime_error);
     });
 
+    run_case("selected_gpu_never_falls_back_to_cpu", [] {
+        RuntimeDecision d;
+        d.selected = ExecutionPolicy::GPU;
+        d.requires_gpu = true;
+        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
+        EXPECT_NO_THROW(require_selected_backend(d, true, true));
+    });
+
+    run_case("gpu_ooc_never_falls_back_to_cpu", [] {
+        RuntimeDecision d;
+        d.selected = ExecutionPolicy::GPU_OUT_OF_CORE;
+        d.requires_gpu = true;
+        d.uses_out_of_core = true;
+        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
+        EXPECT_NO_THROW(require_selected_backend(d, true, true));
+    });
+
+    run_case("runtime_decision_cannot_lose_gpu_requirement", [] {
+        RuntimeDecision d;
+        d.selected = ExecutionPolicy::CPU;
+        d.requires_gpu = true;
+        EXPECT_THROW(require_selected_backend(d, true, true), std::logic_error);
+    });
+
     run_case("gpu_policy_requires_cuda", [] {
         RuntimeCapabilities caps;
         EXPECT_THROW(
