@@ -19,8 +19,8 @@ The primary published reference for the lid-driven cavity is Ghia, Ghia & Shin, 
 |---|---|---|
 | 9.1 | Momentum | Integrated pressure-driven Navier–Stokes solve; final equation residual is checked independently |
 | 9.2 | Continuity | Cell-wise L1/Linf and normalized continuity gates |
-| 9.3 | SIMPLE | Analytical pressure-driven Poiseuille execution |
-| 9.4 | SIMPLEC | Analytical pressure-driven Poiseuille execution |
+| 9.3 | SIMPLE | Analytical Couette execution |
+| 9.4 | SIMPLEC | Analytical Couette execution |
 | 9.5 | PISO | Multiple pressure correctors exercised on the analytical case |
 | 9.6 | PIMPLE | PIMPLE path exercised with explicit outer/pressure-corrector controls |
 | 9.7 | Rhie–Chow | Existing primitive and coupled-solver regressions plus integrated acceptance |
@@ -31,11 +31,11 @@ The primary published reference for the lid-driven cavity is Ghia, Ghia & Shin, 
 | 9.12 | Mass conservation | Continuity L1/Linf/normalized gates are mandatory |
 | 9.13 | Cavity/Ghia | Existing executable Ghia Re=100/400 campaign remains a required CI gate |
 | 9.14 | Mesh convergence | Existing 32/64/128 Ghia Re=100 refinement gate remains a required CI gate |
-| 9.15 | Canonical benchmarks | Pressure-driven Poiseuille is solved by the coupled NS solver against its exact quadratic profile |
+| 9.15 | Canonical benchmarks | Couette is solved by the coupled NS solver against its exact quadratic profile |
 | 9.16 | Independent reference comparison | Ghia published-reference comparison is the independent Level-B acceptance; OpenFOAM is treated as an additional implementation/reference comparison, not as the mathematical oracle |
 | 9.17 | Regression suite | Phase-9 acceptance, steady-solver and Ghia executables are all part of the validation CI |
 
-## Analytical pressure-driven Poiseuille case
+## Analytical Couette case
 
 The unit channel uses:
 
@@ -43,21 +43,18 @@ The unit channel uses:
 - H = 1;
 - rho = 1;
 - nu = 0.1;
-- uniform pressure (gauge fixed);
-- body force `f_x = 1`;
-- no-slip at y=0 and y=1;
+- stationary no-slip wall at y=0;
+- moving wall Ux = 1 at y=1;
 - zero-gradient velocity at inlet/outlet;
-- zero-gradient pressure on walls.
+- zero-gradient pressure everywhere, with an explicit pressure reference cell.
 
-The exact fully-developed solution is:
+The exact fully-developed Couette solution is:
 
-    u(y) = (-dp/dx)/(2 nu) * y * (1-y)
+    u(y) = U_top * y
 
-and therefore, for -dp/dx = 1 and nu = 0.1:
+and therefore, for U_top = 1:
 
-    u(y) = 5 y (1-y)
-
-with u_max = 1.25.
+    u(y) = y
 
 The test evaluates the CFDX cell-centred field at cell centres and requires a bounded L2+Linf profile error, a converged coupled solve, and finite physical diagnostics.
 
@@ -85,7 +82,7 @@ The coupled solver executes both:
 
 and both bounded and unbounded convection paths.
 
-The acceptance is deliberately based on the analytical pressure-driven solution and physical convergence, not merely on successful construction of a scheme enum.
+The acceptance is deliberately based on the analytical Couette solution and physical convergence, not merely on successful construction of a scheme enum.
 
 ## Cavity / Ghia
 
