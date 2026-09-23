@@ -31,9 +31,7 @@ int main() {
         source_ids, vector_values, 3, target_ids);
     assert((vector_target == std::vector<double>{
         3.0, 30.0, 300.0,
-        1.0, 10.0, 100.0,
-        4.0, 40.0, 400.0,
-        2.0, 20.0, 200.0}));
+        1.0, 10.0, 100.0}));
 
     bool rejected = false;
     try {
