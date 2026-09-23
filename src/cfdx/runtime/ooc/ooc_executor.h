@@ -6,6 +6,7 @@
 #include "pinned_buffer_pool.h"
 #include "tile_manager.h"
 #include "working_set.h"
+#include <algorithm>
 #include <cstddef>
 #include <future>
 #include <limits>
