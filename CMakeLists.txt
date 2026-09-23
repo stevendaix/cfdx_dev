@@ -489,7 +489,6 @@ if(CFDX_BUILD_TESTS)
                          ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py -q)
         set_tests_properties(test_production_solver_e2e PROPERTIES
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh")
-    if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
