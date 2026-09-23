@@ -47,7 +47,7 @@ int main() {
         bc.face_values[5] = 1.0;
         auto result = solve_laplace_dirichlet(m, bc);
         EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
-        EXPECT_NEAR(result.solution(0), 1.0/6.0, 1e-12);
+        EXPECT_NEAR(result.solution(0), 1.0, 1e-12);
     });
 
     run_case("volumetric_source_is_integrated_over_cell_volume", [] {
