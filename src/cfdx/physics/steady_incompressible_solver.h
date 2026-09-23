@@ -68,6 +68,15 @@ struct IncompressibleSolverControls {
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
     std::vector<IncompressiblePointProbe> probes;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
+    // Called after each completed nonlinear iteration with the authoritative solver state.
+    // Return false to stop the solve after the current iteration.
+    using IterationOutputCallback = std::function<bool(
+        std::size_t,
+        double,
+        const cfdx::core::Mesh&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
+    IterationOutputCallback iteration_output_callback;
 };
 
 struct IncompressibleIteration {
@@ -722,6 +731,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
                 controls.probe_callback(IncompressibleProbeSample{probe.name, iter, 0.0, value});
             }
+        }
+
+        if (controls.iteration_output_callback &&
+            !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
+            result.iterations = iter;
+            break;
         }
 
         if (iter > 1 &&
