@@ -370,8 +370,10 @@ if(CFDX_BUILD_TESTS)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
+        add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
         if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
@@ -383,12 +385,15 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_mpi_fused_reduction
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
             # OpenMPI/hwloc allocates process-global state during MPI_Init which
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_deterministic test_mpi_partition PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
