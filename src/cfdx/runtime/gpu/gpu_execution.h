@@ -19,6 +19,26 @@
 
 namespace cfdx::runtime::gpu {
 
+#ifndef CFDX_ENABLE_GPU
+inline void execute_gradient_cuda(
+    const std::vector<double>& phi,
+    const std::vector<double>& face_sx,
+    const std::vector<double>& face_sy,
+    const std::vector<double>& face_sz,
+    const std::vector<std::uint32_t>& owner,
+    const std::vector<std::int64_t>& neighbour,
+    const std::vector<double>& volume,
+    std::vector<double>& grad_x,
+    std::vector<double>& grad_y,
+    std::vector<double>& grad_z)
+{
+    (void)phi; (void)face_sx; (void)face_sy; (void)face_sz;
+    (void)owner; (void)neighbour; (void)volume;
+    (void)grad_x; (void)grad_y; (void)grad_z;
+    throw std::runtime_error("CUDA execution requested but CFDX was built without CUDA");
+}
+#endif
+
 #ifdef CFDX_ENABLE_GPU
 namespace detail {
 
@@ -333,5 +353,7 @@ inline void execute_divergence_cuda(
     transfers.synchronize_d2h();
 #endif
 }
+
+#endif // CFDX_ENABLE_GPU
 
 } // namespace cfdx::runtime::gpu
