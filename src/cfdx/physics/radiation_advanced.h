@@ -2,6 +2,7 @@
 
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_solver.h"
+#include "cfdx/physics/radiation_models.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include <algorithm>
 #include <array>
@@ -582,9 +583,12 @@ inline RosselandSolveResult solve_rosseland_energy(
             }
         }
 
+        std::vector<double> conductivity_values(mesh.n_cells(),0.0);
+        for(std::size_t c=0;c<mesh.n_cells();++c)
+            conductivity_values[c]=conductivity(c);
         auto eq=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,su,sp,bcs,true,nullptr,
-            &transient_diag,&transient_rhs,&conductivity);
+            &transient_diag,&transient_rhs,&conductivity_values);
 
         cfdx::core::Vector candidate(mesh.n_cells(),0.0);
         for(std::size_t c=0;c<mesh.n_cells();++c) candidate(c)=temperature(c);
