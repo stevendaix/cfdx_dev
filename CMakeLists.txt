@@ -19,7 +19,6 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
-option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 file access" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 
 if(CFDX_ENABLE_GPU)
@@ -36,6 +35,7 @@ find_package(Python3 COMPONENTS Interpreter QUIET)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
 
+# Sanitizer build type (DebugSanitizers)
 if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
     set(CMAKE_CXX_FLAGS_DEBUGSANITIZERS "-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_DEBUGSANITIZERS "-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer")
@@ -62,14 +62,18 @@ if(CFDX_USE_HDF5_SERIAL)
 endif()
 
 find_package(HDF5 QUIET)
-if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT CFDX_ENABLE_MPI)
-    message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5 requires CFDX_ENABLE_MPI=ON")
-endif()
 if(HDF5_FOUND)
-    if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_IS_PARALLEL)
-        message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON but detected HDF5 is not parallel-enabled")
-    endif()
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
+    # System HDF5 provides these via find_package
+    if(NOT HDF5_INCLUDE_DIRS)
+        set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
+    endif()
+    if(NOT HDF5_C_LIBRARIES)
+        set(HDF5_C_LIBRARIES ${HDF5_C_LIBRARIES})
+    endif()
+    if(NOT HDF5_HL_LIBRARIES)
+        set(HDF5_HL_LIBRARIES ${HDF5_HL_LIBRARIES})
+    endif()
 elseif(EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     message(STATUS "Using locally-built HDF5 (static) at ${CFDX_HDF5_DIR}")
     set(HDF5_INCLUDE_DIRS "${CFDX_HDF5_DIR}/include")
@@ -80,34 +84,55 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# CFDX core library
+# CFDX core library - Sources organized by module
 # ---------------------------------------------------------------------------
+
+# Mesh module
 set(CFDX_MESH_SOURCES
     src/cfdx/core/mesh/point.cpp
     src/cfdx/core/mesh/face.cpp
     src/cfdx/core/mesh/ownership.cpp
     src/cfdx/core/mesh/cell.cpp
     src/cfdx/core/mesh/mesh.cpp
-    src/cfdx/core/mesh/boundary.cpp)
-set(CFDX_LINALG_SOURCES src/cfdx/core/linalg/hypre_amg.cpp)
+    src/cfdx/core/mesh/boundary.cpp
+)
+
+# Importers module
+set(CFDX_LINALG_SOURCES
+    src/cfdx/core/linalg/hypre_amg.cpp
+)
+
+# Memory sources
 set(CFDX_MEMORY_SOURCES
     src/cfdx/core/memory/memory_planner.cpp
-    src/cfdx/runtime/gpu/gpu_kernels.cpp)
+    src/cfdx/runtime/gpu/gpu_kernels.cpp
+)
+
+# Geometry module
 set(CFDX_GEOMETRY_SOURCES
     src/cfdx/core/geometry/face_geometry.cpp
     src/cfdx/core/geometry/cell_geometry.cpp
     src/cfdx/core/geometry/mesh_quality.cpp
-    src/cfdx/core/geometry/mesh_validator.cpp)
+    src/cfdx/core/geometry/mesh_validator.cpp
+)
+
+# Field module
 set(CFDX_FIELD_SOURCES
     src/cfdx/core/field/field.cpp
-    src/cfdx/core/field/storage.cpp)
+    src/cfdx/core/field/storage.cpp
+)
+
+# IO module
 set(CFDX_IO_SOURCES
     src/cfdx/io/hdf5/hdf5_writer.cpp
     src/cfdx/io/hdf5/hdf5_reader.cpp
     src/cfdx/io/vtu/vtu_writer.cpp
     src/cfdx/io/openfoam/openfoam_importer.cpp
     src/cfdx/io/gmsh/gmsh_importer.cpp
-    src/cfdx/io/mesh/mesh_importer.cpp)
+    src/cfdx/io/mesh/mesh_importer.cpp
+)
+
+# Physics sources
 set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/equation_of_state.h
     src/cfdx/physics/multi_component.h
@@ -125,23 +150,119 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/spalart_allmaras.h
     src/cfdx/physics/radiation_streaming.h
     src/cfdx/thermodynamics/thermo_state.h
-    src/cfdx/thermodynamics/thermo_cache.h)
-set(CFDX_THERMODYNAMICS_SOURCES src/cfdx/thermodynamics/equation_of_state.h)
-set(CFDX_CHEMISTRY_SOURCES src/cfdx/chemistry/source_terms.h)
+    src/cfdx/thermodynamics/thermo_cache.h
+)
+
+# Thermodynamics sources (P2 reorganization)
+set(CFDX_THERMODYNAMICS_SOURCES
+    src/cfdx/thermodynamics/equation_of_state.h
+)
+
+# Chemistry sources (P2 reorganization)
+set(CFDX_CHEMISTRY_SOURCES
+    src/cfdx/chemistry/source_terms.h
+)
+
+# Transport sources (P2 reorganizization)
 set(CFDX_TRANSPORT_SOURCES
     src/cfdx/transport/viscosity/viscosity.h
     src/cfdx/transport/conductivity/conductivity.h
-    src/cfdx/transport/diffusivity/diffusivity.h)
+    src/cfdx/transport/diffusivity/diffusivity.h
+)
 
 set(CFDX_CORE_SOURCES
     src/cfdx/application/simulation_controller.cpp
-    ${CFDX_MESH_SOURCES} ${CFDX_GEOMETRY_SOURCES} ${CFDX_FIELD_SOURCES}
-    ${CFDX_IO_SOURCES} ${CFDX_PHYSICS_SOURCES}
-    ${CFDX_THERMODYNAMICS_SOURCES} ${CFDX_CHEMISTRY_SOURCES}
-    ${CFDX_TRANSPORT_SOURCES} ${CFDX_LINALG_SOURCES} ${CFDX_MEMORY_SOURCES})
+    ${CFDX_MESH_SOURCES}
+    ${CFDX_GEOMETRY_SOURCES}
+    ${CFDX_FIELD_SOURCES}
+    ${CFDX_IO_SOURCES}
+    ${CFDX_PHYSICS_SOURCES}
+    ${CFDX_THERMODYNAMICS_SOURCES}
+    ${CFDX_CHEMISTRY_SOURCES}
+    ${CFDX_TRANSPORT_SOURCES}
+    ${CFDX_LINALG_SOURCES}
+    ${CFDX_MEMORY_SOURCES}
+)
+
+# Headers (for IDE visibility, not compiled)
+set(CFDX_CORE_HEADERS
+    src/cfdx/core/mesh/point.h
+    src/cfdx/core/mesh/face.h
+    src/cfdx/core/mesh/ownership.h
+    src/cfdx/core/mesh/cell.h
+    src/cfdx/core/mesh/boundary.h
+    src/cfdx/core/mesh/mesh.h
+    src/cfdx/core/geometry/face_geometry.h
+    src/cfdx/core/geometry/cell_geometry.h
+    src/cfdx/core/geometry/mesh_quality.h
+    src/cfdx/core/geometry/mesh_validator.h
+    src/cfdx/core/field/field.h
+    src/cfdx/core/field/storage.h
+    src/cfdx/core/boundary/boundary_field.h
+    src/cfdx/core/numerics/interpolation.h
+    src/cfdx/core/numerics/gradient.h
+    src/cfdx/core/numerics/divergence.h
+    src/cfdx/core/numerics/laplacian.h
+    src/cfdx/core/numerics/flux.h
+    src/cfdx/core/numerics/integrate.h
+    src/cfdx/core/numerics/source_term.h
+    src/cfdx/core/numerics/temporal.h
+    src/cfdx/core/numerics/convection.h
+    src/cfdx/physics/incompressible.h
+    src/cfdx/physics/pressure_velocity.h
+    src/cfdx/physics/pressure_velocity_algorithms.h
+    src/cfdx/physics/turbulence.h
+    src/cfdx/physics/thermal.h
+    src/cfdx/physics/radiation.h
+    src/cfdx/physics/m1_m4_models.h
+    src/cfdx/physics/solver_control.h
+    src/cfdx/physics/finite_volume_transport.h
+    src/cfdx/physics/steady_incompressible_solver.h
+    src/cfdx/physics/turbulence_transport.h
+    src/cfdx/physics/turbulence_solver.h
+    src/cfdx/physics/sst_solver.h
+    src/cfdx/physics/energy_solver.h
+    src/cfdx/physics/cht_solver.h
+    src/cfdx/physics/radiation_solver.h
+    src/cfdx/physics/equation_of_state.h
+    src/cfdx/physics/transport_models.h
+    src/cfdx/physics/multi_component.h
+    src/cfdx/core/linalg/sparse_matrix.h
+    src/cfdx/core/linalg/vector.h
+    src/cfdx/core/linalg/linear_system.h
+    src/cfdx/core/linalg/cg_solver.h
+    src/cfdx/core/linalg/bicgstab_solver.h
+    src/cfdx/core/linalg/gmres_solver.h
+    src/cfdx/core/linalg/linear_operator.h
+    src/cfdx/core/linalg/solver_workspace.h
+    src/cfdx/core/linalg/matrix_free_fv_operator.h
+    src/cfdx/core/linalg/amg_preconditioner.h
+    src/cfdx/core/linalg/mixed_precision.h
+    src/cfdx/core/linalg/chebyshev_smoother.h
+    src/cfdx/core/linalg/fv_operator.h
+    src/cfdx/core/linalg/krylov_controls.h
+    src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/memory/reuse_pool.h
+    src/cfdx/core/memory/field_lifetime.h
+    src/cfdx/core/linalg/mpi_overlap.h
+    src/cfdx/core/linalg/block_schur.h
+    src/cfdx/core/mesh/solver_mesh.h
+    src/cfdx/core/mesh/sfc_ordering.h
+    src/cfdx/core/parallel/restart_mapping.h
+    src/cfdx/thermodynamics/equation_of_state.h
+    src/cfdx/chemistry/source_terms.h
+    src/cfdx/transport/viscosity/viscosity.h
+    src/cfdx/transport/conductivity/conductivity.h
+    src/cfdx/transport/diffusivity/diffusivity.h
+    src/cfdx/io/hdf5/hdf5_writer.h
+    src/cfdx/io/hdf5/hdf5_reader.h
+    src/cfdx/io/vtu/vtu_writer.h
+)
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
-target_include_directories(cfdx_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(cfdx_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 target_compile_definitions(cfdx_core PRIVATE CFDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 if(Python3_Interpreter_FOUND)
     target_compile_definitions(cfdx_core PRIVATE CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}")
@@ -164,16 +285,13 @@ if(CFDX_ENABLE_MPI)
     endif()
 endif()
 
-if(CFDX_ENABLE_PARALLEL_HDF5)
-    target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_PARALLEL_HDF5=1)
-endif()
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 if(CFDX_BUILD_TESTS)
     enable_testing()
 
+    # Helper function for tests
     macro(add_cfdx_test test_name source_file)
         add_executable(${test_name} ${source_file})
         target_link_libraries(${test_name} PRIVATE cfdx_core)
@@ -181,6 +299,7 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
     add_cfdx_test(test_ownership tests/unit/test_ownership.cpp)
@@ -197,6 +316,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
+
+    # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
     add_cfdx_test(test_vector tests/unit/test_vector.cpp)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
@@ -209,11 +330,15 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
+
+    # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
     add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
     add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
     add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
     add_cfdx_test(test_schur_preconditioner tests/unit/test_schur_preconditioner.cpp)
+
+    # Numerical tests - Geometry
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
@@ -229,7 +354,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
+    add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
+    add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
     add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
@@ -241,20 +368,15 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
-
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
-        add_executable(test_mpi_deterministic_fused tests/unit/test_mpi_deterministic_fused.cpp)
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
-        target_link_libraries(test_mpi_deterministic_fused PRIVATE cfdx_core MPI::MPI_CXX)
-        target_include_directories(test_mpi_deterministic PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-        target_include_directories(test_mpi_deterministic_fused PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
         if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
             set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
@@ -268,15 +390,15 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_fused_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
-        add_test(NAME test_mpi_deterministic_fused
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic_fused> ${MPIEXEC_POSTFLAGS})
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
-            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_deterministic_fused PROPERTIES
+            # OpenMPI/hwloc allocates process-global state during MPI_Init which
+            # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
+            # ASan/UBSan active for the MPI regression, but exclude those
+            # external-library teardown allocations from the leak check.
+            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
-
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
@@ -285,68 +407,36 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
-        add_cfdx_test(test_memory_planner tests/unit/test_memory_planner.cpp)
         add_cfdx_test(test_ooc_pipeline tests/unit/test_ooc_pipeline.cpp)
     endif()
-
-    # Parallel HDF5 regression uses real MPI. Legacy HDF5 tests also open
-    # files through the same parallel HDF5 library, so execute them under
-    # a single MPI rank to satisfy the MPI initialization contract without
-    # changing their serial test logic.
-    if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
-        add_executable(test_parallel_hdf5 tests/unit/test_parallel_hdf5.cpp)
-        target_link_libraries(test_parallel_hdf5 PRIVATE cfdx_core MPI::MPI_CXX)
-        add_test(NAME test_parallel_hdf5
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
+    if(CFDX_ENABLE_GPU)
+        add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
     endif()
 
-    add_executable(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
-    add_executable(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
-    add_executable(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
-    target_link_libraries(test_hdf5_writer PRIVATE cfdx_core)
-    target_link_libraries(test_hdf5_roundtrip PRIVATE cfdx_core)
-    target_link_libraries(test_field_roundtrip PRIVATE cfdx_core)
-    target_include_directories(test_hdf5_writer PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    target_include_directories(test_hdf5_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    target_include_directories(test_field_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
-        add_test(NAME test_hdf5_writer
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_writer> ${MPIEXEC_POSTFLAGS})
-        add_test(NAME test_hdf5_roundtrip
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_roundtrip> ${MPIEXEC_POSTFLAGS})
-        add_test(NAME test_field_roundtrip
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_field_roundtrip> ${MPIEXEC_POSTFLAGS})
-    else()
-        add_test(NAME test_hdf5_writer COMMAND test_hdf5_writer)
-        add_test(NAME test_hdf5_roundtrip COMMAND test_hdf5_roundtrip)
-        add_test(NAME test_field_roundtrip COMMAND test_field_roundtrip)
-    endif()
+    # HDF5 tests
+    add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
+    add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+    add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
 
+    # Memory Planner tests
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
+
+    # Plan completion tests
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
+
+    # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
-    add_executable(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
-    target_link_libraries(test_cross_import_equivalence PRIVATE cfdx_core)
-    target_include_directories(test_cross_import_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
-        add_test(NAME test_cross_import_equivalence
-                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
-                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_cross_import_equivalence> ${MPIEXEC_POSTFLAGS})
-    else()
-        add_test(NAME test_cross_import_equivalence COMMAND test_cross_import_equivalence)
-    endif()
-
+    add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
-                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
                          ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
         add_test(NAME test_mesh_geometry_matrix
-                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
                          ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
     endif()
+
 endif()
