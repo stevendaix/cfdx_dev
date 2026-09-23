@@ -77,7 +77,7 @@ int main()
         EXPECT_TRUE(piece != std::string::npos);
         EXPECT_TRUE(field_data < piece);
         EXPECT_TRUE(metadata_xml.find("2.500000000000e+00") != std::string::npos);
-        EXPECT_TRUE(metadata_xml.find("Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\\n    17\\n") != std::string::npos);
+        EXPECT_TRUE(metadata_xml.find("Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n    17\n") != std::string::npos);
     });
 
     return run_all();
