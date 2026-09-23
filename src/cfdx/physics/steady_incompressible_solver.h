@@ -354,7 +354,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Verify the actual algebraic residual before treating such a breakdown
         // as a failed predictor solve.
         const auto accept_already_solved_zero_state =
-            [](const ScalarEquation& equation, const Vector& solution,
+            [&controls](const ScalarEquation& equation, const Vector& solution,
                cfdx::core::SolverResult& solve) {
                 if (solve.status == cfdx::core::SolverStatus::CONVERGED)
                     return;
