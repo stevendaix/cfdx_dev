@@ -3,7 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/turbulence_transport.h"
-#include "cfdx/physics/spalart_allmaras.h"
+#include "cfdx/physics/spalart_allmaras.h"\n#include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
