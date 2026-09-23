@@ -9,7 +9,8 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>\n#include <unordered_set>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
@@ -17,7 +18,8 @@
 #include <H5Fpublic.h>
 #include <H5Ppublic.h>
 #include <H5Spublic.h>
-#include <H5Tpublic.h>\n#include <H5Apublic.h>
+#include <H5Tpublic.h>
+#include <H5Apublic.h>
 #include <H5FDmpi.h>
 #include <H5FDmpio.h>
 #endif
