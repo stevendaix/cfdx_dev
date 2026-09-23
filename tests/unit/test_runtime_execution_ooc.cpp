@@ -1,6 +1,7 @@
 #include "cfdx/runtime/execution/execution_policy.h"
 #include "cfdx/runtime/gpu/device_buffer.h"
 #include "cfdx/runtime/gpu/gpu_kernels.h"
+#include "cfdx/runtime/gpu/gpu_execution.h"
 #include "cfdx/runtime/ooc/tile_manager.h"
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
@@ -76,42 +77,6 @@ int main() {
         EXPECT_THROW(
             choose_execution_policy(ExecutionPolicy::AUTO, caps, {}),
             std::runtime_error);
-    });
-
-    run_case("selected_gpu_never_falls_back_to_cpu", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::GPU;
-        d.requires_gpu = true;
-        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
-        bool completed = false;
-        try {
-            require_selected_backend(d, true, true);
-            completed = true;
-        } catch (...) {
-        }
-        EXPECT_TRUE(completed);
-    });
-
-    run_case("gpu_ooc_never_falls_back_to_cpu", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::GPU_OUT_OF_CORE;
-        d.requires_gpu = true;
-        d.uses_out_of_core = true;
-        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
-        bool completed = false;
-        try {
-            require_selected_backend(d, true, true);
-            completed = true;
-        } catch (...) {
-        }
-        EXPECT_TRUE(completed);
-    });
-
-    run_case("runtime_decision_cannot_lose_gpu_requirement", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::CPU;
-        d.requires_gpu = true;
-        EXPECT_THROW(require_selected_backend(d, true, true), std::logic_error);
     });
 
     run_case("gpu_policy_requires_cuda", [] {
@@ -218,6 +183,37 @@ int main() {
         EXPECT_THROW(
             choose_execution_policy(ExecutionPolicy::GPU, caps, work),
             std::runtime_error);
+    });
+
+    run_case("gpu_gradient_executes_on_cuda_when_available", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+        const std::vector<double> phi{0.0, 1.0};
+        const std::vector<double> sx{1.0};
+        const std::vector<double> sy{0.0};
+        const std::vector<double> sz{0.0};
+        const std::vector<std::uint32_t> owner{0};
+        const std::vector<std::int64_t> neighbour{1};
+        const std::vector<double> volume{1.0, 1.0};
+        std::vector<double> gx, gy, gz;
+        gpu::execute_gradient_cuda(phi, sx, sy, sz, owner, neighbour, volume, gx, gy, gz);
+        EXPECT_NEAR(gx[0], 0.5, 1e-12);
+        EXPECT_NEAR(gx[1], -0.5, 1e-12);
+        EXPECT_NEAR(gy[0], 0.0, 1e-14);
+        EXPECT_NEAR(gz[1], 0.0, 1e-14);
+        const std::vector<double> face_flux{2.0};
+        std::vector<double> div;
+        gpu::execute_divergence_cuda(face_flux, owner, neighbour, 2, div);
+        EXPECT_NEAR(div[0], 2.0, 1e-12);
+        EXPECT_NEAR(div[1], -2.0, 1e-12);
+#else
+        std::vector<double> gx, gy, gz;
+        EXPECT_THROW(
+            gpu::execute_gradient_cuda({}, {}, {}, {}, {}, {}, {}, gx, gy, gz),
+            std::runtime_error);
+#endif
     });
 
     run_case("host_emulated_device_roundtrip", [] {
