@@ -102,8 +102,10 @@ inline double turbulence_nu_t(
         return c.rng_C_mu*fmu*k*k/second;
     }
     case TurbulenceModel::REALIZABLE_KEPSILON: {
+        // Realizable k-epsilon: variable C_mu, bounded through A0/As.
         const double eta = std::max(0.0, strain*k/second);
-        const double A = c.realizable_A0 + std::sqrt(6.0)*std::max(0.0,std::abs(strain));
+        const double A = c.realizable_A0 +
+            c.realizable_As * eta;
         const double cmu = 1.0/std::max(A,1e-12);
         return cmu*k*k/second;
     }
@@ -115,8 +117,15 @@ inline double turbulence_nu_t(
         const double F2=1.0;
         return c.a1*k/std::max(c.a1*second,strain*F2);
     }
-    case TurbulenceModel::SPALART_ALLMARAS:
-        return std::max(0.0, second);
+    case TurbulenceModel::SPALART_ALLMARAS: {
+        // second stores SA's transported nu-tilde for this closure.
+        const double nu = std::max(c.molecular_viscosity,1e-30);
+        const double chi = std::max(0.0,second/nu);
+        const double chi3 = chi*chi*chi;
+        const double cv13 = 7.1*7.1*7.1;
+        const double fv1 = chi3/std::max(chi3+cv13,1e-30);
+        return std::max(0.0,second)*fv1;
+    }
     case TurbulenceModel::SMAGORINSKY: {
         if(wall_distance<=0.0) throw std::invalid_argument("wall distance must be positive");
         const double delta=std::max(c.filter_width,1e-12);
