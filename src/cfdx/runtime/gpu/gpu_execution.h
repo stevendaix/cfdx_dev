@@ -1,6 +1,9 @@
 #pragma once
 
 #include "cfdx/runtime/gpu/gpu_kernels.h"
+#ifdef CFDX_ENABLE_GPU
+#include "cfdx/runtime/gpu/cuda_backend.h"
+#endif
 
 #include <cstddef>
 #include <cstdint>
@@ -52,15 +55,15 @@ inline void execute_gradient_cuda(
     CudaDeviceBuffer d_gy(volume.size() * sizeof(double));
     CudaDeviceBuffer d_gz(volume.size() * sizeof(double));
 
-    d_phi.copy_from_host(phi.data(), d_phi.size_bytes());
-    d_sx.copy_from_host(face_sx.data(), d_sx.size_bytes());
-    d_sy.copy_from_host(face_sy.data(), d_sy.size_bytes());
-    d_sz.copy_from_host(face_sz.data(), d_sz.size_bytes());
-    d_owner.copy_from_host(owner.data(), d_owner.size_bytes());
-    d_neighbour.copy_from_host(neighbour.data(), d_neighbour.size_bytes());
-    d_volume.copy_from_host(volume.data(), d_volume.size_bytes());
-
     CudaStream stream;
+    async_copy_h2d(d_phi, phi.data(), d_phi.size_bytes(), stream.get());
+    async_copy_h2d(d_sx, face_sx.data(), d_sx.size_bytes(), stream.get());
+    async_copy_h2d(d_sy, face_sy.data(), d_sy.size_bytes(), stream.get());
+    async_copy_h2d(d_sz, face_sz.data(), d_sz.size_bytes(), stream.get());
+    async_copy_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream.get());
+    async_copy_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream.get());
+    async_copy_h2d(d_volume, volume.data(), d_volume.size_bytes(), stream.get());
+
     gradient_gauss_cuda(
         static_cast<const double*>(d_phi.data()),
         static_cast<const double*>(d_sx.data()),
@@ -79,9 +82,10 @@ inline void execute_gradient_cuda(
     grad_x.resize(phi.size());
     grad_y.resize(phi.size());
     grad_z.resize(phi.size());
-    d_gx.copy_to_host(grad_x.data(), d_gx.size_bytes());
-    d_gy.copy_to_host(grad_y.data(), d_gy.size_bytes());
-    d_gz.copy_to_host(grad_z.data(), d_gz.size_bytes());
+    async_copy_d2h(d_gx, grad_x.data(), d_gx.size_bytes(), stream.get());
+    async_copy_d2h(d_gy, grad_y.data(), d_gy.size_bytes(), stream.get());
+    async_copy_d2h(d_gz, grad_z.data(), d_gz.size_bytes(), stream.get());
+    stream.synchronize();
 #endif
 }
 
@@ -107,11 +111,11 @@ inline void execute_divergence_cuda(
     CudaDeviceBuffer d_owner(owner.size() * sizeof(std::uint32_t));
     CudaDeviceBuffer d_neighbour(neighbour.size() * sizeof(std::int64_t));
     CudaDeviceBuffer d_div(n_cells * sizeof(double));
-    d_flux.copy_from_host(phi_face.data(), d_flux.size_bytes());
-    d_owner.copy_from_host(owner.data(), d_owner.size_bytes());
-    d_neighbour.copy_from_host(neighbour.data(), d_neighbour.size_bytes());
-
     CudaStream stream;
+    async_copy_h2d(d_flux, phi_face.data(), d_flux.size_bytes(), stream.get());
+    async_copy_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream.get());
+    async_copy_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream.get());
+
     divergence_cuda(
         static_cast<const double*>(d_flux.data()),
         static_cast<const std::uint32_t*>(d_owner.data()),
@@ -120,7 +124,8 @@ inline void execute_divergence_cuda(
     stream.synchronize();
 
     div.resize(n_cells);
-    d_div.copy_to_host(div.data(), d_div.size_bytes());
+    async_copy_d2h(d_div, div.data(), d_div.size_bytes(), stream.get());
+    stream.synchronize();
 #endif
 }
 
