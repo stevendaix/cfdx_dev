@@ -1,7 +1,9 @@
 #include "cfdx/core/solvers/scalar_diffusion.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <initializer_list>
 #include <limits>
+#include <stdexcept>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
