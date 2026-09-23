@@ -96,10 +96,68 @@ struct ThermophysicalProperties {
     double mu(double T) const{return evaluate_scalar_property(viscosity,T);}
     double pr_t(double T) const{return evaluate_scalar_property(turbulent_prandtl,T);}
     double enthalpy(double T,double Tref=300,double intervals=64) const {
-        if(!std::isfinite(T)||!std::isfinite(Tref)||T<=0||Tref<=0||intervals<=0) throw std::invalid_argument("enthalpy: invalid inputs");
-        const std::size_t n=static_cast<std::size_t>(intervals); const double a=std::min(T,Tref), b=std::max(T,Tref), h=(b-a)/n;
-        double s=cp(a)+cp(b); for(std::size_t i=1;i<n;++i)s+=2*cp(a+h*i);
-        const double I=0.5*h*s; return T>=Tref?I:-I;
+        if(!std::isfinite(T)||!std::isfinite(Tref)||T<=0||Tref<=0||intervals<=0)
+            throw std::invalid_argument("enthalpy: invalid inputs");
+        const double a=std::min(T,Tref), b=std::max(T,Tref);
+        double integral=0.0;
+        if (heat_capacity.model == ScalarPropertyModel::CONSTANT) {
+            integral=heat_capacity.reference_value*(b-a);
+        } else if (heat_capacity.model == ScalarPropertyModel::LINEAR) {
+            const double c0=heat_capacity.reference_value;
+            const double c1=heat_capacity.coefficients.empty()?0.0:heat_capacity.coefficients[0];
+            const double xa=a-heat_capacity.reference_temperature, xb=b-heat_capacity.reference_temperature;
+            integral=c0*(b-a)+0.5*c1*(xb*xb-xa*xa);
+        } else if (heat_capacity.model == ScalarPropertyModel::POLYNOMIAL) {
+            if (heat_capacity.coefficients.empty())
+                throw std::invalid_argument("enthalpy: polynomial heat capacity requires coefficients");
+                integral=0.0;
+            for (std::size_t i=0;i<heat_capacity.coefficients.size();++i) {
+                const double ai=heat_capacity.coefficients[i];
+                if(!std::isfinite(ai)) throw std::invalid_argument("enthalpy: non-finite heat-capacity coefficient");
+                const double power=static_cast<double>(i+1);
+                integral += ai*(std::pow(b-heat_capacity.reference_temperature,power)
+                              - std::pow(a-heat_capacity.reference_temperature,power))/power;
+            }
+        } else if (heat_capacity.model == ScalarPropertyModel::TABLE) {
+            heat_capacity.table.validate("heat capacity table");
+            if (a < heat_capacity.table.temperature.front() ||
+                b > heat_capacity.table.temperature.back()) {
+                if (heat_capacity.table.extrapolation == ExtrapolationPolicy::REJECT)
+                    throw std::out_of_range("enthalpy: heat-capacity table outside range");
+            }
+            const double xa=std::max(a,heat_capacity.table.temperature.front());
+            const double xb=std::min(b,heat_capacity.table.temperature.back());
+            if (xb>xa) {
+                double prevT=xa, prevV=heat_capacity.table.evaluate(xa,"heat capacity table");
+                for (std::size_t i=0;i<heat_capacity.table.temperature.size();++i) {
+                    const double t=heat_capacity.table.temperature[i];
+                    if(t<=xa || t>=xb) continue;
+                    const double v=heat_capacity.table.evaluate(t,"heat capacity table");
+                    integral += 0.5*(prevV+v)*(t-prevT); prevT=t; prevV=v;
+                }
+                const double endV=heat_capacity.table.evaluate(xb,"heat capacity table");
+                integral += 0.5*(prevV+endV)*(xb-prevT);
+            }
+            if (a < xa || b > xb) {
+                if (heat_capacity.table.extrapolation == ExtrapolationPolicy::CLAMP) {
+                    if(a<xa) integral += heat_capacity.table.value.front()*(xa-a);
+                    if(b>xb) integral += heat_capacity.table.value.back()*(b-xb);
+                } else if (heat_capacity.table.extrapolation == ExtrapolationPolicy::LINEAR) {
+                    const double va=heat_capacity.table.evaluate(a,"heat capacity table");
+                    const double vb=heat_capacity.table.evaluate(b,"heat capacity table");
+                    const double inside=(xb>xa)?(0.5*(heat_capacity.table.evaluate(xa,"heat capacity table")+heat_capacity.table.evaluate(xb,"heat capacity table))*(xb-xa)):0.0;
+                    integral = inside + 0.5*(va+heat_capacity.table.evaluate(xa,"heat capacity table"))*(xa-a)
+                                     + 0.5*(heat_capacity.table.evaluate(xb,"heat capacity table")+vb)*(b-xb);
+                }
+            }
+        } else {
+            const std::size_t n=static_cast<std::size_t>(intervals);
+            const double h=(b-a)/n;
+            double s=cp(a)+cp(b);
+            for(std::size_t i=1;i<n;++i) s+=2*cp(a+h*i);
+            integral=0.5*h*s;
+        }
+        return T>=Tref?integral:-integral;
     }
 };
 inline double turbulent_thermal_diffusivity(double mu_t,double rho,double Pr_t) {
