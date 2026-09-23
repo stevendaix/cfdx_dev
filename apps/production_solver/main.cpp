@@ -51,7 +51,7 @@ int main(int argc, char** argv)
     try {
         const Options options = parse(argc, argv);
         Mesh mesh;
-        if (!import_gmsh_mesh(options.mesh, mesh) || mesh.n_cells() == 0)
+        if (!gmsh::import_gmsh_mesh(options.mesh, mesh) || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
