@@ -33,5 +33,5 @@ int main(int argc, char** argv) {
     EXPECT_NEAR(direct.max_abs, 2.0 * static_cast<double>(size), 1e-12);
 
     parallel::mpi_finalize();
-    return run_all();
+    return cfdx::testing::run_all();
 }
