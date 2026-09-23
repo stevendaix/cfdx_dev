@@ -50,10 +50,6 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
         throw std::invalid_argument(
             "assemble_cell_diffusion_matrix: source size mismatch");
     boundary.validate(mesh.n_faces());
-    if (boundary.type != PoissonBoundaryType::DIRICHLET)
-        throw std::invalid_argument(
-            "assemble_cell_diffusion_matrix: only Dirichlet boundaries are "
-            "implemented by the legacy scalar-diffusion solver");
     for (double value : source) {
         if (!std::isfinite(value))
             throw std::invalid_argument(
@@ -123,11 +119,16 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
                     "assemble_cell_diffusion_matrix: invalid boundary "
                     "distance");
             const double g = diffusivity * area / d;
-            rows[o][0].second += g;
-            rhs(o) += g * boundary.face_values[f];
+            if (boundary.type_for_face(f) == PoissonBoundaryType::DIRICHLET) {
+                rows[o][0].second += g;
+                rhs(o) += g * boundary.face_values[f];
+            } else {
+                // q_n is outward Gamma grad(phi) . n. With
+                // -div(Gamma grad(phi)) = S, the balance is A phi = S V - q_n A.
+                rhs(o) -= boundary.face_values[f] * area;
+            }
         }
-        // A NaN boundary value is deliberately an unprescribed face. In this
-        // Dirichlet-only compatibility path it contributes zero normal flux.
+        // A NaN boundary value is deliberately an unprescribed face.
     }
 
     // Consolidate duplicates (a polyhedral cell can be connected to another
