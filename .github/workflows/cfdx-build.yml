@@ -51,4 +51,15 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --output-junit build/ctest-results.xml
+
+      - name: Upload CTest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-diagnostics
+          path: |
+            build/ctest-results.xml
+            build/Testing/Temporary/LastTest.log
+            build/Testing/Temporary/LastTestsFailed.log
+          if-no-files-found: ignore
