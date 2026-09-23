@@ -96,7 +96,10 @@ inline double turbulence_nu_t(
 
 inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
 {
-    if(c.density<=0.0 || c.molecular_viscosity<0.0 ||
+    if(!std::isfinite(c.density) || !std::isfinite(c.molecular_viscosity) ||
+       !std::isfinite(c.turbulent_prandtl) || !std::isfinite(c.k_min) ||
+       !std::isfinite(c.epsilon_min) || !std::isfinite(c.omega_min) ||
+       c.density<=0.0 || c.molecular_viscosity<0.0 ||
        c.turbulent_prandtl<=0.0 || c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");
