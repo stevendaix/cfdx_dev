@@ -767,12 +767,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // mismatch here identifies inconsistency between the pressure equation
         // and the cell-velocity correction before the next nonlinear iterate.
         double corrected_flux_continuity_linf = 0.0;
-        for (std::size_t c = 0; c < nc; ++c) {
+        const std::size_t coupling_nc = mesh.n_cells();
+        const auto* coupling_cell_faces = mesh.cells().faces_data();
+        const auto* coupling_cell_offsets = mesh.cells().offsets_data();
+        for (std::size_t c = 0; c < coupling_nc; ++c) {
             double div = 0.0;
-            const Offset off = cell_offsets[c];
-            const Offset count = cell_offsets[c + 1] - off;
+            const Offset off = coupling_cell_offsets[c];
+            const Offset count = coupling_cell_offsets[c + 1] - off;
             for (Offset k = 0; k < count; ++k) {
-                const std::size_t f = cell_faces[off + k];
+                const std::size_t f = coupling_cell_faces[off + k];
                 div += mesh.ownership().owner(f) == c ? mass_flux(f) : -mass_flux(f);
             }
             corrected_flux_continuity_linf = std::max(corrected_flux_continuity_linf, std::abs(div));
@@ -780,12 +783,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const auto reconstructed_flux = make_mass_flux(
             mesh, geometry, U, controls.density, velocity_bcs);
         double reconstructed_continuity_linf = 0.0;
-        for (std::size_t c = 0; c < nc; ++c) {
+        for (std::size_t c = 0; c < coupling_nc; ++c) {
             double div = 0.0;
-            const Offset off = mesh.cells().offsets_data()[c];
-            const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+            const Offset off = coupling_cell_offsets[c];
+            const Offset count = coupling_cell_offsets[c + 1] - off;
             for (Offset k = 0; k < count; ++k) {
-                const std::size_t f = mesh.cells().faces_data()[off + k];
+                const std::size_t f = coupling_cell_faces[off + k];
                 div += mesh.ownership().owner(f) == c ? reconstructed_flux(f) : -reconstructed_flux(f);
             }
             reconstructed_continuity_linf = std::max(reconstructed_continuity_linf, std::abs(div));
