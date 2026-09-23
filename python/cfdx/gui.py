@@ -217,8 +217,7 @@ if QApplication is not None:
                 self.mesh_browser.set_catalog(catalog)
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
-                return True
-            except (OSError, ValueError) as exc:
+                return True            except (OSError, ValueError) as exc:
                 self._show_error("Open Mesh failed", str(exc))
                 return False
 
@@ -497,8 +496,7 @@ if QApplication is not None:
                 "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
             )
             if not dat_path:
-                return False
-            try:
+                return False            try:
                 loaded, restart = read_case_with_dat(Path(path), Path(dat_path))
                 self._replace_session(loaded)
                 self._case_path = Path(path)
