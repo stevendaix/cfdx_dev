@@ -80,7 +80,7 @@ inline SolverResult solve_bicgstab(
 
     const double bnorm=b.norm2(),tol=tolerance*std::max(bnorm,1e-15);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    double res=mixed_precision_true_residual(A,b,x,w.r);
+    Vector true_r(n); double res=mixed_precision_true_residual(A,b,x,true_r);
     if(res<=tol){
         result.status=SolverStatus::CONVERGED;result.residual=res;
         result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
