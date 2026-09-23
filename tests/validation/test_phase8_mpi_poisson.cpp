@@ -32,7 +32,10 @@ static Mesh two_cell_channel()
     m.faces().push_face({4,5,11,10});     // cell 1 z+
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        m.ownership().set_owner(f, f == 1 ? 0 : (f < 3 ? f : (f <= 6 ? 0 : 1)));
+        // Every owner index must be in [0, n_cells).
+        const std::size_t owner =
+            (f == 2 || f >= 7) ? 1u : 0u;
+        m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
     m.ownership().set_owner(1, 0);
@@ -78,9 +81,6 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Compare against the serial canonical assembly. With two cells and
-    // physical Dirichlet faces at x=0 and x=1 the cell-centred solution is
-    // [1/3, 2/3], i.e. the same discrete problem on every rank.
     Vector rhs;
     const auto A = assemble_cell_diffusion_matrix(mesh, bc, 1.0, {0.0,0.0}, rhs);
     Vector serial_x(2, 0.0);
