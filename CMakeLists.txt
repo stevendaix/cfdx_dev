@@ -230,6 +230,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/turbulence_solver.h
     src/cfdx/physics/sst_solver.h
     src/cfdx/physics/energy_solver.h
+    src/cfdx/physics/thermal_models.h
     src/cfdx/physics/cht_solver.h
     src/cfdx/physics/radiation_solver.h
     src/cfdx/physics/equation_of_state.h
