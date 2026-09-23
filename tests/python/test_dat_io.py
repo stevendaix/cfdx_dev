@@ -104,7 +104,7 @@ def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
     assert loaded == restart
 
 
-def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps() -> None:
+def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps(tmp_path: Path) -> None:
     from cfdx.dat_io import DatField, DatRestart, remap_dat_restart, write_dat_hdf5
 
     restart = DatRestart(
@@ -118,7 +118,7 @@ def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps() -> None:
         },
         cell_ids=(100, 7, 42, 900),
     )
-    path = Path("checkpoint-ids.h5")
+    path = tmp_path / "checkpoint-ids.h5"
     write_dat_hdf5(path, restart)
     loaded = read_dat_restart(path)
     assert loaded.cell_ids == (100, 7, 42, 900)
