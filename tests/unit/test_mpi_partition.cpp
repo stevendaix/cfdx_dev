@@ -3,6 +3,8 @@
 #include "cfdx/core/parallel/mesh_partitioner.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/linalg/matrix_free_fv_operator.h"
+#include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 
 using namespace cfdx::core;
