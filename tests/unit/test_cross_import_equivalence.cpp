@@ -173,6 +173,17 @@ $EndElements
             const auto validation = gmsh_mesh.topo_validate();
             for (const auto& error : validation.errors)
                 std::cerr << "  imported-mesh validation: " << error << "\n";
+            std::cerr << "  imported-mesh faces=" << gmsh_mesh.n_faces()
+                      << " cells=" << gmsh_mesh.n_cells() << "\n";
+            for (std::size_t f = 0; f < gmsh_mesh.n_faces(); ++f)
+                std::cerr << "  face " << f << " owner=" << gmsh_mesh.ownership().owner(f)
+                          << " neighbour=" << gmsh_mesh.ownership().neighbour(f) << "\n";
+            for (std::size_t p = 0; p < gmsh_mesh.boundary().n_patches(); ++p) {
+                const auto& patch = gmsh_mesh.boundary().patch(p);
+                std::cerr << "  patch " << patch.name << " faces:";
+                for (const auto f : patch.face_ids) std::cerr << " " << f;
+                std::cerr << "\n";
+            }
             fs::remove_all(root);
             return 1;
         }
