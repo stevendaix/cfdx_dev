@@ -116,7 +116,7 @@ double solve_error(std::size_t n)
     // The scalar-diffusion assembler consumes a cell-integrated RHS.
     std::vector<double> source(n, 0.0);
     for (std::size_t c = 0; c < n; ++c)
-        source[c] = G * geometry.cell_volumes[c];
+        // Source is a volumetric density; the assembler multiplies it by V_c.\n        source[c] = G;
     DirichletBoundary bc;
     bc.face_values.assign(mesh.n_faces(), std::numeric_limits<double>::quiet_NaN());
     bc.face_values[0] = 0.0;
