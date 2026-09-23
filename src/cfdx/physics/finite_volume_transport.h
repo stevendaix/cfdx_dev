@@ -461,7 +461,13 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
 
         if (!singular) {
-            const double residual = scalar_equation_residual_inf(equation, candidate);
+            double residual = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                double ri = -equation.rhs(i);
+                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
+                    ri += val[k] * candidate(col[k]);
+                residual = std::max(residual, std::abs(ri));
+            }
             if (std::isfinite(residual)) {
                 result = {
                     residual <= controls.tolerance
