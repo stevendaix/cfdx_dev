@@ -165,9 +165,15 @@ int main() {
         auto result = solve_poisson_dirichlet(m, bc, source, cfg);
         EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
         const auto geometry = make_geometry_cache(m);
+        // The two-point cell-centred Dirichlet stencil is exact for linear
+        // solutions but has a uniform O(dx^2) truncation offset for phi=x^2:
+        // the discrete solution is x_c^2 - dx^2/4 with face values imposed
+        // at the physical boundaries. Validate that known stencil error
+        // explicitly rather than incorrectly requiring pointwise exactness.
+        const double dx = 1.0 / static_cast<double>(n);
         for (std::size_t c = 0; c < n; ++c) {
             const double x = geometry.cell_centres[c].x;
-            EXPECT_NEAR(result.solution(c), x * x, 1e-12);
+            EXPECT_NEAR(result.solution(c), x * x - dx * dx / 4.0, 1e-12);
         }
         const double balance =
             poisson_conservation_balance(m, bc, source, result.solution,
@@ -187,9 +193,12 @@ int main() {
         auto result = solve_poisson_mixed(m, bc, source);
         EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
         const auto geometry = make_geometry_cache(m);
+        // Mixed Dirichlet/Neumann uses the same cell-centred Dirichlet
+        // boundary stencil, hence the same uniform O(dx^2) offset.
+        const double dx = 1.0 / static_cast<double>(n);
         for (std::size_t c = 0; c < n; ++c) {
             const double x = geometry.cell_centres[c].x;
-            EXPECT_NEAR(result.solution(c), x * x, 1e-12);
+            EXPECT_NEAR(result.solution(c), x * x - dx * dx / 4.0, 1e-12);
         }
         const double balance =
             poisson_conservation_balance(m, bc, source, result.solution,
