@@ -496,7 +496,6 @@ inline double estimate_view_factor_ray_traced(
     return static_cast<double>(visible)/static_cast<double>(samples);
 }
 
-} // namespace cfdx::physics
 
 // -----------------------------------------------------------------------------
 // Nonlinear Rosseland energy solve
@@ -709,3 +708,6 @@ inline RadiationSolveResult solve_participating_radiation_variable_properties(
     return result;
 }
 
+
+
+} // namespace cfdx::physics
