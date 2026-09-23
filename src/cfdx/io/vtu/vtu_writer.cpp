@@ -74,38 +74,39 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         const std::uint32_t off = cell_offsets[c];
-        const std::uint32_t n = cell_offsets[c + 1] - off;
+        const std::uint32_t n_faces = cell_offsets[c + 1] - off;
 
-        // Store face indices for this cell (for field mapping)
-        for (std::uint32_t k = 0; k < n; ++k) {
-            cell_face_indices.push_back(cell_faces[off + k]);
-        }
-        cell_face_offsets.push_back(static_cast<std::uint32_t>(cell_face_indices.size()));
+        // Keep the original polyhedral cell as one VTK_POLYHEDRON. The VTK
+        // connectivity encoding is: number of faces, then for each face the
+        // number of points followed by the point ids. This preserves a 1:1
+        // mapping between CFDX cells and VTK cells, so cell fields remain
+        // physically attached to their parent cell.
+        std::vector<cfdx::core::PointIndex> connectivity;
+        connectivity.reserve(1 + n_faces * 5);
+        connectivity.push_back(static_cast<cfdx::core::PointIndex>(n_faces));
 
-        // For now: decompose to tetrahedra (simpler, works for any polyhedron)
-        // A polyhedron can be decomposed to n_faces-2 tets from a reference point
-        // We use the cell center as reference
-        if (n >= 4) {
-            // Use first face's first vertex as reference
-            const std::uint32_t first_face = cell_faces[off];
-            const std::uint32_t fv_off = face_offsets[first_face];
-            const std::uint32_t ref_vertex = face_vertices[fv_off];
+        for (std::uint32_t k = 0; k < n_faces; ++k) {
+            const std::uint32_t face = cell_faces[off + k];
+            const std::uint32_t fv_begin = face_offsets[face];
+            const std::uint32_t fv_end = face_offsets[face + 1];
+            const std::uint32_t n_vertices = fv_end - fv_begin;
 
-            // Create tets: (ref_vertex, face_vertices[i], face_vertices[i+1])
-            for (std::uint32_t k = 0; k < n - 2; ++k) {
-                const std::uint32_t face_a = cell_faces[off + k];
-                const std::uint32_t face_b = cell_faces[off + k + 1];
-
-                const std::uint32_t fv_a = face_vertices[face_offsets[face_a]];
-                const std::uint32_t fv_b = face_vertices[face_offsets[face_b]];
-
-                vtk_cells.push_back({ref_vertex, fv_a, fv_b});
-                vtk_cell_types.push_back(VtkCellType::TETRA);
+            if (n_vertices < 3) {
+                throw std::runtime_error("VTU export: cell face has fewer than three vertices");
             }
+
+            connectivity.push_back(static_cast<cfdx::core::PointIndex>(n_vertices));
+            for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+                connectivity.push_back(face_vertices[v]);
+            }
+            cell_face_indices.push_back(face);
         }
+
+        cell_face_offsets.push_back(static_cast<std::uint32_t>(cell_face_indices.size()));
+        vtk_cells.push_back(std::move(connectivity));
+        vtk_cell_types.push_back(VtkCellType::POLYHEDRON);
     }
 }
-
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                              const std::vector<VtkCellType>& vtk_cell_types,
