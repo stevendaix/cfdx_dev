@@ -112,11 +112,18 @@ int main()
         controls.convergence.max_iterations = 1;
         controls.linear_tolerance = 1e-12;
 
+        Field<double,Location::CELL> expected_u(1,"U","m/s",3), expected_p(1,"p","Pa",1);
+        expected_u.set(0,0.2,0.0,0.0); expected_p(0)=12.0;
+        (void)solve_steady_incompressible(
+            m,expected_u,expected_p,ubc,pbc,controls);
+
         (void)solve_steady_incompressible(
             m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
 
-        EXPECT_NEAR(U(0,0),0.0,1e-14);
-        EXPECT_NEAR(p(0),0.0,1e-14);
+        EXPECT_NEAR(U(0,0),expected_u(0,0),1e-14);
+        EXPECT_NEAR(U(0,1),expected_u(0,1),1e-14);
+        EXPECT_NEAR(U(0,2),expected_u(0,2),1e-14);
+        EXPECT_NEAR(p(0),expected_p(0),1e-14);
         EXPECT_NEAR(T(0),350.0,1e-14);
         EXPECT_NEAR(k(0),0.25,1e-14);
         EXPECT_NEAR(omega(0),3.0,1e-14);
