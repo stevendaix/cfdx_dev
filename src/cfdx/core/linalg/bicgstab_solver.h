@@ -5,6 +5,7 @@
 #include "solver_workspace.h"
 #include "preconditioner.h"
 #include "mixed_precision.h"
+#include "krylov_reductions.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -16,7 +17,8 @@ namespace cfdx::core {
 inline SolverResult solve_bicgstab(
     const SparseMatrix& A,const Vector& b,Vector& x,
     std::size_t max_iter=1000,double tolerance=1e-12,
-    Preconditioner* preconditioner=nullptr, PrecisionPolicy precision={})
+    Preconditioner* preconditioner=nullptr, PrecisionPolicy precision={},
+    KrylovReductionPolicy reduction={})
 {
     SolverResult result;
     if(b.size()!=A.n_rows()||x.size()!=A.n_cols()||A.n_rows()!=A.n_cols()||
@@ -78,9 +80,9 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;return result;}
     for(std::size_t i=0;i<n;++i)w.r_hat(i)=w.r(i);
 
-    const double bnorm=b.norm2(),tol=tolerance*std::max(bnorm,1e-15);
+    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-15);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    Vector true_r(n); double res=mixed_precision_true_residual(A,b,x,true_r);
+    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, redp, reduction);
     if(res<=tol){
         result.status=SolverStatus::CONVERGED;result.residual=res;
         result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
@@ -92,18 +94,16 @@ inline SolverResult solve_bicgstab(
     auto true_residual = [&]() {
         matvec(x, Ax);
         if (!finite_vector(Ax)) return std::numeric_limits<double>::infinity();
-        double sum = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
             const double ri = b(i) - Ax(i);
             if (!std::isfinite(ri)) return std::numeric_limits<double>::infinity();
             w.r(i) = ri;
-            sum += ri * ri;
         }
-        return std::sqrt(sum);
+        return krylov_norm2(w.r, redp, reduction);
     };
 
     for(std::size_t iter=1;iter<=max_iter;++iter){
-        double rho_new=0.0;for(std::size_t i=0;i<n;++i)rho_new += redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(w.r_hat(i))*static_cast<float>(w.r(i))) : w.r_hat(i)*w.r(i);
+        const double rho_new=krylov_dot(w.r_hat, w.r, redp, reduction);
         if(!std::isfinite(rho_new)||std::abs(rho_new)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
         const double beta=(rho!=0.0)?(rho_new/rho)*(alpha/omega):0.0;
         if(!std::isfinite(beta)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
@@ -117,14 +117,14 @@ inline SolverResult solve_bicgstab(
         matvec(w.z,w.v);
         if(!finite_vector(w.v)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        double rv=0.0;for(std::size_t i=0;i<n;++i)rv += redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(w.r_hat(i))*static_cast<float>(w.v(i))) : w.r_hat(i)*w.v(i);
+        const double rv=krylov_dot(w.r_hat, w.v, redp, reduction);
         if(!std::isfinite(rv)||std::abs(rv)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         alpha=rho_new/rv;
         if(!std::isfinite(alpha)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i)w.s(i)=w.r(i)-alpha*w.v(i);
         if(!finite_vector(w.s)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        const double snorm=w.s.norm2();
+        const double snorm=krylov_norm2(w.s, redp, reduction);
         if(snorm<=tol){
             for(std::size_t i=0;i<n;++i)x(i)+=alpha*w.z(i);
             res=true_residual();
@@ -159,7 +159,8 @@ inline SolverResult solve_bicgstab(
         matvec(w.z_s,w.t);
         if(!finite_vector(w.t)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        double ts=0.0,tt=0.0;for(std::size_t i=0;i<n;++i){if(redp==SolverPrecision::FP32){ts+=static_cast<double>(static_cast<float>(w.t(i))*static_cast<float>(w.s(i)));tt+=static_cast<double>(static_cast<float>(w.t(i))*static_cast<float>(w.t(i)));}else{ts+=w.t(i)*w.s(i);tt+=w.t(i)*w.t(i);}}
+        const double ts=krylov_dot(w.t, w.s, redp, reduction);
+        const double tt=krylov_dot(w.t, w.t, redp, reduction);
         if(!std::isfinite(ts)||!std::isfinite(tt)||tt<=1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         omega=ts/tt;if(!std::isfinite(omega)||std::abs(omega)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i){x(i)+=alpha*w.z(i)+omega*w.z_s(i);w.r(i)=w.s(i)-omega*w.t(i);}
