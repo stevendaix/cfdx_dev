@@ -300,6 +300,9 @@ if(CFDX_BUILD_TESTS)
     target_link_libraries(test_hdf5_writer PRIVATE cfdx_core)
     target_link_libraries(test_hdf5_roundtrip PRIVATE cfdx_core)
     target_link_libraries(test_field_roundtrip PRIVATE cfdx_core)
+    target_include_directories(test_hdf5_writer PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    target_include_directories(test_hdf5_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    target_include_directories(test_field_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
         add_test(NAME test_hdf5_writer
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
@@ -322,6 +325,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
     add_executable(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     target_link_libraries(test_cross_import_equivalence PRIVATE cfdx_core)
+    target_include_directories(test_cross_import_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
         add_test(NAME test_cross_import_equivalence
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
