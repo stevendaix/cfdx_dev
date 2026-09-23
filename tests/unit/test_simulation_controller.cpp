@@ -16,6 +16,7 @@ int main()
         model.mode = SimulationMode::Transient;
         model.time.start = 2.0;
         model.time.step = 0.25;
+        model.time.end = 10.0;
         model.time.max_iterations_per_step = 10;
 
         SimulationController controller(model);
