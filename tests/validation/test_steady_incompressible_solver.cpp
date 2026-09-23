@@ -148,15 +148,15 @@ int main()
         const auto vtu = std::filesystem::temp_directory_path() / "cfdx_solver_to_vtu_test.vtu";
         cfdx::io::VtuWriter writer;
         std::map<std::string, cfdx::core::ScalarCellField> fields{{"p",p}};
-        ASSERT_TRUE(writer.write(vtu.string(),m,fields,{}, {},0.75,solve.iterations,true));
+        EXPECT_TRUE(writer.write(vtu.string(),m,fields,{}, {},0.75,solve.iterations,true));
 
         std::ifstream in(vtu);
-        ASSERT_TRUE(in.is_open());
+        EXPECT_TRUE(in.is_open());
         const std::string xml((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
-        EXPECT_NE(xml.find("physical_time"),std::string::npos);
-        EXPECT_NE(xml.find("7.500000000000e-01"),std::string::npos);
-        EXPECT_NE(xml.find("iteration"),std::string::npos);
-        EXPECT_NE(xml.find(std::to_string(solve.iterations)),std::string::npos);
+        EXPECT_TRUE(xml.find("physical_time") != std::string::npos);
+        EXPECT_TRUE(xml.find("7.500000000000e-01") != std::string::npos);
+        EXPECT_TRUE(xml.find("iteration") != std::string::npos);
+        EXPECT_TRUE(xml.find(std::to_string(solve.iterations)) != std::string::npos);
         std::filesystem::remove(vtu);
     });
 
