@@ -83,6 +83,16 @@ struct PoissonBoundaryCondition {
     }
 };
 
+enum class PoissonGaugeType {
+    REFERENCE_CELL,
+};
+
+struct PoissonGauge {
+    PoissonGaugeType type = PoissonGaugeType::REFERENCE_CELL;
+    std::size_t reference_cell = 0;
+    double reference_value = 0.0;
+};
+
 struct PoissonProblem {
     double diffusivity = 1.0;
     std::vector<double> source;
