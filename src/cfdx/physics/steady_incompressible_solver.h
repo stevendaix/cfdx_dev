@@ -217,6 +217,14 @@ make_rhie_chow_mass_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs);\n\ninline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_mass_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::vector<double>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs)
@@ -266,7 +274,7 @@ make_rhie_chow_mass_flux(
             0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
         const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
         const double area=Sf.mag();
-        const cfdx::core::Vec3 nface=Sf/area;
+        const cfdx::core::Vec3 nface{Sf.x/area, Sf.y/area, Sf.z/area};
         const double rface_n = rface_x*nface.x*nface.x
                              + rface_y*nface.y*nface.y
                              + rface_z*nface.z*nface.z;
@@ -559,10 +567,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const std::size_t n = static_cast<std::size_t>(nraw);
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const double area = geometry.face_area_vectors[f].mag();
                 const auto Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
-                const auto nface = Sf / area;
+                const auto nface = cfdx::core::Vec3{Sf.x / area, Sf.y / area, Sf.z / area};
                 const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
                 const double rface_y = 0.5 * (rAU[1][o] + rAU[1][n]);
                 const double rface_z = 0.5 * (rAU[2][o] + rAU[2][n]);
@@ -607,7 +614,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         "solve_steady_incompressible: degenerate pressure boundary face");
                 const auto Sf = geometry.face_area_vectors[f];
                 const double area_mag = Sf.mag();
-                const auto nface = Sf / area_mag;
+                const auto nface = cfdx::core::Vec3{Sf.x / area_mag, Sf.y / area_mag, Sf.z / area_mag};
                 const double rface_n = rAU[0][o]*nface.x*nface.x
                                       + rAU[1][o]*nface.y*nface.y
                                       + rAU[2][o]*nface.z*nface.z;
@@ -661,7 +668,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " max_abs_p_corr=" << max_abs_p_corr
                       << " pressure_status=" << static_cast<int>(rp.status)
                       << " pressure_iter=" << rp.iterations
-                      << " pressure_rel=" << rp.residual_relative << '\\n';
+                      << " pressure_rel=" << rp.residual_relative << '\n';
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
                     "solve_steady_incompressible: pressure-correction solve did not converge "
@@ -704,7 +711,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 const auto nraw = mesh.ownership().neighbour(f);
                 const std::size_t o = mesh.ownership().owner(f);
-                const double area = geometry.face_area_vectors[f].mag();
                 if (nraw >= 0) {
                     const std::size_t n = static_cast<std::size_t>(nraw);
                     const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
@@ -798,78 +804,3 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             for (std::size_t d = 0; d < 3; ++d) {
                 velocity_change_inf = std::max(
                     velocity_change_inf,
-                    std::abs(U.component_data(d)[c] - U_old.component_data(d)[c]));
-                velocity_scale = std::max(
-                    velocity_scale, std::abs(U.component_data(d)[c]));
-            }
-            pressure_change_inf = std::max(
-                pressure_change_inf, std::abs(p(c) - p_old(c)));
-            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
-        }
-        velocity_change_inf /= velocity_scale;
-        pressure_change_inf /= pressure_scale;
-
-        IncompressibleIteration h;
-        h.iteration = iter;
-        h.momentum_residual = std::max({rx.residual_relative, ry.residual_relative,
-                                        rz.residual_relative});
-        h.pressure_residual = pressure_residual;
-        h.continuity_l1 = l1;
-        h.continuity_linf = linf;
-        h.momentum_equation_residual = final_momentum_residual;
-        double momentum_rhs_scale = 1.0;
-        for (const auto* eq : {&final_ex, &final_ey, &final_ez}) {
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-                momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
-        }
-        h.momentum_equation_residual_relative =
-            final_momentum_residual / momentum_rhs_scale;
-        const double domain_volume =
-            std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
-        const double characteristic_area =
-            std::max(std::pow(domain_volume, 2.0 / 3.0), 1e-30);
-        h.continuity_normalized =
-            linf / std::max(controls.density * velocity_scale * characteristic_area, 1e-30);
-        h.velocity_change_inf = velocity_change_inf;
-        h.pressure_change_inf = pressure_change_inf;
-        h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
-        h.pressure_linear_iterations = pressure_iterations;
-        result.history.push_back(h);
-
-        if (controls.probe_callback) {
-            for (const auto& probe : controls.probes) {
-                if (probe.name.empty())
-                    throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
-                const double value = sample_incompressible_probe(probe, mesh, geometry, U, p);
-                if (!std::isfinite(value))
-                    throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
-                controls.probe_callback(IncompressibleProbeSample{probe.name, iter, 0.0, value});
-            }
-        }
-
-        if (controls.iteration_output_callback &&
-            !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
-            result.iterations = iter;
-            break;
-        }
-
-        if (iter >= minimum_outer_correctors &&
-            iter > 1 &&
-            std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
-            h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
-            h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance &&
-            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
-            h.pressure_change_inf <= controls.convergence.relative_tolerance) {
-            result.converged = true;
-            result.iterations = iter;
-            break;
-        }
-        result.iterations = iter;
-    }
-
-    return result;
-}
-
-} // namespace cfdx::physics
