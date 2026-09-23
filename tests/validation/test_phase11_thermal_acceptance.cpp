@@ -54,6 +54,10 @@ Mesh make_chain(std::size_t n)
     for (std::size_t i=0; i<n; ++i) {
         const std::size_t ids[6]={left[i],right[i],ym[i],yp[i],zm[i],zp[i]};
         m.cells().push_cell({ids[0],ids[1],ids[2],ids[3],ids[4],ids[5]});
+        m.ownership().set_owner(ym[i],static_cast<CellIndex>(i));
+        m.ownership().set_owner(yp[i],static_cast<CellIndex>(i));
+        m.ownership().set_owner(zm[i],static_cast<CellIndex>(i));
+        m.ownership().set_owner(zp[i],static_cast<CellIndex>(i));
         m.ownership().set_owner(right[i],static_cast<CellIndex>(i));
         if (i+1<n)
             m.ownership().set_neighbour(right[i],static_cast<CellIndex>(i+1));
