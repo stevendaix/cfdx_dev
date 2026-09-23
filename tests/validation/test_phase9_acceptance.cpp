@@ -154,8 +154,8 @@ RunResult run_pressure_channel(
     ubc["back"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0, 0, 0}};
 
     ScalarBoundaryConditions pbc;
-    pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
-    pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+    pbc["inlet"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    pbc["outlet"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
     pbc["bottom"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
     pbc["top"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
     pbc["front"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
@@ -177,6 +177,7 @@ RunResult run_pressure_channel(
     c.linear_tolerance = 1e-10;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
+    c.body_force = {1.0, 0.0, 0.0};
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = bounded;
@@ -184,7 +185,7 @@ RunResult run_pressure_channel(
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("pressure-driven channel did not converge");
+        throw std::runtime_error("body-force Poiseuille channel did not converge");
 
     const auto& h = solve.history.back();
     if (!(h.continuity_linf < 1e-7) ||
@@ -263,7 +264,7 @@ void run_pure_neumann_gauge()
 int main()
 {
     try {
-        std::cout << "PHASE9: pressure-driven Poiseuille analytical verification\n";
+        std::cout << "PHASE9: body-force Poiseuille analytical verification\n";
 
         const auto simple = run_pressure_channel(
             PressureVelocityAlgorithm::SIMPLE, ConvectionScheme::UPWIND, true);
@@ -306,8 +307,8 @@ int main()
 
         run_pure_neumann_gauge();
 
-        // The analytic profile is u(y)=(-dp/dx)/(2 nu)*y*(1-y).
-        // With -dp/dx=1 and nu=0.1, u_max=1.25.
+        // The analytic profile is u(y)=f_x/(2 nu)*y*(1-y).
+        // With f_x=1 and nu=0.1, u_max=1.25.
         double max_u = 0.0;
         for (std::size_t c = 0; c < simple.U.size(); ++c)
             max_u = std::max(max_u, simple.U.component_data(0)[c]);
