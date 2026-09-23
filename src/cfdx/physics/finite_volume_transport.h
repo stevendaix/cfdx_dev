@@ -329,6 +329,30 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
 
+    // A zero-source homogeneous equation may have a legitimate zero solution
+    // even when its Neumann operator is singular. Krylov solvers are not the
+    // right mechanism for proving convergence of that already exact state.
+    // Check the actual algebraic residual before attempting an iterative solve.
+    double initial_residual_inf = 0.0;
+    for (std::size_t i = 0; i < solution.size(); ++i) {
+        double ri = -equation.rhs(i);
+        const auto row_begin = equation.matrix.row_offsets_data()[i];
+        const auto row_end = equation.matrix.row_offsets_data()[i + 1];
+        for (std::uint32_t k = row_begin; k < row_end; ++k)
+            ri += equation.matrix.values_data()[k] *
+                  solution(equation.matrix.columns_data()[k]);
+        initial_residual_inf = std::max(initial_residual_inf, std::abs(ri));
+    }
+    const double rhs_scale = std::max(equation.rhs.norm2(), 1e-15);
+    if (initial_residual_inf <= controls.tolerance * rhs_scale) {
+        return {
+            cfdx::core::SolverStatus::CONVERGED,
+            0,
+            initial_residual_inf,
+            initial_residual_inf / rhs_scale
+        };
+    }
+
     if (solution.size() == 1) {
         const auto begin = equation.matrix.row_offsets_data()[0];
         const auto end = equation.matrix.row_offsets_data()[1];
