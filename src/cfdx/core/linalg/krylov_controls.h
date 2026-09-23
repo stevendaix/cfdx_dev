@@ -1,4 +1,5 @@
 #pragma once
+#include "krylov_reductions.h"
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
@@ -12,6 +13,10 @@ struct KrylovControls {
     std::size_t residual_replacement_period = 50;
     bool residual_replacement = true;
     double target_reduction_per_cycle = 0.1;
+    // When enabled, reductions are performed over the caller-owned local range
+    // and then combined across ranks. This keeps solver math independent of
+    // the distributed execution policy while providing deterministic mode.
+    KrylovReductionPolicy reduction{};
 };
 
 inline int choose_gmres_restart(
