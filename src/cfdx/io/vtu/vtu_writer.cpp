@@ -4,7 +4,7 @@
 
 #include <algorithm>
 #include <iomanip>
-#include <iostream>
+#include <iostream>\n#include <cmath>
 
 namespace cfdx {
 namespace io {
@@ -13,7 +13,10 @@ bool VtuWriter::write(const std::string& filename,
                       const cfdx::core::Mesh& mesh,
                       const std::map<std::string, cfdx::core::ScalarCellField>& fields_cell,
                       const std::map<std::string, cfdx::core::ScalarFaceField>& fields_face,
-                      const std::map<std::string, cfdx::core::ScalarPointField>& fields_point)
+                      const std::map<std::string, cfdx::core::ScalarPointField>& fields_point,
+                      double physical_time,
+                      std::size_t iteration,
+                      bool write_time_metadata)
 {
     std::ofstream os(filename);
     if (!os.is_open()) {
@@ -31,7 +34,7 @@ bool VtuWriter::write(const std::string& filename,
 
     decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices);
 
-    write_header(os, mesh, vtk_cells, vtk_cell_types);
+    if (write_time_metadata && !std::isfinite(physical_time)) {\n        std::cerr << "VtuWriter: physical_time must be finite\\n";\n        return false;\n    }\n\n    write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
     write_cells(os, vtk_cells, vtk_cell_types);
     write_cell_fields(os, mesh, fields_cell, vtk_cells);
     write_point_fields(os, mesh, fields_point);
@@ -99,7 +102,8 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                             const std::vector<VtkCellType>& vtk_cell_types)
+                             const std::vector<VtkCellType>& vtk_cell_types,
+                             double physical_time, std::size_t iteration, bool write_time_metadata)
 {
     const std::size_t n_points = mesh.n_points();
     const std::size_t n_cells = vtk_cells.size();
