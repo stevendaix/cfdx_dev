@@ -42,7 +42,9 @@ inline double turbulent_kinematic_viscosity_komega_sst(
 inline double turbulent_kinematic_viscosity_komega_sst(
     double k, double omega, double F2, double a1 = 0.31)
 {
-    return turbulent_kinematic_viscosity_komega_sst(k, omega, F2, 0.0, a1);
+    if (k < 0.0 || omega <= 0.0 || F2 < 0.0 || F2 > 1.0 || a1 <= 0.0)
+        throw std::invalid_argument("k-omega SST: invalid k, omega, F2 or a1");
+    return a1 * k / std::max(a1 * omega, omega * F2);
 }
 
 inline double strain_rate_magnitude(const cfdx::core::Vec3& s)
