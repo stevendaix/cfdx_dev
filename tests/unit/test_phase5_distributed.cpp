@@ -20,8 +20,10 @@ int main(int argc, char** argv) {
     }
 
     constexpr std::size_t global_n = 8;
+    // Source checkpoint: contiguous 4-cell ownership per rank.
     std::vector<std::uint64_t> ids;
-    for (std::size_t i = static_cast<std::size_t>(rank); i < global_n; i += 2)
+    for (std::size_t i = static_cast<std::size_t>(rank) * 4;
+         i < static_cast<std::size_t>(rank + 1) * 4; ++i)
         ids.push_back(static_cast<std::uint64_t>(i));
 
     validate_distributed_ids(ids, global_n);
@@ -80,10 +82,12 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < restored.local_size(); ++i)
         assert(std::abs(restored(i) - state(i)) < 1e-14);
 
-    // N -> M restart semantics are ID based. Reordering local ownership must
-    // not change the restored values.
-    std::reverse(ids.begin(), ids.end());
-    DistributedCellField permuted(global_n, ids, 1, "phi");
+    // Rank-independent restart: target ownership is a different partition
+    // (even/odd IDs), proving that values are mapped by persistent global ID.
+    std::vector<std::uint64_t> target_ids;
+    for (std::size_t i = static_cast<std::size_t>(rank); i < global_n; i += 2)
+        target_ids.push_back(static_cast<std::uint64_t>(i));
+    DistributedCellField permuted(global_n, target_ids, 1, "phi");
     read_distributed_checkpoint(path, permuted);
     for (std::size_t i = 0; i < permuted.local_size(); ++i)
         assert(std::abs(permuted(i) -
