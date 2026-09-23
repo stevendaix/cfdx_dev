@@ -61,14 +61,20 @@ with explicit validation of density and turbulent Prandtl number.
 
 ## Verification
 
-test_thermophysical_models checks:
+test_thermophysical_models and test_thermophysical_models_vv check:
 - analytic scalar-property models;
 - tabulated interpolation and all extrapolation policies;
 - Boussinesq and ideal-gas density;
 - constant-cp enthalpy;
 - representative turbulence closures;
 - turbulent thermal diffusivity;
-- rejection of invalid physical inputs.
+- rejection of invalid physical inputs;
+- analytic linear-property gradient verification;
+- exact piecewise-linear table interpolation/integration;
+- Boussinesq validity-boundary verification;
+- DDES/IDDES shielding limits and protected/unprotected length-scale branches.
+
+The V&V executable remains a model-layer verification campaign; wall-resolved heated-channel T+/y+ correlation requires a complete turbulence transport and wall-treatment implementation and is therefore not claimed by this PR.
 
 This test is a model-layer verification gate, not a replacement for solver-level V&V.
 
