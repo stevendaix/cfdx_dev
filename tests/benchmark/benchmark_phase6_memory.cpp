@@ -2,10 +2,12 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 #ifdef CFDX_ENABLE_GPU
