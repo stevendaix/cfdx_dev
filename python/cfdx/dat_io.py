@@ -131,7 +131,7 @@ def _read_text(path: Path) -> DatRestart:
                 raise ValueError(f"invalid value in field {name!r}") from exc
         fields[name] = DatField(name, dimension, values)
 
-    return _validate(DatRestart(version, cells, iteration, time, fields, cell_ids))
+    return _validate(DatRestart(version, cells, iteration, time, fields))
 
 
 def _read_hdf5(path: Path) -> DatRestart:
@@ -164,7 +164,7 @@ def _read_hdf5(path: Path) -> DatRestart:
             if values.shape[0] != cells:
                 raise ValueError(f"field {name!r} cell count mismatch")
             fields[name] = DatField(name, dimension, flat.tolist())
-    return _validate(DatRestart(version, cells, iteration, time, fields))
+    return _validate(DatRestart(version, cells, iteration, time, fields, cell_ids))
 
 
 def read_dat_restart(path: str | Path) -> DatRestart:
@@ -219,10 +219,6 @@ def remap_dat_restart(
     if any(value < 0 for value in target):
         raise ValueError("target cell ids contain negative values")
     source_index = {cell_id: i for i, cell_id in enumerate(restart.cell_ids)}
-    if len(target) != restart.cells:
-        # A true N -> M restart can change the local cell count, so only the
-        # target identity set controls the output size.
-        pass
     missing = [cell_id for cell_id in target if cell_id not in source_index]
     if missing:
         raise ValueError(f"target cell id missing from checkpoint: {missing[0]}")
