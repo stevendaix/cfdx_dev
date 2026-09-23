@@ -41,6 +41,7 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
     if(c.region1_patch.empty() || c.region2_patch.empty() ||
        c.conductivity1<=0.0 || c.conductivity2<=0.0 ||
        c.matching_tolerance<=0.0 || c.area_relative_tolerance<=0.0 ||
+       !(c.relaxation>0.0 && c.relaxation<=1.0) ||
        c.contact_resistance<0.0 || !std::isfinite(c.contact_resistance))
         throw std::invalid_argument("invalid CHT interface controls");
 
@@ -110,6 +111,8 @@ inline ChtSolveResult solve_two_region_cht(
 {
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     ChtSolveResult result;
+    std::vector<double> previous1(mesh1.n_faces(),std::numeric_limits<double>::quiet_NaN());
+    std::vector<double> previous2(mesh2.n_faces(),std::numeric_limits<double>::quiet_NaN());
 
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         ScalarBoundaryFaceValues fv1,fv2;
@@ -135,8 +138,16 @@ inline ChtSolveResult solve_two_region_cht(
             auto& values2=fv2.values[controls.region2_patch];
             if(values1.size()!=mesh1.n_faces()) values1.resize(mesh1.n_faces(),0.0);
             if(values2.size()!=mesh2.n_faces()) values2.resize(mesh2.n_faces(),0.0);
-            values1[p.face1]=Tint1;
-            values2[p.face2]=Tint2;
+            const double relaxed1=std::isfinite(previous1[p.face1])
+                ? previous1[p.face1] + controls.relaxation*(Tint1-previous1[p.face1])
+                : Tint1;
+            const double relaxed2=std::isfinite(previous2[p.face2])
+                ? previous2[p.face2] + controls.relaxation*(Tint2-previous2[p.face2])
+                : Tint2;
+            values1[p.face1]=relaxed1;
+            values2[p.face2]=relaxed2;
+            previous1[p.face1]=relaxed1;
+            previous2[p.face2]=relaxed2;
         }
 
         auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1);
