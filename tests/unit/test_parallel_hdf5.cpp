@@ -4,6 +4,7 @@
 #include <mpi.h>
 
 #include <cassert>
+#include <cstdio>
 #include <string>
 
 int main(int argc, char** argv)
