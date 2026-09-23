@@ -182,6 +182,56 @@ def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+def test_gui_loads_hdf5_dat_checkpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtWidgets import QFileDialog
+    from cfdx.case_io import save_case
+    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-hdf5-dat-test"])
+    session = CFDXSession()
+    session.case.name = "hdf5-dat"
+    case_path = tmp_path / "case.cfdx.h5"
+    save_case(session, case_path)
+
+    dat_path = tmp_path / "solution.dat.h5"
+    write_dat_hdf5(
+        dat_path,
+        DatRestart(
+            version=2,
+            cells=1,
+            iteration=7,
+            time=1.25,
+            fields={"T": DatField("T", 1, [350.0])},
+        ),
+    )
+
+    class FakeView:
+        def load_cfdx_dat(self, case: str, dat: str) -> list[str]:
+            assert Path(case) == case_path
+            assert Path(dat) == dat_path
+            return ["T"]
+
+    window = CFDXMainWindow(session)
+    window._case_path = case_path
+    window.view3d = FakeView()
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *args, **kwargs: (str(dat_path), "CFDX DAT HDF5 (*.h5)")),
+    )
+
+    assert window._open_dat_checkpoint()
+    assert window._restart_dat == dat_path
+    assert "iteration=7" in window.result_status.text()
+    assert "time=1.25" in window.result_status.text()
+
+    window._dirty = False
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
 def test_gui_refuses_to_ignore_dat_when_restart_disabled(tmp_path: Path) -> None:
     from cfdx.case_io import save_case_with_dat
     from cfdx.gui import create_application
