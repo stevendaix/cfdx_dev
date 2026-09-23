@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/physics/thermal_models.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -20,6 +21,10 @@ struct EnergySolverControls {
     double relaxation = 0.9;
     std::size_t max_iterations = 500;
     double tolerance = 1e-10;
+    // Optional cell-wise conductivity. When set, it takes precedence over
+    // the scalar conductivity and is harmonic-interpolated at internal faces.
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* conductivity_field = nullptr;
+    ThermalConductivityControls conductivity_model{};
 };
 
 struct EnergyIteration {
@@ -36,11 +41,19 @@ struct EnergySolveResult {
 
 inline void validate_energy_controls(const EnergySolverControls& c)
 {
-    if (c.density <= 0.0 || c.cp <= 0.0 || c.conductivity < 0.0 ||
+    if (!(c.density > 0.0) || !(c.cp > 0.0) || c.conductivity < 0.0 ||
         !(c.relaxation > 0.0 && c.relaxation <= 1.0) ||
-        c.max_iterations == 0 || c.tolerance <= 0.0)
+        c.max_iterations == 0 || !(c.tolerance > 0.0) || !std::isfinite(c.density) ||
+        !std::isfinite(c.cp) || !std::isfinite(c.conductivity) || !std::isfinite(c.tolerance))
         throw std::invalid_argument("invalid energy solver controls");
-    if (c.dt < 0.0) throw std::invalid_argument("energy time step must be >= 0");
+    if (c.dt < 0.0 || !std::isfinite(c.dt)) throw std::invalid_argument("energy time step must be >= 0 and finite");
+    if (c.conductivity_field) {
+        if (c.conductivity_field->size() == 0 || c.conductivity_field->dimension() != 1)
+            throw std::invalid_argument("invalid cell conductivity field");
+        for (std::size_t i=0; i<c.conductivity_field->size(); ++i)
+            if (!((*c.conductivity_field)(i) >= 0.0) || !std::isfinite((*c.conductivity_field)(i)))
+                throw std::invalid_argument("cell conductivity field contains invalid values");
+    }
 }
 
 inline ScalarEquation assemble_energy_equation(
@@ -51,11 +64,14 @@ inline ScalarEquation assemble_energy_equation(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
     const EnergySolverControls& c,
     const ScalarBoundaryConditions& bcs = {},
-    const ScalarBoundaryFaceValues* face_values = nullptr)
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
         throw std::invalid_argument("energy field size mismatch");
+    if (conductivity_values && conductivity_values->size()!=mesh.n_cells())
+        throw std::invalid_argument("energy conductivity field size mismatch");
 
     cfdx::core::Field<double,cfdx::core::Location::CELL> su(
         mesh.n_cells(),"energy_source","W/m3",1);
@@ -75,7 +91,7 @@ inline ScalarEquation assemble_energy_equation(
 
     return assemble_scalar_equation(
         mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true,
-        face_values,&transient_diag,&transient_rhs);
+        face_values,&transient_diag,&transient_rhs,conductivity_values);
 }
 
 inline double energy_balance_relative(
@@ -86,7 +102,8 @@ inline double energy_balance_relative(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls,
-    const ScalarBoundaryConditions& bcs)
+    const ScalarBoundaryConditions& bcs,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     double net_flux = 0.0;
     double source_total = 0.0;
@@ -127,10 +144,12 @@ inline double energy_balance_relative(
         else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
             Tf=temperature(o)+bc.gradient*d;
 
-        const double k=controls.conductivity;
+        const double k=conductivity_values ? (*conductivity_values)[o] : controls.conductivity;
         double conductive=-k*bc.gradient*area;
         if(bc.type==ScalarBoundaryType::FIXED_VALUE && d>0.0)
             conductive=-k*(Tf-temperature(o))/d*area;
+        if(bc.type==ScalarBoundaryType::CONVECTIVE)
+            conductive=bc.gradient*(temperature(o)-bc.value)*area;
         const double convective=F*(F>=0.0 ? temperature(o) : Tf);
         net_flux += convective + conductive;
     }
@@ -158,8 +177,22 @@ inline EnergySolveResult solve_energy(
     EnergySolveResult result;
     auto old=temperature;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
+        std::vector<double> conductivity_values;
+        const std::vector<double>* conductivity_ptr = nullptr;
+        if (controls.conductivity_field) {
+            conductivity_values.resize(mesh.n_cells());
+            for (std::size_t i=0; i<mesh.n_cells(); ++i)
+                conductivity_values[i]=(*controls.conductivity_field)(i);
+            conductivity_ptr=&conductivity_values;
+        } else if (controls.conductivity_model.model != ThermalConductivityModel::CONSTANT) {
+            conductivity_values.resize(mesh.n_cells());
+            for (std::size_t i=0; i<mesh.n_cells(); ++i)
+                conductivity_values[i]=evaluate_thermal_conductivity(
+                    controls.conductivity_model, temperature(i));
+            conductivity_ptr=&conductivity_values;
+        }
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,old,controls,bcs,face_values);
+            mesh,geometry,mass_flux,source,old,controls,bcs,face_values,conductivity_ptr);
         cfdx::core::Vector candidate(temperature.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
             candidate(i)=temperature(i);
@@ -173,12 +206,12 @@ inline EnergySolveResult solve_energy(
             temperature(i)=candidate(i);
 
         const double imbalance=energy_balance_relative(
-            mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
+            mesh,geometry,mass_flux,temperature,old,source,controls,bcs,conductivity_ptr);
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 
         if(linear.status==cfdx::core::SolverStatus::CONVERGED &&
-           res<=controls.tolerance) {
+           res<=controls.tolerance && imbalance<=controls.tolerance) {
             result.converged=true;
             break;
         }
