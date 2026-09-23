@@ -30,7 +30,12 @@ struct SpalartAllmarasModel {
             throw std::invalid_argument("invalid SA state");
         return rho*nu_tilde*fv1(nu_tilde/nu);
     }
-    double wall_r(double nu_tilde, double wall_distance, double shat) const {\n        if (!std::isfinite(nu_tilde)||nu_tilde<0.0||!std::isfinite(wall_distance)||wall_distance<=0.0||!std::isfinite(shat)||shat<=0.0)\n            throw std::invalid_argument("invalid SA wall state");\n        return nu_tilde/(shat*kappa*kappa*wall_distance*wall_distance);\n    }\n    double destruction_coefficient(double r) const {
+    double wall_r(double nu_tilde, double wall_distance, double shat) const {
+        if (!std::isfinite(nu_tilde)||nu_tilde<0.0||!std::isfinite(wall_distance)||wall_distance<=0.0||!std::isfinite(shat)||shat<=0.0)
+            throw std::invalid_argument("invalid SA wall state");
+        return nu_tilde/(shat*kappa*kappa*wall_distance*wall_distance);
+    }
+    double destruction_coefficient(double r) const {
         if (!std::isfinite(r) || r < 0.0) throw std::invalid_argument("invalid SA destruction ratio");
         const double g=r+cw2*(std::pow(r,3.0)-r);
         const double g6=std::pow(g,6.0);
