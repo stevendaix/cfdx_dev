@@ -107,6 +107,12 @@ struct ScalarEquation {
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
     double max_imbalance = 0.0;
+    // Assembly diagnostics retained temporarily for Issue #377 root-cause analysis.
+    double max_abs_face_flux = 0.0;
+    double min_internal_distance = std::numeric_limits<double>::infinity();
+    double max_internal_distance = 0.0;
+    double min_face_area = std::numeric_limits<double>::infinity();
+    double max_face_area = 0.0;
 };
 
 struct ScalarSolveControls {
@@ -172,16 +178,27 @@ inline ScalarEquation assemble_scalar_equation(
     const auto& own = mesh.ownership();
     const double* phi = face_flux.component_data(0);
 
+    double max_abs_face_flux = 0.0;
+    double min_internal_distance = std::numeric_limits<double>::infinity();
+    double max_internal_distance = 0.0;
+    double min_face_area = std::numeric_limits<double>::infinity();
+    double max_face_area = 0.0;
+
     for (std::size_t f = 0; f < nf; ++f) {
         const std::size_t o = own.owner(f);
         const auto nraw = own.neighbour(f);
         const double F = phi[f];
+        max_abs_face_flux = std::max(max_abs_face_flux, std::abs(F));
         if (!std::isfinite(F)) throw std::invalid_argument("assemble_scalar_equation: non-finite face flux");
 
         if (nraw >= 0) {
             const std::size_t n = static_cast<std::size_t>(nraw);
             const double distance = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
             const double area = geometry.face_area_vectors[f].mag();
+            min_internal_distance = std::min(min_internal_distance, distance);
+            max_internal_distance = std::max(max_internal_distance, distance);
+            min_face_area = std::min(min_face_area, area);
+            max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate internal face");
             double gamma_face = diffusion_coefficient;
@@ -244,6 +261,8 @@ inline ScalarEquation assemble_scalar_equation(
 
             const double area = geometry.face_area_vectors[f].mag();
             const double distance = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+            min_face_area = std::min(min_face_area, area);
+            max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate boundary face");
 
@@ -317,6 +336,11 @@ inline ScalarEquation assemble_scalar_equation(
         eq.diagonal[c] = diag[c];
     }
     eq.matrix.finalize();
+    eq.max_abs_face_flux = max_abs_face_flux;
+    eq.min_internal_distance = min_internal_distance;
+    eq.max_internal_distance = max_internal_distance;
+    eq.min_face_area = min_face_area;
+    eq.max_face_area = max_face_area;
 
     double total_flux = 0.0;
     for (std::size_t c = 0; c < nc; ++c) total_flux += div_phi[c];
@@ -421,7 +445,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   << " nnz=" << equation.matrix.nnz()
                   << " min_abs_diag=" << min_abs_diag
                   << " max_abs_diag=" << max_abs_diag
-                  << " zero_or_missing_diag=" << zero_or_missing_diag << '\n';
+                  << " zero_or_missing_diag=" << zero_or_missing_diag
+                  << " max_abs_face_flux=" << equation.max_abs_face_flux
+                  << " internal_distance=[" << equation.min_internal_distance << "," << equation.max_internal_distance << "]"
+                  << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\n';
         std::vector<double> a(n * n, 0.0);
         std::vector<double> b(n, 0.0);
         const auto* row = equation.matrix.row_offsets_data();
