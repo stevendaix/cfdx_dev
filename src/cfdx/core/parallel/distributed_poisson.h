@@ -139,7 +139,8 @@ inline DistributedPoissonResult solve_poisson_mpi(
     for (std::size_t i = 0; i < x.local_size(); ++i)
         x(i) = 0.0;
 
-    const auto halo = build_distributed_halo(mesh, partition, x, comm);
+    DistributedCellField work(mesh.n_cells(), ids, 1, "phi_operator");
+    const auto halo = build_distributed_halo(mesh, partition, work, comm);
     std::vector<detail::LocalPoissonRow> rows(x.local_size());
 
     const auto& cell_faces = mesh.cells().faces();
@@ -209,13 +210,13 @@ inline DistributedPoissonResult solve_poisson_mpi(
 
     auto refresh_remote = [&]() {
         remote.clear();
-        detail::exchange_scalar_halo(x, halo, remote, comm);
+        detail::exchange_scalar_halo(work, halo, remote, comm);
     };
     auto apply = [&](const std::vector<double>& v, std::vector<double>& y) {
-        for (std::size_t i = 0; i < x.local_size(); ++i)
-            x(i) = v[i];
+        for (std::size_t i = 0; i < work.local_size(); ++i)
+            work(i) = v[i];
         refresh_remote();
-        detail::apply_local_operator(rows, x, remote, y);
+        detail::apply_local_operator(rows, work, remote, y);
     };
 
     std::vector<double> x0(rows.size(), 0.0);
