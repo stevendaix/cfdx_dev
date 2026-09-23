@@ -283,7 +283,15 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         return fail("topology hash mismatch");
 
     std::uint64_t mesh_hash = topology_hash;
-    mesh_hash = update_vector(mesh_hash, pts.data(), n_points * 3);
+    // The writer hashes PointCloud SoA storage (all x, then all y, then all z),
+    // while the HDF5 dataset is stored as interleaved x/y/z rows. Reproduce
+    // the writer's logical byte order exactly.
+    for (std::size_t i = 0; i < n_points; ++i)
+        mesh_hash = update_vector(mesh_hash, &pts[i * 3], 1);
+    for (std::size_t i = 0; i < n_points; ++i)
+        mesh_hash = update_vector(mesh_hash, &pts[i * 3 + 1], 1);
+    for (std::size_t i = 0; i < n_points; ++i)
+        mesh_hash = update_vector(mesh_hash, &pts[i * 3 + 2], 1);
     if (stored_mesh_hash != hash_hex(mesh_hash))
         return fail("mesh hash mismatch");
 
