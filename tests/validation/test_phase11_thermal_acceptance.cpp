@@ -57,7 +57,6 @@ Mesh make_chain(std::size_t n)
         m.ownership().set_owner(right[i],static_cast<CellIndex>(i));
         if (i+1<n)
             m.ownership().set_neighbour(right[i],static_cast<CellIndex>(i+1));
-        m.ownership().set_owner(left[i],static_cast<CellIndex>(i));
     }
 
     Patch pleft; pleft.name="left"; pleft.type=PatchType::WALL; pleft.face_ids={left[0]};
