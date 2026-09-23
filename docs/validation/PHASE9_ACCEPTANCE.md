@@ -43,8 +43,8 @@ The unit channel uses:
 - H = 1;
 - rho = 1;
 - nu = 0.1;
-- p(inlet) = 1;
-- p(outlet) = 0;
+- uniform pressure (gauge fixed);
+- body force `f_x = 1`;
 - no-slip at y=0 and y=1;
 - zero-gradient velocity at inlet/outlet;
 - zero-gradient pressure on walls.
