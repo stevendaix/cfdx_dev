@@ -4,6 +4,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
@@ -355,15 +356,26 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
 
-    // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
-    // when the system is well posed. Retry from the original iterate with
-    // restarted GMRES rather than injecting an unconverged Krylov state into
-    // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    // Momentum matrices can move between nearly symmetric diffusion-dominated
+    // states and mildly nonsymmetric convection-dominated states. BiCGStab may
+    // either stagnate or break down on the former even though the linear
+    // system is well posed. Retry from the original nonlinear iterate with
+    // restarted GMRES, then with CG as a final robust path. Every retry starts
+    // from the original iterate so no unconverged Krylov state is injected.
+    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED ||
+        result.status == cfdx::core::SolverStatus::DIVERGED) {
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+    }
+
+    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
+        result.status != cfdx::core::SolverStatus::NOT_APPLICABLE) {
+        candidate = solution;
+        result = cfdx::core::solve_cg(
+            equation.matrix, equation.rhs, candidate,
+            controls.max_iterations, controls.tolerance);
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
