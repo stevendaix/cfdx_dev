@@ -252,8 +252,8 @@ inline ScalarDiffusionResult solve_poisson_mixed(
         const double balance =
             pure_neumann_compatibility_residual(mesh, boundary, source, geometry);
         double scale = 1.0;
-        for (double value : source)
-            scale += std::abs(value) * geometry.cell_volumes[0];
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            scale += std::abs(source[cell]) * geometry.cell_volumes[cell];
         for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
             if (std::isfinite(boundary.face_values[f]) &&
                 boundary.type_for_face(f) == PoissonBoundaryType::NEUMANN)
