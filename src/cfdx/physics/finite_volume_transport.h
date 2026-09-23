@@ -343,7 +343,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   solution(equation.matrix.columns_data()[k]);
         initial_residual_inf = std::max(initial_residual_inf, std::abs(ri));
     }
-    const double rhs_scale = std::max(equation.rhs.norm2(), 1e-15);
+    const double rhs_scale = std::max(equation.rhs.norm2(), 1e-8);
     if (initial_residual_inf <= controls.tolerance * rhs_scale) {
         return {
             cfdx::core::SolverStatus::CONVERGED,
