@@ -115,8 +115,8 @@ int main()
         (void)solve_steady_incompressible(
             m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
 
-        EXPECT_NEAR(U(0,0),seed_u(0,0),1e-14);
-        EXPECT_NEAR(p(0),seed_p(0),1e-14);
+        EXPECT_NEAR(U(0,0),0.0,1e-14);
+        EXPECT_NEAR(p(0),0.0,1e-14);
         EXPECT_NEAR(T(0),350.0,1e-14);
         EXPECT_NEAR(k(0),0.25,1e-14);
         EXPECT_NEAR(omega(0),3.0,1e-14);
