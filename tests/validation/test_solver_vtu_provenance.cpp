@@ -77,7 +77,7 @@ int main()
         std::vector<std::filesystem::path> outputs;
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
-                const Field<double, Location::CELL>& state_U,
+                const Field<double, Location::CELL>&,
                 const Field<double, Location::CELL>& state_p) {
                 const auto path = std::filesystem::temp_directory_path() /
                     ("cfdx_solver_vtu_provenance_" + std::to_string(iteration) + ".vtu");
