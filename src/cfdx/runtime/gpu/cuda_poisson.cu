@@ -347,6 +347,9 @@ cfdx::core::SolverResult solve_poisson_cuda(
     if (result.status == SolverStatus::NOT_APPLICABLE &&
         result.iterations == max_iterations)
         result.status = SolverStatus::MAX_ITER_REACHED;
+    else if (result.status == SolverStatus::NOT_APPLICABLE &&
+             max_iterations == 0)
+        result.status = SolverStatus::MAX_ITER_REACHED;
 
     cuda_check(cudaMemcpy(host_x.data(), d_x.data(), d_x.bytes(),
                           cudaMemcpyDeviceToHost), "cudaMemcpy(solution final)");
