@@ -203,6 +203,11 @@ int main() {
         EXPECT_NEAR(gx[1], -0.5, 1e-12);
         EXPECT_NEAR(gy[0], 0.0, 1e-14);
         EXPECT_NEAR(gz[1], 0.0, 1e-14);
+        const std::vector<double> face_flux{2.0};
+        std::vector<double> div;
+        gpu::execute_divergence_cuda(face_flux, owner, neighbour, 2, div);
+        EXPECT_NEAR(div[0], 2.0, 1e-12);
+        EXPECT_NEAR(div[1], -2.0, 1e-12);
 #else
         EXPECT_THROW(
             gpu::execute_gradient_cuda({}, {}, {}, {}, {}, {}, {}, {}, {}, {}),
