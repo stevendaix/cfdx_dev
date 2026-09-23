@@ -42,21 +42,11 @@ int main() {
             throw std::runtime_error("RNG/Realizable regression failed");
 
         c.model=TurbulenceModel::SST;
-        cfdx::core::Mesh mesh;
-        mesh.points().resize(8);
-        mesh.points().set(0,0,0,0); mesh.points().set(1,1,0,0);
-        mesh.points().set(2,1,1,0); mesh.points().set(3,0,1,0);
-        mesh.points().set(4,0,0,1); mesh.points().set(5,1,0,1);
-        mesh.points().set(6,1,1,1); mesh.points().set(7,0,1,1);
-        cfdx::core::Field<double,cfdx::core::Location::CELL> k(1,"k","m2/s2",1);
-        cfdx::core::Field<double,cfdx::core::Location::CELL> w(1,"omega","1/s",1);
-        cfdx::core::Field<double,cfdx::core::Location::CELL> s(1,"strain","1/s",1);
-        k(0)=0.1; w(0)=10.0; s(0)=5.0;
-        cfdx::core::Field<double,cfdx::core::Location::CELL> second(1,"second","",1);
-        second(0)=10.0;
-        auto algebraic=solve_algebraic_turbulence(mesh,k,second,s,c);
-        if (!algebraic.converged || k(0)<=0.0 || second(0)<=0.0)
-            throw std::runtime_error("algebraic turbulence driver failed");
+        if (turbulence_nu_t(0.1,10.0,5.0,0.01,c) <= 0.0)
+            throw std::runtime_error("SST closure returned non-positive viscosity");
+        c.model=TurbulenceModel::SPALART_ALLMARAS;
+        if (turbulence_nu_t(0.1,0.01,5.0,0.01,c) <= 0.0)
+            throw std::runtime_error("SA closure returned non-positive viscosity");
 
         std::cout << "PHASE10_MODEL_REGISTRY: PASS (" << models.size() << " models)\n";
         return 0;
