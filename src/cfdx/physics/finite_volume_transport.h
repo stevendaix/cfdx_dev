@@ -382,6 +382,9 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
+    if (solution.size() <= 256)
+        std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
+                  << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -396,6 +399,9 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+        if (solution.size() <= 256)
+            std::cerr << "CFDX solver cascade: gmres status=" << static_cast<int>(result.status)
+                      << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
