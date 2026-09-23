@@ -126,7 +126,7 @@ Error solve_mms(std::size_t n)
     // therefore (-2 gamma) * V.
     std::vector<double> source(n, 0.0);
     for (std::size_t c = 0; c < n; ++c)
-        source[c] = -2.0 * gamma * geometry.cell_volumes[c];
+        source[c] = -2.0 * gamma;
     DirichletBoundary bc;
     bc.face_values.assign(
         mesh.n_faces(), std::numeric_limits<double>::quiet_NaN());
