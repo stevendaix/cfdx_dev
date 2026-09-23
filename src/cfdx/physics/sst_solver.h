@@ -10,7 +10,8 @@ namespace cfdx::physics {
 
 inline std::pair<double,double> compute_sst_blending(
     double k, double omega, double wall_distance,
-    double molecular_viscosity, double beta_star)
+    double molecular_viscosity, double beta_star,
+    double cross_diffusion = 0.0, double sigma_omega2 = 0.856)
 {
     if (!std::isfinite(k) || !std::isfinite(omega) ||
         !std::isfinite(wall_distance) || !std::isfinite(molecular_viscosity) ||
@@ -21,10 +22,14 @@ inline std::pair<double,double> compute_sst_blending(
     const double ki = std::max(k, 0.0);
     const double wi = std::max(omega, 1e-20);
     const double y = std::max(wall_distance, 1e-12);
-    const double arg1 = std::min(
+    if (!std::isfinite(cross_diffusion) || cross_diffusion < 0.0 || sigma_omega2 <= 0.0)
+        throw std::invalid_argument("compute_sst_blending: invalid cross-diffusion inputs");
+    const double cd_plus = std::max(cross_diffusion, 1.0e-10);
+    const double arg1 = std::min({
         std::max(std::sqrt(ki) / (beta_star * wi * y),
                  500.0 * molecular_viscosity / (y*y*wi)),
-        1.0e10);
+        4.0 * sigma_omega2 * ki / (cd_plus * y*y),
+        10.0});
     const double arg2 = std::max(
         2.0 * std::sqrt(ki) / (beta_star * wi * y),
         500.0 * molecular_viscosity / (y*y*wi));
