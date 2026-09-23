@@ -176,17 +176,21 @@ int main()
                 halo.pack(tile, input, ws);
             },
             [&](WorkingSet& ws) {
+                // Snapshot owned values so the stencil reads the same time level
+                // for every neighbour, rather than consuming an already-updated
+                // value from an earlier cell in this tile.
+                const std::vector<double> old_values = ws.values;
                 for (std::size_t i = 0; i < ws.cell_ids.size(); ++i) {
                     const auto cell = static_cast<std::size_t>(ws.cell_ids[i]);
                     auto sample = [&](std::size_t target) {
                         for (std::size_t j = 0; j < ws.cell_ids.size(); ++j)
-                            if (ws.cell_ids[j] == target) return ws.value(j);
+                            if (ws.cell_ids[j] == target) return old_values[j];
                         for (std::size_t h = 0; h < ws.halo_cell_ids.size(); ++h)
                             if (ws.halo_cell_ids[h] == target) return ws.halo_value(h);
                         return input[target];
                     };
-                    const double left = cell == 0 ? ws.value(i) : sample(cell - 1);
-                    const double right = cell + 1 == n ? ws.value(i) : sample(cell + 1);
+                    const double left = cell == 0 ? old_values[i] : sample(cell - 1);
+                    const double right = cell + 1 == n ? old_values[i] : sample(cell + 1);
                     ws.value(i) = input[cell] + dt * (left + right - 2.0 * input[cell]);
                 }
                 for (std::size_t i = 0; i < ws.cell_ids.size(); ++i)
