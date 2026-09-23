@@ -288,7 +288,7 @@ inline double sample_incompressible_probe(
     double best_distance = std::numeric_limits<double>::infinity();
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         const auto delta = geometry.cell_centres[c] - probe.location;
-        const double distance = delta.mag_sqr();
+        const double distance = delta.mag2();
         if (distance < best_distance) {
             best_distance = distance;
             nearest = c;
