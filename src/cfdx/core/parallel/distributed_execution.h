@@ -140,11 +140,17 @@ inline DistributedHalo build_distributed_halo(
         const int neighbour_rank = partition.cell_rank[static_cast<std::size_t>(neighbour)];
         if (owner_rank == neighbour_rank) continue;
 
+        // A cell-centred halo is bidirectional across an MPI interface:
+        // each rank publishes its local cell value to the other rank.
         if (owner_rank == rank) {
             halo.send_local_cells[static_cast<std::size_t>(neighbour_rank)]
                 .push_back(field.local_index(static_cast<std::uint64_t>(owner)));
+            halo.recv_global_ids[static_cast<std::size_t>(neighbour_rank)]
+                .push_back(static_cast<std::uint64_t>(neighbour));
         }
         if (neighbour_rank == rank) {
+            halo.send_local_cells[static_cast<std::size_t>(owner_rank)]
+                .push_back(field.local_index(static_cast<std::uint64_t>(neighbour)));
             halo.recv_global_ids[static_cast<std::size_t>(owner_rank)]
                 .push_back(static_cast<std::uint64_t>(owner));
         }
