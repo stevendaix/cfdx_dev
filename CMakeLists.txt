@@ -19,6 +19,7 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
+option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 distributed checkpoints" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 
 if(CFDX_ENABLE_GPU)
@@ -64,6 +65,9 @@ endif()
 find_package(HDF5 QUIET)
 if(HDF5_FOUND)
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
+    if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_IS_PARALLEL)
+        message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON but detected HDF5 is not parallel-enabled")
+    endif()
     # System HDF5 provides these via find_package
     if(NOT HDF5_INCLUDE_DIRS)
         set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
@@ -81,6 +85,10 @@ elseif(EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     set(HDF5_HL_LIBRARIES "${CFDX_HDF5_DIR}/lib/libhdf5_hl.a")
 else()
     message(WARNING "HDF5 not found. HDF5-dependent features disabled.")
+endif()
+
+if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_FOUND)
+    message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON requires a parallel HDF5 installation")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -242,6 +250,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/fv_operator.h
     src/cfdx/core/linalg/krylov_controls.h
     src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/parallel/distributed_execution.h
     src/cfdx/core/memory/reuse_pool.h
     src/cfdx/core/memory/field_lifetime.h
     src/cfdx/core/linalg/mpi_overlap.h
@@ -283,6 +292,10 @@ if(CFDX_ENABLE_MPI)
     if(MPI_FOUND)
         target_link_libraries(cfdx_core PUBLIC MPI::MPI_CXX)
     endif()
+endif()
+
+if(CFDX_ENABLE_PARALLEL_HDF5)
+    target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_PARALLEL_HDF5=1)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -373,6 +386,11 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_executable(test_phase5_distributed tests/unit/test_phase5_distributed.cpp)
+            target_link_libraries(test_phase5_distributed PRIVATE cfdx_core MPI::MPI_CXX)
+            target_include_directories(test_phase5_distributed PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        endif()
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
@@ -391,6 +409,11 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_fused_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_test(NAME test_phase5_distributed
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_distributed> ${MPIEXEC_POSTFLAGS})
+        endif()
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
             # OpenMPI/hwloc allocates process-global state during MPI_Init which
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
