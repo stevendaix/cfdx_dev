@@ -7,6 +7,7 @@
 #include "cfdx/runtime/ooc/async_transfer.h"
 #include "common/test_harness.h"
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -32,8 +33,7 @@ int main() {
         CpuExecutionConfig config;
         config.threads = 4;
         config.deterministic = true;
-        auto d = choose_execution_policy(
-            ExecutionPolicy::CPU, caps, {}, config);
+        auto d = choose_execution_policy(ExecutionPolicy::CPU, caps, {}, config);
         EXPECT_TRUE(d.selected == ExecutionPolicy::CPU);
         EXPECT_TRUE(d.cpu_threads == 4);
         EXPECT_TRUE(d.deterministic);
@@ -46,8 +46,7 @@ int main() {
         CpuExecutionConfig config;
         config.mode = CpuExecutionMode::SERIAL;
         config.deterministic = true;
-        auto d = choose_execution_policy(
-            ExecutionPolicy::CPU, caps, {}, config);
+        auto d = choose_execution_policy(ExecutionPolicy::CPU, caps, {}, config);
         EXPECT_TRUE(d.cpu_threads == 1);
         EXPECT_TRUE(d.deterministic);
     });
@@ -81,12 +80,100 @@ int main() {
 
     run_case("gpu_policy_requires_cuda", [] {
         RuntimeCapabilities caps;
-        EXPECT_THROW(choose_execution_policy(ExecutionPolicy::GPU, caps, {}), std::runtime_error);
+        EXPECT_THROW(
+            choose_execution_policy(ExecutionPolicy::GPU, caps, {}),
+            std::runtime_error);
+    });
+
+    run_case("gpu_policy_requires_real_device", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 0;
+        EXPECT_THROW(
+            choose_execution_policy(ExecutionPolicy::GPU, caps, {}),
+            std::runtime_error);
+    });
+
+    run_case("gpu_policy_selects_requested_device", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 2;
+        caps.gpu_memory_bytes = 1024;
+        GpuExecutionConfig gpu;
+        gpu.device_id = 1;
+        RuntimeWorkload work;
+        work.estimated_bytes = 128;
+        auto d = choose_execution_policy(ExecutionPolicy::GPU, caps, work, {}, gpu);
+        EXPECT_TRUE(d.selected == ExecutionPolicy::GPU);
+        EXPECT_TRUE(d.requires_gpu);
+        EXPECT_TRUE(d.gpu_device_id == 1);
+        EXPECT_TRUE(!d.uses_out_of_core);
+    });
+
+    run_case("gpu_policy_rejects_invalid_device", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 2;
+        EXPECT_THROW(
+            choose_execution_policy(
+                ExecutionPolicy::GPU, caps, {}, {}, GpuExecutionConfig{2, true}),
+            std::invalid_argument);
+    });
+
+    run_case("explicit_gpu_never_falls_back_when_oversubscribed", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 1;
+        caps.gpu_memory_bytes = 1024;
+        RuntimeWorkload work;
+        work.estimated_bytes = 2048;
+        EXPECT_THROW(
+            choose_execution_policy(ExecutionPolicy::GPU, caps, work),
+            std::runtime_error);
+    });
+
+    run_case("explicit_gpu_ooc_is_distinct_policy", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 1;
+        caps.gpu_memory_bytes = 1024;
+        RuntimeWorkload work;
+        work.estimated_bytes = 2048;
+        auto d = choose_execution_policy(ExecutionPolicy::GPU_OUT_OF_CORE, caps, work);
+        EXPECT_TRUE(d.selected == ExecutionPolicy::GPU_OUT_OF_CORE);
+        EXPECT_TRUE(d.requires_gpu && d.uses_out_of_core);
+        EXPECT_TRUE(d.gpu_device_id == 0);
+    });
+
+    run_case("auto_selects_ooc_when_full_gpu_does_not_fit", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 1;
+        caps.gpu_memory_bytes = 1024;
+        RuntimeWorkload work;
+        work.estimated_bytes = 2048;
+        auto d = choose_execution_policy(ExecutionPolicy::AUTO, caps, work);
+        EXPECT_TRUE(d.selected == ExecutionPolicy::GPU_OUT_OF_CORE);
+        EXPECT_TRUE(d.requires_gpu && d.uses_out_of_core);
+    });
+
+    run_case("gpu_ooc_can_be_disabled_explicitly", [] {
+        RuntimeCapabilities caps;
+        caps.cuda = true;
+        caps.cuda_device_count = 1;
+        caps.gpu_memory_bytes = 1024;
+        RuntimeWorkload work;
+        work.estimated_bytes = 2048;
+        EXPECT_THROW(
+            choose_execution_policy(
+                ExecutionPolicy::GPU_OUT_OF_CORE, caps, work, {}, GpuExecutionConfig{0, false}),
+            std::runtime_error);
     });
 
     run_case("gpu_budget_reserve_overflow_is_safe", [] {
         RuntimeCapabilities caps;
         caps.cuda = true;
+        caps.cuda_device_count = 1;
         caps.gpu_memory_bytes = std::numeric_limits<std::size_t>::max();
         RuntimeWorkload work;
         work.estimated_bytes = 1;
