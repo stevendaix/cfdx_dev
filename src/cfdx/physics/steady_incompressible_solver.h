@@ -173,6 +173,20 @@ make_mass_flux(
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     const auto& own = mesh.ownership();
 
+    double max_abs_u = 0.0;
+    std::size_t max_u_cell = 0;
+    for (std::size_t c = 0; c < U.size(); ++c) {
+        const double ux = U.component_data(0)[c];
+        const double uy = U.component_data(1)[c];
+        const double uz = U.component_data(2)[c];
+        const double um = std::max({std::abs(ux), std::abs(uy), std::abs(uz)});
+        if (um > max_abs_u) { max_abs_u = um; max_u_cell = c; }
+        if (!std::isfinite(um))
+            throw std::runtime_error("make_mass_flux: non-finite cell velocity");
+    }
+    std::cerr << "CFDX Couette flux diagnostic: max_abs_U=" << max_abs_u
+              << " max_U_cell=" << max_u_cell << '\n';
+
     for (std::size_t f=0; f<mesh.n_faces(); ++f) {
         const std::size_t o=own.owner(f);
         Vec3 Uf;
