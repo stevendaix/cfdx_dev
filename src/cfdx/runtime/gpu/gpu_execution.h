@@ -151,10 +151,13 @@ inline void execute_divergence_cuda(
     CudaDeviceBuffer d_owner(owner.size() * sizeof(std::uint32_t));
     CudaDeviceBuffer d_neighbour(neighbour.size() * sizeof(std::int64_t));
     CudaDeviceBuffer d_div(n_cells * sizeof(double));
+    const std::size_t staging_bytes = detail::max_transfer_bytes({
+        d_flux.size_bytes(), d_owner.size_bytes(), d_neighbour.size_bytes(), d_div.size_bytes()});
+    cfdx::runtime::ooc::CudaPinnedBufferPool staging_pool(staging_bytes, staging_bytes);
     CudaStream stream;
-    async_copy_h2d(d_flux, phi_face.data(), d_flux.size_bytes(), stream.get());
-    async_copy_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream.get());
-    async_copy_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream.get());
+    detail::pinned_h2d(d_flux, phi_face.data(), d_flux.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream, staging_pool);
     divergence_cuda(
         static_cast<const double*>(d_flux.data()),
         static_cast<const std::uint32_t*>(d_owner.data()),
@@ -163,8 +166,7 @@ inline void execute_divergence_cuda(
     stream.synchronize();
 
     div.resize(n_cells);
-    async_copy_d2h(d_div, div.data(), d_div.size_bytes(), stream.get());
-    stream.synchronize();
+    detail::pinned_d2h(d_div, div.data(), d_div.size_bytes(), stream, staging_pool);
 #endif
 }
 
