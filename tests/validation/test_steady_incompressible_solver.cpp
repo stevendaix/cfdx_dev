@@ -3,6 +3,8 @@
 #include "cfdx/io/vtu/vtu_writer.h"
 #include <fstream>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include "common/test_harness.h"
 #include <limits>
 
@@ -39,8 +41,38 @@ static Mesh make_unit_cube()
     return m;
 }
 
+static void validate_vtu_provenance_metadata() {
+    const Mesh m = make_unit_cube();
+    Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+    U.fill(0.0);
+    p(0) = 101325.0;
+    const auto vtu = std::filesystem::temp_directory_path() / "cfdx_solver_vtu_provenance_test.vtu";
+    cfdx::io::VtuWriter writer;
+    std::map<std::string, cfdx::core::ScalarCellField> fields{{"p", p}};
+    EXPECT_TRUE(writer.write(vtu.string(), m, fields, {}, {}, 0.75, 42, true));
+    std::ifstream in(vtu);
+    EXPECT_TRUE(in.is_open());
+    const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto grid = xml.find("<UnstructuredGrid>");
+    const auto field_data = xml.find("<FieldData>");
+    const auto piece = xml.find("<Piece ");
+    EXPECT_TRUE(grid != std::string::npos);
+    EXPECT_TRUE(field_data != std::string::npos);
+    EXPECT_TRUE(piece != std::string::npos);
+    EXPECT_TRUE(grid < field_data);
+    EXPECT_TRUE(field_data < piece);
+    EXPECT_TRUE(xml.find("Name=\"physical_time\"") != std::string::npos);
+    EXPECT_TRUE(xml.find("7.500000000000e-01") != std::string::npos);
+    EXPECT_TRUE(xml.find("Name=\"iteration\"") != std::string::npos);
+    EXPECT_TRUE(xml.find(">42<") != std::string::npos);
+    std::filesystem::remove(vtu);
+}
+
+
 int main()
 {
+    run_case("native_solver_to_vtu_provenance", [] { validate_vtu_provenance_metadata(); });
+
     run_case("native_solver_consumes_dat_restart", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> seed_u(1,"U","m/s",3);
