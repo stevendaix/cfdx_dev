@@ -331,6 +331,13 @@ ValidationMetrics check_case(std::size_t nz)
     }
 
     const auto& last = result.history.back();
+    double p_min = p(0), p_max = p(0), u_min = U(0, 2), u_max = U(0, 2);
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        p_min = std::min(p_min, p(cell));
+        p_max = std::max(p_max, p(cell));
+        u_min = std::min(u_min, U(cell, 2));
+        u_max = std::max(u_max, U(cell, 2));
+    }
 
     std::cout << "VMFL005 nz=" << nz
               << " flow_rate=" << flow_rate
@@ -342,7 +349,15 @@ ValidationMetrics check_case(std::size_t nz)
               << " sector_symmetry_abs_error=" << max_sector_symmetry_error
               << " axial_flow_uniformity=" << max_axial_uniformity
               << " continuity_linf=" << last.continuity_linf
-              << " iterations=" << result.iterations << "\n";
+              << " iterations=" << result.iterations
+              << " p_min=" << p_min
+              << " p_max=" << p_max
+              << " u_min=" << u_min
+              << " u_max=" << u_max
+              << " final_momentum_rel=" << last.momentum_equation_residual_relative
+              << " pressure_rel=" << last.pressure_residual
+              << " pressure_solver_status=" << static_cast<int>(last.pressure_solver_status)
+              << " pressure_linear_iterations=" << last.pressure_linear_iterations << "\n";
 
     const double rel_profile = max_profile_error / max_exact;
     const double velocity_scale = std::max(mean_exact, max_exact);
