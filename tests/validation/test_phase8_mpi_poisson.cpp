@@ -81,14 +81,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // The two-cell finite-volume discretization has an analytical
-    // cell-centred solution [1/3, 2/3] for phi(0)=0 and phi(1)=1.
+    // With Dirichlet values imposed at the boundary faces, the two-cell
+    // cell-centred finite-volume discretization has solution [1/4, 3/4]
+    // for phi(0)=0 and phi(1)=1. Each boundary centre-to-face distance is
+    // half a cell width, whereas the internal centre-to-centre distance is
+    // one full cell width.
     // Compare each owned value directly against that canonical oracle so
     // this MPI backend test is independent of a second local Krylov solve.
     const auto& ids = parallel.solution.global_ids();
     for (std::size_t i = 0; i < ids.size(); ++i) {
         const auto gid = static_cast<std::size_t>(ids[i]);
-        const double expected = gid == 0 ? 1.0 / 3.0 : 2.0 / 3.0;
+        const double expected = gid == 0 ? 1.0 / 4.0 : 3.0 / 4.0;
         if (std::abs(parallel.solution(i) - expected) > 1e-11) {
             std::fprintf(stderr, "rank %d: analytical mismatch for cell %zu: %.17g != %.17g\n",
                          rank, gid, parallel.solution(i), expected);
