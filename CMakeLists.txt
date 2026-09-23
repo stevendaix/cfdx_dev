@@ -285,7 +285,10 @@ if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
 endif()
 
 if(CFDX_ENABLE_GPU)
-    target_sources(cfdx_core PRIVATE src/cfdx/runtime/gpu/cuda_kernels.cu)
+    target_sources(cfdx_core PRIVATE
+        src/cfdx/runtime/gpu/cuda_kernels.cu
+        src/cfdx/runtime/gpu/cuda_poisson.cu
+    )
     target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_GPU=1)
 endif()
 
