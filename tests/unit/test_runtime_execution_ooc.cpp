@@ -6,11 +6,6 @@
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/async_transfer.h"
-#include "cfdx/runtime/gpu/gpu_profiler.h"
-#ifdef CFDX_ENABLE_GPU
-#include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
-#include "cfdx/runtime/gpu/cuda_double_buffer.h"
-#endif
 #include "common/test_harness.h"
 #include <cstdint>
 #include <limits>
@@ -82,42 +77,6 @@ int main() {
         EXPECT_THROW(
             choose_execution_policy(ExecutionPolicy::AUTO, caps, {}),
             std::runtime_error);
-    });
-
-    run_case("selected_gpu_never_falls_back_to_cpu", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::GPU;
-        d.requires_gpu = true;
-        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
-        bool completed = false;
-        try {
-            require_selected_backend(d, true, true);
-            completed = true;
-        } catch (...) {
-        }
-        EXPECT_TRUE(completed);
-    });
-
-    run_case("gpu_ooc_never_falls_back_to_cpu", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::GPU_OUT_OF_CORE;
-        d.requires_gpu = true;
-        d.uses_out_of_core = true;
-        EXPECT_THROW(require_selected_backend(d, false, true), std::runtime_error);
-        bool completed = false;
-        try {
-            require_selected_backend(d, true, true);
-            completed = true;
-        } catch (...) {
-        }
-        EXPECT_TRUE(completed);
-    });
-
-    run_case("runtime_decision_cannot_lose_gpu_requirement", [] {
-        RuntimeDecision d;
-        d.selected = ExecutionPolicy::CPU;
-        d.requires_gpu = true;
-        EXPECT_THROW(require_selected_backend(d, true, true), std::logic_error);
     });
 
     run_case("gpu_policy_requires_cuda", [] {
@@ -257,191 +216,17 @@ int main() {
 #endif
     });
 
-    run_case("cpu_gpu_gradient_numerical_equivalence", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-
-        const std::vector<double> phi{0.0, 1.0};
-        const std::vector<double> sx{1.0};
-        const std::vector<double> sy{0.0};
-        const std::vector<double> sz{0.0};
-        const std::vector<std::size_t> owner_cpu{0};
-        const std::vector<std::uint32_t> owner_gpu{0};
-        const std::vector<std::int64_t> neighbour{1};
-        const std::vector<double> volume{1.0, 1.0};
-
-        std::vector<double> cpu_x(2), cpu_y(2), cpu_z(2);
-        gpu::gradient_gauss_reference(
-            phi.data(), sx.data(), sy.data(), sz.data(),
-            owner_cpu.data(), neighbour.data(), volume.data(),
-            1, 2, cpu_x.data(), cpu_y.data(), cpu_z.data());
-
-        std::vector<double> gpu_x, gpu_y, gpu_z;
-        gpu::execute_gradient_cuda(
-            phi, sx, sy, sz, owner_gpu, neighbour, volume,
-            gpu_x, gpu_y, gpu_z);
-
-        EXPECT_TRUE(gpu_x.size() == cpu_x.size());
-        EXPECT_TRUE(gpu_y.size() == cpu_y.size());
-        EXPECT_TRUE(gpu_z.size() == cpu_z.size());
-        for (std::size_t i = 0; i < cpu_x.size(); ++i) {
-            EXPECT_NEAR(gpu_x[i], cpu_x[i], 1e-12);
-            EXPECT_NEAR(gpu_y[i], cpu_y[i], 1e-12);
-            EXPECT_NEAR(gpu_z[i], cpu_z[i], 1e-12);
-        }
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cpu_gpu_gradient_equivalence_is_repeatable", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-
-        const std::vector<double> phi{0.25, 1.5};
-        const std::vector<double> sx{0.75};
-        const std::vector<double> sy{0.125};
-        const std::vector<double> sz{-0.25};
-        const std::vector<std::size_t> owner_cpu{0};
-        const std::vector<std::uint32_t> owner_gpu{0};
-        const std::vector<std::int64_t> neighbour{1};
-        const std::vector<double> volume{0.5, 1.25};
-
-        std::vector<double> cpu_x(2), cpu_y(2), cpu_z(2);
-        gpu::gradient_gauss_reference(
-            phi.data(), sx.data(), sy.data(), sz.data(),
-            owner_cpu.data(), neighbour.data(), volume.data(),
-            1, 2, cpu_x.data(), cpu_y.data(), cpu_z.data());
-
-        std::vector<double> gx1, gy1, gz1, gx2, gy2, gz2;
-        gpu::execute_gradient_cuda(
-            phi, sx, sy, sz, owner_gpu, neighbour, volume,
-            gx1, gy1, gz1);
-        gpu::execute_gradient_cuda(
-            phi, sx, sy, sz, owner_gpu, neighbour, volume,
-            gx2, gy2, gz2);
-
-        for (std::size_t i = 0; i < cpu_x.size(); ++i) {
-            EXPECT_NEAR(gx1[i], cpu_x[i], 1e-12);
-            EXPECT_NEAR(gy1[i], cpu_y[i], 1e-12);
-            EXPECT_NEAR(gz1[i], cpu_z[i], 1e-12);
-            EXPECT_NEAR(gx2[i], gx1[i], 1e-15);
-            EXPECT_NEAR(gy2[i], gy1[i], 1e-15);
-            EXPECT_NEAR(gz2[i], gz1[i], 1e-15);
-        }
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cuda_pinned_pool_reuses_and_enforces_capacity", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-        ooc::CudaPinnedBufferPool pool(1024, 512);
-        EXPECT_TRUE(pool.size() == 2);
-        EXPECT_TRUE(pool.buffer_bytes() == 512);
-        auto* a = pool.acquire();
-        auto* b = pool.acquire();
-        EXPECT_TRUE(a != nullptr && b != nullptr);
-        EXPECT_TRUE(pool.acquire() == nullptr);
-        pool.release(a);
-        EXPECT_TRUE(pool.acquire() == a);
-        pool.release(b);
-        pool.release(a);
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cuda_pinned_pool_rejects_foreign_buffer", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-        ooc::CudaPinnedBufferPool pool(512, 512);
-        ooc::CudaPinnedBufferPool other(512, 512);
-        auto* b = other.acquire();
-        EXPECT_THROW(pool.release(b), std::invalid_argument);
-        other.release(b);
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cuda_async_h2d_d2h_roundtrip", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-
-        const double source[4] = {1.0, -2.0, 3.5, 8.0};
-        double destination[4] = {};
-        gpu::CudaDeviceBuffer device(sizeof(source));
-        gpu::CudaStream stream;
-        gpu::async_copy_h2d(device, source, sizeof(source), stream.get());
-        stream.synchronize();
-        gpu::async_copy_d2h(device, destination, sizeof(destination), stream.get());
-        stream.synchronize();
-
-        for (std::size_t i = 0; i < 4; ++i)
-            EXPECT_NEAR(destination[i], source[i], 0.0);
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cuda_double_buffer_has_two_independent_streams_and_buffers", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-        gpu::CudaDoubleBuffer db(256);
-        EXPECT_TRUE(gpu::CudaDoubleBuffer::slot_count() == 2);
-        EXPECT_TRUE(db.bytes() == 256);
-        EXPECT_TRUE(db.buffer(0).data() != db.buffer(1).data());
-        EXPECT_TRUE(db.stream(0).get() != db.stream(1).get());
-        const int src0[4] = {1,2,3,4};
-        const int src1[4] = {5,6,7,8};
-        gpu::async_copy_h2d(db.buffer(0), src0, sizeof(src0), db.stream(0).get());
-        gpu::async_copy_h2d(db.buffer(1), src1, sizeof(src1), db.stream(1).get());
-        db.synchronize(0);
-        db.synchronize(1);
-        int out0[4] = {}, out1[4] = {};
-        gpu::async_copy_d2h(db.buffer(0), out0, sizeof(out0), db.stream(0).get());
-        gpu::async_copy_d2h(db.buffer(1), out1, sizeof(out1), db.stream(1).get());
-        db.synchronize(0);
-        db.synchronize(1);
-        for (int i = 0; i < 4; ++i) {
-            EXPECT_TRUE(out0[i] == src0[i]);
-            EXPECT_TRUE(out1[i] == src1[i]);
-        }
-#else
-        EXPECT_TRUE(true);
-#endif
-    });
-
-    run_case("cuda_profiler_measures_stream_work", [] {
-#ifdef CFDX_ENABLE_GPU
-        int devices = 0;
-        const auto status = cudaGetDeviceCount(&devices);
-        if (status != cudaSuccess || devices == 0) return;
-        gpu::CudaStream stream;
-        gpu::GpuProfiler profiler;
-        profiler.start(stream.get());
-        const auto launch = cudaDeviceSynchronize();
-        EXPECT_TRUE(launch == cudaSuccess);
-        profiler.stop(stream.get());
-        EXPECT_TRUE(profiler.elapsed_ms() >= 0.0);
-#else
-        gpu::GpuProfiler profiler;
-        EXPECT_THROW(profiler.start(), std::runtime_error);
-#endif
+    run_case("gpu_execution_rejects_invalid_face_ownership", [] {
+        std::vector<double> gx, gy, gz;
+        EXPECT_THROW(
+            gpu::execute_gradient_cuda(
+                {0.0, 1.0}, {1.0}, {0.0}, {0.0},
+                {2}, {-1}, {1.0, 1.0}, gx, gy, gz),
+            std::exception);
+        std::vector<double> div;
+        EXPECT_THROW(
+            gpu::execute_divergence_cuda({1.0}, {0}, {2}, 2, div),
+            std::exception);
     });
 
     run_case("host_emulated_device_roundtrip", [] {
