@@ -47,7 +47,21 @@ jobs:
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
-        run: cmake --build build --parallel 4 --verbose
+        id: build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
+
+      - name: Diagnose compilation failure
+        if: failure() && steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "=== Compiler/linker diagnostics ==="
+          grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
+          echo
+          echo "=== Failed build commands ==="
+          grep -E 'FAILED:|ninja: build stopped|g\+\+|c\+\+|clang\+\+|nvcc' build.log | tail -n 120 || true
 
       - name: Run CTest
         run: ctest --test-dir build --output-on-failure --no-tests=error
