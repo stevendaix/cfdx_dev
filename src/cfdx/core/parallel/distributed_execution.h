@@ -150,8 +150,10 @@ inline DistributedHalo build_distributed_halo(
         }
     }
 
-    for (auto& v : halo.send_local_cells)
+    for (auto& v : halo.send_local_cells) {
         std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    }
     for (auto& v : halo.recv_global_ids) {
         std::sort(v.begin(), v.end());
         v.erase(std::unique(v.begin(), v.end()), v.end());
@@ -425,7 +427,7 @@ inline void write_distributed_checkpoint(
     }
     H5Pclose(ids_dxpl); H5Sclose(ids_ms); H5Sclose(ids_fs); H5Dclose(ids_ds);
 
-    write_dataset(file, "field", state);
+    detail::write_dataset(file, "field", state);
     MPI_Barrier(comm);
     H5Fclose(file);
 }
@@ -449,6 +451,29 @@ inline void read_distributed_checkpoint(
     if (dims[0] != static_cast<hsize_t>(state.global_size())) {
         H5Sclose(ids_fs); H5Dclose(ids_ds); H5Fclose(file);
         throw std::runtime_error("distributed HDF5: checkpoint global size mismatch");
+    }
+    // Validate the checkpoint identity at the target rank's selected IDs.
+    // This makes the persistent global-cell-ID dataset part of the restart
+    // contract rather than merely redundant metadata.
+    hid_t ids_verify_fs = H5Dget_space(ids_ds);
+    hid_t ids_verify_ms = detail::local_memspace(state.local_size());
+    detail::select_ids(ids_verify_fs, state.global_ids());
+    hid_t ids_verify_dxpl = detail::collective_dxpl();
+    std::vector<std::uint64_t> checkpoint_ids(state.local_size());
+    if (H5Dread(ids_ds, H5T_NATIVE_UINT64, ids_verify_ms, ids_verify_fs,
+                ids_verify_dxpl, checkpoint_ids.data()) < 0) {
+        H5Pclose(ids_verify_dxpl); H5Sclose(ids_verify_ms);
+        H5Sclose(ids_verify_fs); H5Sclose(ids_fs); H5Dclose(ids_ds); H5Fclose(file);
+        throw std::runtime_error("distributed HDF5: failed to read global_cell_ids");
+    }
+    H5Pclose(ids_verify_dxpl);
+    H5Sclose(ids_verify_ms);
+    H5Sclose(ids_verify_fs);
+    for (std::size_t i = 0; i < checkpoint_ids.size(); ++i) {
+        if (checkpoint_ids[i] != state.global_ids()[i]) {
+            H5Sclose(ids_fs); H5Dclose(ids_ds); H5Fclose(file);
+            throw std::runtime_error("distributed HDF5: checkpoint global cell ID mismatch");
+        }
     }
     H5Sclose(ids_fs);
     H5Dclose(ids_ds);
