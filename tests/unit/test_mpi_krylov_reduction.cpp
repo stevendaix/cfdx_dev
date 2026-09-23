@@ -31,7 +31,14 @@ int main(int argc, char** argv) {
     controls.adaptive_restart = false;
     controls.restart_min = controls.restart_max = 4;
     controls.reduction = reduction;
-    const auto gm = cfdx::core::solve_gmres(A,b,x3,4,20,1e-12,nullptr,controls);
+    cfdx::core::LinearOperator op;
+    op.size = 4;
+    op.apply = [&A](const cfdx::core::Vector& in, cfdx::core::Vector& out) {
+        const auto y = A.matvec(in);
+        out.resize(y.size());
+        for (std::size_t i = 0; i < y.size(); ++i) out(i) = y[i];
+    };
+    const auto gm = cfdx::core::solve_gmres(op,b,x3,4,20,1e-12,nullptr,controls);
 
     auto good=[](const cfdx::core::SolverResult& r,const cfdx::core::Vector& x){
         if(r.status!=cfdx::core::SolverStatus::CONVERGED) return false;
