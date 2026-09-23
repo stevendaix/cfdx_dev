@@ -4,7 +4,9 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
-#include "cfdx/core/linalg/gmres_solver.h"\n#include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/gmres_solver.h"
+#include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -356,9 +358,11 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     }
 
     cfdx::core::Vector candidate = solution;
+    cfdx::core::JacobiPreconditioner jacobi;
+    cfdx::core::Preconditioner* preconditioner = jacobi.setup(equation.matrix) ? &jacobi : nullptr;
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+        controls.max_iterations, controls.tolerance, preconditioner);
 
     // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
     // when the system is well posed. Retry from the original iterate with
@@ -368,7 +372,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
-            64, controls.max_iterations, controls.tolerance);
+            64, controls.max_iterations, controls.tolerance, preconditioner);
     }
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
