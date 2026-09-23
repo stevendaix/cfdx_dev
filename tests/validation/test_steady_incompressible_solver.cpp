@@ -163,6 +163,37 @@ int main()
         EXPECT_TRUE(std::isfinite(samples[1].value));
     });
 
+    run_case("native_point_probe_matches_zero_reference_solution", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 2;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        controls.probes = {
+            {"pressure_reference", {0.5,0.5,0.5}, IncompressibleProbeField::PRESSURE},
+            {"velocity_reference", {0.5,0.5,0.5}, IncompressibleProbeField::U_MAGNITUDE}
+        };
+        std::vector<IncompressibleProbeSample> samples;
+        controls.probe_callback = [&](const IncompressibleProbeSample& sample) { samples.push_back(sample); };
+        (void)solve_steady_incompressible(m,U,p,ubc,pbc,controls);
+        EXPECT_TRUE(samples.size() == 4);
+        for (const auto& sample : samples) {
+            EXPECT_TRUE(sample.iteration >= 1 && sample.iteration <= 2);
+            EXPECT_NEAR(sample.time, 0.0, 1e-14);
+            EXPECT_NEAR(sample.value, 0.0, 1e-14);
+        }
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
