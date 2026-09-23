@@ -130,10 +130,11 @@ public:
             next.ws = std::make_shared<WorkingSet>(make_working_set(tile, field_components));
             auto* next_buffer = next.buffer;
             auto next_ws = next.ws;
+            auto* tile_ptr = next.tile;
             next.load_future = std::async(
                 std::launch::async,
-                [&load, &tile, next_ws, next_buffer]() {
-                    load(tile, *next_ws, *next_buffer);
+                [&load, tile_ptr, next_ws, next_buffer]() {
+                    load(*tile_ptr, *next_ws, *next_buffer);
                 });
             return next;
         };
