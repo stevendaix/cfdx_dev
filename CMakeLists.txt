@@ -221,6 +221,8 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/pressure_velocity_algorithms.h
     src/cfdx/physics/turbulence.h
     src/cfdx/physics/thermal.h
+    src/cfdx/physics/thermophysical_models.h
+    src/cfdx/physics/turbulence_models.h
     src/cfdx/physics/radiation.h
     src/cfdx/physics/m1_m4_models.h
     src/cfdx/physics/solver_control.h
@@ -487,6 +489,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
+    add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
+    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
