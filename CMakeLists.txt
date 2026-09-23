@@ -248,6 +248,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/block_schur.h
     src/cfdx/core/mesh/solver_mesh.h
     src/cfdx/core/mesh/sfc_ordering.h
+    src/cfdx/core/parallel/restart_mapping.h
     src/cfdx/thermodynamics/equation_of_state.h
     src/cfdx/chemistry/source_terms.h
     src/cfdx/transport/viscosity/viscosity.h
@@ -385,6 +386,7 @@ if(CFDX_BUILD_TESTS)
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
+    add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
