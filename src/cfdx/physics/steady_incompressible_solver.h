@@ -441,6 +441,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
+        cfdx::core::SolverStatus pressure_solver_status =
+            cfdx::core::SolverStatus::NOT_APPLICABLE;
         bool has_fixed_pressure_boundary = false;
         for (const auto& [name, bc] : pressure_bcs) {
             (void)name;
@@ -560,6 +562,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
+            pressure_solver_status = rp.status;
 
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
@@ -719,7 +722,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
-        h.pressure_solver_status = rp.status;
+        h.pressure_solver_status = pressure_solver_status;
         result.history.push_back(h);
 
         if (iter > 1 &&
