@@ -726,4 +726,15 @@ if QApplication is not None:
         window = CFDXMainWindow(session)
         window.show()
         return app.exec()
-else:
+else:  # pragma: no cover - exercised by environments without Qt
+    class CFDXMainWindow:
+        """Explicit failure object when the optional Qt GUI stack is unavailable."""
+
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def create_application(argv: list[str] | None = None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
