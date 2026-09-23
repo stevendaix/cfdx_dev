@@ -250,6 +250,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/fv_operator.h
     src/cfdx/core/linalg/krylov_controls.h
     src/cfdx/core/linalg/communication_avoiding.h
+    src/cfdx/core/parallel/distributed_execution.h
     src/cfdx/core/memory/reuse_pool.h
     src/cfdx/core/memory/field_lifetime.h
     src/cfdx/core/linalg/mpi_overlap.h
@@ -407,6 +408,11 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_fused_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_test(NAME test_phase5_distributed
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_distributed> ${MPIEXEC_POSTFLAGS})
+        endif()
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
             # OpenMPI/hwloc allocates process-global state during MPI_Init which
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
