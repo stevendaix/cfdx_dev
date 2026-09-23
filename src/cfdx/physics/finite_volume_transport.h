@@ -393,7 +393,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // bounded dense LU fallback only for small systems; production-size
     // systems continue to use the sparse iterative path above.
     if (result.status != cfdx::core::SolverStatus::CONVERGED &&
-        solution.size() <= 64) {
+        solution.size() <= 256) {
         const std::size_t n = solution.size();
         std::vector<double> a(n * n, 0.0);
         std::vector<double> b(n, 0.0);
