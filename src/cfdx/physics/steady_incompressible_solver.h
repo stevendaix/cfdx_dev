@@ -11,6 +11,7 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -216,16 +217,20 @@ make_rhie_chow_mass_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
-    const std::vector<double>& rAU,
+    const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs)
 {
     using namespace cfdx::core;
-    if(p.size()!=mesh.n_cells() || rAU.size()!=mesh.n_cells())
+    if (p.size()!=mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
-    for (const double value : rAU) {
-        if (!std::isfinite(value) || value <= 0.0)
-            throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal must be finite and positive");
+    for (const auto& component : rAU) {
+        if (component.size() != mesh.n_cells())
+            throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal size mismatch");
+        for (const double value : component) {
+            if (!std::isfinite(value) || value <= 0.0)
+                throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal must be finite and positive");
+        }
     }
     auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
     auto gradp=gauss_gradient_with_boundary(p,mesh,geometry,{});
@@ -236,16 +241,23 @@ make_rhie_chow_mass_flux(
         const std::size_t n=static_cast<std::size_t>(nr);
         const double d=(geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
         if(d<=0.0) throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face");
-        const double rface=0.5*(rAU[o]+rAU[n]);
+        const double rface_x=0.5*(rAU[0][o]+rAU[0][n]);
+        const double rface_y=0.5*(rAU[1][o]+rAU[1][n]);
+        const double rface_z=0.5*(rAU[2][o]+rAU[2][n]);
         const double dpdn=(p(n)-p(o))/d;
         const cfdx::core::Vec3 gpface={
             0.5*(gradp.component_data(0)[o]+gradp.component_data(0)[n]),
             0.5*(gradp.component_data(1)[o]+gradp.component_data(1)[n]),
             0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
         const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
+        const double area=Sf.mag();
+        const cfdx::core::Vec3 nface=Sf/area;
+        const double rface_n = rface_x*nface.x*nface.x
+                             + rface_y*nface.y*nface.y
+                             + rface_z*nface.z*nface.z;
         const double gradface=gpface.dot(Sf);
-        const double orth=dpdn*Sf.mag();
-        flux(f)-=rho*rface*(orth-gradface);
+        const double orth=dpdn*area;
+        flux(f)-=rho*rface_n*(orth-gradface);
     }
     return flux;
 }
@@ -456,34 +468,39 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             U.component_data(2)[c] = uz(c);
         }
 
-        std::vector<double> rAU(mesh.n_cells());
-        for (std::size_t c=0;c<mesh.n_cells();++c) {
-            const double ax=std::max(ex.diagonal[c],1e-30);
-            const double ay=std::max(ey.diagonal[c],1e-30);
-            const double az=std::max(ez.diagonal[c],1e-30);
-            double momentum_diagonal=(ax+ay+az)/3.0;
-
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
-                    double value = eq.diagonal[row];
-                    const auto begin = eq.matrix.row_offsets_data()[row];
-                    const auto end = eq.matrix.row_offsets_data()[row+1];
-                    for (std::uint32_t k=begin;k<end;++k) {
-                        const auto col = eq.matrix.columns_data()[k];
-                        if (col != row)
-                            value += eq.matrix.values_data()[k];
-                    }
-                    return value;
-                };
-                const double cx=corrected_diagonal(ex,c);
-                const double cy=corrected_diagonal(ey,c);
-                const double cz=corrected_diagonal(ez,c);
-                momentum_diagonal=(cx+cy+cz)/3.0;
+        // Pressure-velocity coupling must retain the directional inverse
+        // momentum coefficients. A scalar average of a_x, a_y and a_z is
+        // not the correct coefficient for a face whose normal is not aligned
+        // with all three momentum equations. For a face normal n_f, the
+        // pressure equation uses n_f^T diag(rAU_x,rAU_y,rAU_z) n_f.
+        std::array<std::vector<double>, 3> rAU;
+        rAU[0].resize(mesh.n_cells());
+        rAU[1].resize(mesh.n_cells());
+        rAU[2].resize(mesh.n_cells());
+        auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
+            double value = eq.diagonal[row];
+            const auto begin = eq.matrix.row_offsets_data()[row];
+            const auto end = eq.matrix.row_offsets_data()[row+1];
+            for (std::uint32_t k=begin;k<end;++k) {
+                const auto col = eq.matrix.columns_data()[k];
+                if (col != row)
+                    value += eq.matrix.values_data()[k];
             }
-
-            if (!(momentum_diagonal > 0.0) || !std::isfinite(momentum_diagonal))
+            return value;
+        };
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            const double ax = controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                ? corrected_diagonal(ex,c) : ex.diagonal[c];
+            const double ay = controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                ? corrected_diagonal(ey,c) : ey.diagonal[c];
+            const double az = controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                ? corrected_diagonal(ez,c) : ez.diagonal[c];
+            if (!(ax > 0.0) || !(ay > 0.0) || !(az > 0.0) ||
+                !std::isfinite(ax) || !std::isfinite(ay) || !std::isfinite(az))
                 throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
-            rAU[c]=geometry.cell_volumes[c]/momentum_diagonal;
+            rAU[0][c] = geometry.cell_volumes[c] / ax;
+            rAU[1][c] = geometry.cell_volumes[c] / ay;
+            rAU[2][c] = geometry.cell_volumes[c] / az;
         }
         mass_flux=make_rhie_chow_mass_flux(
             mesh,geometry,U,p,rAU,controls.density,velocity_bcs);
@@ -528,7 +545,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t n = static_cast<std::size_t>(nraw);
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                 const double area = geometry.face_area_vectors[f].mag();
-                const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
+                const auto Sf = geometry.face_area_vectors[f];
+                const double area = Sf.mag();
+                const auto nface = Sf / area;
+                const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
+                const double rface_y = 0.5 * (rAU[1][o] + rAU[1][n]);
+                const double rface_z = 0.5 * (rAU[2][o] + rAU[2][n]);
+                const double rface_n = rface_x*nface.x*nface.x
+                                      + rface_y*nface.y*nface.y
+                                      + rface_z*nface.z*nface.z;
+                const double dface = rface_n * area / d;
                 const double coeff = controls.density * dface;
                 diag[o] += coeff;
                 diag[n] += coeff;
@@ -564,8 +590,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (!(distance > 0.0) || !(area > 0.0))
                     throw std::runtime_error(
                         "solve_steady_incompressible: degenerate pressure boundary face");
+                const auto Sf = geometry.face_area_vectors[f];
+                const double area_mag = Sf.mag();
+                const auto nface = Sf / area_mag;
+                const double rface_n = rAU[0][o]*nface.x*nface.x
+                                      + rAU[1][o]*nface.y*nface.y
+                                      + rAU[2][o]*nface.z*nface.z;
                 const double coeff =
-                    controls.density * rAU[o] * area / distance;
+                    controls.density * rface_n * area_mag / distance;
                 rows[o][o] += coeff;
             }
 
@@ -645,9 +677,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             auto grad_pc = gauss_gradient_with_boundary(
                 p_corr_field, mesh, geometry, pressure_correction_bcs);
             for (std::size_t c = 0; c < nc; ++c) {
-                U.component_data(0)[c] -= rAU[c] * grad_pc.component_data(0)[c];
-                U.component_data(1)[c] -= rAU[c] * grad_pc.component_data(1)[c];
-                U.component_data(2)[c] -= rAU[c] * grad_pc.component_data(2)[c];
+                U.component_data(0)[c] -= rAU[0][c] * grad_pc.component_data(0)[c];
+                U.component_data(1)[c] -= rAU[1][c] * grad_pc.component_data(1)[c];
+                U.component_data(2)[c] -= rAU[2][c] * grad_pc.component_data(2)[c];
             }
 
             // Apply the same pressure-correction flux operator used in
@@ -661,7 +693,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (nraw >= 0) {
                     const std::size_t n = static_cast<std::size_t>(nraw);
                     const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                    const double dface = 0.5 * (rAU[o] + rAU[n]) * area / d;
+                    const auto Sf = geometry.face_area_vectors[f];
+                    const double area_mag = Sf.mag();
+                    const auto nface = Sf / area_mag;
+                    const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
+                    const double rface_y = 0.5 * (rAU[1][o] + rAU[1][n]);
+                    const double rface_z = 0.5 * (rAU[2][o] + rAU[2][n]);
+                    const double rface_n = rface_x*nface.x*nface.x
+                                          + rface_y*nface.y*nface.y
+                                          + rface_z*nface.z*nface.z;
+                    const double dface = rface_n * area_mag / d;
                     mass_flux(f) -= controls.density * dface *
                                     (p_corr(n) - p_corr(o));
                     continue;
@@ -675,7 +716,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     it->second.type != ScalarBoundaryType::FIXED_VALUE)
                     continue;
                 const double d = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
-                const double dface = rAU[o] * area / d;
+                const auto Sf = geometry.face_area_vectors[f];
+                const double area_mag = Sf.mag();
+                const auto nface = Sf / area_mag;
+                const double rface_n = rAU[0][o]*nface.x*nface.x
+                                      + rAU[1][o]*nface.y*nface.y
+                                      + rAU[2][o]*nface.z*nface.z;
+                const double dface = rface_n * area_mag / d;
                 // p'_boundary = 0 for a fixed physical pressure boundary.
                 mass_flux(f) += controls.density * dface * p_corr(o);
             }
