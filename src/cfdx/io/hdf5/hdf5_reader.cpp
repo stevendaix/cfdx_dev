@@ -11,6 +11,9 @@
 #include <H5Spublic.h>
 #include <H5Apublic.h>
 #include <H5Ppublic.h>
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+#include <mpi.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -21,6 +24,19 @@
 
 namespace cfdx {
 namespace io {
+
+static hid_t create_file_access_plist()
+{
+    hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
+    if (plist < 0) return -1;
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+    if (H5Pset_fapl_mpio(plist, MPI_COMM_WORLD, MPI_INFO_NULL) < 0) {
+        H5Pclose(plist);
+        return -1;
+    }
+#endif
+    return plist;
+}
 
 static bool read_dataset_double(hid_t loc_id, const char* name,
                                 std::vector<double>& out,
@@ -158,7 +174,10 @@ static std::vector<std::string> parse_patch_metadata(const std::string& patches_
 }
 
 bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t fapl = create_file_access_plist();
+    if (fapl < 0) return false;
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
+    H5Pclose(fapl);
     if (file < 0) return false;
 
     auto fail = [&](const std::string& reason) {
