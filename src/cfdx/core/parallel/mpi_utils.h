@@ -95,6 +95,23 @@ inline double mpi_allreduce_min(double value, MPI_Comm comm = MPI_COMM_WORLD) {
     return result;
 }
 
+// Deterministic all-reduce for a scalar double. Contributions are gathered
+// in rank order, summed serially on rank 0, then broadcast. This is slower
+// than MPI_Allreduce but gives a defined reduction order for reproducibility.
+inline double mpi_deterministic_sum(double value, MPI_Comm comm = MPI_COMM_WORLD) {
+    const int rank = mpi_rank(comm);
+    const int size = mpi_size(comm);
+    std::vector<double> values(static_cast<std::size_t>(rank == 0 ? size : 0));
+    MPI_Gather(&value, 1, MPI_DOUBLE,
+               rank == 0 ? values.data() : nullptr, 1, MPI_DOUBLE, 0, comm);
+    double result = 0.0;
+    if (rank == 0) {
+        for (const double contribution : values) result += contribution;
+    }
+    MPI_Bcast(&result, 1, MPI_DOUBLE, 0, comm);
+    return result;
+}
+
 // All-gather for vectors
 template <typename T>
 inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm comm = MPI_COMM_WORLD) {
