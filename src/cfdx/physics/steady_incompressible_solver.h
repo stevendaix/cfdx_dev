@@ -431,11 +431,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
             rAU[c] = geometry.cell_volumes[c] / momentum_diagonal;
         }
-
-            if (!(momentum_diagonal > 0.0) || !std::isfinite(momentum_diagonal))
-                throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
-            rAU[c]=geometry.cell_volumes[c]/momentum_diagonal;
-        }
         mass_flux=make_rhie_chow_mass_flux(
             mesh,geometry,U,p,rAU,controls.density,velocity_bcs);
 
