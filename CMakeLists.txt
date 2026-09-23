@@ -336,6 +336,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
     add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
     add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
+    add_cfdx_test(test_schur_preconditioner tests/unit/test_schur_preconditioner.cpp)
 
     # Numerical tests - Geometry
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
@@ -387,7 +388,7 @@ if(CFDX_BUILD_TESTS)
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_partition PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
