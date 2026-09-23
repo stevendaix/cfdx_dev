@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <limits>
 
 namespace cfdx::physics {
 
@@ -384,6 +385,92 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
+    }
+
+    // Very small coupled momentum systems (notably the analytical
+    // acceptance meshes) can legitimately defeat every Krylov/stationary
+    // applicability criterion while remaining perfectly nonsingular. Use a
+    // bounded dense LU fallback only for small systems; production-size
+    // systems continue to use the sparse iterative path above.
+    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
+        solution.size() <= 64) {
+        const std::size_t n = solution.size();
+        std::vector<double> a(n * n, 0.0);
+        std::vector<double> b(n, 0.0);
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < n; ++i) {
+            b[i] = equation.rhs(i);
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
+                a[i * n + col[k]] += val[k];
+        }
+
+        bool singular = false;
+        for (std::size_t k = 0; k < n && !singular; ++k) {
+            std::size_t pivot = k;
+            double pivot_abs = std::abs(a[k * n + k]);
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double candidate_abs = std::abs(a[i * n + k]);
+                if (candidate_abs > pivot_abs) {
+                    pivot = i;
+                    pivot_abs = candidate_abs;
+                }
+            }
+            const double scale = std::max(1.0, pivot_abs);
+            if (!(pivot_abs > 100.0 * std::numeric_limits<double>::epsilon() * scale) ||
+                !std::isfinite(pivot_abs)) {
+                singular = true;
+                break;
+            }
+            if (pivot != k) {
+                for (std::size_t j = k; j < n; ++j)
+                    std::swap(a[k * n + j], a[pivot * n + j]);
+                std::swap(b[k], b[pivot]);
+            }
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double factor = a[i * n + k] / a[k * n + k];
+                if (!std::isfinite(factor)) {
+                    singular = true;
+                    break;
+                }
+                a[i * n + k] = 0.0;
+                for (std::size_t j = k + 1; j < n; ++j)
+                    a[i * n + j] -= factor * a[k * n + j];
+                b[i] -= factor * b[k];
+            }
+        }
+
+        if (!singular) {
+            candidate = solution;
+            for (std::size_t ii = n; ii-- > 0;) {
+                double value = b[ii];
+                for (std::size_t j = ii + 1; j < n; ++j)
+                    value -= a[ii * n + j] * candidate(j);
+                const double d = a[ii * n + ii];
+                if (!(std::abs(d) > 0.0) || !std::isfinite(d)) {
+                    singular = true;
+                    break;
+                }
+                candidate(ii) = value / d;
+                if (!std::isfinite(candidate(ii))) {
+                    singular = true;
+                    break;
+                }
+            }
+        }
+
+        if (!singular) {
+            const double residual = scalar_equation_residual_inf(equation, candidate);
+            if (std::isfinite(residual)) {
+                result = {
+                    residual <= controls.tolerance
+                        ? cfdx::core::SolverStatus::CONVERGED
+                        : cfdx::core::SolverStatus::MAX_ITER_REACHED,
+                    n, residual, residual
+                };
+            }
+        }
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
