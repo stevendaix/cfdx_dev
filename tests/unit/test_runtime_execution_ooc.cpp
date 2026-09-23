@@ -6,6 +6,7 @@
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/async_transfer.h"
+#include "cfdx/runtime/gpu/gpu_profiler.h"
 #ifdef CFDX_ENABLE_GPU
 #include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
 #include "cfdx/runtime/gpu/cuda_double_buffer.h"
@@ -422,6 +423,24 @@ int main() {
         }
 #else
         EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cuda_profiler_measures_stream_work", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+        gpu::CudaStream stream;
+        gpu::GpuProfiler profiler;
+        profiler.start(stream.get());
+        const auto launch = cudaDeviceSynchronize();
+        EXPECT_TRUE(launch == cudaSuccess);
+        profiler.stop(stream.get());
+        EXPECT_TRUE(profiler.elapsed_ms() >= 0.0);
+#else
+        gpu::GpuProfiler profiler;
+        EXPECT_THROW(profiler.start(), std::runtime_error);
 #endif
     });
 
