@@ -603,6 +603,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     A, b, p_corr, 64, controls.linear_max_iterations, controls.linear_tolerance);
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
+            double max_abs_p_corr = 0.0;
+            for (std::size_t c = 0; c < nc; ++c)
+                max_abs_p_corr = std::max(max_abs_p_corr, std::abs(p_corr(c)));
+            std::cerr << "CFDX Couette pressure diagnostic: continuity_linf_before=";
+            double continuity_linf_before = 0.0;
+            for (std::size_t c = 0; c < nc; ++c)
+                continuity_linf_before = std::max(continuity_linf_before, std::abs(continuity[c]));
+            std::cerr << continuity_linf_before
+                      << " max_abs_p_corr=" << max_abs_p_corr
+                      << " pressure_status=" << static_cast<int>(rp.status)
+                      << " pressure_iter=" << rp.iterations
+                      << " pressure_rel=" << rp.residual_relative << '\\n';
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
                     "solve_steady_incompressible: pressure-correction solve did not converge "
