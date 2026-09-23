@@ -44,6 +44,81 @@ inline void validate_radiation_transport_controls(const RadiationTransportContro
         throw std::invalid_argument("invalid radiation transport controls");
 }
 
+struct P1RadiationSolveResult {
+    bool converged = false;
+    std::size_t iterations = 0;
+    double residual = 0.0;
+};
+
+// Solve the gray isotropic P1 equation
+// div(D grad G) - kappa_a G + 4 kappa_a sigma T^4 = 0,
+// with D = 1/[3(kappa_a+kappa_s)]. The supplied scalar BCs are
+// boundary conditions on irradiation G [W/m2].
+inline P1RadiationSolveResult solve_p1_radiation(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
+    double absorption,
+    double scattering,
+    const ScalarBoundaryConditions& irradiation_bcs = {},
+    std::size_t max_iterations = 2000,
+    double tolerance = 1e-10)
+{
+    if(!std::isfinite(absorption) || !std::isfinite(scattering) ||
+       absorption < 0.0 || scattering < 0.0 ||
+       absorption + scattering <= 0.0 ||
+       max_iterations == 0 || !std::isfinite(tolerance) || tolerance <= 0.0 ||
+       temperature.size()!=mesh.n_cells() ||
+       irradiation.size()!=mesh.n_cells() ||
+       radiation_source.size()!=mesh.n_cells())
+        throw std::invalid_argument("invalid P1 radiation solve inputs");
+
+    const double D = 1.0/(3.0*(absorption+scattering));
+    cfdx::core::Field<double,cfdx::core::Location::FACE> zero_flux(
+        mesh.n_faces(),"p1_flux","m2/s",1);
+    zero_flux.fill(0.0);
+    cfdx::core::Field<double,cfdx::core::Location::CELL> su(
+        mesh.n_cells(),"p1_source","W/m3",1);
+    cfdx::core::Field<double,cfdx::core::Location::CELL> sp(
+        mesh.n_cells(),"p1_sp","1/m",1);
+    for(std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+        const double T=temperature(cell);
+        if(!std::isfinite(T) || T<0.0)
+            throw std::invalid_argument("P1 temperature must be finite and non-negative");
+        su(cell)=4.0*absorption*blackbody_emissive_power(T);
+        sp(cell)=-absorption;
+    }
+
+    auto eq=assemble_scalar_equation(
+        mesh,geometry,zero_flux,D,su,sp,irradiation_bcs,true);
+    cfdx::core::Vector G(mesh.n_cells(),0.0);
+    for(std::size_t cell=0; cell<mesh.n_cells(); ++cell)
+        G(cell)=irradiation(cell);
+    ScalarSolveControls controls;
+    controls.max_iterations=max_iterations;
+    controls.tolerance=tolerance;
+    controls.relaxation=1.0;
+    const auto linear=solve_scalar_equation(eq,G,controls);
+
+    P1RadiationSolveResult result;
+    result.converged=(linear.status==cfdx::core::SolverStatus::CONVERGED);
+    result.iterations=linear.iterations;
+    result.residual=linear.residual;
+    if(!result.converged)
+        return result;
+
+    for(std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+        if(!std::isfinite(G(cell)) || G(cell)<-1e-10)
+            throw std::runtime_error("P1 produced non-physical irradiation");
+        irradiation(cell)=std::max(0.0,G(cell));
+        radiation_source(cell)=absorption*
+            (4.0*M_PI*blackbody_intensity(temperature(cell))-irradiation(cell));
+    }
+    return result;
+}
+
 inline RadiationSolveResult solve_participating_radiation(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -140,7 +215,22 @@ inline RadiationSolveResult solve_participating_radiation(
                 std::abs(radiation_source(c)-old_radiation_source(c)));
         result.history.push_back({iter,max_delta,max_source_delta});
         result.iterations=iter;
-        if(max_delta<=controls.tolerance && max_source_delta<=controls.tolerance) {
+        double max_relative_delta=0.0;
+        double max_relative_source_delta=0.0;
+        for(std::size_t c=0;c<nc;++c) {
+            double old_scale=1.0, source_scale=1.0;
+            for(std::size_t m=0;m<directions.size();++m) {
+                old_scale=std::max(old_scale,std::abs(intensities[m](c)));
+            }
+            old_scale=std::max(old_scale,std::abs(irradiation(c)));
+            source_scale=std::max(source_scale,std::abs(radiation_source(c)));
+            max_relative_delta=std::max(max_relative_delta,
+                max_delta/old_scale);
+            max_relative_source_delta=std::max(max_relative_source_delta,
+                max_source_delta/source_scale);
+        }
+        if(max_relative_delta<=controls.tolerance &&
+           max_relative_source_delta<=controls.tolerance) {
             result.converged=true;
             break;
         }
