@@ -326,6 +326,176 @@ inline SpectralRadiationSolveResult solve_spectral_dom(
     return result;
 }
 
+
+// -----------------------------------------------------------------------------
+// Deterministic Monte-Carlo S2S visibility kernel.
+//
+// This is the geometry-driven counterpart to the centroid estimator above.
+// Triangles are used as the minimal mesh-independent representation. Rays are
+// cosine-weighted, visibility is tested against blockers, and the result is a
+// directly measurable view-factor estimate. Increasing samples is a controlled
+// accuracy refinement.
+// -----------------------------------------------------------------------------
+
+struct RadiationTriangle {
+    std::array<double,3> a{0,0,0};
+    std::array<double,3> b{0,0,0};
+    std::array<double,3> c{0,0,0};
+};
+
+inline std::array<double,3> radiation_cross(
+    const std::array<double,3>& a,const std::array<double,3>& b)
+{
+    return {a[1]*b[2]-a[2]*b[1],
+            a[2]*b[0]-a[0]*b[2],
+            a[0]*b[1]-a[1]*b[0]};
+}
+
+inline double radiation_dot(
+    const std::array<double,3>& a,const std::array<double,3>& b)
+{
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+}
+
+inline std::array<double,3> radiation_sub(
+    const std::array<double,3>& a,const std::array<double,3>& b)
+{
+    return {a[0]-b[0],a[1]-b[1],a[2]-b[2]};
+}
+
+inline std::array<double,3> radiation_add(
+    const std::array<double,3>& a,const std::array<double,3>& b)
+{
+    return {a[0]+b[0],a[1]+b[1],a[2]+b[2]};
+}
+
+inline std::array<double,3> radiation_scale(
+    const std::array<double,3>& a,double s)
+{
+    return {s*a[0],s*a[1],s*a[2]};
+}
+
+inline double radiation_norm(const std::array<double,3>& a)
+{
+    return std::sqrt(radiation_dot(a,a));
+}
+
+inline double radiation_triangle_area(const RadiationTriangle& t)
+{
+    return 0.5*radiation_norm(radiation_cross(
+        radiation_sub(t.b,t.a),radiation_sub(t.c,t.a)));
+}
+
+inline std::array<double,3> radiation_triangle_normal(const RadiationTriangle& t)
+{
+    const auto n=radiation_cross(radiation_sub(t.b,t.a),radiation_sub(t.c,t.a));
+    const double l=radiation_norm(n);
+    if(!(l>0.0)) throw std::invalid_argument("degenerate radiation triangle");
+    return radiation_scale(n,1.0/l);
+}
+
+inline bool radiation_ray_triangle_hit(
+    const std::array<double,3>& origin,
+    const std::array<double,3>& direction,
+    const RadiationTriangle& tri,
+    double& distance)
+{
+    constexpr double eps=1e-11;
+    const auto e1=radiation_sub(tri.b,tri.a);
+    const auto e2=radiation_sub(tri.c,tri.a);
+    const auto h=radiation_cross(direction,e2);
+    const double det=radiation_dot(e1,h);
+    if(std::abs(det)<eps) return false;
+    const double inv=1.0/det;
+    const auto s=radiation_sub(origin,tri.a);
+    const double u=inv*radiation_dot(s,h);
+    if(u<0.0 || u>1.0) return false;
+    const auto q=radiation_cross(s,e1);
+    const double v=inv*radiation_dot(direction,q);
+    if(v<0.0 || u+v>1.0) return false;
+    const double t=inv*radiation_dot(e2,q);
+    if(t<=eps) return false;
+    distance=t;
+    return true;
+}
+
+inline double estimate_view_factor_ray_traced(
+    const std::vector<RadiationTriangle>& source,
+    const std::vector<RadiationTriangle>& target,
+    const std::vector<RadiationTriangle>& blockers,
+    std::size_t samples = 4096)
+{
+    if(source.empty() || target.empty() || samples==0)
+        throw std::invalid_argument("ray-traced view factor requires non-empty surfaces");
+    double source_area=0.0;
+    for(const auto& t:source) source_area+=radiation_triangle_area(t);
+    if(!(source_area>0.0)) throw std::invalid_argument("source surface has zero area");
+
+    std::vector<double> cumulative;
+    cumulative.reserve(source.size());
+    double accum=0.0;
+    for(const auto& t:source) {
+        accum+=radiation_triangle_area(t);
+        cumulative.push_back(accum);
+    }
+
+    std::size_t visible=0;
+    for(std::size_t s=0;s<samples;++s) {
+        const double u=(static_cast<double>(s)+0.5)/static_cast<double>(samples);
+        const double v=std::fmod((static_cast<double>(s)*0.6180339887498949)+0.5,1.0);
+        std::size_t ti=0;
+        while(ti+1<cumulative.size() && u*source_area>cumulative[ti]) ++ti;
+        const auto& tri=source[ti];
+        const double su=std::sqrt(v);
+        const double sv=std::fmod((static_cast<double>(s)*0.7548776662466927)+0.5,1.0);
+        const auto p=radiation_add(
+            radiation_add(radiation_scale(tri.a,1.0-su),
+                          radiation_scale(tri.b,su*(1.0-sv))),
+            radiation_scale(tri.c,su*sv));
+
+        const auto n=radiation_triangle_normal(tri);
+        std::array<double,3> ref{0,0,1};
+        if(std::abs(n[2])>0.9) ref={1,0,0};
+        auto tangent=radiation_cross(ref,n);
+        tangent=radiation_scale(tangent,1.0/radiation_norm(tangent));
+        auto bitangent=radiation_cross(n,tangent);
+
+        const double r1=(static_cast<double>(s)+0.5)/static_cast<double>(samples);
+        const double r2=std::fmod((static_cast<double>(s)*0.569840296)+0.25,1.0);
+        const double phi=2.0*M_PI*r2;
+        const double z=std::sqrt(1.0-r1);
+        const double rho=std::sqrt(r1);
+        auto dir=radiation_add(
+            radiation_add(radiation_scale(tangent,rho*std::cos(phi)),
+                          radiation_scale(bitangent,rho*std::sin(phi))),
+            radiation_scale(n,z));
+        const double dn=radiation_norm(dir);
+        dir=radiation_scale(dir,1.0/dn);
+
+        double nearest=std::numeric_limits<double>::infinity();
+        bool target_hit=false;
+        for(const auto& tt:target) {
+            double d=0.0;
+            if(radiation_ray_triangle_hit(radiation_add(p,radiation_scale(n,1e-9)),
+                                           dir,tt,d) && d<nearest) {
+                nearest=d; target_hit=true;
+            }
+        }
+        if(!target_hit) continue;
+
+        bool blocked=false;
+        for(const auto& bt:blockers) {
+            double d=0.0;
+            if(radiation_ray_triangle_hit(radiation_add(p,radiation_scale(n,1e-9)),
+                                           dir,bt,d) && d<nearest-1e-9) {
+                blocked=true; break;
+            }
+        }
+        if(!blocked) ++visible;
+    }
+    return static_cast<double>(visible)/static_cast<double>(samples);
+}
+
 } // namespace cfdx::physics
 
 // -----------------------------------------------------------------------------
