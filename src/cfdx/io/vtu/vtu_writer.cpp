@@ -4,8 +4,7 @@
 
 #include <algorithm>
 #include <iomanip>
-#include <iostream>
-#include <cmath>
+#include <iostream>\n#include <cmath>
 
 namespace cfdx {
 namespace io {
@@ -14,14 +13,11 @@ bool VtuWriter::write(const std::string& filename,
                       const cfdx::core::Mesh& mesh,
                       const std::map<std::string, cfdx::core::ScalarCellField>& fields_cell,
                       const std::map<std::string, cfdx::core::ScalarFaceField>& fields_face,
-                      const std::map<std::string, cfdx::core::ScalarPointField>& fields_point,
-                      double physical_time,
-                      std::size_t iteration,
-                      bool write_time_metadata)
+                      const std::map<std::string, cfdx::core::ScalarPointField>& fields_point)
 {
     std::ofstream os(filename);
     if (!os.is_open()) {
-        std::cerr << "VtuWriter: cannot open " << filename << " for writing\\n";
+        std::cerr << "VtuWriter: cannot open " << filename << " for writing\n";
         return false;
     }
 
@@ -35,20 +31,15 @@ bool VtuWriter::write(const std::string& filename,
 
     decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices);
 
-    if (write_time_metadata && !std::isfinite(physical_time)) {
-        std::cerr << "VtuWriter: physical_time must be finite\\n";
-        return false;
-    }
-
-    write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
+    write_header(os, mesh, vtk_cells, vtk_cell_types);
     write_cells(os, vtk_cells, vtk_cell_types);
     write_cell_fields(os, mesh, fields_cell, vtk_cells);
     write_point_fields(os, mesh, fields_point);
 
     // Close XML
-    os << "  </Piece>\\n";
-    os << " </UnstructuredGrid>\\n";
-    os << "</VTKFile>\\n";
+    os << "  </Piece>\n";
+    os << " </UnstructuredGrid>\n";
+    os << "</VTKFile>\n";
 
     return true;
 }
@@ -108,41 +99,28 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                             const std::vector<VtkCellType>& vtk_cell_types,
-                             double physical_time, std::size_t iteration, bool write_time_metadata)
+                             const std::vector<VtkCellType>& vtk_cell_types)
 {
     const std::size_t n_points = mesh.n_points();
     const std::size_t n_cells = vtk_cells.size();
 
-    os << "<?xml version=\"1.0\"?>\\n";
-    os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\\n";
-    os << " <UnstructuredGrid>\\n";
-    os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\\n";
-
-    if (write_time_metadata) {
-        os << "   <FieldData>\\n";
-        os << "    <DataArray type=\"Float64\" Name=\"physical_time\" NumberOfTuples=\"1\" format=\"ascii\">\\n";
-        os << "     " << physical_time << "\\n";
-        os << "    </DataArray>\\n";
-        os << "    <DataArray type=\"UInt64\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\\n";
-        os << "     " << iteration << "\\n";
-        os << "    </DataArray>\\n";
-        os << "   </FieldData>\\n";
-    }
+    os << "<?xml version=\"1.0\"?>\n";
+    os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n";
+    os << " <UnstructuredGrid>\n";
+    os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\n";
 
     // Points
-    os << "   <Points>\\n";
-    os << "    <DataArray type=\"Float64\" NumberOfComponents=\"3\" format=\"ascii\">\\n";
+    os << "   <Points>\n";
+    os << "    <DataArray type=\"Float64\" NumberOfComponents=\"3\" format=\"ascii\">\n";
 
     for (std::size_t i = 0; i < n_points; ++i) {
         os << "     " << mesh.points().x(i) << " "
            << mesh.points().y(i) << " "
-           << mesh.points().z(i) << "
-";
+           << mesh.points().z(i) << "\n";
     }
 
-    os << "    </DataArray>\\n";
-    os << "   </Points>\\n";
+    os << "    </DataArray>\n";
+    os << "   </Points>\n";
 }
 
 void VtuWriter::write_cells(std::ofstream& os,
@@ -151,39 +129,36 @@ void VtuWriter::write_cells(std::ofstream& os,
 {
     const std::size_t n_cells = vtk_cells.size();
 
-    os << "   <Cells>\\n";
+    os << "   <Cells>\n";
 
     // Connectivity
-    os << "    <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"ascii\">\\n";
+    os << "    <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"ascii\">\n";
     for (std::size_t c = 0; c < n_cells; ++c) {
         os << "     ";
         for (const auto v : vtk_cells[c]) {
             os << v << " ";
         }
-        os << "
-";
+        os << "\n";
     }
-    os << "    </DataArray>\\n";
+    os << "    </DataArray>\n";
 
     // Offsets
-    os << "    <DataArray type=\"UInt64\" Name=\"offsets\" format=\"ascii\">\\n";
+    os << "    <DataArray type=\"UInt64\" Name=\"offsets\" format=\"ascii\">\n";
     std::uint64_t offset = 0;
     for (std::size_t c = 0; c < n_cells; ++c) {
         offset += vtk_cells[c].size();
-        os << "     " << offset << "
-";
+        os << "     " << offset << "\n";
     }
-    os << "    </DataArray>\\n";
+    os << "    </DataArray>\n";
 
     // Types
-    os << "    <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\\n";
+    os << "    <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n";
     for (std::size_t c = 0; c < n_cells; ++c) {
-        os << "     " << static_cast<std::uint8_t>(vtk_cell_types[c]) << "
-";
+        os << "     " << static_cast<std::uint8_t>(vtk_cell_types[c]) << "\n";
     }
-    os << "    </DataArray>\\n";
+    os << "    </DataArray>\n";
 
-    os << "   </Cells>\\n";
+    os << "   </Cells>\n";
 }
 
 void VtuWriter::write_cell_fields(std::ofstream& os,
@@ -195,12 +170,12 @@ void VtuWriter::write_cell_fields(std::ofstream& os,
 
     const std::size_t n_cells = vtk_cells.size();
 
-    os << "   <CellData>\\n";
+    os << "   <CellData>\n";
 
     for (const auto& [name, field] : fields) {
         if (field.size() != mesh.n_cells()) continue;
 
-        os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\\n";
+        os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\n";
 
         // Map original cell field to decomposed VTK cells
         for (std::size_t vtk_c = 0; vtk_c < n_cells; ++vtk_c) {
@@ -209,14 +184,13 @@ void VtuWriter::write_cell_fields(std::ofstream& os,
             // Simple approach: distribute evenly
             std::size_t orig_c = vtk_c; // approximation
             if (orig_c < field.size()) {
-                os << "     " << field(orig_c) << "
-";
+                os << "     " << field(orig_c) << "\n";
             }
         }
-        os << "    </DataArray>\\n";
+        os << "    </DataArray>\n";
     }
 
-    os << "   </CellData>\\n";
+    os << "   </CellData>\n";
 }
 
 void VtuWriter::write_point_fields(std::ofstream& os,
@@ -225,20 +199,19 @@ void VtuWriter::write_point_fields(std::ofstream& os,
 {
     if (fields.empty()) return;
 
-    os << "   <PointData>\\n";
+    os << "   <PointData>\n";
 
     for (const auto& [name, field] : fields) {
         if (field.size() != mesh.n_points()) continue;
 
-        os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\\n";
+        os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\n";
         for (std::size_t i = 0; i < mesh.n_points(); ++i) {
-            os << "     " << field(i) << "
-";
+            os << "     " << field(i) << "\n";
         }
-        os << "    </DataArray>\\n";
+        os << "    </DataArray>\n";
     }
 
-    os << "   </PointData>\\n";
+    os << "   </PointData>\n";
 }
 
 std::string VtuWriter::xml_escape(const std::string& s) {
