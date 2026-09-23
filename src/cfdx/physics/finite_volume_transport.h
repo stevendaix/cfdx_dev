@@ -22,7 +22,10 @@ namespace cfdx::physics {
 enum class ScalarBoundaryType {
     FIXED_VALUE,
     ZERO_GRADIENT,
-    FIXED_GRADIENT
+    FIXED_GRADIENT,
+    // Robin/convective boundary: value = ambient scalar, gradient = transfer coefficient.
+    // For thermal energy this represents q_out = h A (T_owner - T_ambient).
+    CONVECTIVE
 };
 
 struct ScalarBoundaryCondition {
@@ -253,6 +256,15 @@ inline ScalarEquation assemble_scalar_equation(
                 const double a_boundary = D + std::max(-F, 0.0);
                 diag[o] += a_owner;
                 rhs[o] += a_boundary * bc.value;
+                div_phi[o] += F;
+            } else if (bc.type == ScalarBoundaryType::CONVECTIVE) {
+                // value = ambient scalar, gradient = h. The Robin condition
+                // is imposed directly as an outward boundary flux h A (psi-Tinf).
+                const double h = bc.gradient;
+                if (!(h >= 0.0) || !std::isfinite(h) || !std::isfinite(bc.value))
+                    throw std::invalid_argument("assemble_scalar_equation: invalid convective boundary");
+                diag[o] += h * area + std::max(F, 0.0);
+                rhs[o] += h * area * bc.value + std::max(-F, 0.0) * bc.value;
                 div_phi[o] += F;
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 diag[o] += std::max(F, 0.0);
