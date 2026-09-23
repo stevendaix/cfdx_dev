@@ -347,6 +347,46 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                                          controls.linear_tolerance,
                                                          controls.coupling.alpha_u});
 
+        // A pressure-driven case can contain transverse momentum equations
+        // whose exact solution is identically zero. BiCGStab may report an
+        // immediate breakdown for that homogeneous system because r_hat.r is
+        // zero, even though the supplied state already satisfies A*x=b.
+        // Verify the actual algebraic residual before treating such a breakdown
+        // as a failed predictor solve.
+        const auto accept_already_solved_zero_state =
+            [](const ScalarEquation& equation, const Vector& solution,
+               cfdx::core::SolverResult& solve) {
+                if (solve.status == cfdx::core::SolverStatus::CONVERGED)
+                    return;
+                if (solution.norm2() > 1e-12)
+                    return;
+                double residual_inf = 0.0;
+                for (std::size_t i = 0; i < solution.size(); ++i) {
+                    double ri = -equation.rhs(i);
+                    const auto begin = equation.matrix.row_offsets_data()[i];
+                    const auto end = equation.matrix.row_offsets_data()[i + 1];
+                    for (std::uint32_t k = begin; k < end; ++k)
+                        ri += equation.matrix.values_data()[k] *
+                              solution(equation.matrix.columns_data()[k]);
+                    residual_inf = std::max(residual_inf, std::abs(ri));
+                }
+                const double rhs_norm = equation.rhs.norm2();
+                const double scale = std::max(rhs_norm, 1e-8);
+                if (residual_inf <= controls.linear_tolerance * scale) {
+                    solve.status = cfdx::core::SolverStatus::CONVERGED;
+                    solve.iterations = 0;
+                    solve.residual = residual_inf;
+                    solve.residual_relative = residual_inf / scale;
+                }
+            };
+
+        auto rx_checked = rx;
+        auto ry_checked = ry;
+        auto rz_checked = rz;
+        accept_already_solved_zero_state(ex, ux, rx_checked);
+        accept_already_solved_zero_state(ey, uy, ry_checked);
+        accept_already_solved_zero_state(ez, uz, rz_checked);
+
         auto require_linear_convergence = [](const char* component, const auto& solve) {
             if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
@@ -358,9 +398,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ", relative=" + std::to_string(solve.residual_relative) + ")");
             }
         };
-        require_linear_convergence("Ux", rx);
-        require_linear_convergence("Uy", ry);
-        require_linear_convergence("Uz", rz);
+        require_linear_convergence("Ux", rx_checked);
+        require_linear_convergence("Uy", ry_checked);
+        require_linear_convergence("Uz", rz_checked);
 
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             U.component_data(0)[c] = ux(c);
@@ -694,8 +734,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         IncompressibleIteration h;
         h.iteration = iter;
-        h.momentum_residual = std::max({rx.residual_relative, ry.residual_relative,
-                                        rz.residual_relative});
+        h.momentum_residual = std::max({rx_checked.residual_relative, ry_checked.residual_relative,
+                                        rz_checked.residual_relative});
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
@@ -715,7 +755,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             linf / std::max(controls.density * velocity_scale * characteristic_area, 1e-30);
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
-        h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
+        h.momentum_linear_iterations = std::max({rx_checked.iterations, ry_checked.iterations, rz_checked.iterations});
         h.pressure_linear_iterations = pressure_iterations;
         h.pressure_solver_status = pressure_solver_status;
         result.history.push_back(h);
