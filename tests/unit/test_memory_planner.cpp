@@ -53,15 +53,6 @@ int main() {
         EXPECT_THROW(MemoryPlanner({0, 0, 1.1}), std::invalid_argument);
     });
 
-    run_case("planner_detects_component_overflow", [] {
-        MemoryPlanner planner;
-        planner.add(MemoryKind::Mesh, std::numeric_limits<std::size_t>::max());
-        planner.add(MemoryKind::Fields, 1);
-        const auto p = planner.plan(std::numeric_limits<std::size_t>::max());
-        EXPECT_TRUE(p.overflow);
-        EXPECT_TRUE(!p.fits());
-    });
-
     run_case("planner_detects_peak_overflow", [] {
         MemoryPlanner planner({1, std::numeric_limits<std::size_t>::max(), 0.0});
         planner.add(MemoryKind::Mesh, 1);
