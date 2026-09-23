@@ -414,9 +414,12 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                 candidate(i)=sum/a[i*n+i];
             }
             const double residual=scalar_equation_residual_inf(equation,candidate);
-            if (std::isfinite(residual) && residual <= controls.tolerance*std::max(1.0,*std::max_element(equation.rhs.data(), equation.rhs.data()+equation.rhs.size(), [](double x,double y){return std::abs(x)<std::abs(y);}))) {
+            double rhs_scale=0.0;
+            for(std::size_t i=0;i<equation.rhs.size();++i) rhs_scale=std::max(rhs_scale,std::abs(equation.rhs(i)));
+            if (std::isfinite(residual) && residual <= controls.tolerance*std::max(1.0,rhs_scale)) {
                 result.status=cfdx::core::SolverStatus::CONVERGED;
-                result.iterations=1; result.residual=residual; result.residual_relative=residual;
+                result.iterations=1; result.residual=residual;
+                result.residual_relative=residual/std::max(1.0,rhs_scale);
             }
         }
     }
