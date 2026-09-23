@@ -35,7 +35,7 @@ bool VtuWriter::write(const std::string& filename,
     decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices);
 
     if (write_time_metadata && !std::isfinite(physical_time)) {
-        std::cerr << "VtuWriter: physical_time must be finite\\n";
+        std::cerr << "VtuWriter: physical_time must be finite\n";
         return false;
     }
 
@@ -119,14 +119,14 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
     os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\n";
 
     if (write_time_metadata) {
-        os << "   <FieldData>\\n";
-        os << "    <DataArray type=\"Float64\" Name=\"physical_time\" NumberOfTuples=\"1\" format=\"ascii\">\\n";
-        os << "     " << physical_time << "\\n";
-        os << "    </DataArray>\\n";
-        os << "    <DataArray type=\"UInt64\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\\n";
-        os << "     " << iteration << "\\n";
-        os << "    </DataArray>\\n";
-        os << "   </FieldData>\\n";
+        os << "   <FieldData>\n";
+        os << "    <DataArray type=\"Float64\" Name=\"physical_time\" NumberOfTuples=\"1\" format=\"ascii\">\n";
+        os << "     " << physical_time << "\n";
+        os << "    </DataArray>\n";
+        os << "    <DataArray type=\"UInt64\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n";
+        os << "     " << iteration << "\n";
+        os << "    </DataArray>\n";
+        os << "   </FieldData>\n";
     }
 
     // Points
