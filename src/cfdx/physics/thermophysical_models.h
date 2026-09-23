@@ -70,6 +70,8 @@ enum class DensityModel { CONSTANT, LINEAR_TEMPERATURE, BOUSSINESQ, IDEAL_GAS, T
 struct DensityControls {
     DensityModel model=DensityModel::CONSTANT;
     double rho0=1.0, reference_temperature=300.0, beta=0.0, pressure_reference=101325.0, gas_constant=287.05;
+    double max_boussinesq_relative_change=0.1;
+    bool enforce_boussinesq_limit=true;
     TabulatedProperty table;
 };
 inline double evaluate_density(const DensityControls& c,double T,double p=101325.0) {
@@ -78,7 +80,17 @@ inline double evaluate_density(const DensityControls& c,double T,double p=101325
     switch(c.model) {
     case DensityModel::CONSTANT: break;
     case DensityModel::LINEAR_TEMPERATURE:
-    case DensityModel::BOUSSINESQ: rho=c.rho0*(1-c.beta*(T-c.reference_temperature)); break;
+        rho=c.rho0*(1-c.beta*(T-c.reference_temperature)); break;
+    case DensityModel::BOUSSINESQ: {
+        if(!std::isfinite(c.reference_temperature)||c.reference_temperature<=0||!std::isfinite(c.beta))
+            throw std::invalid_argument("Boussinesq density: invalid reference temperature or expansion coefficient");
+        const double relative_change=std::abs(c.beta*(T-c.reference_temperature));
+        if(c.enforce_boussinesq_limit &&
+           (!std::isfinite(c.max_boussinesq_relative_change) || c.max_boussinesq_relative_change<=0 ||
+            relative_change>c.max_boussinesq_relative_change))
+            throw std::domain_error("Boussinesq density: |beta*DeltaT| exceeds validity limit");
+        rho=c.rho0*(1-c.beta*(T-c.reference_temperature)); break;
+    }
     case DensityModel::IDEAL_GAS:
         if(!std::isfinite(p)||p<=0||!std::isfinite(c.gas_constant)||c.gas_constant<=0) throw std::invalid_argument("ideal gas density: invalid inputs");
         rho=p/(c.gas_constant*T); break;
@@ -95,6 +107,10 @@ struct ThermophysicalProperties {
     double rho(double T,double p=101325) const{return evaluate_density(density,T,p);}
     double mu(double T) const{return evaluate_scalar_property(viscosity,T);}
     double pr_t(double T) const{return evaluate_scalar_property(turbulent_prandtl,T);}
+    double pr_t(double T,double y_plus) const {
+        if(!std::isfinite(y_plus)||y_plus<0) throw std::invalid_argument("turbulent Prandtl: invalid y+");
+        return evaluate_scalar_property(turbulent_prandtl,T);
+    }
     double enthalpy(double T,double Tref=300,double intervals=64) const {
         if(!std::isfinite(T)||!std::isfinite(Tref)||T<=0||Tref<=0||intervals<=0)
             throw std::invalid_argument("enthalpy: invalid inputs");
