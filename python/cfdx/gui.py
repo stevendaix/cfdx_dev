@@ -727,3 +727,14 @@ if QApplication is not None:
         window.show()
         return app.exec()
 else:
+    """Fallback API when optional Qt dependencies are unavailable."""
+
+    class CFDXMainWindow:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def create_application(argv=None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def launch(session=None, argv=None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
