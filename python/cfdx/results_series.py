@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 _SUPPORTED={".vtu",".vtk",".vtp",".pvtu"}
 _NUMBER=re.compile(r"(?<![A-Za-z])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z])")
@@ -78,6 +79,50 @@ def validate_physical_time_provenance(series: ResultSeries) -> None:
         raise ValueError("physical-time metadata must be monotonic")
 
 
+def _metadata_scalar_from_mapping(values: dict[str, float], names: tuple[str, ...]) -> float | None:
+    for name in names:
+        value = values.get(name)
+        if value is not None and value == value and value not in (float("inf"), float("-inf")):
+            return value
+    return None
+
+
+def _inspect_vtu_xml(path: Path) -> tuple[tuple[str, ...], int | None, float | None]:
+    """Inspect VTK XML metadata without requiring the optional PyVista stack."""
+    root = ET.parse(path).getroot()
+    field_data = root.find("./UnstructuredGrid/FieldData")
+    metadata: dict[str, float] = {}
+    if field_data is not None:
+        for item in field_data.findall("DataArray"):
+            name = item.attrib.get("Name")
+            text = (item.text or "").strip().split()
+            if name and len(text) == 1:
+                try:
+                    value = float(text[0])
+                except ValueError:
+                    continue
+                if value == value and value not in (float("inf"), float("-inf")):
+                    metadata[name] = value
+
+    fields: set[str] = set()
+    for parent_path in ("./UnstructuredGrid/Piece/PointData", "./UnstructuredGrid/Piece/CellData"):
+        parent = root.find(parent_path)
+        if parent is not None:
+            fields.update(
+                item.attrib["Name"]
+                for item in parent.findall("DataArray")
+                if "Name" in item.attrib
+            )
+    iteration_value = _metadata_scalar_from_mapping(
+        metadata, ("iteration", "Iteration", "step", "Step")
+    )
+    time_value = _metadata_scalar_from_mapping(
+        metadata, ("physical_time", "PhysicalTime", "time", "Time", "timeValue", "TIME")
+    )
+    iteration = int(iteration_value) if iteration_value is not None and iteration_value.is_integer() else None
+    return tuple(sorted(fields)), iteration, time_value
+
+
 def discover_result_series(directory: Path, *, inspect_fields: bool = False, require_physical_time: bool = False) -> ResultSeries:
     """Discover VTK-family files; preserve explicit time/iteration metadata when available."""
     directory=Path(directory)
@@ -97,7 +142,15 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False, req
                 iteration_value = _metadata_scalar(dataset.field_data, ("iteration","Iteration","step","Step"))
                 metadata_time = _metadata_scalar(dataset.field_data, ("physical_time","PhysicalTime","time","Time","timeValue","TIME"))
                 iteration = int(iteration_value) if iteration_value is not None and iteration_value.is_integer() else None
-            except (ImportError,OSError,RuntimeError,ValueError):
+            except ImportError:
+                if p.suffix.lower() == ".vtu":
+                    try:
+                        fields, iteration, metadata_time = _inspect_vtu_xml(p)
+                    except (ET.ParseError, OSError, ValueError):
+                        complete=False
+                else:
+                    complete=False
+            except (OSError,RuntimeError,ValueError):
                 complete=False
         filename_time=_sort_key(p)[0]
         if filename_time == float("inf"): filename_time=None
