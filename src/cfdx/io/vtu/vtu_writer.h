@@ -4,7 +4,7 @@
 // No external VTK dependency — pure XML output.
 //
 // Format: VTK XML Unstructured Grid (.vtu)
-// Supports: polyhedral cells (decomposed to tet/hex/pyramid), cell/face/point fields.
+// Supports native VTK_POLYHEDRON cells and cell/point fields.
 
 #pragma once
 
@@ -70,7 +70,10 @@ private:
     // Write cell connectivity
     void write_cells(std::ofstream& os,
                      const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                     const std::vector<VtkCellType>& vtk_cell_types);
+                     const std::vector<VtkCellType>& vtk_cell_types,
+                     const std::vector<std::uint32_t>& cell_face_offsets,
+                     const std::vector<cfdx::core::FaceIndex>& cell_face_indices,
+                     const cfdx::core::Mesh& mesh);
 
     // Write fields
     void write_cell_fields(std::ofstream& os,
