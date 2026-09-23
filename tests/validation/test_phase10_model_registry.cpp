@@ -1,4 +1,5 @@
 #include "cfdx/physics/turbulence_transport.h"
+#include "cfdx/physics/turbulence_models.h"
 #include "cfdx/physics/turbulence_solver.h"
 #include <cmath>
 #include <iostream>
@@ -9,8 +10,8 @@ using namespace cfdx::physics;
 
 int main() {
     try {
-        const std::vector<TurbulenceModel> models = {
-            TurbulenceModel::LAMINAR,
+        const std::vector<AdvancedTurbulenceModel> models = {
+            AdvancedTurbulenceModel::LAMINAR,
             TurbulenceModel::KEPSILON,
             TurbulenceModel::RNG_KEPSILON,
             TurbulenceModel::REALIZABLE_KEPSILON,
@@ -24,17 +25,21 @@ int main() {
             TurbulenceModel::IDDES
         };
 
-        TurbulenceTransportControls c;
+        TurbulenceModelCoefficients coeff;
+        validate_turbulence_model_coefficients(coeff);
         for (const auto model : models) {
+            const TurbulenceModelDescriptor d{model, implementation_kind(model)};
+            (void)d;
+        }
+        TurbulenceTransportControls c;
+        for (const auto model : {TurbulenceModel::LAMINAR,TurbulenceModel::KEPSILON,TurbulenceModel::RNG_KEPSILON,TurbulenceModel::KOMEGA,TurbulenceModel::SST,TurbulenceModel::SPALART_ALLMARAS,TurbulenceModel::SMAGORINSKY,TurbulenceModel::DES}) {
             c.model=model;
             validate_turbulence_controls(c);
             const double nut=turbulence_nu_t(0.1,0.02,10.0,0.01,c);
-            if (!std::isfinite(nut) || nut < 0.0)
-                throw std::runtime_error("non-physical turbulent viscosity");
+            if (!std::isfinite(nut) || nut < 0.0) throw std::runtime_error("non-physical turbulent viscosity");
         }
 
-        c.model=TurbulenceModel::REALIZABLE_KEPSILON;
-        const double realizable=turbulence_nu_t(0.1,0.02,10.0,0.01,c);
+        const double realizable=realizable_kepsilon_eddy_viscosity(0.1,0.02);
         c.model=TurbulenceModel::RNG_KEPSILON;
         const double rng=turbulence_nu_t(0.1,0.02,10.0,0.01,c);
         if (!(std::isfinite(realizable) && std::isfinite(rng) &&
