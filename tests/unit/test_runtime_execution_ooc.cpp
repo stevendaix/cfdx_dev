@@ -2,6 +2,9 @@
 #include "cfdx/runtime/gpu/device_buffer.h"
 #include "cfdx/runtime/gpu/gpu_kernels.h"
 #include "cfdx/runtime/gpu/gpu_execution.h"
+#include "cfdx/runtime/gpu/gpu_memory_planner.h"
+#include "cfdx/runtime/gpu/cuda_double_buffer.h"
+#include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/tile_manager.h"
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
@@ -171,6 +174,22 @@ int main() {
             std::runtime_error);
     });
 
+    run_case("gpu_memory_planner_respects_safety_and_runtime_reserve", [] {
+        gpu::MemoryBudget budget{4096, 512, 256};
+        EXPECT_TRUE(gpu::available_working_set_bytes(budget) == 3328);
+        EXPECT_TRUE(gpu::fits_memory_budget(3328, budget));
+        EXPECT_TRUE(!gpu::fits_memory_budget(3329, budget));
+        EXPECT_TRUE(gpu::plan_working_set(1024, budget) == 1024);
+        EXPECT_THROW(gpu::plan_working_set(4096, budget), std::runtime_error);
+    });
+
+    run_case("gpu_memory_planner_rejects_reserve_overflow", [] {
+        gpu::MemoryBudget budget{
+            std::numeric_limits<std::size_t>::max(),
+            std::numeric_limits<std::size_t>::max(), 1};
+        EXPECT_THROW(gpu::available_working_set_bytes(budget), std::overflow_error);
+    });
+
     run_case("gpu_budget_reserve_overflow_is_safe", [] {
         RuntimeCapabilities caps;
         caps.cuda = true;
@@ -227,6 +246,28 @@ int main() {
         EXPECT_THROW(
             gpu::execute_divergence_cuda({1.0}, {0}, {2}, 2, div),
             std::exception);
+    });
+
+    run_case("gpu_execution_metrics_are_well_defined_without_cuda", [] {
+#ifndef CFDX_ENABLE_GPU
+        gpu::GpuExecutionMetrics metrics{};
+        EXPECT_TRUE(metrics.h2d_ms == 0.0);
+        EXPECT_TRUE(metrics.kernel_ms == 0.0);
+        EXPECT_TRUE(metrics.d2h_ms == 0.0);
+        EXPECT_TRUE(metrics.h2d_bytes == 0);
+        EXPECT_TRUE(metrics.d2h_bytes == 0);
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cuda_helpers_have_explicit_no_fallback_contract", [] {
+#ifndef CFDX_ENABLE_GPU
+        gpu::GpuProfiler profiler;
+        EXPECT_THROW(profiler.start(), std::runtime_error);
+#else
+        EXPECT_TRUE(true);
+#endif
     });
 
     run_case("host_emulated_device_roundtrip", [] {
