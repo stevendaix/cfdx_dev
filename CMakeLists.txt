@@ -19,6 +19,7 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
+option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 file access" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 
 if(CFDX_ENABLE_GPU)
@@ -62,7 +63,13 @@ if(CFDX_USE_HDF5_SERIAL)
 endif()
 
 find_package(HDF5 QUIET)
+if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT CFDX_ENABLE_MPI)
+    message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5 requires CFDX_ENABLE_MPI=ON")
+endif()
 if(HDF5_FOUND)
+    if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_IS_PARALLEL)
+        message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON but detected HDF5 is not parallel-enabled")
+    endif()
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
     # System HDF5 provides these via find_package
     if(NOT HDF5_INCLUDE_DIRS)
@@ -285,6 +292,10 @@ if(CFDX_ENABLE_MPI)
     endif()
 endif()
 
+if(CFDX_ENABLE_PARALLEL_HDF5)
+    target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_PARALLEL_HDF5=1)
+endif()
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -413,6 +424,13 @@ if(CFDX_BUILD_TESTS)
     endif()
 
     # HDF5 tests
+    if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
+        add_executable(test_parallel_hdf5 tests/unit/test_parallel_hdf5.cpp)
+        target_link_libraries(test_parallel_hdf5 PRIVATE cfdx_core MPI::MPI_CXX)
+        add_test(NAME test_parallel_hdf5
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
+    endif()
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
     add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
