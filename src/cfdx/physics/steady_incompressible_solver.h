@@ -582,7 +582,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                         const auto Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
-                const auto nface = Sf / area;
+                const auto nface = cfdx::core::Vec3{Sf.x / area, Sf.y / area, Sf.z / area};
                 const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
                 const double rface_y = 0.5 * (rAU[1][o] + rAU[1][n]);
                 const double rface_z = 0.5 * (rAU[2][o] + rAU[2][n]);
@@ -724,7 +724,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 const auto nraw = mesh.ownership().neighbour(f);
                 const std::size_t o = mesh.ownership().owner(f);
-                const double area = geometry.face_area_vectors[f].mag();
                 if (nraw >= 0) {
                     const std::size_t n = static_cast<std::size_t>(nraw);
                     const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
