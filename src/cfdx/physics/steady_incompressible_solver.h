@@ -217,6 +217,17 @@ make_rhie_chow_mass_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs)
+;
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_mass_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::vector<double>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs)
@@ -742,7 +753,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double d = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
                 const auto Sf = geometry.face_area_vectors[f];
                 const double area_mag = Sf.mag();
-                const auto nface = Sf / area_mag;
+                const auto nface = cfdx::core::Vec3{Sf.x / area_mag, Sf.y / area_mag, Sf.z / area_mag};
                 const double rface_n = rAU[0][o]*nface.x*nface.x
                                       + rAU[1][o]*nface.y*nface.y
                                       + rAU[2][o]*nface.z*nface.z;
