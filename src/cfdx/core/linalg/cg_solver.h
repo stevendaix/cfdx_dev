@@ -211,7 +211,7 @@ inline SolverResult solve_cg(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
             result.residual = true_residual;
-            result.residual_relative = (b_norm > 0.0) ? true_residual / b_norm : 0.0;
+            result.residual_relative = true_residual / b_scale;
             return result;
         }
 
