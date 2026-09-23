@@ -217,6 +217,21 @@ make_rhie_chow_mass_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::vector<double>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs)
+{
+    std::array<std::vector<double>, 3> directional_rAU{rAU, rAU, rAU};
+    return make_rhie_chow_mass_flux(
+        mesh, geometry, U, p, directional_rAU, rho, bcs);
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_mass_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs)
