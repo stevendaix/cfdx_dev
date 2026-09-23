@@ -234,6 +234,16 @@ make_rhie_chow_mass_flux(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
+    const VelocityBoundaryConditions& bcs);
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_mass_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
     const VelocityBoundaryConditions& bcs)
 {
     using namespace cfdx::core;
@@ -266,7 +276,7 @@ make_rhie_chow_mass_flux(
             0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
         const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
         const double area=Sf.mag();
-        const cfdx::core::Vec3 nface=Sf/area;
+        const cfdx::core::Vec3 nface{Sf.x / area, Sf.y / area, Sf.z / area};
         const double rface_n = rface_x*nface.x*nface.x
                              + rface_y*nface.y*nface.y
                              + rface_z*nface.z*nface.z;
@@ -559,8 +569,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const std::size_t n = static_cast<std::size_t>(nraw);
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const double area = geometry.face_area_vectors[f].mag();
-                const auto Sf = geometry.face_area_vectors[f];
+                        const auto Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
                 const auto nface = Sf / area;
                 const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
@@ -710,7 +719,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                     const auto Sf = geometry.face_area_vectors[f];
                     const double area_mag = Sf.mag();
-                    const auto nface = Sf / area_mag;
+                    const auto nface = cfdx::core::Vec3{Sf.x / area_mag, Sf.y / area_mag, Sf.z / area_mag};
                     const double rface_x = 0.5 * (rAU[0][o] + rAU[0][n]);
                     const double rface_y = 0.5 * (rAU[1][o] + rAU[1][n]);
                     const double rface_z = 0.5 * (rAU[2][o] + rAU[2][n]);
