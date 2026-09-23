@@ -69,6 +69,13 @@ __global__ void axpy_residual(
     r[i] -= alpha * Ap[i];
 }
 
+__global__ void subtract_vectors(std::size_t n, const double* a, const double* b, double* out)
+{
+    const std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = a[i] - b[i];
+}
+
 __global__ void jacobi_apply(
     std::size_t n, const double* r, const double* diagonal, double* z)
 {
@@ -230,15 +237,11 @@ cfdx::core::SolverResult solve_poisson_cuda(
         static_cast<double*>(d_Ap.data()));
     launch_check("csr_spmv initial");
 
-    // r = b - A*x, formed by a small host-side kernel to keep the entire
-    // Krylov vector state resident on the GPU.
-    cuda_check(cudaMemcpy(d_r.data(), d_b.data(), d_b.bytes(),
-                          cudaMemcpyDeviceToDevice), "cudaMemcpy residual init");
-    axpy_residual<<<blocks, block>>>(n, -1.0,
-        static_cast<double*>(d_r.data()),
+    // r = b - A*x; all Krylov vectors remain resident on the device.
+    subtract_vectors<<<blocks, block>>>(n,
+        static_cast<const double*>(d_b.data()),
         static_cast<const double*>(d_Ap.data()),
-        static_cast<double*>(d_r.data()),
-        static_cast<const double*>(d_Ap.data()));
+        static_cast<double*>(d_r.data()));
     launch_check("initial residual kernel");
 
     jacobi_apply<<<blocks, block>>>(n,
