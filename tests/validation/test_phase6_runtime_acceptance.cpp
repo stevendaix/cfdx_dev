@@ -195,5 +195,5 @@ int main()
     });
 #endif
 
-    return 0;
+    return run_all();
 }
