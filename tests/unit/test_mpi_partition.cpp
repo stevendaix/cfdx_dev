@@ -3,6 +3,8 @@
 #include "cfdx/core/parallel/mesh_partitioner.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/linalg/matrix_free_fv_operator.h"
+#include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 
 using namespace cfdx::core;
@@ -304,6 +306,132 @@ int main() {
             rejected = true;
         }
         EXPECT_TRUE(rejected);
+    });
+
+
+
+    run_case("mpi_parallel_operator_serial_equivalence", []() {
+        // Quantitative Phase-5 gate: evaluate the same diffusion operator on
+        // the serial/global mesh, then reduce only rows owned by each MPI rank.
+        // This exercises the partition ownership contract without pretending
+        // that a replicated test mesh is a distributed mesh.
+        Mesh m;
+        constexpr int n_cells = 4;
+        constexpr int n_faces = 5;
+        m.points().resize(20);
+        for (int i = 0; i < 5; ++i) {
+            const double x = static_cast<double>(i);
+            const std::size_t b = static_cast<std::size_t>(4 * i);
+            m.points().set(b + 0, x, 0.0, 0.0);
+            m.points().set(b + 1, x, 1.0, 0.0);
+            m.points().set(b + 2, x, 1.0, 1.0);
+            m.points().set(b + 3, x, 0.0, 1.0);
+        }
+        for (int i = 0; i < 5; ++i) {
+            const std::size_t b = static_cast<std::size_t>(4 * i);
+            m.faces().push_face({b + 0, b + 1, b + 2, b + 3});
+        }
+        m.ownership().resize(n_faces);
+        for (int f = 0; f < n_faces; ++f) {
+            m.ownership().set_owner(f, f == 4 ? 3 : f);
+            m.ownership().set_neighbour(
+                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY : f - 1);
+        }
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({1, 2});
+        m.cells().push_cell({2, 3});
+        m.cells().push_cell({3, 4});
+        m.boundary().add_patch(make_wall_patch("left", {0}));
+        m.boundary().add_patch(make_wall_patch("right", {4}));
+        EXPECT_TRUE(m.topo_validate().ok);
+
+        const GeometryCache g = make_geometry_cache(m);
+        FvDiffusionOperator op(m, g, 1.0);
+        Vector x(static_cast<std::size_t>(n_cells));
+        x(0) = 0.0; x(1) = 1.0; x(2) = 4.0; x(3) = 9.0;
+        Vector serial;
+        op.apply(x, serial);
+
+        const int rank = mpi_rank(MPI_COMM_WORLD);
+        const int size = mpi_size(MPI_COMM_WORLD);
+        const Partition part = partition_geometric(m, size);
+
+        Vector local(serial.size());
+        local.fill(0.0);
+        for (std::size_t c = 0; c < serial.size(); ++c)
+            if (part.cell_rank[c] == rank)
+                local(c) = serial(c);
+
+        std::vector<double> reduced(serial.size(), 0.0);
+        MPI_Allreduce(local.data(), reduced.data(),
+                      static_cast<int>(serial.size()), MPI_DOUBLE, MPI_SUM,
+                      MPI_COMM_WORLD);
+        for (std::size_t c = 0; c < serial.size(); ++c)
+            EXPECT_NEAR(reduced[c], serial(c), 1e-13);
+
+        const double local_sum = std::accumulate(local.data(),
+                                                  local.data() + local.size(), 0.0);
+        const double global_sum = mpi_allreduce_sum(local_sum);
+        EXPECT_NEAR(global_sum, 0.0, 1e-13);
+    });
+
+    run_case("mpi_partition_size_sweep_and_conservation", []() {
+        Mesh m;
+        m.points().resize(20);
+        for (int i = 0; i < 5; ++i) {
+            const double x = static_cast<double>(i);
+            const std::size_t b = static_cast<std::size_t>(4 * i);
+            m.points().set(b + 0, x, 0.0, 0.0);
+            m.points().set(b + 1, x, 1.0, 0.0);
+            m.points().set(b + 2, x, 1.0, 1.0);
+            m.points().set(b + 3, x, 0.0, 1.0);
+        }
+        for (int i = 0; i < 5; ++i) {
+            const std::size_t b = static_cast<std::size_t>(4 * i);
+            m.faces().push_face({b + 0, b + 1, b + 2, b + 3});
+        }
+        m.ownership().resize(5);
+        for (int f = 0; f < 5; ++f) {
+            m.ownership().set_owner(f, f == 4 ? 3 : f);
+            m.ownership().set_neighbour(
+                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY : f - 1);
+        }
+        m.cells().push_cell({0, 1});
+        m.cells().push_cell({1, 2});
+        m.cells().push_cell({2, 3});
+        m.cells().push_cell({3, 4});
+        m.boundary().add_patch(make_wall_patch("left", {0}));
+        m.boundary().add_patch(make_wall_patch("right", {4}));
+        EXPECT_TRUE(m.topo_validate().ok);
+
+        const GeometryCache g = make_geometry_cache(m);
+        FvDiffusionOperator op(m, g, 1.0);
+        Vector x(4);
+        x(0) = 0.0; x(1) = 1.0; x(2) = 4.0; x(3) = 9.0;
+        Vector serial;
+        op.apply(x, serial);
+
+        const int world_size = mpi_size(MPI_COMM_WORLD);
+        const std::vector<int> requested_parts = (world_size >= 4)
+            ? std::vector<int>{1, 2, 4}
+            : std::vector<int>{1, 2};
+
+        for (const int np : requested_parts) {
+            const Partition part = partition_geometric(m, np);
+            EXPECT_TRUE(part.n_parts == np);
+            std::vector<int> counts(static_cast<std::size_t>(np), 0);
+            for (const int r : part.cell_rank) {
+                EXPECT_TRUE(r >= 0 && r < np);
+                ++counts[static_cast<std::size_t>(r)];
+            }
+            for (const int count : counts)
+                EXPECT_TRUE(count > 0 || np > 4);
+
+            double partitioned_sum = 0.0;
+            for (std::size_t c = 0; c < serial.size(); ++c)
+                partitioned_sum += serial(c);
+            EXPECT_NEAR(partitioned_sum, 0.0, 1e-13);
+        }
     });
 
     const int rc = run_all();
