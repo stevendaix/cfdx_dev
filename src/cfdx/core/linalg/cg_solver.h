@@ -12,6 +12,7 @@
 #include "sparse_matrix.h"
 #include "vector.h"
 #include "mixed_precision.h"
+#include "krylov_reductions.h"
 #include <cstddef>
 #include <stdexcept>
 #include <cmath>
@@ -59,7 +60,8 @@ inline SolverResult solve_cg(
     Vector& x,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    PrecisionPolicy precision = {})
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
 {
     SolverResult result;
 
@@ -123,12 +125,13 @@ inline SolverResult solve_cg(
     // p = z
     std::vector<double> p = z;
 
-    double rsold = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        rsold += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(r[i])*static_cast<float>(z[i])) : r[i]*z[i]);
-    }
+    Vector z_vector(n);
+    for (std::size_t i = 0; i < n; ++i) z_vector(i) = z[i];
+    Vector r_vector(n);
+    for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
+    double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
 
-    const double b_norm = mixed_precision_norm2(b, SolverPrecision::FP64);
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
     const double tol_abs = tolerance * std::max(b_norm, 1e-15);
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
@@ -136,7 +139,7 @@ inline SolverResult solve_cg(
     if (rsold < tol_abs * tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
-        result.residual = mixed_precision_true_residual(A,b,x,rv);
+        result.residual = krylov_norm2(rv, redp, reduction);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
@@ -153,10 +156,12 @@ inline SolverResult solve_cg(
         }
 
         // alpha = rsold / (p · Ap)
-        double pAp = 0.0;
+        Vector p_vector(n), Ap_vector(n);
         for (std::size_t i = 0; i < n; ++i) {
-            pAp += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(p[i])*static_cast<float>(Ap[i])) : p[i]*Ap[i]);
+            p_vector(i) = p[i];
+            Ap_vector(i) = Ap[i];
         }
+        const double pAp = krylov_dot(p_vector, Ap_vector, redp, reduction);
         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
             result.status = SolverStatus::NOT_APPLICABLE;
             result.iterations = iter;
@@ -181,10 +186,11 @@ inline SolverResult solve_cg(
         }
 
         // rsnew = r · z
-        double rsnew = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
-            rsnew += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(r[i])*static_cast<float>(z[i])) : r[i]*z[i]);
+            r_vector(i) = r[i];
+            z_vector(i) = z[i];
         }
+        const double rsnew = krylov_dot(r_vector, z_vector, redp, reduction);
 
         if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
         const double res = std::sqrt(std::abs(rsnew));
