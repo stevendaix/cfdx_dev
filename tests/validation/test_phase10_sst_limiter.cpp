@@ -1,6 +1,7 @@
 #include "cfdx/physics/turbulence.h"
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 #include <stdexcept>
 
 int main() {
