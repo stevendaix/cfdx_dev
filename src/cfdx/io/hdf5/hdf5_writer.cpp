@@ -12,6 +12,13 @@
 #include <H5Spublic.h>
 #include <H5Apublic.h>
 #include <H5Ppublic.h>
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+#include <H5FDmpi.h>
+#include <H5FDmpio.h>
+#endif
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+#include <mpi.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -23,6 +30,30 @@
 
 namespace cfdx {
 namespace io {
+
+static hid_t create_file_access_plist()
+{
+    hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
+    if (plist < 0) return -1;
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+    int mpi_initialized = 0;
+    int mpi_finalized = 0;
+    MPI_Initialized(&mpi_initialized);
+    if (mpi_initialized) MPI_Finalized(&mpi_finalized);
+    if (mpi_initialized && !mpi_finalized) {
+        if (H5Pset_fapl_mpio(plist, MPI_COMM_WORLD, MPI_INFO_NULL) < 0) {
+            H5Pclose(plist);
+            return -1;
+        }
+    }
+#endif
+    return plist;
+}
+
+static hid_t open_file_access_plist()
+{
+    return create_file_access_plist();
+}
 
 static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value);
 
@@ -204,7 +235,10 @@ static bool ensure_group(hid_t file_id, const std::string& path) {
 }
 
 bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) {
-    hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    hid_t fapl = create_file_access_plist();
+    if (fapl < 0) return false;
+    hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
+    H5Pclose(fapl);
     if (file < 0) return false;
 
     write_schema_attributes(file, mesh);
@@ -303,7 +337,10 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
 
 bool write_field_hdf5(const std::string& filename,
                        const cfdx::core::Field<double, cfdx::core::Location::CELL>& field) {
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+    hid_t fapl = open_file_access_plist();
+    if (fapl < 0) return false;
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, fapl);
+    H5Pclose(fapl);
     if (file < 0) return false;
 
     // Fixed group path: "fields"
