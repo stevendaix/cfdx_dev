@@ -395,6 +395,8 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
         add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_executable(cfdx_mpi_poisson_restart apps/mpi_poisson_restart/main.cpp)
+            target_link_libraries(cfdx_mpi_poisson_restart PRIVATE cfdx_core MPI::MPI_CXX)
             add_executable(test_phase5_distributed tests/unit/test_phase5_distributed.cpp)
             add_executable(test_phase5_restart_writer tests/unit/test_phase5_restart_writer.cpp)
             add_executable(test_phase5_restart_reader tests/unit/test_phase5_restart_reader.cpp)
@@ -432,6 +434,22 @@ if(CFDX_BUILD_TESTS)
             add_test(NAME test_phase5_distributed
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_distributed> ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_production_mpi_poisson_writer
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
+                             --mode writer
+                             --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
+                             --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
+                             ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_production_mpi_poisson_reader
+                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
+                             --mode reader
+                             --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
+                             --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
+                             ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_production_mpi_poisson_reader PROPERTIES
+                DEPENDS test_production_mpi_poisson_writer)
             add_test(NAME test_phase5_restart_writer
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
