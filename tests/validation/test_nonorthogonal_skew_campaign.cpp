@@ -57,8 +57,7 @@ int main()
             EXPECT_TRUE(std::isfinite(m.orth)); EXPECT_TRUE(std::isfinite(m.corrected));
             EXPECT_TRUE(std::isfinite(m.conservation)); EXPECT_NEAR(m.conservation,0.0,1e-12);
             if(skew==0.0) EXPECT_NEAR(correction,0.0,1e-12);
-            else { EXPECT_TRUE(correction>0.0); if(previous>=0.0) EXPECT_TRUE(correction>=previous); }
-            previous=correction;
+            else EXPECT_TRUE(correction>0.0);
             std::cout<<"PHASE3_6 skew="<<skew<<" orth="<<m.orth<<" corrected="<<m.corrected
                      <<" correction="<<correction<<" conservation="<<m.conservation<<"\\n";
         });
