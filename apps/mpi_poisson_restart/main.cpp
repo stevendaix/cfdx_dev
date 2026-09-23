@@ -198,11 +198,7 @@ int main(int argc, char** argv)
                 jacobi_step(state, options.cells);
             const auto exact = exact_solution(options.cells);
             const double error = global_l2(state, exact);
-            if (rank == 0) {
-                std::ofstream ref(options.reference);
-                if (!ref) throw std::runtime_error("cannot write reference continuation");
-                ref << std::setprecision(17) << error << "\n";
-            }
+            write_distributed_checkpoint(options.reference.string(), state);
             mpi_barrier();
             if (rank == 0)
                 std::cout << "MPI Poisson writer: checkpoint iteration="
@@ -220,21 +216,11 @@ int main(int argc, char** argv)
                 jacobi_step(state, options.cells);
             const auto after = gather_global(state);
 
-            if (rank == 0) {
-                std::ifstream ref(options.reference);
-                double ignored_reference_error = 0.0;
-                if (!ref || !(ref >> ignored_reference_error))
-                    throw std::runtime_error("cannot read reference continuation");
-            }
-
-            // Reconstruct the same deterministic reference continuation from the
-            // checkpoint state and compare the M-rank result cell-by-cell.
+            // Read the writer's final field using the new M-rank decomposition.
+            // This is the independent reference continuation produced by the
+            // actual solver on N ranks, not a recomputation from the checkpoint.
             DistributedCellField reference(options.cells, ids, 1, "phi");
-            for (std::size_t i = 0; i < reference.local_size(); ++i)
-                reference(i) = before[static_cast<std::size_t>(reference.global_ids()[i])];
-            std::size_t ref_iteration = options.checkpoint_iteration;
-            for (; ref_iteration < options.final_iteration; ++ref_iteration)
-                jacobi_step(reference, options.cells);
+            read_distributed_checkpoint(options.reference.string(), reference);
             const auto expected = gather_global(reference);
 
             double local_max = 0.0;
