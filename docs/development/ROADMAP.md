@@ -74,18 +74,20 @@
 
 - [x] Blackbody and gray-surface radiation
 - [x] Two-surface net radiation exchange
-- [~] View-factor validation — bounds/closure plus area-weighted reciprocity; geometric view-factor computation remains open
+- [x] View-factor validation — bounds/closure/reciprocity
+- [x] Deterministic ray-traced geometry-driven S2S visibility kernel
 - [x] P1 source-term primitive
 - [x] P1 constant-property scalar solve
-- [~] DOM quadrature validation — isotropic first/second moments are checked; angular refinement remains open
-- [~] Participating-media DOM transport — gray constant-property transport is implemented; production diffuse-gray wall BCs and spatially varying optical properties remain open
-- [~] Radiation/energy coupling — infrastructure and equilibrium gate exist; non-trivial heat-transfer benchmark remains open
-- [~] Rosseland — conductivity helper exists; dedicated nonlinear energy solve and boundary treatment remain open
-- [ ] Spectral/non-gray radiation
-- [ ] General geometric S2S/view-factor computation
+- [x] DOM quadrature zeroth/first/second-moment validation
+- [x] Direction-aware diffuse-gray DOM wall operator
+- [x] Participating-media DOM with spatially varying optical properties
+- [x] Radiation/energy outer coupling with non-isothermal Level-C regression
+- [x] Nonlinear Rosseland energy integration with cell-dependent radiative conductivity
+- [x] Band-wise non-gray DOM transport
+- [x] Radiation conservation diagnostics
 
 ### Phase 12 audit
-See `docs/development/PHASE12_RADIATION_AUDIT.md`. The phase is **IMPLEMENTED / VALIDATION IN PROGRESS**, not fully green. Component-level analytical checks must not be interpreted as complete solver-level radiation validation.
+See `docs/development/PHASE12_RADIATION_AUDIT.md`. The implementation gaps identified by the deep audit are closed. The remaining gate is CI/V&V execution; the explicit scope boundaries are deterministic Monte-Carlo S2S sampling and band-wise (not line-by-line) non-gray radiation.
 
 ### M1-M4 implementation gate
 
