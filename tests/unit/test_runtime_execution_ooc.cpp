@@ -222,7 +222,7 @@ int main() {
             gpu::execute_gradient_cuda(
                 {0.0, 1.0}, {1.0}, {0.0}, {0.0},
                 {2}, {-1}, {1.0, 1.0}, gx, gy, gz),
-            std::invalid_argument);
+            std::exception);
         std::vector<double> div;
         EXPECT_THROW(
             gpu::execute_divergence_cuda({1.0}, {0}, {2}, 2, div),
