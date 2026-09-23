@@ -159,7 +159,8 @@ inline SolverResult solve_bicgstab(
         matvec(w.z_s,w.t);
         if(!finite_vector(w.t)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        const double ts=krylov_dot(w.t, w.s, redp, reduction);\n        const double tt=krylov_dot(w.t, w.t, redp, reduction);
+        const double ts=krylov_dot(w.t, w.s, redp, reduction);
+        const double tt=krylov_dot(w.t, w.t, redp, reduction);
         if(!std::isfinite(ts)||!std::isfinite(tt)||tt<=1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         omega=ts/tt;if(!std::isfinite(omega)||std::abs(omega)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i){x(i)+=alpha*w.z(i)+omega*w.z_s(i);w.r(i)=w.s(i)-omega*w.t(i);}
