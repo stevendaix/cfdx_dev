@@ -140,7 +140,7 @@ int main()
                 thermal_bc[name]={ScalarBoundaryType::FIXED_VALUE,800.0,0.0};
 
             RadiationEnergyCouplingControls controls;
-            controls.radiation.absorption=0.5;
+            controls.radiation.absorption=0.001;
             controls.radiation.max_iterations=100;
             controls.radiation.tolerance=1e-10;
             controls.energy.conductivity=1.0;
