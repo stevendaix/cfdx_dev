@@ -209,8 +209,9 @@ int main() {
         EXPECT_NEAR(div[0], 2.0, 1e-12);
         EXPECT_NEAR(div[1], -2.0, 1e-12);
 #else
+        std::vector<double> gx, gy, gz;
         EXPECT_THROW(
-            gpu::execute_gradient_cuda({}, {}, {}, {}, {}, {}, {}, {}, {}, {}),
+            gpu::execute_gradient_cuda({}, {}, {}, {}, {}, {}, {}, gx, gy, gz),
             std::runtime_error);
 #endif
     });
