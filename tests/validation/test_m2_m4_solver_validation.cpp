@@ -2,6 +2,7 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/energy_solver.h"
 #include "cfdx/physics/radiation_solver.h"
+#include "cfdx/physics/radiation_advanced.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <vector>
@@ -65,6 +66,35 @@ int main()
         auto r=solve_energy(m,g,phi,T,source,c,bc);
         EXPECT_TRUE(r.converged);
         EXPECT_NEAR(T(0),300.0 + 1000.0/(1000.0+12.0),1e-8);
+    });
+
+    run_case("advanced_radiation_variable_properties_and_spectral",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),Q(1,"Q","W/m3",1);
+        T(0)=800.0;G(0)=0.0;Q(0)=0.0;
+        std::vector<DiscreteDirection> dirs{
+            {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
+            {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
+            {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
+        RadiationOpticalPropertyField props;
+        props.cells.resize(1);
+        props[0].absorption=0.5;props[0].scattering=0.1;props[0].emissivity=1.0;
+        RadiationTransportControls rc;rc.max_iterations=30;rc.linear_max_iterations=200;rc.tolerance=1e-7;
+        auto vr=solve_participating_radiation_variable_properties(
+            m,g,T,G,Q,dirs,props,rc);
+        EXPECT_TRUE(vr.converged);
+        EXPECT_TRUE(G(0)>=0.0);
+
+        std::vector<RadiationBand> bands(2);
+        bands[0].wavelength_min=1e-6;bands[0].wavelength_max=2e-6;bands[0].weight=0.5;
+        bands[0].properties=props[0];
+        bands[1].wavelength_min=2e-6;bands[1].wavelength_max=4e-6;bands[1].weight=0.5;
+        bands[1].properties=props[0];
+        G(0)=0.0;Q(0)=0.0;
+        auto sr=solve_spectral_dom(m,g,T,G,Q,dirs,bands,rc);
+        EXPECT_TRUE(sr.converged);
+        EXPECT_TRUE(std::isfinite(G(0)) && G(0)>=0.0);
+        EXPECT_TRUE(std::isfinite(Q(0)));
     });
 
     run_case("p1_isothermal_blackbody_equilibrium",[] {
