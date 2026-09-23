@@ -110,13 +110,8 @@ int main(int argc, char** argv)
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
-        if (restart_path.empty()) {
-            U.set(0, 0.25, -0.15, 0.05);
-            p(0) = 37.5;
-        } else {
-            U.fill(0.0);
-            p.fill(0.0);
-        }
+        U.fill(0.0);
+        p.fill(0.0);
 
         VelocityBoundaryConditions velocity_bcs;
         velocity_bcs["wall"] = {
