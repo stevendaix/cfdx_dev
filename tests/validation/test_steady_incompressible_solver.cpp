@@ -1,5 +1,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/io/restart/dat_restart.h"
+#include "cfdx/io/vtu/vtu_writer.h"
+#include <fstream>
 #include <filesystem>
 #include "common/test_harness.h"
 #include <limits>
@@ -128,6 +130,34 @@ int main()
         EXPECT_NEAR(k(0),0.25,1e-14);
         EXPECT_NEAR(omega(0),3.0,1e-14);
         std::filesystem::remove(dat);
+    });
+
+    run_case("native_solver_to_vtu_preserves_physical_time_and_iteration", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.convergence.max_iterations = 2;
+        controls.linear_tolerance = 1e-12;
+
+        const auto solve = solve_steady_incompressible(m,U,p,ubc,pbc,controls);
+        const auto vtu = std::filesystem::temp_directory_path() / "cfdx_solver_to_vtu_test.vtu";
+        cfdx::io::VtuWriter writer;
+        std::map<std::string, cfdx::core::ScalarCellField> fields{{"p",p}};
+        ASSERT_TRUE(writer.write(vtu.string(),m,fields,{}, {},0.75,solve.iterations,true));
+
+        std::ifstream in(vtu);
+        ASSERT_TRUE(in.is_open());
+        const std::string xml((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+        EXPECT_NE(xml.find("physical_time"),std::string::npos);
+        EXPECT_NE(xml.find("7.500000000000e-01"),std::string::npos);
+        EXPECT_NE(xml.find("iteration"),std::string::npos);
+        EXPECT_NE(xml.find(std::to_string(solve.iterations)),std::string::npos);
+        std::filesystem::remove(vtu);
     });
 
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
