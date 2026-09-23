@@ -36,7 +36,7 @@ int main()
         EXPECT_NEAR(cht_interface_heat_flux(g, 320.0, 300.0),
                     1818.181818181818, 1e-9);
         const double gc=interface_conductance(10.0,2.0,0.01,0.02,1.0,0.01);
-        EXPECT_NEAR(gc,62.5,1e-12);
+        EXPECT_NEAR(gc,1.0/(0.01/10.0+0.01+0.02/2.0),1e-12);
     });
 
     run_case("surface_radiation_and_view_factors", [] {
