@@ -57,6 +57,17 @@ struct RadiationOpticalPropertyField {
     const RadiationOpticalProperties& operator[](std::size_t i) const { return cells.at(i); }
 };
 
+inline RadiationSolveResult solve_participating_radiation_variable_properties(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
+    const std::vector<DiscreteDirection>& directions,
+    const RadiationOpticalPropertyField& properties,
+    RadiationTransportControls controls,
+    const ScalarBoundaryConditions& wall_intensity_bcs);
+
 // -----------------------------------------------------------------------------
 // Spectral / non-gray infrastructure
 // -----------------------------------------------------------------------------
