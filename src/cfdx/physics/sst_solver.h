@@ -133,4 +133,32 @@ inline TurbulenceTransportResult solve_sst_transport(
     return result;
 }
 
+inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs = {},
+    const ScalarBoundaryConditions& omega_bcs = {},
+    std::size_t max_iterations = 100,
+    double tolerance = 1e-8)
+{
+    if(wall_distance.size()!=mesh.n_cells())
+        throw std::invalid_argument("SST wall-distance field size mismatch");
+    cfdx::core::Field<double,cfdx::core::Location::CELL> F1(mesh.n_cells(),"F1","1",1);
+    cfdx::core::Field<double,cfdx::core::Location::CELL> F2(mesh.n_cells(),"F2","1",1);
+    for(std::size_t i=0;i<mesh.n_cells();++i) {
+        const auto blend=compute_sst_blending(k(i),omega(i),wall_distance(i),
+                                              controls.molecular_viscosity,
+                                              controls.beta_star);
+        F1(i)=blend.first; F2(i)=blend.second;
+    }
+    return solve_sst_transport(mesh,geometry,mass_flux,k,omega,strain_rate,
+                               F1,F2,controls,k_bcs,omega_bcs,max_iterations,tolerance);
+}
+
 } // namespace cfdx::physics
