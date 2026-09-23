@@ -479,6 +479,16 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
     add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    add_executable(cfdx_application_e2e_driver tests/validation/test_application_e2e_driver.cpp)
+    target_link_libraries(cfdx_application_e2e_driver PRIVATE cfdx_core)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_application_e2e
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_application_e2e.py
+                         $<TARGET_FILE:cfdx_application_e2e_driver>)
+        set_tests_properties(test_application_e2e PROPERTIES
+            ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+    endif()
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
