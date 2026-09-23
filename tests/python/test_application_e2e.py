@@ -181,7 +181,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
         ),
     )
     case_path, dat_path = save_case_with_dat(
-        session, tmp_path / "e2e.cfdx.h5", source_dat
+        session, mesh_path, source_dat
     )
     assert dat_path.is_file()
 
