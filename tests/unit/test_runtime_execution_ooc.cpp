@@ -6,10 +6,10 @@
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/async_transfer.h"
+#include "cfdx/runtime/gpu/gpu_profiler.h"
 #ifdef CFDX_ENABLE_GPU
 #include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
 #include "cfdx/runtime/gpu/cuda_double_buffer.h"
-#include "cfdx/runtime/gpu/gpu_profiler.h"
 #endif
 #include "common/test_harness.h"
 #include <cstdint>
