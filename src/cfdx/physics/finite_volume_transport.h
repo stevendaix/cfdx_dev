@@ -357,6 +357,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
 
+    // Keep all retries anchored to the same nonlinear iterate; the accepted
+    // predictor is updated only after a solver reports convergence.
     // Momentum matrices can move between nearly symmetric diffusion-dominated
     // states and mildly nonsymmetric convection-dominated states. BiCGStab may
     // either stagnate or break down on the former even though the linear
