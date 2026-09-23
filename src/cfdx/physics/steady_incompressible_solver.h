@@ -3,6 +3,8 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/gmres_solver.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
@@ -59,6 +61,8 @@ struct IncompressibleIteration {
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
+    cfdx::core::SolverStatus pressure_solver_status =
+        cfdx::core::SolverStatus::NOT_APPLICABLE;
 };
 
 struct IncompressibleSolveResult {
@@ -365,29 +369,68 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         std::vector<double> rAU(mesh.n_cells());
-        for (std::size_t c=0;c<mesh.n_cells();++c) {
-            const double ax=std::max(ex.diagonal[c],1e-30);
-            const double ay=std::max(ey.diagonal[c],1e-30);
-            const double az=std::max(ez.diagonal[c],1e-30);
-            double momentum_diagonal=(ax+ay+az)/3.0;
 
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
-                    double value = eq.diagonal[row];
-                    const auto begin = eq.matrix.row_offsets_data()[row];
-                    const auto end = eq.matrix.row_offsets_data()[row+1];
-                    for (std::uint32_t k=begin;k<end;++k) {
-                        const auto col = eq.matrix.columns_data()[k];
-                        if (col != row)
-                            value += eq.matrix.values_data()[k];
-                    }
-                    return value;
-                };
-                const double cx=corrected_diagonal(ex,c);
-                const double cy=corrected_diagonal(ey,c);
-                const double cz=corrected_diagonal(ez,c);
-                momentum_diagonal=(cx+cy+cz)/3.0;
+        // Rhie-Chow coupling must be based on the momentum equations that
+        // actually drive the current flow. Averaging all three component
+        // diagonals is inconsistent for a single-component pressure-driven
+        // flow and becomes particularly damaging on anisotropic meshes.
+        const auto equation_has_drive = [](const ScalarEquation& eq) {
+            double max_abs_rhs = 0.0;
+            for (std::size_t i = 0; i < eq.rhs.size(); ++i)
+                max_abs_rhs = std::max(max_abs_rhs, std::abs(eq.rhs(i)));
+            return max_abs_rhs > 1e-14 * std::max(1.0, eq.rhs.norm2());
+        };
+
+        const bool active_x = equation_has_drive(ex);
+        const bool active_y = equation_has_drive(ey);
+        const bool active_z = equation_has_drive(ez);
+
+        auto corrected_diagonal = [](const ScalarEquation& eq, std::size_t row) {
+            double value = eq.diagonal[row];
+            const auto begin = eq.matrix.row_offsets_data()[row];
+            const auto end = eq.matrix.row_offsets_data()[row + 1];
+            for (std::uint32_t k = begin; k < end; ++k) {
+                const auto col = eq.matrix.columns_data()[k];
+                if (col != row)
+                    value += eq.matrix.values_data()[k];
             }
+            return value;
+        };
+
+        const bool use_active_components = active_x || active_y || active_z;
+        const std::size_t active_count = use_active_components
+            ? static_cast<std::size_t>(active_x) +
+              static_cast<std::size_t>(active_y) +
+              static_cast<std::size_t>(active_z)
+            : 3u;
+
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double momentum_diagonal = 0.0;
+            if (active_x)
+                momentum_diagonal += controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                    ? corrected_diagonal(ex, c) : std::max(ex.diagonal[c], 1e-30);
+            if (active_y)
+                momentum_diagonal += controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                    ? corrected_diagonal(ey, c) : std::max(ey.diagonal[c], 1e-30);
+            if (active_z)
+                momentum_diagonal += controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                    ? corrected_diagonal(ez, c) : std::max(ez.diagonal[c], 1e-30);
+
+            if (!use_active_components) {
+                momentum_diagonal =
+                    (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                         ? corrected_diagonal(ex, c) + corrected_diagonal(ey, c) +
+                           corrected_diagonal(ez, c)
+                         : std::max(ex.diagonal[c], 1e-30) +
+                           std::max(ey.diagonal[c], 1e-30) +
+                           std::max(ez.diagonal[c], 1e-30));
+            }
+            momentum_diagonal /= static_cast<double>(active_count);
+
+            if (!(momentum_diagonal > 0.0) || !std::isfinite(momentum_diagonal))
+                throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
+            rAU[c] = geometry.cell_volumes[c] / momentum_diagonal;
+        }
 
             if (!(momentum_diagonal > 0.0) || !std::isfinite(momentum_diagonal))
                 throw std::runtime_error("solve_steady_incompressible: invalid momentum diagonal");
@@ -498,10 +541,35 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             A.finalize();
 
             Vector p_corr(nc, 0.0);
-            const auto rp = solve_cg(
+            auto rp = solve_cg(
                 A, b, p_corr, controls.linear_max_iterations, controls.linear_tolerance);
+
+            // Pressure correction is an elliptic system. CG with Jacobi is the
+            // preferred path for the symmetric positive-definite operator,
+            // but highly anisotropic meshes can make it converge too slowly.
+            // Retry from the original zero correction with preconditioned GMRES
+            // rather than accepting an unconverged pressure correction.
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                p_corr = Vector(nc, 0.0);
+                cfdx::core::JacobiPreconditioner jacobi;
+                const auto gm = cfdx::core::solve_gmres(
+                    A, b, p_corr, 64, controls.linear_max_iterations,
+                    controls.linear_tolerance, &jacobi);
+                rp = gm;
+            }
+
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
+
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                throw std::runtime_error(
+                    std::string("solve_steady_incompressible: pressure correction solve did not converge "
+                                "(status=") +
+                    cfdx::core::to_string(rp.status) +
+                    ", iterations=" + std::to_string(rp.iterations) +
+                    ", residual=" + std::to_string(rp.residual) +
+                    ", relative=" + std::to_string(rp.residual_relative) + ")");
+            }
 
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += controls.coupling.alpha_p * p_corr(c);
@@ -651,6 +719,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
+        h.pressure_solver_status = rp.status;
         result.history.push_back(h);
 
         if (iter > 1 &&
