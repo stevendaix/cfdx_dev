@@ -51,6 +51,10 @@ int main() {
         p.heat_capacity.table.temperature={300,400,500};
         p.heat_capacity.table.value={1000,1200,1400};
         EXPECT_NEAR(p.enthalpy(500.0,300.0),120000.0,1e-8);
+        p.heat_capacity.model=ScalarPropertyModel::LINEAR;
+        p.heat_capacity.reference_value=1000.0;
+        p.heat_capacity.coefficients={2.0};
+        EXPECT_NEAR((p.cp(400.0)-p.cp(300.0))/100.0,2.0,1e-12);
     });
     run_case("thermal_turbulence_coupling", [] {
         EXPECT_NEAR(turbulent_thermal_diffusivity(0.01,1.0,0.9),0.0111111111111111,1e-12);
@@ -64,7 +68,13 @@ int main() {
         EXPECT_TRUE(sa_threw);
         EXPECT_NEAR(smagorinsky_nu_t(0.17,0.1,10.0),0.00289,1e-12);
         EXPECT_NEAR(wale_nu_t(0.5,0.1,10.0),0.025,1e-12);
+        EXPECT_EQ(static_cast<int>(implementation_kind(AdvancedTurbulenceModel::SST)),
+                  static_cast<int>(TurbulenceImplementationKind::CLOSURE));
         EXPECT_NEAR(des_length_scale(0.5,0.2,0.65),0.13,1e-12);
+        EXPECT_NEAR(ddes_length_scale_from_rd(0.5,0.2,0.65,0.0),0.13,1e-12);
+        EXPECT_NEAR(ddes_length_scale_from_rd(0.5,0.2,0.65,1.0),0.5,1e-12);
+        EXPECT_NEAR(iddes_length_scale_from_rd(0.5,0.2,0.65,0.0,1.0),0.13,1e-12);
+        EXPECT_NEAR(iddes_length_scale_from_rd(0.5,0.2,0.65,1.0,1.0),0.5,1e-12);
         EXPECT_NEAR(ddes_shielding(0.0),1.0,1e-12);
         EXPECT_LT(ddes_shielding(1.0),1e-10);
         EXPECT_NEAR(ddes_length_scale(0.5,0.2,0.65,1.0),0.13,1e-12);
