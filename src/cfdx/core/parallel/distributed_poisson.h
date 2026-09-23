@@ -240,7 +240,7 @@ inline DistributedPoissonResult solve_poisson_mpi(
     double rz = detail::distributed_dot(local_rz, config.deterministic_reduction, comm);
 
     DistributedPoissonResult result{
-        SolverResult{}, std::move(x), 0.0, b_norm};
+        SolverResult{}, x, 0.0, b_norm};
     result.linear_result.residual = std::sqrt(std::max(0.0, rz));
     result.linear_result.residual_relative =
         b_norm > 0.0 ? result.linear_result.residual / b_norm : 0.0;
@@ -322,6 +322,11 @@ inline DistributedPoissonResult solve_poisson_mpi(
     result.linear_result.residual = result.global_residual;
     result.linear_result.residual_relative =
         b_norm > 0.0 ? result.global_residual / b_norm : 0.0;
+    // The result object was initialized before the Krylov iterations to carry
+    // the metadata and global RHS norm. Keep its solution synchronized with
+    // the final distributed iterate; otherwise callers observe the initial
+    // zero field even when the linear solve converged.
+    result.solution = x;
     return result;
 }
 

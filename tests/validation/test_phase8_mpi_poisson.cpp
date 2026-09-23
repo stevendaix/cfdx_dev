@@ -32,7 +32,10 @@ static Mesh two_cell_channel()
     m.faces().push_face({4,5,11,10});     // cell 1 z+
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        m.ownership().set_owner(f, f == 1 ? 0 : (f < 3 ? f : (f <= 6 ? 0 : 1)));
+        // Every owner index must be in [0, n_cells).
+        const std::size_t owner =
+            (f == 2 || f >= 7) ? 1u : 0u;
+        m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
     m.ownership().set_owner(1, 0);
@@ -78,21 +81,20 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Compare against the serial canonical assembly. With two cells and
-    // physical Dirichlet faces at x=0 and x=1 the cell-centred solution is
-    // [1/3, 2/3], i.e. the same discrete problem on every rank.
-    Vector rhs;
-    const auto A = assemble_cell_diffusion_matrix(mesh, bc, 1.0, {0.0,0.0}, rhs);
-    Vector serial_x(2, 0.0);
-    const auto serial = solve_cg(A, rhs, serial_x, 100, 1e-12);
-    if (serial.status != SolverStatus::CONVERGED)
-        return 1;
-
+    // With Dirichlet values imposed at the boundary faces, the two-cell
+    // cell-centred finite-volume discretization has solution [1/4, 3/4]
+    // for phi(0)=0 and phi(1)=1. Each boundary centre-to-face distance is
+    // half a cell width, whereas the internal centre-to-centre distance is
+    // one full cell width.
+    // Compare each owned value directly against that canonical oracle so
+    // this MPI backend test is independent of a second local Krylov solve.
     const auto& ids = parallel.solution.global_ids();
     for (std::size_t i = 0; i < ids.size(); ++i) {
         const auto gid = static_cast<std::size_t>(ids[i]);
-        if (std::abs(parallel.solution(i) - serial_x(gid)) > 1e-11) {
-            std::fprintf(stderr, "rank %d: serial/MPI mismatch for cell %zu\n", rank, gid);
+        const double expected = gid == 0 ? 1.0 / 4.0 : 3.0 / 4.0;
+        if (std::abs(parallel.solution(i) - expected) > 1e-11) {
+            std::fprintf(stderr, "rank %d: analytical mismatch for cell %zu: %.17g != %.17g\n",
+                         rank, gid, parallel.solution(i), expected);
             mpi_finalize();
             return 1;
         }
