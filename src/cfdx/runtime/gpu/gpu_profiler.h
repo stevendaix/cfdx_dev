@@ -36,9 +36,9 @@ public:
     GpuProfiler(const GpuProfiler&) = delete;
     GpuProfiler& operator=(const GpuProfiler&) = delete;
 
-    void start(cudaStream_t stream = nullptr) {
+    void start(void* stream = nullptr) {
 #ifdef CFDX_ENABLE_GPU
-        if (cudaEventRecord(start_, stream) != cudaSuccess)
+        if (cudaEventRecord(start_, static_cast<cudaStream_t>(stream)) != cudaSuccess)
             throw std::runtime_error("CUDA profiler start event failed");
 #else
         (void)stream;
@@ -46,9 +46,9 @@ public:
 #endif
     }
 
-    void stop(cudaStream_t stream = nullptr) {
+    void stop(void* stream = nullptr) {
 #ifdef CFDX_ENABLE_GPU
-        if (cudaEventRecord(stop_, stream) != cudaSuccess)
+        if (cudaEventRecord(stop_, static_cast<cudaStream_t>(stream)) != cudaSuccess)
             throw std::runtime_error("CUDA profiler stop event failed");
         if (cudaEventSynchronize(stop_) != cudaSuccess)
             throw std::runtime_error("CUDA profiler event synchronization failed");
