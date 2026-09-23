@@ -18,9 +18,6 @@ inline std::vector<std::size_t> build_restart_permutation(
     const std::vector<std::uint64_t>& source_ids,
     const std::vector<std::uint64_t>& target_ids)
 {
-    if (source_ids.size() != target_ids.size())
-        throw std::invalid_argument("restart mapping: source/target cell counts differ");
-
     std::unordered_map<std::uint64_t, std::size_t> source_index;
     source_index.reserve(source_ids.size());
     for (std::size_t i = 0; i < source_ids.size(); ++i) {
