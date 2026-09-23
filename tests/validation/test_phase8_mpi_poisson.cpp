@@ -81,18 +81,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    Vector rhs;
-    const auto A = assemble_cell_diffusion_matrix(mesh, bc, 1.0, {0.0,0.0}, rhs);
-    Vector serial_x(2, 0.0);
-    const auto serial = solve_cg(A, rhs, serial_x, 100, 1e-12);
-    if (serial.status != SolverStatus::CONVERGED)
-        return 1;
-
+    // The two-cell finite-volume discretization has an analytical
+    // cell-centred solution [1/3, 2/3] for phi(0)=0 and phi(1)=1.
+    // Compare each owned value directly against that canonical oracle so
+    // this MPI backend test is independent of a second local Krylov solve.
     const auto& ids = parallel.solution.global_ids();
     for (std::size_t i = 0; i < ids.size(); ++i) {
         const auto gid = static_cast<std::size_t>(ids[i]);
-        if (std::abs(parallel.solution(i) - serial_x(gid)) > 1e-11) {
-            std::fprintf(stderr, "rank %d: serial/MPI mismatch for cell %zu\n", rank, gid);
+        const double expected = gid == 0 ? 1.0 / 3.0 : 2.0 / 3.0;
+        if (std::abs(parallel.solution(i) - expected) > 1e-11) {
+            std::fprintf(stderr, "rank %d: analytical mismatch for cell %zu: %.17g != %.17g\n",
+                         rank, gid, parallel.solution(i), expected);
             mpi_finalize();
             return 1;
         }
