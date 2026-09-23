@@ -96,6 +96,39 @@ int main() {
             std::invalid_argument);
     });
 
+    run_case("pure_neumann_rejects_incompatible_data", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
+        bc.face_values.assign(m.n_faces(), 0.0);
+        EXPECT_THROW(
+            solve_poisson_mixed(m, bc, {1.0}),
+            std::invalid_argument);
+    });
+
+    run_case("pure_neumann_compatible_problem_uses_reference_gauge", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
+        bc.face_values.assign(m.n_faces(), 0.0);
+        ScalarDiffusionConfig cfg;
+        cfg.gauge.reference_cell = 0;
+        cfg.gauge.reference_value = 2.5;
+        auto result = solve_poisson_mixed(m, bc, {0.0}, cfg);
+        EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(result.solution(0), 2.5, 1e-12);
+    });
+
+    run_case("pure_neumann_nonzero_source_and_flux_is_compatible", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
+        bc.face_values.assign(m.n_faces(), 0.0);
+        bc.face_values[5] = 1.0;
+        ScalarDiffusionConfig cfg;
+        cfg.gauge.reference_value = 3.0;
+        auto result = solve_poisson_mixed(m, bc, {-1.0}, cfg);
+        EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(result.solution(0), 3.0, 1e-12);
+    });
+
     run_case("scalar_diffusion_rejects_bad_inputs", [] {
         Mesh m = cube();
         auto bc = PoissonBoundaryCondition::dirichlet(m.n_faces());
