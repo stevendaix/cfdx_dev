@@ -252,6 +252,87 @@ int main() {
 #endif
     });
 
+    run_case("cpu_gpu_gradient_numerical_equivalence", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+
+        const std::vector<double> phi{0.0, 1.0};
+        const std::vector<double> sx{1.0};
+        const std::vector<double> sy{0.0};
+        const std::vector<double> sz{0.0};
+        const std::vector<std::size_t> owner_cpu{0};
+        const std::vector<std::uint32_t> owner_gpu{0};
+        const std::vector<std::int64_t> neighbour{1};
+        const std::vector<double> volume{1.0, 1.0};
+
+        std::vector<double> cpu_x(2), cpu_y(2), cpu_z(2);
+        gpu::gradient_gauss_reference(
+            phi.data(), sx.data(), sy.data(), sz.data(),
+            owner_cpu.data(), neighbour.data(), volume.data(),
+            1, 2, cpu_x.data(), cpu_y.data(), cpu_z.data());
+
+        std::vector<double> gpu_x, gpu_y, gpu_z;
+        gpu::execute_gradient_cuda(
+            phi, sx, sy, sz, owner_gpu, neighbour, volume,
+            gpu_x, gpu_y, gpu_z);
+
+        EXPECT_TRUE(gpu_x.size() == cpu_x.size());
+        EXPECT_TRUE(gpu_y.size() == cpu_y.size());
+        EXPECT_TRUE(gpu_z.size() == cpu_z.size());
+        for (std::size_t i = 0; i < cpu_x.size(); ++i) {
+            EXPECT_NEAR(gpu_x[i], cpu_x[i], 1e-12);
+            EXPECT_NEAR(gpu_y[i], cpu_y[i], 1e-12);
+            EXPECT_NEAR(gpu_z[i], cpu_z[i], 1e-12);
+        }
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cpu_gpu_gradient_equivalence_is_repeatable", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+
+        const std::vector<double> phi{0.25, 1.5};
+        const std::vector<double> sx{0.75};
+        const std::vector<double> sy{0.125};
+        const std::vector<double> sz{-0.25};
+        const std::vector<std::size_t> owner_cpu{0};
+        const std::vector<std::uint32_t> owner_gpu{0};
+        const std::vector<std::int64_t> neighbour{1};
+        const std::vector<double> volume{0.5, 1.25};
+
+        std::vector<double> cpu_x(2), cpu_y(2), cpu_z(2);
+        gpu::gradient_gauss_reference(
+            phi.data(), sx.data(), sy.data(), sz.data(),
+            owner_cpu.data(), neighbour.data(), volume.data(),
+            1, 2, cpu_x.data(), cpu_y.data(), cpu_z.data());
+
+        std::vector<double> gx1, gy1, gz1, gx2, gy2, gz2;
+        gpu::execute_gradient_cuda(
+            phi, sx, sy, sz, owner_gpu, neighbour, volume,
+            gx1, gy1, gz1);
+        gpu::execute_gradient_cuda(
+            phi, sx, sy, sz, owner_gpu, neighbour, volume,
+            gx2, gy2, gz2);
+
+        for (std::size_t i = 0; i < cpu_x.size(); ++i) {
+            EXPECT_NEAR(gx1[i], cpu_x[i], 1e-12);
+            EXPECT_NEAR(gy1[i], cpu_y[i], 1e-12);
+            EXPECT_NEAR(gz1[i], cpu_z[i], 1e-12);
+            EXPECT_NEAR(gx2[i], gx1[i], 1e-15);
+            EXPECT_NEAR(gy2[i], gy1[i], 1e-15);
+            EXPECT_NEAR(gz2[i], gz1[i], 1e-15);
+        }
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
     run_case("host_emulated_device_roundtrip", [] {
         gpu::HostEmulatedDeviceBuffer b(3*sizeof(double));
         const double src[3] = {1,2,3};
