@@ -370,8 +370,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             64, controls.max_iterations, controls.tolerance);
     }
 
-    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
-        result.status != cfdx::core::SolverStatus::NOT_APPLICABLE) {
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
