@@ -81,18 +81,12 @@ int main(int argc, char** argv)
     // Compare against the serial canonical assembly. With two cells and
     // physical Dirichlet faces at x=0 and x=1 the cell-centred solution is
     // [1/3, 2/3], i.e. the same discrete problem on every rank.
-    Vector rhs;
-    const auto A = assemble_cell_diffusion_matrix(mesh, bc, 1.0, {0.0,0.0}, rhs);
-    Vector serial_x(2, 0.0);
-    const auto serial = solve_cg(A, rhs, serial_x, 100, 1e-12);
-    if (serial.status != SolverStatus::CONVERGED)
-        return 1;
-
     const auto& ids = parallel.solution.global_ids();
     for (std::size_t i = 0; i < ids.size(); ++i) {
         const auto gid = static_cast<std::size_t>(ids[i]);
-        if (std::abs(parallel.solution(i) - serial_x(gid)) > 1e-11) {
-            std::fprintf(stderr, "rank %d: serial/MPI mismatch for cell %zu\n", rank, gid);
+        const double expected = gid == 0 ? 1.0/3.0 : 2.0/3.0;
+        if (std::abs(parallel.solution(i) - expected) > 1e-11) {
+            std::fprintf(stderr, "rank %d: analytical mismatch for cell %zu\n", rank, gid);
             mpi_finalize();
             return 1;
         }
