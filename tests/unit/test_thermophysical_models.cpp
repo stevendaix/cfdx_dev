@@ -36,6 +36,9 @@ int main() {
     run_case("density_and_enthalpy", [] {
         DensityControls d; d.rho0=1000.0; d.model=DensityModel::BOUSSINESQ; d.beta=1e-3;
         EXPECT_NEAR(evaluate_density(d,310.0),990.0,1e-12);
+        d.model=DensityModel::BOUSSINESQ;
+        bool boussinesq_threw=false; try {(void)evaluate_density(d,450.0);} catch(...) {boussinesq_threw=true;}
+        EXPECT_TRUE(boussinesq_threw);
         d.model=DensityModel::IDEAL_GAS; d.gas_constant=287.05;
         EXPECT_NEAR(evaluate_density(d,300.0,101325.0),101325.0/(287.05*300.0),1e-12);
         ThermophysicalProperties p;
@@ -56,9 +59,16 @@ int main() {
         EXPECT_NEAR(komega_eddy_viscosity(2.0,4.0),0.5,1e-12);
         EXPECT_NEAR(sst_eddy_viscosity(1.0,2.0,1.0),0.31,1e-12);
         EXPECT_NEAR(spalart_allmaras_nu_t(1e-4,0.01,1e-5),1e-4*std::pow(10.0,3)/(std::pow(10.0,3)+std::pow(7.1,3)),1e-12);
+        EXPECT_NEAR(spalart_allmaras_nu_t(-1e-4,0.01,1e-5),0.0,1e-15);
+        bool sa_threw=false; try {(void)spalart_allmaras_nu_t(-1e-4,0.01,1e-5,NegativeNuTildePolicy::REJECT);} catch(...) {sa_threw=true;}
+        EXPECT_TRUE(sa_threw);
         EXPECT_NEAR(smagorinsky_nu_t(0.17,0.1,10.0),0.00289,1e-12);
         EXPECT_NEAR(wale_nu_t(0.5,0.1,10.0),0.025,1e-12);
         EXPECT_NEAR(des_length_scale(0.5,0.2,0.65),0.13,1e-12);
+        EXPECT_NEAR(ddes_shielding(0.0),1.0,1e-12);
+        EXPECT_LT(ddes_shielding(1.0),1e-10);
+        EXPECT_NEAR(ddes_length_scale(0.5,0.2,0.65,1.0),0.13,1e-12);
+        EXPECT_NEAR(ddes_length_scale(0.5,0.2,0.65,0.0),0.5,1e-12);
     });
     run_case("invalid_models_are_rejected", [] {
         bool threw=false; try { ScalarPropertyControls c; c.reference_value=-1; (void)evaluate_scalar_property(c,300); } catch(...) {threw=true;} EXPECT_TRUE(threw);
