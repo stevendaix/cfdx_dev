@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <limits>
 
 namespace cfdx::physics {
 
@@ -136,6 +137,41 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         }
     }
     return result;
+}
+
+
+inline TurbulenceTransportResult solve_algebraic_turbulence(
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& second,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const TurbulenceTransportControls& controls)
+{
+    validate_turbulence_controls(controls);
+    TurbulenceTransportResult r; r.converged=true; r.iterations=1;
+    for(std::size_t i=0;i<mesh.n_cells();++i) {
+        const double s=std::max(0.0,strain_rate(i));
+        if(controls.model==TurbulenceModel::LAMINAR) {
+            k(i)=controls.k_min; second(i)=controls.epsilon_min;
+        } else if(controls.model==TurbulenceModel::SMAGORINSKY ||
+                  controls.model==TurbulenceModel::WALE ||
+                  controls.model==TurbulenceModel::DES ||
+                  controls.model==TurbulenceModel::DDES ||
+                  controls.model==TurbulenceModel::IDDES) {
+            k(i)=std::max(k(i),controls.k_min);
+            second(i)=std::max(second(i),controls.epsilon_min);
+        } else if(controls.model==TurbulenceModel::SPALART_ALLMARAS) {
+            second(i)=std::max(second(i),controls.k_min);
+            k(i)=std::max(k(i),controls.k_min);
+        } else {
+            k(i)=std::max(k(i),controls.k_min);
+            second(i)=std::max(second(i),
+                controls.model==TurbulenceModel::KOMEGA ||
+                controls.model==TurbulenceModel::SST ? controls.omega_min : controls.epsilon_min);
+        }
+        (void)s;
+    }
+    return r;
 }
 
 inline ScalarBoundaryCondition wall_k_epsilon(double k_value, double epsilon_value)
