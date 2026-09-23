@@ -380,6 +380,47 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
     }
+    if (result.status != cfdx::core::SolverStatus::CONVERGED && candidate.size() <= 256) {
+        // Small validation and startup systems benefit from a deterministic
+        // dense fallback. Partial pivoting makes this independent of Krylov
+        // breakdown and gives the nonlinear SIMPLE loop an exact predictor.
+        const std::size_t n = candidate.size();
+        std::vector<double> a(n*n, 0.0), b(n, 0.0);
+        for (std::size_t i=0; i<n; ++i) {
+            const auto begin=equation.matrix.row_offsets_data()[i];
+            const auto end=equation.matrix.row_offsets_data()[i+1];
+            b[i]=equation.rhs(i);
+            for (std::uint32_t k=begin; k<end; ++k)
+                a[i*n + equation.matrix.columns_data()[k]] = equation.matrix.values_data()[k];
+        }
+        bool singular=false;
+        for (std::size_t col=0; col<n; ++col) {
+            std::size_t pivot=col;
+            for (std::size_t row=col+1; row<n; ++row)
+                if (std::abs(a[row*n+col]) > std::abs(a[pivot*n+col])) pivot=row;
+            if (!(std::abs(a[pivot*n+col]) > 1e-30) || !std::isfinite(a[pivot*n+col])) { singular=true; break; }
+            if (pivot!=col) { for(std::size_t j=col;j<n;++j) std::swap(a[pivot*n+j],a[col*n+j]); std::swap(b[pivot],b[col]); }
+            for (std::size_t row=col+1; row<n; ++row) {
+                const double factor=a[row*n+col]/a[col*n+col];
+                a[row*n+col]=0.0;
+                for (std::size_t j=col+1;j<n;++j) a[row*n+j]-=factor*a[col*n+j];
+                b[row]-=factor*b[col];
+            }
+        }
+        if (!singular) {
+            for (std::size_t i=n; i-- > 0;) {
+                double sum=b[i];
+                for (std::size_t j=i+1;j<n;++j) sum-=a[i*n+j]*candidate(j);
+                candidate(i)=sum/a[i*n+i];
+            }
+            const double residual=scalar_equation_residual_inf(equation,candidate);
+            if (std::isfinite(residual) && residual <= controls.tolerance*std::max(1.0,*std::max_element(equation.rhs.data(), equation.rhs.data()+equation.rhs.size(), [](double x,double y){return std::abs(x)<std::abs(y);}))) {
+                result.status=cfdx::core::SolverStatus::CONVERGED;
+                result.iterations=1; result.residual=residual; result.residual_relative=residual;
+            }
+        }
+    }
+
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
         // Robust smoother fallback for diagonally dominant finite-volume
         // transport systems. This mirrors the role of smoothSolver in
