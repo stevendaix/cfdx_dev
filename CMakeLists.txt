@@ -252,6 +252,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/communication_avoiding.h
     src/cfdx/core/parallel/distributed_execution.h
     src/cfdx/core/parallel/distributed_poisson.h
+    src/cfdx/runtime/gpu/cuda_poisson.h
     src/cfdx/core/memory/reuse_pool.h
     src/cfdx/core/memory/field_lifetime.h
     src/cfdx/core/linalg/mpi_overlap.h
