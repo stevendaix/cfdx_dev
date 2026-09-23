@@ -123,9 +123,9 @@ int main(int argc, char** argv)
         IncompressibleSolverControls controls;
         controls.algorithm = cfdx::physics::PressureVelocityAlgorithm::SIMPLE;
         controls.convergence.max_iterations = iterations;
-        controls.convergence.relative_tolerance = 1e-30;
-        controls.convergence.continuity_tolerance = 1e-30;
-        controls.linear_tolerance = 1e-12;
+        controls.convergence.relative_tolerance = 1e-8;
+        controls.convergence.continuity_tolerance = 1e-8;
+        controls.linear_tolerance = 1e-10;
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.iteration_output_callback =
