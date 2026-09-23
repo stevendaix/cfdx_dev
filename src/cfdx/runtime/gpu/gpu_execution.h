@@ -85,4 +85,43 @@ inline void execute_gradient_cuda(
 #endif
 }
 
+inline void execute_divergence_cuda(
+    const std::vector<double>& phi_face,
+    const std::vector<std::uint32_t>& owner,
+    const std::vector<std::int64_t>& neighbour,
+    std::size_t n_cells,
+    std::vector<double>& div)
+{
+#ifndef CFDX_ENABLE_GPU
+    (void)phi_face; (void)owner; (void)neighbour; (void)n_cells; (void)div;
+    throw std::runtime_error("CUDA execution requested but CFDX was built without CUDA");
+#else
+    if (phi_face.empty() || owner.size() != phi_face.size() ||
+        neighbour.size() != phi_face.size() || n_cells == 0)
+        throw std::invalid_argument("invalid GPU divergence array sizes");
+    int device_count = 0;
+    if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count <= 0)
+        throw std::runtime_error("CUDA execution requested but no CUDA device is available");
+
+    CudaDeviceBuffer d_flux(phi_face.size() * sizeof(double));
+    CudaDeviceBuffer d_owner(owner.size() * sizeof(std::uint32_t));
+    CudaDeviceBuffer d_neighbour(neighbour.size() * sizeof(std::int64_t));
+    CudaDeviceBuffer d_div(n_cells * sizeof(double));
+    d_flux.copy_from_host(phi_face.data(), d_flux.size_bytes());
+    d_owner.copy_from_host(owner.data(), d_owner.size_bytes());
+    d_neighbour.copy_from_host(neighbour.data(), d_neighbour.size_bytes());
+
+    CudaStream stream;
+    divergence_cuda(
+        static_cast<const double*>(d_flux.data()),
+        static_cast<const std::uint32_t*>(d_owner.data()),
+        static_cast<const std::int64_t*>(d_neighbour.data()),
+        phi_face.size(), n_cells, static_cast<double*>(d_div.data()), stream.get());
+    stream.synchronize();
+
+    div.resize(n_cells);
+    d_div.copy_to_host(div.data(), d_div.size_bytes());
+#endif
+}
+
 } // namespace cfdx::runtime::gpu
