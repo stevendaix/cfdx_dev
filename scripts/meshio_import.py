@@ -102,9 +102,22 @@ def write(path,mesh,topo):
     if not patches:
         ids=[i for i,n in enumerate(neighbour) if n<0]
         if ids: patches["boundary"]=ids
+    # Every topological boundary face must belong to a patch. Physical
+    # groups are optional/incomplete in real Gmsh files, so preserve their
+    # named patches and explicitly collect any otherwise-unassigned boundary
+    # faces in a generic patch instead of producing an invalid mesh.
+    assigned={fid for values in patches.values() for fid in values}
+    missing=[i for i,n in enumerate(neighbour) if n < 0 and i not in assigned]
+    if missing:
+        patches.setdefault("boundary", []).extend(missing)
+        print("warning: unassigned boundary faces mapped to generic boundary patch: "
+              + ",".join(str(i) for i in missing), file=sys.stderr)
+
     ids=[]; offsets=[0]; meta=[]
     for name,values in patches.items():
-        values=sorted(set(values)); ids.extend(values); offsets.append(len(ids)); meta.append(f"{name}:0:{len(values)}:{patch_type(name)}")
+        values=sorted(set(values)); ids.extend(values); offsets.append(len(ids))
+        start=values[0] if values else 0
+        meta.append(f"{name}:{start}:{len(values)}:{patch_type(name)}")
     topology=1469598103934665603
     topology=fnv1a_update(topology,fv)
     if len(faces)>0: topology=fnv1a_update(topology,fo)
