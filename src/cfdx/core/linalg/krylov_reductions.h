@@ -5,6 +5,7 @@
 #include "cfdx/core/parallel/mpi_utils.h"
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <limits>
 
 namespace cfdx::core {
