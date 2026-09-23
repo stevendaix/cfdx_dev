@@ -434,7 +434,7 @@ if QApplication is not None:
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
                 self, "Read DAT Checkpoint", str(self._case_path.parent),
-                "CFDX DAT (*.dat);;All files (*)"
+                "CFDX DAT (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
             )
             if not dat_path:
                 return False
