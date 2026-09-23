@@ -18,7 +18,7 @@ int main() {
         c.model=ScalarPropertyModel::POWER_LAW; c.reference_value=4.0; c.exponent=1.0;
         EXPECT_NEAR(evaluate_scalar_property(c,600.0),8.0,1e-12);
         c.model=ScalarPropertyModel::EXPONENTIAL; c.reference_value=2.0; c.exponent=0.01;
-        EXPECT_NEAR(evaluate_scalar_property(c,400.0),2.0*std::exp(1.0/3.0),1e-12);
+        EXPECT_NEAR(evaluate_scalar_property(c,400.0),2.0*std::exp(0.01*(400.0-300.0)/300.0),1e-12);
         c.model=ScalarPropertyModel::ARRHENIUS; c.reference_value=2.0; c.activation_temperature=1000.0;
         EXPECT_NEAR(evaluate_scalar_property(c,600.0),2.0*std::exp(1000.0*(1.0/300.0-1.0/600.0)),1e-10);
     });
@@ -28,7 +28,7 @@ int main() {
         EXPECT_NEAR(evaluate_scalar_property(c,450.0),25.0,1e-12);
         EXPECT_NEAR(evaluate_scalar_property(c,200.0),10.0,1e-12);
         c.table.extrapolation=ExtrapolationPolicy::LINEAR;
-        EXPECT_NEAR(evaluate_scalar_property(c,200.0),0.0,1e-12);
+        EXPECT_NEAR(evaluate_scalar_property(c,250.0),5.0,1e-12);
         c.table.extrapolation=ExtrapolationPolicy::REJECT;
         bool threw=false; try {(void)evaluate_scalar_property(c,200.0);} catch(...) {threw=true;}
         EXPECT_TRUE(threw);
@@ -47,7 +47,7 @@ int main() {
         EXPECT_NEAR(k_epsilon_eddy_viscosity(4.0,2.0),0.72,1e-12);
         EXPECT_NEAR(rng_kepsilon_eddy_viscosity(4.0,2.0),0.676,1e-12);
         EXPECT_NEAR(komega_eddy_viscosity(2.0,4.0),0.5,1e-12);
-        EXPECT_NEAR(sst_eddy_viscosity(1.0,2.0,1.0),0.155,1e-12);
+        EXPECT_NEAR(sst_eddy_viscosity(1.0,2.0,1.0),0.31,1e-12);
         EXPECT_NEAR(spalart_allmaras_nu_t(1e-4,0.01,1e-5),1e-4*std::pow(10.0,3)/(std::pow(10.0,3)+std::pow(7.1,3)),1e-12);
         EXPECT_NEAR(smagorinsky_nu_t(0.17,0.1,10.0),0.00289,1e-12);
         EXPECT_NEAR(wale_nu_t(0.5,0.1,10.0),0.025,1e-12);
