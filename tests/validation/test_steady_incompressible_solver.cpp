@@ -91,6 +91,45 @@ int main()
         std::filesystem::remove(dat);
     });
 
+    run_case("native_solver_consumes_dat_v2_thermal_turbulence_restart", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> seed_u(1,"U","m/s",3), seed_p(1,"p","Pa",1);
+        Field<double,Location::CELL> seed_T(1,"T","K",1), seed_k(1,"k","m2/s2",1), seed_omega(1,"omega","1/s",1);
+        seed_u.set(0,0.2,0.0,0.0); seed_p(0)=12.0;
+        seed_T(0)=350.0; seed_k(0)=0.25; seed_omega(0)=3.0;
+        const auto dat = std::filesystem::temp_directory_path() / "cfdx_native_v2_restart_test.dat";
+        cfdx::io::write_dat_restart_fields(
+            dat.string(),m,seed_u,seed_p,{&seed_T,&seed_k,&seed_omega},9,0.75);
+
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        Field<double,Location::CELL> T(1,"T","K",1), k(1,"k","m2/s2",1), omega(1,"omega","1/s",1);
+        U.fill(0.0); p.fill(0.0); T.fill(0.0); k.fill(0.0); omega.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.convergence.max_iterations = 1;
+        controls.linear_tolerance = 1e-12;
+
+        Field<double,Location::CELL> expected_u(1,"U","m/s",3), expected_p(1,"p","Pa",1);
+        expected_u.set(0,0.2,0.0,0.0); expected_p(0)=12.0;
+        (void)solve_steady_incompressible(
+            m,expected_u,expected_p,ubc,pbc,controls);
+
+        (void)solve_steady_incompressible(
+            m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
+
+        EXPECT_NEAR(U(0,0),expected_u(0,0),1e-14);
+        EXPECT_NEAR(U(0,1),expected_u(0,1),1e-14);
+        EXPECT_NEAR(U(0,2),expected_u(0,2),1e-14);
+        EXPECT_NEAR(p(0),expected_p(0),1e-14);
+        EXPECT_NEAR(T(0),350.0,1e-14);
+        EXPECT_NEAR(k(0),0.25,1e-14);
+        EXPECT_NEAR(omega(0),3.0,1e-14);
+        std::filesystem::remove(dat);
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
