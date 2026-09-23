@@ -252,6 +252,28 @@ int main() {
 #endif
     });
 
+    run_case("cuda_async_h2d_d2h_roundtrip", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+
+        const double source[4] = {1.0, -2.0, 3.5, 8.0};
+        double destination[4] = {};
+        gpu::CudaDeviceBuffer device(sizeof(source));
+        gpu::CudaStream stream;
+        gpu::async_copy_h2d(device, source, sizeof(source), stream.get());
+        stream.synchronize();
+        gpu::async_copy_d2h(device, destination, sizeof(destination), stream.get());
+        stream.synchronize();
+
+        for (std::size_t i = 0; i < 4; ++i)
+            EXPECT_NEAR(destination[i], source[i], 0.0);
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
     run_case("host_emulated_device_roundtrip", [] {
         gpu::HostEmulatedDeviceBuffer b(3*sizeof(double));
         const double src[3] = {1,2,3};
