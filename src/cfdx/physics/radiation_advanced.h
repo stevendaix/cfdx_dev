@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cfdx/physics/radiation.h"
+#include "cfdx/physics/radiation_solver.h"
+#include "cfdx/physics/finite_volume_transport.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -267,3 +269,216 @@ inline RadiationBalance radiation_balance(double emitted, double absorbed)
 }
 
 } // namespace cfdx::physics
+
+// -----------------------------------------------------------------------------
+// Nonlinear Rosseland energy solve
+// -----------------------------------------------------------------------------
+
+struct RosselandSolveControls {
+    std::size_t max_iterations = 100;
+    double tolerance = 1e-8;
+    double relaxation = 0.8;
+    double minimum_temperature = 1.0;
+    double absorption_floor = 1e-12;
+};
+
+struct RosselandSolveResult {
+    bool converged = false;
+    std::size_t iterations = 0;
+    std::vector<double> temperature_residuals;
+    std::vector<double> energy_balance_residuals;
+};
+
+inline RosselandSolveResult solve_rosseland_energy(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& absorption,
+    const EnergySolverControls& energy_controls,
+    const RosselandSolveControls& controls = {},
+    const ScalarBoundaryConditions& bcs = {})
+{
+    if (temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells() ||
+        absorption.size()!=mesh.n_cells())
+        throw std::invalid_argument("Rosseland field size mismatch");
+    if (controls.max_iterations==0 || controls.tolerance<=0.0 ||
+        controls.relaxation<=0.0 || controls.relaxation>1.0 ||
+        controls.minimum_temperature<=0.0 ||
+        controls.absorption_floor<=0.0)
+        throw std::invalid_argument("invalid Rosseland controls");
+    for (std::size_t c=0;c<mesh.n_cells();++c) {
+        if (!std::isfinite(temperature(c)) || temperature(c)<controls.minimum_temperature ||
+            !std::isfinite(absorption(c)) || absorption(c)<=controls.absorption_floor)
+            throw std::invalid_argument("invalid Rosseland cell state");
+    }
+
+    RosselandSolveResult result;
+    cfdx::core::Field<double,cfdx::core::Location::CELL> old=temperature;
+    cfdx::core::Field<double,cfdx::core::Location::CELL> conductivity(
+        mesh.n_cells(),"k_rad","W/m/K",1);
+    cfdx::core::Field<double,cfdx::core::Location::CELL> su(
+        mesh.n_cells(),"rosseland_source","W/m3",1);
+    cfdx::core::Field<double,cfdx::core::Location::CELL> sp(
+        mesh.n_cells(),"rosseland_sp","W/m3/K",1);
+    cfdx::core::Field<double,cfdx::core::Location::FACE> zero_flux(
+        mesh.n_faces(),"mass_flux","kg/s",1);
+    zero_flux.fill(0.0);
+
+    for (std::size_t iter=1;iter<=controls.max_iterations;++iter) {
+        for(std::size_t c=0;c<mesh.n_cells();++c) {
+            const double T=std::max(controls.minimum_temperature,temperature(c));
+            conductivity(c)=rosseland_conductivity(T,absorption(c));
+            su(c)=source(c);
+            sp(c)=0.0;
+        }
+
+        std::vector<double> transient_diag(mesh.n_cells(),0.0);
+        std::vector<double> transient_rhs(mesh.n_cells(),0.0);
+        if (energy_controls.dt>0.0) {
+            for(std::size_t c=0;c<mesh.n_cells();++c) {
+                transient_diag[c]=energy_controls.density*energy_controls.cp*
+                    geometry.cell_volumes[c]/energy_controls.dt;
+                transient_rhs[c]=transient_diag[c]*old(c);
+            }
+        }
+
+        auto eq=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,su,sp,bcs,true,nullptr,
+            &transient_diag,&transient_rhs,&conductivity);
+
+        cfdx::core::Vector candidate(mesh.n_cells(),0.0);
+        for(std::size_t c=0;c<mesh.n_cells();++c) candidate(c)=temperature(c);
+        ScalarSolveControls sc;
+        sc.max_iterations=2000;
+        sc.tolerance=energy_controls.tolerance;
+        sc.relaxation=controls.relaxation;
+        const auto lr=solve_scalar_equation(eq,candidate,sc);
+        if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
+            throw std::runtime_error("Rosseland nonlinear iteration linear solve did not converge");
+
+        double max_delta=0.0;
+        for(std::size_t c=0;c<mesh.n_cells();++c) {
+            const double bounded=std::max(controls.minimum_temperature,candidate(c));
+            max_delta=std::max(max_delta,std::abs(bounded-temperature(c)));
+            temperature(c)=bounded;
+        }
+        const double scale=std::max(1.0,
+            *std::max_element(temperature.component_data(0),
+                              temperature.component_data(0)+mesh.n_cells(),
+                              [](double a,double b){return std::abs(a)<std::abs(b);}));
+        const double rel=max_delta/scale;
+        result.temperature_residuals.push_back(rel);
+        result.energy_balance_residuals.push_back(energy_balance_relative(
+            mesh,geometry,mass_flux,temperature,old,source,energy_controls,bcs));
+        result.iterations=iter;
+        if(rel<=controls.tolerance &&
+           result.energy_balance_residuals.back()<=controls.tolerance) {
+            result.converged=true;
+            break;
+        }
+    }
+    return result;
+}
+
+// -----------------------------------------------------------------------------
+// Spatially varying gray participating-media transport.
+// -----------------------------------------------------------------------------
+
+inline RadiationSolveResult solve_participating_radiation_variable_properties(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
+    const std::vector<DiscreteDirection>& directions,
+    const RadiationOpticalPropertyField& properties,
+    RadiationTransportControls controls = {},
+    const ScalarBoundaryConditions& wall_intensity_bcs = {})
+{
+    if(properties.cells.size()!=mesh.n_cells())
+        throw std::invalid_argument("radiation property field size mismatch");
+    properties.validate();
+    validate_discrete_directions(directions);
+    if(temperature.size()!=mesh.n_cells() ||
+       irradiation.size()!=mesh.n_cells() ||
+       radiation_source.size()!=mesh.n_cells())
+        throw std::invalid_argument("radiation field size mismatch");
+
+    const std::size_t nc=mesh.n_cells();
+    std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>> I;
+    for(std::size_t m=0;m<directions.size();++m)
+        I.emplace_back(nc,"I_"+std::to_string(m),"W/m2/sr",1);
+
+    RadiationSolveResult result;
+    for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
+        auto old_source=radiation_source;
+        std::vector<double> G(nc,0.0);
+        for(std::size_t m=0;m<directions.size();++m)
+            for(std::size_t c=0;c<nc;++c)
+                G[c]+=directions[m].weight*I[m](c);
+
+        double max_rel=0.0;
+        for(std::size_t m=0;m<directions.size();++m) {
+            cfdx::core::Field<double,cfdx::core::Location::FACE> directional_flux(
+                mesh.n_faces(),"sI","m2",1);
+            const auto& d=directions[m];
+            for(std::size_t f=0;f<mesh.n_faces();++f)
+                directional_flux(f)=d.dx*geometry.face_area_vectors[f].x+
+                                    d.dy*geometry.face_area_vectors[f].y+
+                                    d.dz*geometry.face_area_vectors[f].z;
+            cfdx::core::Field<double,cfdx::core::Location::CELL> su(
+                nc,"I_source","W/m3/sr",1);
+            cfdx::core::Field<double,cfdx::core::Location::CELL> sp(
+                nc,"I_sp","1/m",1);
+            for(std::size_t c=0;c<nc;++c) {
+                const auto& p=properties[c];
+                su(c)=p.absorption*blackbody_intensity(temperature(c))+
+                      p.scattering*G[c]/(4.0*M_PI);
+                sp(c)=-(p.absorption+p.scattering);
+            }
+            auto eq=assemble_scalar_equation(mesh,geometry,directional_flux,0.0,
+                                             su,sp,wall_intensity_bcs,true);
+            cfdx::core::Vector candidate(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) candidate(c)=I[m](c);
+            ScalarSolveControls sc;
+            sc.max_iterations=controls.linear_max_iterations;
+            sc.tolerance=controls.linear_tolerance;
+            sc.relaxation=controls.intensity_relaxation;
+            const auto lr=solve_scalar_equation(eq,candidate,sc);
+            if(lr.status!=cfdx::core::SolverStatus::CONVERGED)
+                throw std::runtime_error("variable-property DOM linear solve did not converge");
+            for(std::size_t c=0;c<nc;++c) {
+                if(!std::isfinite(candidate(c)) || candidate(c)<-1e-10)
+                    throw std::runtime_error("variable-property DOM produced non-physical intensity");
+                const double next=std::max(0.0,candidate(c));
+                max_rel=std::max(max_rel,std::abs(next-I[m](c))/
+                                      std::max(1.0,std::abs(next)));
+                I[m](c)=next;
+            }
+        }
+
+        for(std::size_t c=0;c<nc;++c) {
+            double g=0.0;
+            for(std::size_t m=0;m<directions.size();++m)
+                g+=directions[m].weight*I[m](c);
+            irradiation(c)=g;
+            radiation_source(c)=properties[c].absorption*
+                (4.0*M_PI*blackbody_intensity(temperature(c))-g);
+        }
+        double src_rel=0.0;
+        for(std::size_t c=0;c<nc;++c)
+            src_rel=std::max(src_rel,
+                std::abs(radiation_source(c)-old_source(c))/
+                std::max(1.0,std::abs(radiation_source(c))));
+        result.history.push_back({iter,max_rel,src_rel});
+        result.iterations=iter;
+        if(max_rel<=controls.tolerance && src_rel<=controls.tolerance) {
+            result.converged=true;
+            break;
+        }
+    }
+    return result;
+}
+
