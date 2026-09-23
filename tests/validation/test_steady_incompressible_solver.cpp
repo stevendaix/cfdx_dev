@@ -1,7 +1,5 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/io/restart/dat_restart.h"
-#include "cfdx/io/vtu/vtu_writer.h"
-#include <fstream>
 #include <filesystem>
 #include "common/test_harness.h"
 #include <limits>
@@ -132,10 +130,11 @@ int main()
         std::filesystem::remove(dat);
     });
 
-    run_case("native_solver_to_vtu_preserves_physical_time_and_iteration", [] {
+    run_case("native_point_probe_emission_is_iteration_synchronized", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
-        U.fill(0.0); p.fill(0.0);
+        U.set(0,2.0,-1.0,2.0);
+        p(0)=7.0;
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
         ScalarBoundaryConditions pbc;
@@ -143,19 +142,25 @@ int main()
         IncompressibleSolverControls controls;
         controls.convergence.max_iterations = 2;
         controls.linear_tolerance = 1e-12;
-        const auto solve = solve_steady_incompressible(m,U,p,ubc,pbc,controls);
-        const auto vtu = std::filesystem::temp_directory_path() / "cfdx_solver_to_vtu_test.vtu";
-        cfdx::io::VtuWriter writer;
-        std::map<std::string, cfdx::core::ScalarCellField> fields{{"p",p}};
-        EXPECT_TRUE(writer.write(vtu.string(),m,fields,{}, {},0.75,solve.iterations,true));
-        std::ifstream in(vtu);
-        EXPECT_TRUE(in.is_open());
-        const std::string xml((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
-        EXPECT_TRUE(xml.find("physical_time") != std::string::npos);
-        EXPECT_TRUE(xml.find("7.500000000000e-01") != std::string::npos);
-        EXPECT_TRUE(xml.find("iteration") != std::string::npos);
-        EXPECT_TRUE(xml.find(std::to_string(solve.iterations)) != std::string::npos);
-        std::filesystem::remove(vtu);
+        controls.probes = {
+            {"pressure_probe", {0.5,0.5,0.5}, IncompressibleProbeField::PRESSURE},
+            {"velocity_probe", {0.5,0.5,0.5}, IncompressibleProbeField::U_MAGNITUDE}
+        };
+        std::vector<IncompressibleProbeSample> samples;
+        controls.probe_callback = [&](const IncompressibleProbeSample& sample) { samples.push_back(sample); };
+        (void)solve_steady_incompressible(m,U,p,ubc,pbc,controls);
+        EXPECT_TRUE(samples.size() == 4);
+        EXPECT_TRUE(samples[0].name == "pressure_probe");
+        EXPECT_TRUE(samples[0].iteration == 1);
+        EXPECT_NEAR(samples[0].time, 0.0, 1e-14);
+        EXPECT_TRUE(samples[1].name == "velocity_probe");
+        EXPECT_TRUE(samples[1].iteration == 1);
+        EXPECT_TRUE(samples[2].name == "pressure_probe");
+        EXPECT_TRUE(samples[2].iteration == 2);
+        EXPECT_TRUE(samples[3].name == "velocity_probe");
+        EXPECT_TRUE(samples[3].iteration == 2);
+        EXPECT_TRUE(std::isfinite(samples[0].value));
+        EXPECT_TRUE(std::isfinite(samples[1].value));
     });
 
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
