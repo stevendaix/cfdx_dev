@@ -16,7 +16,8 @@
 #include <fstream>
 #include <sstream>
 #include <map>
-#include <cstdint>\n#include <cstddef>
+#include <cstdint>
+#include <cstddef>
 
 namespace cfdx {
 namespace io {
@@ -46,7 +47,10 @@ struct VtuWriter {
                const cfdx::core::Mesh& mesh,
                const std::map<std::string, cfdx::core::ScalarCellField>& fields_cell = {},
                const std::map<std::string, cfdx::core::ScalarFaceField>& fields_face = {},
-               const std::map<std::string, cfdx::core::ScalarPointField>& fields_point = {},\n               double physical_time = 0.0,\n               std::size_t iteration = 0,\n               bool write_time_metadata = false);
+               const std::map<std::string, cfdx::core::ScalarPointField>& fields_point = {},
+               double physical_time = 0.0,
+               std::size_t iteration = 0,
+               bool write_time_metadata = false);
 
 private:
     // Decompose polyhedral cells to VTK-supported types (tets)
@@ -59,7 +63,8 @@ private:
     // Write XML header + points
     void write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                       const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                      const std::vector<VtkCellType>& vtk_cell_types,\n                      double physical_time, std::size_t iteration, bool write_time_metadata);
+                      const std::vector<VtkCellType>& vtk_cell_types,
+                      double physical_time, std::size_t iteration, bool write_time_metadata);
 
     // Write cell connectivity
     void write_cells(std::ofstream& os,
