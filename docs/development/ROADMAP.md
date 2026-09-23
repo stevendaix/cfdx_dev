@@ -74,11 +74,18 @@
 
 - [x] Blackbody and gray-surface radiation
 - [x] Two-surface net radiation exchange
-- [x] View-factor matrix validation
+- [~] View-factor validation — bounds/closure plus area-weighted reciprocity; geometric view-factor computation remains open
 - [x] P1 source-term primitive
-- [x] DOM quadrature validation primitive
-- [x] Full participating-media transport solve
-- [x] Radiation/energy coupling validation
+- [x] P1 constant-property scalar solve
+- [~] DOM quadrature validation — isotropic first/second moments are checked; angular refinement remains open
+- [~] Participating-media DOM transport — gray constant-property transport is implemented; production diffuse-gray wall BCs and spatially varying optical properties remain open
+- [~] Radiation/energy coupling — infrastructure and equilibrium gate exist; non-trivial heat-transfer benchmark remains open
+- [~] Rosseland — conductivity helper exists; dedicated nonlinear energy solve and boundary treatment remain open
+- [ ] Spectral/non-gray radiation
+- [ ] General geometric S2S/view-factor computation
+
+### Phase 12 audit
+See `docs/development/PHASE12_RADIATION_AUDIT.md`. The phase is **IMPLEMENTED / VALIDATION IN PROGRESS**, not fully green. Component-level analytical checks must not be interpreted as complete solver-level radiation validation.
 
 ### M1-M4 implementation gate
 
