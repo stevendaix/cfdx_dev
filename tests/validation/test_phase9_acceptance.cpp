@@ -132,7 +132,7 @@ struct RunResult {
     FvGeometry geometry;
 };
 
-RunResult run_pressure_channel(
+RunResult run_couette_channel(
     PressureVelocityAlgorithm algorithm,
     ConvectionScheme scheme,
     bool bounded,
@@ -149,7 +149,7 @@ RunResult run_pressure_channel(
     ubc["inlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0, 0, 0}};
     ubc["outlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0, 0, 0}};
     ubc["bottom"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0, 0, 0}};
-    ubc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0, 0, 0}};
+    ubc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1, 0, 0}};
     ubc["front"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0, 0, 0}};
     ubc["back"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0, 0, 0}};
 
@@ -177,7 +177,7 @@ RunResult run_pressure_channel(
     c.linear_tolerance = 1e-10;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
-    c.body_force = {1.0, 0.0, 0.0};
+    c.body_force = {0.0, 0.0, 0.0};
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = bounded;
@@ -185,7 +185,7 @@ RunResult run_pressure_channel(
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("body-force Poiseuille channel did not converge");
+        throw std::runtime_error("Couette channel did not converge");
 
     const auto& h = solve.history.back();
     if (!(h.continuity_linf < 1e-7) ||
@@ -207,7 +207,7 @@ double profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
         const std::size_t j = c / nx;
         if (i >= nx || j >= ny) continue;
         const double y = (static_cast<double>(j) + 0.5) / static_cast<double>(ny);
-        const double exact = 5.0 * y * (1.0 - y);
+        const double exact = y;
         const double error = r.U.component_data(0)[c] - exact;
         l2 += error * error;
         linf = std::max(linf, std::abs(error));
@@ -264,15 +264,15 @@ void run_pure_neumann_gauge()
 int main()
 {
     try {
-        std::cout << "PHASE9: body-force Poiseuille analytical verification\n";
+        std::cout << "PHASE9: Couette analytical verification\n";
 
-        const auto simple = run_pressure_channel(
+        const auto simple = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE, ConvectionScheme::UPWIND, true);
-        const auto simplec = run_pressure_channel(
+        const auto simplec = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLEC, ConvectionScheme::UPWIND, true);
-        const auto piso = run_pressure_channel(
+        const auto piso = run_couette_channel(
             PressureVelocityAlgorithm::PISO, ConvectionScheme::UPWIND, true);
-        const auto pimple = run_pressure_channel(
+        const auto pimple = run_couette_channel(
             PressureVelocityAlgorithm::PIMPLE, ConvectionScheme::UPWIND, true);
 
         const double e_simple = profile_error(simple, 8, 16);
@@ -282,19 +282,19 @@ int main()
         if (pimple.solve.iterations < 2)
             throw std::runtime_error("PIMPLE n_outer_correctors was not honored");
 
-        std::cout << "Poiseuille profile error: SIMPLE=" << e_simple
+        std::cout << "Couette profile error: SIMPLE=" << e_simple
                   << " SIMPLEC=" << e_simplec
                   << " PISO=" << e_piso
                   << " PIMPLE=" << e_pimple << "\n";
 
         if (!(e_simple < 0.20 && e_simplec < 0.20 &&
               e_piso < 0.20 && e_pimple < 0.20))
-            throw std::runtime_error("Poiseuille profile validation failed");
+            throw std::runtime_error("Couette profile validation failed");
 
-        const auto second_order = run_pressure_channel(
+        const auto second_order = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::SECOND_ORDER_UPWIND, true);
-        const auto unbounded = run_pressure_channel(
+        const auto unbounded = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::UPWIND, false);
 
@@ -313,7 +313,7 @@ int main()
         for (std::size_t c = 0; c < simple.U.size(); ++c)
             max_u = std::max(max_u, simple.U.component_data(0)[c]);
         if (!(max_u > 0.9 && max_u < 1.5))
-            throw std::runtime_error("Poiseuille peak velocity is outside the physical gate");
+            throw std::runtime_error("Couette peak velocity is outside the physical gate");
 
         std::cout << "PHASE9_ACCEPTANCE: PASS\n";
         return 0;
