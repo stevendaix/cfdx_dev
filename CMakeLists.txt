@@ -268,6 +268,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/io/vtu/vtu_writer.h
 )
 
+add_executable(cfdx_production_solver apps/production_solver/main.cpp)
+target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
 target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -480,6 +483,12 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
     add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_production_solver_e2e
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py -q)
+        set_tests_properties(test_production_solver_e2e PROPERTIES
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=$<SOURCE_DIR>/tests/data/cavity_with_patches.msh")
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
