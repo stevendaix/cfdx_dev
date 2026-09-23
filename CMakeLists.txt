@@ -408,7 +408,8 @@ if(CFDX_BUILD_TESTS)
         test_phase10_turbulence_hardening test_thermophysical_models_vv
         test_analytical_benchmarks test_benchmark_matrix
         test_level_b_reference_benchmarks test_level_c_coupled_verification
-        test_steady_incompressible_solver
+        test_steady_incompressible_solver test_matrix_free_fv_operator
+        test_temporal_physics test_core_temporal
         PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
@@ -454,6 +455,7 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_krylov_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_krylov_reduction> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         add_test(NAME test_phase8_mpi_poisson
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
