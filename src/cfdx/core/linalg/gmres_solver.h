@@ -244,7 +244,7 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
-    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner);
 }
 
 } // namespace cfdx::core
