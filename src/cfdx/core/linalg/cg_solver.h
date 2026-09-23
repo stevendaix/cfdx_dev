@@ -110,7 +110,7 @@ inline SolverResult solve_cg(
 
     // r = b - A x
     std::vector<double> r(n);
-    Vector rv(n); mixed_precision_residual(A,b,x,rv,mp32 ? SolverPrecision::FP32 : SolverPrecision::FP64);
+    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
     for (std::size_t i=0;i<n;++i) r[i]=rv(i);
 
     // z = M^{-1} r
@@ -136,7 +136,7 @@ inline SolverResult solve_cg(
     if (rsold < tol_abs * tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
-        result.residual = mixed_precision_residual(A,b,x,rv,mp32 ? SolverPrecision::FP32 : SolverPrecision::FP64);
+        result.residual = mixed_precision_true_residual(A,b,x,rv);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
@@ -209,7 +209,7 @@ inline SolverResult solve_cg(
 
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = max_iter;
-    result.residual = mixed_precision_residual(A,b,x,rv,mp32 ? SolverPrecision::FP32 : SolverPrecision::FP64);
+    result.residual = mixed_precision_true_residual(A,b,x,rv);
     result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
     return result;
 }
