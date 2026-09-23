@@ -590,10 +590,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             A.finalize();
 
             Vector p_corr(nc, 0.0);
-            const auto rp = solve_cg(
-                A, b, p_corr, controls.linear_max_iterations, controls.linear_tolerance);
+            // Pure-Neumann pressure correction is gauge-fixed by replacing
+            // the reference row and removing the reference column from all
+            // other rows. This produces a nonsymmetric reduced system, so CG
+            // is mathematically inappropriate for that case. Use GMRES for
+            // the gauge-fixed system; retain CG for the symmetric fixed-pressure
+            // case.
+            const auto rp = has_fixed_pressure_boundary
+                ? solve_cg(
+                    A, b, p_corr, controls.linear_max_iterations, controls.linear_tolerance)
+                : solve_gmres(
+                    A, b, p_corr, 64, controls.linear_max_iterations, controls.linear_tolerance);
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                throw std::runtime_error(
+                    "solve_steady_incompressible: pressure-correction solve did not converge "
+                    "(status=" + std::to_string(static_cast<int>(rp.status)) +
+                    ", iterations=" + std::to_string(rp.iterations) +
+                    ", residual=" + std::to_string(rp.residual) +
+                    ", relative=" + std::to_string(rp.residual_relative) + ")");
+            }
 
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += controls.coupling.alpha_p * p_corr(c);
