@@ -243,16 +243,17 @@ Mesh make_cartesian_cube(std::size_t n)
     for (const auto& kv : face_map) {
         const FaceKey key = kv.first;
         const std::size_t f = kv.second;
-        const std::size_t owner_i = key.axis == 0 ? key.i - 1 : key.i;
-        const std::size_t owner_j = key.axis == 1 ? key.j - 1 : key.j;
-        const std::size_t owner_k = key.axis == 2 ? key.k - 1 : key.k;
         const bool lower_boundary = (key.axis == 0 ? key.i == 0 :
                                      key.axis == 1 ? key.j == 0 : key.k == 0);
         const bool upper_boundary = (key.axis == 0 ? key.i == n :
                                      key.axis == 1 ? key.j == n : key.k == n);
-        const std::size_t owner = lower_boundary
-            ? cell_id(0, key.axis == 0 ? key.j : owner_j, key.axis == 2 ? key.k : owner_k)
-            : cell_id(owner_i, owner_j, owner_k);
+        const std::size_t owner_i = key.axis == 0
+            ? (lower_boundary ? 0 : key.i - 1) : key.i;
+        const std::size_t owner_j = key.axis == 1
+            ? (lower_boundary ? 0 : key.j - 1) : key.j;
+        const std::size_t owner_k = key.axis == 2
+            ? (lower_boundary ? 0 : key.k - 1) : key.k;
+        const std::size_t owner = cell_id(owner_i, owner_j, owner_k);
         m.ownership().set_owner(f, owner);
         if (lower_boundary || upper_boundary) {
             m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
