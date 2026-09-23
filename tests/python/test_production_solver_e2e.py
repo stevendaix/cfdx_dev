@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
@@ -70,3 +71,8 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     xml = outputs[-1].read_text(encoding="utf-8")
     assert 'Name="physical_time"' in xml
     assert 'Name="iteration"' in xml
+
+
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory(prefix="cfdx-production-e2e-") as directory:
+        test_production_solver_full_application_e2e(Path(directory))
