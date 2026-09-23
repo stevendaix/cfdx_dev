@@ -4,6 +4,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/turbulence_transport.h"
 #include "cfdx/physics/spalart_allmaras.h"
+#include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -201,6 +202,10 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         auto old=nu_tilde;
         cfdx::core::Field<double,cfdx::core::Location::CELL> su(n,"Snu","m2/s3",1),spu(n,"Spnu","1/s",1);
         std::vector<double> gamma(n);
+        const auto grad_nu_tilde = cfdx::core::compute_gradient_gauss(nu_tilde,mesh);
+        const double* gx = grad_nu_tilde.component_data(0);
+        const double* gy = grad_nu_tilde.component_data(1);
+        const double* gz = grad_nu_tilde.component_data(2);
         for(std::size_t i=0;i<n;++i){
             const double wt=std::max(nu_tilde(i),0.0), nu=controls.molecular_viscosity, d=wall_distance(i), vort=std::max(vorticity(i),1e-20);
             if(!(d>0)||!std::isfinite(d)||!std::isfinite(vort)) throw std::invalid_argument("invalid SA wall/vorticity field");
@@ -208,7 +213,8 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
             const double r=wt/(st*sa.kappa*sa.kappa*d*d), fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
             const double prod=sa.cb1*(1-ft2)*st;
             const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)/(d*d);
-            su(i)=controls.density*prod*wt; spu(i)=-controls.density*destr;
+            const double grad2=gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i];
+            su(i)=controls.density*(prod*wt + sa.cb2/sa.sigma*grad2); spu(i)=-controls.density*destr;
             gamma[i]=controls.density*(nu+wt)/sa.sigma;
         }
         auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,&gamma);
