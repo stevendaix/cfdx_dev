@@ -32,7 +32,7 @@ static Mesh two_cell_channel()
     m.faces().push_face({4,5,11,10});     // cell 1 z+
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        m.ownership().set_owner(f, f == 1 ? 0 : (f < 3 ? f : (f <= 6 ? 0 : 1)));
+        m.ownership().set_owner(f, f == 1 ? 0 : (f <= 6 ? 0 : 1));
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
     m.ownership().set_owner(1, 0);
