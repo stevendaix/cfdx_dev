@@ -359,7 +359,12 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // when the system is well posed. Retry from the original iterate with
     // restarted GMRES rather than injecting an unconverged Krylov state into
     // the nonlinear solver.
-    if (result.status == cfdx::core::SolverStatus::MAX_ITER_REACHED) {
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        // BiCGStab may report numerical breakdown on a transient momentum
+        // matrix even when the linear system is well posed. Retry from the
+        // original iterate with restarted GMRES for every non-converged
+        // outcome, including DIVERGED/NOT_APPLICABLE, rather than rejecting
+        // a valid fallback path prematurely.
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
