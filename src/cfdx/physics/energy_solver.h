@@ -173,6 +173,9 @@ inline EnergySolveResult solve_energy(
     validate_energy_controls(controls);
     if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
         throw std::invalid_argument("energy field size mismatch");
+    if (controls.conductivity_field &&
+        controls.conductivity_field->size()!=mesh.n_cells())
+        throw std::invalid_argument("cell conductivity field size mismatch");
 
     EnergySolveResult result;
     auto old=temperature;
