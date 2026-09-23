@@ -388,7 +388,7 @@ if(CFDX_BUILD_TESTS)
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_partition PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
