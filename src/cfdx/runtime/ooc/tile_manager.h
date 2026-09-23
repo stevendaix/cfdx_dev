@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -28,6 +29,9 @@ public:
             throw std::invalid_argument("TileManager: target_cells must be > 0");
         clear();
 
+        const std::size_t max = std::numeric_limits<std::size_t>::max();
+        if (n_cells > 0 && target_cells > max - (n_cells - 1))
+            throw std::overflow_error("TileManager: tile count calculation overflow");
         const std::size_t ntiles = (n_cells + target_cells - 1) / target_cells;
         const auto partition = make_contiguous_partition(n_cells, ntiles, adjacency);
         validate_partition(partition, n_cells, ntiles);
