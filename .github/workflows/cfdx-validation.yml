@@ -29,19 +29,36 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build-validation -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_MPI=OFF             -DCFDX_BUILD_PYTHON=OFF             -DCFDX_USE_HDF5_SERIAL=OFF
+          cmake -S . -B build-validation -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF
 
       - name: Build validation executables
         run: |
-          cmake --build build-validation --target             test_analytical_benchmarks             test_benchmark_matrix             test_level_b_reference_benchmarks             test_level_c_coupled_verification             --parallel 2
+          cmake --build build-validation --target \
+            test_analytical_benchmarks \
+            test_benchmark_matrix \
+            test_level_b_reference_benchmarks \
+            test_level_c_coupled_verification \
+            test_phase9_acceptance \
+            test_steady_incompressible_solver \
+            test_ghia_cavity \
+            --parallel 2
 
       - name: Run validation tests
         run: |
-          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
+          ctest --test-dir build-validation \
+            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)$' \
+            --output-on-failure
 
       - name: Run campaign driver
         run: |
-          python3 scripts/run_validation.py --build-dir build-validation --junit build-validation/validation-junit.xml
+          python3 scripts/run_validation.py \
+            --build-dir build-validation \
+            --junit build-validation/validation-junit.xml
 
       - name: Upload validation JUnit
         if: always()
@@ -49,7 +66,7 @@ jobs:
         with:
           name: cfdx-validation-junit
           path: build-validation/validation-junit.xml
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Upload validation logs
         if: always()
@@ -60,7 +77,6 @@ jobs:
             build-validation/Testing/
             build-validation/**/*.log
           if-no-files-found: ignore
-
 
       - name: Run application E2E regression
         run: |
