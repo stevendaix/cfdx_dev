@@ -12,9 +12,7 @@ from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
 from .watcher import ResultWatcher
 from .mesh_model import read_mesh_catalog
-from .mesh_browser_panel import MeshBrowserPanel
 from .results_series import discover_result_series
-from .results_series_panel import ResultsSeriesPanel
 from .validation import validate_case
 
 try:
@@ -31,6 +29,8 @@ except ImportError:  # pragma: no cover
 
 
 if QApplication is not None:
+    from .mesh_browser_panel import MeshBrowserPanel
+    from .results_series_panel import ResultsSeriesPanel
     from .setup_panel import CaseSetupPanel
     from .gui_3d import PyVistaQtView
 
@@ -727,3 +727,14 @@ if QApplication is not None:
         window.show()
         return app.exec()
 else:
+    """Fallback API when optional Qt dependencies are unavailable."""
+
+    class CFDXMainWindow:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def create_application(argv=None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
+
+    def launch(session=None, argv=None):
+        raise RuntimeError("PySide6 is required for the CFDX GUI")
