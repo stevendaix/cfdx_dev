@@ -12,8 +12,8 @@ import meshio
 import numpy as np
 
 VOLUME_FACES = {
- "tetra": ((0,2,1),(0,1,3),(1,2,3),(2,0,3)),
- "hexahedron": ((0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)),
+ "tetra": ((0,2,1),(0,1,3),(1,3,2),(2,0,3)),
+ "hexahedron": ((0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,7),(2,3,7,6),(3,0,4,7)),
  "wedge": ((0,2,1),(3,4,5),(0,1,4,3),(1,2,5,4),(2,0,3,5)),
  "pyramid": ((0,1,2,3),(0,4,1),(1,4,2),(2,4,3),(3,4,0)),
  "voxel": ((0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)),
@@ -81,8 +81,7 @@ def build(mesh):
         if volumes and ctype == "polyhedron":
             templates = tuple(range(len(nodes)))
         elif volumes: templates=VOLUME_FACES[ctype]
-        else:
-            templates=tuple((i,(i+1)%len(nodes)) for i in range(len(nodes)))
+        else: templates=tuple((i,(i+1)%len(nodes)) for i in range(len(nodes)))
         refs=[]
         for local in templates:
             if volumes and ctype == "polyhedron":
@@ -100,6 +99,17 @@ def build(mesh):
         cell_faces.append(refs)
     return points,faces,owner,neighbour,cell_faces,skipped
 
+def fnv1a_update(hash_value, array):
+    """Hash a contiguous little-endian byte representation like the C++ writer."""
+    data = np.asarray(array).tobytes(order="C")
+    for byte in data:
+        hash_value ^= byte
+        hash_value = (hash_value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return hash_value
+
+def hash_hex(hash_value):
+    return f"{hash_value:016x}"
+
 def write(path, mesh, topo):
     points,faces,owner,neighbour,cell_faces,skipped=topo
     fv=np.asarray([v for f in faces for v in f],dtype=np.uint64)
@@ -108,6 +118,8 @@ def write(path, mesh, topo):
     cf=np.asarray([f for c in cell_faces for f in c],dtype=np.uint64)
     co=np.zeros(len(cell_faces)+1,dtype=np.uint64)
     for i,c in enumerate(cell_faces): co[i+1]=co[i]+len(c)
+    owner_a=np.asarray(owner,dtype=np.uint64)
+    neighbour_a=np.asarray(neighbour,dtype=np.int64)
     lookup={tuple(sorted(f)):i for i,f in enumerate(faces)}
     names=physical_names(mesh); patches=collections.OrderedDict()
     for bi,b in enumerate(mesh.cells):
@@ -126,14 +138,37 @@ def write(path, mesh, topo):
     for name,values in patches.items():
         values=sorted(set(values)); ids.extend(values); offsets.append(len(ids))
         meta.append(f"{name}:0:{len(values)}:{patch_type(name)}")
+
+    topology = 1469598103934665603
+    topology = fnv1a_update(topology, fv)
+    if len(faces) > 0:
+        topology = fnv1a_update(topology, fo)
+    topology = fnv1a_update(topology, owner_a)
+    topology = fnv1a_update(topology, neighbour_a)
+    topology = fnv1a_update(topology, cf)
+    if len(cell_faces) > 0:
+        topology = fnv1a_update(topology, co)
+
+    geometry = topology
+    geometry = fnv1a_update(geometry, points[:, 0].astype(np.float64, copy=False))
+    geometry = fnv1a_update(geometry, points[:, 1].astype(np.float64, copy=False))
+    geometry = fnv1a_update(geometry, points[:, 2].astype(np.float64, copy=False))
+
     with h5py.File(path,"w") as h:
         h.attrs["format"]="CFDX-HDF5-mesh-v1"
-        h.attrs.create("schema_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2))
+        h.attrs["format_version"]="1"
+        h.attrs["schema_version"]="1"
+        h.attrs["cfdx_version"]="0.7"
+        h.attrs["topology_hash"]=hash_hex(topology)
+        h.attrs["mesh_hash"]=hash_hex(geometry)
         h.attrs["n_points"]=str(len(points)); h.attrs["n_faces"]=str(len(faces)); h.attrs["n_cells"]=str(len(cell_faces))
         h.create_dataset("points",data=points); h.create_dataset("face_vertices",data=fv); h.create_dataset("face_offsets",data=fo)
-        h.create_dataset("owner",data=np.asarray(owner,dtype=np.uint64)); h.create_dataset("neighbour",data=np.asarray(neighbour,dtype=np.int64))
+        h.create_dataset("owner",data=owner_a); h.create_dataset("neighbour",data=neighbour_a)
         h.create_dataset("cell_faces",data=cf); h.create_dataset("cell_offsets",data=co)
-        # The native C++ reader expects a fixed-width string attribute.\n        # h5py scalar Python strings are variable-length and the reader\n        # bounds reads by H5Tget_size(), which would truncate metadata.\n        boundary_metadata = ";".join(meta)\n        h.attrs.create("boundary_patches", boundary_metadata, dtype=h5py.string_dtype(encoding="ascii", length=len(boundary_metadata) + 1))
+        boundary_metadata = ";".join(meta)
+        if boundary_metadata:
+            h.attrs.create("boundary_patches", boundary_metadata,
+                           dtype=h5py.string_dtype(encoding="ascii", length=len(boundary_metadata) + 1))
         h.create_dataset("patch_face_ids",data=np.asarray(ids,dtype=np.uint64))
         h.create_dataset("patch_face_offsets",data=np.asarray(offsets,dtype=np.uint64))
     if skipped:
