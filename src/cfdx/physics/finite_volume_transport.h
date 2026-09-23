@@ -448,7 +448,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   << " zero_or_missing_diag=" << zero_or_missing_diag
                   << " max_abs_face_flux=" << equation.max_abs_face_flux
                   << " internal_distance=[" << equation.min_internal_distance << "," << equation.max_internal_distance << "]"
-                  << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\\n';
+                  << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\n';
         std::vector<double> a(n * n, 0.0);
         std::vector<double> b(n, 0.0);
         const auto* row = equation.matrix.row_offsets_data();
