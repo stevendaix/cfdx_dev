@@ -41,11 +41,12 @@ struct SpalartAllmarasModel {
         return rho*nu_tilde*fv1(nu_tilde/nu);
     }
 
-    double wall_r(double nu_tilde,double nu,double wall_distance,
-                  double vorticity) const {
-        if(nu<=0.0||wall_distance<=0.0||!std::isfinite(vorticity)||vorticity<0.0)
+    double wall_r(double nu_tilde,double wall_distance,double s_hat) const {
+        if(!std::isfinite(nu_tilde)||nu_tilde<0.0 ||
+           !std::isfinite(wall_distance)||wall_distance<=0.0 ||
+           !std::isfinite(s_hat)||s_hat<=0.0)
             throw std::invalid_argument("invalid SA wall state");
-        return nu_tilde/(nu*std::max(vorticity,1e-30)*wall_distance*wall_distance);
+        return nu_tilde/(s_hat*kappa*kappa*wall_distance*wall_distance);
     }
 
     double destruction_coefficient(double r) const {
