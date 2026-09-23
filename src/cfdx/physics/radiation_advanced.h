@@ -268,6 +268,64 @@ inline RadiationBalance radiation_balance(double emitted, double absorbed)
     return b;
 }
 
+
+// -----------------------------------------------------------------------------
+// Band-wise gray/fvDOM radiation. Each band is transported independently and
+// the Planck-band weights are used to reconstruct the total gray-equivalent
+// irradiation and source. This is the extensible non-gray foundation.
+// -----------------------------------------------------------------------------
+
+struct SpectralRadiationSolveResult {
+    bool converged = false;
+    std::size_t iterations = 0;
+    std::vector<RadiationSolveResult> band_results;
+};
+
+inline SpectralRadiationSolveResult solve_spectral_dom(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& irradiation,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& radiation_source,
+    const std::vector<DiscreteDirection>& directions,
+    const std::vector<RadiationBand>& bands,
+    RadiationTransportControls controls = {},
+    const ScalarBoundaryConditions& wall_intensity_bcs = {})
+{
+    validate_radiation_bands(bands);
+    if(temperature.size()!=mesh.n_cells() ||
+       irradiation.size()!=mesh.n_cells() ||
+       radiation_source.size()!=mesh.n_cells())
+        throw std::invalid_argument("spectral radiation field size mismatch");
+
+    double wsum=0.0;
+    for(const auto& b:bands) wsum+=b.weight;
+    irradiation.fill(0.0);
+    radiation_source.fill(0.0);
+
+    SpectralRadiationSolveResult result;
+    result.converged=true;
+    for(const auto& band:bands) {
+        RadiationOpticalPropertyField p;
+        p.cells.resize(mesh.n_cells(),band.properties);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> G(
+            mesh.n_cells(),"G_band","W/m2",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> Q(
+            mesh.n_cells(),"Q_band","W/m3",1);
+        auto br=solve_participating_radiation_variable_properties(
+            mesh,geometry,temperature,G,Q,directions,p,controls,wall_intensity_bcs);
+        result.band_results.push_back(br);
+        result.converged=result.converged && br.converged;
+        result.iterations=std::max(result.iterations,br.iterations);
+        const double w=band.weight/wsum;
+        for(std::size_t c=0;c<mesh.n_cells();++c) {
+            irradiation(c)+=w*G(c);
+            radiation_source(c)+=w*Q(c);
+        }
+    }
+    return result;
+}
+
 } // namespace cfdx::physics
 
 // -----------------------------------------------------------------------------
@@ -364,10 +422,9 @@ inline RosselandSolveResult solve_rosseland_energy(
             max_delta=std::max(max_delta,std::abs(bounded-temperature(c)));
             temperature(c)=bounded;
         }
-        const double scale=std::max(1.0,
-            *std::max_element(temperature.component_data(0),
-                              temperature.component_data(0)+mesh.n_cells(),
-                              [](double a,double b){return std::abs(a)<std::abs(b);}));
+        double scale=1.0;
+        for(std::size_t c=0;c<mesh.n_cells();++c)
+            scale=std::max(scale,std::abs(temperature(c)));
         const double rel=max_delta/scale;
         result.temperature_residuals.push_back(rel);
         result.energy_balance_residuals.push_back(energy_balance_relative(
