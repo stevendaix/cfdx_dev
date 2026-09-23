@@ -214,18 +214,36 @@ int main() {
     const double initial = std::sqrt(256.0);
     double previous = initial;
     for (std::size_t cycle = 0; cycle < 4; ++cycle) {
-        Vector correction;
-        if (!repeated.apply(repeated_rhs, correction)) return 14;
-        for (std::size_t i = 0; i < repeated_x.size(); ++i) repeated_x(i) += correction(i);
-        const auto residual = anisotropic.matvec(repeated_x);
-        double norm2 = 0.0;
+        const auto Ax = anisotropic.matvec(repeated_x);
+        Vector residual(repeated_rhs.size());
+        double rhs_norm2 = 0.0;
+        double residual_norm2 = 0.0;
         for (std::size_t i = 0; i < repeated_rhs.size(); ++i) {
-            const double ri = repeated_rhs(i) - residual[i];
-            norm2 += ri * ri;
+            residual(i) = repeated_rhs(i) - Ax[i];
+            rhs_norm2 += repeated_rhs(i) * repeated_rhs(i);
+            residual_norm2 += residual(i) * residual(i);
         }
-        const double current = std::sqrt(norm2);
+
+        Vector correction;
+        if (!repeated.apply(residual, correction)) return 14;
+        for (std::size_t i = 0; i < repeated_x.size(); ++i) {
+            repeated_x(i) += correction(i);
+        }
+
+        const auto updated = anisotropic.matvec(repeated_x);
+        double current2 = 0.0;
+        for (std::size_t i = 0; i < repeated_rhs.size(); ++i) {
+            const double ri = repeated_rhs(i) - updated[i];
+            current2 += ri * ri;
+        }
+        const double current = std::sqrt(current2);
         if (!std::isfinite(current) || current >= previous) return 15;
         previous = current;
+
+        // The first cycle must actually reduce the original residual, while
+        // subsequent cycles must continue solving the current residual.
+        if (cycle == 0 && !(current < std::sqrt(rhs_norm2))) return 15;
+        (void)residual_norm2;
     }
 
     const SparseMatrix fvm_diffusion = make_fvm_diffusion_2d(16, 16, 1.0, 20.0);
