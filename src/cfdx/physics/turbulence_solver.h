@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/turbulence_transport.h"
+#include "cfdx/physics/spalart_allmaras.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -134,6 +135,168 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             result.converged=true;
             break;
         }
+    }
+    return result;
+}
+
+
+
+inline TurbulenceTransportResult solve_rng_kepsilon_transport(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& epsilon,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs = {},
+    const ScalarBoundaryConditions& epsilon_bcs = {},
+    std::size_t max_iterations = 100, double tolerance = 1e-8)
+{
+    validate_turbulence_controls(controls);
+    if (controls.model != TurbulenceModel::RNG_KEPSILON)
+        throw std::invalid_argument("solve_rng_kepsilon_transport requires RNG_KEPSILON model");
+    const std::size_t n = mesh.n_cells();
+    if (k.size()!=n || epsilon.size()!=n || strain_rate.size()!=n ||
+        mass_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("RNG k-epsilon field size mismatch");
+
+    TurbulenceTransportResult result;
+    for (std::size_t iter=1; iter<=max_iterations; ++iter) {
+        auto oldk=k, olde=epsilon;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> sk(n,"Sk","W/m3",1), se(n,"Se","W/m3",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> spk(n,"Spk","kg/m3/s",1), spe(n,"Spe","kg/m3/s",1);
+        std::vector<double> gamma_k(n), gamma_e(n);
+        for (std::size_t i=0;i<n;++i) {
+            const double ki=std::max(k(i),controls.k_min), ei=std::max(epsilon(i),controls.epsilon_min);
+            const double nut=controls.rng_C_mu*ki*ki/ei;
+            const double S=std::max(strain_rate(i),0.0);
+            const double P=2.0*controls.density*nut*S*S;
+            const double eta=S*ki/ei;
+            const double C1star=controls.rng_C1-
+                eta*(1.0-eta/controls.rng_eta0)/(1.0+controls.rng_beta*eta*eta*eta);
+            sk(i)=P;
+            spk(i)=-controls.density*ei/ki;
+            se(i)=C1star*P*ei/ki;
+            spe(i)=-controls.density*controls.rng_C2*ei/ki;
+            gamma_k[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_k);
+            gamma_e[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_epsilon);
+        }
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,&gamma_k);
+        auto eqe=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,nullptr,nullptr,&gamma_e);
+        ScalarSolveControls sc{2000,tolerance,0.7};
+        cfdx::core::Vector ks(n,0.0), es(n,0.0);
+        for(std::size_t i=0;i<n;++i){ks(i)=k(i);es(i)=epsilon(i);}
+        const auto rk=solve_scalar_equation(eqk,ks,sc);
+        const auto re=solve_scalar_equation(eqe,es,sc);
+        for(std::size_t i=0;i<n;++i){k(i)=ks(i);epsilon(i)=es(i);}
+        enforce_turbulence_bounds(k,epsilon,controls);
+        double dk=0.0,de=0.0;
+        for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-oldk(i)));de=std::max(de,std::abs(epsilon(i)-olde(i)));}
+        result.k_residual=scalar_equation_residual_inf(eqk,ks);
+        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        result.iterations=iter;
+        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+           re.status==cfdx::core::SolverStatus::CONVERGED &&
+           std::max(dk,de)<=tolerance){result.converged=true;break;}
+    }
+    return result;
+}
+
+inline TurbulenceTransportResult solve_komega_transport(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const TurbulenceTransportControls& controls, const ScalarBoundaryConditions& k_bcs={},
+    const ScalarBoundaryConditions& omega_bcs={}, std::size_t max_iterations=100, double tolerance=1e-8)
+{
+    validate_turbulence_controls(controls);
+    if(controls.model!=TurbulenceModel::KOMEGA) throw std::invalid_argument("solve_komega_transport requires KOMEGA model");
+    const std::size_t n=mesh.n_cells();
+    if(k.size()!=n||omega.size()!=n||strain_rate.size()!=n||mass_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("k-omega field size mismatch");
+    TurbulenceTransportResult result;
+    for(std::size_t iter=1;iter<=max_iterations;++iter){
+        auto oldk=k,oldw=omega;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> sk(n,"Sk","W/m3",1),sw(n,"Sw","W/m3",1);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> spk(n,"Spk","kg/m3/s",1),spw(n,"Spw","kg/m3/s",1);
+        std::vector<double> gk(n),gw(n);
+        for(std::size_t i=0;i<n;++i){
+            const double ki=std::max(k(i),controls.k_min), wi=std::max(omega(i),controls.omega_min);
+            const double nut=controls.a1*ki/wi, P=2.0*controls.density*nut*strain_rate(i)*strain_rate(i);
+            sk(i)=P; spk(i)=-controls.density*controls.beta_star*wi;
+            sw(i)=controls.density*controls.gamma1*P/std::max(nut,1e-20);
+            spw(i)=-controls.density*controls.beta1*wi;
+            gk[i]=controls.density*(controls.molecular_viscosity+controls.sigma_k*nut);
+            gw[i]=controls.density*(controls.molecular_viscosity+controls.sigma_epsilon*nut);
+        }
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,&gk);
+        auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,&gw);
+        ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector ks(n,0.0),ws(n,0.0);
+        for(std::size_t i=0;i<n;++i){ks(i)=k(i);ws(i)=omega(i);}
+        const auto rk=solve_scalar_equation(eqk,ks,sc), rw=solve_scalar_equation(eqw,ws,sc);
+        for(std::size_t i=0;i<n;++i){k(i)=ks(i);omega(i)=ws(i);}
+        enforce_turbulence_bounds(k,omega,controls);
+        double dk=0.0,dw=0.0;
+        for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-oldk(i)));dw=std::max(dw,std::abs(omega(i)-oldw(i)));}
+        result.k_residual=scalar_equation_residual_inf(eqk,ks);result.second_residual=scalar_equation_residual_inf(eqw,ws);result.iterations=iter;
+        if(rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+    }
+    return result;
+}
+
+inline TurbulenceTransportResult solve_spalart_allmaras_transport(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& nu_tilde,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& vorticity,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls, const ScalarBoundaryConditions& bcs={},
+    std::size_t max_iterations=100, double tolerance=1e-8)
+{
+    validate_turbulence_controls(controls);
+    if(controls.model!=TurbulenceModel::SPALART_ALLMARAS) throw std::invalid_argument("solve_spalart_allmaras_transport requires SPALART_ALLMARAS model");
+    const std::size_t n=mesh.n_cells();
+    if(nu_tilde.size()!=n||vorticity.size()!=n||wall_distance.size()!=n||mass_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("Spalart-Allmaras field size mismatch");
+    SpalartAllmarasModel sa;
+    sa.cb1=controls.sa_cb1; sa.cb2=controls.sa_cb2; sa.sigma=controls.sa_sigma;
+    sa.kappa=controls.sa_kappa; sa.cw2=controls.sa_cw2; sa.cw3=controls.sa_cw3;
+    sa.cv1=controls.sa_cv1; sa.ct3=controls.sa_ct3; sa.ct4=controls.sa_ct4;
+    sa.cw1=sa.cb1/(sa.kappa*sa.kappa)+(1.0+sa.cb2)/sa.sigma;
+    TurbulenceTransportResult result;
+    for(std::size_t iter=1;iter<=max_iterations;++iter){
+        auto old=nu_tilde;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> su(n,"Snu","m2/s3",1),spu(n,"Spnu","1/s",1);
+        std::vector<double> gamma(n);
+        const auto grad=cfdx::core::compute_gradient_gauss(nu_tilde,mesh);
+        const double* gx=grad.component_data(0),*gy=grad.component_data(1),*gz=grad.component_data(2);
+        for(std::size_t i=0;i<n;++i){
+            const double wt=std::max(nu_tilde(i),0.0), nu=controls.molecular_viscosity;
+            const double d=wall_distance(i), vort=std::max(vorticity(i),1e-20);
+            if(!(d>0.0)||!std::isfinite(d)||!std::isfinite(vort)) throw std::invalid_argument("invalid SA wall/vorticity field");
+            const double chi=wt/std::max(nu,1e-30);
+            const double fv2=sa.fv2(chi);
+            const double shat=std::max(vort+wt*fv2/(sa.kappa*sa.kappa*d*d),1e-20);
+            const double r=sa.wall_r(wt,d,shat);
+            const double fw=sa.destruction_coefficient(r);
+            const double ft2=sa.ft2(chi);
+            const double production=sa.cb1*(1.0-ft2)*shat*wt;
+            const double destruction=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt*wt/(d*d);
+            const double grad2=gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i];
+            su(i)=controls.density*(production+sa.cb2/sa.sigma*grad2);
+            spu(i)=-controls.density*destruction/std::max(wt,controls.k_min);
+            gamma[i]=controls.density*(nu+wt)/sa.sigma;
+        }
+        auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,&gamma);
+        ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0);
+        for(std::size_t i=0;i<n;++i) sol(i)=nu_tilde(i);
+        const auto rr=solve_scalar_equation(eq,sol,sc);
+        for(std::size_t i=0;i<n;++i) nu_tilde(i)=std::max(sol(i),0.0);
+        double du=0.0;for(std::size_t i=0;i<n;++i)du=std::max(du,std::abs(nu_tilde(i)-old(i)));
+        result.k_residual=scalar_equation_residual_inf(eq,sol);result.second_residual=result.k_residual;result.iterations=iter;
+        if(rr.status==cfdx::core::SolverStatus::CONVERGED&&du<=tolerance){result.converged=true;break;}
     }
     return result;
 }
