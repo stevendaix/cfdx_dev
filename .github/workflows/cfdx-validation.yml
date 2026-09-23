@@ -37,7 +37,38 @@ jobs:
 
       - name: Run validation tests
         run: |
-          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification)$'             --output-on-failure
+          ctest --test-dir build-validation             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance)             --output-on-failure
+
+      - name: Run campaign driver
+        run: |
+          python3 scripts/run_validation.py --build-dir build-validation --junit build-validation/validation-junit.xml
+
+      - name: Upload validation JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-validation-junit
+          path: build-validation/validation-junit.xml
+          if-no-files-found: error
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-validation-logs
+          path: |
+            build-validation/Testing/
+            build-validation/**/*.log
+          if-no-files-found: ignore
+
+
+      - name: Run application E2E regression
+        run: |
+          python3 -m venv .venv-e2e
+          .venv-e2e/bin/python -m pip install --upgrade pip
+          .venv-e2e/bin/python -m pip install pytest h5py
+          PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
+             --output-on-failure
 
       - name: Run campaign driver
         run: |
