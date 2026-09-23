@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
         return 77;
     }
     cfdx::core::SparseMatrix A(4, 4);
-    for (std::size_t i = 0; i < 4; ++i) A.add_entry(i, i, 2.0);
+    for (std::size_t i = 0; i < 4; ++i) A.push_back(i, i, 2.0);
     A.finalize();
     cfdx::core::Vector b(4, 1.0);
     cfdx::core::KrylovReductionPolicy reduction;
