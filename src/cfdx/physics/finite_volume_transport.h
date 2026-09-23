@@ -321,6 +321,10 @@ inline ScalarEquation assemble_scalar_equation(
     return eq;
 }
 
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution);
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
