@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <functional>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,28 @@ struct VelocityBoundaryCondition {
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
 
+
+enum class IncompressibleProbeField {
+    PRESSURE,
+    U_X,
+    U_Y,
+    U_Z,
+    U_MAGNITUDE,
+};
+
+struct IncompressiblePointProbe {
+    std::string name;
+    cfdx::core::Vec3 location{0.0, 0.0, 0.0};
+    IncompressibleProbeField field = IncompressibleProbeField::PRESSURE;
+};
+
+struct IncompressibleProbeSample {
+    std::string name;
+    std::size_t iteration = 0;
+    double time = 0.0;
+    double value = 0.0;
+};
+
 struct IncompressibleSolverControls {
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     CouplingControls coupling;
@@ -44,6 +67,8 @@ struct IncompressibleSolverControls {
     double pressure_reference_value = 0.0;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
+    std::vector<IncompressiblePointProbe> probes;
+    std::function<void(const IncompressibleProbeSample&)> probe_callback;
 };
 
 struct IncompressibleIteration {
@@ -246,6 +271,45 @@ inline void apply_velocity_boundary_conditions(
     (void)mesh;
     (void)bcs;
     (void)U;
+}
+
+
+
+inline double sample_incompressible_probe(
+    const IncompressiblePointProbe& probe,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
+{
+    if (mesh.n_cells() == 0)
+        throw std::invalid_argument("sample_incompressible_probe: mesh has no cells");
+    std::size_t nearest = 0;
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        const auto delta = geometry.cell_centres[c] - probe.location;
+        const double distance = delta.mag2();
+        if (distance < best_distance) {
+            best_distance = distance;
+            nearest = c;
+        }
+    }
+    switch (probe.field) {
+    case IncompressibleProbeField::PRESSURE:
+        return p(nearest);
+    case IncompressibleProbeField::U_X:
+        return U.component_data(0)[nearest];
+    case IncompressibleProbeField::U_Y:
+        return U.component_data(1)[nearest];
+    case IncompressibleProbeField::U_Z:
+        return U.component_data(2)[nearest];
+    case IncompressibleProbeField::U_MAGNITUDE: {
+        cfdx::core::Vec3 velocity;
+        U.get(nearest, velocity.x, velocity.y, velocity.z);
+        return velocity.mag();
+    }
+    }
+    throw std::invalid_argument("sample_incompressible_probe: unsupported field");
 }
 
 inline IncompressibleSolveResult solve_steady_incompressible(
@@ -655,6 +719,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
         result.history.push_back(h);
+
+        if (controls.probe_callback) {
+            for (const auto& probe : controls.probes) {
+                if (probe.name.empty())
+                    throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
+                const double value = sample_incompressible_probe(
+                    probe, mesh, geometry, U, p);
+                if (!std::isfinite(value))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: probe value is not finite");
+                controls.probe_callback(
+                    IncompressibleProbeSample{probe.name, iter, 0.0, value});
+            }
+        }
 
         if (iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
