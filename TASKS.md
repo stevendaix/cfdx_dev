@@ -33,7 +33,7 @@ l'existence du code de sa vérification numérique et de sa validation solver-le
 - [ ] Validation reports: CI publishes machine-readable JUnit results
 - [ ] Full operator verification on orthogonal/non-orthogonal/skewed meshes
 - [ ] Full linear-algebra robustness matrix and preconditioner equivalence
-- [ ] MPI serial/parallel equivalence, parallel HDF5, N→M restart
+- [x] MPI parallel-execution contract: decomposition, halo, serial/MPI equivalence, distributed Parallel HDF5 checkpointing, N→M restart and deterministic Krylov reductions (Phases 5.1–5.11 merged)
 - [ ] Full CUDA kernels and CPU/GPU numerical equivalence
 - [ ] End-to-end GPU-OOC beyond-VRAM CFD
 - [ ] M1 solver-level canonical validation and additional benchmark families
