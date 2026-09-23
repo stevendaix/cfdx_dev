@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace cfdx::physics {
 
