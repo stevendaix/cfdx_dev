@@ -13,6 +13,9 @@
 #include <H5Apublic.h>
 #include <H5Ppublic.h>
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
+#include <H5FDmpio.h>
+#endif
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
 #include <mpi.h>
 #endif
 #include <cstdio>
