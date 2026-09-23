@@ -177,7 +177,7 @@ void VtuWriter::write_cells(std::ofstream& os,
     os << "   </Cells>\n";
 }
 
-void VtuWriter::write_cell_fields(os::std::ofstream& os,
+void VtuWriter::write_cell_fields(std::ofstream& os,
                                   const cfdx::core::Mesh& mesh,
                                   const std::map<std::string, cfdx::core::ScalarCellField>& fields,
                                   const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
