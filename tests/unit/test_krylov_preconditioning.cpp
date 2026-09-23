@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <numeric>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
