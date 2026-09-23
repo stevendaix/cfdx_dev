@@ -7,6 +7,7 @@
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
@@ -350,10 +351,71 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         };
     }
 
+    // Small validation systems are solved directly first. This is deliberately
+    // deterministic and removes Krylov convergence noise from analytical V&V
+    // cases such as Couette/Poiseuille while retaining Krylov solvers for
+    // production-sized systems.
+    if (solution.size() <= 256) {
+        const std::size_t n = solution.size();
+        std::vector<double> a(n*n, 0.0), b(n, 0.0);
+        const auto* ro = equation.matrix.row_offsets_data();
+        const auto* co = equation.matrix.columns_data();
+        const auto* va = equation.matrix.values_data();
+        for (std::size_t i=0; i<n; ++i) {
+            b[i] = equation.rhs(i);
+            for (std::size_t q=ro[i]; q<ro[i+1]; ++q)
+                a[i*n + co[q]] = va[q];
+        }
+        for (std::size_t k=0; k<n; ++k) {
+            std::size_t pivot=k;
+            double best=std::abs(a[k*n+k]);
+            for (std::size_t i=k+1; i<n; ++i) {
+                const double v=std::abs(a[i*n+k]);
+                if(v>best){best=v;pivot=i;}
+            }
+            if(!(best>1e-14) || !std::isfinite(best)) break;
+            if(pivot!=k) {
+                for(std::size_t j=k;j<n;++j) std::swap(a[k*n+j],a[pivot*n+j]);
+                std::swap(b[k],b[pivot]);
+            }
+            for(std::size_t i=k+1;i<n;++i) {
+                const double m=a[i*n+k]/a[k*n+k];
+                if(m==0.0) continue;
+                a[i*n+k]=0.0;
+                for(std::size_t j=k+1;j<n;++j) a[i*n+j]-=m*a[k*n+j];
+                b[i]-=m*b[k];
+            }
+        }
+        bool nonsingular=true;
+        std::vector<double> x(n,0.0);
+        for(std::size_t ii=0;ii<n;++ii) {
+            const std::size_t i=n-1-ii;
+            double s=b[i];
+            for(std::size_t j=i+1;j<n;++j) s-=a[i*n+j]*x[j];
+            if(!std::isfinite(a[i*n+i]) || std::abs(a[i*n+i])<=1e-14) {nonsingular=false;break;}
+            x[i]=s/a[i*n+i];
+        }
+        if(nonsingular) {
+            double rn=0.0;
+            for(std::size_t i=0;i<n;++i) {
+                double ri=-equation.rhs(i);
+                for(std::size_t q=ro[i];q<ro[i+1];++q) ri+=va[q]*x[co[q]];
+                rn=std::max(rn,std::abs(ri));
+            }
+            if(std::isfinite(rn) && rn<=std::max(controls.tolerance,1e-12)) {
+                for(std::size_t i=0;i<n;++i) solution(i)+=controls.relaxation*(x[i]-solution(i));
+                return {cfdx::core::SolverStatus::CONVERGED,1,rn,rn};
+            }
+        }
+    }
+
     cfdx::core::Vector candidate = solution;
+    cfdx::core::JacobiPreconditioner jacobi;
+    cfdx::core::Preconditioner* preconditioner =
+        jacobi.setup(equation.matrix) ? &jacobi : nullptr;
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+        controls.max_iterations, controls.tolerance, preconditioner);
 
     // BiCGStab can stagnate on mildly nonsymmetric momentum matrices even
     // when the system is well posed. Retry from the original iterate with
@@ -363,7 +425,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
-            64, controls.max_iterations, controls.tolerance);
+            64, controls.max_iterations, controls.tolerance, preconditioner);
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
