@@ -297,12 +297,15 @@ if(CFDX_BUILD_TESTS)
 
     add_executable(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_executable(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+    add_executable(test_hdf5_integrity tests/unit/test_hdf5_integrity.cpp)
     add_executable(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
     target_link_libraries(test_hdf5_writer PRIVATE cfdx_core)
     target_link_libraries(test_hdf5_roundtrip PRIVATE cfdx_core)
+    target_link_libraries(test_hdf5_integrity PRIVATE cfdx_core)
     target_link_libraries(test_field_roundtrip PRIVATE cfdx_core)
     target_include_directories(test_hdf5_writer PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     target_include_directories(test_hdf5_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    target_include_directories(test_hdf5_integrity PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     target_include_directories(test_field_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
         add_test(NAME test_hdf5_writer
@@ -311,12 +314,16 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_hdf5_roundtrip
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_roundtrip> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_hdf5_integrity
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_integrity> ${MPIEXEC_POSTFLAGS})
         add_test(NAME test_field_roundtrip
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_field_roundtrip> ${MPIEXEC_POSTFLAGS})
     else()
         add_test(NAME test_hdf5_writer COMMAND test_hdf5_writer)
         add_test(NAME test_hdf5_roundtrip COMMAND test_hdf5_roundtrip)
+        add_test(NAME test_hdf5_integrity COMMAND test_hdf5_integrity)
         add_test(NAME test_field_roundtrip COMMAND test_field_roundtrip)
     endif()
 
