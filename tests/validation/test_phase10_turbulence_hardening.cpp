@@ -113,8 +113,8 @@ int main() {
     });
 
     run_case("M2_SST_blending_cross_diffusion_bounds", [] {
-        const auto near_wall=compute_sst_blending(1.0,10.0,1e-4,1e-5,0.09,1.0e-3);
-        const auto far_wall=compute_sst_blending(1.0,1.0,10.0,1e-5,0.09,1.0e-6);
+        const auto near_wall=compute_sst_blending(1.0,10.0,1e-4,1e-5,0.09);
+        const auto far_wall=compute_sst_blending(1.0,1.0,10.0,1e-5,0.09);
         EXPECT_TRUE(near_wall.first>=0.0 && near_wall.first<=1.0);
         EXPECT_TRUE(near_wall.second>=0.0 && near_wall.second<=1.0);
         EXPECT_TRUE(far_wall.first>=0.0 && far_wall.first<=1.0);
