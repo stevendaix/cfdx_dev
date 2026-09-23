@@ -2,6 +2,7 @@
 #include "cfdx/physics/turbulence.h"
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
+#include "cfdx/physics/radiation_advanced.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <vector>
@@ -63,6 +64,42 @@ int main()
             {0.0, 0.0, 1.0, 2.0 * M_PI / 3.0},
             {0.0, 0.0, -1.0, 2.0 * M_PI / 3.0}
         });
+    });
+
+    run_case("radiation_advanced_physical_invariants", [] {
+        RadiationOpticalProperties p;
+        p.absorption=2.0; p.scattering=1.0; p.emissivity=0.8;
+        p.validate();
+        EXPECT_NEAR(p.extinction(),3.0,1e-14);
+        EXPECT_NEAR(p.optical_thickness(2.0),6.0,1e-14);
+
+        std::vector<RadiationBand> bands(2);
+        bands[0].wavelength_min=1e-6; bands[0].wavelength_max=2e-6;
+        bands[0].weight=0.4; bands[0].properties=p;
+        bands[1].wavelength_min=2e-6; bands[1].wavelength_max=3e-6;
+        bands[1].weight=0.6; bands[1].properties=p;
+        EXPECT_NEAR(weighted_band_absorption(bands,1000.0),2.0,1e-14);
+
+        std::vector<DiscreteDirection> dirs{
+            {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
+            {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
+            {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
+        std::vector<double> incoming(6,blackbody_intensity(300.0));
+        std::vector<double> wall(6,0.0);
+        apply_diffuse_gray_wall(dirs,incoming,{1,0,0},1.0,300.0,wall);
+        EXPECT_TRUE(wall[0] > 0.0);
+        EXPECT_NEAR(wall[2],0.0,1e-14);
+
+        std::vector<ViewFactorPatch> patches{
+            {{0,0,0},{0,0,1},1.0},
+            {{0,0,1},{0,0,-1},1.0}};
+        auto F=estimate_view_factor_matrix(patches);
+        EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
+        validate_view_factor_matrix(F,2);
+
+        auto b=radiation_balance(100.0,100.0);
+        EXPECT_NEAR(b.net,0.0,1e-14);
+        EXPECT_NEAR(b.relative_error,0.0,1e-14);
     });
 
     return run_all();
