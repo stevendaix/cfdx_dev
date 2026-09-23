@@ -144,7 +144,7 @@ def _read_hdf5(path: Path) -> DatRestart:
         time = float(h5.attrs["time"])
         cell_ids: tuple[int, ...] | None = None
         if "cell_ids" in h5:
-            ids = np.asarray(h5["cell_ids"][()], dtype=np.int64)
+            ids = np.asarray(h5["cell_ids"][()], dtype=np.uint64)
             if ids.ndim != 1:
                 raise ValueError("DAT HDF5 cell_ids must be one-dimensional")
             cell_ids = tuple(int(value) for value in ids)
