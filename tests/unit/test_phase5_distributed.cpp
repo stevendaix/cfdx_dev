@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
     write_distributed_checkpoint(path, state);
     MPI_Barrier(MPI_COMM_WORLD);
 
-    DistributedCellField restored(global_n, ids, 1, "phi");
+    DistributedCellField restored(global_n, ids, 3, "phi");
     read_distributed_checkpoint(path, restored);
     for (std::size_t i = 0; i < restored.local_size(); ++i)
         for (std::size_t comp = 0; comp < restored.dimension(); ++comp)
