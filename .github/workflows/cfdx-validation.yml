@@ -66,7 +66,7 @@ jobs:
         with:
           name: cfdx-validation-junit
           path: build-validation/validation-junit.xml
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Upload validation logs
         if: always()
