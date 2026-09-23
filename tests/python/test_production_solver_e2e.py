@@ -71,12 +71,19 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
             "--iterations", "5",
         ]),
     )
+    restart_output: list[str] = []
+    restart_controller.on_output = lambda line, is_stderr: restart_output.append(
+        ("stderr: " if is_stderr else "stdout: ") + line
+    )
     restart_controller.restart(checkpoint)
     thread = restart_controller.runner._thread
     assert thread is not None
     thread.join(timeout=30)
     assert not thread.is_alive()
-    assert restart_session.state.value == "CONVERGED"
+    assert restart_session.state.value == "CONVERGED", (
+        f"production solver restart failed: error={restart_controller.error!r}; "
+        f"output={restart_output[-40:]!r}"
+    )
     assert restart_controller.latest_metrics is not None
     assert restart_controller.latest_metrics.iteration is not None
     assert 1 <= restart_controller.latest_metrics.iteration <= 5
