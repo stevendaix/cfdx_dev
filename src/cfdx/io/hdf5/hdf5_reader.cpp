@@ -377,7 +377,10 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
 
 bool read_field_hdf5(const std::string& filename,
                       cfdx::core::Field<double, cfdx::core::Location::CELL>& field) {
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t fapl = create_file_access_plist();
+    if (fapl < 0) return false;
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
+    H5Pclose(fapl);
     if (file < 0) return false;
 
     hid_t grp = H5Gopen2(file, "fields", H5P_DEFAULT);
