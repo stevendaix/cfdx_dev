@@ -762,6 +762,39 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        // Temporary coupling audit: compare the corrected pressure flux field
+        // with the flux reconstructed from the corrected cell velocity. A
+        // mismatch here identifies inconsistency between the pressure equation
+        // and the cell-velocity correction before the next nonlinear iterate.
+        double corrected_flux_continuity_linf = 0.0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            double div = 0.0;
+            const Offset off = cell_offsets[c];
+            const Offset count = cell_offsets[c + 1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t f = cell_faces[off + k];
+                div += mesh.ownership().owner(f) == c ? mass_flux(f) : -mass_flux(f);
+            }
+            corrected_flux_continuity_linf = std::max(corrected_flux_continuity_linf, std::abs(div));
+        }
+        const auto reconstructed_flux = make_mass_flux(
+            mesh, geometry, U, controls.density, velocity_bcs);
+        double reconstructed_continuity_linf = 0.0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            double div = 0.0;
+            const Offset off = mesh.cells().offsets_data()[c];
+            const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t f = mesh.cells().faces_data()[off + k];
+                div += mesh.ownership().owner(f) == c ? reconstructed_flux(f) : -reconstructed_flux(f);
+            }
+            reconstructed_continuity_linf = std::max(reconstructed_continuity_linf, std::abs(div));
+        }
+        std::cerr << "CFDX coupling audit: corrected_flux_continuity_linf="
+                  << corrected_flux_continuity_linf
+                  << " reconstructed_U_continuity_linf=" << reconstructed_continuity_linf
+                  << '\\n';
+
         // Reassemble the final momentum equations after all pressure
         // corrections. Linear-solver residuals alone describe intermediate
         // predictor systems and do not measure the corrected physical state.
