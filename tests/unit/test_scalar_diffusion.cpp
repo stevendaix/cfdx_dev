@@ -6,13 +6,13 @@
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-static Mesh cube() {
+static Mesh cube(double lx = 1.0) {
     Mesh m;
     m.points().resize(8);
-    m.points().set(0,0,0,0); m.points().set(1,1,0,0);
-    m.points().set(2,1,1,0); m.points().set(3,0,1,0);
-    m.points().set(4,0,0,1); m.points().set(5,1,0,1);
-    m.points().set(6,1,1,1); m.points().set(7,0,1,1);
+    m.points().set(0,0,0,0); m.points().set(1,lx,0,0);
+    m.points().set(2,lx,1,0); m.points().set(3,0,1,0);
+    m.points().set(4,0,0,1); m.points().set(5,lx,0,1);
+    m.points().set(6,lx,1,1); m.points().set(7,0,1,1);
     m.faces().push_face({0,3,2,1});
     m.faces().push_face({4,5,6,7});
     m.faces().push_face({0,1,5,4});
@@ -31,8 +31,8 @@ static Mesh cube() {
 int main() {
     run_case("poisson_one_cell_dirichlet", [] {
         Mesh m = cube();
-        DirichletBoundary bc;
-        bc.face_values.assign(m.n_faces(), std::numeric_limits<double>::quiet_NaN());
+        PoissonBoundaryCondition bc =
+            PoissonBoundaryCondition::dirichlet(m.n_faces());
         // x=0 -> 0, x=1 -> 1; remaining faces are zero-gradient.
         bc.face_values[4] = 0.0;
         bc.face_values[5] = 1.0;
@@ -43,22 +43,46 @@ int main() {
 
     run_case("laplace_zero_source", [] {
         Mesh m = cube();
-        DirichletBoundary bc;
-        bc.face_values.assign(m.n_faces(), 0.0);
+        auto bc = PoissonBoundaryCondition::dirichlet(m.n_faces());
         bc.face_values[5] = 1.0;
         auto result = solve_laplace_dirichlet(m, bc);
         EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
-        EXPECT_NEAR(result.solution(0), 1.0/6.0, 1e-12);
+        EXPECT_NEAR(result.solution(0), 1.0, 1e-12);
+    });
+
+    run_case("volumetric_source_is_integrated_over_cell_volume", [] {
+        Mesh m = cube(2.0);
+        auto bc = PoissonBoundaryCondition::dirichlet(m.n_faces());
+        Vector rhs;
+        const auto geometry = make_geometry_cache(m);
+        const auto A = assemble_cell_diffusion_matrix(
+            m, bc, 1.0, {3.0}, rhs, geometry);
+        (void)A;
+        EXPECT_NEAR(geometry.cell_volumes[0], 2.0, 1e-12);
+        EXPECT_NEAR(rhs(0), 6.0, 1e-12);
+    });
+
+    run_case("poisson_contract_rejects_wrong_boundary_type", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
+        bc.face_values.assign(m.n_faces(), 0.0);
+        EXPECT_THROW(
+            solve_poisson_dirichlet(m, bc, {0.0}),
+            std::invalid_argument);
     });
 
     run_case("scalar_diffusion_rejects_bad_inputs", [] {
         Mesh m = cube();
-        DirichletBoundary bc;
+        auto bc = PoissonBoundaryCondition::dirichlet(m.n_faces());
         bc.face_values.assign(m.n_faces(), 0.0);
-        EXPECT_THROW(solve_poisson_dirichlet(m, bc, {}, ScalarDiffusionConfig{}), std::invalid_argument);
+        EXPECT_THROW(
+            solve_poisson_dirichlet(m, bc, {}),
+            std::invalid_argument);
         ScalarDiffusionConfig cfg;
         cfg.diffusivity = 0.0;
-        EXPECT_THROW(solve_poisson_dirichlet(m, bc, {0.0}, cfg), std::invalid_argument);
+        EXPECT_THROW(
+            solve_poisson_dirichlet(m, bc, {0.0}, cfg),
+            std::invalid_argument);
     });
 
     return run_all();
