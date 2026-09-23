@@ -8,19 +8,6 @@
 
 namespace cfdx::core {
 
-/// Canonical scalar Poisson problem:
-///
-///     -div(Gamma * grad(phi)) = S
-///
-/// where Gamma is a positive diffusivity and S is a volumetric source.
-/// Cell-integrated source contributions therefore use S_c * V_c.
-///
-/// Boundary fluxes use the outward physical flux convention
-///
-///     q_n = Gamma * grad(phi) . n
-///
-/// so the integrated compatibility condition for a pure-Neumann problem is
-///     integral(S dV) + integral(q_n dA) = 0.
 enum class PoissonBoundaryType {
     DIRICHLET,
     NEUMANN,
@@ -28,25 +15,25 @@ enum class PoissonBoundaryType {
 
 /// Boundary data for the canonical Poisson contract.
 ///
-/// Values are face-based. A NaN entry means that the face is not prescribed.
-/// An empty face_values vector is accepted for backward compatibility and
-/// denotes that no boundary face is prescribed.
+/// type remains the default type for all faces. face_types, when populated,
+/// provides an explicit type per boundary face and enables mixed conditions.
 ///
 /// For DIRICHLET, face_values contains phi_b.
 /// For NEUMANN, face_values contains q_n = Gamma * grad(phi) . n.
 ///
-/// The explicit type prevents the old convention where an unspecified
-/// boundary was implicitly interpreted without identifying its physical type.
+/// A NaN value means that the corresponding boundary face is not prescribed.
 struct PoissonBoundaryCondition {
     PoissonBoundaryType type = PoissonBoundaryType::DIRICHLET;
     std::vector<double> face_values;
+    std::vector<PoissonBoundaryType> face_types;
 
     static PoissonBoundaryCondition dirichlet(std::size_t n_faces)
     {
         return {
             PoissonBoundaryType::DIRICHLET,
             std::vector<double>(
-                n_faces, std::numeric_limits<double>::quiet_NaN())
+                n_faces, std::numeric_limits<double>::quiet_NaN()),
+            {}
         };
     }
 
@@ -55,8 +42,26 @@ struct PoissonBoundaryCondition {
         return {
             PoissonBoundaryType::NEUMANN,
             std::vector<double>(
-                n_faces, std::numeric_limits<double>::quiet_NaN())
+                n_faces, std::numeric_limits<double>::quiet_NaN()),
+            {}
         };
+    }
+
+    static PoissonBoundaryCondition mixed(
+        std::size_t n_faces,
+        PoissonBoundaryType default_type = PoissonBoundaryType::DIRICHLET)
+    {
+        return {
+            default_type,
+            std::vector<double>(
+                n_faces, std::numeric_limits<double>::quiet_NaN()),
+            std::vector<PoissonBoundaryType>(n_faces, default_type)
+        };
+    }
+
+    PoissonBoundaryType type_for_face(std::size_t face) const
+    {
+        return face_types.empty() ? type : face_types.at(face);
     }
 
     void validate(std::size_t n_faces) const
@@ -64,6 +69,10 @@ struct PoissonBoundaryCondition {
         if (!face_values.empty() && face_values.size() != n_faces)
             throw std::invalid_argument(
                 "PoissonBoundaryCondition: face_values size must equal "
+                "mesh.n_faces() when provided");
+        if (!face_types.empty() && face_types.size() != n_faces)
+            throw std::invalid_argument(
+                "PoissonBoundaryCondition: face_types size must equal "
                 "mesh.n_faces() when provided");
         for (double value : face_values) {
             if (!std::isfinite(value) && !std::isnan(value))
@@ -74,10 +83,6 @@ struct PoissonBoundaryCondition {
     }
 };
 
-/// Canonical input contract for scalar Poisson/Laplace solves.
-///
-/// A zero source represents the Laplace equation. The source is a volumetric
-/// density and is integrated by the assembly as source[c] * cell_volume[c].
 struct PoissonProblem {
     double diffusivity = 1.0;
     std::vector<double> source;
