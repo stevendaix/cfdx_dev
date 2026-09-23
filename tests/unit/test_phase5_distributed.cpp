@@ -51,21 +51,26 @@ int main(int argc, char** argv) {
     mesh.faces().push_face({0,1,2});
     mesh.faces().push_face({1,2,3});
     mesh.faces().push_face({2,3,4});
-    mesh.ownership().resize(3);
+    // Duplicate representation of the same cross-rank interface. The halo
+    // planner must collapse this to one value per remote global cell.
+    mesh.faces().push_face({1,2,3});
+    mesh.ownership().resize(4);
     mesh.ownership().set_owner(0, 0);
     mesh.ownership().set_neighbour(0, cfdx::core::FaceOwnership::BOUNDARY);
     mesh.ownership().set_owner(1, 0);
     mesh.ownership().set_neighbour(1, 1);
     mesh.ownership().set_owner(2, 1);
     mesh.ownership().set_neighbour(2, cfdx::core::FaceOwnership::BOUNDARY);
+    mesh.ownership().set_owner(3, 0);
+    mesh.ownership().set_neighbour(3, 1);
     mesh.cells().push_cell({0, 1});
     mesh.cells().push_cell({1, 2});
 
     cfdx::core::parallel::Partition partition;
     partition.n_parts = 2;
     partition.cell_rank = {0, 1};
-    partition.face_owner_rank = {0, 0, 1};
-    partition.face_ghost_rank = {-1, 1, -1};
+    partition.face_owner_rank = {0, 0, 1, 0};
+    partition.face_ghost_rank = {-1, 1, -1, 1};
 
     // Use a separate two-cell field for the actual halo fixture.
     const std::vector<std::uint64_t> local_cell_ids{
