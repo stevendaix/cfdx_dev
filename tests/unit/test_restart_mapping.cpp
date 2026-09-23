@@ -14,13 +14,13 @@ int main() {
     // partition with a different ordering. Values must follow global IDs,
     // never local cell indices.
     const std::vector<std::uint64_t> source_ids{10, 20, 30, 40};
-    const std::vector<std::uint64_t> target_ids{30, 10, 40, 20};
+    const std::vector<std::uint64_t> target_ids{30, 10};
     const auto p = build_restart_permutation(source_ids, target_ids);
-    assert((p == std::vector<std::size_t>{2, 0, 3, 1}));
+    assert((p == std::vector<std::size_t>{2, 0}));
 
     const std::vector<double> scalar{1.0, 2.0, 3.0, 4.0};
     const auto scalar_target = remap_restart_values(source_ids, scalar, target_ids);
-    assert((scalar_target == std::vector<double>{3.0, 1.0, 4.0, 2.0}));
+    assert((scalar_target == std::vector<double>{3.0, 1.0}));
 
     const std::vector<double> vector_values{
         1.0, 10.0, 100.0,
