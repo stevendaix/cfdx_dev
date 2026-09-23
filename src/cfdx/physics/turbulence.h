@@ -29,7 +29,7 @@ inline double turbulent_kinematic_viscosity_kepsilon(double k, double epsilon,
 }
 
 inline double turbulent_kinematic_viscosity_komega_sst(
-    double k, double omega, double F2, double strain_rate, double a1 = 0.31)
+    double k, double omega, double F2, double strain_rate, double a1)
 {
     if (k < 0.0 || omega <= 0.0 || F2 < 0.0 || F2 > 1.0 ||
         strain_rate < 0.0 || !std::isfinite(strain_rate) || a1 <= 0.0)
@@ -37,8 +37,8 @@ inline double turbulent_kinematic_viscosity_komega_sst(
     return a1 * k / std::max(a1 * omega, strain_rate * F2);
 }
 
-// Backward-compatible overload retained for existing unit tests/callers.
-// A zero strain-rate limiter recovers the pre-existing algebraic form.
+// Backward-compatible overload retained for existing callers using the
+// historical algebraic four-argument form.
 inline double turbulent_kinematic_viscosity_komega_sst(
     double k, double omega, double F2, double a1 = 0.31)
 {
@@ -57,7 +57,6 @@ inline double smagorinsky_eddy_viscosity(double delta, double strain,
         throw std::invalid_argument("Smagorinsky: invalid delta, strain or Cs");
     return (Cs * delta) * (Cs * delta) * strain;
 }
-
 
 // Algebraic DES helper: this is an eddy-viscosity length-scale model,
 // not a full hybrid RANS-LES transport-equation DES implementation.
