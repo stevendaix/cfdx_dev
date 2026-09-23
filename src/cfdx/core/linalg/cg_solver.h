@@ -131,7 +131,8 @@ inline SolverResult solve_cg(
     }
 
     const double b_norm = b.norm2();
-    const double tol_abs = tolerance * std::max(b_norm, 1e-15);
+    const double b_scale = std::max(b_norm, 1e-15);
+    const double tol_abs = tolerance * b_scale;
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
 
@@ -147,7 +148,7 @@ inline SolverResult solve_cg(
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = true_residual;
-        result.residual_relative = (b_norm > 0.0) ? true_residual / b_norm : 0.0;
+        result.residual_relative = true_residual / b_scale;
         return result;
     }
 
