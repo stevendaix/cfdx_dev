@@ -87,6 +87,22 @@ int main() {
         EXPECT_NEAR(rhs(0), 2.0, 1e-12);
     });
 
+    run_case("poisson_conservation_balance_is_zero", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::mixed(m.n_faces());
+        bc.face_types[4] = PoissonBoundaryType::DIRICHLET;
+        bc.face_types[5] = PoissonBoundaryType::DIRICHLET;
+        bc.face_values[4] = 0.0;
+        bc.face_values[5] = 1.0;
+        ScalarDiffusionConfig cfg;
+        auto result = solve_poisson_mixed(m, bc, {0.0}, cfg);
+        EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
+        const auto geometry = make_geometry_cache(m);
+        const double balance = poisson_conservation_balance(
+            m, bc, {0.0}, result.solution, geometry, cfg.diffusivity);
+        EXPECT_NEAR(balance, 0.0, 1e-12);
+    });
+
     run_case("poisson_contract_rejects_wrong_boundary_type", [] {
         Mesh m = cube();
         auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
