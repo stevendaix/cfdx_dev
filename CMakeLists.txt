@@ -455,10 +455,10 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_krylov_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_krylov_reduction> ${MPIEXEC_POSTFLAGS})
-        set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         add_test(NAME test_phase8_mpi_poisson
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_test(NAME test_phase5_distributed
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
