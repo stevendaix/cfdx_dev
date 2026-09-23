@@ -28,14 +28,15 @@ enum class PoissonBoundaryType {
 
 /// Boundary data for the canonical Poisson contract.
 ///
-/// Values are face-based and must have one entry per mesh face. A NaN entry
-/// means that the face is not prescribed by this boundary object.
+/// Values are face-based. A NaN entry means that the face is not prescribed.
+/// An empty face_values vector is accepted for backward compatibility and
+/// denotes that no boundary face is prescribed.
 ///
 /// For DIRICHLET, face_values contains phi_b.
 /// For NEUMANN, face_values contains q_n = Gamma * grad(phi) . n.
 ///
 /// The explicit type prevents the old convention where an unspecified
-/// Dirichlet value silently became a zero-gradient boundary.
+/// boundary was implicitly interpreted without identifying its physical type.
 struct PoissonBoundaryCondition {
     PoissonBoundaryType type = PoissonBoundaryType::DIRICHLET;
     std::vector<double> face_values;
@@ -60,10 +61,10 @@ struct PoissonBoundaryCondition {
 
     void validate(std::size_t n_faces) const
     {
-        if (face_values.size() != n_faces)
+        if (!face_values.empty() && face_values.size() != n_faces)
             throw std::invalid_argument(
                 "PoissonBoundaryCondition: face_values size must equal "
-                "mesh.n_faces()");
+                "mesh.n_faces() when provided");
         for (double value : face_values) {
             if (!std::isfinite(value) && !std::isnan(value))
                 throw std::invalid_argument(
