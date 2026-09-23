@@ -32,4 +32,11 @@ inline double mixed_precision_residual(const SparseMatrix& A, const Vector& b, c
     for (std::size_t i=0;i<b.size();++i) r(i)=b(i)-ax(i);
     return mixed_precision_norm2(r,SolverPrecision::FP64);
 }
+
+// True residual used for convergence/reporting: always evaluates A*x in FP64,
+// independently of the precision used by the iterative operator path.
+inline double mixed_precision_true_residual(const SparseMatrix& A, const Vector& b,
+                                            const Vector& x, Vector& r) {
+    return mixed_precision_residual(A, b, x, r, SolverPrecision::FP64);
+}
 }
