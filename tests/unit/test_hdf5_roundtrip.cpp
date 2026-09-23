@@ -76,6 +76,76 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("read_mesh_hdf5_rejects_schema_version_mismatch", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_bad_schema_version.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        hid_t attr = H5Aopen(file, "schema_version", H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        hid_t type = attr >= 0 ? H5Aget_type(attr) : -1;
+        if (attr >= 0 && type >= 0) EXPECT_TRUE(H5Awrite(attr, type, "999") >= 0);
+        if (type >= 0) H5Tclose(type);
+        if (attr >= 0) H5Aclose(attr);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_rejects_topology_hash_mismatch", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_bad_topology_hash.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        hid_t attr = H5Aopen(file, "topology_hash", H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        hid_t type = attr >= 0 ? H5Aget_type(attr) : -1;
+        if (attr >= 0 && type >= 0) EXPECT_TRUE(H5Awrite(attr, type, "0000000000000000") >= 0);
+        if (type >= 0) H5Tclose(type);
+        if (attr >= 0) H5Aclose(attr);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_rejects_mesh_hash_mismatch", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_bad_mesh_hash.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        hid_t attr = H5Aopen(file, "mesh_hash", H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        hid_t type = attr >= 0 ? H5Aget_type(attr) : -1;
+        if (attr >= 0 && type >= 0) EXPECT_TRUE(H5Awrite(attr, type, "0000000000000000") >= 0);
+        if (type >= 0) H5Tclose(type);
+        if (attr >= 0) H5Aclose(attr);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_rejects_missing_integrity_metadata", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_missing_integrity_metadata.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Adelete(file, "mesh_hash") >= 0);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
     run_case("roundtrip_mesh_points", []() {
         Mesh original = make_unit_cube();
         const std::string filename = "/tmp/cfdx_roundtrip.h5";
