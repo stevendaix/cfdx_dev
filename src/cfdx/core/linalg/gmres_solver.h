@@ -223,10 +223,11 @@ inline SolverResult solve_gmres(
     int restart = 30,
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
-    Preconditioner* preconditioner = nullptr) {
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {}) {
     LinearOperator op;
     op.size = A.n_rows();
-    op.apply = [&A](const Vector& in, Vector& out) {
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
         if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
         const auto* row = A.row_offsets_data();
@@ -244,7 +245,7 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
-    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner);
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, {});
 }
 
 } // namespace cfdx::core
