@@ -179,7 +179,7 @@ void VtuWriter::write_cells(std::ofstream& os,
     // Types
     os << "    <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n";
     for (std::size_t c = 0; c < n_cells; ++c) {
-        os << "     " << static_cast<std::uint8_t>(vtk_cell_types[c]) << "\n";
+        os << "     " << static_cast<unsigned int>(vtk_cell_types[c]) << "\n";
     }
     os << "    </DataArray>\n";
 
