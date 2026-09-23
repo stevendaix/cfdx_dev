@@ -178,15 +178,28 @@ inline std::vector<double> exchange_distributed_cell_halo(
         static_cast<int>(halo.recv_global_ids.size()) != size)
         throw std::invalid_argument("exchange_distributed_cell_halo: invalid halo plan");
 
-    std::unordered_map<std::uint64_t, double> received;
+    // Result ordering is deterministic: peer order, then the halo plan's
+    // receive-ID order, with all field components contiguous per cell.
+    std::unordered_map<std::uint64_t, std::vector<double>> received;
+    const std::size_t dimension_size = field.dimension();
+    if (dimension_size == 0)
+        throw std::invalid_argument("exchange_distributed_cell_halo: field dimension must be positive");
+    if (dimension_size > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::overflow_error("exchange_distributed_cell_halo: dimension overflow");
+    const int dimension = static_cast<int>(dimension_size);
+
     for (int peer = 0; peer < size; ++peer) {
         if (peer == rank) continue;
         const auto& send = halo.send_local_cells[static_cast<std::size_t>(peer)];
         const auto& recv = halo.recv_global_ids[static_cast<std::size_t>(peer)];
+        if (send.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+            recv.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            throw std::overflow_error("exchange_distributed_cell_halo: cell count overflow");
         const int send_count = static_cast<int>(send.size());
         const int recv_count = static_cast<int>(recv.size());
         int remote_send_count = 0;
         int remote_recv_count = 0;
+        int remote_dimension = 0;
         MPI_Status status{};
         MPI_Sendrecv(&send_count, 1, MPI_INT, peer, 610,
                      &remote_send_count, 1, MPI_INT, peer, 610,
@@ -194,28 +207,54 @@ inline std::vector<double> exchange_distributed_cell_halo(
         MPI_Sendrecv(&recv_count, 1, MPI_INT, peer, 611,
                      &remote_recv_count, 1, MPI_INT, peer, 611,
                      comm, &status);
+        MPI_Sendrecv(&dimension, 1, MPI_INT, peer, 613,
+                     &remote_dimension, 1, MPI_INT, peer, 613,
+                     comm, &status);
         if (remote_send_count != recv_count || remote_recv_count != send_count)
             throw std::runtime_error("exchange_distributed_cell_halo: asymmetric peer counts");
+        if (remote_dimension != dimension)
+            throw std::invalid_argument("exchange_distributed_cell_halo: peer field dimensions differ");
 
-        std::vector<double> send_buffer(send_count);
+        const std::size_t send_values =
+            static_cast<std::size_t>(send_count) * dimension_size;
+        const std::size_t recv_values =
+            static_cast<std::size_t>(recv_count) * dimension_size;
+        if (send_values > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+            recv_values > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            throw std::overflow_error("exchange_distributed_cell_halo: MPI value count overflow");
+
+        std::vector<double> send_buffer(send_values);
         for (int i = 0; i < send_count; ++i)
-            send_buffer[static_cast<std::size_t>(i)] = field(send[static_cast<std::size_t>(i)]);
-        std::vector<double> recv_buffer(recv_count);
-        MPI_Sendrecv(send_buffer.empty() ? nullptr : send_buffer.data(), send_count,
-                     MPI_DOUBLE, peer, 612,
-                     recv_buffer.empty() ? nullptr : recv_buffer.data(), recv_count,
-                     MPI_DOUBLE, peer, 612, comm, &status);
-        for (int i = 0; i < recv_count; ++i)
-            received.emplace(recv[static_cast<std::size_t>(i)],
-                             recv_buffer[static_cast<std::size_t>(i)]);
+            for (std::size_t comp = 0; comp < dimension_size; ++comp)
+                send_buffer[static_cast<std::size_t>(i) * dimension_size + comp] =
+                    field(send[static_cast<std::size_t>(i)], comp);
+
+        std::vector<double> recv_buffer(recv_values);
+        MPI_Sendrecv(send_buffer.empty() ? nullptr : send_buffer.data(),
+                     static_cast<int>(send_values), MPI_DOUBLE, peer, 612,
+                     recv_buffer.empty() ? nullptr : recv_buffer.data(),
+                     static_cast<int>(recv_values), MPI_DOUBLE, peer, 612,
+                     comm, &status);
+
+        for (int i = 0; i < recv_count; ++i) {
+            std::vector<double> values(dimension_size);
+            for (std::size_t comp = 0; comp < dimension_size; ++comp)
+                values[comp] =
+                    recv_buffer[static_cast<std::size_t>(i) * dimension_size + comp];
+            const auto [it, inserted] =
+                received.emplace(recv[static_cast<std::size_t>(i)], std::move(values));
+            if (!inserted)
+                throw std::runtime_error("exchange_distributed_cell_halo: duplicate received global id");
+        }
     }
 
     std::vector<double> result;
-    result.reserve(received.size());
-    for (const auto id : halo.recv_global_ids) {
-        for (const auto gid : id) {
+    for (const auto& ids_for_peer : halo.recv_global_ids) {
+        for (const auto gid : ids_for_peer) {
             const auto it = received.find(gid);
-            if (it != received.end()) result.push_back(it->second);
+            if (it == received.end())
+                throw std::runtime_error("exchange_distributed_cell_halo: missing received global id");
+            result.insert(result.end(), it->second.begin(), it->second.end());
         }
     }
     return result;
