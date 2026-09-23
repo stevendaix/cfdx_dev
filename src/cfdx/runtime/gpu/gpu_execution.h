@@ -1,13 +1,72 @@
 #pragma once
 
 #include "cfdx/runtime/gpu/gpu_kernels.h"
+#include "cfdx/runtime/gpu/cuda_backend.h"
+#include "cfdx/runtime/gpu/gpu_profiler.h"
+#include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
 
 #include <cstddef>
+#include <cstring>
+#include <algorithm>
+#include <limits>
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
 
 namespace cfdx::runtime::gpu {
+#ifdef CFDX_ENABLE_GPU
+namespace detail {
+inline std::size_t checked_mul(std::size_t a, std::size_t b) {
+    if (b != 0 && a > std::numeric_limits<std::size_t>::max() / b)
+        throw std::overflow_error("GPU staging allocation size overflow");
+    return a * b;
+}
+class PinnedTransferBatch {
+public:
+    PinnedTransferBatch(CudaStream& stream, std::size_t bytes, std::size_t count)
+        : stream_(stream), pool_(checked_mul(bytes, count), bytes) {
+        if (bytes == 0 || count == 0)
+            throw std::invalid_argument("PinnedTransferBatch requires non-zero capacity");
+    }
+    ~PinnedTransferBatch() { release_noexcept(); }
+    PinnedTransferBatch(const PinnedTransferBatch&) = delete;
+    PinnedTransferBatch& operator=(const PinnedTransferBatch&) = delete;
+    void h2d(CudaDeviceBuffer& dst, const void* src, std::size_t bytes) {
+        if (bytes > pool_.buffer_bytes()) throw std::out_of_range("pinned H2D transfer exceeds staging buffer");
+        auto* b=pool_.acquire(); if(!b) throw std::runtime_error("pinned H2D staging pool exhausted");
+        try { std::memcpy(b->data,src,bytes); async_copy_h2d(dst,b->data,bytes,stream_.get()); h2d_.push_back(b); }
+        catch (...) { pool_.release(b); throw; }
+    }
+    void synchronize_h2d() { stream_.synchronize(); for(auto* b:h2d_) pool_.release(b); h2d_.clear(); }
+    void d2h(const CudaDeviceBuffer& src, void* dst, std::size_t bytes) {
+        if (bytes > pool_.buffer_bytes()) throw std::out_of_range("pinned D2H transfer exceeds staging buffer");
+        auto* b=pool_.acquire(); if(!b) throw std::runtime_error("pinned D2H staging pool exhausted");
+        try { async_copy_d2h(src,b->data,bytes,stream_.get()); d2h_.push_back({b,dst,bytes}); }
+        catch (...) { pool_.release(b); throw; }
+    }
+    void synchronize_d2h() {
+        stream_.synchronize();
+        for(const auto& t:d2h_) { std::memcpy(t.dst,t.b->data,t.bytes); pool_.release(t.b); }
+        d2h_.clear();
+    }
+private:
+    struct T { ooc::CudaPinnedBufferPool::Buffer* b; void* dst; std::size_t bytes; };
+    void release_noexcept() noexcept {
+        try { stream_.synchronize(); for(auto* b:h2d_) pool_.release(b); for(auto& t:d2h_) pool_.release(t.b); } catch(...) {}
+        h2d_.clear(); d2h_.clear();
+    }
+    CudaStream& stream_;
+    ooc::CudaPinnedBufferPool pool_;
+    std::vector<ooc::CudaPinnedBufferPool::Buffer*> h2d_;
+    std::vector<T> d2h_;
+};
+} // namespace detail
+struct GpuExecutionMetrics {
+    double h2d_ms=0.0, kernel_ms=0.0, d2h_ms=0.0;
+    std::size_t h2d_bytes=0, d2h_bytes=0;
+};
+#endif
+
 
 // Executes the finite-volume gradient entirely on CUDA memory after the
 // host-to-device staging copies. No CPU kernel is used on the GPU path.
@@ -60,15 +119,19 @@ inline void execute_gradient_cuda(
     CudaDeviceBuffer d_gy(volume.size() * sizeof(double));
     CudaDeviceBuffer d_gz(volume.size() * sizeof(double));
 
-    d_phi.copy_from_host(phi.data(), d_phi.size_bytes());
-    d_sx.copy_from_host(face_sx.data(), d_sx.size_bytes());
-    d_sy.copy_from_host(face_sy.data(), d_sy.size_bytes());
-    d_sz.copy_from_host(face_sz.data(), d_sz.size_bytes());
-    d_owner.copy_from_host(owner.data(), d_owner.size_bytes());
-    d_neighbour.copy_from_host(neighbour.data(), d_neighbour.size_bytes());
-    d_volume.copy_from_host(volume.data(), d_volume.size_bytes());
-
     CudaStream stream;
+    const std::size_t max_transfer = std::max({d_phi.size_bytes(),d_sx.size_bytes(),d_sy.size_bytes(),
+        d_sz.size_bytes(),d_owner.size_bytes(),d_neighbour.size_bytes(),d_volume.size_bytes(),
+        d_gx.size_bytes(),d_gy.size_bytes(),d_gz.size_bytes()});
+    detail::PinnedTransferBatch transfers(stream,max_transfer,10U);
+    transfers.h2d(d_phi,phi.data(),d_phi.size_bytes());
+    transfers.h2d(d_sx,face_sx.data(),d_sx.size_bytes());
+    transfers.h2d(d_sy,face_sy.data(),d_sy.size_bytes());
+    transfers.h2d(d_sz,face_sz.data(),d_sz.size_bytes());
+    transfers.h2d(d_owner,owner.data(),d_owner.size_bytes());
+    transfers.h2d(d_neighbour,neighbour.data(),d_neighbour.size_bytes());
+    transfers.h2d(d_volume,volume.data(),d_volume.size_bytes());
+    transfers.synchronize_h2d();
     gradient_gauss_cuda(
         static_cast<const double*>(d_phi.data()),
         static_cast<const double*>(d_sx.data()),
@@ -87,9 +150,10 @@ inline void execute_gradient_cuda(
     grad_x.resize(phi.size());
     grad_y.resize(phi.size());
     grad_z.resize(phi.size());
-    d_gx.copy_to_host(grad_x.data(), d_gx.size_bytes());
-    d_gy.copy_to_host(grad_y.data(), d_gy.size_bytes());
-    d_gz.copy_to_host(grad_z.data(), d_gz.size_bytes());
+    transfers.d2h(d_gx,grad_x.data(),d_gx.size_bytes());
+    transfers.d2h(d_gy,grad_y.data(),d_gy.size_bytes());
+    transfers.d2h(d_gz,grad_z.data(),d_gz.size_bytes());
+    transfers.synchronize_d2h();
 #endif
 }
 
