@@ -107,20 +107,4 @@ TEST(TEST_VTU_WRITER, WriteWithMultipleCells),
     ASSERT_TRUE(result);
     ASSERT_FALSE(std::filesystem::exists(filename));
 }
-
-TEST(TEST_VTU_WRITER, WritesAuthoritativePhysicalTimeMetadata)
-{
-    Mesh m;
-    const auto path = std::filesystem::temp_directory_path() / "cfdx_vtu_time_metadata_test.vtu";
-    VtuWriter writer;
-    ASSERT_TRUE(writer.write(path.string(), m, {}, {}, {}, 1.25, 42, true));
-
-    std::ifstream in(path);
-    ASSERT_TRUE(in.is_open());
-    const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_NE(xml.find("Name=\"physical_time\""), std::string::npos);
-    EXPECT_NE(xml.find("1.25"), std::string::npos);
-    EXPECT_NE(xml.find("Name=\"iteration\""), std::string::npos);
-    EXPECT_NE(xml.find(">42</DataArray>"), std::string::npos);
-    std::filesystem::remove(path);
-}
+\nTEST(TEST_VTU_WRITER, WritesAuthoritativePhysicalTimeMetadata)\n{\n    Mesh m;\n    const auto path = std::filesystem::temp_directory_path() / "cfdx_vtu_time_metadata_test.vtu";\n    VtuWriter writer;\n    ASSERT_TRUE(writer.write(path.string(), m, {}, {}, {}, 1.25, 42, true));\n\n    std::ifstream in(path);\n    ASSERT_TRUE(in.is_open());\n    const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());\n    EXPECT_NE(xml.find("Name=\"physical_time\""), std::string::npos);\n    EXPECT_NE(xml.find("1.25"), std::string::npos);\n    EXPECT_NE(xml.find("Name=\"iteration\""), std::string::npos);\n    EXPECT_NE(xml.find(">42</DataArray>"), std::string::npos);\n    std::filesystem::remove(path);\n}\n
