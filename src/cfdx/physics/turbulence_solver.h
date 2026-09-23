@@ -46,6 +46,9 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
     double tolerance = 1e-8)
 {
     validate_turbulence_controls(controls);
+    if(strain_rate.size()!=mesh.n_cells() || k.size()!=mesh.n_cells() ||
+       epsilon.size()!=mesh.n_cells() || mass_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("k-epsilon field size mismatch");
     if(controls.model!=TurbulenceModel::KEPSILON)
         throw std::invalid_argument("solve_kepsilon_transport requires KEPSILON model");
 
@@ -72,11 +75,6 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             const double ki=std::max(k(i),controls.k_min);
             const double ei=std::max(epsilon(i),controls.epsilon_min);
             const double nut=controls.C_mu*ki*ki/ei;
-            const double gamma_k=controls.density*
-                (controls.molecular_viscosity+nut/controls.sigma_k);
-            const double gamma_e=controls.density*
-                (controls.molecular_viscosity+nut/controls.sigma_epsilon);
-            (void)gamma_k; (void)gamma_e;
             sk(i)=P(i);
             spk(i)=-controls.density*ei/ki;
             se(i)=controls.C1*P(i)*ei/ki;
