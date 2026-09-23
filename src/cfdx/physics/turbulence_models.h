@@ -6,6 +6,14 @@
 #include <limits>
 namespace cfdx::physics {
 enum class AdvancedTurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, WALE, DYNAMIC_KEQN, DES, DDES, IDDES };
+enum class TurbulenceImplementationKind { CLOSURE, TRANSPORT_MODEL };
+struct TurbulenceModelDescriptor {
+ AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
+ TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
+};
+inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbulenceModel){
+ return TurbulenceImplementationKind::CLOSURE;
+}
 struct TurbulenceModelCoefficients {
  double C_mu=.09,C1=1.44,C2=1.92,sigma_k=1.0,sigma_epsilon=1.3,sigma_omega=.5,beta_star=.09,beta1=.075,beta2=.0828,gamma1=5.0/9.0,gamma2=.44,a1=.31,sigma_nu=2.0/3.0,Cb1=.1355,Cb2=.622,sigma_s=.3,Cs=.17,Cw=.3,CDES=.65,Cddes=.65;
 };
@@ -33,9 +41,26 @@ inline double ddes_shielding(double r_d){
  if(!std::isfinite(r_d)||r_d<0) throw std::invalid_argument("DDES shielding parameter must be non-negative");
  return 1.0-std::tanh(std::pow(8.0*r_d,3));
 }
+inline double ddes_length_scale_from_rd(double wall_distance,double delta,double Cdes,double r_d){
+ if(wall_distance<=0||delta<=0||Cdes<=0||!std::isfinite(r_d)||r_d<0)
+   throw std::invalid_argument("DDES length-scale inputs are invalid");
+ const double fd=ddes_shielding(r_d);
+ return wall_distance-fd*std::max(0.0,wall_distance-Cdes*delta);
+}
 inline double ddes_length_scale(double wall_distance,double delta,double Cdes=.65,double shielding=1){
  if(wall_distance<=0||delta<=0||Cdes<=0||shielding<0||shielding>1) throw std::invalid_argument("DDES invalid inputs");
  // shielding=1 means fully shielded (RANS); shielding=0 means unshielded LES branch.
+ return wall_distance-shielding*std::max(0.0,wall_distance-Cdes*delta);
+}
+inline double iddes_shielding(double r_d,double stress_blend){
+ if(!std::isfinite(r_d)||r_d<0||!std::isfinite(stress_blend)||stress_blend<0||stress_blend>1)
+   throw std::invalid_argument("IDDES shielding inputs are invalid");
+ const double fd=ddes_shielding(r_d);
+ return std::clamp((1.0-stress_blend)+stress_blend*fd,0.0,1.0);
+}
+inline double iddes_length_scale_from_rd(double wall_distance,double delta,double Cdes,double r_d,double stress_blend){
+ if(wall_distance<=0||delta<=0||Cdes<=0) throw std::invalid_argument("IDDES length-scale inputs are invalid");
+ const double shielding=iddes_shielding(r_d,stress_blend);
  return wall_distance-shielding*std::max(0.0,wall_distance-Cdes*delta);
 }
 inline double iddes_length_scale(double wall_distance,double delta,double Cdes=.65,double shielding=1,double stress_blend=1){
