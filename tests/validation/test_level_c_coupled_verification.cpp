@@ -127,14 +127,17 @@ int main()
 
             ScalarBoundaryConditions radiation_bc;
             ScalarBoundaryConditions thermal_bc;
-            for (const char* name : {"x_min","x_max","y_min","interface","z_min","z_max"}) {
-                radiation_bc[name]={
-                    ScalarBoundaryType::FIXED_VALUE,
-                    blackbody_intensity(800.0),0.0};
-                thermal_bc[name]={
-                    ScalarBoundaryType::FIXED_VALUE,
-                    800.0,0.0};
-            }
+            radiation_bc["x_min"]={ScalarBoundaryType::FIXED_VALUE,
+                                         blackbody_intensity(1000.0),0.0};
+            radiation_bc["x_max"]={ScalarBoundaryType::FIXED_VALUE,
+                                         blackbody_intensity(500.0),0.0};
+            for (const char* name : {"y_min","interface","z_min","z_max"})
+                radiation_bc[name]={ScalarBoundaryType::FIXED_VALUE,
+                                    blackbody_intensity(800.0),0.0};
+            thermal_bc["x_min"]={ScalarBoundaryType::FIXED_VALUE,1000.0,0.0};
+            thermal_bc["x_max"]={ScalarBoundaryType::FIXED_VALUE,500.0,0.0};
+            for (const char* name : {"y_min","interface","z_min","z_max"})
+                thermal_bc[name]={ScalarBoundaryType::FIXED_VALUE,800.0,0.0};
 
             RadiationEnergyCouplingControls controls;
             controls.radiation.absorption=0.5;
@@ -155,6 +158,8 @@ int main()
                 throw std::runtime_error("radiation-energy coupling did not converge");
             require_close(r.energy_balance_residuals.back(),0.0,1e-8,
                            "radiation-energy energy-balance gate failed");
+            if (!std::isfinite(irradiation(0)) || irradiation(0)<=0.0)
+                throw std::runtime_error("non-trivial radiation irradiation was not generated");
         }
 
         // Level C-03: two-region CHT uses a single matched interface with
