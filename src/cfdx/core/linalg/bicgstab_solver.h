@@ -4,6 +4,7 @@
 #include "cg_solver.h"
 #include "solver_workspace.h"
 #include "preconditioner.h"
+#include "mixed_precision.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -15,7 +16,7 @@ namespace cfdx::core {
 inline SolverResult solve_bicgstab(
     const SparseMatrix& A,const Vector& b,Vector& x,
     std::size_t max_iter=1000,double tolerance=1e-12,
-    Preconditioner* preconditioner=nullptr)
+    Preconditioner* preconditioner=nullptr, PrecisionPolicy precision={})
 {
     SolverResult result;
     if(b.size()!=A.n_rows()||x.size()!=A.n_cols()||A.n_rows()!=A.n_cols()||
@@ -27,6 +28,8 @@ inline SolverResult solve_bicgstab(
     }
 
     const std::size_t n=A.n_rows();
+    const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
+    const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
     const double* Av=A.values_data();const auto* Ac=A.columns_data();const auto* Ar=A.row_offsets_data();
     auto finite_vector = [](const Vector& v) {
         for (std::size_t i = 0; i < v.size(); ++i)
@@ -58,6 +61,7 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(b)||!finite_vector(x)){result.status=SolverStatus::DIVERGED;return result;}
 
     auto matvec=[&](const Vector& in,Vector& out){
+        if (mp32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
         if(out.size()!=n) out.resize(n);
         for(std::size_t i=0;i<n;++i){
             double s=0.0;
@@ -76,7 +80,7 @@ inline SolverResult solve_bicgstab(
 
     const double bnorm=b.norm2(),tol=tolerance*std::max(bnorm,1e-15);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    double res=w.r.norm2();
+    Vector true_r(n); double res=mixed_precision_true_residual(A,b,x,true_r);
     if(res<=tol){
         result.status=SolverStatus::CONVERGED;result.residual=res;
         result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
@@ -99,7 +103,7 @@ inline SolverResult solve_bicgstab(
     };
 
     for(std::size_t iter=1;iter<=max_iter;++iter){
-        double rho_new=0.0;for(std::size_t i=0;i<n;++i)rho_new+=w.r_hat(i)*w.r(i);
+        double rho_new=0.0;for(std::size_t i=0;i<n;++i)rho_new += redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(w.r_hat(i))*static_cast<float>(w.r(i))) : w.r_hat(i)*w.r(i);
         if(!std::isfinite(rho_new)||std::abs(rho_new)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
         const double beta=(rho!=0.0)?(rho_new/rho)*(alpha/omega):0.0;
         if(!std::isfinite(beta)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
@@ -113,7 +117,7 @@ inline SolverResult solve_bicgstab(
         matvec(w.z,w.v);
         if(!finite_vector(w.v)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        double rv=0.0;for(std::size_t i=0;i<n;++i)rv+=w.r_hat(i)*w.v(i);
+        double rv=0.0;for(std::size_t i=0;i<n;++i)rv += redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(w.r_hat(i))*static_cast<float>(w.v(i))) : w.r_hat(i)*w.v(i);
         if(!std::isfinite(rv)||std::abs(rv)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         alpha=rho_new/rv;
         if(!std::isfinite(alpha)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
@@ -155,7 +159,7 @@ inline SolverResult solve_bicgstab(
         matvec(w.z_s,w.t);
         if(!finite_vector(w.t)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
-        double ts=0.0,tt=0.0;for(std::size_t i=0;i<n;++i){ts+=w.t(i)*w.s(i);tt+=w.t(i)*w.t(i);}
+        double ts=0.0,tt=0.0;for(std::size_t i=0;i<n;++i){if(redp==SolverPrecision::FP32){ts+=static_cast<double>(static_cast<float>(w.t(i))*static_cast<float>(w.s(i)));tt+=static_cast<double>(static_cast<float>(w.t(i))*static_cast<float>(w.t(i)));}else{ts+=w.t(i)*w.s(i);tt+=w.t(i)*w.t(i);}}
         if(!std::isfinite(ts)||!std::isfinite(tt)||tt<=1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         omega=ts/tt;if(!std::isfinite(omega)||std::abs(omega)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i){x(i)+=alpha*w.z(i)+omega*w.z_s(i);w.r(i)=w.s(i)-omega*w.t(i);}

@@ -108,6 +108,24 @@ int main() {
         {
             Vector a(3); a(0)=1.0;a(1)=2.0;a(2)=3.0; Vector b(3);b(0)=4.0;b(1)=-1.0;b(2)=2.0;
             close(mixed_precision_dot(a,b,SolverPrecision::FP64),8.0,1e-14,"FP64 dot");
+            close(mixed_precision_dot(a,b,SolverPrecision::FP32),7.999999523162842,2e-6,"FP32 dot");
+            close(mixed_precision_norm2(a,SolverPrecision::FP32),std::sqrt(14.0),2e-6,"FP32 norm");
+            auto A=make_spd_matrix(); auto xref=exact3(); auto bb=rhs(A,xref); Vector xm(3,0.0);
+            PrecisionPolicy policy; policy.operator_precision=SolverPrecision::FP32; policy.reduction_precision=SolverPrecision::FP64;
+            policy.residual_refresh_factor=4.0; policy.refresh_interval=2; policy.enabled=true;
+            const auto rm=solve_cg(A,bb,xm,200,1e-10,policy);
+            MixedPrecisionJacobiPreconditioner mpj(SolverPrecision::FP32);
+            ok(mpj.setup(A),"mixed-precision Jacobi setup failed");
+            Vector zr(3); Vector zz(3);
+            zr(0)=1.0; zr(1)=2.0; zr(2)=3.0;
+            ok(mpj.apply(zr,zz),"mixed-precision Jacobi apply failed");
+            close(zz(0),0.25,2e-7,"mixed-precision Jacobi component 0");
+            close(zz(1),2.0/3.0,2e-7,"mixed-precision Jacobi component 1");
+            close(zz(2),1.5,2e-6,"mixed-precision Jacobi component 2");
+            ok(rm.status==SolverStatus::CONVERGED,"mixed-precision CG did not converge");
+            close((xm-xref).norm_inf(),0.0,2e-5,"mixed-precision CG solution error");
+            Vector rr(3); const double tr=mixed_precision_residual(A,bb,xm,rr,SolverPrecision::FP32);
+            close(tr,0.0,2e-5,"mixed-precision true residual");
             close(mixed_precision_norm2(a,SolverPrecision::FP64),std::sqrt(14.0),1e-14,"FP64 norm");
             const auto p=fused_reduction(a,b);
             close(p.dot,8.0,1e-14,"fused dot"); close(p.norm2,14.0,1e-14,"fused norm2"); close(p.max_abs,3.0,1e-14,"fused max");

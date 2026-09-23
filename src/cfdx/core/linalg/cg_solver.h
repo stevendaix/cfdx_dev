@@ -11,6 +11,7 @@
 
 #include "sparse_matrix.h"
 #include "vector.h"
+#include "mixed_precision.h"
 #include <cstddef>
 #include <stdexcept>
 #include <cmath>
@@ -57,7 +58,8 @@ inline SolverResult solve_cg(
     const Vector& b,
     Vector& x,
     std::size_t max_iter = 1000,
-    double tolerance = 1e-12)
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {})
 {
     SolverResult result;
 
@@ -86,6 +88,8 @@ inline SolverResult solve_cg(
             return result;
         }
     const double* Av = A.values_data();
+    const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
+    const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
 
@@ -106,14 +110,8 @@ inline SolverResult solve_cg(
 
     // r = b - A x
     std::vector<double> r(n);
-    const double* xd = x.data();
-    for (std::size_t i = 0; i < n; ++i) {
-        double sum = 0.0;
-        for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-            sum += Av[k] * xd[Ac[k]];
-        }
-        r[i] = b(i) - sum;
-    }
+    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
+    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
 
     // z = M^{-1} r
     std::vector<double> z(n);
@@ -127,10 +125,10 @@ inline SolverResult solve_cg(
 
     double rsold = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
-        rsold += r[i] * z[i];
+        rsold += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(r[i])*static_cast<float>(z[i])) : r[i]*z[i]);
     }
 
-    const double b_norm = b.norm2();
+    const double b_norm = mixed_precision_norm2(b, SolverPrecision::FP64);
     const double tol_abs = tolerance * std::max(b_norm, 1e-15);
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
@@ -138,7 +136,7 @@ inline SolverResult solve_cg(
     if (rsold < tol_abs * tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
-        result.residual = std::sqrt(std::abs(rsold));
+        result.residual = mixed_precision_true_residual(A,b,x,rv);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
@@ -149,7 +147,7 @@ inline SolverResult solve_cg(
         for (std::size_t i = 0; i < n; ++i) {
             double sum = 0.0;
             for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-                sum += Av[k] * p[Ac[k]];
+                sum += mp32 ? static_cast<double>(static_cast<float>(Av[k])*static_cast<float>(p[Ac[k]])) : Av[k]*p[Ac[k]];
             }
             Ap[i] = sum;
         }
@@ -157,7 +155,7 @@ inline SolverResult solve_cg(
         // alpha = rsold / (p · Ap)
         double pAp = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
-            pAp += p[i] * Ap[i];
+            pAp += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(p[i])*static_cast<float>(Ap[i])) : p[i]*Ap[i]);
         }
         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
             result.status = SolverStatus::NOT_APPLICABLE;
@@ -185,7 +183,7 @@ inline SolverResult solve_cg(
         // rsnew = r · z
         double rsnew = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
-            rsnew += r[i] * z[i];
+            rsnew += (redp==SolverPrecision::FP32 ? static_cast<double>(static_cast<float>(r[i])*static_cast<float>(z[i])) : r[i]*z[i]);
         }
 
         if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
@@ -211,7 +209,7 @@ inline SolverResult solve_cg(
 
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = max_iter;
-    result.residual = std::sqrt(std::abs(rsold));
+    result.residual = mixed_precision_true_residual(A,b,x,rv);
     result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
     return result;
 }
