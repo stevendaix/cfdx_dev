@@ -255,15 +255,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     const IncompressibleSolverControls& controls = {},
-    const std::string& restart_path = {})
+    const std::string& restart_path = {},
+    cfdx::io::DatRestartFields restart_fields = {})
 {
     using namespace cfdx::core;
     if (U.dimension() != 3 || U.size() != mesh.n_cells() ||
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
 
-    if (!restart_path.empty())
-        (void)cfdx::io::read_dat_restart(restart_path, mesh, U, p);
+    if (!restart_path.empty()) {
+        (void)cfdx::io::read_dat_restart_fields(
+            restart_path, mesh, U, p, restart_fields);
+    }
 
     validate_incompressible_controls(controls, mesh.n_cells());
     const FvGeometry geometry = build_fv_geometry(mesh);
