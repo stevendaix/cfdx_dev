@@ -130,6 +130,39 @@ int main()
         std::filesystem::remove(dat);
     });
 
+    run_case("native_point_probe_emission_is_iteration_synchronized", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.set(0,2.0,-1.0,2.0);
+        p(0)=7.0;
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.convergence.max_iterations = 2;
+        controls.linear_tolerance = 1e-12;
+        controls.probes = {
+            {"pressure_probe", {0.5,0.5,0.5}, IncompressibleProbeField::PRESSURE},
+            {"velocity_probe", {0.5,0.5,0.5}, IncompressibleProbeField::U_MAGNITUDE}
+        };
+        std::vector<IncompressibleProbeSample> samples;
+        controls.probe_callback = [&](const IncompressibleProbeSample& sample) { samples.push_back(sample); };
+        (void)solve_steady_incompressible(m,U,p,ubc,pbc,controls);
+        EXPECT_TRUE(samples.size() == 4);
+        EXPECT_TRUE(samples[0].name == "pressure_probe");
+        EXPECT_TRUE(samples[0].iteration == 1);
+        EXPECT_NEAR(samples[0].time, 0.0, 1e-14);
+        EXPECT_TRUE(samples[1].name == "velocity_probe");
+        EXPECT_TRUE(samples[1].iteration == 1);
+        EXPECT_TRUE(samples[2].name == "pressure_probe");
+        EXPECT_TRUE(samples[2].iteration == 2);
+        EXPECT_TRUE(samples[3].name == "velocity_probe");
+        EXPECT_TRUE(samples[3].iteration == 2);
+        EXPECT_TRUE(std::isfinite(samples[0].value));
+        EXPECT_TRUE(std::isfinite(samples[1].value));
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
