@@ -98,6 +98,8 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        c.turbulent_prandtl<=0.0 || c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");
+    if(!(c.k_min > 0.0) || !(c.epsilon_min > 0.0) || !(c.omega_min > 0.0))
+        throw std::invalid_argument("invalid turbulence controls");
     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
         c.gamma1,c.gamma2,c.a1,c.sa_cb1,c.sa_cb2,c.sa_sigma,c.sa_kappa,
         c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4};
