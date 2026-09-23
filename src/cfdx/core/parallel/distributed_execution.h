@@ -186,7 +186,6 @@ inline std::vector<double> exchange_distributed_cell_halo(
         throw std::invalid_argument("exchange_distributed_cell_halo: field dimension must be positive");
     if (dimension_size > static_cast<std::size_t>(std::numeric_limits<int>::max()))
         throw std::overflow_error("exchange_distributed_cell_halo: dimension overflow");
-    const int dimension = static_cast<int>(dimension_size);
 
     for (int peer = 0; peer < size; ++peer) {
         if (peer == rank) continue;
@@ -200,6 +199,8 @@ inline std::vector<double> exchange_distributed_cell_halo(
         int remote_send_count = 0;
         int remote_recv_count = 0;
         int remote_dimension = 0;
+        const int dimension = static_cast<int>(dimension_size);
+
         MPI_Status status{};
         MPI_Sendrecv(&send_count, 1, MPI_INT, peer, 610,
                      &remote_send_count, 1, MPI_INT, peer, 610,
@@ -238,9 +239,9 @@ inline std::vector<double> exchange_distributed_cell_halo(
 
         for (int i = 0; i < recv_count; ++i) {
             std::vector<double> values(dimension_size);
-            for (std::size_t comp = 0; comp < dimension_size; ++comp)
+            for (std::size_t comp = 0; comp < field.dimension(); ++comp)
                 values[comp] =
-                    recv_buffer[static_cast<std::size_t>(i) * dimension_size + comp];
+                    recv_buffer[static_cast<std::size_t>(i) * field.dimension() + comp];
             const auto [it, inserted] =
                 received.emplace(recv[static_cast<std::size_t>(i)], std::move(values));
             if (!inserted)
