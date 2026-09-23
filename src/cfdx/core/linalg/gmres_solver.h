@@ -6,6 +6,7 @@
 #include "preconditioner.h"
 #include "solver_workspace.h"
 #include "krylov_controls.h"
+#include "mixed_precision.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -227,6 +228,7 @@ inline SolverResult solve_gmres(
     op.size = A.n_rows();
     op.apply = [&A](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
@@ -242,7 +244,7 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
-    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner);
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, controls);
 }
 
 } // namespace cfdx::core
