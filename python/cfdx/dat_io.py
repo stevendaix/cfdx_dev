@@ -38,6 +38,8 @@ class DatRestart:
     iteration: int
     time: float
     fields: dict[str, DatField]
+    # Persistent global cell identities, independent of MPI rank/local ordering.
+    cell_ids: tuple[int, ...] | None = None
 
 
 def _validate(restart: DatRestart) -> DatRestart:
@@ -49,6 +51,13 @@ def _validate(restart: DatRestart) -> DatRestart:
         raise ValueError("time must be finite")
     if not restart.fields:
         raise ValueError("DAT restart contains no fields")
+    if restart.cell_ids is not None:
+        if len(restart.cell_ids) != restart.cells:
+            raise ValueError("DAT checkpoint cell_ids count differs from cells")
+        if len(set(restart.cell_ids)) != len(restart.cell_ids):
+            raise ValueError("DAT checkpoint contains duplicate cell ids")
+        if any(cell_id < 0 for cell_id in restart.cell_ids):
+            raise ValueError("DAT checkpoint contains negative cell ids")
     for name, field in restart.fields.items():
         if not name or field.dimension <= 0:
             raise ValueError(f"invalid field {name!r}")
@@ -133,6 +142,12 @@ def _read_hdf5(path: Path) -> DatRestart:
         cells = int(h5.attrs["cells"])
         iteration = int(h5.attrs["iteration"])
         time = float(h5.attrs["time"])
+        cell_ids: tuple[int, ...] | None = None
+        if "cell_ids" in h5:
+            ids = np.asarray(h5["cell_ids"][()], dtype=np.uint64)
+            if ids.ndim != 1:
+                raise ValueError("DAT HDF5 cell_ids must be one-dimensional")
+            cell_ids = tuple(int(value) for value in ids)
         if "fields" not in h5:
             raise ValueError("DAT HDF5 checkpoint has no fields group")
         fields: dict[str, DatField] = {}
@@ -149,7 +164,7 @@ def _read_hdf5(path: Path) -> DatRestart:
             if values.shape[0] != cells:
                 raise ValueError(f"field {name!r} cell count mismatch")
             fields[name] = DatField(name, dimension, flat.tolist())
-    return _validate(DatRestart(version, cells, iteration, time, fields))
+    return _validate(DatRestart(version, cells, iteration, time, fields, cell_ids))
 
 
 def read_dat_restart(path: str | Path) -> DatRestart:
@@ -173,6 +188,8 @@ def write_dat_hdf5(path: str | Path, restart: DatRestart) -> Path:
         h5.attrs["cells"] = restart.cells
         h5.attrs["iteration"] = restart.iteration
         h5.attrs["time"] = restart.time
+        if restart.cell_ids is not None:
+            h5.create_dataset("cell_ids", data=np.asarray(restart.cell_ids, dtype=np.uint64))
         group = h5.create_group("fields")
         for name, field in restart.fields.items():
             values = np.asarray(field.values, dtype=np.float64).reshape(
@@ -182,3 +199,38 @@ def write_dat_hdf5(path: str | Path, restart: DatRestart) -> Path:
                 values = values[:, 0]
             group.create_dataset(name, data=values)
     return path
+
+
+def remap_dat_restart(
+    restart: DatRestart, target_cell_ids: list[int] | tuple[int, ...]
+) -> DatRestart:
+    """Reorder checkpoint fields from persistent source IDs to target cell IDs.
+
+    This is rank-independent: the source and target local orderings may differ
+    and may represent different MPI decompositions, provided the same global
+    cell IDs are present.
+    """
+    _validate(restart)
+    if restart.cell_ids is None:
+        raise ValueError("checkpoint has no persistent cell ids")
+    target = tuple(int(value) for value in target_cell_ids)
+    if len(set(target)) != len(target):
+        raise ValueError("target cell ids contain duplicates")
+    if any(value < 0 for value in target):
+        raise ValueError("target cell ids contain negative values")
+    source_index = {cell_id: i for i, cell_id in enumerate(restart.cell_ids)}
+    missing = [cell_id for cell_id in target if cell_id not in source_index]
+    if missing:
+        raise ValueError(f"target cell id missing from checkpoint: {missing[0]}")
+    fields: dict[str, DatField] = {}
+    for name, field in restart.fields.items():
+        values: list[float] = []
+        for cell_id in target:
+            src = source_index[cell_id]
+            begin = src * field.dimension
+            end = begin + field.dimension
+            values.extend(field.values[begin:end])
+        fields[name] = DatField(field.name, field.dimension, values)
+    return _validate(
+        DatRestart(restart.version, len(target), restart.iteration, restart.time, fields, target)
+    )
