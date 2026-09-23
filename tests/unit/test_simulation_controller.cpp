@@ -14,10 +14,10 @@ int main()
     run_case("snapshot_matches_iteration_callback_state", [] {
         CaseModel model;
         model.mode = SimulationMode::Transient;
-        model.time.start = 0.0;
+        model.time.start = 2.0;
         model.time.step = 0.25;
-        model.time.max_iterations_per_step = 10;
         model.time.end = 10.0;
+        model.time.max_iterations_per_step = 10;
 
         SimulationController controller(model);
         std::mutex mutex;
