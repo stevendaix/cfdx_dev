@@ -251,6 +251,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/krylov_controls.h
     src/cfdx/core/linalg/communication_avoiding.h
     src/cfdx/core/parallel/distributed_execution.h
+    src/cfdx/runtime/execution/runtime_pipeline.h
     src/cfdx/core/memory/reuse_pool.h
     src/cfdx/core/memory/field_lifetime.h
     src/cfdx/core/linalg/mpi_overlap.h
@@ -475,6 +476,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
+        add_cfdx_test(test_runtime_pipeline tests/unit/test_runtime_pipeline.cpp)
         add_cfdx_test(test_phase6_runtime_acceptance tests/validation/test_phase6_runtime_acceptance.cpp)
         add_cfdx_test(test_ooc_pipeline tests/unit/test_ooc_pipeline.cpp)
         add_cfdx_test(test_phase7_ooc_validation tests/validation/test_phase7_ooc_validation.cpp)
