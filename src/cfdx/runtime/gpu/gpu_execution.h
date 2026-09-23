@@ -207,6 +207,15 @@ inline void execute_gradient_cuda_with_metrics(
         throw std::invalid_argument("invalid GPU gradient array sizes");
     }
 
+    const std::size_t n_cells = phi.size();
+    for (std::size_t f = 0; f < owner.size(); ++f) {
+        if (static_cast<std::size_t>(owner[f]) >= n_cells ||
+            neighbour[f] < -1 ||
+            (neighbour[f] >= 0 && static_cast<std::size_t>(neighbour[f]) >= n_cells)) {
+            throw std::invalid_argument("invalid GPU gradient face ownership");
+        }
+    }
+
     detail::validate_device(device_id);
 
     CudaDeviceBuffer d_phi(phi.size() * sizeof(double));
@@ -323,6 +332,14 @@ inline void execute_divergence_cuda(
     if (phi_face.empty() || owner.size() != phi_face.size() ||
         neighbour.size() != phi_face.size() || n_cells == 0)
         throw std::invalid_argument("invalid GPU divergence array sizes");
+
+    for (std::size_t f = 0; f < owner.size(); ++f) {
+        if (static_cast<std::size_t>(owner[f]) >= n_cells ||
+            neighbour[f] < -1 ||
+            (neighbour[f] >= 0 && static_cast<std::size_t>(neighbour[f]) >= n_cells)) {
+            throw std::invalid_argument("invalid GPU divergence face ownership");
+        }
+    }
 
     detail::validate_device(0);
 
