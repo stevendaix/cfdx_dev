@@ -1,78 +1,70 @@
+#include "cfdx/core/solvers/scalar_diffusion.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
 #include "cfdx/core/memory/memory_planner.h"
-#include "cfdx/core/numerics/laplacian_assembly.h"
-#include "cfdx/core/linalg/hypre_amg.h"
-#include "cfdx/core/linalg/sparse_matrix.h"
-#include "cfdx/core/linalg/vector.h"
 #include <cstdio>
+#include <cmath>
+#include <vector>
 
 using namespace cfdx::core;
-using namespace cfdx::core::numerics;
-using namespace cfdx::core::linalg;
 using namespace cfdx::io::gmsh;
 
 // ============================================
 // Vertical Slice 1 — Poisson Solver Driver
 // ============================================
-//! End-to-end demonstration of the CFDX pipeline for the Poisson equation:
-//!   - Gmsh mesh import (.msh format)
-//!   - Mesh reordering (optional, RCM available)
-//!   - Memory Planner budget prediction
-//!   - Laplacian assembly (CSR matrix)
-//!   - CG solver with HypreAMG preconditioner
-//!   - VTU output for visualization (ParaView)
+// End-to-end demonstration of the canonical Phase 8 Dirichlet Poisson path:
+//   Gmsh mesh import → memory planning → canonical PDE contract →
+//   finite-volume assembly → CG solve.
+//
+// The source is a volumetric density S and the assembly integrates S_c V_c.
+// Dirichlet values are supplied explicitly on boundary faces.
 
 int main() {
     std::printf("=== CFDX Vertical Slice 1 — Poisson Solver ===\n");
 
-    // 1. Load mesh from Gmsh
     Mesh mesh;
-    bool mesh_ok = import_gmsh_mesh("tests/data/cavity_with_patches.msh", mesh);
+    const bool mesh_ok =
+        import_gmsh_mesh("tests/data/cavity_with_patches.msh", mesh);
     std::printf("Mesh import: %s (points=%zu, cells=%zu)\n",
-                mesh_ok ? "PASS" : "FAIL (stub)",
+                mesh_ok ? "PASS" : "FAIL",
                 mesh.n_points(), mesh.numCells());
-
-    // 2. Mesh Reordering (optional for performance)
-    std::printf("Mesh reordering available (RCM algorithm implemented)\n");
-
-    // 3. Memory budget prediction (v4 — 6 KPIs)
-    std::vector<memory::BufferDescriptor> buffers;
-    memory::MemoryPlanner planner;
-    auto budget_plan = planner.plan(buffers, 10,
-                                   mesh.numCells(), mesh.numFaces(),
-                                   1, 5);  // 1 field (p), 5 krylov vectors
-    std::printf("Budget (6 KPIs):\n");
-    std::printf("  bytes/cell (stored): %.2f\n", budget_plan.budget.bytes_per_cell);
-    std::printf("  bytes/cell/iteration (traffic): %.2f\n", budget_plan.budget.bytes_per_cell_per_iteration);
-    std::printf("  peak RAM: %zu bytes\n", budget_plan.budget.peak_ram);
-    std::printf("  peak VRAM: %zu bytes\n", budget_plan.budget.peak_vram);
-    std::printf("  feasible: %s\n", budget_plan.feasible ? "YES" : "NO");
-
-    // 4. Build Poisson system (Laplacian assembly)
-    // For demonstration: create a dummy source field (constant value)
-    ScalarCellField source(mesh.numCells(), "source", "m/s", 1);
-    for (std::size_t i = 0; i < mesh.numCells(); ++i) {
-        source(i) = 1.0;  // Constant source term for Poisson -∇²p = 1
+    if (!mesh_ok || mesh.numCells() == 0) {
+        return 1;
     }
 
-    LinearSystem poisson_system = buildPoissonSystem(mesh, source);
-    std::printf("Poisson system: %zu x %zu (assembled via CSR)\n",
-                poisson_system.matrix().numRows(),
-                poisson_system.matrix().numCols());
+    std::vector<memory::BufferDescriptor> buffers;
+    memory::MemoryPlanner planner;
+    const auto budget_plan = planner.plan(
+        buffers, 10, mesh.numCells(), mesh.numFaces(), 1, 5);
+    std::printf("Budget: %.2f bytes/cell, feasible=%s\n",
+                budget_plan.budget.bytes_per_cell,
+                budget_plan.feasible ? "YES" : "NO");
 
-    // 5. Preconditioner: HypreAMG (configured for balanced memory policy)
-    HypreAMG amg;
-    amg.configure(AMGMemoryPolicy::Balanced);
-    std::printf("AMG preconditioner: %s (Hypre BoomerAMG stub)\n",
-                amg.estimateSpeedup() > 1.0 ? "configured" : "not configured");
+    PoissonBoundaryCondition boundary =
+        PoissonBoundaryCondition::dirichlet(mesh.n_faces());
+    // Homogeneous Dirichlet data on every physical boundary face.
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        if (mesh.ownership().neighbour(f) < 0) {
+            boundary.face_values[f] = 0.0;
+        }
+    }
 
-    // 6. Solve: CG with AMG preconditioner (stub — real solve requires full HYPRE)
-    std::printf("Solver: CG + AMG preconditioner (stub — requires full HYPRE linking)\n");
+    const std::vector<double> source(mesh.numCells(), 1.0);
+    const ScalarDiffusionConfig config{
+        .diffusivity = 1.0,
+        .max_iterations = 2000,
+        .tolerance = 1e-10};
 
-    // 7. Output: VTU file (lightweight, no VTK dependency)
-    std::printf("VTU output: M0.9-T05 writer available (XML, no VTK)\n");
+    const ScalarDiffusionResult result =
+        solve_poisson_dirichlet(mesh, boundary, source, config);
 
-    std::printf("\n=== VERTICAL SLICE 1 COMPLETE ===\n");
-    std::printf("Pipeline: Gmsh mesh → Memory Planner → Reordering → Assembly → CG+AMG → VTU\n");
-    return 0;
+    std::printf("Poisson system: %zu x %zu, nnz=%zu\n",
+                result.matrix.numRows(),
+                result.matrix.numCols(),
+                result.matrix.nnz());
+    std::printf("CG status=%s, iterations=%zu, residual=%.6e\n",
+                to_string(result.linear_result.status),
+                result.linear_result.iterations,
+                result.linear_result.residual);
+
+    return result.linear_result.converged() ? 0 : 1;
 }
