@@ -42,7 +42,7 @@ bool VtuWriter::write(const std::string& filename,
     }
 
     write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
-    write_cells(os, vtk_cells, vtk_cell_types);
+    write_cells(os, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, mesh);
     write_cell_fields(os, mesh, fields_cell, vtk_cells, vtk_original_cell_indices);
     write_point_fields(os, mesh, fields_point);
 
@@ -80,9 +80,7 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
         std::vector<cfdx::core::PointIndex> connectivity;
         connectivity.reserve(1 + n_faces * 5);
-        connectivity.push_back(static_cast<cfdx::core::PointIndex>(n_faces));
-
-        for (std::uint32_t k = 0; k < n_faces; ++k) {
+                for (std::uint32_t k = 0; k < n_faces; ++k) {
             const std::uint32_t face = cell_faces[off + k];
             const std::uint32_t fv_begin = face_offsets[face];
             const std::uint32_t fv_end = face_offsets[face + 1];
@@ -92,9 +90,11 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
                 throw std::runtime_error("VTU export: cell face has fewer than three vertices");
             }
 
-            connectivity.push_back(static_cast<cfdx::core::PointIndex>(n_vertices));
             for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
-                connectivity.push_back(face_vertices[v]);
+                const auto point = face_vertices[v];
+                if (std::find(connectivity.begin(), connectivity.end(), point) == connectivity.end()) {
+                    connectivity.push_back(point);
+                }
             }
             cell_face_indices.push_back(face);
         }
@@ -145,34 +145,79 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
 
 void VtuWriter::write_cells(std::ofstream& os,
                             const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                            const std::vector<VtkCellType>& vtk_cell_types)
+                            const std::vector<VtkCellType>& vtk_cell_types,
+                            const std::vector<std::uint32_t>& cell_face_offsets,
+                            const std::vector<cfdx::core::FaceIndex>& cell_face_indices,
+                            const cfdx::core::Mesh& mesh)
 {
     const std::size_t n_cells = vtk_cells.size();
+    if (vtk_cell_types.size() != n_cells || cell_face_offsets.size() != n_cells + 1) {
+        throw std::runtime_error("VTU export: cell topology arrays are inconsistent");
+    }
 
     os << "   <Cells>\n";
     os << "    <DataArray type=\"UInt64\" Name=\"connectivity\" format=\"ascii\">\n";
-    for (std::size_t c = 0; c < n_cells; ++c) {
+    for (const auto& cell : vtk_cells) {
         os << "     ";
-        for (const auto v : vtk_cells[c]) {
-            os << v << " ";
-        }
+        for (const auto point : cell) os << point << " ";
         os << "\n";
     }
     os << "    </DataArray>\n";
 
     os << "    <DataArray type=\"UInt64\" Name=\"offsets\" format=\"ascii\">\n";
     std::uint64_t offset = 0;
-    for (std::size_t c = 0; c < n_cells; ++c) {
-        offset += vtk_cells[c].size();
+    for (const auto& cell : vtk_cells) {
+        offset += cell.size();
         os << "     " << offset << "\n";
     }
     os << "    </DataArray>\n";
 
     os << "    <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n";
-    for (std::size_t c = 0; c < n_cells; ++c) {
-        os << "     " << static_cast<std::uint8_t>(vtk_cell_types[c]) << "\n";
+    for (const auto type : vtk_cell_types) {
+        os << "     " << static_cast<std::uint8_t>(type) << "\n";
     }
     os << "    </DataArray>\n";
+
+    bool has_polyhedron = false;
+    for (const auto type : vtk_cell_types) has_polyhedron |= type == VtkCellType::POLYHEDRON;
+    if (has_polyhedron) {
+        os << "    <DataArray type=\"UInt64\" Name=\"faces\" format=\"ascii\">\n";
+        std::uint64_t face_offset = 0;
+        for (std::size_t c = 0; c < n_cells; ++c) {
+            const auto begin = cell_face_offsets[c];
+            const auto end = cell_face_offsets[c + 1];
+            os << "     " << (end - begin) << " ";
+            face_offset += 1;
+            for (std::uint32_t i = begin; i < end; ++i) {
+                const auto face = cell_face_indices[i];
+                const auto fv_begin = mesh.faces().offsets_data()[face];
+                const auto fv_end = mesh.faces().offsets_data()[face + 1];
+                os << (fv_end - fv_begin) << " ";
+                face_offset += 1;
+                for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+                    os << mesh.faces().vertices_data()[v] << " ";
+                    ++face_offset;
+                }
+            }
+            os << "\n";
+        }
+        os << "    </DataArray>\n";
+        os << "    <DataArray type=\"UInt64\" Name=\"faceoffsets\" format=\"ascii\">\n";
+        face_offset = 0;
+        for (std::size_t c = 0; c < n_cells; ++c) {
+            const auto begin = cell_face_offsets[c];
+            const auto end = cell_face_offsets[c + 1];
+            face_offset += 1;
+            for (std::uint32_t i = begin; i < end; ++i) {
+                const auto face = cell_face_indices[i];
+                const auto fv_begin = mesh.faces().offsets_data()[face];
+                const auto fv_end = mesh.faces().offsets_data()[face + 1];
+                face_offset += 1 + (fv_end - fv_begin);
+            }
+            os << "     " << face_offset << "\n";
+        }
+        os << "    </DataArray>\n";
+    }
 
     os << "   </Cells>\n";
 }
