@@ -216,6 +216,19 @@ int main() {
 #endif
     });
 
+    run_case("gpu_execution_rejects_invalid_face_ownership", [] {
+        std::vector<double> gx, gy, gz;
+        EXPECT_THROW(
+            gpu::execute_gradient_cuda(
+                {0.0, 1.0}, {1.0}, {0.0}, {0.0},
+                {2}, {-1}, {1.0, 1.0}, gx, gy, gz),
+            std::invalid_argument);
+        std::vector<double> div;
+        EXPECT_THROW(
+            gpu::execute_divergence_cuda({1.0}, {0}, {2}, 2, div),
+            std::invalid_argument);
+    });
+
     run_case("host_emulated_device_roundtrip", [] {
         gpu::HostEmulatedDeviceBuffer b(3*sizeof(double));
         const double src[3] = {1,2,3};
