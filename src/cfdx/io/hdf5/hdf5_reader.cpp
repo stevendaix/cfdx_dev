@@ -34,9 +34,15 @@ static hid_t create_file_access_plist()
     hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
     if (plist < 0) return -1;
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
-    if (H5Pset_fapl_mpio(plist, MPI_COMM_WORLD, MPI_INFO_NULL) < 0) {
-        H5Pclose(plist);
-        return -1;
+    int mpi_initialized = 0;
+    int mpi_finalized = 0;
+    MPI_Initialized(&mpi_initialized);
+    if (mpi_initialized) MPI_Finalized(&mpi_finalized);
+    if (mpi_initialized && !mpi_finalized) {
+        if (H5Pset_fapl_mpio(plist, MPI_COMM_WORLD, MPI_INFO_NULL) < 0) {
+            H5Pclose(plist);
+            return -1;
+        }
     }
 #endif
     return plist;
