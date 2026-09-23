@@ -237,6 +237,60 @@ inline double pure_neumann_compatibility_residual(
     return balance;
 }
 
+
+inline double poisson_conservation_balance(
+    const Mesh& mesh,
+    const PoissonBoundaryCondition& boundary,
+    const std::vector<double>& source,
+    const Vector& solution,
+    const GeometryCache& geometry,
+    double diffusivity)
+{
+    if (source.size() != mesh.n_cells())
+        throw std::invalid_argument("poisson_conservation_balance: source size mismatch");
+    if (solution.size() != mesh.n_cells())
+        throw std::invalid_argument("poisson_conservation_balance: solution size mismatch");
+    boundary.validate(mesh.n_faces());
+    if (!(diffusivity > 0.0) || !std::isfinite(diffusivity))
+        throw std::invalid_argument("poisson_conservation_balance: diffusivity must be positive");
+    if (!is_valid(geometry, mesh))
+        throw std::invalid_argument("poisson_conservation_balance: invalid geometry cache");
+
+    double balance = 0.0;
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+        balance += source[c] * geometry.cell_volumes[c];
+
+    const auto& own = mesh.ownership();
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        if (own.neighbour(f) >= 0)
+            continue;
+
+        const std::size_t o = own.owner(f);
+        if (!std::isfinite(boundary.face_values[f]))
+            continue;
+
+        const double area = geometry.face_Sf[f].mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::runtime_error("poisson_conservation_balance: invalid face area");
+
+        double q_n = boundary.face_values[f];
+        if (boundary.type_for_face(f) == PoissonBoundaryType::DIRICHLET) {
+            const double d = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+            if (!(d > std::numeric_limits<double>::epsilon()) || !std::isfinite(d))
+                throw std::runtime_error("poisson_conservation_balance: invalid boundary distance");
+            // Outward flux convention: q_n = Gamma grad(phi) . n_out.
+            // For the two-point boundary stencil, grad(phi).n_out =
+            // (phi_b - phi_owner) / d.
+            q_n = diffusivity *
+                  (boundary.face_values[f] - solution(o)) / d;
+        } else if (boundary.type_for_face(f) != PoissonBoundaryType::NEUMANN) {
+            throw std::invalid_argument("poisson_conservation_balance: unsupported boundary type");
+        }
+        balance += q_n * area;
+    }
+    return balance;
+}
+
 inline ScalarDiffusionResult solve_poisson_mixed(
     const Mesh& mesh,
     const PoissonBoundaryCondition& boundary,
