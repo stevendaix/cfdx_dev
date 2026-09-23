@@ -24,7 +24,6 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
 
     first_dir = tmp_path / "first"
     session = CFDXSession()
-    session.run()
     controller = ExecutionController(
         session,
         SolverRunner([
