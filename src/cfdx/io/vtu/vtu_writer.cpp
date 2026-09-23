@@ -33,8 +33,9 @@ bool VtuWriter::write(const std::string& filename,
     std::vector<VtkCellType> vtk_cell_types;
     std::vector<std::uint32_t> cell_face_offsets;
     std::vector<cfdx::core::FaceIndex> cell_face_indices;
+    std::vector<std::size_t> vtk_original_cell_indices;
 
-    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices);
+    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, vtk_original_cell_indices);
 
     if (write_time_metadata && !std::isfinite(physical_time)) {
         std::cerr << "VtuWriter: physical_time must be finite\n";
@@ -43,7 +44,7 @@ bool VtuWriter::write(const std::string& filename,
 
     write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
     write_cells(os, vtk_cells, vtk_cell_types);
-    write_cell_fields(os, mesh, fields_cell, vtk_cells);
+    write_cell_fields(os, mesh, fields_cell, vtk_cells, vtk_original_cell_indices);
     write_point_fields(os, mesh, fields_point);
 
     // Close XML
@@ -58,13 +59,15 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
                                     std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                                     std::vector<VtkCellType>& vtk_cell_types,
                                     std::vector<std::uint32_t>& cell_face_offsets,
-                                    std::vector<cfdx::core::FaceIndex>& cell_face_indices)
+                                    std::vector<cfdx::core::FaceIndex>& cell_face_indices,
+                                    std::vector<std::size_t>& vtk_original_cell_indices)
 {
     const std::size_t n_cells = mesh.n_cells();
     vtk_cells.reserve(n_cells);
     vtk_cell_types.reserve(n_cells);
     cell_face_offsets.reserve(n_cells + 1);
     cell_face_indices.reserve(mesh.cells().n_face_refs());
+    vtk_original_cell_indices.reserve(n_cells);
 
     cell_face_offsets.push_back(0);
 
@@ -106,6 +109,7 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
         cell_face_offsets.push_back(static_cast<std::uint32_t>(cell_face_indices.size()));
         vtk_cells.push_back(std::move(connectivity));
         vtk_cell_types.push_back(VtkCellType::POLYHEDRON);
+        vtk_original_cell_indices.push_back(c);
     }
 }
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
@@ -189,11 +193,15 @@ void VtuWriter::write_cells(std::ofstream& os,
 void VtuWriter::write_cell_fields(std::ofstream& os,
                                   const cfdx::core::Mesh& mesh,
                                   const std::map<std::string, cfdx::core::ScalarCellField>& fields,
-                                  const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells)
+                                  const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
+                                  const std::vector<std::size_t>& vtk_original_cell_indices)
 {
     if (fields.empty()) return;
 
     const std::size_t n_cells = vtk_cells.size();
+    if (vtk_original_cell_indices.size() != n_cells) {
+        throw std::runtime_error("VTU export: cell provenance size does not match VTK cell count");
+    }
 
     os << "   <CellData>\n";
 
@@ -202,15 +210,13 @@ void VtuWriter::write_cell_fields(std::ofstream& os,
 
         os << "    <DataArray type=\"Float64\" Name=\"" << xml_escape(name) << "\" format=\"ascii\">\n";
 
-        // Map original cell field to decomposed VTK cells
+        // Every exported VTK cell carries its exact parent CFDX cell value.
         for (std::size_t vtk_c = 0; vtk_c < n_cells; ++vtk_c) {
-            // Find which original cell this VTK cell belongs to
-            // For tet decomposition: each tet maps back to its parent cell
-            // Simple approach: distribute evenly
-            std::size_t orig_c = vtk_c; // approximation
-            if (orig_c < field.size()) {
-                os << "     " << field(orig_c) << "\n";
+            const std::size_t orig_c = vtk_original_cell_indices[vtk_c];
+            if (orig_c >= field.size()) {
+                throw std::runtime_error("VTU export: cell provenance index is out of range");
             }
+            os << "     " << field(orig_c) << "\n";
         }
         os << "    </DataArray>\n";
     }
@@ -244,10 +250,10 @@ std::string VtuWriter::xml_escape(const std::string& s) {
     out.reserve(s.size());
     for (char c : s) {
         switch (c) {
-            case '&': out += "&"; break;
-            case '<': out += "<"; break;
-            case '>': out += ">"; break;
-            case '"': out += "\""; break;
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;"; break;
+            case '>': out += "&gt;"; break;
+            case '"': out += "&quot;"; break;
             case '\'': out += "&apos;"; break;
             default: out += c;
         }
