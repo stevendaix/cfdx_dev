@@ -70,7 +70,7 @@ struct GpuExecutionMetrics {
 
 // Executes the finite-volume gradient entirely on CUDA memory after the
 // host-to-device staging copies. No CPU kernel is used on the GPU path.
-inline void execute_gradient_cuda(
+inline void execute_gradient_cuda_impl(
     const std::vector<double>& phi,
     const std::vector<double>& face_sx,
     const std::vector<double>& face_sy,
@@ -120,6 +120,10 @@ inline void execute_gradient_cuda(
     CudaDeviceBuffer d_gz(volume.size() * sizeof(double));
 
     CudaStream stream;
+    GpuProfiler profiler;
+    const std::size_t h2d_bytes = d_phi.size_bytes()+d_sx.size_bytes()+d_sy.size_bytes()+
+        d_sz.size_bytes()+d_owner.size_bytes()+d_neighbour.size_bytes()+d_volume.size_bytes();
+    profiler.start(stream.get());
     const std::size_t max_transfer = std::max({d_phi.size_bytes(),d_sx.size_bytes(),d_sy.size_bytes(),
         d_sz.size_bytes(),d_owner.size_bytes(),d_neighbour.size_bytes(),d_volume.size_bytes(),
         d_gx.size_bytes(),d_gy.size_bytes(),d_gz.size_bytes()});
@@ -132,6 +136,9 @@ inline void execute_gradient_cuda(
     transfers.h2d(d_neighbour,neighbour.data(),d_neighbour.size_bytes());
     transfers.h2d(d_volume,volume.data(),d_volume.size_bytes());
     transfers.synchronize_h2d();
+    profiler.stop(stream.get());
+    if (metrics) { metrics->h2d_ms=profiler.elapsed_ms(); metrics->h2d_bytes=h2d_bytes; }
+    profiler.start(stream.get());
     gradient_gauss_cuda(
         static_cast<const double*>(d_phi.data()),
         static_cast<const double*>(d_sx.data()),
@@ -142,10 +149,46 @@ inline void execute_gradient_cuda(
         static_cast<const double*>(d_volume.data()),
         owner.size(), phi.size(),
         static_cast<double*>(d_gx.data()),
-        static_cast<double*>(d_gy.data()),
+        static_cast<double*>(d_gy.data()inline void execute_gradient_cuda_with_metrics(
+    const std::vector<double>& phi,
+    const std::vector<double>& face_sx,
+    const std::vector<double>& face_sy,
+    const std::vector<double>& face_sz,
+    const std::vector<std::uint32_t>& owner,
+    const std::vector<std::int64_t>& neighbour,
+    const std::vector<double>& volume,
+    std::vector<double>& grad_x,
+    std::vector<double>& grad_y,
+    std::vector<double>& grad_z,
+    GpuExecutionMetrics* metrics)
+{
+    GpuExecutionMetrics local{};
+    auto* m = metrics ? metrics : &local;
+    execute_gradient_cuda_impl(phi,face_sx,face_sy,face_sz,owner,neighbour,volume,
+        grad_x,grad_y,grad_z,m);
+}
+
+inline void execute_gradient_cuda(
+    const std::vector<double>& phi,
+    const std::vector<double>& face_sx,
+    const std::vector<double>& face_sy,
+    const std::vector<double>& face_sz,
+    const std::vector<std::uint32_t>& owner,
+    const std::vector<std::int64_t>& neighbour,
+    const std::vector<double>& volume,
+    std::vector<double>& grad_x,
+    std::vector<double>& grad_y,
+    std::vector<double>& grad_z)
+{
+    execute_gradient_cuda_with_metrics(phi,face_sx,face_sy,face_sz,owner,neighbour,volume,
+        grad_x,grad_y,grad_z,nullptr);
+}
+),
         static_cast<double*>(d_gz.data()),
         stream.get());
     stream.synchronize();
+    profiler.stop(stream.get());
+    if (metrics) metrics->kernel_ms=profiler.elapsed_ms();
 
     grad_x.resize(phi.size());
     grad_y.resize(phi.size());
@@ -154,6 +197,8 @@ inline void execute_gradient_cuda(
     transfers.d2h(d_gy,grad_y.data(),d_gy.size_bytes());
     transfers.d2h(d_gz,grad_z.data(),d_gz.size_bytes());
     transfers.synchronize_d2h();
+    profiler.stop(stream.get());
+    if (metrics) { metrics->d2h_ms=profiler.elapsed_ms(); metrics->d2h_bytes=d_gx.size_bytes()+d_gy.size_bytes()+d_gz.size_bytes(); }
 #endif
 }
 
