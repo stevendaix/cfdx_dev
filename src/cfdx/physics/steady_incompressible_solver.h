@@ -379,9 +379,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 scale = std::max(scale, std::abs(eq.rhs(i)));
             return scale > 1e-14 * std::max(1.0, eq.rhs.norm2());
         };
-        const bool active_x = equation_has_drive(ex);
-        const bool active_y = equation_has_drive(ey);
-        const bool active_z = equation_has_drive(ez);
+        bool active_x = equation_has_drive(ex);
+        bool active_y = equation_has_drive(ey);
+        bool active_z = equation_has_drive(ez);
         std::size_t active_count = static_cast<std::size_t>(active_x) +
                                     static_cast<std::size_t>(active_y) +
                                     static_cast<std::size_t>(active_z);
