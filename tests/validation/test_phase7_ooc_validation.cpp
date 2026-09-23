@@ -3,6 +3,7 @@
 #include "cfdx/runtime/ooc/ooc_executor.h"
 #include "cfdx/runtime/ooc/double_buffer_scheduler.h"
 #include "common/test_harness.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
