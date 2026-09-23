@@ -39,6 +39,19 @@ inline void execute_gradient_cuda(
 }
 #endif
 
+#ifndef CFDX_ENABLE_GPU
+inline void execute_divergence_cuda(
+    const std::vector<double>& phi_face,
+    const std::vector<std::uint32_t>& owner,
+    const std::vector<std::int64_t>& neighbour,
+    std::size_t n_cells,
+    std::vector<double>& div)
+{
+    (void)phi_face; (void)owner; (void)neighbour; (void)n_cells; (void)div;
+    throw std::runtime_error("CUDA execution requested but CFDX was built without CUDA");
+}
+#endif
+
 #ifdef CFDX_ENABLE_GPU
 namespace detail {
 
