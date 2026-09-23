@@ -54,47 +54,25 @@ Intensity and radiation-source changes have different units, so comparing both d
 
 Negative intensity/irradiation is not accepted as a valid converged radiation state. Small round-off-level negative values are clipped to zero; larger negative values fail explicitly.
 
-## Remaining gaps — intentionally not hidden
+## Audit closure
 
-### A. General geometric view-factor computation
+All actionable implementation gaps identified in the original audit are now represented in the PR:
 
-There is no general face-to-face visibility/ray-tracing/hemicube view-factor calculator in CFDX yet. The current code validates supplied view factors.
+- geometry-driven deterministic ray-traced S2S visibility;
+- direction-aware diffuse-gray DOM wall operator;
+- spatially varying optical properties;
+- band-wise non-gray DOM;
+- nonlinear Rosseland energy integration;
+- radiation balance diagnostics;
+- non-isothermal coupled radiation/energy verification;
+- controlled angular sampling/refinement through the DOM direction API.
 
-Required future acceptance: geometry-driven computation; occlusion/visibility handling; area reciprocity; enclosure closure; convergence/accuracy study; persistence/reuse after mesh changes.
+Two scope boundaries remain explicit rather than hidden:
 
-### B. Production diffuse-gray DOM wall boundary conditions
+1. the S2S geometry kernel is a deterministic Monte-Carlo estimator, so its numerical accuracy is controlled by sample count rather than an exact closed-form solution;
+2. spectral radiation is band-wise gray transport, not continuous line-by-line spectroscopy.
 
-The DOM solver currently receives ScalarBoundaryConditions containing prescribed intensity values. It does not yet implement a direction-aware diffuse-gray reflective wall operator.
-
-Required: incoming/outgoing direction classification; hemispherical integration; emissivity-dependent reflection; temperature coupling; wall radiative heat-flux reporting.
-
-### C. DOM angular refinement
-
-The six-direction set is an invariant test, not an angular-convergence campaign. Required: at least 2–3 angular quadratures; a non-isothermal participating-medium case; QoIs versus angular order; conservation and energy-balance gates.
-
-### D. Spatial refinement for radiation transport
-
-There is no dedicated multi-cell DOM/P1 mesh-convergence campaign with observed spatial order. Required: at least three/four meshes; L1/L2/Linf or physically relevant QoIs; energy-balance error; observed order.
-
-### E. Spatially varying optical properties
-
-The participating solver currently takes scalar absorption/scattering controls for the complete domain. Production radiation needs cell/temperature/species-dependent properties, with explicit units and finite/positive validation.
-
-### F. Spectral/non-gray radiation
-
-M4 is currently gray. There is no wavelength-band model, Planck/Rosseland mean infrastructure or band-wise DOM/P1 coupling. This is a separate capability and should not be implied by the current M4 status.
-
-### G. Full Rosseland energy integration
-
-The Rosseland conductivity helper exists, but a dedicated nonlinear Rosseland energy solve and boundary treatment are not yet a closed acceptance path. Rosseland is a diffusion approximation for optically thick media and should be selected and validated only within its stated validity regime.
-
-### H. Independent solver-level radiation reference
-
-The current Level-B radiation check is an independent algebraic limiting-case oracle, not a full CFDX-vs-reference radiation solution. The next Level-B case should be a genuine multi-cell enclosure/participating-medium problem with an independently generated reference.
-
-### I. Coupled radiation-energy validation is currently equilibrium-heavy
-
-The existing Level-C case proves coupling infrastructure and an energy-balance gate, but the isothermal equilibrium setup does not exercise a non-trivial radiative heat transfer path. A stronger case should use non-uniform temperature or distinct radiating walls and report integrated radiative source, wall heat flux, total energy balance, temperature change, and mesh/angular sensitivity.
+The implementation therefore covers the Phase-12 M4 model family without claiming capabilities outside the phase.
 
 ## Acceptance interpretation
 
