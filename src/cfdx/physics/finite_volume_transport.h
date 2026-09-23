@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <map>
+#include <map>\n#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -370,6 +370,55 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
+    }
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        // Robust smoother fallback for diagonally dominant finite-volume
+        // transport systems. This mirrors the role of smoothSolver in
+        // production SIMPLE implementations and avoids accepting an
+        // unconverged Krylov iterate.
+        candidate = solution;
+        const std::size_t n = candidate.size();
+        double rhs_scale = 0.0;
+        for (std::size_t i = 0; i < n; ++i) rhs_scale = std::max(rhs_scale, std::abs(equation.rhs(i)));
+        const double target = controls.tolerance * std::max(rhs_scale, 1.0);
+        double residual = std::numeric_limits<double>::infinity();
+        for (std::size_t iter = 1; iter <= controls.max_iterations; ++iter) {
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto begin = equation.matrix.row_offsets_data()[i];
+                const auto end = equation.matrix.row_offsets_data()[i + 1];
+                double diag = 0.0;
+                double sum = equation.rhs(i);
+                for (std::uint32_t k = begin; k < end; ++k) {
+                    const auto j = equation.matrix.columns_data()[k];
+                    const double a = equation.matrix.values_data()[k];
+                    if (j == i) diag = a;
+                    else sum -= a * candidate(j);
+                }
+                if (!(std::abs(diag) > 0.0) || !std::isfinite(diag)) {
+                    result.status = cfdx::core::SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                candidate(i) = sum / diag;
+            }
+            residual = scalar_equation_residual_inf(equation, candidate);
+            if (!std::isfinite(residual)) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                result.iterations = iter;
+                return result;
+            }
+            if (residual <= target) {
+                result.status = cfdx::core::SolverStatus::CONVERGED;
+                result.iterations = iter;
+                result.residual = residual;
+                result.residual_relative = residual / std::max(rhs_scale, 1.0);
+                break;
+            }
+            result.status = cfdx::core::SolverStatus::MAX_ITER_REACHED;
+            result.iterations = iter;
+            result.residual = residual;
+            result.residual_relative = residual / std::max(rhs_scale, 1.0);
+        }
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
