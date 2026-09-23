@@ -225,18 +225,59 @@ inline void validate_distributed_ids(
             throw std::invalid_argument("validate_distributed_ids: duplicate local id");
     }
 
-    const auto gathered = mpi_allgather(local_ids, comm);
-    if (gathered.size() != global_size)
-        throw std::invalid_argument("validate_distributed_ids: global ownership count mismatch");
+    // Exact distributed uniqueness check without replicating the complete
+    // ownership list on every rank. IDs are routed to an owner rank, where
+    // duplicates are detected locally.
+    const int size = mpi_size(comm);
+    std::vector<std::vector<std::uint64_t>> buckets(static_cast<std::size_t>(size));
+    for (const auto id : local_ids)
+        buckets[static_cast<std::size_t>(id % static_cast<std::uint64_t>(size))].push_back(id);
 
-    std::unordered_set<std::uint64_t> global;
-    global.reserve(gathered.size());
-    for (const auto id : gathered) {
-        if (!global.insert(id).second)
-            throw std::invalid_argument("validate_distributed_ids: duplicate global id");
+    std::vector<int> send_counts(static_cast<std::size_t>(size), 0);
+    std::vector<int> recv_counts(static_cast<std::size_t>(size), 0);
+    std::vector<int> send_displs(static_cast<std::size_t>(size), 0);
+    std::vector<int> recv_displs(static_cast<std::size_t>(size), 0);
+    for (int r = 0; r < size; ++r) {
+        if (buckets[static_cast<std::size_t>(r)].size() >
+            static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            throw std::overflow_error("validate_distributed_ids: MPI count overflow");
+        send_counts[static_cast<std::size_t>(r)] =
+            static_cast<int>(buckets[static_cast<std::size_t>(r)].size());
+        if (r > 0)
+            send_displs[static_cast<std::size_t>(r)] =
+                send_displs[static_cast<std::size_t>(r - 1)] +
+                send_counts[static_cast<std::size_t>(r - 1)];
     }
-    if (global.size() != global_size)
-        throw std::invalid_argument("validate_distributed_ids: ownership does not cover global domain");
+    std::vector<std::uint64_t> send_buffer(local_ids.size());
+    for (int r = 0; r < size; ++r)
+        std::copy(buckets[static_cast<std::size_t>(r)].begin(),
+                  buckets[static_cast<std::size_t>(r)].end(),
+                  send_buffer.begin() + send_displs[static_cast<std::size_t>(r)]);
+
+    MPI_Alltoall(send_counts.data(), 1, MPI_INT,
+                 recv_counts.data(), 1, MPI_INT, comm);
+    for (int r = 1; r < size; ++r)
+        recv_displs[static_cast<std::size_t>(r)] =
+            recv_displs[static_cast<std::size_t>(r - 1)] +
+            recv_counts[static_cast<std::size_t>(r - 1)];
+    const std::size_t recv_total = static_cast<std::size_t>(
+        recv_displs.back() + recv_counts.back());
+    std::vector<std::uint64_t> received(recv_total);
+    MPI_Alltoallv(send_buffer.empty() ? nullptr : send_buffer.data(),
+                  send_counts.data(), send_displs.data(), MPI_UINT64_T,
+                  received.empty() ? nullptr : received.data(),
+                  recv_counts.data(), recv_displs.data(), MPI_UINT64_T, comm);
+
+    std::sort(received.begin(), received.end());
+    if (std::adjacent_find(received.begin(), received.end()) != received.end())
+        throw std::invalid_argument("validate_distributed_ids: duplicate global id");
+
+    const std::int64_t unique_count =
+        static_cast<std::int64_t>(received.size());
+    const std::int64_t global_unique = mpi_allreduce_sum(unique_count, comm);
+    if (global_unique != static_cast<std::int64_t>(global_size))
+        throw std::invalid_argument(
+            "validate_distributed_ids: ownership does not cover global domain");
 }
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
