@@ -2,7 +2,7 @@
 // Unit tests for the VTU writer
 #include "vtu_writer.h"
 #include <gtest/gtest.h>
-#include <memory>
+#include <memory>\n#include <filesystem>\n#include <fstream>\n#include <string>
 
 TEST(TEST_VTU_WRITER, WriteSuccessfully), 
     "VTU writer should write a valid file when successful"
@@ -106,4 +106,21 @@ TEST(TEST_VTU_WRITER, WriteWithMultipleCells),
     // Assert
     ASSERT_TRUE(result);
     ASSERT_FALSE(std::filesystem::exists(filename));
+}
+
+TEST(TEST_VTU_WRITER, WritesAuthoritativePhysicalTimeMetadata)
+{
+    Mesh m;
+    const auto path = std::filesystem::temp_directory_path() / "cfdx_vtu_time_metadata_test.vtu";
+    VtuWriter writer;
+    ASSERT_TRUE(writer.write(path.string(), m, {}, {}, {}, 1.25, 42, true));
+
+    std::ifstream in(path);
+    ASSERT_TRUE(in.is_open());
+    const std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(xml.find("Name=\"physical_time\""), std::string::npos);
+    EXPECT_NE(xml.find(">1.250000000000e+00</DataArray>"), std::string::npos);
+    EXPECT_NE(xml.find("Name=\"iteration\""), std::string::npos);
+    EXPECT_NE(xml.find(">42</DataArray>"), std::string::npos);
+    std::filesystem::remove(path);
 }
