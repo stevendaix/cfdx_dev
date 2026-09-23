@@ -19,6 +19,7 @@ option(CFDX_BUILD_PYTHON "Build CFDX Python bindings" OFF)
 option(CFDX_ENABLE_GPU "Enable CUDA backend (requires full CUDA toolkit)" OFF)
 option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
+option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 distributed checkpoints" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 
 if(CFDX_ENABLE_GPU)
@@ -64,6 +65,9 @@ endif()
 find_package(HDF5 QUIET)
 if(HDF5_FOUND)
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
+    if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_IS_PARALLEL)
+        message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON but detected HDF5 is not parallel-enabled")
+    endif()
     # System HDF5 provides these via find_package
     if(NOT HDF5_INCLUDE_DIRS)
         set(HDF5_INCLUDE_DIRS ${HDF5_INCLUDE_DIRS})
@@ -287,6 +291,10 @@ if(CFDX_ENABLE_MPI)
     if(MPI_FOUND)
         target_link_libraries(cfdx_core PUBLIC MPI::MPI_CXX)
     endif()
+endif()
+
+if(CFDX_ENABLE_PARALLEL_HDF5)
+    target_compile_definitions(cfdx_core PUBLIC CFDX_ENABLE_PARALLEL_HDF5=1)
 endif()
 
 # ---------------------------------------------------------------------------
