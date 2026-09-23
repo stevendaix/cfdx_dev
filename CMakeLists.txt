@@ -246,12 +246,15 @@ if(CFDX_BUILD_TESTS)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
+        add_executable(test_mpi_deterministic_fused tests/unit/test_mpi_deterministic_fused.cpp)
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_mpi_deterministic_fused PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_deterministic PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_mpi_deterministic_fused PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
         if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
             set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
@@ -265,8 +268,11 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_mpi_fused_reduction
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_mpi_deterministic_fused
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic_fused> ${MPIEXEC_POSTFLAGS})
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
-            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_deterministic_fused PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
