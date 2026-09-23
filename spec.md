@@ -2788,3 +2788,47 @@ The same controller API shall support local and remote execution. A future remot
 ## 100.9 Acceptance criteria
 
 A conforming application implementation shall demonstrate: (1) steady and transient run control, (2) pause/stop and rerun, (3) hot and rebuild-required edits, (4) checkpoint metadata, (5) live monitor samples, (6) stable 3D selection identities, (7) derived-field/report registration, and (8) identical case semantics from CLI/TUI/GUI adapters. Unit tests shall cover each state transition and invalid operation.
+
+
+# 101. Phase 8 Poisson backend acceptance
+
+The Phase 8 scalar-solver backend provides two execution paths for the canonical
+Poisson operator:
+
+### MPI
+
+The distributed backend keeps only owned cell unknowns in the Krylov iteration.
+MPI interface values are exchanged through explicit cell halos. Global Krylov
+dot products are reduced collectively, with a deterministic rank-ordered mode
+available for reproducibility. The distributed implementation is matrix-free
+at the local operator level and is therefore independent of a replicated
+global sparse matrix.
+
+Acceptance requires:
+
+* two-rank execution on a mesh containing an MPI interface;
+* convergence of the distributed CG iteration;
+* serial/distributed solution equivalence for identical discretization;
+* finite global residual verification after the solve.
+
+Pure-Neumann gauge handling remains an explicit solver concern and is not
+silently inferred by the distributed backend.
+
+### CUDA
+
+The CUDA backend accepts the canonical CSR system produced by the CPU-side
+assembly and keeps the matrix and Krylov vectors resident on the device for
+the iteration. SpMV, Jacobi preconditioning, vector updates and dot-product
+reductions execute in CUDA kernels. Host/device transfers are explicit and
+limited to initial data upload and final solution retrieval.
+
+Acceptance requires:
+
+* a valid CUDA device;
+* convergence of the device CG iteration;
+* agreement with a manufactured/reference solution;
+* finite residual reporting;
+* explicit NOT_APPLICABLE behavior when no CUDA device is available.
+
+These backends do not alter the physical Poisson formulation. They are runtime
+execution backends over the same validated finite-volume discretization.

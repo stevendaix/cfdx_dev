@@ -98,3 +98,19 @@ The remaining acceptance criterion is execution of the complete CI/DebugSanitize
 ## Current audit update — 2026-09-21
 
 The M1-M4 implementation is undergoing a full numerical and code audit. Analytical Level-A benchmarks, conservation checks, radiation normalization, pressure-correction scaling, turbulence production units, mesh I/O bounds checks, MPI halo exchange and legacy convection assembly are being hardened before the stack is considered validated.
+
+
+## Phase 8 — Poisson backend completion — 2026-09-23
+
+- [x] 8.1–8.8 CPU Poisson/Laplace analytical, boundary-condition, conservation and refinement validation
+- [x] 8.9 MPI distributed Poisson backend
+  - matrix-free distributed CG on owned cell unknowns;
+  - explicit cell halo exchange at MPI interfaces;
+  - deterministic or fast global Krylov reductions;
+  - serial/MPI solution-equivalence regression on a two-rank mesh;
+  - global residual verification after convergence.
+- [x] 8.10 CUDA Poisson backend
+  - CSR matrix and Krylov vectors resident on the GPU during iteration;
+  - CUDA SpMV, Jacobi preconditioning, vector updates and device reductions;
+  - explicit host/device transfer only at setup and final solution retrieval;
+  - CUDA-device availability handling and numerical regression.
