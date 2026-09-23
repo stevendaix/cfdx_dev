@@ -34,9 +34,12 @@ int main(int argc, char** argv) {
 
     validate_distributed_ids(ids, global_n);
 
-    DistributedCellField state(global_n, ids, 1, "phi");
-    for (std::size_t i = 0; i < state.local_size(); ++i)
-        state(i) = static_cast<double>(state.global_ids()[i] + 1);
+    DistributedCellField state(global_n, ids, 3, "phi");
+    for (std::size_t i = 0; i < state.local_size(); ++i) {
+        state(i, 0) = static_cast<double>(state.global_ids()[i] + 1);
+        state(i, 1) = 100.0 + static_cast<double>(state.global_ids()[i]);
+        state(i, 2) = -static_cast<double>(state.global_ids()[i] + 1);
+    }
 
     const double local_sum = [&]() {
         double s = 0.0;
@@ -92,19 +95,26 @@ int main(int argc, char** argv) {
     DistributedCellField restored(global_n, ids, 1, "phi");
     read_distributed_checkpoint(path, restored);
     for (std::size_t i = 0; i < restored.local_size(); ++i)
-        require(std::abs(restored(i) - state(i)) < 1e-14, "checkpoint round-trip mismatch");
+        for (std::size_t comp = 0; comp < restored.dimension(); ++comp)
+            require(std::abs(restored(i, comp) - state(i, comp)) < 1e-14,
+                    "checkpoint round-trip mismatch");
 
     // Rank-independent restart: target ownership is a different partition
     // (even/odd IDs), proving that values are mapped by persistent global ID.
     std::vector<std::uint64_t> target_ids;
     for (std::size_t i = static_cast<std::size_t>(rank); i < global_n; i += 2)
         target_ids.push_back(static_cast<std::uint64_t>(i));
-    DistributedCellField permuted(global_n, target_ids, 1, "phi");
+    DistributedCellField permuted(global_n, target_ids, 3, "phi");
     read_distributed_checkpoint(path, permuted);
-    for (std::size_t i = 0; i < permuted.local_size(); ++i)
-        require(std::abs(permuted(i) -
-                        (static_cast<double>(permuted.global_ids()[i]) + 1.0)) < 1e-14,
-                "rank-independent restart mismatch");
+    for (std::size_t i = 0; i < permuted.local_size(); ++i) {
+        const double gid = static_cast<double>(permuted.global_ids()[i]);
+        require(std::abs(permuted(i, 0) - (gid + 1.0)) < 1e-14,
+                "rank-independent restart scalar mismatch");
+        require(std::abs(permuted(i, 1) - (100.0 + gid)) < 1e-14,
+                "rank-independent restart component-1 mismatch");
+        require(std::abs(permuted(i, 2) + (gid + 1.0)) < 1e-14,
+                "rank-independent restart component-2 mismatch");
+    }
 
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0) std::remove(path.c_str());
