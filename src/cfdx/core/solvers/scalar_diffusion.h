@@ -17,9 +17,7 @@
 
 namespace cfdx::core {
 
-/// Backward-compatible name for the canonical Dirichlet boundary contract.
-///
-/// New Poisson code should use PoissonBoundaryCondition directly.
+/// Backward-compatible name for the canonical Poisson boundary contract.
 using DirichletBoundary = PoissonBoundaryCondition;
 
 struct ScalarDiffusionConfig {
@@ -50,10 +48,6 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
         throw std::invalid_argument(
             "assemble_cell_diffusion_matrix: source size mismatch");
     boundary.validate(mesh.n_faces());
-    if (boundary.type != PoissonBoundaryType::DIRICHLET)
-        throw std::invalid_argument(
-            "assemble_cell_diffusion_matrix: only Dirichlet boundaries are "
-            "implemented by the legacy scalar-diffusion solver");
     for (double value : source) {
         if (!std::isfinite(value))
             throw std::invalid_argument(
@@ -123,15 +117,23 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
                     "assemble_cell_diffusion_matrix: invalid boundary "
                     "distance");
             const double g = diffusivity * area / d;
-            rows[o][0].second += g;
-            rhs(o) += g * boundary.face_values[f];
+            if (boundary.type_for_face(f) == PoissonBoundaryType::DIRICHLET) {
+                rows[o][0].second += g;
+                rhs(o) += g * boundary.face_values[f];
+            } else {
+                // q_n is the prescribed outward flux
+                // Gamma * grad(phi) . n_out. Since
+                // -div(Gamma grad(phi)) = S, integration gives
+                // -sum_boundary q_n A = S V. Moving a prescribed
+                // boundary flux to the algebraic RHS therefore gives
+                // A * phi = S V + q_n A.
+                rhs(o) += boundary.face_values[f] * area;
+            }
         }
-        // A NaN boundary value is deliberately an unprescribed face. In this
-        // Dirichlet-only compatibility path it contributes zero normal flux.
+        // A NaN boundary value is deliberately an unprescribed face.
     }
 
-    // Consolidate duplicates (a polyhedral cell can be connected to another
-    // cell through more than one face) and sort columns for stable CSR.
+    // Consolidate duplicates and sort columns for stable CSR.
     SparseMatrix A(nc, nc);
     for (std::size_t i = 0; i < nc; ++i) {
         std::sort(rows[i].begin(), rows[i].end(),
@@ -169,9 +171,9 @@ inline SparseMatrix assemble_cell_diffusion_matrix(
         mesh, boundary, diffusivity, source, rhs, geometry);
 }
 
-inline ScalarDiffusionResult solve_poisson_dirichlet(
+inline ScalarDiffusionResult solve_poisson_mixed(
     const Mesh& mesh,
-    const DirichletBoundary& boundary,
+    const PoissonBoundaryCondition& boundary,
     const std::vector<double>& source,
     const ScalarDiffusionConfig& config = {})
 {
@@ -183,6 +185,23 @@ inline ScalarDiffusionResult solve_poisson_dirichlet(
         out.matrix, out.rhs, out.solution,
         config.max_iterations, config.tolerance);
     return out;
+}
+
+inline ScalarDiffusionResult solve_poisson_dirichlet(
+    const Mesh& mesh,
+    const DirichletBoundary& boundary,
+    const std::vector<double>& source,
+    const ScalarDiffusionConfig& config = {})
+{
+    boundary.validate(mesh.n_faces());
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        if (std::isfinite(boundary.face_values[f]) &&
+            boundary.type_for_face(f) != PoissonBoundaryType::DIRICHLET)
+            throw std::invalid_argument(
+                "solve_poisson_dirichlet: all prescribed boundary faces "
+                "must be Dirichlet");
+    }
+    return solve_poisson_mixed(mesh, boundary, source, config);
 }
 
 inline ScalarDiffusionResult solve_laplace_dirichlet(

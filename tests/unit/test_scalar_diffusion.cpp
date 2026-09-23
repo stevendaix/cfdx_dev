@@ -62,6 +62,31 @@ int main() {
         EXPECT_NEAR(rhs(0), 6.0, 1e-12);
     });
 
+    run_case("mixed_dirichlet_neumann_boundary", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::mixed(m.n_faces());
+        bc.face_types[4] = PoissonBoundaryType::DIRICHLET;
+        bc.face_types[5] = PoissonBoundaryType::NEUMANN;
+        bc.face_values[4] = 0.0;
+        bc.face_values[5] = 1.0;
+        auto result = solve_poisson_mixed(m, bc, {0.0});
+        EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(result.solution(0), 0.5, 1e-12);
+    });
+
+    run_case("neumann_flux_has_canonical_outward_sign", [] {
+        Mesh m = cube();
+        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
+        bc.face_values.assign(m.n_faces(), 0.0);
+        bc.face_values[5] = 2.0;
+        Vector rhs;
+        const auto geometry = make_geometry_cache(m);
+        const auto A = assemble_cell_diffusion_matrix(
+            m, bc, 1.0, {0.0}, rhs, geometry);
+        (void)A;
+        EXPECT_NEAR(rhs(0), 2.0, 1e-12);
+    });
+
     run_case("poisson_contract_rejects_wrong_boundary_type", [] {
         Mesh m = cube();
         auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
