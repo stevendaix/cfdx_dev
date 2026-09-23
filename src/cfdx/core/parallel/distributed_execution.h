@@ -19,7 +19,6 @@
 #include <H5Ppublic.h>
 #include <H5Spublic.h>
 #include <H5Tpublic.h>
-#include <H5Apublic.h>
 #include <H5FDmpi.h>
 #include <H5FDmpio.h>
 #endif
@@ -357,6 +356,8 @@ inline void write_distributed_checkpoint(
     MPI_Comm comm = MPI_COMM_WORLD)
 {
     validate_distributed_ids(state.global_ids(), state.global_size(), comm);
+    if (state.dimension() != 1)
+        throw std::invalid_argument("distributed HDF5 checkpoint currently requires scalar fields");
     hid_t fapl = detail::distributed_fapl(comm);
     hid_t file = H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
@@ -381,16 +382,6 @@ inline void write_distributed_checkpoint(
     H5Pclose(ids_dxpl); H5Sclose(ids_ms); H5Sclose(ids_fs); H5Dclose(ids_ds);
 
     write_dataset(file, "field", state);
-    if (rank == 0) {
-        // A scalar marker makes the on-disk contract self-describing.
-        hid_t attr_space = H5Screate(H5S_SCALAR);
-        hid_t attr = H5Acreate2(file, "cfdx_distributed_checkpoint_version",
-                                H5T_NATIVE_INT, attr_space, H5P_DEFAULT, H5P_DEFAULT);
-        const int version = 1;
-        H5Awrite(attr, H5T_NATIVE_INT, &version);
-        H5Aclose(attr);
-        H5Sclose(attr_space);
-    }
     MPI_Barrier(comm);
     H5Fclose(file);
 }
