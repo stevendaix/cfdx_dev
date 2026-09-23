@@ -22,6 +22,8 @@ struct ChtInterfaceControls {
     double relaxation = 0.8;
     double matching_tolerance = 1e-8;
     double area_relative_tolerance = 1e-6;
+    // Optional thermal contact resistance [m2 K/W]. Zero means perfect contact.
+    double contact_resistance = 0.0;
 };
 
 struct ChtInterfaceFacePair {
@@ -38,7 +40,8 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
 {
     if(c.region1_patch.empty() || c.region2_patch.empty() ||
        c.conductivity1<=0.0 || c.conductivity2<=0.0 ||
-       c.matching_tolerance<=0.0 || c.area_relative_tolerance<=0.0)
+       c.matching_tolerance<=0.0 || c.area_relative_tolerance<=0.0 ||
+       c.contact_resistance<0.0 || !std::isfinite(c.contact_resistance))
         throw std::invalid_argument("invalid CHT interface controls");
 
     std::size_t p1=mesh1.boundary().n_patches();
@@ -118,15 +121,22 @@ inline ChtSolveResult solve_two_region_cht(
             const auto& p=pairs[i];
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
-            const double h1=controls.conductivity1/d1;
-            const double h2=controls.conductivity2/d2;
-            const double Tint=(h1*T1(p.cell1)+h2*T2(p.cell2))/(h1+h2);
+            const double r1=d1/controls.conductivity1;
+            const double r2=d2/controls.conductivity2;
+            const double total_resistance=r1+controls.contact_resistance+r2;
+            if (!(total_resistance>0.0) || !std::isfinite(total_resistance))
+                throw std::runtime_error("invalid CHT interface thermal resistance");
+            const double q=(T1(p.cell1)-T2(p.cell2))/total_resistance;
+            // Separate interface temperatures allow a finite contact
+            // resistance: T_int1 - T_int2 = q R_contact.
+            const double Tint1=T1(p.cell1)-q*r1;
+            const double Tint2=T2(p.cell2)+q*r2;
             auto& values1=fv1.values[controls.region1_patch];
             auto& values2=fv2.values[controls.region2_patch];
             if(values1.size()!=mesh1.n_faces()) values1.resize(mesh1.n_faces(),0.0);
             if(values2.size()!=mesh2.n_faces()) values2.resize(mesh2.n_faces(),0.0);
-            values1[p.face1]=Tint;
-            values2[p.face2]=Tint;
+            values1[p.face1]=Tint1;
+            values2[p.face2]=Tint2;
         }
 
         auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1);
@@ -138,12 +148,18 @@ inline ChtSolveResult solve_two_region_cht(
         for(const auto& p:pairs) {
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
-            const double Tint=fv1.values.at(controls.region1_patch)[p.face1];
+            const double Tint1=fv1.values.at(controls.region1_patch)[p.face1];
+            const double Tint2=fv2.values.at(controls.region2_patch)[p.face2];
             const double qflux1=controls.conductivity1*
-                (T1(p.cell1)-Tint)/d1;
+                (T1(p.cell1)-Tint1)/d1;
             const double qflux2=controls.conductivity2*
-                (Tint-T2(p.cell2))/d2;
+                (Tint2-T2(p.cell2))/d2;
+            const double contact_jump=Tint1-Tint2;
+            const double contact_flux=controls.contact_resistance>0.0
+                ? contact_jump/controls.contact_resistance : 0.0;
             qimb=std::max(qimb,std::abs(qflux1-qflux2));
+            if (controls.contact_resistance>0.0)
+                qimb=std::max(qimb,std::abs(qflux1-contact_flux));
         }
         result.interface_imbalance=qimb;
         result.iterations=iter;
