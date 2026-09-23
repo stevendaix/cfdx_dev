@@ -3,14 +3,51 @@
 #include "cfdx/runtime/gpu/gpu_kernels.h"
 #ifdef CFDX_ENABLE_GPU
 #include "cfdx/runtime/gpu/cuda_backend.h"
+#include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
 #endif
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <initializer_list>
 #include <stdexcept>
 #include <vector>
 
 namespace cfdx::runtime::gpu {
+
+#ifdef CFDX_ENABLE_GPU
+namespace detail {
+inline std::size_t max_transfer_bytes(std::initializer_list<std::size_t> sizes)
+{ return *std::max_element(sizes.begin(), sizes.end()); }
+inline void pinned_h2d(CudaDeviceBuffer& dst, const void* src, std::size_t bytes,
+                       CudaStream& stream, cfdx::runtime::ooc::CudaPinnedBufferPool& pool)
+{
+    if (bytes > pool.buffer_bytes()) throw std::out_of_range("pinned H2D transfer exceeds staging buffer");
+    auto* staging = pool.acquire();
+    if (!staging) throw std::runtime_error("pinned H2D staging pool exhausted");
+    try {
+        std::memcpy(staging->data, src, bytes);
+        async_copy_h2d(dst, staging->data, bytes, stream.get());
+        stream.synchronize();
+    } catch (...) { pool.release(staging); throw; }
+    pool.release(staging);
+}
+inline void pinned_d2h(const CudaDeviceBuffer& src, void* dst, std::size_t bytes,
+                       CudaStream& stream, cfdx::runtime::ooc::CudaPinnedBufferPool& pool)
+{
+    if (bytes > pool.buffer_bytes()) throw std::out_of_range("pinned D2H transfer exceeds staging buffer");
+    auto* staging = pool.acquire();
+    if (!staging) throw std::runtime_error("pinned D2H staging pool exhausted");
+    try {
+        async_copy_d2h(src, staging->data, bytes, stream.get());
+        stream.synchronize();
+        std::memcpy(dst, staging->data, bytes);
+    } catch (...) { pool.release(staging); throw; }
+    pool.release(staging);
+}
+} // namespace detail
+#endif
 
 // Executes the finite-volume gradient entirely on CUDA memory after the
 // host-to-device staging copies. No CPU kernel is used on the GPU path.
@@ -55,14 +92,19 @@ inline void execute_gradient_cuda(
     CudaDeviceBuffer d_gy(volume.size() * sizeof(double));
     CudaDeviceBuffer d_gz(volume.size() * sizeof(double));
 
+    const std::size_t staging_bytes = detail::max_transfer_bytes({
+        d_phi.size_bytes(), d_sx.size_bytes(), d_sy.size_bytes(), d_sz.size_bytes(),
+        d_owner.size_bytes(), d_neighbour.size_bytes(), d_volume.size_bytes(),
+        d_gx.size_bytes(), d_gy.size_bytes(), d_gz.size_bytes()});
+    cfdx::runtime::ooc::CudaPinnedBufferPool staging_pool(staging_bytes, staging_bytes);
     CudaStream stream;
-    async_copy_h2d(d_phi, phi.data(), d_phi.size_bytes(), stream.get());
-    async_copy_h2d(d_sx, face_sx.data(), d_sx.size_bytes(), stream.get());
-    async_copy_h2d(d_sy, face_sy.data(), d_sy.size_bytes(), stream.get());
-    async_copy_h2d(d_sz, face_sz.data(), d_sz.size_bytes(), stream.get());
-    async_copy_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream.get());
-    async_copy_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream.get());
-    async_copy_h2d(d_volume, volume.data(), d_volume.size_bytes(), stream.get());
+    detail::pinned_h2d(d_phi, phi.data(), d_phi.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_sx, face_sx.data(), d_sx.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_sy, face_sy.data(), d_sy.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_sz, face_sz.data(), d_sz.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_volume, volume.data(), d_volume.size_bytes(), stream, staging_pool);
     gradient_gauss_cuda(
         static_cast<const double*>(d_phi.data()),
         static_cast<const double*>(d_sx.data()),
@@ -81,10 +123,9 @@ inline void execute_gradient_cuda(
     grad_x.resize(phi.size());
     grad_y.resize(phi.size());
     grad_z.resize(phi.size());
-    async_copy_d2h(d_gx, grad_x.data(), d_gx.size_bytes(), stream.get());
-    async_copy_d2h(d_gy, grad_y.data(), d_gy.size_bytes(), stream.get());
-    async_copy_d2h(d_gz, grad_z.data(), d_gz.size_bytes(), stream.get());
-    stream.synchronize();
+    detail::pinned_d2h(d_gx, grad_x.data(), d_gx.size_bytes(), stream, staging_pool);
+    detail::pinned_d2h(d_gy, grad_y.data(), d_gy.size_bytes(), stream, staging_pool);
+    detail::pinned_d2h(d_gz, grad_z.data(), d_gz.size_bytes(), stream, staging_pool);
 #endif
 }
 
@@ -110,10 +151,13 @@ inline void execute_divergence_cuda(
     CudaDeviceBuffer d_owner(owner.size() * sizeof(std::uint32_t));
     CudaDeviceBuffer d_neighbour(neighbour.size() * sizeof(std::int64_t));
     CudaDeviceBuffer d_div(n_cells * sizeof(double));
+    const std::size_t staging_bytes = detail::max_transfer_bytes({
+        d_flux.size_bytes(), d_owner.size_bytes(), d_neighbour.size_bytes(), d_div.size_bytes()});
+    cfdx::runtime::ooc::CudaPinnedBufferPool staging_pool(staging_bytes, staging_bytes);
     CudaStream stream;
-    async_copy_h2d(d_flux, phi_face.data(), d_flux.size_bytes(), stream.get());
-    async_copy_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream.get());
-    async_copy_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream.get());
+    detail::pinned_h2d(d_flux, phi_face.data(), d_flux.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_owner, owner.data(), d_owner.size_bytes(), stream, staging_pool);
+    detail::pinned_h2d(d_neighbour, neighbour.data(), d_neighbour.size_bytes(), stream, staging_pool);
     divergence_cuda(
         static_cast<const double*>(d_flux.data()),
         static_cast<const std::uint32_t*>(d_owner.data()),
@@ -122,8 +166,7 @@ inline void execute_divergence_cuda(
     stream.synchronize();
 
     div.resize(n_cells);
-    async_copy_d2h(d_div, div.data(), d_div.size_bytes(), stream.get());
-    stream.synchronize();
+    detail::pinned_d2h(d_div, div.data(), d_div.size_bytes(), stream, staging_pool);
 #endif
 }
 

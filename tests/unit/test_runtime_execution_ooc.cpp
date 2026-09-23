@@ -6,6 +6,9 @@
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
 #include "cfdx/runtime/ooc/async_transfer.h"
+#ifdef CFDX_ENABLE_GPU
+#include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
+#endif
 #include "common/test_harness.h"
 #include <cstdint>
 #include <limits>
@@ -328,6 +331,42 @@ int main() {
             EXPECT_NEAR(gy2[i], gy1[i], 1e-15);
             EXPECT_NEAR(gz2[i], gz1[i], 1e-15);
         }
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cuda_pinned_pool_reuses_and_enforces_capacity", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+        ooc::CudaPinnedBufferPool pool(1024, 512);
+        EXPECT_TRUE(pool.size() == 2);
+        EXPECT_TRUE(pool.buffer_bytes() == 512);
+        auto* a = pool.acquire();
+        auto* b = pool.acquire();
+        EXPECT_TRUE(a != nullptr && b != nullptr);
+        EXPECT_TRUE(pool.acquire() == nullptr);
+        pool.release(a);
+        EXPECT_TRUE(pool.acquire() == a);
+        pool.release(b);
+        pool.release(a);
+#else
+        EXPECT_TRUE(true);
+#endif
+    });
+
+    run_case("cuda_pinned_pool_rejects_foreign_buffer", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+        ooc::CudaPinnedBufferPool pool(512, 512);
+        ooc::CudaPinnedBufferPool other(512, 512);
+        auto* b = other.acquire();
+        EXPECT_THROW(pool.release(b), std::invalid_argument);
+        other.release(b);
 #else
         EXPECT_TRUE(true);
 #endif
