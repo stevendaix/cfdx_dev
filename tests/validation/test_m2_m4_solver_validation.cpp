@@ -68,6 +68,20 @@ int main()
         EXPECT_NEAR(T(0),300.0 + 1000.0/(1000.0+12.0),1e-8);
     });
 
+    run_case("rosseland_isothermal_equilibrium",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);phi.fill(0.0);
+        Field<double,Location::CELL> T(1,"T","K",1),S(1,"S","W/m3",1),a(1,"a","1/m",1);
+        T(0)=1000.0;S(0)=0.0;a(0)=1.0;
+        ScalarBoundaryConditions bc;bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1000.0,0.0};
+        EnergySolverControls ec;ec.density=1.0;ec.cp=1000.0;ec.conductivity=0.0;
+        ec.max_iterations=20;ec.tolerance=1e-10;ec.relaxation=1.0;
+        RosselandSolveControls rc;rc.max_iterations=20;rc.tolerance=1e-10;rc.relaxation=1.0;
+        auto r=solve_rosseland_energy(m,g,phi,T,S,a,ec,rc,bc);
+        EXPECT_TRUE(r.converged);
+        EXPECT_NEAR(T(0),1000.0,1e-8);
+    });
+
     run_case("advanced_radiation_variable_properties_and_spectral",[] {
         Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),Q(1,"Q","W/m3",1);
