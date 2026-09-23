@@ -357,7 +357,6 @@ inline void write_distributed_checkpoint(
     MPI_Comm comm = MPI_COMM_WORLD)
 {
     validate_distributed_ids(state.global_ids(), state.global_size(), comm);
-    const int rank = mpi_rank(comm);
     hid_t fapl = detail::distributed_fapl(comm);
     hid_t file = H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
