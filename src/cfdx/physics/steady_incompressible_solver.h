@@ -348,6 +348,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
          controls.algorithm == PressureVelocityAlgorithm::PIMPLE)
             ? static_cast<std::size_t>(controls.coupling.n_pressure_correctors)
             : 1u;
+    // In the steady driver, the nonlinear iteration is the PIMPLE outer
+    // corrector loop. Keep the configured number of outer correctors as a
+    // minimum before accepting convergence; this prevents nOuterCorrectors
+    // from becoming a silently ignored control while preserving the steady
+    // solver's single physical convergence history.
+    const std::size_t minimum_outer_correctors =
+        controls.algorithm == PressureVelocityAlgorithm::PIMPLE
+            ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
+            : 1u;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const auto U_old = U;
@@ -739,7 +748,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             break;
         }
 
-        if (iter > 1 &&
+        if (iter >= minimum_outer_correctors &&
+            iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
