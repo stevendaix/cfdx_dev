@@ -462,6 +462,7 @@ if(CFDX_BUILD_TESTS)
                          $<TARGET_FILE:cfdx_application_e2e_driver>)
         set_tests_properties(test_application_e2e PROPERTIES
             ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+    endif()
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
