@@ -51,9 +51,8 @@ int main()
 {
     const std::vector<double> skews={0.0,0.05,0.10,0.20,0.30,0.40};
     std::cout<<std::setprecision(17);
-    double previous=-1.0;
     for(const double skew:skews){
-        run_case("phase3_6_skew_"+std::to_string(skew),[skew,&previous](){
+        run_case("phase3_6_skew_"+std::to_string(skew),[skew](){
             const Metrics m=evaluate(skew); const double correction=std::abs(m.corrected-m.orth);
             EXPECT_TRUE(std::isfinite(m.orth)); EXPECT_TRUE(std::isfinite(m.corrected));
             EXPECT_TRUE(std::isfinite(m.conservation)); EXPECT_NEAR(m.conservation,0.0,1e-12);
