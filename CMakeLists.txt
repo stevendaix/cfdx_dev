@@ -417,6 +417,13 @@ if(CFDX_BUILD_TESTS)
     endif()
 
     # HDF5 tests
+    if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
+        add_executable(test_parallel_hdf5 tests/unit/test_parallel_hdf5.cpp)
+        target_link_libraries(test_parallel_hdf5 PRIVATE cfdx_core MPI::MPI_CXX)
+        add_test(NAME test_parallel_hdf5
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
+    endif()
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
     add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
