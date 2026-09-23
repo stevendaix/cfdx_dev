@@ -56,7 +56,7 @@ int main()
 
         EXPECT_TRUE(xml.find("NumberOfCells=\"1\"") != std::string::npos);
         EXPECT_TRUE(xml.find("types") != std::string::npos);
-        EXPECT_TRUE(xml.find(">42.5<") != std::string::npos);
+        EXPECT_TRUE(xml.find("4.250000000000e+01") != std::string::npos);
 
         // VTK_POLYHEDRON is type 42 and encodes the six cube faces as
         // [number_of_faces, number_of_points, point_ids...].
