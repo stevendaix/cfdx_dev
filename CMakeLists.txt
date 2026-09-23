@@ -400,6 +400,16 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
+
+    # Phase 13 verification labels. The campaign driver selects these tests
+    # without conflating unit/regression coverage with numerical verification.
+    set_tests_properties(test_mms_scalar_diffusion test_mesh_refinement_order
+        test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
+        test_phase10_turbulence_hardening test_thermophysical_models_vv
+        test_analytical_benchmarks test_benchmark_matrix
+        test_level_b_reference_benchmarks test_level_c_coupled_verification
+        test_steady_incompressible_solver
+        PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
