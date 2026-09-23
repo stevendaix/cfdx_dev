@@ -733,6 +733,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        if (controls.iteration_output_callback &&
+            !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
+            result.iterations = iter;
+            break;
+        }
+
         if (iter > 1 &&
             std::isfinite(h.momentum_residual) && std::isfinite(h.pressure_residual) &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
