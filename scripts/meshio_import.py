@@ -15,7 +15,7 @@ VOLUME_FACES = {
  "tetra": ((0,2,1),(0,1,3),(1,2,3),(2,0,3)),
  "hexahedron": ((0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)),
  "wedge": ((0,2,1),(3,4,5),(0,1,4,3),(1,2,5,4),(2,0,3,5)),
- "pyramid": ((0,1,2,3),(0,4,1),(1,4,2),(2,4,3),(3,4,0)),
+ "pyramid": ((0,1,2,3),(0,4,1),(1,4,2),(2,3,4),(3,4,0)),
  "voxel": ((0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)),
 }
 SURFACE = {"triangle": 3, "quad": 4, "triangle6": 3, "quad8": 4, "quad9": 4}
@@ -100,7 +100,7 @@ def build(mesh):
     return points,faces,owner,neighbour,cell_faces,skipped
 
 def fnv1a_update(hash_value, array):
-    """Hash a contiguous little-endian byte representation like the C++ writer."""
+    """Hash a contiguous byte representation like the C++ writer."""
     data = np.asarray(array).tobytes(order="C")
     for byte in data:
         hash_value ^= byte
@@ -156,11 +156,11 @@ def write(path, mesh, topo):
 
     with h5py.File(path,"w") as h:
         h.attrs["format"]="CFDX-HDF5-mesh-v1"
-        h.attrs["format_version"]="1"
-        h.attrs["schema_version"]="1"
-        h.attrs["cfdx_version"]="0.7"
-        h.attrs["topology_hash"]=hash_hex(topology)
-        h.attrs["mesh_hash"]=hash_hex(geometry)
+        h.attrs.create("format_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2))
+        h.attrs.create("schema_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2))
+        h.attrs.create("cfdx_version", "0.7", dtype=h5py.string_dtype(encoding="ascii", length=4))
+        h.attrs.create("topology_hash", hash_hex(topology), dtype=h5py.string_dtype(encoding="ascii", length=17))
+        h.attrs.create("mesh_hash", hash_hex(geometry), dtype=h5py.string_dtype(encoding="ascii", length=17))
         h.attrs["n_points"]=str(len(points)); h.attrs["n_faces"]=str(len(faces)); h.attrs["n_cells"]=str(len(cell_faces))
         h.create_dataset("points",data=points); h.create_dataset("face_vertices",data=fv); h.create_dataset("face_offsets",data=fo)
         h.create_dataset("owner",data=owner_a); h.create_dataset("neighbour",data=neighbour_a)
