@@ -56,8 +56,15 @@ int main()
 
         EXPECT_TRUE(xml.find("NumberOfCells=\"1\"") != std::string::npos);
         EXPECT_TRUE(xml.find("4.250000000000e+01") != std::string::npos);
-        EXPECT_TRUE(xml.find("Name=\"types\" format=\"ascii\">\n     42\n") != std::string::npos);
-        EXPECT_TRUE(xml.find("Name=\"connectivity\" format=\"ascii\">\n     0 1 2 3 4 5 6 7") != std::string::npos);\n        EXPECT_TRUE(xml.find("Name=\"faces\" format=\"ascii\">") != std::string::npos);\n        EXPECT_TRUE(xml.find("6 4 0 3 2 1 4 4 5 6 7") != std::string::npos);\n        EXPECT_TRUE(xml.find("Name=\"faceoffsets\" format=\"ascii\">\n     31") != std::string::npos);
+        EXPECT_TRUE(xml.find("Name=\"types\" format=\"ascii\">
+     42
+") != std::string::npos);
+        EXPECT_TRUE(xml.find("Name=\"connectivity\" format=\"ascii\">
+     0 1 2 3 4 5 6 7") != std::string::npos);
+        EXPECT_TRUE(xml.find("Name=\"faces\" format=\"ascii\">") != std::string::npos);
+        EXPECT_TRUE(xml.find("6 4 0 3 2 1 4 4 5 6 7") != std::string::npos);
+        EXPECT_TRUE(xml.find("Name=\"faceoffsets\" format=\"ascii\">
+     31") != std::string::npos);
 
         EXPECT_TRUE(writer.write(path.string(), m, {}, {}, {}, 2.5, 17, true));
         std::ifstream with_metadata(path);
@@ -72,7 +79,9 @@ int main()
         EXPECT_TRUE(piece != std::string::npos);
         EXPECT_TRUE(field_data < piece);
         EXPECT_TRUE(metadata_xml.find("2.500000000000e+00") != std::string::npos);
-        EXPECT_TRUE(metadata_xml.find("Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n    17\n") != std::string::npos);
+        EXPECT_TRUE(metadata_xml.find("Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">
+    17
+") != std::string::npos);
     });
     return run_all();
 }
