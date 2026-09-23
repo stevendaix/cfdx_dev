@@ -78,18 +78,66 @@ int main(int argc, char** argv) {
     // Use a separate two-cell field for the actual halo fixture.
     const std::vector<std::uint64_t> local_cell_ids{
         static_cast<std::uint64_t>(rank)};
-    DistributedCellField local_state(2, local_cell_ids, 1, "interface");
-    local_state(0) = static_cast<double>(rank + 1);
+    DistributedCellField local_state(2, local_cell_ids, 3, "interface");
+    local_state(0, 0) = static_cast<double>(rank + 1);
+    local_state(0, 1) = 10.0 + static_cast<double>(rank);
+    local_state(0, 2) = -static_cast<double>(rank + 1);
 
     const auto halo = build_distributed_halo(mesh, partition, local_state);
     const auto received = exchange_distributed_cell_halo(local_state, halo);
-    require(received.size() == 1, "halo receive count mismatch");
-    require(std::abs(received.front() - static_cast<double>(rank == 0 ? 2 : 1)) < 1e-14,
+<double>(rank == 0 ? 2 : 1)) < 1e-14,
             "halo value mismatch");
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
     const std::string path = "phase5_distributed_checkpoint.h5";
     write_distributed_checkpoint(path, state);
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    DistributedCellField restored(global_n, ids, 3, "phi");
+    read_distributed_checkpoint(path, restored);
+    for (std::size_t i = 0; i < restored.local_size(); ++i)
+        for (std::size_t comp = 0; comp < restored.dimension(); ++comp)
+            require(std::abs(restored(i, comp) - state(i, comp)) < 1e-14,
+                    "checkpoint round-trip mismatch");
+
+    // Rank-independent restart: target ownership is a different partition
+    // (even/odd IDs), proving that values are mapped by persistent global ID.
+    std::vector<std::uint64_t> target_ids;
+    for (std::size_t i = static_cast<std::size_t>(rank); i < global_n; i += 2)
+        target_ids.push_back(static_cast<std::uint64_t>(i));
+    DistributedCellField permuted(global_n, target_ids, 3, "phi");
+    read_distributed_checkpoint(path, permuted);
+    for (std::size_t i = 0; i < permuted.local_size(); ++i) {
+        const double gid = static_cast<double>(permuted.global_ids()[i]);
+        require(std::abs(permuted(i, 0) - (gid + 1.0)) < 1e-14,
+                "rank-independent restart scalar mismatch");
+        require(std::abs(permuted(i, 1) - (100.0 + gid)) < 1e-14,
+                "rank-independent restart component-1 mismatch");
+        require(std::abs(permuted(i, 2) + (gid + 1.0)) < 1e-14,
+                "rank-independent restart component-2 mismatch");
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank == 0) std::remove(path.c_str());
+    MPI_Barrier(MPI_COMM_WORLD);
+#endif
+
+    mpi_finalize();
+    return 0;
+}    require(received.size() == 3, "halo receive count mismatch");
+    const double remote = static_cast<double>(rank == 0 ? 2 : 1);
+    require(std::abs(received[0] - remote) < 1e-14, "halo component-0 mismatch");
+    require(std::abs(received[1] - (10.0 + static_cast<double>(rank == 0 ? 1 : 0))) < 1e-14,
+            "halo component-1 mismatch");
+    require(std::abs(received[2] + remote) < 1e-14, "halo component-2 mismatch");
+
+#ifdef CFDX_ENABLE_PARALLEL_HDF5
+    const std::string path = "phase5_distributed_checkpoint.h5";
+    write_distributed_checkpoint(path, state);
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    DistributedCellField restored(global_n, ids, 3, "phi");
+    read_distributed_checkpoi
     MPI_Barrier(MPI_COMM_WORLD);
 
     DistributedCellField restored(global_n, ids, 3, "phi");
