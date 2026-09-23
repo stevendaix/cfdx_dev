@@ -120,35 +120,49 @@ struct ThermophysicalProperties {
             }
         } else if (heat_capacity.model == ScalarPropertyModel::TABLE) {
             heat_capacity.table.validate("heat capacity table");
-            if (a < heat_capacity.table.temperature.front() ||
-                b > heat_capacity.table.temperature.back()) {
-                if (heat_capacity.table.extrapolation == ExtrapolationPolicy::REJECT)
+            const auto& tab=heat_capacity.table;
+            auto integrate_in_range = [&](double lo,double hi) {
+                if (hi<=lo) return 0.0;
+                double result=0.0;
+                double x0=lo, y0=tab.evaluate(lo,"heat capacity table");
+                for (std::size_t i=0;i+1<tab.temperature.size();++i) {
+                    const double l=std::max(lo,tab.temperature[i]);
+                    const double r=std::min(hi,tab.temperature[i+1]);
+                    if (r<=l) continue;
+                    const double yl=tab.value[i] + (l-tab.temperature[i]) *
+                        (tab.value[i+1]-tab.value[i])/(tab.temperature[i+1]-tab.temperature[i]);
+                    const double yr=tab.value[i] + (r-tab.temperature[i]) *
+                        (tab.value[i+1]-tab.value[i])/(tab.temperature[i+1]-tab.temperature[i]);
+                    result += 0.5*(yl+yr)*(r-l);
+                    x0=r; y0=yr;
+                }
+                return result;
+            };
+            if (a < tab.temperature.front() || b > tab.temperature.back()) {
+                if (tab.extrapolation == ExtrapolationPolicy::REJECT)
                     throw std::out_of_range("enthalpy: heat-capacity table outside range");
-            }
-            const double xa=std::max(a,heat_capacity.table.temperature.front());
-            const double xb=std::min(b,heat_capacity.table.temperature.back());
-            if (xb>xa) {
-                double prevT=xa, prevV=heat_capacity.table.evaluate(xa,"heat capacity table");
-                for (std::size_t i=0;i<heat_capacity.table.temperature.size();++i) {
-                    const double t=heat_capacity.table.temperature[i];
-                    if(t<=xa || t>=xb) continue;
-                    const double v=heat_capacity.table.evaluate(t,"heat capacity table");
-                    integral += 0.5*(prevV+v)*(t-prevT); prevT=t; prevV=v;
+                const double lo=tab.temperature.front(), hi=tab.temperature.back();
+                integral=integrate_in_range(std::max(a,lo),std::min(b,hi));
+                if (a<lo) {
+                    if (tab.extrapolation == ExtrapolationPolicy::CLAMP)
+                        integral += tab.value.front()*(lo-a);
+                    else {
+                        const double slope=(tab.value[1]-tab.value[0])/(tab.temperature[1]-tab.temperature[0]);
+                        integral += tab.value.front()*(lo-a) + 0.5*slope*((lo-a)*(lo-a));
+                    }
                 }
-                const double endV=heat_capacity.table.evaluate(xb,"heat capacity table");
-                integral += 0.5*(prevV+endV)*(xb-prevT);
-            }
-            if (a < xa || b > xb) {
-                if (heat_capacity.table.extrapolation == ExtrapolationPolicy::CLAMP) {
-                    if(a<xa) integral += heat_capacity.table.value.front()*(xa-a);
-                    if(b>xb) integral += heat_capacity.table.value.back()*(b-xb);
-                } else if (heat_capacity.table.extrapolation == ExtrapolationPolicy::LINEAR) {
-                    const double va=heat_capacity.table.evaluate(a,"heat capacity table");
-                    const double vb=heat_capacity.table.evaluate(b,"heat capacity table");
-                    const double inside=(xb>xa)?(0.5*(heat_capacity.table.evaluate(xa,"heat capacity table")+heat_capacity.table.evaluate(xb,"heat capacity table))*(xb-xa)):0.0;
-                    integral = inside + 0.5*(va+heat_capacity.table.evaluate(xa,"heat capacity table"))*(xa-a)
-                                     + 0.5*(heat_capacity.table.evaluate(xb,"heat capacity table")+vb)*(b-xb);
+                if (b>hi) {
+                    if (tab.extrapolation == ExtrapolationPolicy::CLAMP)
+                        integral += tab.value.back()*(b-hi);
+                    else {
+                        const double slope=(tab.value.back()-tab.value[tab.value.size()-2])/
+                                           (tab.temperature.back()-tab.temperature[tab.temperature.size()-2]);
+                        const double d=b-hi;
+                        integral += tab.value.back()*d + 0.5*slope*d*d;
+                    }
                 }
+            } else {
+                integral=integrate_in_range(a,b);
             }
         } else {
             const std::size_t n=static_cast<std::size_t>(intervals);
