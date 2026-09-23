@@ -135,7 +135,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     }
     session.case.set_numerics(cfl=0.5)
     session.case.set_boundary("inlet", type="inlet", value="1.0")
-    session.case.physics["initialization"] = {"mode": "uniform", "value": 0.0}
+    session.case.physics["initialization"] = {"mode": "uniform", "field": "U", "value": 0.0}
     session.case.execution.solver = sys.executable
     session.case.execution.restart_option = "--restart"
     report = validate_case(session.case, catalog)
