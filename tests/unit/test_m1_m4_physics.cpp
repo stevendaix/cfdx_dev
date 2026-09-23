@@ -2,6 +2,7 @@
 #include "cfdx/physics/turbulence.h"
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
+#include "cfdx/physics/m1_m4_models.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <vector>
@@ -35,7 +36,7 @@ int main()
         EXPECT_NEAR(g, 90.9090909090909, 1e-10);
         EXPECT_NEAR(cht_interface_heat_flux(g, 320.0, 300.0),
                     1818.181818181818, 1e-9);
-        const double gc=interface_conductance(10.0,2.0,0.01,0.02,1.0,0.01);
+        const double gc=m1m4::interface_conductance(10.0,2.0,0.01,0.02,1.0,0.01);
         EXPECT_NEAR(gc,1.0/(0.01/10.0+0.01+0.02/2.0),1e-12);
     });
 
