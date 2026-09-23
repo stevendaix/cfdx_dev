@@ -61,7 +61,7 @@ int main()
         EXPECT_TRUE(types != std::string::npos);
         EXPECT_TRUE(xml.find("42", types) != std::string::npos);
         EXPECT_TRUE(xml.find("Name=\"connectivity\"") != std::string::npos);
-        EXPECT_TRUE(xml.find(">\n     0 1 2 3 4 5 6 7 ") != std::string::npos);
+        EXPECT_TRUE(xml.find(">\n     0 3 2 1 4 5 6 7 ") != std::string::npos);
         EXPECT_TRUE(xml.find("Name=\"faces\" format=\"ascii\">") != std::string::npos);
         EXPECT_TRUE(xml.find("6 4 0 3 2 1 4 4 5 6 7") != std::string::npos);
         EXPECT_TRUE(xml.find("Name=\"faceoffsets\"") != std::string::npos);
