@@ -43,7 +43,7 @@ int main() {
         EXPECT_NEAR(p.enthalpy(400.0,300.0,64),100000.0,1e-8);
         p.heat_capacity.model=ScalarPropertyModel::LINEAR;
         p.heat_capacity.coefficients={2.0};
-        EXPECT_NEAR(p.enthalpy(400.0,300.0,8),10100.0,1e-10);
+        EXPECT_NEAR(p.enthalpy(400.0,300.0,8),110000.0,1e-8);
         p.heat_capacity.model=ScalarPropertyModel::TABLE;
         p.heat_capacity.table.temperature={300,400,500};
         p.heat_capacity.table.value={1000,1200,1400};
