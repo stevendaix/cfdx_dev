@@ -1,6 +1,9 @@
 #include "cfdx/runtime/execution/execution_policy.h"
 #include "cfdx/runtime/gpu/device_buffer.h"
 #include "cfdx/runtime/gpu/gpu_kernels.h"
+#ifdef CFDX_ENABLE_GPU
+#include "cfdx/runtime/gpu/cuda_backend.h"
+#endif
 #include "cfdx/runtime/ooc/tile_manager.h"
 #include "cfdx/runtime/ooc/working_set.h"
 #include "cfdx/runtime/ooc/pinned_buffer_pool.h"
@@ -218,6 +221,28 @@ int main() {
         EXPECT_THROW(
             choose_execution_policy(ExecutionPolicy::GPU, caps, work),
             std::runtime_error);
+    });
+
+    run_case("cuda_async_h2d_d2h_roundtrip", [] {
+#ifdef CFDX_ENABLE_GPU
+        int devices = 0;
+        const auto status = cudaGetDeviceCount(&devices);
+        if (status != cudaSuccess || devices == 0) return;
+
+        const double source[4] = {1.0, -2.0, 3.5, 8.0};
+        double destination[4] = {};
+        gpu::CudaDeviceBuffer device(sizeof(source));
+        gpu::CudaStream stream;
+        gpu::async_copy_h2d(device, source, sizeof(source), stream.get());
+        stream.synchronize();
+        gpu::async_copy_d2h(device, destination, sizeof(destination), stream.get());
+        stream.synchronize();
+
+        for (std::size_t i = 0; i < 4; ++i)
+            EXPECT_NEAR(destination[i], source[i], 0.0);
+#else
+        EXPECT_TRUE(true);
+#endif
     });
 
     run_case("host_emulated_device_roundtrip", [] {
