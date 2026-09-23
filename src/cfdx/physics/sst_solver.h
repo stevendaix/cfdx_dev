@@ -133,4 +133,35 @@ inline TurbulenceTransportResult solve_sst_transport(
     return result;
 }
 
+inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
+    const cfdx::core::Mesh& mesh,const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls,const ScalarBoundaryConditions& k_bcs={},
+    const ScalarBoundaryConditions& omega_bcs={},std::size_t max_iterations=100,double tolerance=1e-8)
+{
+    validate_turbulence_controls(controls);
+    const std::size_t n=mesh.n_cells();
+    if(wall_distance.size()!=n||k.size()!=n||omega.size()!=n||strain_rate.size()!=n||mass_flux.size()!=mesh.n_faces())
+        throw std::invalid_argument("SST dynamic-blending field size mismatch");
+    TurbulenceTransportResult result;
+    for(std::size_t iter=1;iter<=max_iterations;++iter){
+        auto old_k=k,old_w=omega;
+        cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
+        for(std::size_t i=0;i<n;++i){
+            const auto b=compute_sst_blending(k(i),omega(i),wall_distance(i),controls.molecular_viscosity,controls.beta_star);
+            F1(i)=b.first; F2(i)=b.second;
+        }
+        const auto inner=solve_sst_transport(mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,k_bcs,omega_bcs,1,tolerance);
+        double dk=0.0,dw=0.0;
+        for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
+        result.k_residual=inner.k_residual; result.second_residual=inner.second_residual; result.iterations=iter;
+        if(inner.converged&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+    }
+    return result;
+}
+
 } // namespace cfdx::physics
