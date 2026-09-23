@@ -47,9 +47,21 @@ int main()
 
         std::vector<double> F{0.0, 1.0, 1.0, 0.0};
         validate_view_factor_matrix(F, 2);
+        validate_view_factor_matrix(F, 2, {2.0, 2.0});
+
+        const double q_equal=two_surface_net_exchange(0.5,0.5,900,500,1.0);
+        const double q_area=two_surface_net_exchange(0.5,0.5,900,500,1.0,2.0,4.0);
+        EXPECT_TRUE(q_area > q_equal);
+        EXPECT_NEAR(gray_diffuse_wall_intensity(1.0,300.0,0.0),
+                    blackbody_intensity(300.0),1e-12);
+
         validate_discrete_directions({
-            {1.0, 0.0, 0.0, 2.0 * M_PI},
-            {-1.0, 0.0, 0.0, 2.0 * M_PI}
+            {1.0, 0.0, 0.0, 2.0 * M_PI / 3.0},
+            {-1.0, 0.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, 1.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, -1.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, 0.0, 1.0, 2.0 * M_PI / 3.0},
+            {0.0, 0.0, -1.0, 2.0 * M_PI / 3.0}
         });
     });
 
