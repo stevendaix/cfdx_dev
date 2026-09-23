@@ -114,6 +114,14 @@ int main() {
             PrecisionPolicy policy; policy.operator_precision=SolverPrecision::FP32; policy.reduction_precision=SolverPrecision::FP64;
             policy.residual_refresh_factor=4.0; policy.refresh_interval=2; policy.enabled=true;
             const auto rm=solve_cg(A,bb,xm,200,1e-10,policy);
+            MixedPrecisionJacobiPreconditioner mpj(SolverPrecision::FP32);
+            ok(mpj.setup(A),"mixed-precision Jacobi setup failed");
+            Vector zr(3); Vector zz(3);
+            zr(0)=1.0; zr(1)=2.0; zr(2)=3.0;
+            ok(mpj.apply(zr,zz),"mixed-precision Jacobi apply failed");
+            close(zz(0),0.25,2e-7,"mixed-precision Jacobi component 0");
+            close(zz(1),2.0/3.0,2e-7,"mixed-precision Jacobi component 1");
+            close(zz(2),1.5,2e-6,"mixed-precision Jacobi component 2");
             ok(rm.status==SolverStatus::CONVERGED,"mixed-precision CG did not converge");
             close((xm-xref).norm_inf(),0.0,2e-5,"mixed-precision CG solution error");
             Vector rr(3); const double tr=mixed_precision_residual(A,bb,xm,rr,SolverPrecision::FP32);
