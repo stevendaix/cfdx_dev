@@ -223,19 +223,22 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     };
 
     std::string format_version, schema_version, topology_hash, mesh_hash;
-    if (!read_attr_str(file, "format_version", format_version) ||
-        !read_attr_str(file, "schema_version", schema_version) ||
-        !read_attr_str(file, "topology_hash", topology_hash) ||
-        !read_attr_str(file, "mesh_hash", mesh_hash)) {
-        return fail("missing required schema/integrity metadata");
-    }
-    try {
-        if (std::stoul(format_version) != CFDX_HDF5_FORMAT_VERSION)
-            return fail("unsupported HDF5 format version " + format_version);
-        if (std::stoul(schema_version) != CFDX_HDF5_SCHEMA_VERSION)
-            return fail("unsupported HDF5 schema version " + schema_version);
-    } catch (...) {
-        return fail("invalid HDF5 format/schema version");
+    const bool has_format = read_attr_str(file, "format_version", format_version);
+    const bool has_schema = read_attr_str(file, "schema_version", schema_version);
+    const bool has_topology = read_attr_str(file, "topology_hash", topology_hash);
+    const bool has_mesh = read_attr_str(file, "mesh_hash", mesh_hash);
+    const bool has_integrity_metadata = has_format || has_schema || has_topology || has_mesh;
+    if (has_integrity_metadata && !(has_format && has_schema && has_topology && has_mesh))
+        return fail("incomplete schema/integrity metadata");
+    if (has_integrity_metadata) {
+        try {
+            if (std::stoul(format_version) != CFDX_HDF5_FORMAT_VERSION)
+                return fail("unsupported HDF5 format version " + format_version);
+            if (std::stoul(schema_version) != CFDX_HDF5_SCHEMA_VERSION)
+                return fail("unsupported HDF5 schema version " + schema_version);
+        } catch (...) {
+            return fail("invalid HDF5 format/schema version");
+        }
     }
 
     std::vector<double> pts;
@@ -265,29 +268,31 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     const std::size_t n_points = pts.size() / 3;
     const std::size_t n_faces = fo.size() - 1;
     const std::size_t n_cells = co.size() - 1;
-    std::uint64_t topology = 1469598103934665603ULL;
-    topology = fnv1a_update_vector(topology, fv);
-    topology = fnv1a_update_vector(topology, fo);
-    topology = fnv1a_update_vector(topology, owner);
-    topology = fnv1a_update_vector(topology, neighbour);
-    topology = fnv1a_update_vector(topology, cf);
-    topology = fnv1a_update_vector(topology, co);
-    if (topology_hash != hash_hex(topology))
-        return fail("topology integrity hash mismatch");
+    if (has_integrity_metadata) {
+        std::uint64_t topology = 1469598103934665603ULL;
+        topology = fnv1a_update_vector(topology, fv);
+        if (n_faces > 0) topology = fnv1a_update_vector(topology, fo);
+        topology = fnv1a_update_vector(topology, owner);
+        topology = fnv1a_update_vector(topology, neighbour);
+        topology = fnv1a_update_vector(topology, cf);
+        if (n_cells > 0) topology = fnv1a_update_vector(topology, co);
+        if (topology_hash != hash_hex(topology))
+            return fail("topology integrity hash mismatch");
 
-    std::vector<double> xs, ys, zs;
-    xs.reserve(n_points); ys.reserve(n_points); zs.reserve(n_points);
-    for (std::size_t i = 0; i < n_points; ++i) {
-        xs.push_back(pts[i * 3]);
-        ys.push_back(pts[i * 3 + 1]);
-        zs.push_back(pts[i * 3 + 2]);
+        std::vector<double> xs, ys, zs;
+        xs.reserve(n_points); ys.reserve(n_points); zs.reserve(n_points);
+        for (std::size_t i = 0; i < n_points; ++i) {
+            xs.push_back(pts[i * 3]);
+            ys.push_back(pts[i * 3 + 1]);
+            zs.push_back(pts[i * 3 + 2]);
+        }
+        std::uint64_t geometry = topology;
+        geometry = fnv1a_update_vector(geometry, xs);
+        geometry = fnv1a_update_vector(geometry, ys);
+        geometry = fnv1a_update_vector(geometry, zs);
+        if (mesh_hash != hash_hex(geometry))
+            return fail("mesh integrity hash mismatch");
     }
-    std::uint64_t geometry = topology;
-    geometry = fnv1a_update_vector(geometry, xs);
-    geometry = fnv1a_update_vector(geometry, ys);
-    geometry = fnv1a_update_vector(geometry, zs);
-    if (mesh_hash != hash_hex(geometry))
-        return fail("mesh integrity hash mismatch");
     // Validate CSR offsets before converting uint64_t to size_t.
     for (std::size_t i = 1; i < fo.size(); ++i) {
         if (fo[i] < fo[i - 1] || fo[i] > fv.size()) return fail("face CSR offsets are not monotonic or exceed face-vertex storage");
