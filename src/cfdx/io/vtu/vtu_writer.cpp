@@ -117,18 +117,20 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
     os << "<?xml version=\"1.0\"?>\n";
     os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n";
     os << " <UnstructuredGrid>\n";
-    os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\n";
 
+    // Dataset-level provenance belongs directly under UnstructuredGrid, not Piece.
     if (write_time_metadata) {
-        os << "   <FieldData>\n";
-        os << "    <DataArray type=\"Float64\" Name=\"physical_time\" NumberOfTuples=\"1\" format=\"ascii\">\n";
-        os << "     " << physical_time << "\n";
-        os << "    </DataArray>\n";
-        os << "    <DataArray type=\"UInt64\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n";
-        os << "     " << iteration << "\n";
-        os << "    </DataArray>\n";
-        os << "   </FieldData>\n";
+        os << "  <FieldData>\n";
+        os << "   <DataArray type=\"Float64\" Name=\"physical_time\" NumberOfTuples=\"1\" format=\"ascii\">\n";
+        os << "    " << physical_time << "\n";
+        os << "   </DataArray>\n";
+        os << "   <DataArray type=\"UInt64\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n";
+        os << "    " << iteration << "\n";
+        os << "   </DataArray>\n";
+        os << "  </FieldData>\n";
     }
+
+    os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\n";
 
     // Points
     os << "   <Points>\n";
