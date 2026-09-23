@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace cfdx::runtime::ooc {
@@ -118,6 +119,17 @@ public:
             typename PinnedBufferPool::Buffer* buffer = nullptr;
             std::shared_ptr<WorkingSet> ws;
             std::future<void> load_future;
+
+            void release(PinnedBufferPool& pool) noexcept
+            {
+                if (buffer) {
+                    try { pool.release(buffer); } catch (...) {}
+                    buffer = nullptr;
+                }
+                tile = nullptr;
+                ws.reset();
+                load_future = std::future<void>{};
+            }
         };
 
         Pending pending;
@@ -131,27 +143,33 @@ public:
             auto* next_buffer = next.buffer;
             auto next_ws = next.ws;
             auto* tile_ptr = next.tile;
-            next.load_future = std::async(
-                std::launch::async,
-                [&load, tile_ptr, next_ws, next_buffer]() {
-                    load(*tile_ptr, *next_ws, *next_buffer);
-                });
+            try {
+                next.load_future = std::async(
+                    std::launch::async,
+                    [&load, tile_ptr, next_ws, next_buffer]() {
+                        load(*tile_ptr, *next_ws, *next_buffer);
+                    });
+            } catch (...) {
+                pool_.release(next.buffer);
+                throw;
+            }
             return next;
         };
 
         pending = start_load(tiles.front());
         for (std::size_t i = 0; i < tiles.size(); ++i) {
+            Pending next;
             try {
                 pending.load_future.get();
-                Pending next;
                 if (i + 1 < tiles.size())
                     next = start_load(tiles[i + 1]);
 
                 compute(*pending.ws);
-                pool_.release(pending.buffer);
+                pending.release(pool_);
                 pending = std::move(next);
             } catch (...) {
-                if (pending.buffer) pool_.release(pending.buffer);
+                pending.release(pool_);
+                next.release(pool_);
                 throw;
             }
         }
