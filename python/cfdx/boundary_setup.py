@@ -75,3 +75,8 @@ def validate_boundary_definition(boundary: dict, *, known_fields: tuple[str,...]
 
 def boundary_defaults(boundary_type: str) -> dict[str,object]:
     return {f.name:f.default for f in fields_for_boundary_type(boundary_type)}
+
+
+def scalar_fields_for_boundary_type(boundary_type: str):
+    """Compatibility accessor for boundary field specifications."""
+    return fields_for_boundary_type(boundary_type)
