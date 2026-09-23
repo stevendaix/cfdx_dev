@@ -9,7 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>\n#include <unordered_set>
 #include <vector>
 
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
