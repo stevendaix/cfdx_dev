@@ -143,6 +143,48 @@ int main()
         EXPECT_NEAR(r.history.back().energy_imbalance,0.0,1e-10);
     });
 
+    run_case("phase11_conduction_mms_mesh_convergence", [] {
+        auto solve_mms = [](std::size_t n) {
+            Mesh m=make_chain(n);
+            auto g=build_fv_geometry(m);
+            Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+            Field<double,Location::CELL> T(m.n_cells(),"T","K",1), source(m.n_cells(),"Q","W/m3",1);
+            T.fill(0.0);
+            const double L=static_cast<double>(n);
+            const double pi=std::acos(-1.0);
+            for (std::size_t i=0;i<n;++i) {
+                const double x=static_cast<double>(i)+0.5;
+                source(i)=pi*pi/(L*L)*std::sin(pi*x/L);
+            }
+            ScalarBoundaryConditions bc;
+            bc["left"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+            bc["right"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+            bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+            EnergySolverControls c;
+            c.conductivity=1.0; c.max_iterations=100; c.tolerance=1e-11; c.relaxation=1.0;
+            auto r=solve_energy(m,g,flux,T,source,c,bc);
+            EXPECT_TRUE(r.converged);
+            double err2=0.0, errinf=0.0;
+            for (std::size_t i=0;i<n;++i) {
+                const double x=static_cast<double>(i)+0.5;
+                const double e=T(i)-std::sin(pi*x/L);
+                err2 += e*e;
+                errinf=std::max(errinf,std::abs(e));
+            }
+            return std::pair<double,double>{std::sqrt(err2/static_cast<double>(n)),errinf};
+        };
+        const auto e8=solve_mms(8);
+        const auto e16=solve_mms(16);
+        const auto e32=solve_mms(32);
+        const auto e64=solve_mms(64);
+        const double p1=std::log(e8.first/e16.first)/std::log(2.0);
+        const double p2=std::log(e16.first/e32.first)/std::log(2.0);
+        const double p3=std::log(e32.first/e64.first)/std::log(2.0);
+        EXPECT_TRUE(e64.first < e32.first && e32.first < e16.first && e16.first < e8.first);
+        EXPECT_TRUE(e64.second < e32.second && e32.second < e16.second && e16.second < e8.second);
+        EXPECT_TRUE(p1 > 1.8 && p2 > 1.8 && p3 > 1.8);
+    });
+
     run_case("phase11_cell_conductivity_series_resistance", [] {
         Mesh m=make_chain(2);
         auto g=build_fv_geometry(m);
