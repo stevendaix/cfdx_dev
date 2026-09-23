@@ -95,5 +95,41 @@ int main() {
         EXPECT_TRUE(rejected);
     });
 
+    run_case("M2_SA_destruction_sixth_root", [] {
+        SpalartAllmarasModel sa;
+        EXPECT_NEAR(sa.destruction_coefficient(0.0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(sa.destruction_coefficient(0.5)));
+        EXPECT_TRUE(sa.destruction_coefficient(0.5) >= 0.0);
+    });
+
+
+    run_case("M2_RNG_reference_constants_and_correction", [] {
+        TurbulenceTransportControls c; c.model=TurbulenceModel::RNG_KEPSILON;
+        EXPECT_NEAR(c.rng_C_mu,0.0845,1e-14);
+        const double eta=2.0;
+        const double c1star=c.rng_C1-eta*(1.0-eta/c.rng_eta0)/(1.0+c.rng_beta*eta*eta*eta);
+        EXPECT_TRUE(c1star < c.rng_C1);
+        EXPECT_TRUE(std::isfinite(c1star));
+    });
+
+    run_case("M2_SST_blending_cross_diffusion_bounds", [] {
+        const auto near_wall=compute_sst_blending(1.0,10.0,1e-4,1e-5,0.09,1.0e-3);
+        const auto far_wall=compute_sst_blending(1.0,1.0,10.0,1e-5,0.09,1.0e-6);
+        EXPECT_TRUE(near_wall.first>=0.0 && near_wall.first<=1.0);
+        EXPECT_TRUE(near_wall.second>=0.0 && near_wall.second<=1.0);
+        EXPECT_TRUE(far_wall.first>=0.0 && far_wall.first<=1.0);
+    });
+
+    run_case("M2_rng_kepsilon_transport", [] {
+        Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        Field<double,Location::CELL> k(1,"k","m2/s2",1),e(1,"epsilon","m2/s3",1),S(1,"S","1/s",1);
+        k(0)=0.1; e(0)=0.05; S(0)=2.0;
+        TurbulenceTransportControls c; c.model=TurbulenceModel::RNG_KEPSILON; c.molecular_viscosity=1e-5;
+        ScalarBoundaryConditions bc; bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1e-5,0.0};
+        const auto r=solve_rng_kepsilon_transport(m,g,flux,k,e,S,c,bc,bc,10,1e-6);
+        EXPECT_TRUE(r.iterations>0); EXPECT_TRUE(k(0)>=c.k_min); EXPECT_TRUE(e(0)>=c.epsilon_min);
+    });
+
     return run_all();
 }
