@@ -29,3 +29,28 @@ def test_monitor_series_json_roundtrip_preserves_iteration_time_and_values(tmp_p
     assert [s.time for s in restored.samples] == [0.1, 0.2]
     assert restored.at(1).values["CFL"] == 0.5
     assert restored.at(2).values["p"] == 2.0e-3
+
+
+def test_monitor_series_rejects_non_finite_persisted_values():
+    payload = {
+        "name": "solver",
+        "samples": [{"iteration": 1, "time": 0.1, "values": {"p": float("nan")}}],
+    }
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid monitor value"):
+        MonitorSeries.from_dict(payload)
+
+
+def test_monitor_series_rejects_non_monotonic_persisted_samples():
+    payload = {
+        "name": "solver",
+        "samples": [
+            {"iteration": 2, "time": 0.2, "values": {"p": 1.0}},
+            {"iteration": 1, "time": 0.1, "values": {"p": 2.0}},
+        ],
+    }
+    import pytest
+
+    with pytest.raises(ValueError, match="monotonic"):
+        MonitorSeries.from_dict(payload)
