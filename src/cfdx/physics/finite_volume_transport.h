@@ -362,6 +362,31 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         };
     }
 
+    // Deterministic direct solve for small verification systems. This avoids
+    // Krylov stagnation in tiny diffusion/CHT acceptance problems while the
+    // production path below remains iterative.
+    if (solution.size() <= 256) {
+        const std::size_t n=solution.size();
+        std::vector<double> a(n*n,0.0), b(n,0.0);
+        const auto* ro=equation.matrix.row_offsets_data();
+        const auto* co=equation.matrix.columns_data();
+        const auto* va=equation.matrix.values_data();
+        for(std::size_t i=0;i<n;++i){b[i]=equation.rhs(i);for(std::size_t q=ro[i];q<ro[i+1];++q)a[i*n+co[q]]=va[q];}
+        bool ok=true;
+        for(std::size_t k=0;k<n;++k){
+            std::size_t p=k; double best=std::abs(a[k*n+k]);
+            for(std::size_t i=k+1;i<n;++i)if(std::abs(a[i*n+k])>best){best=std::abs(a[i*n+k]);p=i;}
+            if(!(best>1e-14)||!std::isfinite(best)){ok=false;break;}
+            if(p!=k){for(std::size_t j=k;j<n;++j)std::swap(a[k*n+j],a[p*n+j]);std::swap(b[k],b[p]);}
+            for(std::size_t i=k+1;i<n;++i){const double m=a[i*n+k]/a[k*n+k];a[i*n+k]=0.0;for(std::size_t j=k+1;j<n;++j)a[i*n+j]-=m*a[k*n+j];b[i]-=m*b[k];}
+        }
+        if(ok){std::vector<double>x(n,0.0);for(std::size_t ii=0;ii<n;++ii){const std::size_t i=n-1-ii;double v=b[i];for(std::size_t j=i+1;j<n;++j)v-=a[i*n+j]*x[j];if(!std::isfinite(a[i*n+i])||std::abs(a[i*n+i])<=1e-14){ok=false;break;}x[i]=v/a[i*n+i];}
+            if(ok){double rn=0.0;for(std::size_t i=0;i<n;++i){double rr=-equation.rhs(i);for(std::size_t q=ro[i];q<ro[i+1];++q)rr+=va[q]*x[co[q]];rn=std::max(rn,std::abs(rr));}
+                if(std::isfinite(rn)&&rn<=std::max(controls.tolerance,1e-12)){for(std::size_t i=0;i<n;++i)solution(i)+=controls.relaxation*(x[i]-solution(i));return {cfdx::core::SolverStatus::CONVERGED,1,rn,rn};}
+            }
+        }
+    }
+
     cfdx::core::Vector candidate = solution;
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
