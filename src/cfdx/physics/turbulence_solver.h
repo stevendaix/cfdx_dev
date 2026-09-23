@@ -76,7 +76,6 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
         for(std::size_t i=0;i<n;++i) {
             const double ki=std::max(k(i),controls.k_min);
             const double ei=std::max(epsilon(i),controls.epsilon_min);
-            const double nut=controls.C_mu*ki*ki/ei;
             sk(i)=P(i);
             spk(i)=-controls.density*ei/ki;
             se(i)=controls.C1*P(i)*ei/ki;
@@ -202,7 +201,7 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         auto old=nu_tilde;
         cfdx::core::Field<double,cfdx::core::Location::CELL> su(n,"Snu","m2/s3",1),spu(n,"Spnu","1/s",1);
         std::vector<double> gamma(n);
-        const auto grad_nu_tilde = cfdx::core::compute_gradient_gauss(nu_tilde,mesh,geometry);
+        const auto grad_nu_tilde = cfdx::core::compute_gradient_gauss(nu_tilde,mesh);
         const double* gx = grad_nu_tilde.component_data(0);
         const double* gy = grad_nu_tilde.component_data(1);
         const double* gz = grad_nu_tilde.component_data(2);
