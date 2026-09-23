@@ -93,6 +93,12 @@ struct IncompressibleIteration {
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
+    // Conservative pressure-corrected flux continuity at the end of the iteration.
+    double corrected_flux_continuity_linf = std::numeric_limits<double>::infinity();
+    // Continuity obtained by reconstructing the face flux from the corrected cell velocity.
+    double reconstructed_velocity_continuity_linf = std::numeric_limits<double>::infinity();
+    // Maximum face-flux discrepancy between the conservative flux and reconstructed U flux.
+    double flux_velocity_mismatch_linf = std::numeric_limits<double>::infinity();
 };
 
 struct IncompressibleSolveResult {
@@ -420,10 +426,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
             : 1u;
 
+    // Keep the conservative face flux as a first-class nonlinear state.
+    // Rebuilding phi solely from cell-centred U at the beginning of the next
+    // iteration destroys the flux continuity obtained by the pressure solve.
+    // This mirrors the SIMPLE sequence: momentum prediction -> pressure solve
+    // -> conservative phi correction -> velocity correction -> next iteration.
+    auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const auto U_old = U;
         const auto p_old = p;
-        auto mass_flux = make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
         Field<double, Location::CELL> body_x(mesh.n_cells(), "body_x", "N/m3", 1);
@@ -793,9 +805,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             reconstructed_continuity_linf = std::max(reconstructed_continuity_linf, std::abs(div));
         }
+        double flux_velocity_mismatch_linf = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            flux_velocity_mismatch_linf = std::max(
+                flux_velocity_mismatch_linf,
+                std::abs(mass_flux(f) - reconstructed_flux(f)));
+
+        // Early-warning coupling monitor. A converged pressure solve does not
+        // guarantee a converged physical state if the conservative face flux
+        // and the cell velocity correction use different discrete operators.
+        // Record all three quantities so divergence is visible several outer
+        // iterations before |U| or the pressure correction becomes catastrophic.
         std::cerr << "CFDX coupling audit: corrected_flux_continuity_linf="
                   << corrected_flux_continuity_linf
                   << " reconstructed_U_continuity_linf=" << reconstructed_continuity_linf
+                  << " flux_velocity_mismatch_linf=" << flux_velocity_mismatch_linf
                   << '\\n';
 
         // Reassemble the final momentum equations after all pressure
@@ -889,6 +913,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations = std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations = pressure_iterations;
+        h.corrected_flux_continuity_linf = corrected_flux_continuity_linf;
+        h.reconstructed_velocity_continuity_linf = reconstructed_continuity_linf;
+        h.flux_velocity_mismatch_linf = flux_velocity_mismatch_linf;
         result.history.push_back(h);
 
         if (controls.probe_callback) {
