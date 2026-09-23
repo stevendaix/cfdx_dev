@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - "feature/**"
+      - "feat/**"
       - "fix/**"
       - "chore/**"
       - "refactor/**"
@@ -44,8 +45,7 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF \
-            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DCFDX_ENABLE_PARALLEL_HDF5=ON
 
       - name: Build
         run: cmake --build build --parallel
