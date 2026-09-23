@@ -194,4 +194,22 @@ inline RuntimeDecision choose_execution_policy(
         requested, caps, workload, CpuExecutionConfig{}, GpuExecutionConfig{});
 }
 
+// Guard used at execution boundaries: a GPU decision is a hard requirement.
+// Callers must not replace the selected GPU backend with CPU after this point.
+inline void require_selected_backend(const RuntimeDecision& decision,
+                                     bool gpu_backend_available,
+                                     bool cpu_backend_available)
+{
+    if (decision.requires_gpu) {
+        if (!gpu_backend_available)
+            throw std::runtime_error("selected GPU backend is unavailable; CPU fallback is forbidden");
+        if (decision.selected != ExecutionPolicy::GPU &&
+            decision.selected != ExecutionPolicy::GPU_OUT_OF_CORE)
+            throw std::logic_error("invalid runtime decision: GPU requirement lost");
+        return;
+    }
+    if (decision.selected == ExecutionPolicy::CPU && !cpu_backend_available)
+        throw std::runtime_error("selected CPU backend is unavailable");
+}
+
 } // namespace cfdx::runtime
