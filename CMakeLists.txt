@@ -81,11 +81,11 @@ elseif(EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
     set(HDF5_HL_LIBRARIES "${CFDX_HDF5_DIR}/lib/libhdf5_hl.a")
 else()
     message(WARNING "HDF5 not found. HDF5-dependent features disabled.")
-endif(
+endif()
+
 if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_FOUND)
     message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON requires a parallel HDF5 installation")
 endif()
-)
 
 # ---------------------------------------------------------------------------
 # CFDX core library - Sources organized by module
