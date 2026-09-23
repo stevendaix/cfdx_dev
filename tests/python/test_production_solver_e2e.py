@@ -30,19 +30,19 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
         SolverRunner([
             solver, "--mesh", mesh,
             "--output-dir", str(first_dir),
-            "--iterations", "2",
+            "--iterations", "20",
         ]),
     )
     _run(controller)
 
     assert controller.latest_metrics is not None
-    assert controller.latest_metrics.iteration == 2
+    assert controller.latest_metrics.iteration == 20
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
 
     restart = read_dat_restart(checkpoint)
     assert restart.cells > 0
-    assert restart.iteration == 2
+    assert restart.iteration == 20
     assert "U" in restart.fields
     assert "p" in restart.fields
 
@@ -54,7 +54,7 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
         SolverRunner([
             solver, "--mesh", mesh,
             "--output-dir", str(second_dir),
-            "--iterations", "1",
+            "--iterations", "5",
         ]),
     )
     # ExecutionController appends the configured restart option and DAT path.
