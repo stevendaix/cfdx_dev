@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_source_term.dir/tests/numerical/test_source_term.cpp.o -o test_source_term  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

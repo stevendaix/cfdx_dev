@@ -416,6 +416,7 @@ if(CFDX_BUILD_TESTS)
     # HDF5 tests
     add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
     add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+    add_cfdx_test(test_hdf5_integrity tests/unit/test_hdf5_integrity.cpp)
     add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
 
     # Memory Planner tests

@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_mesh.dir/tests/unit/test_mesh.cpp.o -o test_mesh  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 
