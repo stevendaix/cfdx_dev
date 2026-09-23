@@ -337,31 +337,58 @@ inline hid_t local_memspace(std::size_t n) {
 inline void write_dataset(hid_t file, const char* name,
                           const DistributedCellField& state)
 {
-    const hsize_t global_n = static_cast<hsize_t>(state.global_size());
-    hid_t fs = H5Screate_simple(1, &global_n, nullptr);
-    if (fs < 0) throw std::runtime_error("distributed HDF5: failed to create file dataspace");
+    const hsize_t dims[2] = {
+        static_cast<hsize_t>(state.dimension()),
+        static_cast<hsize_t>(state.global_size())
+    };
+    hid_t fs = H5Screate_simple(2, dims, nullptr);
+    if (fs < 0) throw std::runtime_error("distributed HDF5: failed to create field dataspace");
     hid_t ds = H5Dcreate2(file, name, H5T_NATIVE_DOUBLE, fs,
                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Sclose(fs);
     if (ds < 0) throw std::runtime_error(std::string("distributed HDF5: failed to create ") + name);
 
     fs = H5Dget_space(ds);
-    hid_t ms = local_memspace(state.local_size());
-    select_ids(fs, state.global_ids());
-    hid_t dxpl = collective_dxpl();
-    for (std::size_t c = 0; c < state.dimension(); ++c) {
-        std::vector<double> values(state.local_size());
-        for (std::size_t i = 0; i < state.local_size(); ++i)
-            values[i] = state(i, c);
-        if (H5Dwrite(ds, H5T_NATIVE_DOUBLE, ms, fs, dxpl, values.data()) < 0) {
-            H5Pclose(dxpl); H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
-            throw std::runtime_error(std::string("distributed HDF5: failed to write ") + name);
+    const hsize_t mem_dims[2] = {
+        static_cast<hsize_t>(state.dimension()),
+        static_cast<hsize_t>(state.local_size())
+    };
+    hid_t ms = H5Screate_simple(2, mem_dims, nullptr);
+    if (ms < 0) { H5Sclose(fs); H5Dclose(ds); throw std::runtime_error("distributed HDF5: failed to create field memory dataspace"); }
+
+    std::vector<hsize_t> coords(2 * state.local_size() * state.dimension());
+    for (std::size_t comp = 0; comp < state.dimension(); ++comp) {
+        for (std::size_t i = 0; i < state.local_size(); ++i) {
+            const std::size_t k = comp * state.local_size() + i;
+            coords[2 * k] = static_cast<hsize_t>(comp);
+            coords[2 * k + 1] = static_cast<hsize_t>(state.global_ids()[i]);
         }
     }
+    if (coords.empty()) {
+        if (H5Sselect_none(fs) < 0) {
+            H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
+            throw std::runtime_error("distributed HDF5: failed to select empty field");
+        }
+    } else if (H5Sselect_elements(fs, H5S_SELECT_SET, state.local_size() * state.dimension(),
+                                  coords.data()) < 0) {
+        H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
+        throw std::runtime_error("distributed HDF5: failed to select global cell ids");
+    }
+
+    std::vector<double> values(state.local_size() * state.dimension());
+    for (std::size_t comp = 0; comp < state.dimension(); ++comp)
+        for (std::size_t i = 0; i < state.local_size(); ++i)
+            values[comp * state.local_size() + i] = state(i, comp);
+
+    hid_t dxpl = collective_dxpl();
+    const herr_t status = H5Dwrite(ds, H5T_NATIVE_DOUBLE, ms, fs, dxpl,
+                                   values.empty() ? nullptr : values.data());
     H5Pclose(dxpl);
     H5Sclose(ms);
     H5Sclose(fs);
     H5Dclose(ds);
+    if (status < 0)
+        throw std::runtime_error(std::string("distributed HDF5: failed to write ") + name);
 }
 
 inline void read_dataset(hid_t file, const char* name,
@@ -371,33 +398,52 @@ inline void read_dataset(hid_t file, const char* name,
     if (ds < 0) throw std::runtime_error(std::string("distributed HDF5: missing ") + name);
     hid_t fs = H5Dget_space(ds);
     int rank = H5Sget_simple_extent_ndims(fs);
-    if (rank != 1) {
+    hsize_t dims[2] = {0, 0};
+    if (rank != 2 || H5Sget_simple_extent_dims(fs, dims, nullptr) < 0 ||
+        dims[0] != static_cast<hsize_t>(state.dimension()) ||
+        dims[1] != static_cast<hsize_t>(state.global_size())) {
         H5Sclose(fs); H5Dclose(ds);
-        throw std::runtime_error("distributed HDF5: field dataset must be one-dimensional");
-    }
-    hsize_t dims[1] = {0};
-    H5Sget_simple_extent_dims(fs, dims, nullptr);
-    if (dims[0] != static_cast<hsize_t>(state.global_size())) {
-        H5Sclose(fs); H5Dclose(ds);
-        throw std::runtime_error("distributed HDF5: global size mismatch");
+        throw std::runtime_error("distributed HDF5: field dataset shape mismatch");
     }
 
-    hid_t ms = local_memspace(state.local_size());
-    select_ids(fs, state.global_ids());
-    hid_t dxpl = collective_dxpl();
-    std::vector<double> values(state.local_size());
-    for (std::size_t c = 0; c < state.dimension(); ++c) {
-        if (H5Dread(ds, H5T_NATIVE_DOUBLE, ms, fs, dxpl, values.data()) < 0) {
-            H5Pclose(dxpl); H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
-            throw std::runtime_error(std::string("distributed HDF5: failed to read ") + name);
+    const hsize_t mem_dims[2] = {
+        static_cast<hsize_t>(state.dimension()),
+        static_cast<hsize_t>(state.local_size())
+    };
+    hid_t ms = H5Screate_simple(2, mem_dims, nullptr);
+    if (ms < 0) { H5Sclose(fs); H5Dclose(ds); throw std::runtime_error("distributed HDF5: failed to create field memory dataspace"); }
+
+    std::vector<hsize_t> coords(2 * state.local_size() * state.dimension());
+    for (std::size_t comp = 0; comp < state.dimension(); ++comp)
+        for (std::size_t i = 0; i < state.local_size(); ++i) {
+            const std::size_t k = comp * state.local_size() + i;
+            coords[2 * k] = static_cast<hsize_t>(comp);
+            coords[2 * k + 1] = static_cast<hsize_t>(state.global_ids()[i]);
         }
-        for (std::size_t i = 0; i < state.local_size(); ++i)
-            state(i, c) = values[i];
+    if (coords.empty()) {
+        if (H5Sselect_none(fs) < 0) {
+            H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
+            throw std::runtime_error("distributed HDF5: failed to select empty field");
+        }
+    } else if (H5Sselect_elements(fs, H5S_SELECT_SET, state.local_size() * state.dimension(),
+                                  coords.data()) < 0) {
+        H5Sclose(ms); H5Sclose(fs); H5Dclose(ds);
+        throw std::runtime_error("distributed HDF5: failed to select global cell ids");
     }
+
+    std::vector<double> values(state.local_size() * state.dimension());
+    hid_t dxpl = collective_dxpl();
+    const herr_t status = H5Dread(ds, H5T_NATIVE_DOUBLE, ms, fs, dxpl,
+                                  values.empty() ? nullptr : values.data());
     H5Pclose(dxpl);
     H5Sclose(ms);
     H5Sclose(fs);
     H5Dclose(ds);
+    if (status < 0)
+        throw std::runtime_error(std::string("distributed HDF5: failed to read ") + name);
+    for (std::size_t comp = 0; comp < state.dimension(); ++comp)
+        for (std::size_t i = 0; i < state.local_size(); ++i)
+            state(i, comp) = values[comp * state.local_size() + i];
 }
 
 } // namespace detail
