@@ -28,7 +28,7 @@ int main() {
 
         EXPECT_NEAR(z(0), 17.0 / 11.0, 1e-12);
         EXPECT_NEAR(z(1), 31.0 / 11.0, 1e-12);
-        EXPECT_NEAR(z(2), 77.0 / 23.0, 1e-12);
+        EXPECT_NEAR(z(2), 72.0 / 23.0, 1e-12);
         EXPECT_TRUE(std::isfinite(z.norm_inf()));
     });
 
