@@ -37,7 +37,7 @@ public:
             auto ws = p.ws;
             p.load_future = std::async(
                 std::launch::async,
-                [&load, &tile, ws]() { load(tile, *ws); });
+                [&load, tile_ptr = p.tile, ws]() { load(*tile_ptr, *ws); });
             pending[slot] = std::move(p);
         };
 
