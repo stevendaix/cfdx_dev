@@ -128,14 +128,14 @@ int main()
             ScalarBoundaryConditions radiation_bc;
             ScalarBoundaryConditions thermal_bc;
             radiation_bc["x_min"]={ScalarBoundaryType::FIXED_VALUE,
-                                         blackbody_intensity(1000.0),0.0};
+                                         blackbody_intensity(805.0),0.0};
             radiation_bc["x_max"]={ScalarBoundaryType::FIXED_VALUE,
-                                         blackbody_intensity(500.0),0.0};
+                                         blackbody_intensity(795.0),0.0};
             for (const char* name : {"y_min","interface","z_min","z_max"})
                 radiation_bc[name]={ScalarBoundaryType::FIXED_VALUE,
                                     blackbody_intensity(800.0),0.0};
-            thermal_bc["x_min"]={ScalarBoundaryType::FIXED_VALUE,1000.0,0.0};
-            thermal_bc["x_max"]={ScalarBoundaryType::FIXED_VALUE,500.0,0.0};
+            thermal_bc["x_min"]={ScalarBoundaryType::FIXED_VALUE,805.0,0.0};
+            thermal_bc["x_max"]={ScalarBoundaryType::FIXED_VALUE,795.0,0.0};
             for (const char* name : {"y_min","interface","z_min","z_max"})
                 thermal_bc[name]={ScalarBoundaryType::FIXED_VALUE,800.0,0.0};
 
