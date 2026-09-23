@@ -56,7 +56,7 @@ int main()
 
         EXPECT_TRUE(xml.find("NumberOfCells=\"1\"") != std::string::npos);
         EXPECT_TRUE(xml.find("4.250000000000e+01") != std::string::npos);
-        EXPECT_TRUE(xml.find("42") != std::string::npos);
+        EXPECT_TRUE(xml.find("Name=\"types\" format=\"ascii\">\n     42\n") != std::string::npos);
         EXPECT_TRUE(xml.find("6 4 0 3 2 1") != std::string::npos);
 
         EXPECT_TRUE(writer.write(path.string(), m, {}, {}, {}, 2.5, 17, true));
