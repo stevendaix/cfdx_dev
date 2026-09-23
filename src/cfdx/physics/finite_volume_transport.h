@@ -445,7 +445,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   << " nnz=" << equation.matrix.nnz()
                   << " min_abs_diag=" << min_abs_diag
                   << " max_abs_diag=" << max_abs_diag
-                  << " zero_or_missing_diag=" << zero_or_missing_diag << '
+                  << " zero_or_missing_diag=" << zero_or_missing_diag
                   << " max_abs_face_flux=" << equation.max_abs_face_flux
                   << " internal_distance=[" << equation.min_internal_distance << "," << equation.max_internal_distance << "]"
                   << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\\n';
