@@ -212,6 +212,36 @@ int main()
         EXPECT_THROW(executor.validate_memory_budget(), std::runtime_error);
     });
 
+    run_case("phase7_pipeline_releases_staging_buffer_after_compute_exception", [] {
+        OOCConfig cfg;
+        cfg.tile_cells = 2;
+        cfg.staging_buffers = 2;
+        cfg.staging_buffer_bytes = 1024;
+        OOCExecutor executor(cfg);
+        executor.build_tiles(6, {{0,1},{1,2},{2,3},{3,4},{4,5}});
+
+        bool threw = false;
+        try {
+            executor.for_each_tile_pipelined(
+                [](const Tile&, WorkingSet&, auto&) {},
+                [](WorkingSet& ws) {
+                    if (ws.tile_id == 0)
+                        throw std::runtime_error("intentional compute failure");
+                });
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        EXPECT_TRUE(threw);
+
+        auto* a = executor.staging_pool().acquire();
+        auto* b = executor.staging_pool().acquire();
+        EXPECT_TRUE(a != nullptr);
+        EXPECT_TRUE(b != nullptr);
+        EXPECT_TRUE(executor.staging_pool().acquire() == nullptr);
+        executor.staging_pool().release(a);
+        executor.staging_pool().release(b);
+    });
+
     run_case("phase7_global_problem_can_exceed_device_memory", [] {
         OOCConfig cfg;
         cfg.tile_cells = 4;
