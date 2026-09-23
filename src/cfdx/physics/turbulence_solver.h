@@ -167,7 +167,7 @@ inline TurbulenceTransportResult solve_komega_transport(
             gw[i]=controls.density*(controls.molecular_viscosity+controls.sigma_epsilon*nut);
         }
         auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,&gk);
-        auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,&gw);
+        auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,nullptr,&gw);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector ks(n,0.0),ws(n,0.0);
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);ws(i)=omega(i);}
         const auto rk=solve_scalar_equation(eqk,ks,sc), rw=solve_scalar_equation(eqw,ws,sc);
@@ -216,7 +216,7 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
             su(i)=controls.density*(prod*wt + sa.cb2/sa.sigma*grad2); spu(i)=-controls.density*destr;
             gamma[i]=controls.density*(nu+wt)/sa.sigma;
         }
-        auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,&gamma);
+        auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0); for(std::size_t i=0;i<n;++i)sol(i)=nu_tilde(i);
         const auto rr=solve_scalar_equation(eq,sol,sc); for(std::size_t i=0;i<n;++i)nu_tilde(i)=std::max(sol(i),0.0);
         double du=0;for(std::size_t i=0;i<n;++i)du=std::max(du,std::abs(nu_tilde(i)-old(i)));
