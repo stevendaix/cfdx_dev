@@ -12,6 +12,7 @@
 #endif
 
 #include <cstddef>
+#include <limits>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -54,7 +55,7 @@ public:
             throw std::invalid_argument("RuntimePipeline: field components must be > 0");
 
         MemoryPlanner planner(config_.memory);
-        planner.add(MemoryKind::Mesh, n_cells * sizeof(std::uint64_t), "mesh");
+        planner.add(MemoryKind::Mesh, checked_mul(n_cells, sizeof(std::uint64_t)), "mesh");
         planner.add(
             MemoryKind::Fields,
             checked_mul(n_cells, checked_mul(config_.field_components, sizeof(double))),
