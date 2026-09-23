@@ -98,6 +98,15 @@ int main()
         EXPECT_TRUE(F[0] >= 0.0 && F[0] <= 1.0);
         EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
 
+        std::vector<RadiationTriangle> s1{{
+            {0,0,0},{1,0,0},{0,1,0}}};
+        std::vector<RadiationTriangle> s2{{
+            {0,0,1},{0,1,1},{1,0,1}}};
+        const double F12=estimate_view_factor_ray_traced(s1,s2,{},2000);
+        const double F21=estimate_view_factor_ray_traced(s2,s1,{},2000);
+        EXPECT_TRUE(F12>0.0 && F12<1.0);
+        EXPECT_NEAR(F12,F21,0.05);
+
         auto b=radiation_balance(100.0,100.0);
         EXPECT_NEAR(b.net,0.0,1e-14);
         EXPECT_NEAR(b.relative_error,0.0,1e-14);
