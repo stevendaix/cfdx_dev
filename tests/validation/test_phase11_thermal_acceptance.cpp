@@ -3,8 +3,10 @@
 #include "cfdx/physics/thermal_models.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 using namespace cfdx::core;
