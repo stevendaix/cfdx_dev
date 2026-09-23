@@ -45,7 +45,7 @@ inline SolverResult solve_gmres(
         return result;
     }
 
-    const double b_norm = b.norm2();
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
     if (!std::isfinite(b_norm)) {
         result.status = SolverStatus::DIVERGED;
         return result;
@@ -64,7 +64,7 @@ inline SolverResult solve_gmres(
     auto true_residual = [&]() {
         apply_operator(x.data(), w.ax);
         for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
-        return w.r.norm2();
+        return krylov_norm2(w.r, SolverPrecision::FP64, controls.reduction);
     };
 
     double beta = true_residual();
@@ -110,14 +110,15 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
 
             for (int i = 0; i <= j; ++i) {
-                double h = 0.0;
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                for (std::size_t k = 0; k < n; ++k) h += vi[k] * w.w(k);
+                Vector vi_vector(n);
+                for (std::size_t k = 0; k < n; ++k) vi_vector(k) = vi[k];
+                const double h = krylov_dot(vi_vector, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
 
-            const double hnext = w.w.norm2();
+            const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
             if (hnext > 0.0) {
                 double* vnext = w.v(static_cast<std::size_t>(j + 1));
