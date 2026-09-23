@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
+#include "cfdx/core/linalg/gauss_seidel_solver.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -367,6 +368,13 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+    }
+
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        candidate = solution;
+        result = cfdx::core::solve_gauss_seidel(
+            equation.matrix, equation.rhs, candidate,
+            controls.max_iterations, controls.tolerance);
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
