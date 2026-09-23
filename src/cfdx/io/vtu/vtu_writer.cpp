@@ -117,7 +117,7 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
     os << "<?xml version=\"1.0\"?>\n";
     os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n";
     os << " <UnstructuredGrid>\n";
-    os << "  <Piece NumberOfPoints="" << n_points << "" NumberOfCells="" << n_cells << "">\n";
+    os << "  <Piece NumberOfPoints=\"" << n_points << "\" NumberOfCells=\"" << n_cells << "\">\n";
 
     if (write_time_metadata) {
         os << "   <FieldData>\n";
@@ -128,6 +128,7 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
         os << "     " << iteration << "\n";
         os << "    </DataArray>\n";
         os << "   </FieldData>\n";
+    }
 
     // Points
     os << "   <Points>\n";
