@@ -6,12 +6,12 @@
 namespace cfdx::physics {
 
 struct SpalartAllmarasModel {
-    double cb1=0.1355, cb2=0.622, kappa=0.41;
+    double cb1=0.1355, cb2=0.622, sigma=2.0/3.0, kappa=0.41;
     double cw2=0.3, cw3=2.0, cv1=7.1;
     double ct3=1.2, ct4=0.5, cw1=0.0;
 
     SpalartAllmarasModel()
-        : cw1(cb1/(kappa*kappa) + (1.0+cb2)) {}
+        : cw1(cb1/(kappa*kappa) + (1.0+cb2)/sigma) {}
 
     static double positive(double x,const char* name) {
         if(!std::isfinite(x)||x<0.0) throw std::invalid_argument(name);
@@ -53,7 +53,7 @@ struct SpalartAllmarasModel {
             throw std::invalid_argument("invalid SA destruction ratio");
         const double g=r+cw2*(std::pow(r,3.0)-r);
         const double g6=std::pow(g,6.0);
-        return cw1*std::pow(std::max(g,0.0),4.0)/(g6+std::pow(cw3,6.0));
+        return g*(1.0+std::pow(cw3,6.0))/(g6+std::pow(cw3,6.0));
     }
 
     double production_coefficient(double chi,double vorticity) const {
