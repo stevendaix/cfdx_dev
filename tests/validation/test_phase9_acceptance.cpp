@@ -278,6 +278,8 @@ int main()
         const double e_simplec = profile_error(simplec, 8, 16);
         const double e_piso = profile_error(piso, 8, 16);
         const double e_pimple = profile_error(pimple, 8, 16);
+        if (pimple.solve.iterations < 2)
+            throw std::runtime_error("PIMPLE n_outer_correctors was not honored");
 
         std::cout << "Poiseuille profile error: SIMPLE=" << e_simple
                   << " SIMPLEC=" << e_simplec
