@@ -157,6 +157,9 @@ ChangeImpact SimulationController::edit(const std::string& key, Parameter parame
     }
     const ChangeImpact impact = parameter.impact;
     model_.set_parameter(key, std::move(parameter));
+    // A case edit changes the model represented by the checkpoint. Keep the
+    // snapshot revision metadata coherent until the next solver checkpoint.
+    checkpoint_.case_revision = model_.revision;
     if (impact != ChangeImpact::Hot) requires_restart_ = true;
     return impact;
 }
