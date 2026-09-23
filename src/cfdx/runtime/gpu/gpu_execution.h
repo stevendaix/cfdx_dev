@@ -1,7 +1,9 @@
 #pragma once
 
 #include "cfdx/runtime/gpu/gpu_kernels.h"
+#ifdef CFDX_ENABLE_GPU
 #include "cfdx/runtime/gpu/cuda_backend.h"
+#endif
 
 #include <cstddef>
 #include <cstdint>
