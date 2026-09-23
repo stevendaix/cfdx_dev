@@ -11,7 +11,7 @@
 
 namespace cfdx::physics {
 
-enum class TurbulenceModel { LAMINAR, KEPSILON, SST, SMAGORINSKY, DES };
+enum class TurbulenceModel { LAMINAR, KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, DES };
 
 struct TurbulenceTransportControls {
     TurbulenceModel model = TurbulenceModel::LAMINAR;
@@ -32,6 +32,16 @@ struct TurbulenceTransportControls {
     double gamma1 = 5.0/9.0;
     double gamma2 = 0.44;
     double a1 = 0.31;
+    // Spalart-Allmaras controls (SI kinematic-viscosity formulation).
+    double sa_cb1 = 0.1355;
+    double sa_cb2 = 0.622;
+    double sa_sigma = 2.0/3.0;
+    double sa_kappa = 0.41;
+    double sa_cw2 = 0.3;
+    double sa_cw3 = 2.0;
+    double sa_cv1 = 7.1;
+    double sa_ct3 = 1.2;
+    double sa_ct4 = 0.5;
 };
 
 inline void enforce_turbulence_bounds(
@@ -43,7 +53,8 @@ inline void enforce_turbulence_bounds(
     for (std::size_t i=0;i<k.size();++i) {
         k(i)=std::max(k(i),c.k_min);
         second(i)=std::max(second(i),
-            c.model==TurbulenceModel::SST ? c.omega_min : c.epsilon_min);
+            (c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA)
+                ? c.omega_min : (c.model==TurbulenceModel::SPALART_ALLMARAS ? 0.0 : c.epsilon_min));
     }
 }
 
@@ -53,15 +64,20 @@ inline double turbulence_nu_t(
 {
     k=std::max(k,c.k_min);
     second=std::max(second,
-        c.model==TurbulenceModel::SST ? c.omega_min : c.epsilon_min);
+        (c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA)
+            ? c.omega_min : (c.model==TurbulenceModel::SPALART_ALLMARAS ? 0.0 : c.epsilon_min));
     switch(c.model) {
     case TurbulenceModel::LAMINAR: return 0.0;
     case TurbulenceModel::KEPSILON:
         return c.C_mu*k*k/second;
+    case TurbulenceModel::KOMEGA:
+        return c.a1*k/second;
     case TurbulenceModel::SST: {
         const double F2=1.0;
         return c.a1*k/std::max(c.a1*second,strain*F2);
     }
+    case TurbulenceModel::SPALART_ALLMARAS:
+        return second;
     case TurbulenceModel::SMAGORINSKY: {
         if(wall_distance<=0.0) throw std::invalid_argument("wall distance must be positive");
         const double delta=std::cbrt(1.0);
@@ -82,9 +98,17 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        c.turbulent_prandtl<=0.0 || c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");
-    if(c.C_mu<=0.0 || c.C1<0.0 || c.C2<0.0 ||
-       c.sigma_k<=0.0 || c.sigma_epsilon<=0.0)
-        throw std::invalid_argument("invalid k-epsilon coefficients");
+    const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
+        c.gamma1,c.gamma2,c.a1,c.sa_cb1,c.sa_cb2,c.sa_sigma,c.sa_kappa,
+        c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4};
+    for(double v : values) if(!std::isfinite(v))
+        throw std::invalid_argument("non-finite turbulence coefficient");
+    if(c.C_mu<=0.0 || c.C1<0.0 || c.C2<0.0 || c.beta_star<=0.0 ||
+       c.beta1<=0.0 || c.beta2<=0.0 || c.gamma1<=0.0 || c.gamma2<=0.0 ||
+       c.a1<=0.0 || c.sigma_k<=0.0 || c.sigma_epsilon<=0.0 ||
+       c.sa_cb1<=0.0 || c.sa_cb2<0.0 || c.sa_sigma<=0.0 || c.sa_kappa<=0.0 ||
+       c.sa_cw2<0.0 || c.sa_cw3<=0.0 || c.sa_cv1<=0.0 || c.sa_ct3<0.0 || c.sa_ct4<0.0)
+        throw std::invalid_argument("invalid turbulence coefficients");
 }
 
 } // namespace cfdx::physics
