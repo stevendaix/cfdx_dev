@@ -189,11 +189,12 @@ inline double conductive_flux(double conductivity, double T_owner,
 }
 
 inline double interface_conductance(double k1, double k2, double d1, double d2,
-                                    double area)
+                                    double area, double contact_resistance = 0.0)
 {
-    if (k1 <= 0.0 || k2 <= 0.0 || d1 <= 0.0 || d2 <= 0.0 || area <= 0.0)
+    if (k1 <= 0.0 || k2 <= 0.0 || d1 <= 0.0 || d2 <= 0.0 || area <= 0.0 ||
+        contact_resistance < 0.0 || !std::isfinite(contact_resistance))
         throw std::invalid_argument("invalid interface conductance input");
-    return area / (d1 / k1 + d2 / k2);
+    return area / (d1 / k1 + contact_resistance + d2 / k2);
 }
 
 inline double interface_heat_flux(double conductance, double T1, double T2)
