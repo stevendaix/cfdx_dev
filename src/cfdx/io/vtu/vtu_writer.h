@@ -53,12 +53,13 @@ struct VtuWriter {
                bool write_time_metadata = false);
 
 private:
-    // Decompose polyhedral cells to VTK-supported types (tets)
+    // Preserve each CFDX polyhedral cell as one native VTK_POLYHEDRON.
     void decompose_polyhedra(const cfdx::core::Mesh& mesh,
                              std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                              std::vector<VtkCellType>& vtk_cell_types,
                              std::vector<std::uint32_t>& cell_face_offsets,
-                             std::vector<cfdx::core::FaceIndex>& cell_face_indices);
+                             std::vector<cfdx::core::FaceIndex>& cell_face_indices,
+                             std::vector<std::size_t>& vtk_original_cell_indices);
 
     // Write XML header + points
     void write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
@@ -75,7 +76,8 @@ private:
     void write_cell_fields(std::ofstream& os,
                            const cfdx::core::Mesh& mesh,
                            const std::map<std::string, cfdx::core::ScalarCellField>& fields,
-                           const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells);
+                           const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
+                           const std::vector<std::size_t>& vtk_original_cell_indices);
 
     void write_point_fields(std::ofstream& os,
                             const cfdx::core::Mesh& mesh,
