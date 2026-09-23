@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <future>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 
 namespace cfdx::runtime::ooc {
@@ -13,7 +14,12 @@ namespace cfdx::runtime::ooc {
 class DoubleBufferScheduler {
 public:
     explicit DoubleBufferScheduler(std::size_t capacity)
-        : capacity_(capacity) {}
+        : capacity_(capacity)
+    {
+        if (capacity_ < 2)
+            throw std::invalid_argument(
+                "DoubleBufferScheduler: capacity must be at least 2");
+    }
 
     template<class Loader, class Compute>
     void run(const TileManager& tiles, Loader load, Compute compute,
