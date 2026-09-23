@@ -178,7 +178,8 @@ int main() {
 
     // Quantitative multilevel checks requested by Phase 4.7.
     const SparseMatrix poisson1d = make_poisson_1d(4);
-    Vector rhs1d(32, 1.0);
+    Vector rhs1d(4);
+    for (std::size_t i = 0; i < rhs1d.size(); ++i) rhs1d(i) = (i % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson1d, rhs1d, 1.0)) {
         std::cerr << "1D Poisson AMG residual reduction failed\\n";
         return 9;
