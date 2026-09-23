@@ -274,7 +274,7 @@ ValidationMetrics check_case(std::size_t nz)
                 " continuity_linf=" + std::to_string(h.continuity_linf) +
                 " continuity_norm=" + std::to_string(h.continuity_normalized) +
                 " dU=" + std::to_string(h.velocity_change_inf) +
-                " dp=" + std::to_string(h.pressure_change_inf);
+                " dp=" + std::to_string(h.pressure_change_inf) +\n                " pressure_solver_status=" + std::to_string(static_cast<int>(h.pressure_solver_status)) +\n                " pressure_linear_iterations=" + std::to_string(h.pressure_linear_iterations);
         }
         throw std::runtime_error(diagnostics);
     }
