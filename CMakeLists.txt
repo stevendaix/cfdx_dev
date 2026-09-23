@@ -292,23 +292,40 @@ if(CFDX_BUILD_TESTS)
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
     endif()
 
-    add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
-    add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
-    add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
-
+    add_executable(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
+    add_executable(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+    add_executable(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+    target_link_libraries(test_hdf5_writer PRIVATE cfdx_core)
+    target_link_libraries(test_hdf5_roundtrip PRIVATE cfdx_core)
+    target_link_libraries(test_field_roundtrip PRIVATE cfdx_core)
     if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
-        set_tests_properties(test_hdf5_writer test_hdf5_roundtrip test_field_roundtrip
-            PROPERTIES COMMAND "${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1 ${MPIEXEC_PREFLAGS} <TARGET_FILE:%s> ${MPIEXEC_POSTFLAGS}")
+        add_test(NAME test_hdf5_writer
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_writer> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_hdf5_roundtrip
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_roundtrip> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_field_roundtrip
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_field_roundtrip> ${MPIEXEC_POSTFLAGS})
+    else()
+        add_test(NAME test_hdf5_writer COMMAND test_hdf5_writer)
+        add_test(NAME test_hdf5_roundtrip COMMAND test_hdf5_roundtrip)
+        add_test(NAME test_field_roundtrip COMMAND test_field_roundtrip)
     endif()
 
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
     add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
-    add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    add_executable(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    target_link_libraries(test_cross_import_equivalence PRIVATE cfdx_core)
     if(CFDX_ENABLE_PARALLEL_HDF5 AND CFDX_ENABLE_MPI AND MPI_FOUND)
-        set_tests_properties(test_cross_import_equivalence
-            PROPERTIES COMMAND "${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1 ${MPIEXEC_PREFLAGS} <TARGET_FILE:test_cross_import_equivalence> ${MPIEXEC_POSTFLAGS}")
+        add_test(NAME test_cross_import_equivalence
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 1
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_cross_import_equivalence> ${MPIEXEC_POSTFLAGS})
+    else()
+        add_test(NAME test_cross_import_equivalence COMMAND test_cross_import_equivalence)
     endif()
 
     if(Python3_Interpreter_FOUND)
