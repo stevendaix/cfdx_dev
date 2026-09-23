@@ -62,7 +62,7 @@ int main() {
         EXPECT_NEAR(rhs(0), 6.0, 1e-12);
     });
 
-    run_case("poisson_contract_rejects_wrong_boundary_type", [] {
+    run_case("mixed_dirichlet_neumann_boundary", [] {\n        Mesh m = cube();\n        auto bc = PoissonBoundaryCondition::mixed(m.n_faces());\n        bc.face_types[4] = PoissonBoundaryType::DIRICHLET;\n        bc.face_types[5] = PoissonBoundaryType::NEUMANN;\n        bc.face_values[4] = 0.0;\n        bc.face_values[5] = 1.0;\n        auto result = solve_poisson_mixed(m, bc, {0.0});\n        EXPECT_TRUE(result.linear_result.status == SolverStatus::CONVERGED);\n        EXPECT_NEAR(result.solution(0), 0.5, 1e-12);\n    });\n\n    run_case("neumann_flux_has_canonical_outward_sign", [] {\n        Mesh m = cube();\n        auto bc = PoissonBoundaryCondition::neumann(m.n_faces());\n        bc.face_values.assign(m.n_faces(), 0.0);\n        bc.face_values[5] = 2.0;\n        Vector rhs;\n        const auto geometry = make_geometry_cache(m);\n        const auto A = assemble_cell_diffusion_matrix(\n            m, bc, 1.0, {0.0}, rhs, geometry);\n        (void)A;\n        EXPECT_NEAR(rhs(0), 2.0, 1e-12);\n    });\n\n    run_case("poisson_contract_rejects_wrong_boundary_type", [] {
         Mesh m = cube();
         auto bc = PoissonBoundaryCondition::neumann(m.n_faces());
         bc.face_values.assign(m.n_faces(), 0.0);
