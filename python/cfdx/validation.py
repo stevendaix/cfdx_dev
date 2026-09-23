@@ -166,7 +166,10 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
             diagnostics.append(SetupDiagnostic("error", "BOUNDARY_SCHEMA", str(exc), f"boundaries.{name}"))
 
     if mesh is not None:
-        mesh_patches = set(mesh.patches)
+        mesh_patches = {
+            patch.name if hasattr(patch, "name") else patch
+            for patch in mesh.patches
+        }
         for name in case.boundaries:
             if name not in mesh_patches:
                 diagnostics.append(
