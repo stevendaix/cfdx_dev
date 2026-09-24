@@ -713,10 +713,28 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         "solve_coupled_momentum_continuity: invalid face rAU on face " +
                         std::to_string(f));
                 const double D = rho * rfn * area / d;
-                if (!(D > 0.0) || !std::isfinite(D))
+                if (!(d > 0.0) || !(area > 0.0) ||
+                    !std::isfinite(d) || !std::isfinite(area) ||
+                    !(D > 0.0) || !std::isfinite(D)) {
+                    const char* debug = std::getenv("CFDX_DEBUG_COUPLED");
+                    if (debug && *debug) {
+                        std::cerr << "COUPLED_FACE_DEBUG face=" << f
+                                  << " cells=" << c << "/" << ncell
+                                  << " area=" << area
+                                  << " distance=" << d
+                                  << " a=(" << aox << "," << anx
+                                  << ";" << aoy << "," << any
+                                  << ";" << aoz << "," << anz << ")"
+                                  << " rAU=(" << rAUx_f << "," << rAUy_f
+                                  << "," << rAUz_f << ")"
+                                  << " rfn=" << rfn
+                                  << " D=" << D << "\n";
+                    }
                     throw std::runtime_error(
                         "solve_coupled_momentum_continuity: invalid pressure coefficient on face " +
-                        std::to_string(f));
+                        std::to_string(f) + " cells " + std::to_string(c) + "/" +
+                        std::to_string(ncell));
+                }
                 // phi_p = D (p_P - p_N). Only this orthogonal derivative is
                 // implicit in the coupled matrix. The non-orthogonal remainder
                 // is a deferred correction evaluated from p_old below, exactly
@@ -1662,14 +1680,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto end = eq.matrix.row_offsets_data()[debug_cell + 1];
                 std::cerr << name << " matrix row: rhs=" << eq.rhs(debug_cell)
                           << " diagonal=" << eq.diagonal[debug_cell]
-                          << " nnz=" << (end - begin) << "\\n";
+                          << " nnz=" << (end - begin) << "\n";
                 for (std::uint32_t k = begin; k < end; ++k) {
                     const auto col = eq.matrix.columns_data()[k];
                     const auto value = eq.matrix.values_data()[k];
                     ax += value * solution(col);
                     std::cerr << "  col=" << col << " a=" << value
                               << " x=" << solution(col)
-                              << " ax=" << value * solution(col) << "\\n";
+                              << " ax=" << value * solution(col) << "\n";
                 }
                 const double residual = ax - eq.rhs(debug_cell);
                 std::cerr << "  exact_row_ax=" << ax
