@@ -59,6 +59,10 @@ int main() {
     run_case("M2_generic_komega_transport", [] {
         Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        // Keep a non-zero net convective contribution at the boundary so
+        // density scaling of the production term cannot cancel algebraically
+        // with the density-scaled diffusion/sink coefficients.
+        flux(0)=1.0; flux(1)=-1.0;
         Field<double,Location::CELL> k(1,"k","m2/s2",1),w(1,"omega","1/s",1),S(1,"S","1/s",1);
         k(0)=0.1; w(0)=2.0; S(0)=1.0;
         TurbulenceTransportControls c; c.model=TurbulenceModel::KOMEGA; c.molecular_viscosity=1e-5;
@@ -77,6 +81,37 @@ int main() {
         const auto r=solve_spalart_allmaras_transport(m,g,flux,nut,vort,wall,c,bc,10,1e-6);
         EXPECT_TRUE(r.iterations>0); EXPECT_TRUE(std::isfinite(nut(0))); EXPECT_TRUE(nut(0)>=0.0);
         EXPECT_TRUE(std::isfinite(r.k_residual));
+    });
+
+    run_case("M2_komega_density_scales_production", [] {
+        Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        // Keep mass flux fixed while changing density: this makes the density
+        // dependence of the production term observable instead of cancelling
+        // with the density-scaled diffusion and source coefficients.
+        flux(0)=1.0; flux(1)=-1.0;
+        Field<double,Location::CELL> k1(1,"k","m2/s2",1),w1(1,"omega","1/s",1),S(1,"S","1/s",1);
+        Field<double,Location::CELL> k2(1,"k","m2/s2",1),w2(1,"omega","1/s",1);
+        k1(0)=k2(0)=0.1; w1(0)=w2(0)=2.0; S(0)=1.0;
+        TurbulenceTransportControls c1; c1.model=TurbulenceModel::KOMEGA; c1.density=1.0; c1.molecular_viscosity=1e-5;
+        TurbulenceTransportControls c2=c1; c2.density=2.0;
+        ScalarBoundaryConditions bc; bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1e-4,0.0};
+        const auto r1=solve_komega_transport(m,g,flux,k1,w1,S,c1,bc,bc,1,1e-12);
+        const auto r2=solve_komega_transport(m,g,flux,k2,w2,S,c2,bc,bc,1,1e-12);
+        EXPECT_TRUE(std::isfinite(r1.k_residual) && std::isfinite(r2.k_residual));
+        EXPECT_TRUE(k1(0) != k2(0) || w1(0) != w2(0));
+    });
+
+    run_case("M2_SA_destruction_scales_with_nutilde", [] {
+        SpalartAllmarasModel sa;
+        const double nu_tilde=2.0e-4, d=0.05, chi=nu_tilde/1.0e-5;
+        const double st=10.0 + nu_tilde*sa.fv2(chi)/(sa.kappa*sa.kappa*d*d);
+        const double r=nu_tilde/(st*sa.kappa*sa.kappa*d*d);
+        const double fw=sa.destruction_coefficient(r);
+        const double coefficient=std::max(sa.cw1*fw-sa.cb1*sa.ft2(chi)/(sa.kappa*sa.kappa),0.0);
+        const double expected_sp=coefficient*nu_tilde/(d*d);
+        EXPECT_TRUE(expected_sp > 0.0);
+        EXPECT_NEAR(expected_sp/(nu_tilde/(d*d)),coefficient,1e-14);
     });
 
     run_case("M2_controls_reject_nonfinite_values", [] {
