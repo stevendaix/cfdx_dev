@@ -1544,8 +1544,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         h.reconstructed_velocity_continuity_linf = reconstructed_linf;
         h.flux_velocity_mismatch_linf = flux_mismatch_linf;
-        h.momentum_equation_residual_components = {
-            rx_diag.global, ry_diag.global, rz_diag.global};
+        h.momentum_equation_residual_components =
+            std::array<double, 3>{rx_diag.global, ry_diag.global, rz_diag.global};
         h.momentum_equation_residual_internal =
             std::max({rx_diag.interior, ry_diag.interior, rz_diag.interior});
         h.momentum_equation_residual_boundary =
