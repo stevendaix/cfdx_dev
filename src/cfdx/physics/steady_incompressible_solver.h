@@ -1783,7 +1783,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
                     double delta = 0.0;
                     for (std::size_t d = 0; d < 3; ++d)
-                        delta = std::max(delta, std::abs(hbya[d][c] - frozen_hbyA[d][c]));
+                        delta = std::max(delta, std::abs(hbyA[d][c] - frozen_hbyA[d][c]));
                     if (delta > hbyA_delta_linf) {
                         hbyA_delta_linf = delta;
                         hbyA_delta_cell = c;
@@ -1810,7 +1810,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     }
                     for (std::size_t d = 0; d < 3; ++d)
                         hbyA_delta = std::max(hbyA_delta,
-                            std::abs(hbya[d][cell] - frozen_hbyA[d][cell]));
+                            std::abs(hbyA[d][cell] - frozen_hbyA[d][cell]));
                     std::cerr << "FROZEN_STATE_CELL label=" << label
                               << " cell=" << cell
                               << " phi_used_in_momentum_assembly=" << phi_used_l1
