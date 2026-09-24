@@ -282,73 +282,6 @@ make_rhie_chow_mass_flux(
     //
     // For a fixed-pressure boundary the boundary pressure is known. For a
     // zero-gradient pressure boundary there is no normal pressure correction.
-    const auto& own = mesh.ownership();
-    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        const std::size_t o = own.owner(f);
-        if (o >= mesh.n_cells())
-            throw std::runtime_error("make_rhie_chow_mass_flux: invalid face owner");
-
-        Vec3 Hf;
-        U.get(o, Hf.x, Hf.y, Hf.z);
-        double pressure_difference = 0.0;
-        double d = 0.0;
-
-        const auto nr = own.neighbour(f);
-        if (nr >= 0) {
-            const std::size_t n = static_cast<std::size_t>(nr);
-            Vec3 Hn;
-            U.get(n, Hn.x, Hn.y, Hn.z);
-            Hf = (Hf + Hn) * 0.5;
-
-            d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-            if (!(d > 0.0))
-                throw std::runtime_error("make_rhie_chow_mass_flux: zero owner-neighbour distance");
-
-            pressure_difference = p(n) - p(o);
-        } else {
-            const std::size_t patch = geometry.face_patch[f];
-            if (patch < mesh.boundary().n_patches()) {
-                const auto& name = mesh.boundary().patch(patch).name;
-                const auto ubc = bcs.find(name);
-                if (ubc != bcs.end() &&
-                    ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
-                    Hf = ubc->second.value;
-
-                const auto pbc = ScalarBoundaryConditions{};
-                (void)pbc;
-            }
-            // A zero-gradient pressure boundary contributes no normal pressure
-            // correction. Fixed-pressure treatment is applied by the pressure
-            // equation/flux correction where the pressure BC is known.
-        }
-
-        const Vec3 Sf = geometry.face_area_vectors[f];
-        const double area = Sf.mag();
-        if (!(area > 0.0))
-            throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face area");
-
-        double flux = rho * Hf.dot(Sf);
-        if (nr >= 0) {
-            const std::size_t oidx = own.owner(f);
-            const std::size_t nidx = static_cast<std::size_t>(nr);
-            const double rfn = 0.25 * (
-                (rAU[0][oidx] + rAU[0][nidx]) * (Sf.x/area) * (Sf.x/area) +
-                (rAU[1][oidx] + rAU[1][nidx]) * (Sf.y/area) * (Sf.y/area) +
-                (rAU[2][oidx] + rAU[2][nidx]) * (Sf.z/area) * (Sf.z/area));
-            flux -= rho * rfn * area * pressure_difference / d;
-        }
-        // For a fixed velocity boundary Hf is already the prescribed face
-        // velocity. For zero-gradient velocity Hf is the owner predictor.
-        // Pressure boundary contributions are handled explicitly by the
-        // pressure-correction operator, avoiding double application here.
-        if (!std::isfinite(flux))
-            throw std::runtime_error("make_rhie_chow_mass_flux: non-finite face flux");
-        // Field assignment is kept at the end so all validation above occurs
-        // before the authoritative conservative flux is modified.
-        const_cast<Field<double, Location::FACE>&>(
-            reinterpret_cast<const Field<double, Location::FACE>&>(flux));
-    }
-
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         const std::size_t o = own.owner(f);
@@ -541,6 +474,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // The momentum equations received the current pressure explicitly during
     // segregated assembly. Undo that explicit contribution here: the coupled
     // matrix contains the pressure gradient implicitly instead.
+    const auto grad_p_old =
+        gauss_gradient_with_boundary(p_old, mesh, geometry, pressure_bcs);
     auto add_momentum_block = [&](const ScalarEquation& eq, std::size_t component) {
         const std::size_t row_base = component * nc;
         const auto* ro = eq.matrix.row_offsets_data();
@@ -549,7 +484,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         for (std::size_t r = 0; r < nc; ++r) {
             for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
                 A.push_back(row_base + r, component * nc + co[k], va[k]);
-            b(row_base + r) = eq.rhs(r);
+            b(row_base + r) =
+                eq.rhs(r) + grad_p_old.component_data(component)[r] * geometry.cell_volumes[r];
         }
     };
     add_momentum_block(ex, 0);
@@ -641,9 +577,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double nx = rawSf.x / area;
                 const double ny = rawSf.y / area;
                 const double nz = rawSf.z / area;
-                const double rfn = 0.5 * (
+                const double nx = rawSf.x / area;
+                const double ny = rawSf.y / area;
+                const double nz = rawSf.z / area;
+                const double rAUx_f = 0.5 * (
                     geometry.cell_volumes[c] / std::max(ex.diagonal[c], 1e-30) +
                     geometry.cell_volumes[ncell] / std::max(ex.diagonal[ncell], 1e-30));
+                const double rAUy_f = 0.5 * (
+                    geometry.cell_volumes[c] / std::max(ey.diagonal[c], 1e-30) +
+                    geometry.cell_volumes[ncell] / std::max(ey.diagonal[ncell], 1e-30));
+                const double rAUz_f = 0.5 * (
+                    geometry.cell_volumes[c] / std::max(ez.diagonal[c], 1e-30) +
+                    geometry.cell_volumes[ncell] / std::max(ez.diagonal[ncell], 1e-30));
+                const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
                 const double D = rho * rfn * area / d;
                 // phi_p = D (p_P - p_N)
                 A.push_back(row, nv + c, D);
@@ -682,8 +628,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double area = rawSf.mag();
                     const double d = (geometry.face_centres[f] -
                                       geometry.cell_centres[c]).mag();
-                    const double rfn = (
-                        geometry.cell_volumes[c] / std::max(ex.diagonal[c], 1e-30));
+                    const double nx = rawSf.x / area;
+                    const double ny = rawSf.y / area;
+                    const double nz = rawSf.z / area;
+                    const double rAUx = geometry.cell_volumes[c] / std::max(ex.diagonal[c], 1e-30);
+                    const double rAUy = geometry.cell_volumes[c] / std::max(ey.diagonal[c], 1e-30);
+                    const double rAUz = geometry.cell_volumes[c] / std::max(ez.diagonal[c], 1e-30);
+                    const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
                     const double D = rho * rfn * area / d;
                     A.push_back(row, nv + c, D);
                     b(row) += D * pbc->value;
@@ -1038,10 +989,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
         // uses the same directional inverse momentum coefficient as the
         // pressure equation, avoiding a second, incompatible face operator.
-        auto phiHbyA = make_rhie_chow_mass_flux(
-            mesh, geometry, HbyA, p,
-            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-            controls.density, velocity_bcs);
+        auto phiHbyA = make_mass_flux(
+            mesh, geometry, HbyA, controls.density, velocity_bcs);
 
         if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
@@ -1193,51 +1142,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     HbyA.component_data(2)[c] - rAtU[2][c] * corrected_grad_p.component_data(2)[c];
             }
 
-            // The conservative face flux is phiHbyA - pressure flux. Keep it
-            // as the authoritative flux state rather than rebuilding it from
-            // cell-centred U, which would discard the pressure solve's
-            // continuity correction.
-            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                const auto nr = mesh.ownership().neighbour(f);
-                const std::size_t o = mesh.ownership().owner(f);
-                if (nr >= 0) {
-                    const std::size_t n = static_cast<std::size_t>(nr);
-                    const Vec3 Sf = geometry.face_area_vectors[f];
-                    const double area = Sf.mag();
-                    const double d =
-                        (geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
-                    const double rfn = directional_face_coefficient(
-                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                        o, n, Sf);
-                    mass_flux(f) = phiHbyA(f) -
-                        controls.density * rfn * area / d * (p_corr(n)-p_corr(o));
-                } else {
-                    const std::size_t patch = geometry.face_patch[f];
-                    if (patch >= mesh.boundary().n_patches()) {
-                        mass_flux(f) = phiHbyA(f);
-                        continue;
-                    }
-                    const auto& name = mesh.boundary().patch(patch).name;
-                    const auto it = pressure_bcs.find(name);
-                    if (it != pressure_bcs.end() &&
-                        it->second.type == ScalarBoundaryType::FIXED_VALUE) {
-                        const Vec3 Sf = geometry.face_area_vectors[f];
-                        const double area = Sf.mag();
-                        const double d =
-                            (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
-                        const double nx = Sf.x/area, ny = Sf.y/area, nz = Sf.z/area;
-                        const auto& pressure_coeff =
-                            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                        const double rfn = pressure_coeff[0][o]*nx*nx +
-                                           pressure_coeff[1][o]*ny*ny +
-                                           pressure_coeff[2][o]*nz*nz;
-                        mass_flux(f) = phiHbyA(f) -
-                            controls.density * rfn * area / d * p_corr(o);
-                    } else {
-                        mass_flux(f) = phiHbyA(f);
-                    }
-                }
-            }
+            // The conservative face flux is rebuilt from the same
+            // momentum-weighted interpolation used by the pressure equation.
+            // This is the single authoritative phi state for continuity.
+            mass_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, p,
+                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                controls.density, velocity_bcs);
 
             if (corr + 1 < pcorr) {
                 // Additional PISO/PIMPLE corrections reuse the same momentum
@@ -1246,10 +1157,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // rebuilt inside the inner pressure loop.
                 auto updated_grad_p =
                     gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
-                phiHbyA = make_rhie_chow_mass_flux(
-                    mesh, geometry, HbyA, p,
-                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                    controls.density, velocity_bcs);
+                phiHbyA = make_mass_flux(
+                    mesh, geometry, HbyA, controls.density, velocity_bcs);
                 if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
                     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                         const auto nr = mesh.ownership().neighbour(f);
@@ -1271,7 +1180,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             (p(n)-p(o))/d * area;
                     }
                 }
-                (void)updated_grad_p;
             }
         }
 
@@ -1366,6 +1274,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::max(std::pow(domain_volume, 2.0/3.0), 1e-30);
         h.continuity_normalized =
             linf / std::max(controls.density*velocity_scale*characteristic_area, 1e-30);
+        if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
+            h.pressure_residual = h.continuity_normalized;
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations =
