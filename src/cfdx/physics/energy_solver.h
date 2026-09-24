@@ -123,16 +123,16 @@ inline double energy_balance_relative(
         const double d=dvec.mag();
         const double F=mass_flux(f);
         double Tf=temperature(o);
-        bool has_face_override=false;
-        if(face_values) {
+        bool face_override_valid=false;
+        if(face_values && patch<mesh.boundary().n_patches()) {
             const auto it=face_values->values.find(mesh.boundary().patch(patch).name);
             if(it!=face_values->values.end() && f<it->second.size() &&
                std::isfinite(it->second[f])) {
                 Tf=it->second[f];
-                has_face_override=true;
+                face_override_valid=true;
             }
         }
-        if(!has_face_override) {
+        if(!face_override_valid) {
             if(bc.type==ScalarBoundaryType::FIXED_VALUE)
                 Tf=bc.value;
             else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
@@ -141,11 +141,7 @@ inline double energy_balance_relative(
 
         const double k=controls.conductivity;
         double conductive=-k*bc.gradient*area;
-        const bool has_face_override =
-            face_values && face_values->values.count(mesh.boundary().patch(patch).name) &&
-            f<face_values->values.at(mesh.boundary().patch(patch).name).size() &&
-            std::isfinite(face_values->values.at(mesh.boundary().patch(patch).name)[f]);
-        if(d>0.0 && (bc.type==ScalarBoundaryType::FIXED_VALUE || has_face_override))
+        if(d>0.0 && (bc.type==ScalarBoundaryType::FIXED_VALUE || face_override_valid))
             conductive=-k*(Tf-temperature(o))/d*area;
         const double convective=F*(F>=0.0 ? temperature(o) : Tf);
         net_flux += convective + conductive;
