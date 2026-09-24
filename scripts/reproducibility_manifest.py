@@ -8,6 +8,8 @@ import json
 import platform
 import subprocess
 import sys
+import shutil
+import datetime
 from pathlib import Path
 
 
@@ -28,6 +30,18 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def tool_version(command: str, *args: str) -> str:
+    executable = shutil.which(command)
+    if not executable:
+        return "unavailable"
+    try:
+        return subprocess.check_output(
+            [executable, *args], text=True, stderr=subprocess.STDOUT
+        ).strip().splitlines()[0]
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=Path)
@@ -36,6 +50,7 @@ def main() -> int:
 
     root = Path(__file__).resolve().parents[1]
     manifest = {
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         "cfdx_version": "0.7",
         "schema_version": 1,
         "git": {
@@ -50,6 +65,15 @@ def main() -> int:
         },
         "compiler": {
             "cxx": git_value(root, "config", "--get", "CXX") or "unknown",
+            "version": tool_version(git_value(root, "config", "--get", "CXX") or "c++", "--version"),
+        },
+        "toolchain": {
+            "cuda": tool_version("nvcc", "--version"),
+            "mpi": tool_version("mpirun", "--version"),
+        },
+        "hardware": {
+            "cpu": platform.processor() or "unknown",
+            "gpu": tool_version("nvidia-smi", "--query-gpu=name", "--format=csv,noheader"),
         },
         "case": None,
     }
