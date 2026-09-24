@@ -252,7 +252,8 @@ inline ScalarEquation assemble_scalar_equation(
                 if (it != boundary_conditions.end()) bc = it->second;
                 if (face_values) {
                     const auto fv = face_values->values.find(patch_name);
-                    if (fv != face_values->values.end() && f < fv->second.size()) {
+                    if (fv != face_values->values.end() && f < fv->second.size() &&
+                    std::isfinite(fv->second[f])) {
                         bc.type = ScalarBoundaryType::FIXED_VALUE;
                         bc.value = fv->second[f];
                     }
