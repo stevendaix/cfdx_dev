@@ -86,7 +86,8 @@ inline double energy_balance_relative(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls,
-    const ScalarBoundaryConditions& bcs)
+    const ScalarBoundaryConditions& bcs,
+    const ScalarBoundaryFaceValues* face_values = nullptr)
 {
     double net_flux = 0.0;
     double source_total = 0.0;
@@ -122,14 +123,25 @@ inline double energy_balance_relative(
         const double d=dvec.mag();
         const double F=mass_flux(f);
         double Tf=temperature(o);
-        if(bc.type==ScalarBoundaryType::FIXED_VALUE)
-            Tf=bc.value;
-        else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
-            Tf=temperature(o)+bc.gradient*d;
+        bool face_override_valid=false;
+        if(face_values && patch<mesh.boundary().n_patches()) {
+            const auto it=face_values->values.find(mesh.boundary().patch(patch).name);
+            if(it!=face_values->values.end() && f<it->second.size() &&
+               std::isfinite(it->second[f])) {
+                Tf=it->second[f];
+                face_override_valid=true;
+            }
+        }
+        if(!face_override_valid) {
+            if(bc.type==ScalarBoundaryType::FIXED_VALUE)
+                Tf=bc.value;
+            else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
+                Tf=temperature(o)+bc.gradient*d;
+        }
 
         const double k=controls.conductivity;
         double conductive=-k*bc.gradient*area;
-        if(bc.type==ScalarBoundaryType::FIXED_VALUE && d>0.0)
+        if(d>0.0 && (bc.type==ScalarBoundaryType::FIXED_VALUE || face_override_valid))
             conductive=-k*(Tf-temperature(o))/d*area;
         const double convective=F*(F>=0.0 ? temperature(o) : Tf);
         net_flux += convective + conductive;
@@ -173,7 +185,7 @@ inline EnergySolveResult solve_energy(
             temperature(i)=candidate(i);
 
         const double imbalance=energy_balance_relative(
-            mesh,geometry,mass_flux,temperature,old,source,controls,bcs);
+            mesh,geometry,mass_flux,temperature,old,source,controls,bcs,face_values);
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 

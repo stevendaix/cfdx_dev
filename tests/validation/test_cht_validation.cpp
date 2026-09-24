@@ -44,5 +44,16 @@ int main()
         EXPECT_NEAR(T2(0),350.0,1e-8);
         EXPECT_NEAR(r.interface_imbalance,0.0,1e-10);
     });
+    run_case("cht_face_override_is_used_by_independent_energy_balance",[] {
+        Mesh m=cube("interface");
+        auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0.0);
+        Field<double,Location::CELL> T(1,"T","K",1),oldT(1,"oldT","K",1),source(1,"S","W/m3",1);
+        T(0)=300.0; oldT(0)=300.0; source(0)=0.0;
+        EnergySolverControls e; e.conductivity=1.0;
+        ScalarBoundaryFaceValues fv; fv.values["interface"].assign(m.n_faces(),400.0);
+        const double b=energy_balance_relative(m,g,phi,T,oldT,source,e,{},&fv);
+        EXPECT_NEAR(b,1.0,1e-14);
+    });
     return run_all();
 }
