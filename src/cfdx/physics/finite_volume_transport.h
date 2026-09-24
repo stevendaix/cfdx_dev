@@ -269,6 +269,10 @@ inline ScalarEquation assemble_scalar_equation(
             }
         } else {
             const std::size_t patch = geometry.face_patch[f];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+
             ScalarBoundaryCondition bc;
             if (patch < mesh.boundary().n_patches()) {
                 const auto& patch_name = mesh.boundary().patch(patch).name;
