@@ -111,6 +111,47 @@ int main()
         EXPECT_TRUE(std::isfinite(Q(0)));
     });
 
+    run_case("dom_diffuse_gray_wall_boundary_is_energy_consistent",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
+        T(0)=1000.0;G(0)=0.0;q(0)=0.0;
+        std::vector<DiscreteDirection> dirs{
+            {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
+            {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
+            {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
+        DomWallBoundaryConditions walls;
+        for (std::size_t p=0;p<m.boundary().n_patches();++p)
+            walls[m.boundary().patch(p).name]={0.5,1000.0};
+        RadiationTransportControls rc;
+        rc.absorption=1.0;rc.scattering=0.0;rc.max_iterations=100;
+        rc.tolerance=1e-9;rc.linear_tolerance=1e-11;
+        const auto r=solve_participating_radiation_diffuse_gray_walls(
+            m,g,T,G,q,dirs,rc,walls);
+        EXPECT_TRUE(r.converged);
+        EXPECT_NEAR(q(0),0.0,1e-6*blackbody_emissive_power(1000.0));
+        EXPECT_NEAR(G(0),4.0*blackbody_emissive_power(1000.0),
+                    1e-5*blackbody_emissive_power(1000.0));
+    });
+
+    run_case("rosseland_scattering_uses_transport_opacity",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);phi.fill(0.0);
+        Field<double,Location::CELL> T(1,"T","K",1),S(1,"S","W/m3",1);
+        Field<double,Location::CELL> a(1,"a","1/m",1),s(1,"s","1/m",1);
+        T(0)=1000.0;S(0)=0.0;a(0)=2.0;s(0)=3.0;
+        EXPECT_NEAR(rosseland_conductivity(1000.0,2.0,3.0),
+                    rosseland_conductivity(1000.0,5.0),1e-12);
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1000.0,0.0};
+        EnergySolverControls ec;ec.density=1.0;ec.cp=1000.0;ec.conductivity=0.0;
+        ec.max_iterations=20;ec.tolerance=1e-10;
+        RosselandSolveControls rc;rc.max_iterations=20;rc.tolerance=1e-10;
+        const auto r=solve_rosseland_energy_with_scattering(
+            m,g,phi,T,S,a,s,0.0,ec,rc,bc);
+        EXPECT_TRUE(r.converged);
+        EXPECT_NEAR(T(0),1000.0,1e-8);
+    });
+
     run_case("p1_isothermal_blackbody_equilibrium",[] {
         Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
