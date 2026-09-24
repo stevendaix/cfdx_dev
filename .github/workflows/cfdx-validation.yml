@@ -45,7 +45,7 @@ jobs:
             test_mms_scalar_diffusion test_mesh_refinement_order \
             test_m1_m4_validation test_m2_m4_solver_validation \
             test_cht_validation test_phase10_turbulence_hardening \
-            test_thermophysical_models_vv test_thermal_vv test_radiation_vv \
+            test_thermophysical_models_vv test_thermal_vv test_radiation_vv test_s2s_radiation_vv \
             test_thermal_radiation_model_matrix \
             test_matrix_free_fv_operator \
             test_temporal_physics test_core_temporal --parallel 2
@@ -65,6 +65,12 @@ jobs:
         run: |
           set -o pipefail
           ./build-validation/test_radiation_vv 2>&1 | tee build-validation/radiation-vv.log
+
+      - name: Run S2S radiation V&V with residual logs
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_s2s_radiation_vv 2>&1 | tee build-validation/s2s-radiation-vv.log
 
       - name: Run complete thermal/radiation model matrix
         shell: bash
