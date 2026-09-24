@@ -56,33 +56,79 @@ Negative intensity/irradiation is not accepted as a valid converged radiation st
 
 ## Audit closure
 
-All actionable implementation gaps identified in the original audit are now represented in the PR:
+The four critical reservations from the external review are now closed in code and regression coverage.
 
-- geometry-driven deterministic ray-traced S2S visibility;
-- direction-aware diffuse-gray DOM wall operator;
-- spatially varying optical properties;
-- band-wise non-gray DOM;
-- nonlinear Rosseland energy integration;
-- radiation balance diagnostics;
-- non-isothermal coupled radiation/energy verification;
-- controlled angular sampling/refinement through the DOM direction API.
+### Rosseland opacity convention
 
-Two scope boundaries remain explicit rather than hidden:
+The one-argument `rosseland_conductivity(T, transport_opacity)` API now explicitly defines its second argument as the transport/Rosseland opacity \(\kappa_R\), not absorption alone. For isotropic gray scattering:
 
-1. the S2S geometry kernel is a deterministic Monte-Carlo estimator, so its numerical accuracy is controlled by sample count rather than an exact closed-form solution;
-2. spectral radiation is band-wise gray transport, not continuous line-by-line spectroscopy.
+\[
+\kappa_R = \kappa_a + \kappa_s
+\]
 
-The implementation therefore covers the Phase-12 M4 model family without claiming capabilities outside the phase.
+and the dedicated scattering-aware solve accepts an asymmetry factor and uses:
+
+\[
+\kappa_R = \kappa_a + \kappa_s(1-g)
+\]
+
+Thus the diffusion coefficient is not silently based on \(\kappa_a\) when scattering is present.
+
+### Direction-aware diffuse-gray DOM walls
+
+A dedicated DOM wall operator now evaluates the outgoing discrete irradiation on every boundary face:
+
+\[
+G_{out} = \sum_{m:\,\mathbf{s}_m\cdot\mathbf{n}>0}
+w_m I_m(\mathbf{s}_m\cdot\mathbf{n})
+\]
+
+and applies the diffuse-gray incoming condition:
+
+\[
+I_{in}=\epsilon I_b(T_w)+(1-\epsilon)G_{out}/\pi
+\]
+
+The wall reflection is Picard-lagged by one transport iteration. Incoming ordinates receive fixed face values; outgoing ordinates retain zero-gradient/extrapolated transport. The generic finite-volume face-value adapter now supports this direction-specific override using non-finite sentinels for faces where no incoming condition is applicable.
+
+This is now exercised by a non-black gray-wall equilibrium regression using a half-range-consistent 14-direction quadrature.
+
+### S2S reciprocity
+
+The area-aware view-factor validator checks both enclosure closure and:
+
+\[
+A_iF_{ij}=A_jF_{ji}
+\]
+
+A regression explicitly accepts a reciprocal unequal-area matrix and rejects a deliberately non-reciprocal matrix. The deterministic ray-traced kernel remains an estimator; it is not presented as an exact closed-form view-factor calculator.
+
+### Angular sensitivity / ray effects
+
+The implementation continues to expose the direction set through the DOM API, so angular refinement can be performed independently of the transport solver. The validation suite now uses a half-range-consistent quadrature for the diffuse-wall oracle, avoiding a false equilibrium caused by a full-sphere-only moment set. Ray-effect convergence remains a V&V campaign item rather than being claimed from a single low-order case.
 
 ## Acceptance interpretation
 
-After this PR:
+Implemented and regression-covered:
 
-- Implemented: blackbody/gray primitives, area-aware two-surface exchange, view-factor invariants, DOM moment validation, participating-media DOM core, a constant-property P1 solve, radiation-energy coupling.
-- Verified at component/analytical level: Stefan-Boltzmann, gray exchange, view-factor identities, DOM moments, P1 equilibrium and source closure.
-- Not yet validated as a complete radiation solver: geometric S2S, production diffuse-gray DOM walls, mesh/angular convergence, non-uniform participating-media reference case, full Rosseland path, spectral/non-gray models.
+- area-aware surface exchange;
+- enclosure and area-weighted view-factor reciprocity;
+- deterministic S2S visibility estimation;
+- direction-aware diffuse-gray DOM walls;
+- DOM full-sphere moment validation;
+- normalized DOM convergence and positivity guards;
+- constant-property P1;
+- Rosseland diffusion with explicit transport-opacity convention and scattering-aware wrapper;
+- spatially varying optical properties;
+- band-wise gray non-gray infrastructure;
+- coupled radiation/energy verification;
+- component and equilibrium regression oracles.
 
-Therefore Phase 12 remains IMPLEMENTED / VALIDATION IN PROGRESS, not fully green.
+Explicit scope boundaries remain:
+
+1. S2S is a deterministic sampling estimator; sample count controls its numerical error.
+2. Spectral radiation is band-wise gray DOM, not line-by-line spectroscopy.
+3. A broad S2/S4/S6/S8 mesh-and-angle convergence campaign is still a V&V expansion item; the current tests verify the mathematical operators and boundary treatment without claiming a universal angular-convergence result.
 
 ## External technical references used for the audit
 
