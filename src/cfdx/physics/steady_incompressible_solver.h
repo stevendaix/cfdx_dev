@@ -182,7 +182,6 @@ make_mass_flux(
     (void)pressure_bcs;
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     const auto& own = mesh.ownership();
-    const auto& own = mesh.ownership();
 
     for (std::size_t c = 0; c < U.size(); ++c) {
         const double ux = U.component_data(0)[c];
@@ -298,6 +297,7 @@ make_rhie_chow_mass_flux(
     const ScalarBoundaryConditions& pressure_bcs)
 {
     using namespace cfdx::core;
+    const auto& own = mesh.ownership();
     if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
     const auto grad_p = gauss_gradient_with_boundary(
