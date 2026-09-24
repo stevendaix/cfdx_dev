@@ -1751,6 +1751,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             double max_delta_u_face = 0.0;
             double max_momentum_pressure_flux = 0.0;
             double max_correction_pressure_flux = 0.0;
+            double max_rhie_chow_actual = 0.0;
+            double max_rhie_chow_expected = 0.0;
+            double max_rhie_chow_mismatch = 0.0;
             const Offset off = mesh.cells().offsets_data()[debug_cell];
             const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
             std::cerr << "faces=" << count << "\n";
@@ -1780,6 +1783,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 Vec3 hbyA_face{0.0, 0.0, 0.0};
                 double dAU_n = 0.0;
                 double pressure_flux_correction = 0.0;
+                double rhie_chow_expected = 0.0;
+                double rhie_chow_actual = 0.0;
 
                 if (neighbour >= 0) {
                     const std::size_t ncell = static_cast<std::size_t>(neighbour);
@@ -1823,6 +1828,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                final_grad_p.component_data(1)[other_cell]),
                         0.5 * (final_grad_p.component_data(2)[debug_cell] +
                                final_grad_p.component_data(2)[other_cell])};
+                    // Compare the authoritative face-flux correction against
+                    // the exact Rhie-Chow operator used by the pressure equation.
+                    // This is deliberately evaluated from HbyA, not the final
+                    // velocity, because phi = HbyA_f.Sf - RC(p) is the
+                    // conservative pressure-velocity coupling operator.
+                    const auto pressure_coeff =
+                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                            ? rAtU : rAU;
+                    rhie_chow_expected = rhie_chow_pressure_flux_internal(
+                        mesh, geometry, face, p, final_grad_p,
+                        pressure_coeff, controls.density);
+                    const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
+                    rhie_chow_actual = hbyA_flux - phi_auth;
+                    max_rhie_chow_actual = std::max(
+                        max_rhie_chow_actual, std::abs(rhie_chow_actual));
+                    max_rhie_chow_expected = std::max(
+                        max_rhie_chow_expected, std::abs(rhie_chow_expected));
+                    max_rhie_chow_mismatch = std::max(
+                        max_rhie_chow_mismatch,
+                        std::abs(rhie_chow_actual - rhie_chow_expected));
                     const Vec3 localSf = Sf;
                     const double orthogonal_area = localSf.dot(e);
                     const Vec3 Snon{
@@ -1926,6 +1951,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << (grad_face_momentum-grad_face_correction).mag()
                           << " momentum_pressure_flux=" << momentum_pressure_flux
                           << " correction_pressure_flux=" << pressure_flux_correction
+                          << " rhie_chow_expected=" << rhie_chow_expected
+                          << " rhie_chow_actual=" << rhie_chow_actual
+                          << " delta_rhie_chow="
+                          << (rhie_chow_actual-rhie_chow_expected)
                           << "\n";
             }
 
@@ -1938,6 +1967,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " delta_gradp_linf=" << max_delta_grad_p
                       << " momentum_pressure_flux_linf=" << max_momentum_pressure_flux
                       << " correction_pressure_flux_linf=" << max_correction_pressure_flux
+                      << " rhie_chow_expected_linf=" << max_rhie_chow_expected
+                      << " rhie_chow_actual_linf=" << max_rhie_chow_actual
+                      << " delta_rhie_chow_linf=" << max_rhie_chow_mismatch
                       << "\n";
             std::cerr << "diagnostic_global=(" << h.momentum_equation_residual_components[0]
                       << "," << h.momentum_equation_residual_components[1]
