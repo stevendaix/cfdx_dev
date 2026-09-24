@@ -168,7 +168,8 @@ inline ChtSolveResult solve_two_region_cht(
         result.interface_temperature_change=dtint;
         result.iterations=iter;
 
-        if(result.interface_imbalance<=controls.tolerance &&
+        if(iter > 1 &&
+           result.interface_imbalance<=controls.tolerance &&
            result.interface_temperature_change<=controls.temperature_tolerance) {
             result.converged=true;
             break;
