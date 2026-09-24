@@ -21,6 +21,7 @@ struct ChtInterfaceControls {
     std::size_t max_iterations = 100;
     double relaxation = 0.8;
     double matching_tolerance = 1e-8;
+    double temperature_tolerance = 1e-8;
     double area_relative_tolerance = 1e-6;
 };
 
@@ -38,7 +39,10 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
 {
     if(c.region1_patch.empty() || c.region2_patch.empty() ||
        c.conductivity1<=0.0 || c.conductivity2<=0.0 ||
-       c.matching_tolerance<=0.0 || c.area_relative_tolerance<=0.0)
+       c.tolerance<=0.0 || c.max_iterations==0 ||
+       !(c.relaxation>0.0 && c.relaxation<=1.0) ||
+       c.matching_tolerance<=0.0 || c.temperature_tolerance<=0.0 ||
+       c.area_relative_tolerance<=0.0)
         throw std::invalid_argument("invalid CHT interface controls");
 
     std::size_t p1=mesh1.boundary().n_patches();
@@ -120,6 +124,8 @@ inline ChtSolveResult solve_two_region_cht(
             const auto& p=pairs[i];
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
+            if(!(d1>0.0) || !(d2>0.0) || !std::isfinite(d1) || !std::isfinite(d2))
+                throw std::runtime_error("CHT interface face-to-cell distance is invalid");
             const double h1=controls.conductivity1/d1;
             const double h2=controls.conductivity2/d2;
             const double Tint_new=(h1*T1(p.cell1)+h2*T2(p.cell2))/(h1+h2);
@@ -140,7 +146,7 @@ inline ChtSolveResult solve_two_region_cht(
         if(!r1.converged || !r2.converged)
             throw std::runtime_error("CHT region energy solve did not converge");
 
-        double qimb=0.0, qscale=1.0, dtint=0.0;
+        double qimb=0.0, qscale=1e-30, dtint=0.0;
         for(std::size_t i=0;i<pairs.size();++i) {
             const auto& p=pairs[i];
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
@@ -163,7 +169,7 @@ inline ChtSolveResult solve_two_region_cht(
         result.iterations=iter;
 
         if(result.interface_imbalance<=controls.tolerance &&
-           result.interface_temperature_change<=controls.matching_tolerance) {
+           result.interface_temperature_change<=controls.temperature_tolerance) {
             result.converged=true;
             break;
         }
