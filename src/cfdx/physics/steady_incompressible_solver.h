@@ -1027,9 +1027,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
 
+    const char* freeze_state_env = std::getenv("CFDX_FREEZE_STATE");
+    const bool freeze_state = freeze_state_env && std::string(freeze_state_env) == "1";
+    Field<double, Location::FACE> phi_used_in_momentum;
+    std::array<std::vector<double>, 3> frozen_rAU;
+    std::array<std::vector<double>, 3> frozen_hbyA;
+    Field<double, Location::CELL> frozen_grad_p;
+    bool frozen_state_valid = false;
+
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const auto U_old = U;
         const auto p_old = p;
+
+        // Exact conservative flux consumed by the momentum assembly.
+        if (freeze_state)
+            phi_used_in_momentum = mass_flux;
 
         auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
@@ -1214,6 +1226,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
         hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
         auto HbyA = make_hbya_field(hbya);
+
+        if (freeze_state) {
+            frozen_rAU = rAU;
+            frozen_hbyA = hbya;
+            frozen_grad_p = grad_p;
+            frozen_state_valid = true;
+        }
 
         // rAU is the inverse integrated momentum diagonal (1/A_P).
         // Pressure-gradient terms in the integrated momentum equation therefore
@@ -1754,6 +1773,62 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             double max_rhie_chow_actual = 0.0;
             double max_rhie_chow_expected = 0.0;
             double max_rhie_chow_mismatch = 0.0;
+            if (freeze_state && frozen_state_valid) {
+                double phi_delta_linf = 0.0;
+                double hbyA_delta_linf = 0.0;
+                std::size_t hbyA_delta_cell = 0;
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    phi_delta_linf = std::max(phi_delta_linf,
+                        std::abs(mass_flux(f) - phi_used_in_momentum(f)));
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    double delta = 0.0;
+                    for (std::size_t d = 0; d < 3; ++d)
+                        delta = std::max(delta, std::abs(hbya[d][c] - frozen_hbyA[d][c]));
+                    if (delta > hbyA_delta_linf) {
+                        hbyA_delta_linf = delta;
+                        hbyA_delta_cell = c;
+                    }
+                }
+                const std::size_t comparison_cell =
+                    debug_cell == 33 && mesh.n_cells() > 70 ? 70 : 33;
+                auto dump_state_cell = [&](std::size_t cell, const char* label) {
+                    if (cell >= mesh.n_cells()) return;
+                    double phi_delta_l1 = 0.0;
+                    double phi_used_l1 = 0.0;
+                    double phi_reassembled_l1 = 0.0;
+                    double hbyA_delta = 0.0;
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        const auto owner = mesh.ownership().owner(f);
+                        const auto neighbour = mesh.ownership().neighbour(f);
+                        if (owner != cell && neighbour != static_cast<std::int64_t>(cell)) continue;
+                        const double sign = owner == cell ? 1.0 : -1.0;
+                        const double used = sign * phi_used_in_momentum(f);
+                        const double current = sign * mass_flux(f);
+                        phi_used_l1 += std::abs(used);
+                        phi_reassembled_l1 += std::abs(current);
+                        phi_delta_l1 += std::abs(used-current);
+                    }
+                    for (std::size_t d = 0; d < 3; ++d)
+                        hbyA_delta = std::max(hbyA_delta,
+                            std::abs(hbya[d][cell] - frozen_hbyA[d][cell]));
+                    std::cerr << "FROZEN_STATE_CELL label=" << label
+                              << " cell=" << cell
+                              << " phi_used_in_bicgstab=" << phi_used_l1
+                              << " phi_used_in_reassembly=" << phi_reassembled_l1
+                              << " phi_delta_l1=" << phi_delta_l1
+                              << " HbyA_delta_linf=" << hbyA_delta
+                              << " frozen_rAU=(" << frozen_rAU[0][cell] << ","
+                              << frozen_rAU[1][cell] << "," << frozen_rAU[2][cell] << ")"
+                              << " final_rAU=(" << diag_rAU[0][cell] << ","
+                              << diag_rAU[1][cell] << "," << diag_rAU[2][cell] << ")\n";
+                };
+                std::cerr << "FROZEN_STATE_COMPARE phi_global_linf=" << phi_delta_linf
+                          << " HbyA_global_linf=" << hbyA_delta_linf
+                          << " HbyA_max_cell=" << hbyA_delta_cell << "\n";
+                dump_state_cell(debug_cell, "debug");
+                if (comparison_cell != debug_cell)
+                    dump_state_cell(comparison_cell, "comparison");
+            }
             const Offset off = mesh.cells().offsets_data()[debug_cell];
             const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
             std::cerr << "faces=" << count << "\n";
