@@ -167,6 +167,9 @@ gauss_gradient_with_boundary(
                 vf = 0.5 * (field(c) + field(n));
             } else {
                 const std::size_t p = geometry.face_patch[f];
+                if (p < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(p).type == PatchType::EMPTY)
+                    continue;
                 if (p < mesh.boundary().n_patches()) {
                     const auto& name = mesh.boundary().patch(p).name;
                     const auto it = bcs.find(name);
@@ -372,6 +375,11 @@ make_rhie_chow_mass_flux(
                 mesh, geometry, f, p, grad_p, rAU, rho);
         } else {
             const std::size_t patch = geometry.face_patch[f];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY) {
+                flux(f) = 0.0;
+                continue;
+            }
             if (patch < mesh.boundary().n_patches()) {
                 const auto& name = mesh.boundary().patch(patch).name;
                 const auto ubc = bcs.find(name);
