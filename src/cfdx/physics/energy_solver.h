@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -221,12 +222,26 @@ inline EnergySolveResult solve_energy(
             linear.status==cfdx::core::SolverStatus::CONVERGED ||
             linear_backward_error<=controls.tolerance;
 
-        // A converged linear solve is not sufficient when relaxation < 1:
-        // the accepted temperature is only a predictor of the nonlinear
-        // fixed point. Require the accepted state itself to stop moving and
-        // satisfy the physical energy balance before declaring convergence.
+        // The energy equation assembled here is linear for a fixed source,
+        // conductivity and transient reference state. Therefore a fully
+        // converged linear solve is already the exact fixed point when
+        // relaxation=1. With under-relaxation, the accepted state is only a
+        // predictor and must also stop moving before we declare convergence.
+        const bool accepted_state_converged =
+            controls.relaxation >= 1.0 - 10.0*std::numeric_limits<double>::epsilon() ||
+            relative_temperature_change <= controls.tolerance;
+        if (mesh.n_cells() <= 64) {
+            std::cerr << "THERMAL_RESIDUAL: iteration=" << iter
+                      << " linear_status=" << static_cast<int>(linear.status)
+                      << " residual=" << res
+                      << " linear_relative=" << linear.residual_relative
+                      << " dT_relative=" << relative_temperature_change
+                      << " energy_balance=" << imbalance
+                      << " accepted_state=" << accepted_state_converged
+                      << '\\n';
+        }
         if(linear_converged &&
-           relative_temperature_change<=controls.tolerance &&
+           accepted_state_converged &&
            imbalance<=controls.tolerance) {
             result.converged=true;
             break;
