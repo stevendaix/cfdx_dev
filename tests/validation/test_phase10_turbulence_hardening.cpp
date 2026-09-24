@@ -59,6 +59,10 @@ int main() {
     run_case("M2_generic_komega_transport", [] {
         Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        // Keep a non-zero net convective contribution at the boundary so
+        // density scaling of the production term cannot cancel algebraically
+        // with the density-scaled diffusion/sink coefficients.
+        flux(0)=1.0; flux(1)=-1.0;
         Field<double,Location::CELL> k(1,"k","m2/s2",1),w(1,"omega","1/s",1),S(1,"S","1/s",1);
         k(0)=0.1; w(0)=2.0; S(0)=1.0;
         TurbulenceTransportControls c; c.model=TurbulenceModel::KOMEGA; c.molecular_viscosity=1e-5;
