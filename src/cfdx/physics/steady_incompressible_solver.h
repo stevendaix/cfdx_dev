@@ -1508,11 +1508,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.reconstructed_velocity_continuity_linf = reconstructed_linf;
         h.flux_velocity_mismatch_linf = flux_mismatch_linf;
         h.momentum_equation_residual_components = {
-            rx_diag[0], ry_diag[0], rz_diag[0]};
+            rx_diag.global, ry_diag.global, rz_diag.global};
         h.momentum_equation_residual_internal =
-            std::max({rx_diag[1], ry_diag[1], rz_diag[1]});
+            std::max({rx_diag.interior, ry_diag.interior, rz_diag.interior});
         h.momentum_equation_residual_boundary =
-            std::max({rx_diag[2], ry_diag[2], rz_diag[2]});
+            std::max({rx_diag.boundary, ry_diag.boundary, rz_diag.boundary});
         h.pressure_gradient_linf = pressure_gradient_linf;
         h.pressure_gradient_l2 = pressure_gradient_l2;
         const ResidualDiagnostic* worst_diag = &rx_diag;
