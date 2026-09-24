@@ -1669,9 +1669,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
-            std::cerr << "\\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
+            std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " algorithm=" << static_cast<int>(controls.algorithm)
-                      << " iteration=" << iter << " ===\\n";
+                      << " iteration=" << iter << " ===\n";
             const auto dump_equation = [&](const char* name,
                                            const ScalarEquation& eq,
                                            const Vector& solution) {
@@ -1692,7 +1692,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double residual = ax - eq.rhs(debug_cell);
                 std::cerr << "  exact_row_ax=" << ax
                           << " exact_row_residual=" << residual
-                          << " abs=" << std::abs(residual) << "\\n";
+                          << " abs=" << std::abs(residual) << "\n";
             };
             dump_equation("Ux", final_ex, final_ux);
             dump_equation("Uy", final_ey, final_uy);
@@ -1701,7 +1701,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const Offset off = mesh.cells().offsets_data()[debug_cell];
             const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
             double local_div = 0.0;
-            std::cerr << "faces=" << count << "\\n";
+            std::cerr << "faces=" << count << "\n";
             for (Offset k = 0; k < count; ++k) {
                 const std::size_t face = mesh.cells().faces_data()[off + k];
                 const auto owner = mesh.ownership().owner(face);
@@ -1730,22 +1730,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     std::cerr << " neighbour_U=(" << final_ux(n) << ","
                               << final_uy(n) << "," << final_uz(n) << ")";
                 }
-                std::cerr << "\\n";
+                std::cerr << "\n";
             }
             std::cerr << "local_mass_flux_divergence=" << local_div
                       << " global_continuity_linf=" << h.continuity_linf
                       << " reconstructed_velocity_continuity_linf="
-                      << h.reconstructed_velocity_continuity_linf << "\\n";
+                      << h.reconstructed_velocity_continuity_linf << "\n";
             std::cerr << "diagnostic_global=(" << h.momentum_equation_residual_components[0]
                       << "," << h.momentum_equation_residual_components[1]
                       << "," << h.momentum_equation_residual_components[2] << ")"
                       << " internal=" << h.momentum_equation_residual_internal
                       << " boundary=" << h.momentum_equation_residual_boundary
                       << " worst_cell=" << h.momentum_residual_cell
-                      << " worst_patch=" << h.momentum_residual_patch << "\\n";
+                      << " worst_patch=" << h.momentum_residual_patch << "\n";
             std::cerr << "no_pressure=" << h.momentum_residual_no_pressure
                       << " pressure_contribution=" << h.momentum_pressure_contribution
-                      << " gradp_linf=" << h.pressure_gradient_linf << "\\n";
+                      << " gradp_linf=" << h.pressure_gradient_linf << "\n";
             std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\\n";
         }
         result.history.push_back(h);
