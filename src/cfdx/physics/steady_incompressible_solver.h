@@ -293,22 +293,13 @@ make_rhie_chow_mass_flux(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {});
-
-    const cfdx::core::Mesh& mesh,
-    const FvGeometry& geometry,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
-    const std::array<std::vector<double>, 3>& rAU,
-    double rho,
-    const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs)
 {
     using namespace cfdx::core;
     if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
     const auto grad_p = gauss_gradient_with_boundary(
-        p, mesh, geometry, ScalarBoundaryConditions{});
+        p, mesh, geometry, pressure_bcs);
     for (const auto& component : rAU) {
         if (component.size() != mesh.n_cells())
             throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal size mismatch");
