@@ -107,6 +107,19 @@ int main()
         EXPECT_TRUE(F12>0.0 && F12<1.0);
         EXPECT_NEAR(F12,F21,0.05);
 
+        {
+            // Explicit area-weighted reciprocity oracle: A1 F12 = A2 F21.
+            const std::vector<double> areas{1.0,2.0};
+            const std::vector<double> reciprocal_F{
+                0.5,0.5,
+                0.25,0.75};
+            validate_view_factor_matrix(reciprocal_F,2,areas,1e-12);
+            auto nonreciprocal_F=reciprocal_F;
+            nonreciprocal_F[2]=0.30;
+            EXPECT_THROW(validate_view_factor_matrix(nonreciprocal_F,2,areas,1e-12),
+                         std::invalid_argument);
+        }
+
         auto b=radiation_balance(100.0,100.0);
         EXPECT_NEAR(b.net,0.0,1e-14);
         EXPECT_NEAR(b.relative_error,0.0,1e-14);
