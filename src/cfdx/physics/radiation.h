@@ -45,7 +45,7 @@ inline double gray_surface_emissivity_flux(double emissivity,
 }
 
 // Diffuse-gray wall intensity emitted/reflected into the domain.
-// I_w = epsilon*I_b + (1-epsilon)*G/(4*pi).
+// I_w = epsilon*I_b + (1-epsilon)*G/pi, where G is irradiation [W/m2].
 inline double gray_diffuse_wall_intensity(double emissivity,
                                           double temperature,
                                           double irradiation)
@@ -57,7 +57,7 @@ inline double gray_diffuse_wall_intensity(double emissivity,
         irradiation < 0.0)
         throw std::invalid_argument("gray_diffuse_wall_intensity: invalid input");
     return emissivity * blackbody_intensity(temperature) +
-           (1.0 - emissivity) * irradiation / (4.0 * M_PI);
+           (1.0 - emissivity) * irradiation / M_PI;
 }
 
 // Net exchange per unit area of surface 1. The legacy overload assumes
