@@ -978,7 +978,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ex.diagonal[c],1e-30); return v; }(),
                     [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ey.diagonal[c],1e-30); return v; }(),
                     [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ez.diagonal[c],1e-30); return v; }()},
-                controls.density, velocity_bcs);
+                controls.density, velocity_bcs, pressure_bcs);
 
             // A coupled iteration has no segregated momentum/pressure Krylov
             // sub-solves. The block residual is the authoritative linear metric.
