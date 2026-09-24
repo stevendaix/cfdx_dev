@@ -196,7 +196,12 @@ RunResult run_couette_channel(
     return {std::move(U), std::move(p), solve, build_fv_geometry(mesh)};
 }
 
-double profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
+struct ProfileError {
+    double l2 = 0.0;
+    double linf = 0.0;
+};
+
+ProfileError profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
 {
     double l2 = 0.0;
     double linf = 0.0;
@@ -207,14 +212,14 @@ double profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
         const std::size_t j = c / nx;
         if (i >= nx || j >= ny) continue;
         const double y = (static_cast<double>(j) + 0.5) / static_cast<double>(ny);
-        const double exact = y;
-        const double error = r.U.component_data(0)[c] - exact;
+        const double error = r.U.component_data(0)[c] - y;
         l2 += error * error;
         linf = std::max(linf, std::abs(error));
         ++count;
     }
 
-    return std::sqrt(l2 / static_cast<double>(count)) + linf;
+    if (count == 0) throw std::runtime_error("empty Couette profile");
+    return {std::sqrt(l2 / static_cast<double>(count)), linf};
 }
 
 void assert_close(double value, double reference, double tolerance, const char* label)
@@ -275,21 +280,24 @@ int main()
         const auto pimple = run_couette_channel(
             PressureVelocityAlgorithm::PIMPLE, ConvectionScheme::UPWIND, true);
 
-        const double e_simple = profile_error(simple, 8, 16);
-        const double e_simplec = profile_error(simplec, 8, 16);
-        const double e_piso = profile_error(piso, 8, 16);
-        const double e_pimple = profile_error(pimple, 8, 16);
+        const auto e_simple = profile_error(simple, 8, 16);
+        const auto e_simplec = profile_error(simplec, 8, 16);
+        const auto e_piso = profile_error(piso, 8, 16);
+        const auto e_pimple = profile_error(pimple, 8, 16);
         if (pimple.solve.iterations < 2)
             throw std::runtime_error("PIMPLE n_outer_correctors was not honored");
 
-        std::cout << "Couette profile error: SIMPLE=" << e_simple
-                  << " SIMPLEC=" << e_simplec
-                  << " PISO=" << e_piso
-                  << " PIMPLE=" << e_pimple << "\n";
+        std::cout << "Couette profile error L2/Linf: SIMPLE="
+                  << e_simple.l2 << "/" << e_simple.linf
+                  << " SIMPLEC=" << e_simplec.l2 << "/" << e_simplec.linf
+                  << " PISO=" << e_piso.l2 << "/" << e_piso.linf
+                  << " PIMPLE=" << e_pimple.l2 << "/" << e_pimple.linf << "\n";
 
-        if (!(e_simple < 0.20 && e_simplec < 0.20 &&
-              e_piso < 0.20 && e_pimple < 0.20))
-            throw std::runtime_error("Couette profile validation failed");
+        constexpr double profile_l2_tolerance = 5.0e-2;
+        constexpr double profile_linf_tolerance = 1.0e-1;
+        for (const auto& e : {e_simple, e_simplec, e_piso, e_pimple}) {
+            if (!(e.l2 < profile_l2_tolerance && e.linf < profile_linf_tolerance))
+                throw std::runtime_error("Couette profile validation failed");}
 
         const auto second_order = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE,
@@ -298,21 +306,24 @@ int main()
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::UPWIND, false);
 
-        const double e_second = profile_error(second_order, 8, 16);
-        const double e_unbounded = profile_error(unbounded, 8, 16);
-        std::cout << "Convection/boundedness error: SOU=" << e_second
-                  << " unbounded-upwind=" << e_unbounded << "\n";
-        if (!(e_second < 0.20 && e_unbounded < 0.20))
-            throw std::runtime_error("convection/bounded-deferred-correction gate failed");
+        const auto e_second = profile_error(second_order, 8, 16);
+        const auto e_unbounded = profile_error(unbounded, 8, 16);
+        std::cout << "Convection/boundedness error L2/Linf: SOU="
+                  << e_second.l2 << "/" << e_second.linf
+                  << " unbounded-upwind=" << e_unbounded.l2 << "/" << e_unbounded.linf << "\n";
+        for (const auto& e : {e_second, e_unbounded}) {
+            if (!(e.l2 < profile_l2_tolerance && e.linf < profile_linf_tolerance))
+                throw std::runtime_error("convection/bounded-deferred-correction gate failed");
+        }
 
         run_pure_neumann_gauge();
 
-        // The analytic profile is u(y)=f_x/(2 nu)*y*(1-y).
-        // With f_x=1 and nu=0.1, u_max=1.25.
+        // Couette has no body force and unit wall speed, so u(y)=y and
+        // the continuous peak velocity is exactly 1 at the moving wall.
         double max_u = 0.0;
         for (std::size_t c = 0; c < simple.U.size(); ++c)
             max_u = std::max(max_u, simple.U.component_data(0)[c]);
-        if (!(max_u > 0.9 && max_u < 1.5))
+        if (!(std::isfinite(max_u) && max_u > 0.90 && max_u < 1.10))
             throw std::runtime_error("Couette peak velocity is outside the physical gate");
 
         std::cout << "PHASE9_ACCEPTANCE: PASS\n";
