@@ -222,13 +222,14 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         return false;
     };
 
-    std::string format_version, schema_version, topology_hash, mesh_hash;
+    std::string format_version, schema_version, topology_hash, geometry_hash, mesh_hash;
     const bool has_format = read_attr_str(file, "format_version", format_version);
     const bool has_schema = read_attr_str(file, "schema_version", schema_version);
     const bool has_topology = read_attr_str(file, "topology_hash", topology_hash);
+    const bool has_geometry = read_attr_str(file, "geometry_hash", geometry_hash);
     const bool has_mesh = read_attr_str(file, "mesh_hash", mesh_hash);
-    const bool has_integrity_metadata = has_format || has_schema || has_topology || has_mesh;
-    if (has_integrity_metadata && !(has_format && has_schema && has_topology && has_mesh))
+    const bool has_integrity_metadata = has_format || has_schema || has_topology || has_geometry || has_mesh;
+    if (has_integrity_metadata && !(has_format && has_schema && has_topology && has_geometry && has_mesh))
         return fail("incomplete schema/integrity metadata");
     if (has_integrity_metadata) {
         try {
@@ -286,11 +287,18 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             ys.push_back(pts[i * 3 + 1]);
             zs.push_back(pts[i * 3 + 2]);
         }
-        std::uint64_t geometry = topology;
+        std::uint64_t geometry = 1469598103934665603ULL;
         geometry = fnv1a_update_vector(geometry, xs);
         geometry = fnv1a_update_vector(geometry, ys);
         geometry = fnv1a_update_vector(geometry, zs);
-        if (mesh_hash != hash_hex(geometry))
+        if (geometry_hash != hash_hex(geometry))
+            return fail("geometry integrity hash mismatch");
+
+        std::uint64_t mesh = topology;
+        mesh = fnv1a_update_vector(mesh, xs);
+        mesh = fnv1a_update_vector(mesh, ys);
+        mesh = fnv1a_update_vector(mesh, zs);
+        if (mesh_hash != hash_hex(mesh))
             return fail("mesh integrity hash mismatch");
     }
     // Validate CSR offsets before converting uint64_t to size_t.
