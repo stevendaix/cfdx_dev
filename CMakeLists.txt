@@ -405,12 +405,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
+    add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
+    add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
     set_tests_properties(test_mms_scalar_diffusion test_mesh_refinement_order
         test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
+        test_thermal_vv test_radiation_vv
         test_phase10_turbulence_hardening test_thermophysical_models_vv
         test_analytical_benchmarks test_benchmark_matrix
         test_level_b_reference_benchmarks test_level_c_coupled_verification
