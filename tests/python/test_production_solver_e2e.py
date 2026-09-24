@@ -9,12 +9,19 @@ from cfdx.dat_io import read_dat_restart
 
 
 def _run(controller: ExecutionController) -> None:
+    output: list[str] = []
+    controller.on_output = lambda line, is_stderr: output.append(
+        ("stderr: " if is_stderr else "stdout: ") + line
+    )
     controller.start()
     thread = controller.runner._thread
     assert thread is not None
     thread.join(timeout=30)
     assert not thread.is_alive()
-    assert controller.session.state.value == "CONVERGED"
+    assert controller.session.state.value == "CONVERGED", (
+        f"production solver failed: error={controller.error!r}; "
+        f"output={output[-40:]!r}"
+    )
 
 
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
@@ -36,13 +43,20 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     _run(controller)
 
     assert controller.latest_metrics is not None
-    assert controller.latest_metrics.iteration == 20
+    # --iterations is the solver's maximum iteration count, not an exact
+    # iteration target. The authoritative completion line reports the actual
+    # nonlinear iteration reached by the production solver.
+    assert controller.latest_metrics.iteration is not None
+    assert 1 <= controller.latest_metrics.iteration <= 20
+    assert controller.session.iteration == controller.latest_metrics.iteration
+
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
 
     restart = read_dat_restart(checkpoint)
     assert restart.cells > 0
-    assert restart.iteration == 20
+    assert restart.iteration == controller.session.iteration
+    assert 1 <= restart.iteration <= 20
     assert "U" in restart.fields
     assert "p" in restart.fields
 
@@ -57,14 +71,16 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
             "--iterations", "5",
         ]),
     )
-    # ExecutionController appends the configured restart option and DAT path.
-    # The solver therefore consumes the real production DAT, not a fixture.
     restart_controller.restart(checkpoint)
     thread = restart_controller.runner._thread
     assert thread is not None
     thread.join(timeout=30)
     assert not thread.is_alive()
     assert restart_session.state.value == "CONVERGED"
+    assert restart_controller.latest_metrics is not None
+    assert restart_controller.latest_metrics.iteration is not None
+    assert 1 <= restart_controller.latest_metrics.iteration <= 5
+    assert restart_session.iteration == restart_controller.latest_metrics.iteration
 
     outputs = sorted(second_dir.glob("result_*.vtu"))
     assert outputs

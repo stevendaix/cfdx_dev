@@ -31,7 +31,12 @@ class SolverMetricsParser:
     """
 
     _NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-    _ITERATION = re.compile(rf"\b(?:iteration|iter)\s*(?:=|:)?\s*(\d+)\b", re.I)
+    # Production solver completion reports "Iterations N" (plural), while
+    # progress lines use "Iteration N". Accept both forms so the final
+    # authoritative solver iteration is not lost by the monitor parser.
+    _ITERATION = re.compile(
+        rf"\b(?:iterations?|iter)\s*(?:=|:)?\s*(\d+)\b", re.I
+    )
     _TIME = re.compile(rf"\b(?:time|physical\s+time)\s*(?:=|:)\s*({_NUMBER})\b", re.I)
     _CFL = re.compile(rf"\bCFL\s*(?:=|:)\s*({_NUMBER})\b", re.I)
     _RESIDUAL = re.compile(

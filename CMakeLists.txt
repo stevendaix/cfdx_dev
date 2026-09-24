@@ -498,7 +498,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction test_phase8_mpi_poisson PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
