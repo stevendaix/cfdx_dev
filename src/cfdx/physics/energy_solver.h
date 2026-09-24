@@ -180,7 +180,21 @@ inline EnergySolveResult solve_energy(
         sc.tolerance=controls.tolerance;
         sc.relaxation=controls.relaxation;
         const auto linear=solve_scalar_equation(eq,candidate,sc);
-        double res=scalar_equation_residual_inf(eq,candidate);
+        const double res=scalar_equation_residual_inf(eq,candidate);
+
+        double temperature_change=0.0;
+        double temperature_scale=1.0;
+        for(std::size_t i=0;i<temperature.size();++i) {
+            temperature_change=std::max(
+                temperature_change,
+                std::abs(candidate(i)-temperature(i)));
+            temperature_scale=std::max(
+                temperature_scale,
+                std::abs(candidate(i)));
+        }
+        const double relative_temperature_change=
+            temperature_change/temperature_scale;
+
         for(std::size_t i=0;i<temperature.size();++i)
             temperature(i)=candidate(i);
 
@@ -203,15 +217,23 @@ inline EnergySolveResult solve_energy(
             return scale;
         }();
         const double linear_backward_error = res / linear_scale;
-        if(linear.status==cfdx::core::SolverStatus::CONVERGED ||
-           linear_backward_error<=controls.tolerance) {
+        const bool linear_converged =
+            linear.status==cfdx::core::SolverStatus::CONVERGED ||
+            linear_backward_error<=controls.tolerance;
+
+        // A converged linear solve is not sufficient when relaxation < 1:
+        // the accepted temperature is only a predictor of the nonlinear
+        // fixed point. Require the accepted state itself to stop moving and
+        // satisfy the physical energy balance before declaring convergence.
+        if(linear_converged &&
+           relative_temperature_change<=controls.tolerance &&
+           imbalance<=controls.tolerance) {
             result.converged=true;
             break;
         }
         // For a transient step, "old" is the state at t^n and must remain
         // fixed throughout the nonlinear iterations of the t^(n+1) solve.
         // For steady mode dt<=0 and old is only a linearisation reference.
-
     }
     return result;
 }
