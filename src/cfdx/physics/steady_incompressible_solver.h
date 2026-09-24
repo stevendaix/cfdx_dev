@@ -251,6 +251,10 @@ inline double rhie_chow_pressure_flux_internal(
     if (!(d > 0.0))
         throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate centre distance");
     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+    // rAU is the inverse integrated momentum diagonal (1/A_P). The volume
+    // factor is introduced here, at the velocity/pressure projection stage,
+    // because the pressure gradient is a volumetric momentum source. Thus
+    // cx/cy/cz are dAU = V*rAU, not a redefinition of rAU itself.
     const double cx = 0.5*(geometry.cell_volumes[o] * rAU[0][o] +
                            geometry.cell_volumes[n] * rAU[0][n]);
     const double cy = 0.5*(geometry.cell_volumes[o] * rAU[1][o] +
@@ -267,6 +271,12 @@ inline double rhie_chow_pressure_flux_internal(
         0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
         0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
         0.5*(grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+    // The face response uses the same dAU = V/A_P operator as the cell
+    // velocity reconstruction. Keeping the orthogonal pressure difference
+    // implicit and the non-orthogonal remainder deferred is important: the
+    // continuity matrix and the conservative Rhie-Chow flux must represent
+    // the same discrete operator, otherwise a residual floor can survive
+    // even when the momentum equations appear converged.
     // Orthogonal pressure difference is implicit in the pressure matrix.
     // The non-orthogonal remainder is deferred explicitly using the same
     // Gauss gradient. This keeps the face flux and pressure equation on the
@@ -318,6 +328,9 @@ make_rhie_chow_mass_flux(
     const auto& own = mesh.ownership();
     if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
+    // Boundary pressure is passed explicitly to the gradient operator. A
+    // boundary face has no neighbour coefficient: any dAU/rAU interpolation
+    // must therefore use the owner-cell value rather than a ghost/zero entry.
     const auto grad_p = gauss_gradient_with_boundary(
         p, mesh, geometry, pressure_bcs);
     for (const auto& component : rAU) {
