@@ -166,7 +166,7 @@ int main()
 
     run_case("s2s_external_irradiation_limit", [] {
         const std::vector<double> A{1,1}, eps{1,1};
-        const double Teq=std::pow(1000.0/STEFAN_BOLTZMANN,0.25);
+        const double Teq=std::pow(2000.0/STEFAN_BOLTZMANN,0.25);
         const std::vector<double> T{Teq,Teq};
         const std::vector<double> F{0,1,1,0};
         const auto r=solve_s2s_radiosity(A,eps,T,F,{},std::vector<double>{1000,1000});
