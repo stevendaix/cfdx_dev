@@ -472,6 +472,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             return cx*nf.x*nf.x + cy*nf.y*nf.y + cz*nf.z*nf.z;
         };
 
+    Field<double, Location::FACE> mass_flux =
+        make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const auto U_old = U;
         const auto p_old = p;
@@ -508,19 +511,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                            bc.value.z, 0.0};
         }
 
-        // Momentum predictor uses the conservative flux from the previous
-        // corrected iteration. This is the first-order SIMPLE state variable.
-        auto predictor_flux = make_mass_flux(
-            mesh, geometry, U, controls.density, velocity_bcs);
+        // Momentum predictor uses the conservative corrected flux from the
+        // previous outer iteration. This preserves the SIMPLE phi state.
 
         auto ex = assemble_momentum_component(
-            mesh, geometry, predictor_flux, grad_p, body_x, mu_eff, ubc_x, 0,
+            mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
         auto ey = assemble_momentum_component(
-            mesh, geometry, predictor_flux, grad_p, body_y, mu_eff, ubc_y, 1,
+            mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
             controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
         auto ez = assemble_momentum_component(
-            mesh, geometry, predictor_flux, grad_p, body_z, mu_eff, ubc_z, 2,
+            mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
 
         Vector ux(mesh.n_cells()), uy(mesh.n_cells()), uz(mesh.n_cells());
@@ -624,9 +625,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
-        Field<double, Location::FACE> mass_flux(
-            mesh.n_faces(), "phi", "kg/s", 1);
-
         for (std::size_t corr = 0; corr < pcorr; ++corr) {
             const std::size_t nc = mesh.n_cells();
             SparseMatrix A(nc, nc);
@@ -683,10 +681,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
                 const Vec3 Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double rfn =
-                    rAU[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    rAU[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    rAU[2][o]*(Sf.z/area)*(Sf.z/area);
+                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
+                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
+                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
                 rows[o][o] += controls.density * rfn * area / distance;
             }
 
@@ -784,9 +784,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double d =
                             (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
                         const double nx = Sf.x/area, ny = Sf.y/area, nz = Sf.z/area;
-                        const double rfn = rAtU[0][o]*nx*nx +
-                                           rAtU[1][o]*ny*ny +
-                                           rAtU[2][o]*nz*nz;
+                        const auto& pressure_coeff =
+                            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+                        const double rfn = pressure_coeff[0][o]*nx*nx +
+                                           pressure_coeff[1][o]*ny*ny +
+                                           pressure_coeff[2][o]*nz*nz;
                         mass_flux(f) = phiHbyA(f) +
                             controls.density * rfn * area / d * p_corr(o);
                     } else {
