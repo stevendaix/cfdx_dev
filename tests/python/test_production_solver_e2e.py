@@ -43,16 +43,20 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     _run(controller)
 
     assert controller.latest_metrics is not None
-    # A final residual/diagnostic line may update latest_metrics without
-    # repeating the solver iteration. The controller's session is the
-    # authoritative accumulated iteration state.
-    assert controller.session.iteration == 20
+    # --iterations is the solver's maximum iteration count, not an exact
+    # iteration target. The authoritative completion line reports the actual
+    # nonlinear iteration reached by the production solver.
+    assert controller.latest_metrics.iteration is not None
+    assert 1 <= controller.latest_metrics.iteration <= 20
+    assert controller.session.iteration == controller.latest_metrics.iteration
+
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
 
     restart = read_dat_restart(checkpoint)
     assert restart.cells > 0
-    assert restart.iteration == 20
+    assert restart.iteration == controller.session.iteration
+    assert 1 <= restart.iteration <= 20
     assert "U" in restart.fields
     assert "p" in restart.fields
 
@@ -73,6 +77,10 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     thread.join(timeout=30)
     assert not thread.is_alive()
     assert restart_session.state.value == "CONVERGED"
+    assert restart_controller.latest_metrics is not None
+    assert restart_controller.latest_metrics.iteration is not None
+    assert 1 <= restart_controller.latest_metrics.iteration <= 5
+    assert restart_session.iteration == restart_controller.latest_metrics.iteration
 
     outputs = sorted(second_dir.glob("result_*.vtu"))
     assert outputs
