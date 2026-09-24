@@ -175,7 +175,7 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 250;
+    c.convergence.max_iterations = 500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
     c.linear_max_iterations = 2000;
