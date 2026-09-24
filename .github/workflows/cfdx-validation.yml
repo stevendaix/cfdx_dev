@@ -27,6 +27,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3 python3-venv
 
+      - name: Prepare Python test environment
+        run: |
+          python3 -m venv .venv-e2e
+          .venv-e2e/bin/python -m pip install --upgrade pip
+          .venv-e2e/bin/python -m pip install pytest h5py meshio
+
       - name: Configure
         run: |
           cmake -S . -B build-validation -G Ninja \
@@ -34,7 +40,8 @@ jobs:
             -DCFDX_BUILD_TESTS=ON \
             -DCFDX_ENABLE_MPI=OFF \
             -DCFDX_BUILD_PYTHON=OFF \
-            -DCFDX_USE_HDF5_SERIAL=OFF
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv-e2e/bin/python
 
       - name: Build Phase 13 validation executables
         run: |
@@ -81,9 +88,6 @@ jobs:
 
       - name: Run application E2E regression
         run: |
-          python3 -m venv .venv-e2e
-          .venv-e2e/bin/python -m pip install --upgrade pip
-          .venv-e2e/bin/python -m pip install pytest h5py meshio
           PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
 
       - name: Capture complete CTest log
