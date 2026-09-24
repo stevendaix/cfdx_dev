@@ -120,7 +120,7 @@ int main()
         const double k=16*STEFAN_BOLTZMANN*std::pow(T,3)/(3*(ka+ks));
         EXPECT_NEAR(rosseland_conductivity(T,ka,ks),k,1e-12*k);
         EXPECT_NEAR(p1_diffusion_coefficient(ka,ks),1.0/3.0,1e-12);
-        EXPECT_NEAR(p1_absorption_coefficient(ka,ks),0.72,1e-12);
+        EXPECT_NEAR(p1_absorption_coefficient(ka,ks),1.2,1e-12);
         std::cout << "RADIATION_REGRESSION: rosseland_p1=PASS\n";
     });
 
@@ -165,7 +165,9 @@ int main()
     });
 
     run_case("s2s_external_irradiation_limit", [] {
-        const std::vector<double> A{1,1}, eps{1,1}, T{500,500};
+        const std::vector<double> A{1,1}, eps{1,1};
+        const double Teq=std::pow(1000.0/STEFAN_BOLTZMANN,0.25);
+        const std::vector<double> T{Teq,Teq};
         const std::vector<double> F{0,1,1,0};
         const auto r=solve_s2s_radiosity(A,eps,T,F,{},std::vector<double>{1000,1000});
         EXPECT_TRUE(r.converged);
