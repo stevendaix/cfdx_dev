@@ -651,17 +651,38 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double nx = rawSf.x / area;
                 const double ny = rawSf.y / area;
                 const double nz = rawSf.z / area;
+                const double aox = ex.diagonal[c], anx = ex.diagonal[ncell];
+                const double aoy = ey.diagonal[c], any = ey.diagonal[ncell];
+                const double aoz = ez.diagonal[c], anz = ez.diagonal[ncell];
+                if (!(aox > 0.0) || !(anx > 0.0) ||
+                    !(aoy > 0.0) || !(any > 0.0) ||
+                    !(aoz > 0.0) || !(anz > 0.0) ||
+                    !std::isfinite(aox) || !std::isfinite(anx) ||
+                    !std::isfinite(aoy) || !std::isfinite(any) ||
+                    !std::isfinite(aoz) || !std::isfinite(anz))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid momentum diagonal on face " +
+                        std::to_string(f) + " cells " + std::to_string(c) + "/" +
+                        std::to_string(ncell));
                 const double rAUx_f = 0.5 * (
-                    geometry.cell_volumes[c] / std::max(ex.diagonal[c], 1e-30) +
-                    geometry.cell_volumes[ncell] / std::max(ex.diagonal[ncell], 1e-30));
+                    geometry.cell_volumes[c] / aox +
+                    geometry.cell_volumes[ncell] / anx);
                 const double rAUy_f = 0.5 * (
-                    geometry.cell_volumes[c] / std::max(ey.diagonal[c], 1e-30) +
-                    geometry.cell_volumes[ncell] / std::max(ey.diagonal[ncell], 1e-30));
+                    geometry.cell_volumes[c] / aoy +
+                    geometry.cell_volumes[ncell] / any);
                 const double rAUz_f = 0.5 * (
-                    geometry.cell_volumes[c] / std::max(ez.diagonal[c], 1e-30) +
-                    geometry.cell_volumes[ncell] / std::max(ez.diagonal[ncell], 1e-30));
+                    geometry.cell_volumes[c] / aoz +
+                    geometry.cell_volumes[ncell] / anz);
                 const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
+                if (!(rfn > 0.0) || !std::isfinite(rfn))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face rAU on face " +
+                        std::to_string(f));
                 const double D = rho * rfn * area / d;
+                if (!(D > 0.0) || !std::isfinite(D))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid pressure coefficient on face " +
+                        std::to_string(f));
                 // phi_p = D (p_P - p_N). Only this orthogonal derivative is
                 // implicit in the coupled matrix. The non-orthogonal remainder
                 // is a deferred correction evaluated from p_old below, exactly
@@ -726,11 +747,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double nx = rawSf.x / area;
                     const double ny = rawSf.y / area;
                     const double nz = rawSf.z / area;
-                    const double rAUx = geometry.cell_volumes[c] / std::max(ex.diagonal[c], 1e-30);
-                    const double rAUy = geometry.cell_volumes[c] / std::max(ey.diagonal[c], 1e-30);
-                    const double rAUz = geometry.cell_volumes[c] / std::max(ez.diagonal[c], 1e-30);
+                    const double a_x = ex.diagonal[c];
+                    const double a_y = ey.diagonal[c];
+                    const double a_z = ez.diagonal[c];
+                    if (!(a_x > 0.0) || !(a_y > 0.0) || !(a_z > 0.0) ||
+                        !std::isfinite(a_x) || !std::isfinite(a_y) || !std::isfinite(a_z))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: invalid boundary momentum diagonal on face " +
+                            std::to_string(f) + " cell " + std::to_string(c));
+                    const double rAUx = geometry.cell_volumes[c] / a_x;
+                    const double rAUy = geometry.cell_volumes[c] / a_y;
+                    const double rAUz = geometry.cell_volumes[c] / a_z;
                     const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
+                    if (!(rfn > 0.0) || !std::isfinite(rfn))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: invalid boundary face rAU on face " +
+                            std::to_string(f));
                     const double D = rho * rfn * area / d;
+                    if (!(D > 0.0) || !std::isfinite(D))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
+                            std::to_string(f));
                     A.push_back(row, nv + c, D);
                     b(row) += D * pbc->value;
                 }
