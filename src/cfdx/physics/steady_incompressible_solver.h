@@ -679,7 +679,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const auto nr = mesh.ownership().neighbour(f);
 
             if (nr >= 0) {
-                const std::size_t ncell = static_cast<std::size_t>(nr);
+                // For a face owned by another cell, neighbour(f) is the current
+                // cell. Use the owner as the opposite cell in that case.
+                const int other_cell = owner
+                    ? nr
+                    : mesh.ownership().owner(f);
+                if (other_cell < 0 || static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 const double half_rho = 0.5 * rho;
                 A.push_back(row, c, half_rho * Sf.x);
                 A.push_back(row, ncell, half_rho * Sf.x);
