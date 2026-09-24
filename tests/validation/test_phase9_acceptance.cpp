@@ -175,11 +175,14 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 250;
-    c.convergence.relative_tolerance = 1e-8;
-    c.convergence.continuity_tolerance = 1e-8;
-    c.linear_max_iterations = 2000;
-    c.linear_tolerance = 1e-10;
+    // Couette has an exact zero streamwise pressure gradient. Do not accept
+    // the nonlinear state while under-relaxed pressure corrections can still
+    // accumulate a measurable pressure drift.
+    c.convergence.max_iterations = 800;
+    c.convergence.relative_tolerance = 1e-10;
+    c.convergence.continuity_tolerance = 1e-10;
+    c.linear_max_iterations = 3000;
+    c.linear_tolerance = 1e-12;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
     c.body_force = {0.0, 0.0, 0.0};
