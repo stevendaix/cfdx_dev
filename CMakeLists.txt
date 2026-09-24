@@ -396,12 +396,25 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_mms_scalar_diffusion tests/validation/test_mms_scalar_diffusion.cpp)
+    add_cfdx_test(test_mesh_refinement_order tests/validation/test_mesh_refinement_order.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_fluent_vmfl_reference tests/validation/test_fluent_vmfl_reference.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
+    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
+
+    # Phase 13 verification labels. The campaign driver selects these tests
+    # without conflating unit/regression coverage with numerical verification.
+    set_tests_properties(test_mms_scalar_diffusion test_mesh_refinement_order
+        test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
+        test_phase10_turbulence_hardening test_thermophysical_models_vv
+        test_analytical_benchmarks test_benchmark_matrix
+        test_level_b_reference_benchmarks test_level_c_coupled_verification
+        test_steady_incompressible_solver test_matrix_free_fv_operator
+        test_temporal_physics test_core_temporal
+        PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
@@ -449,6 +462,7 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME test_phase8_mpi_poisson
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_test(NAME test_phase5_distributed
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
@@ -492,7 +506,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
-    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)

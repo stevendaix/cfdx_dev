@@ -36,36 +36,37 @@ jobs:
             -DCFDX_BUILD_PYTHON=OFF \
             -DCFDX_USE_HDF5_SERIAL=OFF
 
-      - name: Build validation executables
+      - name: Build Phase 13 validation executables
         run: |
           cmake --build build-validation --target \
-            test_analytical_benchmarks \
-            test_benchmark_matrix \
-            test_level_b_reference_benchmarks \
-            test_level_c_coupled_verification \
-            test_phase9_acceptance \
-            test_steady_incompressible_solver \
-            test_ghia_cavity \
-            --parallel 2
+            test_analytical_benchmarks test_benchmark_matrix \
+            test_level_b_reference_benchmarks test_level_c_coupled_verification \
+            test_phase9_acceptance test_steady_incompressible_solver \
+            test_mms_scalar_diffusion test_mesh_refinement_order \
+            test_m1_m4_validation test_m2_m4_solver_validation \
+            test_cht_validation test_phase10_turbulence_hardening \
+            test_thermophysical_models_vv test_matrix_free_fv_operator \
+            test_temporal_physics test_core_temporal --parallel 2
 
-      - name: Run validation tests
+      - name: Run Phase 13 validation tests
         run: |
-          ctest --test-dir build-validation \
-            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)$' \
-            --output-on-failure
+          ctest --test-dir build-validation -L phase13 --output-on-failure
 
       - name: Run campaign driver
         run: |
           python3 scripts/run_validation.py \
             --build-dir build-validation \
-            --junit build-validation/validation-junit.xml
+            --junit build-validation/validation-junit.xml \
+            --json build-validation/phase13-validation.json
 
       - name: Upload validation JUnit
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cfdx-validation-junit
-          path: build-validation/validation-junit.xml
+          path: |
+            build-validation/validation-junit.xml
+            build-validation/phase13-validation.json
           if-no-files-found: ignore
 
       - name: Upload validation logs
