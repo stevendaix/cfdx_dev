@@ -55,8 +55,8 @@ jobs:
       - name: Run Phase 9 validation tests and preserve full numerical log
         run: |
           set -o pipefail
-          ctest --test-dir build-validation \
-            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)
+          CFDX_DEBUG_CELL=70 CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
+            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)'
         run: |
           python3 scripts/run_validation.py \
             --build-dir build-validation \
