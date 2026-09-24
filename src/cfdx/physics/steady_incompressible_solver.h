@@ -1791,34 +1791,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         0.5 * (hbyA[0][debug_cell] + hbyA[0][ncell]),
                         0.5 * (hbyA[1][debug_cell] + hbyA[1][ncell]),
                         0.5 * (hbyA[2][debug_cell] + hbyA[2][ncell])};
-                    const Vec3 dvec = geometry.cell_centres[ncell] -
+                    // Build the local face frame from the debug-cell side.
+                    // For a neighbour-side debug cell, the global owner-oriented
+                    // face vector and the centre-to-centre vector have opposite
+                    // orientations. Mixing those frames was the source of the
+                    // NaN/incorrect pressure-flux microscope records and could
+                    // make a valid internal face look non-commuting.
+                    const std::size_t other_cell = owner_side
+                        ? ncell : owner;
+                    const Vec3 dvec = geometry.cell_centres[other_cell] -
                                       geometry.cell_centres[debug_cell];
                     const double d = dvec.mag();
+                    if (!(d > 0.0) || !std::isfinite(d))
+                        throw std::runtime_error(
+                            "CFDX momentum microscope: degenerate internal face distance");
                     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double cx = 0.5 * (
                         geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell] +
-                        geometry.cell_volumes[ncell] * diag_rAU[0][ncell]);
+                        geometry.cell_volumes[other_cell] * diag_rAU[0][other_cell]);
                     const double cy = 0.5 * (
                         geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell] +
-                        geometry.cell_volumes[ncell] * diag_rAU[1][ncell]);
+                        geometry.cell_volumes[other_cell] * diag_rAU[1][other_cell]);
                     const double cz = 0.5 * (
                         geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell] +
-                        geometry.cell_volumes[ncell] * diag_rAU[2][ncell]);
+                        geometry.cell_volumes[other_cell] * diag_rAU[2][other_cell]);
                     dAU_n = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
                     const Vec3 gp{
                         0.5 * (final_grad_p.component_data(0)[debug_cell] +
-                               final_grad_p.component_data(0)[ncell]),
+                               final_grad_p.component_data(0)[other_cell]),
                         0.5 * (final_grad_p.component_data(1)[debug_cell] +
-                               final_grad_p.component_data(1)[ncell]),
+                               final_grad_p.component_data(1)[other_cell]),
                         0.5 * (final_grad_p.component_data(2)[debug_cell] +
-                               final_grad_p.component_data(2)[ncell])};
-                    const Vec3 rawSf = geometry.face_area_vectors[face];
-                    const double orthogonal_area = rawSf.dot(e);
+                               final_grad_p.component_data(2)[other_cell])};
+                    const Vec3 localSf = Sf;
+                    const double orthogonal_area = localSf.dot(e);
                     const Vec3 Snon{
-                        rawSf.x - orthogonal_area*e.x,
-                        rawSf.y - orthogonal_area*e.y,
-                        rawSf.z - orthogonal_area*e.z};
-                    const double normal_dp = (p(ncell) - p(debug_cell)) / d;
+                        localSf.x - orthogonal_area*e.x,
+                        localSf.y - orthogonal_area*e.y,
+                        localSf.z - orthogonal_area*e.z};
+                    const double normal_dp = (p(other_cell) - p(debug_cell)) / d;
                     grad_face_correction =
                         e * normal_dp + gp - e * gp.dot(e);
                     grad_face_momentum = gp;
