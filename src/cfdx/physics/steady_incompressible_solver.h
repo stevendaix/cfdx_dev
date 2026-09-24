@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
@@ -210,6 +211,51 @@ make_mass_flux(
     return flux;
 }
 
+inline double rhie_chow_pressure_flux_internal(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    std::size_t face,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& grad_p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho)
+{
+    using namespace cfdx::core;
+    const auto nr = mesh.ownership().neighbour(face);
+    if (nr < 0) return 0.0;
+    const std::size_t o = mesh.ownership().owner(face);
+    const std::size_t n = static_cast<std::size_t>(nr);
+    const Vec3 Sf = geometry.face_area_vectors[face];
+    const double area = Sf.mag();
+    if (!(area > 0.0))
+        throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate face");
+    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+    const double d = dvec.mag();
+    if (!(d > 0.0))
+        throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate centre distance");
+    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+    const double cx = 0.5*(rAU[0][o] + rAU[0][n]);
+    const double cy = 0.5*(rAU[1][o] + rAU[1][n]);
+    const double cz = 0.5*(rAU[2][o] + rAU[2][n]);
+    const double rfn = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
+    const double orthogonal_area = Sf.dot(e);
+    const Vec3 Snon{
+        Sf.x - orthogonal_area*e.x,
+        Sf.y - orthogonal_area*e.y,
+        Sf.z - orthogonal_area*e.z};
+    const Vec3 gp{
+        0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
+        0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
+        0.5*(grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+    // Orthogonal pressure difference is implicit in the pressure matrix.
+    // The non-orthogonal remainder is deferred explicitly using the same
+    // Gauss gradient. This keeps the face flux and pressure equation on the
+    // same discrete operator on arbitrary meshes.
+    const double pressure_gradient_flux =
+        (p(n) - p(o))/d * orthogonal_area + gp.dot(Snon);
+    return rho * rfn * pressure_gradient_flux;
+}
+
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_rhie_chow_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -294,15 +340,8 @@ make_rhie_chow_mass_flux(
             Vec3 Hn;
             U.get(n, Hn.x, Hn.y, Hn.z);
             Hf = (Hf + Hn) * 0.5;
-            const Vec3 Sf = geometry.face_area_vectors[f];
-            const double area = Sf.mag();
-            const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-            const double nx = Sf.x / area, ny = Sf.y / area, nz = Sf.z / area;
-            const double rfn =
-                0.25 * ((rAU[0][o] + rAU[0][n]) * nx * nx +
-                        (rAU[1][o] + rAU[1][n]) * ny * ny +
-                        (rAU[2][o] + rAU[2][n]) * nz * nz);
-            correction = rho * rfn * area * (p(n) - p(o)) / d;
+            correction = rhie_chow_pressure_flux_internal(
+                mesh, geometry, f, p, grad_p, rAU, rho);
         } else {
             const std::size_t patch = geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches()) {
@@ -684,8 +723,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         x(nv + c) = p_old(c);
     }
 
+    // The coupled matrix has strongly different momentum and pressure
+    // scales. Jacobi is the minimum safe baseline; a block-Schur/AMG
+    // preconditioner is a separate roadmap item and must not be faked here.
+    JacobiPreconditioner coupled_preconditioner;
     auto result = solve_gmres(
-        A, b, x, 64, max_iterations, tolerance);
+        A, b, x, 64, max_iterations, tolerance, &coupled_preconditioner);
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
@@ -965,7 +1008,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const auto begin = eqs[d]->matrix.row_offsets_data()[c];
                     const auto end = eqs[d]->matrix.row_offsets_data()[c + 1];
                     for (std::uint32_t k = begin; k < end; ++k) {
-                        if (eqs[d]->matrix.columns_data()[k] != c)
+                        const auto col = eqs[d]->matrix.columns_data()[k];
+                        // Boundary contributions are assembled into the owner
+                        // diagonal/source; off-diagonal entries are therefore
+                        // genuine internal neighbour coefficients.
+                        if (col != c)
                             h1 -= eqs[d]->matrix.values_data()[k];
                     }
                     h1 /= geometry.cell_volumes[c];
@@ -1020,6 +1067,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::vector<std::map<std::size_t, double>> rows(nc);
             std::vector<double> diag(nc, 0.0);
             std::vector<double> continuity(nc, 0.0);
+            const auto current_grad_p =
+                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
             const auto* cell_faces = mesh.cells().faces_data();
             const auto* cell_offsets = mesh.cells().offsets_data();
@@ -1030,6 +1079,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t f = cell_faces[off+k];
                     continuity[c] += mesh.ownership().owner(f) == c
                         ? phiHbyA(f) : -phiHbyA(f);
+                    if (mesh.ownership().neighbour(f) >= 0) {
+                        const double phi_nonorth = rhie_chow_pressure_flux_internal(
+                            mesh, geometry, f, p, current_grad_p,
+                            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                            controls.density);
+                        continuity[c] += mesh.ownership().owner(f) == c
+                            ? -phi_nonorth : phi_nonorth;
+                    }
                 }
             }
 
