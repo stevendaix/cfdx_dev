@@ -503,11 +503,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
 
+        // Preserve the pre-solve velocity. HbyA is the explicit momentum
+        // predictor H/A and must be reconstructed from the velocity state that
+        // was used to assemble the current matrix, not from the already solved
+        // momentum state. Using the post-solve vector here double-counts the
+        // momentum solve and leaves the independent momentum residual O(1).
         Vector ux(mesh.n_cells()), uy(mesh.n_cells()), uz(mesh.n_cells());
+        Vector ux_old(mesh.n_cells()), uy_old(mesh.n_cells()), uz_old(mesh.n_cells());
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             ux(c) = U.component_data(0)[c];
             uy(c) = U.component_data(1)[c];
             uz(c) = U.component_data(2)[c];
+            ux_old(c) = ux(c);
+            uy_old(c) = uy(c);
+            uz_old(c) = uz(c);
         }
 
         const auto rx = solve_scalar_equation(ex, ux, {
@@ -567,9 +576,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
-        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
-        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
+        hbya[0] = build_hbya(ex, ux_old, grad_p, 0, rAU[0], rAtU[0]);
+        hbya[1] = build_hbya(ey, uy_old, grad_p, 1, rAU[1], rAtU[1]);
+        hbya[2] = build_hbya(ez, uz_old, grad_p, 2, rAU[2], rAtU[2]);
         auto HbyA = make_hbya_field(hbya);
 
         // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
