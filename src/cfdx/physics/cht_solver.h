@@ -127,7 +127,6 @@ inline ChtSolveResult solve_two_region_cht(
             if(std::isfinite(previous_interface_temperature[i]))
                 Tint=controls.relaxation*Tint_new +
                      (1.0-controls.relaxation)*previous_interface_temperature[i];
-            previous_interface_temperature[i]=Tint;
             auto& values1=fv1.values[controls.region1_patch];
             auto& values2=fv2.values[controls.region2_patch];
             if(values1.size()!=mesh1.n_faces()) values1.resize(mesh1.n_faces(),0.0);
@@ -157,6 +156,7 @@ inline ChtSolveResult solve_two_region_cht(
             const double current_tint=fv1.values.at(controls.region1_patch)[p.face1];
             if(std::isfinite(previous_interface_temperature[i]))
                 dtint=std::max(dtint,std::abs(current_tint-previous_interface_temperature[i]));
+            previous_interface_temperature[i]=current_tint;
         }
         result.interface_imbalance=qimb/qscale;
         result.interface_temperature_change=dtint;
