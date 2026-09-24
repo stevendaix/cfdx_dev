@@ -46,7 +46,7 @@ jobs:
             test_m1_m4_validation test_m2_m4_solver_validation \
             test_cht_validation test_phase10_turbulence_hardening \
             test_thermophysical_models_vv test_thermal_vv test_radiation_vv test_s2s_radiation_vv \
-            test_thermal_radiation_model_matrix test_thermal_radiation_regression \
+            test_thermal_radiation_model_matrix test_thermal_radiation_regression test_thermal_challenge_vv \
             test_matrix_free_fv_operator \
             test_temporal_physics test_core_temporal --parallel 2
 
@@ -85,6 +85,12 @@ jobs:
           python3 scripts/thermal_radiation_regression.py \
             --build-dir build-validation \
             --output-dir build-validation/thermal-radiation-regression 2>&1 | tee build-validation/thermal-radiation-regression.log
+
+      - name: Run thermal challenge and coupled audit
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_thermal_challenge_vv 2>&1 | tee build-validation/thermal-challenge-vv.log
 
       - name: Run campaign driver
         run: |
