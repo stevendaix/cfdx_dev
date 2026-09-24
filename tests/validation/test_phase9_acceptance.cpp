@@ -567,22 +567,63 @@ int main()
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::UPWIND, false);
 
-        for (const auto& pair : {
-                 std::pair<const char*, const RunResult*>{"SIMPLE/SOU/bounded", &second_order},
-                 {"SIMPLE/upwind/unbounded", &unbounded}}) {
-            const auto error = profile_error(*pair.second, 8, 16);
+        // Run SOU and unbounded independently. Never let the first
+        // convection failure hide diagnostics from the second path.
+        struct ConvectionCase {
+            const char* name;
+            const RunResult* result;
+        };
+        const std::vector<ConvectionCase> convection_cases = {
+            {"SIMPLE/SOU/bounded", &second_order},
+            {"SIMPLE/upwind/unbounded", &unbounded}
+        };
+        for (const auto& cc : convection_cases) {
+            const auto error = profile_error(*cc.result, 8, 16);
+            const auto& h = cc.result->solve.history.empty()
+                ? IncompressibleIteration{}
+                : cc.result->solve.history.back();
+            std::vector<std::string> gates;
+            if (!cc.result->solve.converged)
+                gates.push_back("solver_not_converged");
             if (!(error.l2 < profile_l2_tolerance &&
                   error.linf < profile_linf_tolerance))
-                throw std::runtime_error(
-                    std::string(pair.first) + ": convection gate failed");
-            const auto& h = pair.second->solve.history.back();
-            if (!(h.continuity_linf < 1e-7) ||
-                !(h.momentum_equation_residual_relative < 1e-7))
-                throw std::runtime_error(
-                    std::string(pair.first) + ": conservation gate failed");
-            std::cout << pair.first
-                      << ": profile L2/Linf=" << error.l2 << "/" << error.linf
-                      << " continuity=" << h.continuity_linf << "\n";
+                gates.push_back("convection_profile");
+            if (cc.result->solve.history.empty()) {
+                gates.push_back("empty_iteration_history");
+            } else {
+                if (!(h.continuity_linf < 1e-7))
+                    gates.push_back("continuity_linf");
+                if (!(h.continuity_normalized < 1e-7))
+                    gates.push_back("continuity_normalized");
+                if (!(h.momentum_equation_residual_relative < 1e-7))
+                    gates.push_back("momentum_equation_residual_relative");
+                if (!(h.corrected_flux_continuity_linf < 1e-7))
+                    gates.push_back("corrected_flux_continuity");
+                if (!(h.pressure_gradient_linf < pressure_uniformity_tolerance))
+                    gates.push_back("pressure_gradient");
+            }
+            std::cout << "CONVECTION_RESULT " << cc.name
+                      << " solver_converged="
+                      << (cc.result->solve.converged ? "true" : "false")
+                      << " iterations=" << cc.result->solve.iterations
+                      << " profile_L2=" << error.l2
+                      << " profile_Linf=" << error.linf
+                      << " continuity=" << h.continuity_linf
+                      << " continuity_norm=" << h.continuity_normalized
+                      << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                      << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
+                      << " gradp_linf=" << h.pressure_gradient_linf
+                      << " gradp_l2=" << h.pressure_gradient_l2
+                      << " gates_failed=" << gates.size()
+                      << "\n";
+            if (!gates.empty()) {
+                std::cout << "CONVECTION_FAILURES " << cc.name;
+                for (const auto& gate : gates) std::cout << " " << gate;
+                std::cout << "\n";
+                failed_models.push_back(cc.name);
+            } else {
+                successful_models.push_back(cc.name);
+            }
         }
 
         // A pure-Neumann pressure field has a gauge freedom. Starting from a
