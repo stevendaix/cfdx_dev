@@ -54,6 +54,20 @@ inline double relaxed_value(double old_value, double computed_value, double alph
     return old_value + alpha * (computed_value - old_value);
 }
 
+// Discrete coefficient convention used throughout the pressure-velocity path:
+//
+//   A_P   = integrated FV momentum diagonal
+//   rAU   = 1/A_P
+//   dAU   = V*rAU = V/A_P
+//
+// The volume is intentionally NOT folded into rAU. rAU belongs to the
+// momentum algebra; dAU is the physical velocity response to a pressure
+// gradient. Pressure correction, Rhie-Chow, and coupled Schur coefficients
+// must use dAU (or an equivalent V*rAU expression) so they remain consistent
+// with the cell velocity reconstruction and continuity flux. Keep this
+// distinction explicit because 1/A_P and V/A_P are both valid quantities,
+// but they belong to different discrete operators.
+
 inline double rhie_chow_face_flux(double interpolated_flux,
                                   double pressure_owner,
                                   double pressure_neighbour,
