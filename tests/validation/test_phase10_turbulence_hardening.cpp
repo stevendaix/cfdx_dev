@@ -86,6 +86,10 @@ int main() {
     run_case("M2_komega_density_scales_production", [] {
         Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        // Keep mass flux fixed while changing density: this makes the density
+        // dependence of the production term observable instead of cancelling
+        // with the density-scaled diffusion and source coefficients.
+        flux(0)=1.0; flux(1)=-1.0;
         Field<double,Location::CELL> k1(1,"k","m2/s2",1),w1(1,"omega","1/s",1),S(1,"S","1/s",1);
         Field<double,Location::CELL> k2(1,"k","m2/s2",1),w2(1,"omega","1/s",1);
         k1(0)=k2(0)=0.1; w1(0)=w2(0)=2.0; S(0)=1.0;
