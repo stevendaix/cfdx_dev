@@ -2,6 +2,7 @@
 #include "cfdx/physics/turbulence.h"
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
+#include "cfdx/physics/radiation_advanced.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <vector>
@@ -47,10 +48,81 @@ int main()
 
         std::vector<double> F{0.0, 1.0, 1.0, 0.0};
         validate_view_factor_matrix(F, 2);
+        validate_view_factor_matrix(F, 2, {2.0, 2.0});
+
+        const double q_equal=two_surface_net_exchange(0.5,0.5,900,500,1.0);
+        const double q_area=two_surface_net_exchange(0.5,0.5,900,500,1.0,2.0,4.0);
+        EXPECT_TRUE(q_area > q_equal);
+        EXPECT_NEAR(gray_diffuse_wall_intensity(1.0,300.0,0.0),
+                    blackbody_intensity(300.0),1e-12);
+
         validate_discrete_directions({
-            {1.0, 0.0, 0.0, 2.0 * M_PI},
-            {-1.0, 0.0, 0.0, 2.0 * M_PI}
+            {1.0, 0.0, 0.0, 2.0 * M_PI / 3.0},
+            {-1.0, 0.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, 1.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, -1.0, 0.0, 2.0 * M_PI / 3.0},
+            {0.0, 0.0, 1.0, 2.0 * M_PI / 3.0},
+            {0.0, 0.0, -1.0, 2.0 * M_PI / 3.0}
         });
+    });
+
+    run_case("radiation_advanced_physical_invariants", [] {
+        RadiationOpticalProperties p;
+        p.absorption=2.0; p.scattering=1.0; p.emissivity=0.8;
+        p.validate();
+        EXPECT_NEAR(p.extinction(),3.0,1e-14);
+        EXPECT_NEAR(p.optical_thickness(2.0),6.0,1e-14);
+
+        std::vector<RadiationBand> bands(2);
+        bands[0].wavelength_min=1e-6; bands[0].wavelength_max=2e-6;
+        bands[0].weight=0.4; bands[0].properties=p;
+        bands[1].wavelength_min=2e-6; bands[1].wavelength_max=3e-6;
+        bands[1].weight=0.6; bands[1].properties=p;
+        EXPECT_NEAR(weighted_band_absorption(bands,1000.0),2.0,1e-14);
+
+        std::vector<DiscreteDirection> dirs{
+            {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
+            {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
+            {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
+        std::vector<double> incoming(6,blackbody_intensity(300.0));
+        std::vector<double> wall(6,0.0);
+        apply_diffuse_gray_wall(dirs,incoming,{1,0,0},1.0,300.0,wall);
+        EXPECT_TRUE(wall[0] > 0.0);
+        EXPECT_NEAR(wall[2],0.0,1e-14);
+
+        std::vector<ViewFactorPatch> patches{
+            {{0,0,0},{0,0,1},1.0},
+            {{0,0,1},{0,0,-1},1.0}};
+        auto F=estimate_view_factor_matrix(patches);
+        EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
+        EXPECT_TRUE(F[0] >= 0.0 && F[0] <= 1.0);
+        EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
+
+        std::vector<RadiationTriangle> s1{{
+            {0,0,0},{1,0,0},{0,1,0}}};
+        std::vector<RadiationTriangle> s2{{
+            {0,0,1},{0,1,1},{1,0,1}}};
+        const double F12=estimate_view_factor_ray_traced(s1,s2,{},2000);
+        const double F21=estimate_view_factor_ray_traced(s2,s1,{},2000);
+        EXPECT_TRUE(F12>0.0 && F12<1.0);
+        EXPECT_NEAR(F12,F21,0.05);
+
+        {
+            // Explicit area-weighted reciprocity oracle: A1 F12 = A2 F21.
+            const std::vector<double> areas{1.0,2.0};
+            const std::vector<double> reciprocal_F{
+                0.5,0.5,
+                0.25,0.75};
+            validate_view_factor_matrix(reciprocal_F,2,areas,1e-12);
+            auto nonreciprocal_F=reciprocal_F;
+            nonreciprocal_F[2]=0.30;
+            EXPECT_THROW(validate_view_factor_matrix(nonreciprocal_F,2,areas,1e-12),
+                         std::invalid_argument);
+        }
+
+        auto b=radiation_balance(100.0,100.0);
+        EXPECT_NEAR(b.net,0.0,1e-14);
+        EXPECT_NEAR(b.relative_error,0.0,1e-14);
     });
 
     return run_all();

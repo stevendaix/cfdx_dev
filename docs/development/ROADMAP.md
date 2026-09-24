@@ -74,11 +74,20 @@
 
 - [x] Blackbody and gray-surface radiation
 - [x] Two-surface net radiation exchange
-- [x] View-factor matrix validation
+- [x] View-factor validation — bounds/closure/reciprocity
+- [x] Deterministic ray-traced geometry-driven S2S visibility kernel
 - [x] P1 source-term primitive
-- [x] DOM quadrature validation primitive
-- [x] Full participating-media transport solve
-- [x] Radiation/energy coupling validation
+- [x] P1 constant-property scalar solve
+- [x] DOM quadrature zeroth/first/second-moment validation
+- [x] Direction-aware diffuse-gray DOM wall operator
+- [x] Participating-media DOM with spatially varying optical properties
+- [x] Radiation/energy outer coupling with non-isothermal Level-C regression
+- [x] Nonlinear Rosseland energy integration with cell-dependent radiative conductivity
+- [x] Band-wise non-gray DOM transport
+- [x] Radiation conservation diagnostics
+
+### Phase 12 audit
+See `docs/development/PHASE12_RADIATION_AUDIT.md`. The implementation gaps identified by the deep audit are closed. The remaining gate is CI/V&V execution; the explicit scope boundaries are deterministic Monte-Carlo S2S sampling and band-wise (not line-by-line) non-gray radiation.
 
 ### M1-M4 implementation gate
 
