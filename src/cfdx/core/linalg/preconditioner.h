@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 namespace cfdx::core {
@@ -100,6 +101,18 @@ public:
                 aug[8 * r + 4 + r] = 1.0;
             }
 
+            double block_norm_inf = 0.0;
+            for (std::size_t r = 0; r < 4; ++r) {
+                double row_sum = 0.0;
+                for (std::size_t q = 0; q < 4; ++q)
+                    row_sum += std::abs(block[4 * r + q]);
+                block_norm_inf = std::max(block_norm_inf, row_sum);
+            }
+            if (!std::isfinite(block_norm_inf) || block_norm_inf == 0.0) {
+                inv_blocks_.clear();
+                return false;
+            }
+
             for (std::size_t k = 0; k < 4; ++k) {
                 std::size_t pivot = k;
                 double pivot_abs = std::abs(aug[8 * k + k]);
@@ -110,7 +123,12 @@ public:
                         pivot_abs = candidate;
                     }
                 }
-                if (!std::isfinite(pivot_abs) || pivot_abs <= 100.0 * std::numeric_limits<double>::epsilon()) {
+                // Scale the singularity test with the block itself. A fixed
+                // absolute threshold is incorrect because momentum and pressure
+                // coefficients have different physical units and magnitudes.
+                const double pivot_floor =
+                    64.0 * std::numeric_limits<double>::epsilon() * block_norm_inf;
+                if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_floor) {
                     inv_blocks_.clear();
                     return false;
                 }
@@ -133,6 +151,26 @@ public:
             for (std::size_t r = 0; r < 4; ++r)
                 for (std::size_t q = 0; q < 4; ++q)
                     inv_blocks_[c][4 * r + q] = aug[8 * r + 4 + q];
+
+            // Verify the computed inverse instead of relying only on pivot
+            // magnitudes. This catches badly scaled blocks whose pivots survive
+            // the threshold but whose inverse is numerically unreliable.
+            double inverse_residual = 0.0;
+            for (std::size_t r = 0; r < 4; ++r) {
+                for (std::size_t q = 0; q < 4; ++q) {
+                    double value = 0.0;
+                    for (std::size_t k = 0; k < 4; ++k)
+                        value += block[4 * r + k] * inv_blocks_[c][4 * k + q];
+                    const double target = r == q ? 1.0 : 0.0;
+                    inverse_residual = std::max(
+                        inverse_residual, std::abs(value - target));
+                }
+            }
+            if (!std::isfinite(inverse_residual) ||
+                inverse_residual > 1024.0 * std::numeric_limits<double>::epsilon()) {
+                inv_blocks_.clear();
+                return false;
+            }
         }
         return true;
     }
