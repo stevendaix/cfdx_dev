@@ -268,14 +268,21 @@ int main()
         EXPECT_TRUE(r.converged);
         EXPECT_TRUE(r.interface_imbalance<1e-10);
         EXPECT_TRUE(r.interface_temperature_change<1e-10);
-        EXPECT_NEAR(T1(0),T2(0),1e-10);
+        // T1/T2 are cell-centre temperatures, not interface temperatures.
+        // For k1=2, k2=1 and unit-length layers between 400 K and 300 K,
+        // q = 100/(1/2 + 1) = 66.666... W/m2.
+        EXPECT_NEAR(T1(0),383.3333333333333,1e-10);
+        EXPECT_NEAR(T2(0),333.3333333333333,1e-10);
     });
 
     run_case("thermal_radiation_coupled_conservation", [] {
         Mesh m=one_d_mesh(1); auto g=build_fv_geometry(m);
         Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0);
         Field<double,Location::CELL> T(1,"T","K",1), nonrad(1,"nonrad","W/m3",1);
-        T(0)=500; nonrad.fill(100);
+        // Start from the radiation-wall equilibrium temperature so the
+        // coupled nonlinear solve tests physical evolution rather than an
+        // artificial large first Newton/fixed-point jump.
+        T(0)=300; nonrad.fill(100);
         Field<double,Location::CELL> G(1,"G","W/m2",1); G.fill(0);
         auto dirs=sn_quadrature(4);
         RadiationEnergyCouplingControls c;
