@@ -23,7 +23,7 @@ int main()
         EXPECT_NEAR(evaluate_scalar_property(c,400.0),3.0,1e-12);
 
         c.model=ScalarPropertyModel::POLYNOMIAL; c.coefficients={2.0,0.01,1e-4};
-        EXPECT_NEAR(evaluate_scalar_property(c,310.0),22.1,1e-12);
+        EXPECT_NEAR(evaluate_scalar_property(c,310.0),2.11,1e-12);
 
         c.model=ScalarPropertyModel::POWER_LAW; c.exponent=1.5;
         EXPECT_NEAR(evaluate_scalar_property(c,600.0),2.0*std::pow(2.0,1.5),1e-12);
