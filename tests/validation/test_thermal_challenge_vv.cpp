@@ -271,7 +271,13 @@ int main()
                 Tmax=std::max(Tmax,T(i));
                 Tmin=std::min(Tmin,T(i));
             }
-            const double exact_dT=qv*L*L/(8.0*k);
+            double exact_dT_cell=0.0;
+            for(std::size_t i=0;i<n;++i) {
+                const double x=(static_cast<double>(i)+0.5)/static_cast<double>(n);
+                exact_dT_cell=std::max(
+                    exact_dT_cell,qv*x*(L-x)/(2.0*k));
+            }
+            const double exact_dT_continuous=qv*L*L/(8.0*k);
             const double expected_power=qv*L; // unit cross-sectional area
             const double generated_power=qv*std::accumulate(
                 g.cell_volumes.begin(),g.cell_volumes.end(),0.0);
@@ -280,14 +286,16 @@ int main()
             std::cout << "THERMAL_POWER_STUDY: qvol=" << qv
                       << " W/m3 Tmax=" << Tmax
                       << " dTmax=" << (Tmax-T0)
-                      << " exact_dTmax=" << exact_dT
+                      << " exact_dTmax_cell=" << exact_dT_cell
+                      << " exact_dTmax_continuous=" << exact_dT_continuous
                       << " generated_power=" << generated_power
                       << " expected_power=" << expected_power
                       << " center_exact=" << center_exact
                       << " Tmin=" << Tmin << '\\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            EXPECT_NEAR(Tmax-T0,exact_dT,1e-10*std::max(1.0,exact_dT));
+            EXPECT_NEAR(Tmax-T0, T0 + exact_dT_cell - T0,
+                         1e-10*std::max(1.0,exact_dT_cell));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
         }
     });
