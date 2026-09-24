@@ -117,13 +117,13 @@ int main()
         T(0)=1000.0;G(0)=0.0;q(0)=0.0;
         const double wa=M_PI*(0.5-std::sqrt(3.0)/6.0);
         const double wc=M_PI*(1.0+std::sqrt(3.0))/8.0;
-        const double q=1.0/std::sqrt(3.0);
+        const double mu=1.0/std::sqrt(3.0);
         std::vector<DiscreteDirection> dirs{
             {1,0,0,wa},{-1,0,0,wa},
             {0,1,0,wa},{0,-1,0,wa},
             {0,0,1,wa},{0,0,-1,wa},
-            {q,q,q,wc},{q,q,-q,wc},{q,-q,q,wc},{q,-q,-q,wc},
-            {-q,q,q,wc},{-q,q,-q,wc},{-q,-q,q,wc},{-q,-q,-q,wc}};
+            {mu,mu,mu,wc},{mu,mu,-mu,wc},{mu,-mu,mu,wc},{mu,-mu,-mu,wc},
+            {-mu,mu,mu,wc},{-mu,mu,-mu,wc},{-mu,-mu,mu,wc},{-mu,-mu,-mu,wc}};
         DomWallBoundaryConditions walls;
         for (std::size_t p=0;p<m.boundary().n_patches();++p)
             walls[m.boundary().patch(p).name]={0.5,1000.0};
