@@ -401,6 +401,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
+    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
@@ -503,7 +504,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
-    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
     if(CFDX_BUILD_RUNTIME_TESTS)
         add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
