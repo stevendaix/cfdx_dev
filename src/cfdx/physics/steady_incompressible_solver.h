@@ -1496,11 +1496,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::max({rx_diag[2], ry_diag[2], rz_diag[2]});
         h.pressure_gradient_linf = pressure_gradient_linf;
         h.pressure_gradient_l2 = pressure_gradient_l2;
-        const auto component_max = std::max({
-            std::pair<double, std::size_t>{rx_diag[0], static_cast<std::size_t>(rx_diag[3])},
-            std::pair<double, std::size_t>{ry_diag[0], static_cast<std::size_t>(ry_diag[3])},
-            std::pair<double, std::size_t>{rz_diag[0], static_cast<std::size_t>(rz_diag[3])}});
-        h.momentum_residual_cell = component_max.second;
+        const ResidualDiagnostic* worst_diag = &rx_diag;
+        if (ry_diag.global > worst_diag->global) worst_diag = &ry_diag;
+        if (rz_diag.global > worst_diag->global) worst_diag = &rz_diag;
+        h.momentum_residual_cell = worst_diag->max_cell;
+        h.momentum_residual_no_pressure = worst_diag->no_pressure;
+        h.momentum_pressure_contribution = worst_diag->pressure_contribution;
+        h.momentum_residual_patch = worst_diag->patch;
         result.history.push_back(h);
 
         if (controls.probe_callback) {
