@@ -623,6 +623,47 @@ inline RosselandSolveResult solve_rosseland_energy(
     return result;
 }
 
+// Rosseland solve using the reduced transport extinction
+// kappa_R = kappa_a + sigma_s (1-g). The isotropic-scattering default is g=0.
+// This wrapper keeps the existing absorption-only API unambiguous while making
+// the transport-opacity convention explicit for scattering media.
+inline RosselandSolveResult solve_rosseland_energy_with_scattering(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& absorption,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& scattering,
+    double asymmetry_factor,
+    const EnergySolverControls& energy_controls,
+    const RosselandSolveControls& controls = {},
+    const ScalarBoundaryConditions& bcs = {})
+{
+    if (scattering.size()!=mesh.n_cells())
+        throw std::invalid_argument("Rosseland scattering field size mismatch");
+    if (!std::isfinite(asymmetry_factor) ||
+        asymmetry_factor < -1.0 || asymmetry_factor > 1.0)
+        throw std::invalid_argument("Rosseland asymmetry factor must be in [-1,1]");
+
+    cfdx::core::Field<double,cfdx::core::Location::CELL> transport_opacity(
+        mesh.n_cells(),"kappa_R","1/m",1);
+    for (std::size_t c=0;c<mesh.n_cells();++c) {
+        if (!std::isfinite(absorption(c)) || absorption(c)<=controls.absorption_floor ||
+            !std::isfinite(scattering(c)) || scattering(c)<0.0)
+            throw std::invalid_argument("invalid Rosseland absorption/scattering state");
+        const double reduced_scattering=scattering(c)*(1.0-asymmetry_factor);
+        transport_opacity(c)=absorption(c)+reduced_scattering;
+        if (!(transport_opacity(c)>controls.absorption_floor) ||
+            !std::isfinite(transport_opacity(c)))
+            throw std::invalid_argument("invalid Rosseland transport opacity");
+    }
+
+    return solve_rosseland_energy(
+        mesh,geometry,mass_flux,temperature,source,transport_opacity,
+        energy_controls,controls,bcs);
+}
+
 // -----------------------------------------------------------------------------
 // Spatially varying gray participating-media transport.
 // -----------------------------------------------------------------------------
