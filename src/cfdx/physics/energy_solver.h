@@ -123,13 +123,16 @@ inline double energy_balance_relative(
         const double d=dvec.mag();
         const double F=mass_flux(f);
         double Tf=temperature(o);
+        bool has_face_override=false;
         if(face_values) {
             const auto it=face_values->values.find(mesh.boundary().patch(patch).name);
             if(it!=face_values->values.end() && f<it->second.size() &&
-               std::isfinite(it->second[f]))
+               std::isfinite(it->second[f])) {
                 Tf=it->second[f];
+                has_face_override=true;
+            }
         }
-        if(!face_values || !std::isfinite(Tf) || Tf==temperature(o)) {
+        if(!has_face_override) {
             if(bc.type==ScalarBoundaryType::FIXED_VALUE)
                 Tf=bc.value;
             else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
