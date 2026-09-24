@@ -219,6 +219,11 @@ make_mass_flux(
             Uf=(Uf+Un)*0.5;
         } else {
             const std::size_t p=geometry.face_patch[f];
+            if (p < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(p).type == PatchType::EMPTY) {
+                flux(f) = 0.0;
+                continue;
+            }
             if(p<mesh.boundary().n_patches()) {
                 const auto& name=mesh.boundary().patch(p).name;
                 const auto it=bcs.find(name);
