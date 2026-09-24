@@ -26,7 +26,7 @@ REQUIRED = {
     "s2s_radiation": ("RADIATION_RESIDUAL:",),
     "model_matrix": ("THERMAL_RESIDUAL:", "RADIATION_RESIDUAL:"),
     "regression_core": ("THERMAL_RADIATION_REGRESSION:",),
-    "thermal_challenge": ("THERMAL_CHALLENGE:",),
+    "thermal_challenge": ("THERMAL_CHALLENGE:", "THERMAL_POWER_STUDY:", "THERMAL_RESIDUAL:", "THERMAL_RADIATION_RESIDUAL:", "RADIATION_RESIDUAL:"),
 }
 
 def run_suite(build_dir, name, executable, log_dir):
