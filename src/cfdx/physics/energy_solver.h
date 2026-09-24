@@ -239,7 +239,7 @@ inline EnergySolveResult solve_energy(
                       << " dT_relative=" << relative_temperature_change
                       << " energy_balance=" << imbalance
                       << " accepted_state=" << accepted_state_converged
-                      << '\\n';
+                      << '\n';
         }
         if(linear_converged &&
            accepted_state_converged &&
