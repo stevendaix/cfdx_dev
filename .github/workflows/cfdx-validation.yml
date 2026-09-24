@@ -65,7 +65,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cfdx-complete-validation-evidence
-          path: build-validation/diagnostic-evidence/
+          path: |
+            build-validation/diagnostic-evidence/
+            build-validation/ctest-full.log
           if-no-files-found: warn
 
       - name: Run campaign driver
