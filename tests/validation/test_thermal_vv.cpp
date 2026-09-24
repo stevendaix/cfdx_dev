@@ -117,6 +117,10 @@ int main()
         EXPECT_NEAR(T(0),375.0,1e-10);
         EXPECT_NEAR(T(1),325.0,1e-10);
         EXPECT_TRUE(result.history.back().energy_imbalance < 1e-12);
+        std::cout << "THERMAL_RESIDUAL: source=volumetric_generation PASS"
+                  << " value=" << source(0)
+                  << " final_T=" << T(0)
+                  << " energy_imbalance=" << result.history.back().energy_imbalance << '\\n';
     });
 
     run_case("thermal_uniform_generation_conduction_balance", [] {
