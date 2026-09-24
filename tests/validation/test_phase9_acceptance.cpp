@@ -169,6 +169,10 @@ RunResult run_couette_channel(
     c.coupling.n_pressure_correctors =
         algorithm == PressureVelocityAlgorithm::PISO ||
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
+    c.coupling.n_fractional_steps =
+        algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
+    c.coupling.coupled_max_iterations = 2000;
+    c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
     c.convergence.max_iterations = 250;
@@ -305,6 +309,10 @@ int main()
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
              ConvectionScheme::UPWIND, true},
             {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
+             ConvectionScheme::UPWIND, true},
+            {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
+             ConvectionScheme::UPWIND, true},
+            {"COUPLED/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true},
         };
 
