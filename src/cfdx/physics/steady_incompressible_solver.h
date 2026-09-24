@@ -175,7 +175,8 @@ make_mass_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     double rho,
-    const VelocityBoundaryConditions& bcs)
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs)
 {
     using namespace cfdx::core;
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
@@ -264,7 +265,8 @@ make_rhie_chow_mass_flux(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
-    const VelocityBoundaryConditions& bcs)
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {})
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -279,7 +281,7 @@ make_rhie_chow_mass_flux(
 {
     std::array<std::vector<double>, 3> directional_rAU{rAU, rAU, rAU};
     return make_rhie_chow_mass_flux(
-        mesh, geometry, U, p, directional_rAU, rho, bcs);
+        mesh, geometry, U, p, directional_rAU, rho, bcs, {});
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -352,6 +354,30 @@ make_rhie_chow_mass_flux(
                 if (ubc != bcs.end() &&
                     ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                     Hf = ubc->second.value;
+
+                const auto pbc = pressure_bcs.find(name);
+                if (pbc != pressure_bcs.end() &&
+                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                    const std::size_t o = own.owner(f);
+                    const Vec3 Sf = geometry.face_area_vectors[f];
+                    const double area = Sf.mag();
+                    const Vec3 dvec =
+                        geometry.face_centres[f] - geometry.cell_centres[o];
+                    const double d = dvec.mag();
+                    if (!(d > 0.0))
+                        throw std::runtime_error("make_rhie_chow_mass_flux: degenerate boundary distance");
+                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                    const double rfn =
+                        rAU[0][o]*e.x*e.x +
+                        rAU[1][o]*e.y*e.y +
+                        rAU[2][o]*e.z*e.z;
+                    // For a prescribed boundary pressure the normal pressure
+                    // difference is implicit. The non-orthogonal remainder
+                    // requires a boundary gradient model and is therefore not
+                    // fabricated here.
+                    correction = rho * rfn * (pbc->second.value - p(o)) *
+                        Sf.dot(e) / d;
+                }
             }
         }
         flux(f) = rho * Hf.dot(geometry.face_area_vectors[f]) - correction;
