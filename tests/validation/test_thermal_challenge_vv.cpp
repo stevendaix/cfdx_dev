@@ -30,7 +30,7 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
     }
 
     const std::size_t nf=5*n+2;
-    m.faces().resize(nf);
+    // FaceConnectivity grows through push_face(); no resize API is exposed.
     m.ownership().resize(nf);
     std::vector<std::size_t> left_faces, right_faces, walls_faces;
     std::size_t f=0;
@@ -66,7 +66,7 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
         m.points().set(p,x,0,0); m.points().set(p+1,x,1,0);
         m.points().set(p+2,x,1,1); m.points().set(p+3,x,0,1);
     }
-    m.faces().resize(nf);
+    // FaceConnectivity grows through push_face(); no resize API is exposed.
     m.ownership().resize(nf);
     f=0;
     left_faces.clear(); right_faces.clear(); walls_faces.clear();
