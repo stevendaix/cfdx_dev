@@ -13,6 +13,7 @@
 #include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
