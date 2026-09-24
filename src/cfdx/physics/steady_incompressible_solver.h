@@ -257,44 +257,23 @@ make_rhie_chow_mass_flux(
     const VelocityBoundaryConditions& bcs)
 {
     using namespace cfdx::core;
-    if (p.size()!=mesh.n_cells())
+    if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
     for (const auto& component : rAU) {
         if (component.size() != mesh.n_cells())
             throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal size mismatch");
         for (const double value : component) {
             if (!std::isfinite(value) || value <= 0.0)
-                throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal must be finite and positive");
+                throw std::invalid_argument(
+                    "make_rhie_chow_mass_flux: inverse momentum diagonal must be finite and positive");
         }
     }
-    auto flux=make_mass_flux(mesh,geometry,U,rho,bcs);
-    auto gradp=gauss_gradient_with_boundary(p,mesh,geometry,{});
-    for(std::size_t f=0;f<mesh.n_faces();++f) {
-        const auto nr=mesh.ownership().neighbour(f);
-        if(nr<0) continue;
-        const std::size_t o=mesh.ownership().owner(f);
-        const std::size_t n=static_cast<std::size_t>(nr);
-        const double d=(geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
-        if(d<=0.0) throw std::runtime_error("make_rhie_chow_mass_flux: degenerate face");
-        const double rface_x=0.5*(rAU[0][o]+rAU[0][n]);
-        const double rface_y=0.5*(rAU[1][o]+rAU[1][n]);
-        const double rface_z=0.5*(rAU[2][o]+rAU[2][n]);
-        const double dpdn=(p(n)-p(o))/d;
-        const cfdx::core::Vec3 gpface={
-            0.5*(gradp.component_data(0)[o]+gradp.component_data(0)[n]),
-            0.5*(gradp.component_data(1)[o]+gradp.component_data(1)[n]),
-            0.5*(gradp.component_data(2)[o]+gradp.component_data(2)[n])};
-        const cfdx::core::Vec3 Sf=geometry.face_area_vectors[f];
-        const double area=Sf.mag();
-        const cfdx::core::Vec3 nface{Sf.x / area, Sf.y / area, Sf.z / area};
-        const double rface_n = rface_x*nface.x*nface.x
-                             + rface_y*nface.y*nface.y
-                             + rface_z*nface.z*nface.z;
-        const double gradface=gpface.dot(Sf);
-        const double orth=dpdn*area;
-        flux(f)-=rho*rface_n*(orth-gradface);
-    }
-    return flux;
+
+    // This routine is the predictor-flux constructor. Physical pressure is
+    // handled by the pressure-correction operator below; including -rAU*grad(p)
+    // here as well would apply the physical pressure gradient twice.
+    (void)p;
+    return make_mass_flux(mesh, geometry, U, rho, bcs);
 }
 
 inline ScalarEquation assemble_momentum_component(
