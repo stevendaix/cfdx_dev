@@ -27,6 +27,8 @@
 #include <cstdint>
 #include <iomanip>
 #include <sstream>
+#include <chrono>
+#include <ctime>
 
 namespace cfdx {
 namespace io {
@@ -87,6 +89,20 @@ static std::string hash_hex(std::uint64_t hash)
     return os.str();
 }
 
+static std::string utc_timestamp()
+{
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &now);
+#else
+    gmtime_r(&now, &tm);
+#endif
+    std::ostringstream os;
+    os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    return os.str();
+}
+
 static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
 {
     write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
@@ -102,11 +118,23 @@ static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
     topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
     write_attr_str(file, "topology_hash", hash_hex(topology));
 
-    std::uint64_t geometry = topology;
+    std::uint64_t geometry = 1469598103934665603ULL;
     geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
     geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
     geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
-    write_attr_str(file, "mesh_hash", hash_hex(geometry));
+    write_attr_str(file, "geometry_hash", hash_hex(geometry));
+
+    std::uint64_t mesh_hash = topology;
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().x_data(), mesh.n_points());
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().y_data(), mesh.n_points());
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().z_data(), mesh.n_points());
+    write_attr_str(file, "mesh_hash", hash_hex(mesh_hash));
+
+    write_attr_str(file, "creation_date", utc_timestamp());
+    write_attr_str(file, "modification_date", utc_timestamp());
+    write_attr_str(file, "dimension", "3");
+    write_attr_str(file, "precision", "float64");
+    write_attr_str(file, "endian", "native");
 }
 
 static herr_t write_dataset(hid_t loc_id, const char* name,

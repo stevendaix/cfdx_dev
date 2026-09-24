@@ -66,7 +66,9 @@ int main() {
         hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
         EXPECT_TRUE(file >= 0);
         const char* names[] = {"format_version", "schema_version", "cfdx_version",
-                               "topology_hash", "mesh_hash"};
+                               "topology_hash", "geometry_hash", "mesh_hash",
+                               "creation_date", "modification_date", "dimension",
+                               "precision", "endian"};
         for (const char* name : names) {
             hid_t attr = H5Aopen(file, name, H5P_DEFAULT);
             EXPECT_TRUE(attr >= 0);
@@ -92,6 +94,42 @@ int main() {
         H5Fclose(file);
         Mesh loaded;
         EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_rejects_geometry_hash_mismatch", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_bad_geometry_hash.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        hid_t attr = H5Aopen(file, "geometry_hash", H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        hid_t type = attr >= 0 ? H5Aget_type(attr) : -1;
+        if (attr >= 0 && type >= 0) EXPECT_TRUE(H5Awrite(attr, type, "0000000000000000") >= 0);
+        if (type >= 0) H5Tclose(type);
+        if (attr >= 0) H5Aclose(attr);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_FALSE(read_mesh_hdf5(filename, loaded));
+        std::remove(filename.c_str());
+    });
+
+    run_case("read_mesh_hdf5_accepts_legacy_schema_v1_without_geometry_hash", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_legacy_v1_no_geometry_hash.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Adelete(file, "geometry_hash") >= 0);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_TRUE(read_mesh_hdf5(filename, loaded));
+        EXPECT_TRUE(loaded.n_points() == original.n_points());
+        EXPECT_TRUE(loaded.n_faces() == original.n_faces());
+        EXPECT_TRUE(loaded.n_cells() == original.n_cells());
         std::remove(filename.c_str());
     });
 
