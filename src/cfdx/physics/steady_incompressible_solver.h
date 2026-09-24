@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <iostream>
 #include <cstddef>
 #include <limits>
 #include <map>
@@ -1434,8 +1436,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const Offset count = mesh.cells().offsets_data()[cell + 1] - off;
             for (Offset k = 0; k < count; ++k) {
                 const std::size_t face = mesh.cells().faces_data()[off + k];
-                if (mesh.ownership().neighbour(face) < 0)
+                if (mesh.ownership().neighbour(face) < 0) {
+                    const std::size_t patch = geometry.face_patch[face];
+                    if (patch < mesh.boundary().n_patches() &&
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
                     return true;
+                }
             }
             return false;
         };
@@ -1616,6 +1623,113 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_residual_no_pressure = worst_diag->no_pressure;
         h.momentum_pressure_contribution = worst_diag->pressure_contribution;
         h.momentum_residual_patch = worst_diag->patch;
+
+        // Optional forensic microscope for one cell. This is deliberately
+        // disabled unless CFDX_DEBUG_CELL is set, so production/CI output is
+        // unchanged. The dump is emitted once per algorithm, at convergence
+        // or at the configured iteration limit, and reports the exact matrix
+        // row residual together with the face topology/flux state.
+        const char* debug_cell_env = std::getenv("CFDX_DEBUG_CELL");
+        bool debug_cell_enabled = false;
+        std::size_t debug_cell = 0;
+        if (debug_cell_env && *debug_cell_env) {
+            try {
+                const std::string value(debug_cell_env);
+                std::size_t parsed = 0;
+                debug_cell = std::stoull(value, &parsed);
+                debug_cell_enabled = parsed == value.size() && debug_cell < mesh.n_cells();
+            } catch (...) {
+                debug_cell_enabled = false;
+            }
+        }
+        const bool converged_now =
+            iter >= minimum_outer_correctors && iter > 1 &&
+            h.momentum_residual <= controls.convergence.relative_tolerance &&
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
+            h.pressure_residual <= controls.convergence.relative_tolerance &&
+            h.continuity_linf <= controls.convergence.continuity_tolerance &&
+            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
+            h.pressure_change_inf <= controls.convergence.relative_tolerance;
+        if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
+            std::cerr << "\\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
+                      << " algorithm=" << static_cast<int>(controls.algorithm)
+                      << " iteration=" << iter << " ===\\n";
+            const auto dump_equation = [&](const char* name,
+                                           const ScalarEquation& eq,
+                                           const Vector& solution) {
+                double ax = 0.0;
+                const auto begin = eq.matrix.row_offsets_data()[debug_cell];
+                const auto end = eq.matrix.row_offsets_data()[debug_cell + 1];
+                std::cerr << name << " matrix row: rhs=" << eq.rhs(debug_cell)
+                          << " diagonal=" << eq.diagonal[debug_cell]
+                          << " nnz=" << (end - begin) << "\\n";
+                for (std::uint32_t k = begin; k < end; ++k) {
+                    const auto col = eq.matrix.columns_data()[k];
+                    const auto value = eq.matrix.values_data()[k];
+                    ax += value * solution(col);
+                    std::cerr << "  col=" << col << " a=" << value
+                              << " x=" << solution(col)
+                              << " ax=" << value * solution(col) << "\\n";
+                }
+                const double residual = ax - eq.rhs(debug_cell);
+                std::cerr << "  exact_row_ax=" << ax
+                          << " exact_row_residual=" << residual
+                          << " abs=" << std::abs(residual) << "\\n";
+            };
+            dump_equation("Ux", final_ex, final_ux);
+            dump_equation("Uy", final_ey, final_uy);
+            dump_equation("Uz", final_ez, final_uz);
+
+            const Offset off = mesh.cells().offsets_data()[debug_cell];
+            const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
+            double local_div = 0.0;
+            std::cerr << "faces=" << count << "\\n";
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t face = mesh.cells().faces_data()[off + k];
+                const auto owner = mesh.ownership().owner(face);
+                const auto neighbour = mesh.ownership().neighbour(face);
+                const bool owner_side = owner == debug_cell;
+                const double signed_phi = owner_side ? mass_flux(face) : -mass_flux(face);
+                local_div += signed_phi;
+                const Vec3 sf = owner_side ? geometry.face_area_vectors[face]
+                                            : geometry.face_area_vectors[face] * -1.0;
+                std::size_t patch = geometry.face_patch[face];
+                std::string patch_name = "INTERNAL";
+                int patch_type = -1;
+                if (neighbour < 0 && patch < mesh.boundary().n_patches()) {
+                    patch_name = mesh.boundary().patch(patch).name;
+                    patch_type = static_cast<int>(mesh.boundary().patch(patch).type);
+                }
+                std::cerr << "  face=" << face
+                          << " owner=" << owner
+                          << " neighbour=" << neighbour
+                          << " patch=" << patch_name
+                          << " patch_type=" << patch_type
+                          << " Sf=(" << sf.x << "," << sf.y << "," << sf.z << ")"
+                          << " phi=" << signed_phi;
+                if (neighbour >= 0) {
+                    const std::size_t n = static_cast<std::size_t>(neighbour);
+                    std::cerr << " neighbour_U=(" << final_ux(n) << ","
+                              << final_uy(n) << "," << final_uz(n) << ")";
+                }
+                std::cerr << "\\n";
+            }
+            std::cerr << "local_mass_flux_divergence=" << local_div
+                      << " global_continuity_linf=" << h.continuity_linf
+                      << " reconstructed_velocity_continuity_linf="
+                      << h.reconstructed_velocity_continuity_linf << "\\n";
+            std::cerr << "diagnostic_global=(" << h.momentum_equation_residual_components[0]
+                      << "," << h.momentum_equation_residual_components[1]
+                      << "," << h.momentum_equation_residual_components[2] << ")"
+                      << " internal=" << h.momentum_equation_residual_internal
+                      << " boundary=" << h.momentum_equation_residual_boundary
+                      << " worst_cell=" << h.momentum_residual_cell
+                      << " worst_patch=" << h.momentum_residual_patch << "\\n";
+            std::cerr << "no_pressure=" << h.momentum_residual_no_pressure
+                      << " pressure_contribution=" << h.momentum_pressure_contribution
+                      << " gradp_linf=" << h.pressure_gradient_linf << "\\n";
+            std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\\n";
+        }
         result.history.push_back(h);
 
         if (controls.probe_callback) {
@@ -1635,13 +1749,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             break;
         }
 
-        if (iter >= minimum_outer_correctors && iter > 1 &&
-            h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
-            h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance &&
-            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
-            h.pressure_change_inf <= controls.convergence.relative_tolerance) {
+        if (converged_now) {
             result.converged = true;
             result.iterations = iter;
             break;
