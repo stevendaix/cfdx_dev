@@ -645,10 +645,34 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     geometry.cell_volumes[ncell] / std::max(ez.diagonal[ncell], 1e-30));
                 const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
                 const double D = rho * rfn * area / d;
-                // phi_p = D (p_P - p_N)
+                // phi_p = D (p_P - p_N). Only this orthogonal derivative is
+                // implicit in the coupled matrix. The non-orthogonal remainder
+                // is a deferred correction evaluated from p_old below, exactly
+                // as in the segregated Rhie-Chow operator.
                 A.push_back(row, nv + c, D);
                 A.push_back(row, nv + ncell, -D);
-                (void)nx; (void)ny; (void)nz;
+
+                const Vec3 dvec = geometry.cell_centres[ncell] -
+                                  geometry.cell_centres[c];
+                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                const double orthogonal_area = rawSf.dot(e);
+                const Vec3 Snon{
+                    rawSf.x - orthogonal_area*e.x,
+                    rawSf.y - orthogonal_area*e.y,
+                    rawSf.z - orthogonal_area*e.z};
+                const Vec3 gp{
+                    0.5*(grad_p_old.component_data(0)[c] +
+                         grad_p_old.component_data(0)[ncell]),
+                    0.5*(grad_p_old.component_data(1)[c] +
+                         grad_p_old.component_data(1)[ncell]),
+                    0.5*(grad_p_old.component_data(2)[c] +
+                         grad_p_old.component_data(2)[ncell])};
+                const double nonorth_flux = rho * rfn * gp.dot(Snon);
+                // The continuity equation is div(phi)=0 and the pressure
+                // correction is written as phi = phi_U - D grad(p).
+                // Therefore the explicit non-orthogonal pressure flux is
+                // subtracted from the current continuity residual.
+                b(row) += nonorth_flux;
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 const VelocityBoundaryCondition* vbc = nullptr;
@@ -745,7 +769,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // The coupled matrix has strongly different momentum and pressure
     // scales. Jacobi is the minimum safe baseline; a block-Schur/AMG
     // preconditioner is a separate roadmap item and must not be faked here.
-    JacobiPreconditioner coupled_preconditioner;
+    CellBlockJacobiPreconditioner coupled_preconditioner(nc);
     auto result = solve_gmres(
         A, b, x, 64, max_iterations, tolerance, &coupled_preconditioner);
     if (result.status != SolverStatus::CONVERGED)
