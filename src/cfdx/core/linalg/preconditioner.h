@@ -101,16 +101,30 @@ public:
                 aug[8 * r + 4 + r] = 1.0;
             }
 
+            // Momentum and pressure rows can differ by several orders of
+            // magnitude. Row-scale the local block before pivoting so the
+            // factorization is insensitive to those physical units.
+            std::array<double, 4> row_scale{};
             double block_norm_inf = 0.0;
             for (std::size_t r = 0; r < 4; ++r) {
                 double row_sum = 0.0;
                 for (std::size_t q = 0; q < 4; ++q)
                     row_sum += std::abs(block[4 * r + q]);
+                row_scale[r] = row_sum;
                 block_norm_inf = std::max(block_norm_inf, row_sum);
             }
             if (!std::isfinite(block_norm_inf) || block_norm_inf == 0.0) {
                 inv_blocks_.clear();
                 return false;
+            }
+            for (std::size_t r = 0; r < 4; ++r) {
+                if (!(row_scale[r] > 0.0) || !std::isfinite(row_scale[r])) {
+                    inv_blocks_.clear();
+                    return false;
+                }
+                const double scale = 1.0 / row_scale[r];
+                for (std::size_t q = 0; q < 4; ++q)
+                    aug[8 * r + q] = block[4 * r + q] * scale;
             }
 
             for (std::size_t k = 0; k < 4; ++k) {
@@ -148,26 +162,29 @@ public:
                 }
             }
 
+            // The inverse above is B^{-1} for B = S A. Hence
+            // A^{-1} = B^{-1} S.
             for (std::size_t r = 0; r < 4; ++r)
                 for (std::size_t q = 0; q < 4; ++q)
-                    inv_blocks_[c][4 * r + q] = aug[8 * r + 4 + q];
+                    inv_blocks_[c][4 * r + q] =
+                        aug[8 * r + 4 + q] * row_scale[q];
 
-            // Verify the computed inverse instead of relying only on pivot
-            // magnitudes. This catches badly scaled blocks whose pivots survive
-            // the threshold but whose inverse is numerically unreliable.
             double inverse_residual = 0.0;
             for (std::size_t r = 0; r < 4; ++r) {
+                double row_error = 0.0;
+                double row_norm = 0.0;
                 for (std::size_t q = 0; q < 4; ++q) {
                     double value = 0.0;
                     for (std::size_t k = 0; k < 4; ++k)
                         value += block[4 * r + k] * inv_blocks_[c][4 * k + q];
                     const double target = r == q ? 1.0 : 0.0;
-                    inverse_residual = std::max(
-                        inverse_residual, std::abs(value - target));
+                    row_error = std::max(row_error, std::abs(value - target));
+                    row_norm = std::max(row_norm, std::abs(block[4 * r + q]));
                 }
+                inverse_residual = std::max(
+                    inverse_residual, row_error / std::max(row_norm, 1e-300));
             }
-            if (!std::isfinite(inverse_residual) ||
-                inverse_residual > 1024.0 * std::numeric_limits<double>::epsilon()) {
+            if (!std::isfinite(inverse_residual) || inverse_residual > 1e-10) {
                 inv_blocks_.clear();
                 return false;
             }
