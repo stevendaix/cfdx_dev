@@ -229,7 +229,9 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     const bool has_geometry = read_attr_str(file, "geometry_hash", geometry_hash);
     const bool has_mesh = read_attr_str(file, "mesh_hash", mesh_hash);
     const bool has_integrity_metadata = has_format || has_schema || has_topology || has_geometry || has_mesh;
-    if (has_integrity_metadata && !(has_format && has_schema && has_topology && has_geometry && has_mesh))
+    // Schema-v1 files written before geometry_hash was introduced remain readable.
+    // New files carry geometry_hash and are validated when present.
+    if (has_integrity_metadata && !(has_format && has_schema && has_topology && has_mesh))
         return fail("incomplete schema/integrity metadata");
     if (has_integrity_metadata) {
         try {
@@ -291,7 +293,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
         geometry = fnv1a_update_vector(geometry, xs);
         geometry = fnv1a_update_vector(geometry, ys);
         geometry = fnv1a_update_vector(geometry, zs);
-        if (geometry_hash != hash_hex(geometry))
+        if (has_geometry && geometry_hash != hash_hex(geometry))
             return fail("geometry integrity hash mismatch");
 
         std::uint64_t mesh = topology;
