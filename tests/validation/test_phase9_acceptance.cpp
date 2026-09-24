@@ -184,8 +184,22 @@ RunResult run_couette_channel(
     c.convection_scheme = scheme;
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
-    if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("Couette channel did not converge");
+    if (!solve.converged || solve.history.empty()) {
+        std::string diagnostic = "Couette channel did not converge";
+        if (!solve.history.empty()) {
+            const auto& h = solve.history.back();
+            diagnostic +=
+                ": iter=" + std::to_string(h.iteration) +
+                " mom=" + std::to_string(h.momentum_residual) +
+                " mom_eq=" + std::to_string(h.momentum_equation_residual_relative) +
+                " p=" + std::to_string(h.pressure_residual) +
+                " cont=" + std::to_string(h.continuity_linf) +
+                " cont_norm=" + std::to_string(h.continuity_normalized) +
+                " dU=" + std::to_string(h.velocity_change_inf) +
+                " dp=" + std::to_string(h.pressure_change_inf);
+        }
+        throw std::runtime_error(diagnostic);
+    }
 
     const auto& h = solve.history.back();
     if (!(h.continuity_linf < 1e-7) ||
