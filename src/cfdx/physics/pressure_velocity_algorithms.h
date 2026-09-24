@@ -13,7 +13,14 @@ enum class PressureVelocityAlgorithm {
     SIMPLE,
     SIMPLEC,
     PISO,
-    PIMPLE
+    PIMPLE,
+    // Fractional-step projection: momentum predictor followed by one or
+    // more pressure projections. This is intentionally distinct from PISO:
+    // each projection operates on the current conservative face flux.
+    FRACTIONAL_STEP,
+    // Fully coupled pressure-based solve. Momentum and continuity are
+    // assembled in one block system with an implicit Rhie-Chow pressure block.
+    COUPLED
 };
 
 struct CouplingControls {
@@ -21,13 +28,21 @@ struct CouplingControls {
     double alpha_p = 0.3;
     int n_outer_correctors = 1;
     int n_pressure_correctors = 2;
+    int n_fractional_steps = 2;
+    // Coupled linear solve controls. The coupled matrix is indefinite but the
+    // Rhie-Chow pressure block makes the collocated formulation nonsingular
+    // after pressure gauge fixing.
+    std::size_t coupled_max_iterations = 2000;
+    double coupled_linear_tolerance = 1e-10;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
 {
     if (!(c.alpha_u > 0.0 && c.alpha_u <= 1.0) ||
         !(c.alpha_p > 0.0 && c.alpha_p <= 1.0) ||
-        c.n_outer_correctors < 1 || c.n_pressure_correctors < 1)
+        c.n_outer_correctors < 1 || c.n_pressure_correctors < 1 ||
+        c.n_fractional_steps < 1 || c.coupled_max_iterations == 0 ||
+        !(c.coupled_linear_tolerance > 0.0))
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
 }
 
@@ -61,6 +76,21 @@ inline double piso_correction_gain(double diagonal, double neighbor_sum)
     if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) || diagonal <= 0.0)
         throw std::invalid_argument("piso_correction_gain: diagonal must be positive");
     return 1.0 / std::max(diagonal - neighbor_sum, diagonal * 1e-12);
+}
+
+
+// The fractional-step pressure projection is deliberately explicit about its
+// contract. It is a projection of the conservative face flux, not an alias for
+// PISO. Keeping this helper here also makes the algorithm choice visible to
+// callers without embedding policy in the finite-volume transport layer.
+inline bool is_fractional_step_algorithm(PressureVelocityAlgorithm a)
+{
+    return a == PressureVelocityAlgorithm::FRACTIONAL_STEP;
+}
+
+inline bool is_coupled_algorithm(PressureVelocityAlgorithm a)
+{
+    return a == PressureVelocityAlgorithm::COUPLED;
 }
 
 }  // namespace cfdx::physics
