@@ -865,6 +865,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             uz_old(c) = uz(c);
         }
 
+        cfdx::core::SolverResult rx{}, ry{}, rz{};
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -920,11 +921,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Equation relaxation is already part of the matrix. The Krylov solve
         // therefore returns the solution of the relaxed equation directly;
         // applying alpha_u again here would double-relax the predictor.
-        const auto rx = solve_scalar_equation(ex, ux, {
+        rx = solve_scalar_equation(ex, ux, {
             controls.linear_max_iterations, controls.linear_tolerance, 1.0});
-        const auto ry = solve_scalar_equation(ey, uy, {
+        ry = solve_scalar_equation(ey, uy, {
             controls.linear_max_iterations, controls.linear_tolerance, 1.0});
-        const auto rz = solve_scalar_equation(ez, uz, {
+        rz = solve_scalar_equation(ez, uz, {
             controls.linear_max_iterations, controls.linear_tolerance, 1.0});
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
