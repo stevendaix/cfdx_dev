@@ -97,7 +97,7 @@ inline S2SResult solve_s2s_radiosity(
         if (!std::isfinite(Gext) || Gext<0.0)
             throw std::invalid_argument("invalid S2S external irradiation");
         const double rho=1.0-emissivities[i];
-        b[i]=E+rho*Gext;
+        b[i]=emissivities[i]*E+rho*Gext;
         M[i*n+i]=1.0;
         for (std::size_t j=0;j<n;++j) M[i*n+j]-=rho*view_factors[i*n+j];
     }
