@@ -349,6 +349,10 @@ inline ScalarEquation assemble_scalar_equation(
     return eq;
 }
 
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution);
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -385,7 +389,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         controls.max_iterations, controls.tolerance);
     if (solution.size() <= 256)
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
-                  << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
+                  << " iter=" << result.iterations << " residual=" << result.residual << '\n';
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -402,7 +406,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             64, controls.max_iterations, controls.tolerance);
         if (solution.size() <= 256)
             std::cerr << "CFDX solver cascade: gmres status=" << static_cast<int>(result.status)
-                      << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
+                      << " iter=" << result.iterations << " residual=" << result.residual << '\n';
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
@@ -549,6 +553,39 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                     n, residual, residual
                 };
             }
+        }
+    }
+
+    // Accept a numerically converged linear solution using a scaled backward
+    // error as well as the raw residual. For diffusion systems the matrix and RHS
+    // scale with the mesh spacing, so an absolute residual alone can reject a
+    // solution whose algebraic error is already at round-off level.
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        double backward_error = 0.0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                backward_error = std::numeric_limits<double>::infinity();
+                break;
+            }
+            double ri = -equation.rhs(i);
+            double scale = std::abs(equation.rhs(i));
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                const double aij = val[k];
+                const double xj = candidate(col[k]);
+                ri += aij * xj;
+                scale += std::abs(aij * xj);
+            }
+            backward_error = std::max(
+                backward_error,
+                std::abs(ri) / std::max(1.0, scale));
+        }
+        if (std::isfinite(backward_error) && backward_error <= controls.tolerance) {
+            result.status = cfdx::core::SolverStatus::CONVERGED;
+            result.residual = scalar_equation_residual_inf(equation, candidate);
+            result.residual_relative = backward_error;
         }
     }
 
