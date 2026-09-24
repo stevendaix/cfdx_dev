@@ -567,9 +567,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
-        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
-        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
+        hbya[0] = build_hbya(ex, u_x_field, grad_p, 0, rAU[0], rAtU[0]);
+        hbya[1] = build_hbya(ey, u_y_field, grad_p, 1, rAU[1], rAtU[1]);
+        hbya[2] = build_hbya(ez, u_z_field, grad_p, 2, rAU[2], rAtU[2]);
         auto HbyA = make_hbya_field(hbya);
 
         // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
