@@ -54,6 +54,21 @@ jobs:
             -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)$' \
             --output-on-failure
 
+      - name: Capture complete numerical evidence (non-gating)
+        if: always()
+        run: |
+          python3 scripts/ci_capture_validation.py \\
+            --build-dir build-validation \\
+            --output-dir build-validation/diagnostic-evidence
+
+      - name: Upload complete numerical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-complete-validation-evidence
+          path: build-validation/diagnostic-evidence/
+          if-no-files-found: warn
+
       - name: Run campaign driver
         run: |
           python3 scripts/run_validation.py \
