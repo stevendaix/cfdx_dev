@@ -976,11 +976,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             // SIMPLEC follows the established consistent formulation:
             // HbyA = rAU*H - (rAU-rAtU)*grad(p).
-            hbya[c] = rAU[c] * h;
+            hbyA[c] = rAU[c] * h;
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
-                hbya[c] -= (rAU[c] - rAtU[c]) *
+                hbyA[c] -= (rAU[c] - rAtU[c]) *
                            gradp.component_data(component)[c] * geometry.cell_volumes[c];
-            if (!std::isfinite(hbya[c]))
+            if (!std::isfinite(hbyA[c]))
                 throw std::runtime_error("solve_steady_incompressible: non-finite HbyA");
         }
         return hbya;
@@ -990,9 +990,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         Field<double, Location::CELL> field(
             mesh.n_cells(), "HbyA", "m/s", 3);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-            field.component_data(0)[c] = hbya[0][c];
-            field.component_data(1)[c] = hbya[1][c];
-            field.component_data(2)[c] = hbya[2][c];
+            field.component_data(0)[c] = hbyA[0][c];
+            field.component_data(1)[c] = hbyA[1][c];
+            field.component_data(2)[c] = hbyA[2][c];
         }
         return field;
     };
@@ -1222,9 +1222,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
-        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
-        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
+        hbyA[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
+        hbyA[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
+        hbyA[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
         auto HbyA = make_hbya_field(hbya);
 
         if (freeze_state) {
@@ -1783,7 +1783,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
                     double delta = 0.0;
                     for (std::size_t d = 0; d < 3; ++d)
-                        delta = std::max(delta, std::abs(hbya[d][c] - frozen_hbyA[d][c]));
+                        delta = std::max(delta, std::abs(hbyA[d][c] - frozen_hbyA[d][c]));
                     if (delta > hbyA_delta_linf) {
                         hbyA_delta_linf = delta;
                         hbyA_delta_cell = c;
@@ -1810,7 +1810,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     }
                     for (std::size_t d = 0; d < 3; ++d)
                         hbyA_delta = std::max(hbyA_delta,
-                            std::abs(hbya[d][cell] - frozen_hbyA[d][cell]));
+                            std::abs(hbyA[d][cell] - frozen_hbyA[d][cell]));
                     std::cerr << "FROZEN_STATE_CELL label=" << label
                               << " cell=" << cell
                               << " phi_used_in_momentum_assembly=" << phi_used_l1
