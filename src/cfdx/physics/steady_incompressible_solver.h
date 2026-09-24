@@ -496,7 +496,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // system. The FV Gauss gradient is linear in the pressure field, so its
     // coefficients can be assembled face-by-face.
     for (std::size_t c = 0; c < nc; ++c) {
-        const double V = geometry.cell_volumes[c];
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
         for (Offset k = 0; k < count; ++k) {
@@ -574,9 +573,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double area = rawSf.mag();
                 const double d = (geometry.cell_centres[ncell] -
                                   geometry.cell_centres[c]).mag();
-                const double nx = rawSf.x / area;
-                const double ny = rawSf.y / area;
-                const double nz = rawSf.z / area;
                 const double nx = rawSf.x / area;
                 const double ny = rawSf.y / area;
                 const double nz = rawSf.z / area;
