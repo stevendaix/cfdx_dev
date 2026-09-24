@@ -292,17 +292,17 @@ make_rhie_chow_mass_flux(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
-    const VelocityBoundaryConditions& bcs);
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {});
 
-inline cfdx::core::Field<double, cfdx::core::Location::FACE>
-make_rhie_chow_mass_flux(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& U,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
-    const VelocityBoundaryConditions& bcs)
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs)
 {
     using namespace cfdx::core;
     if (p.size() != mesh.n_cells())
