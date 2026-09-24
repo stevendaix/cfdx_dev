@@ -113,13 +113,6 @@ void require(bool condition, const std::string& message)
     if (!condition) throw std::runtime_error(message);
 }
 
-double max_abs(const std::vector<double>& values)
-{
-    double result = 0.0;
-    for (double value : values) result = std::max(result, std::abs(value));
-    return result;
-}
-
 void test_geometry_orientation(const Mesh& mesh, const FvGeometry& geometry)
 {
     double min_internal_projection = 1e300;
