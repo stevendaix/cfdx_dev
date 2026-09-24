@@ -125,7 +125,9 @@ static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
     write_attr_str(file, "geometry_hash", hash_hex(geometry));
 
     std::uint64_t mesh_hash = topology;
-    mesh_hash = fnv1a_update(mesh_hash, &geometry, sizeof(geometry));
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().x_data(), mesh.n_points());
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().y_data(), mesh.n_points());
+    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().z_data(), mesh.n_points());
     write_attr_str(file, "mesh_hash", hash_hex(mesh_hash));
 
     write_attr_str(file, "creation_date", utc_timestamp());
