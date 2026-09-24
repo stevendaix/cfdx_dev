@@ -488,7 +488,10 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             throw std::runtime_error("radiation inner solve did not converge");
 
         for(std::size_t c=0;c<nc;++c)
-            source(c)=non_radiative_source(c)+qrad(c);
+            // qrad is emission minus absorption (positive means radiation
+            // removes energy from the material). The thermal energy equation
+            // uses the opposite sign convention: positive source = heating.
+            source(c)=non_radiative_source(c)-qrad(c);
 
         auto er=solve_energy(
             mesh,geometry,mass_flux,temperature,source,
