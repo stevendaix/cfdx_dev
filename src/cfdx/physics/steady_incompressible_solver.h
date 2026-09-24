@@ -1207,35 +1207,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.density, velocity_bcs);
 
             if (corr + 1 < pcorr) {
-                // Additional PISO/PIMPLE corrections reuse the same momentum
-                // inverse but re-evaluate the predictor flux with the updated
-                // physical pressure. The momentum matrix is deliberately not
-                // rebuilt inside the inner pressure loop.
-                auto updated_grad_p =
-                    gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
-                phiHbyA = make_mass_flux(
-                    mesh, geometry, HbyA, controls.density, velocity_bcs);
-                if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                        const auto nr = mesh.ownership().neighbour(f);
-                        if (nr < 0) continue;
-                        const std::size_t o = mesh.ownership().owner(f);
-                        const std::size_t n = static_cast<std::size_t>(nr);
-                        const Vec3 Sf = geometry.face_area_vectors[f];
-                        const double area = Sf.mag();
-                        const double d = (geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
-                        const double nx=Sf.x/area, ny=Sf.y/area, nz=Sf.z/area;
-                        const double drx=0.5*(rAtU[0][o]+rAtU[0][n])-
-                                         0.5*(rAU[0][o]+rAU[0][n]);
-                        const double dry=0.5*(rAtU[1][o]+rAtU[1][n])-
-                                         0.5*(rAU[1][o]+rAU[1][n]);
-                        const double drz=0.5*(rAtU[2][o]+rAtU[2][n])-
-                                         0.5*(rAU[2][o]+rAU[2][n]);
-                        phiHbyA(f) += controls.density *
-                            (drx*nx*nx+dry*ny*ny+drz*nz*nz) *
-                            (p(n)-p(o))/d * area;
-                    }
-                }
+                // PISO's next pressure correction is driven by the current
+                // conservative face flux, not by the original predictor.
+                // The momentum matrix is intentionally frozen inside the
+                // inner PISO loop; the updated flux is the split-operator
+                // correction that carries the first pressure solve into the
+                // next one. Rebuilding HbyA here would incorrectly restart
+                // the correction sequence from the same predictor.
+                phiHbyA = mass_flux;
             }
         }
 
