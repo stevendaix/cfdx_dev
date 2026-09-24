@@ -12,9 +12,9 @@ SUITES = [
     ("model_matrix", "test_thermal_radiation_model_matrix"),
     ("regression_core", "test_thermal_radiation_regression"),
 ]
-RESULT_RE = re.compile(r"Results:\\s+(\\d+) passed, (\\d+) failed")
-PASS_RE = re.compile(r"^\\s*PASS:\\s+(.+)$", re.MULTILINE)
-FAIL_RE = re.compile(r"^\\s*FAIL:\\s+(.+)$", re.MULTILINE)
+RESULT_RE = re.compile(r"Results:\s+(\d+) passed, (\d+) failed")
+PASS_RE = re.compile(r"^\s*PASS:\s+(.+)$", re.MULTILINE)
+FAIL_RE = re.compile(r"^\s*FAIL:\s+(.+)$", re.MULTILINE)
 MARKER_RE = re.compile(r"^(?:THERMAL|RADIATION)_RESIDUAL:.*$", re.MULTILINE)
 REG_RE = re.compile(r"^THERMAL_RADIATION_REGRESSION:.*$", re.MULTILINE)
 
