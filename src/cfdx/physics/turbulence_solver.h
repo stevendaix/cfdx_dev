@@ -222,7 +222,7 @@ inline TurbulenceTransportResult solve_komega_transport(
         std::vector<double> gk(n),gw(n);
         for(std::size_t i=0;i<n;++i){
             const double ki=std::max(k(i),controls.k_min), wi=std::max(omega(i),controls.omega_min);
-            const double nut=controls.a1*ki/wi, P=2.0*nut*strain_rate(i)*strain_rate(i);
+            const double nut=controls.a1*ki/wi, P=2.0*controls.density*nut*strain_rate(i)*strain_rate(i);
             sk(i)=P; spk(i)=-controls.density*controls.beta_star*wi;
             sw(i)=controls.gamma1*P/std::max(nut,1e-20); spw(i)=-controls.density*controls.beta1*wi;
             gk[i]=controls.density*(controls.molecular_viscosity+controls.sigma_k*nut);
@@ -273,7 +273,7 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
             const double chi=wt/nu, st=std::max(vort+wt*sa.fv2(chi)/(sa.kappa*sa.kappa*d*d),1e-20);
             const double r=wt/(st*sa.kappa*sa.kappa*d*d), fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
             const double prod=sa.cb1*(1-ft2)*st;
-            const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)/(d*d);
+            const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(d*d);
             const double grad2=gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i];
             su(i)=controls.density*(prod*wt + sa.cb2/sa.sigma*grad2); spu(i)=-controls.density*destr;
             gamma[i]=controls.density*(nu+wt)/sa.sigma;
