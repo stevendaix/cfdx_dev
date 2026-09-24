@@ -391,8 +391,26 @@ int main()
                 throw std::runtime_error(
                     std::string(test.name) + ": independent conservation gate failed");
 
-            std::cout << test.name
-                      << ": iterations=" << result.solve.iterations
+            std::cout << "MODEL_BEGIN " << test.name << "\n";
+            std::cout << "MODEL_CONFIG algorithm=" << test.name
+                      << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
+                      << "\n";
+            std::cout << "ITERATION_HISTORY_BEGIN " << test.name << "\n";
+            for (const auto& ih : result.solve.history) {
+                std::cout << "ITER " << ih.iteration
+                          << " continuity=" << ih.continuity_linf
+                          << " continuity_norm=" << ih.continuity_normalized
+                          << " momentum=" << ih.momentum_residual
+                          << " momentum_eq_rel=" << ih.momentum_equation_residual_relative
+                          << " pressure=" << ih.pressure_residual
+                          << " dU=" << ih.velocity_change_inf
+                          << " dp=" << ih.pressure_change_inf
+                          << " corrected_flux_continuity=" << ih.corrected_flux_continuity_linf
+                          << "\n";
+            }
+            std::cout << "ITERATION_HISTORY_END " << test.name << "\n";
+            std::cout << "MODEL_RESULT " << test.name
+                      << " iterations=" << result.solve.iterations
                       << " profile L2/Linf=" << error.l2 << "/" << error.linf
                       << " Umax=" << max_u
                       << " |Uy|max=" << max_abs_uy
