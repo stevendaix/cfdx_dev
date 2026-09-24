@@ -4,8 +4,11 @@
 #include "cfdx/physics/radiation.h"
 #include "common/test_harness.h"
 
+#include <array>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace cfdx::core;
