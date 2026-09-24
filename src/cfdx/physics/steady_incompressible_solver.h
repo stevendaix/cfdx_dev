@@ -1307,11 +1307,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // correction; no least-squares flux fitting is permitted.
             for (std::size_t c = 0; c < nc; ++c) {
                 U.component_data(0)[c] =
-                    HbyA.component_data(0)[c] - rAtU[0][c] * corrected_grad_p.component_data(0)[c];
+                    HbyA.component_data(0)[c] - rAtU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
                 U.component_data(1)[c] =
-                    HbyA.component_data(1)[c] - rAtU[1][c] * corrected_grad_p.component_data(1)[c];
+                    HbyA.component_data(1)[c] - rAtU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
                 U.component_data(2)[c] =
-                    HbyA.component_data(2)[c] - rAtU[2][c] * corrected_grad_p.component_data(2)[c];
+                    HbyA.component_data(2)[c] - rAtU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
             }
 
             // The conservative face flux is rebuilt from the same
