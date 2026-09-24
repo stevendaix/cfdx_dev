@@ -70,7 +70,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-validation-junit
+          name: cfdx-validation-junit-${{ github.run_id }}
           path: |
             build-validation/validation-junit.xml
             build-validation/phase13-validation.json
@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-validation-logs
+          name: cfdx-validation-logs-${{ github.run_id }}
           path: |
             build-validation/Testing/
             build-validation/**/*.log
@@ -100,7 +100,7 @@ jobs:
       - name: Capture validation evidence metadata
         if: always()
         run: |
-          python3 scripts/ci_capture_validation.py \
+          .venv-e2e/bin/python scripts/ci_capture_validation.py \
             --build-dir build-validation \
             --output-dir build-validation/diagnostic-evidence
 
@@ -117,7 +117,7 @@ jobs:
 
       - name: Run campaign driver
         run: |
-          python3 scripts/run_validation.py \
+          .venv-e2e/bin/python scripts/run_validation.py \
             --build-dir build-validation \
             --junit build-validation/validation-junit.xml \
             --json build-validation/phase13-validation.json
@@ -126,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-validation-junit
+          name: cfdx-validation-junit-${{ github.run_id }}
           path: |
             build-validation/validation-junit.xml
             build-validation/phase13-validation.json
@@ -136,7 +136,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-validation-logs
+          name: cfdx-validation-logs-${{ github.run_id }}
           path: |
             build-validation/Testing/
             build-validation/**/*.log
@@ -144,7 +144,4 @@ jobs:
 
       - name: Run application E2E regression
         run: |
-          python3 -m venv .venv-e2e
-          .venv-e2e/bin/python -m pip install --upgrade pip
-          .venv-e2e/bin/python -m pip install pytest h5py
           PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
