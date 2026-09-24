@@ -269,7 +269,17 @@ void test_rhie_chow_pressure_operators(
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         if (mesh.ownership().neighbour(f) < 0) continue;
         const double flux = phi_linear(f);
-        const std::size_t owner = mesh.ownership().owner(f);\n        const double expected = -geometry.cell_volumes[owner] * 0.5 * geometry.face_area_vectors[f].x;
+        const std::size_t owner = mesh.ownership().owner(f);
+        const std::size_t neighbour = static_cast<std::size_t>(mesh.ownership().neighbour(f));
+        const Vec3 dvec = geometry.cell_centres[neighbour] - geometry.cell_centres[owner];
+        const double d = dvec.mag();
+        require(d > 0.0, "degenerate diagnostic face centre distance");
+        const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+        const double rfn = 0.5 * (
+            geometry.cell_volumes[owner] * 0.5 +
+            geometry.cell_volumes[neighbour] * 0.5);
+        const double orthogonal_area = geometry.face_area_vectors[f].dot(e);
+        const double expected = -rfn * orthogonal_area / d;
         if (std::abs(geometry.face_area_vectors[f].x) > 0.5) {
             if (first) { first_x_flux = flux; first = false; }
             internal_x_variation = std::max(internal_x_variation, std::abs(flux - first_x_flux));
