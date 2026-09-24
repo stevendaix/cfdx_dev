@@ -665,14 +665,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         std::to_string(f) + " cells " + std::to_string(c) + "/" +
                         std::to_string(ncell));
                 const double rAUx_f = 0.5 * (
-                    geometry.cell_volumes[c] / aox +
-                    geometry.cell_volumes[ncell] / anx);
+                    1.0 / aox +
+                    1.0 / anx);
                 const double rAUy_f = 0.5 * (
-                    geometry.cell_volumes[c] / aoy +
-                    geometry.cell_volumes[ncell] / any);
+                    1.0 / aoy +
+                    1.0 / any);
                 const double rAUz_f = 0.5 * (
-                    geometry.cell_volumes[c] / aoz +
-                    geometry.cell_volumes[ncell] / anz);
+                    1.0 / aoz +
+                    1.0 / anz);
                 const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
                 if (!(rfn > 0.0) || !std::isfinite(rfn))
                     throw std::runtime_error(
@@ -755,9 +755,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary momentum diagonal on face " +
                             std::to_string(f) + " cell " + std::to_string(c));
-                    const double rAUx = geometry.cell_volumes[c] / a_x;
-                    const double rAUy = geometry.cell_volumes[c] / a_y;
-                    const double rAUz = geometry.cell_volumes[c] / a_z;
+                    const double rAUx = 1.0 / a_x;
+                    const double rAUy = 1.0 / a_y;
+                    const double rAUz = 1.0 / a_z;
                     const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
                     if (!(rfn > 0.0) || !std::isfinite(rfn))
                         throw std::runtime_error(
@@ -924,7 +924,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             hbya[c] = rAU[c] * h;
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 hbya[c] -= (rAU[c] - rAtU[c]) *
-                           gradp.component_data(component)[c];
+                           gradp.component_data(component)[c] * geometry.cell_volumes[c];
             if (!std::isfinite(hbya[c]))
                 throw std::runtime_error("solve_steady_incompressible: non-finite HbyA");
         }
@@ -1119,7 +1119,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (!(a > 0.0) || !std::isfinite(a))
                     throw std::runtime_error(
                         "solve_steady_incompressible: invalid momentum diagonal");
-                rAU[d][c] = geometry.cell_volumes[c] / a;
+                rAU[d][c] = 1.0 / a;
                 rAtU[d][c] = rAU[d][c];
                 if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
                     double h1 = 0.0;
@@ -1133,7 +1133,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         if (col != c)
                             h1 -= eqs[d]->matrix.values_data()[k];
                     }
-                    h1 /= geometry.cell_volumes[c];
                     const double denom = 1.0/rAU[d][c] - h1;
                     if (!(denom > 0.0) || !std::isfinite(denom))
                         throw std::runtime_error(
@@ -1148,6 +1147,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
         auto HbyA = make_hbya_field(hbya);
 
+        // rAU is the inverse integrated momentum diagonal (1/A_P).
+        // Pressure-gradient terms in the integrated momentum equation therefore
+        // carry the cell volume explicitly when reconstructing cell velocity.
         // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
         // uses the same directional inverse momentum coefficient as the
         // pressure equation, avoiding a second, incompatible face operator.
