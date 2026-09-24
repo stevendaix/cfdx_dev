@@ -33,6 +33,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_case_hash(case_data: dict, mesh_hash: str | None = None) -> str:
+    """Hash normalized case configuration plus the persisted mesh identity."""
+    payload = {"case": case_data, "mesh_hash": mesh_hash}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _validate_path(path: Path) -> Path:
     path = Path(path)
     if path.suffix.lower() != ".h5":
@@ -65,6 +72,7 @@ def save_case(session: CFDXSession, path: Path) -> Path:
         h5.attrs["mesh_revision"] = session.mesh_revision
         h5.attrs["physics_revision"] = session.physics_revision
         h5.attrs["numerics_revision"] = session.numerics_revision
+        h5.attrs["modification_date"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat().replace("+00:00", "Z")
 
         case_group = h5.require_group("case")
         if "config" in case_group:
@@ -73,6 +81,13 @@ def save_case(session: CFDXSession, path: Path) -> Path:
             "config",
             data=json.dumps(case_data, sort_keys=True, separators=(",", ":")),
         )
+
+        mesh_hash = h5.attrs.get("mesh_hash")
+        if isinstance(mesh_hash, bytes):
+            mesh_hash = mesh_hash.decode("utf-8")
+        h5.attrs["case_hash"] = _canonical_case_hash(case_data, mesh_hash)
+        if "geometry_hash" in h5.attrs:
+            h5.attrs["geometry_hash"] = str(h5.attrs["geometry_hash"])
 
         checkpoint = h5.require_group(_CHECKPOINT_GROUP)
         checkpoint.attrs["iteration"] = session.iteration
@@ -162,6 +177,8 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
             raise ValueError("case configuration is missing")
         if not all(name in h5 for name in required_mesh):
             raise ValueError("mesh data is missing from the self-contained case")
+        if "case_hash" not in h5.attrs:
+            raise ValueError("case integrity hash is missing")
         if "fields" not in h5 or "values" not in h5["fields"]:
             raise ValueError("fields data is missing from the self-contained case")
         raw = h5[_CASE_DATASET][()]
