@@ -9,6 +9,12 @@ def test_parse_iteration_time_and_cfl() -> None:
     assert metrics.cfl == 0.8
 
 
+def test_parse_completion_iteration_count() -> None:
+    metrics = SolverMetricsParser().parse("Converged YES Iterations 20")
+    assert metrics is not None
+    assert metrics.iteration == 20
+
+
 def test_parse_multiple_residuals() -> None:
     metrics = SolverMetricsParser().parse(
         "Iteration 7 residual(U)=2.5e-4 residual(p): 8.0e-3"
