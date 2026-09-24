@@ -768,7 +768,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double rfn = pressure_coeff[0][o]*nx*nx +
                                            pressure_coeff[1][o]*ny*ny +
                                            pressure_coeff[2][o]*nz*nz;
-                        mass_flux(f) = phiHbyA(f) +
+                        mass_flux(f) = phiHbyA(f) -
                             controls.density * rfn * area / d * p_corr(o);
                     } else {
                         mass_flux(f) = phiHbyA(f);
