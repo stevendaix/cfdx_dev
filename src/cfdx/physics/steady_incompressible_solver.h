@@ -613,7 +613,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const auto nr = mesh.ownership().neighbour(f);
 
             if (nr >= 0) {
-                const std::size_t ncell = static_cast<std::size_t>(nr);
+                // For the current cell, ownership::neighbour(f) is the opposite
+                // cell only when this cell owns the face. When this cell is the
+                // neighbour, using neighbour(f) would incorrectly produce a
+                // self-coupled face (e.g. cells 1/1) and a zero centre distance.
+                const int other_cell = owner
+                    ? nr
+                    : mesh.ownership().owner(f);
+                if (other_cell < 0 || static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 // Internal Gauss face pressure is the arithmetic average.
                 const double coeff = 0.5;
                 A.push_back(c, 3*nc + c, Sf.x * coeff);
