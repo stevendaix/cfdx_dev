@@ -115,10 +115,15 @@ int main()
         Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),q(1,"qrad","W/m3",1);
         T(0)=1000.0;G(0)=0.0;q(0)=0.0;
+        const double wa=M_PI*(0.5-std::sqrt(3.0)/6.0);
+        const double wc=M_PI*(1.0+std::sqrt(3.0))/8.0;
+        const double q=1.0/std::sqrt(3.0);
         std::vector<DiscreteDirection> dirs{
-            {1,0,0,2*M_PI/3},{-1,0,0,2*M_PI/3},
-            {0,1,0,2*M_PI/3},{0,-1,0,2*M_PI/3},
-            {0,0,1,2*M_PI/3},{0,0,-1,2*M_PI/3}};
+            {1,0,0,wa},{-1,0,0,wa},
+            {0,1,0,wa},{0,-1,0,wa},
+            {0,0,1,wa},{0,0,-1,wa},
+            {q,q,q,wc},{q,q,-q,wc},{q,-q,q,wc},{q,-q,-q,wc},
+            {-q,q,q,wc},{-q,q,-q,wc},{-q,-q,q,wc},{-q,-q,-q,wc}};
         DomWallBoundaryConditions walls;
         for (std::size_t p=0;p<m.boundary().n_patches();++p)
             walls[m.boundary().patch(p).name]={0.5,1000.0};
