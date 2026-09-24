@@ -157,7 +157,7 @@ struct S2SMonteCarloControls {
 
 inline std::vector<double> estimate_s2s_view_factors_monte_carlo(
     const std::vector<std::vector<RadiationTriangle>>& surfaces,
-    const std::vector<std::vector<RadiationTriangle>>& blockers = {},
+    const std::vector<RadiationTriangle>& blockers = {},
     const S2SMonteCarloControls& controls = {})
 {
     if (surfaces.empty() || controls.samples==0)
