@@ -102,7 +102,7 @@ int main()
     run_case("radiation_dom_isotropic_quadrature", [] {
         const double a=1.0/std::sqrt(3.0);
         std::vector<DiscreteDirection> q;
-        const double w=M_PI;
+        const double w=M_PI/2.0;
         for (int sx : {-1,1})
             for (int sy : {-1,1})
                 for (int sz : {-1,1})
