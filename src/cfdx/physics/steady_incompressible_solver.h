@@ -1800,7 +1800,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                         const auto owner = mesh.ownership().owner(f);
                         const auto neighbour = mesh.ownership().neighbour(f);
-                        if (owner != cell && neighbour != static_cast<std::int64_t>(cell)) continue;
+                        if (owner != cell && (neighbour < 0 || static_cast<std::size_t>(neighbour) != cell)) continue;
                         const double sign = owner == cell ? 1.0 : -1.0;
                         const double used = sign * phi_used_in_momentum(f);
                         const double current = sign * mass_flux(f);
