@@ -27,16 +27,18 @@ struct RadiationModelSelector {
     }
 };
 
-// Rosseland diffusion is an optically-thick approximation. For a gray,
-// isotropically scattering medium the transport opacity is represented here
-// by the extinction coefficient absorption+scattering.
-inline double rosseland_conductivity(double temperature, double absorption)
+// Rosseland diffusion is an optically-thick approximation. The scalar
+// argument is the transport/Rosseland extinction opacity kappa_R, not
+// absorption alone. For isotropic gray scattering kappa_R = kappa_a+kappa_s.
+// For anisotropic scattering use kappa_R = kappa_a+kappa_s*(1-g).
+inline double rosseland_conductivity(double temperature, double transport_opacity)
 {
-    if (!std::isfinite(temperature) || !std::isfinite(absorption) ||
-        temperature <= 0.0 || absorption <= 0.0)
+    if (!std::isfinite(temperature) || !std::isfinite(transport_opacity) ||
+        temperature <= 0.0 || transport_opacity <= 0.0)
         throw std::invalid_argument("invalid Rosseland state");
     constexpr double sigma = 5.670374419e-8;
-    return 16.0 * sigma * std::pow(temperature, 3) / (3.0 * absorption);
+    return 16.0 * sigma * std::pow(temperature, 3) /
+           (3.0 * transport_opacity);
 }
 
 inline double rosseland_conductivity(double temperature,
