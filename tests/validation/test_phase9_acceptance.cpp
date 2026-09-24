@@ -390,6 +390,9 @@ int main()
                           << " mom_internal=" << ih.momentum_equation_residual_internal
                           << " mom_boundary=" << ih.momentum_equation_residual_boundary
                           << " mom_cell=" << ih.momentum_residual_cell
+                          << " mom_patch=" << ih.momentum_residual_patch
+                          << " mom_no_pressure=" << ih.momentum_residual_no_pressure
+                          << " mom_pressure=" << ih.momentum_pressure_contribution
                           << " gradp_linf=" << ih.pressure_gradient_linf
                           << " gradp_l2=" << ih.pressure_gradient_l2
                           << " momentum_linear_iterations=" << ih.momentum_linear_iterations
@@ -561,3 +564,40 @@ int main()
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::SECOND_ORDER_UPWIND, true);
         const auto unbounded = run_couette_channel(
+            PressureVelocityAlgorithm::SIMPLE,
+            ConvectionScheme::UPWIND, false);
+
+        for (const auto& pair : {
+                 std::pair<const char*, const RunResult*>{"SIMPLE/SOU/bounded", &second_order},
+                 {"SIMPLE/upwind/unbounded", &unbounded}}) {
+            const auto error = profile_error(*pair.second, 8, 16);
+            if (!(error.l2 < profile_l2_tolerance &&
+                  error.linf < profile_linf_tolerance))
+                throw std::runtime_error(
+                    std::string(pair.first) + ": convection gate failed");
+            const auto& h = pair.second->solve.history.back();
+            if (!(h.continuity_linf < 1e-7) ||
+                !(h.momentum_equation_residual_relative < 1e-7))
+                throw std::runtime_error(
+                    std::string(pair.first) + ": conservation gate failed");
+            std::cout << pair.first
+                      << ": profile L2/Linf=" << error.l2 << "/" << error.linf
+                      << " continuity=" << h.continuity_linf << "\n";
+        }
+
+        // A pure-Neumann pressure field has a gauge freedom. Starting from a
+        // non-zero uniform pressure must therefore converge to the same
+        // physical state without introducing a local pressure jump.
+        run_pure_neumann_gauge();
+
+        if (!failed_models.empty()) {
+            std::cout << "PHASE9_ACCEPTANCE: FAIL\n";
+            return 1;
+        }
+        std::cout << "PHASE9_ACCEPTANCE: PASS\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "PHASE9_ACCEPTANCE: FAIL: " << e.what() << "\n";
+        return 1;
+    }
+}
