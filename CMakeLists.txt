@@ -397,7 +397,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # properties are the authoritative per-test environment and avoid losing
     # the microscope when the test is launched through CTest.
     set_tests_properties(test_phase9_acceptance PROPERTIES
-        ENVIRONMENT "CFDX_DEBUG_CELL=auto;CFDX_DEBUG_COUPLED=1")
+        ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
