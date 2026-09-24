@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cmath>
+#include <numeric>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -170,7 +171,7 @@ int main()
         ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,400,0}},
                                     {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                     {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=10; c.tolerance=1e-12;
+        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
         for(std::size_t i=0;i<n;++i) {
@@ -189,7 +190,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,0,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,1,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=1; c.max_iterations=10; c.tolerance=1e-12;
+            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"mms_quadratic");
             double err=0.0;
@@ -220,7 +221,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=2; c.max_iterations=10; c.tolerance=1e-12;
+            EnergySolverControls c; c.conductivity=2; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"volumetric_generation");
             double err=0.0, balance= r.history.back().energy_imbalance;
@@ -244,6 +245,53 @@ int main()
         }
     });
 
+    run_case("thermal_volumetric_power_sweep", [] {
+        // Uniform volumetric heating in a unit slab with T(0)=T(L)=T0:
+        // T(x)=T0 + q''' x(L-x)/(2k), so DeltaT_max=q''' L^2/(8k).
+        // This validates both the W/m3 source convention and its scaling.
+        const std::vector<double> powers={1.0e2,1.0e3,1.0e4,1.0e5};
+        const double k=2.0;
+        const double T0=300.0;
+        const double L=1.0;
+        const std::size_t n=32;
+        for(const double qv:powers) {
+            Mesh m=one_d_mesh(n); auto g=build_fv_geometry(m);
+            Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0.0);
+            Field<double,Location::CELL> T(n,"T","K",1), source(n,"source","W/m3",1);
+            T.fill(T0); source.fill(qv);
+            ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,T0,0}},
+                                        {"right",{ScalarBoundaryType::FIXED_VALUE,T0,0}},
+                                        {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
+            EnergySolverControls c; c.conductivity=k; c.relaxation=1;
+            c.max_iterations=20; c.tolerance=1e-10;
+            const auto r=solve_energy(m,g,phi,T,source,c,bc);
+            check_history(r,"volumetric_power_sweep");
+            double Tmax=T(0), Tmin=T(0);
+            for(std::size_t i=0;i<n;++i) {
+                Tmax=std::max(Tmax,T(i));
+                Tmin=std::min(Tmin,T(i));
+            }
+            const double exact_dT=qv*L*L/(8.0*k);
+            const double expected_power=qv*L; // unit cross-sectional area
+            const double generated_power=qv*std::accumulate(
+                g.cell_volumes.begin(),g.cell_volumes.end(),0.0);
+            const double center_x=0.5;
+            const double center_exact=T0+qv*center_x*(L-center_x)/(2.0*k);
+            std::cout << "THERMAL_POWER_STUDY: qvol=" << qv
+                      << " W/m3 Tmax=" << Tmax
+                      << " dTmax=" << (Tmax-T0)
+                      << " exact_dTmax=" << exact_dT
+                      << " generated_power=" << generated_power
+                      << " expected_power=" << expected_power
+                      << " center_exact=" << center_exact
+                      << " Tmin=" << Tmin << '\\n';
+            EXPECT_TRUE(Tmax>T0);
+            EXPECT_TRUE(Tmin>=T0);
+            EXPECT_NEAR(Tmax-T0,exact_dT,1e-10*std::max(1.0,exact_dT));
+            EXPECT_NEAR(generated_power,expected_power,1e-12);
+        }
+    });
+
     run_case("thermal_cht_interface_conservation", [] {
         Mesh m1=cube_mesh(0,1,"outer_hot","interface");
         Mesh m2=cube_mesh(1,2,"interface","outer_cold");
@@ -253,7 +301,7 @@ int main()
         Field<double,Location::CELL> T1(1,"T1","K",1), T2(1,"T2","K",1);
         T1(0)=400; T2(0)=300;
         Field<double,Location::CELL> s1(1,"s1","W/m3",1), s2(1,"s2","W/m3",1); s1.fill(0); s2.fill(0);
-        EnergySolverControls e1; e1.conductivity=2; e1.tolerance=1e-12;
+        EnergySolverControls e1; e1.conductivity=2; e1.relaxation=1; e1.max_iterations=20; e1.tolerance=1e-10;
         EnergySolverControls e2=e1;
         ChtInterfaceControls c; c.region1_patch="interface"; c.region2_patch="interface";
         c.conductivity1=2; c.conductivity2=1; c.tolerance=1e-10; c.temperature_tolerance=1e-10;
@@ -288,7 +336,7 @@ int main()
         RadiationEnergyCouplingControls c;
         c.radiation.absorption=1.0; c.radiation.scattering=0.0;
         c.radiation.max_iterations=50; c.radiation.tolerance=1e-10;
-        c.energy.conductivity=1; c.energy.max_iterations=10; c.energy.tolerance=1e-10;
+        c.energy.conductivity=1; c.energy.relaxation=1; c.energy.max_iterations=20; c.energy.tolerance=1e-10;
         c.max_outer_iterations=50; c.tolerance=1e-8;
         ScalarBoundaryConditions rbcs{{"left",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
                                       {"right",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
