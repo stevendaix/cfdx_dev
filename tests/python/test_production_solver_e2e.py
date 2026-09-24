@@ -9,12 +9,19 @@ from cfdx.dat_io import read_dat_restart
 
 
 def _run(controller: ExecutionController) -> None:
+    output: list[str] = []
+    controller.on_output = lambda line, is_stderr: output.append(
+        ("stderr: " if is_stderr else "stdout: ") + line
+    )
     controller.start()
     thread = controller.runner._thread
     assert thread is not None
     thread.join(timeout=30)
     assert not thread.is_alive()
-    assert controller.session.state.value == "CONVERGED"
+    assert controller.session.state.value == "CONVERGED", (
+        f"production solver failed: error={controller.error!r}; "
+        f"output={output[-40:]!r}"
+    )
 
 
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
@@ -57,8 +64,6 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
             "--iterations", "5",
         ]),
     )
-    # ExecutionController appends the configured restart option and DAT path.
-    # The solver therefore consumes the real production DAT, not a fixture.
     restart_controller.restart(checkpoint)
     thread = restart_controller.runner._thread
     assert thread is not None
