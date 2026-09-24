@@ -20,7 +20,7 @@ REG_RE = re.compile(r"^THERMAL_RADIATION_REGRESSION:.*$", re.MULTILINE)
 
 REQUIRED = {
     "thermophysical_models": ("THERMAL_RESIDUAL:",),
-    "thermal_solver": ("THERMAL_VV:", "THERMAL_RESIDUAL:"),
+    "thermal_solver": ("THERMAL_RESIDUAL:",),
     "radiation_solver": ("RADIATION_RESIDUAL:",),
     "s2s_radiation": ("RADIATION_RESIDUAL:",),
     "model_matrix": ("THERMAL_RESIDUAL:", "RADIATION_RESIDUAL:"),
