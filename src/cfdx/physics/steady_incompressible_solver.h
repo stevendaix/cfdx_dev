@@ -1833,12 +1833,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     // This is deliberately evaluated from HbyA, not the final
                     // velocity, because phi = HbyA_f.Sf - RC(p) is the
                     // conservative pressure-velocity coupling operator.
-                    const auto pressure_coeff =
-                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
-                            ? rAtU : rAU;
+                    // Use the exact inverse momentum diagonals reconstructed
+                    // above from the final momentum rows.  The microscope is
+                    // diagnostic only and must not introduce a separate
+                    // SIMPLEC/SIMPLE coefficient path.
                     rhie_chow_expected = rhie_chow_pressure_flux_internal(
                         mesh, geometry, face, p, final_grad_p,
-                        pressure_coeff, controls.density);
+                        diag_rAU, controls.density);
                     const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
                     rhie_chow_actual = hbyA_flux - phi_auth;
                     max_rhie_chow_actual = std::max(
