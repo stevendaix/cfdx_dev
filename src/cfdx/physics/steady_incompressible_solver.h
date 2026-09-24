@@ -740,6 +740,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 b(row) += nonorth_flux;
             } else {
                 const std::size_t patch = geometry.face_patch[f];
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    continue;
                 const VelocityBoundaryCondition* vbc = nullptr;
                 VelocityBoundaryCondition local_vbc;
                 const ScalarBoundaryCondition* pbc = nullptr;
