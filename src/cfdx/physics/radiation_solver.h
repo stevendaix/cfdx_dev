@@ -430,6 +430,14 @@ inline RadiationSolveResult solve_participating_radiation(
             max_relative_source_delta=std::max(max_relative_source_delta,
                 max_source_delta/source_scale);
         }
+        if (mesh.n_cells() <= 64) {
+            std::cerr << "RADIATION_RESIDUAL: iteration=" << iter
+                      << " intensity_delta=" << max_delta
+                      << " intensity_relative=" << max_relative_delta
+                      << " source_delta=" << max_source_delta
+                      << " source_relative=" << max_relative_source_delta
+                      << '\\n';
+        }
         if(max_relative_delta<=controls.tolerance &&
            max_relative_source_delta<=controls.tolerance) {
             result.converged=true;
@@ -485,7 +493,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             mesh,geometry,temperature,irradiation,qrad,directions,
             controls.radiation,radiation_bcs);
         if(!rr.converged)
-            throw std::runtime_error("radiation inner solve did not converge");
+            throw std::runtime_error("radiation inner solve did not converge after " + std::to_string(rr.iterations) + " iterations");
 
         for(std::size_t c=0;c<nc;++c)
             // qrad is emission minus absorption (positive means radiation
@@ -497,7 +505,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             mesh,geometry,mass_flux,temperature,source,
             controls.energy,thermal_bcs);
         if(!er.converged)
-            throw std::runtime_error("energy inner solve did not converge");
+            throw std::runtime_error("energy inner solve did not converge after " + std::to_string(er.iterations) + " iterations");
 
         double max_delta=0.0;
         for(std::size_t c=0;c<nc;++c)
@@ -512,6 +520,13 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         result.source_residuals.push_back(qrad_delta);
         result.energy_balance_residuals.push_back(energy_balance_residual);
         result.iterations=iter;
+        if (mesh.n_cells() <= 64) {
+            std::cerr << "THERMAL_RADIATION_RESIDUAL: iteration=" << iter
+                      << " dT=" << max_delta
+                      << " qrad_delta=" << qrad_delta
+                      << " energy_balance=" << energy_balance_residual
+                      << '\\n';
+        }
         if(max_delta<=controls.tolerance &&
            qrad_delta<=controls.tolerance &&
            energy_balance_residual<=controls.tolerance) {
