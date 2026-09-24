@@ -1230,7 +1230,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, HbyA, p,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                controls.density, velocity_bcs);
+                controls.density, velocity_bcs, pressure_bcs);
 
             if (corr + 1 < pcorr) {
                 // PISO's next pressure correction is driven by the current
