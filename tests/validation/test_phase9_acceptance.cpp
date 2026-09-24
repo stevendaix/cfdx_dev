@@ -372,6 +372,14 @@ int main()
                           << " corrected_flux_continuity=" << ih.corrected_flux_continuity_linf
                           << " reconstructed_velocity_continuity=" << ih.reconstructed_velocity_continuity_linf
                           << " flux_velocity_mismatch=" << ih.flux_velocity_mismatch_linf
+                          << " mom_x=" << ih.momentum_equation_residual_components[0]
+                          << " mom_y=" << ih.momentum_equation_residual_components[1]
+                          << " mom_z=" << ih.momentum_equation_residual_components[2]
+                          << " mom_internal=" << ih.momentum_equation_residual_internal
+                          << " mom_boundary=" << ih.momentum_equation_residual_boundary
+                          << " mom_cell=" << ih.momentum_residual_cell
+                          << " gradp_linf=" << ih.pressure_gradient_linf
+                          << " gradp_l2=" << ih.pressure_gradient_l2
                           << " momentum_linear_iterations=" << ih.momentum_linear_iterations
                           << " pressure_linear_iterations=" << ih.pressure_linear_iterations
                           << "\n";
@@ -474,6 +482,14 @@ int main()
                           << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
                           << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
                           << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
+                          << " mom_x=" << h.momentum_equation_residual_components[0]
+                          << " mom_y=" << h.momentum_equation_residual_components[1]
+                          << " mom_z=" << h.momentum_equation_residual_components[2]
+                          << " mom_internal=" << h.momentum_equation_residual_internal
+                          << " mom_boundary=" << h.momentum_equation_residual_boundary
+                          << " mom_cell=" << h.momentum_residual_cell
+                          << " gradp_linf=" << h.pressure_gradient_linf
+                          << " gradp_l2=" << h.pressure_gradient_l2
                           << " gates_failed=" << gates.size()
                           << "\n";
 
