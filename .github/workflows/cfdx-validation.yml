@@ -83,7 +83,7 @@ jobs:
         run: |
           python3 -m venv .venv-e2e
           .venv-e2e/bin/python -m pip install --upgrade pip
-          .venv-e2e/bin/python -m pip install pytest h5py
+          .venv-e2e/bin/python -m pip install pytest h5py meshio
           PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
 
       - name: Capture complete CTest log
