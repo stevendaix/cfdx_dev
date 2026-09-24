@@ -164,14 +164,14 @@ int main()
         std::cout << "RADIATION_REGRESSION: s2s_energy=PASS error=" << r.energy_balance_error << "\n";
     });
 
-    run_case("s2s_external_irradiation_limit", [] {
+    run_case("s2s_external_irradiation_power_balance", [] {
         const std::vector<double> A{1,1}, eps{1,1};
         const double Teq=std::pow(3000.0/STEFAN_BOLTZMANN,0.25);
         const std::vector<double> T{Teq,Teq};
         const std::vector<double> F{0,1,1,0};
         const auto r=solve_s2s_radiosity(A,eps,T,F,{},std::vector<double>{1000,1000});
         EXPECT_TRUE(r.converged);
-        EXPECT_NEAR(r.total_power,0,1e-10);
+        EXPECT_NEAR(r.total_power,-2000.0,1e-10);
         std::cout << "RADIATION_REGRESSION: s2s_external=PASS\n";
     });
 
