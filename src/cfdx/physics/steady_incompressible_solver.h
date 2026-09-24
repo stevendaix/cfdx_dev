@@ -783,9 +783,28 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         x(nv + c) = p_old(c);
     }
 
+    // Reject non-finite coefficients before entering GMRES. A bad local
+    // coefficient must be diagnosed at assembly time rather than surfacing as
+    // an opaque Krylov failure.
+    {
+        const auto* values = A.values_data();
+        for (std::size_t k = 0; k < A.nnz(); ++k) {
+            if (!std::isfinite(values[k]))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: non-finite matrix coefficient at nnz " +
+                    std::to_string(k));
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!std::isfinite(b(i)))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: non-finite RHS at row " +
+                    std::to_string(i));
+        }
+    }
+
     // The coupled matrix has strongly different momentum and pressure
-    // scales. Jacobi is the minimum safe baseline; a block-Schur/AMG
-    // preconditioner is a separate roadmap item and must not be faked here.
+    // scales. CellBlockJacobi is a local exact 4x4 block preconditioner;
+    // block-Schur/AMG remains a separate roadmap item.
     CellBlockJacobiPreconditioner coupled_preconditioner(nc);
     auto result = solve_gmres(
         A, b, x, 64, max_iterations, tolerance, &coupled_preconditioner);
