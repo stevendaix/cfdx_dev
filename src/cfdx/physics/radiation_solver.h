@@ -157,17 +157,19 @@ inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
     const FvGeometry& geometry,
     const std::vector<DiscreteDirection>& directions,
     const std::vector<cfdx::core::Field<double,cfdx::core::Location::CELL>>& intensities,
-    const DomWallBoundaryConditions& walls)
+    const DomWallBoundaryConditions& walls,
+    std::size_t direction_index)
 {
-    if (intensities.size()!=directions.size())
+    if (intensities.size()!=directions.size() || direction_index>=directions.size())
         throw std::invalid_argument("DOM wall operator: direction/intensity size mismatch");
     const std::size_t nf=mesh.n_faces();
     ScalarBoundaryFaceValues values;
+    const auto& target_direction=directions[direction_index];
     for (std::size_t p=0; p<mesh.boundary().n_patches(); ++p) {
         const auto& patch=mesh.boundary().patch(p);
         const auto& wall=walls.at(patch.name);
         auto& pv=values.values[patch.name];
-        pv.assign(nf,0.0);
+        pv.assign(nf,std::numeric_limits<double>::quiet_NaN());
         const double Ib=blackbody_intensity(wall.temperature);
         for (const auto f:patch.face_ids) {
             const auto Sf=geometry.face_area_vectors[f];
@@ -175,22 +177,22 @@ inline ScalarBoundaryFaceValues build_dom_diffuse_gray_face_values(
             if (!(area>0.0) || !std::isfinite(area))
                 throw std::runtime_error("DOM wall operator: invalid boundary face area");
             const double nx=Sf.x/area, ny=Sf.y/area, nz=Sf.z/area;
+            const double target_mu=target_direction.dx*nx+
+                                  target_direction.dy*ny+
+                                  target_direction.dz*nz;
+            if (target_mu>=0.0)
+                continue; // outgoing ordinate: zero-gradient/extrapolated
+
             double Gout=0.0;
             for (std::size_t m=0; m<directions.size(); ++m) {
                 const auto& d=directions[m];
                 const double mu=d.dx*nx+d.dy*ny+d.dz*nz;
                 if (mu>0.0)
-                    Gout += directions[m].weight*intensities[m](
-                        mesh.ownership().owner(f))*mu;
+                    Gout += directions[m].weight*
+                        intensities[m](mesh.ownership().owner(f))*mu;
             }
-            const double Iwall=wall.emissivity*Ib +
-                (1.0-wall.emissivity)*Gout/M_PI;
-            for (std::size_t m=0; m<directions.size(); ++m) {
-                const auto& d=directions[m];
-                const double mu=d.dx*nx+d.dy*ny+d.dz*nz;
-                if (mu<0.0)
-                    pv[f]=Iwall;
-            }
+            pv[f]=wall.emissivity*Ib +
+                  (1.0-wall.emissivity)*Gout/M_PI;
         }
     }
     return values;
@@ -223,7 +225,7 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
     intensities.reserve(directions.size());
     for (std::size_t m=0;m<directions.size();++m) {
         intensities.emplace_back(nc,"I_"+std::to_string(m),"W/m2/sr",1);
-        intensities.back().fill(blackbody_intensity(300.0));
+        intensities.back().fill(0.0);
     }
 
     ScalarBoundaryConditions extrapolation_bcs;
@@ -233,8 +235,6 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
 
     RadiationSolveResult result;
     for (std::size_t iter=1;iter<=controls.max_iterations;++iter) {
-        const auto wall_values=build_dom_diffuse_gray_face_values(
-            mesh,geometry,directions,intensities,walls);
         auto old_source=radiation_source;
         double max_delta=0.0;
 
@@ -244,6 +244,8 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
                 J[c]+=directions[m].weight*intensities[m](c)/(4.0*M_PI);
 
         for (std::size_t m=0;m<directions.size();++m) {
+            const auto wall_values=build_dom_diffuse_gray_face_values(
+                mesh,geometry,directions,intensities,walls,m);
             cfdx::core::Field<double,cfdx::core::Location::FACE> directional_flux(
                 mesh.n_faces(),"sI","W/m2",1);
             const auto& d=directions[m];
