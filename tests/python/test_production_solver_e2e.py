@@ -43,7 +43,10 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     _run(controller)
 
     assert controller.latest_metrics is not None
-    assert controller.latest_metrics.iteration == 20
+    # A final residual/diagnostic line may update latest_metrics without
+    # repeating the solver iteration. The controller's session is the
+    # authoritative accumulated iteration state.
+    assert controller.session.iteration == 20
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
 
