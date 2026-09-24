@@ -1644,22 +1644,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         // Optional forensic microscope for one cell. This is deliberately
         // disabled unless CFDX_DEBUG_CELL is set, so production/CI output is
-        // unchanged. The dump is emitted once per algorithm, at convergence
-        // or at the configured iteration limit, and reports the exact matrix
-        // row residual together with the face topology/flux state.
+        // unchanged. Use CFDX_DEBUG_CELL=<index> for a fixed cell or
+        // CFDX_DEBUG_CELL=auto to inspect the independently reassembled
+        // worst-residual cell. The dump is emitted once per algorithm at
+        // convergence or at the configured iteration limit.
         const char* debug_cell_env = std::getenv("CFDX_DEBUG_CELL");
         bool debug_cell_enabled = false;
+        bool debug_cell_auto = false;
         std::size_t debug_cell = 0;
         if (debug_cell_env && *debug_cell_env) {
             try {
                 const std::string value(debug_cell_env);
-                std::size_t parsed = 0;
-                debug_cell = std::stoull(value, &parsed);
-                debug_cell_enabled = parsed == value.size() && debug_cell < mesh.n_cells();
+                if (value == "auto") {
+                    debug_cell_auto = true;
+                    debug_cell_enabled = true;
+                } else {
+                    std::size_t parsed = 0;
+                    debug_cell = std::stoull(value, &parsed);
+                    debug_cell_enabled =
+                        parsed == value.size() && debug_cell < mesh.n_cells();
+                }
             } catch (...) {
                 debug_cell_enabled = false;
             }
         }
+        if (debug_cell_auto)
+            debug_cell = h.momentum_residual_cell;
+
         const bool converged_now =
             iter >= minimum_outer_correctors && iter > 1 &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
@@ -1670,6 +1681,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
+                      << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
                       << " algorithm=" << static_cast<int>(controls.algorithm)
                       << " iteration=" << iter << " ===\n";
             const auto dump_equation = [&](const char* name,
@@ -1698,19 +1710,61 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             dump_equation("Uy", final_ey, final_uy);
             dump_equation("Uz", final_ez, final_uz);
 
+            // Reconstruct the same momentum predictor used by the pressure-
+            // velocity coupling from the final, independently assembled
+            // momentum rows. This is diagnostic only; it does not alter the
+            // converged state. dAU = V/A_P is the exact pressure-response
+            // coefficient used by the segregated Rhie-Chow operator.
+            std::array<std::vector<double>, 3> diag_rAU;
+            std::array<std::vector<double>, 3> hbyA;
+            const ScalarEquation* final_eqs[3] = {&final_ex, &final_ey, &final_ez};
+            const Vector* final_u[3] = {&final_ux, &final_uy, &final_uz};
+            for (std::size_t d = 0; d < 3; ++d) {
+                diag_rAU[d].resize(mesh.n_cells());
+                hbyA[d].resize(mesh.n_cells());
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    const double ap = final_eqs[d]->diagonal[c];
+                    if (!(ap > 0.0) || !std::isfinite(ap))
+                        throw std::runtime_error(
+                            "CFDX momentum microscope: invalid final momentum diagonal");
+                    diag_rAU[d][c] = 1.0 / ap;
+                    double h_explicit = final_eqs[d]->rhs(c) +
+                        final_grad_p.component_data(d)[c] * geometry.cell_volumes[c];
+                    const auto begin = final_eqs[d]->matrix.row_offsets_data()[c];
+                    const auto end = final_eqs[d]->matrix.row_offsets_data()[c + 1];
+                    for (std::uint32_t k = begin; k < end; ++k) {
+                        const auto col = final_eqs[d]->matrix.columns_data()[k];
+                        if (col != c)
+                            h_explicit -=
+                                final_eqs[d]->matrix.values_data()[k] * (*final_u[d])(col);
+                    }
+                    hbyA[d][c] = diag_rAU[d][c] * h_explicit;
+                }
+            }
+
+            const auto reconstructed_flux =
+                make_mass_flux(mesh, geometry, final_ux_field, controls.density, velocity_bcs);
+            double local_div_authoritative = 0.0;
+            double local_div_reconstructed = 0.0;
+            double max_delta_phi = 0.0;
+            double max_delta_grad_p = 0.0;
+            double max_delta_u_face = 0.0;
+            double max_momentum_pressure_flux = 0.0;
+            double max_correction_pressure_flux = 0.0;
             const Offset off = mesh.cells().offsets_data()[debug_cell];
             const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
-            double local_div = 0.0;
             std::cerr << "faces=" << count << "\n";
             for (Offset k = 0; k < count; ++k) {
                 const std::size_t face = mesh.cells().faces_data()[off + k];
                 const auto owner = mesh.ownership().owner(face);
                 const auto neighbour = mesh.ownership().neighbour(face);
                 const bool owner_side = owner == debug_cell;
-                const double signed_phi = owner_side ? mass_flux(face) : -mass_flux(face);
-                local_div += signed_phi;
-                const Vec3 sf = owner_side ? geometry.face_area_vectors[face]
-                                            : geometry.face_area_vectors[face] * -1.0;
+                const double sign = owner_side ? 1.0 : -1.0;
+                const double phi_auth = sign * mass_flux(face);
+                const double phi_reconstructed = sign * reconstructed_flux(face);
+                local_div_authoritative += phi_auth;
+                local_div_reconstructed += phi_reconstructed;
+                const Vec3 Sf = geometry.face_area_vectors[face] * sign;
                 std::size_t patch = geometry.face_patch[face];
                 std::string patch_name = "INTERNAL";
                 int patch_type = -1;
@@ -1718,24 +1772,162 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     patch_name = mesh.boundary().patch(patch).name;
                     patch_type = static_cast<int>(mesh.boundary().patch(patch).type);
                 }
+
+                Vec3 u_face_auth{0.0, 0.0, 0.0};
+                Vec3 u_face_reconstructed{0.0, 0.0, 0.0};
+                Vec3 grad_face_momentum{0.0, 0.0, 0.0};
+                Vec3 grad_face_correction{0.0, 0.0, 0.0};
+                Vec3 hbyA_face{0.0, 0.0, 0.0};
+                double dAU_n = 0.0;
+                double pressure_flux_correction = 0.0;
+
+                if (neighbour >= 0) {
+                    const std::size_t ncell = static_cast<std::size_t>(neighbour);
+                    u_face_auth = Vec3{
+                        0.5 * (final_ux(debug_cell) + final_ux(ncell)),
+                        0.5 * (final_uy(debug_cell) + final_uy(ncell)),
+                        0.5 * (final_uz(debug_cell) + final_uz(ncell))};
+                    hbyA_face = Vec3{
+                        0.5 * (hbyA[0][debug_cell] + hbyA[0][ncell]),
+                        0.5 * (hbyA[1][debug_cell] + hbyA[1][ncell]),
+                        0.5 * (hbyA[2][debug_cell] + hbyA[2][ncell])};
+                    const Vec3 dvec = geometry.cell_centres[ncell] -
+                                      geometry.cell_centres[debug_cell];
+                    const double d = dvec.mag();
+                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                    const double cx = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell] +
+                        geometry.cell_volumes[ncell] * diag_rAU[0][ncell]);
+                    const double cy = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell] +
+                        geometry.cell_volumes[ncell] * diag_rAU[1][ncell]);
+                    const double cz = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell] +
+                        geometry.cell_volumes[ncell] * diag_rAU[2][ncell]);
+                    dAU_n = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
+                    const Vec3 gp{
+                        0.5 * (final_grad_p.component_data(0)[debug_cell] +
+                               final_grad_p.component_data(0)[ncell]),
+                        0.5 * (final_grad_p.component_data(1)[debug_cell] +
+                               final_grad_p.component_data(1)[ncell]),
+                        0.5 * (final_grad_p.component_data(2)[debug_cell] +
+                               final_grad_p.component_data(2)[ncell])};
+                    const Vec3 rawSf = geometry.face_area_vectors[face];
+                    const double orthogonal_area = rawSf.dot(e);
+                    const Vec3 Snon{
+                        rawSf.x - orthogonal_area*e.x,
+                        rawSf.y - orthogonal_area*e.y,
+                        rawSf.z - orthogonal_area*e.z};
+                    const double normal_dp = (p(ncell) - p(debug_cell)) / d;
+                    grad_face_correction =
+                        e * normal_dp + gp - e * gp.dot(e);
+                    grad_face_momentum = gp;
+                    pressure_flux_correction =
+                        controls.density * dAU_n *
+                        (normal_dp * orthogonal_area + gp.dot(Snon));
+                    u_face_reconstructed = hbyA_face -
+                        Vec3{
+                            dAU_n * gp.x,
+                            dAU_n * gp.y,
+                            dAU_n * gp.z};
+                } else {
+                    if (patch < mesh.boundary().n_patches()) {
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto pit = pressure_bcs.find(name);
+                        const auto uit = velocity_bcs.find(name);
+                        if (uit != velocity_bcs.end() &&
+                            uit->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                            u_face_auth = uit->second.value;
+                        else
+                            u_face_auth = Vec3{
+                                final_ux(debug_cell), final_uy(debug_cell), final_uz(debug_cell)};
+                        if (pit != pressure_bcs.end() &&
+                            pit->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                            const Vec3 Sf_raw = geometry.face_area_vectors[face];
+                            const Vec3 dvec = geometry.face_centres[face] -
+                                              geometry.cell_centres[debug_cell];
+                            const double d = dvec.mag();
+                            const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                            dAU_n =
+                                geometry.cell_volumes[debug_cell] * (
+                                    diag_rAU[0][debug_cell]*e.x*e.x +
+                                    diag_rAU[1][debug_cell]*e.y*e.y +
+                                    diag_rAU[2][debug_cell]*e.z*e.z);
+                            const double normal_dp =
+                                (pit->second.value - p(debug_cell)) / d;
+                            pressure_flux_correction =
+                                controls.density * dAU_n * normal_dp * Sf_raw.dot(e);
+                            grad_face_correction = e * normal_dp;
+                        } else {
+                            grad_face_correction = Vec3{
+                                final_grad_p.component_data(0)[debug_cell],
+                                final_grad_p.component_data(1)[debug_cell],
+                                final_grad_p.component_data(2)[debug_cell]};
+                        }
+                        grad_face_momentum = Vec3{
+                            final_grad_p.component_data(0)[debug_cell],
+                            final_grad_p.component_data(1)[debug_cell],
+                            final_grad_p.component_data(2)[debug_cell]};
+                        hbyA_face = Vec3{
+                            hbyA[0][debug_cell],
+                            hbyA[1][debug_cell],
+                            hbyA[2][debug_cell]};
+                        const Vec3 gp = grad_face_momentum;
+                        u_face_reconstructed = hbyA_face -
+                            Vec3{dAU_n*gp.x, dAU_n*gp.y, dAU_n*gp.z};
+                    }
+                }
+
+                const double momentum_pressure_flux = grad_face_momentum.dot(Sf);
+                max_delta_phi = std::max(
+                    max_delta_phi, std::abs(phi_auth - phi_reconstructed));
+                max_delta_grad_p = std::max(
+                    max_delta_grad_p,
+                    (grad_face_momentum - grad_face_correction).mag());
+                max_delta_u_face = std::max(
+                    max_delta_u_face, (u_face_auth - u_face_reconstructed).mag());
+                max_momentum_pressure_flux = std::max(
+                    max_momentum_pressure_flux, std::abs(momentum_pressure_flux));
+                max_correction_pressure_flux = std::max(
+                    max_correction_pressure_flux, std::abs(pressure_flux_correction));
+
                 std::cerr << "  face=" << face
                           << " owner=" << owner
                           << " neighbour=" << neighbour
                           << " patch=" << patch_name
                           << " patch_type=" << patch_type
-                          << " Sf=(" << sf.x << "," << sf.y << "," << sf.z << ")"
-                          << " phi=" << signed_phi;
-                if (neighbour >= 0) {
-                    const std::size_t n = static_cast<std::size_t>(neighbour);
-                    std::cerr << " neighbour_U=(" << final_ux(n) << ","
-                              << final_uy(n) << "," << final_uz(n) << ")";
-                }
-                std::cerr << "\n";
+                          << " Sf=(" << Sf.x << "," << Sf.y << "," << Sf.z << ")"
+                          << " phi_authoritative=" << phi_auth
+                          << " phi_reconstructed_from_Uface=" << phi_reconstructed
+                          << " delta_phi=" << (phi_auth - phi_reconstructed)
+                          << " U_face_authoritative=(" << u_face_auth.x << ","
+                          << u_face_auth.y << "," << u_face_auth.z << ")"
+                          << " U_face_reconstructed_HbyA_dAUgradp=("
+                          << u_face_reconstructed.x << "," << u_face_reconstructed.y
+                          << "," << u_face_reconstructed.z << ")"
+                          << " delta_U_face=" << (u_face_auth-u_face_reconstructed).mag()
+                          << " dAU=" << dAU_n
+                          << " gradp_face_momentum=(" << grad_face_momentum.x << ","
+                          << grad_face_momentum.y << "," << grad_face_momentum.z << ")"
+                          << " gradp_face_correction=(" << grad_face_correction.x << ","
+                          << grad_face_correction.y << "," << grad_face_correction.z << ")"
+                          << " delta_gradp="
+                          << (grad_face_momentum-grad_face_correction).mag()
+                          << " momentum_pressure_flux=" << momentum_pressure_flux
+                          << " correction_pressure_flux=" << pressure_flux_correction
+                          << "\n";
             }
-            std::cerr << "local_mass_flux_divergence=" << local_div
-                      << " global_continuity_linf=" << h.continuity_linf
+
+            std::cerr << "local_mass_flux_divergence=" << local_div_authoritative
+                      << " local_reconstructed_flux_divergence=" << local_div_reconstructed
                       << " reconstructed_velocity_continuity_linf="
-                      << h.reconstructed_velocity_continuity_linf << "\n";
+                      << h.reconstructed_velocity_continuity_linf
+                      << " delta_phi_linf=" << max_delta_phi
+                      << " delta_u_face_linf=" << max_delta_u_face
+                      << " delta_gradp_linf=" << max_delta_grad_p
+                      << " momentum_pressure_flux_linf=" << max_momentum_pressure_flux
+                      << " correction_pressure_flux_linf=" << max_correction_pressure_flux
+                      << "\n";
             std::cerr << "diagnostic_global=(" << h.momentum_equation_residual_components[0]
                       << "," << h.momentum_equation_residual_components[1]
                       << "," << h.momentum_equation_residual_components[2] << ")"
@@ -1745,8 +1937,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " worst_patch=" << h.momentum_residual_patch << "\n";
             std::cerr << "no_pressure=" << h.momentum_residual_no_pressure
                       << " pressure_contribution=" << h.momentum_pressure_contribution
-                      << " gradp_linf=" << h.pressure_gradient_linf << "\n";
-            std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\\n";
+                      << " gradp_linf=" << h.pressure_gradient_linf
+                      << "\n";
+            std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\n";
         }
         result.history.push_back(h);
 
