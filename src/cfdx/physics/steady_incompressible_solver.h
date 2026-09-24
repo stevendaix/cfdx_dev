@@ -1813,7 +1813,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             std::abs(hbya[d][cell] - frozen_hbyA[d][cell]));
                     std::cerr << "FROZEN_STATE_CELL label=" << label
                               << " cell=" << cell
-                              << " phi_used_in_bicgstab=" << phi_used_l1
+                              << " phi_used_in_momentum_assembly=" << phi_used_l1
                               << " phi_used_in_reassembly=" << phi_reassembled_l1
                               << " phi_delta_l1=" << phi_delta_l1
                               << " HbyA_delta_linf=" << hbyA_delta
