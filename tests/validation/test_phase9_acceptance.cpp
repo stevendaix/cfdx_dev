@@ -357,6 +357,18 @@ int main()
         std::vector<std::string> failed_models;
         results.reserve(algorithm_cases.size());
 
+        // Diagnostic history intentionally records several distinct operators:
+        //   continuity              -> authoritative conservative flux balance
+        //   continuity_norm         -> scale-normalized conservation measure
+        //   corrected_flux_continuity -> post-pressure-correction flux balance
+        //   reconstructed_velocity_continuity -> flux reconstructed from cell U
+        //   flux_velocity_mismatch  -> diagnostic only (Rhie-Chow is pressure-dependent)
+        //   mom_internal/boundary   -> localisation of a possible residual floor
+        // These are evidence channels, not interchangeable acceptance metrics.
+        // In particular, Rhie-Chow flux and arithmetic interpolation of U are
+        // different operators by construction, so their mismatch is not required
+        // to vanish even when the conservative continuity equation converges.
+
         auto print_history = [](const char* name, const RunResult& result) {
             std::cout << "MODEL_BEGIN " << name << "\n";
             std::cout << "ITERATION_HISTORY_BEGIN " << name << "\n";
