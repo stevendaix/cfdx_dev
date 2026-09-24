@@ -88,6 +88,7 @@ struct ChtSolveResult {
     bool converged=false;
     std::size_t iterations=0;
     double interface_imbalance=0.0;
+    double interface_temperature_change=0.0;
 };
 
 inline ChtSolveResult solve_two_region_cht(
@@ -107,6 +108,7 @@ inline ChtSolveResult solve_two_region_cht(
 {
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     ChtSolveResult result;
+    std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
 
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         ScalarBoundaryFaceValues fv1,fv2;
@@ -120,7 +122,12 @@ inline ChtSolveResult solve_two_region_cht(
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
             const double h1=controls.conductivity1/d1;
             const double h2=controls.conductivity2/d2;
-            const double Tint=(h1*T1(p.cell1)+h2*T2(p.cell2))/(h1+h2);
+            const double Tint_new=(h1*T1(p.cell1)+h2*T2(p.cell2))/(h1+h2);
+            double Tint=Tint_new;
+            if(std::isfinite(previous_interface_temperature[i]))
+                Tint=controls.relaxation*Tint_new +
+                     (1.0-controls.relaxation)*previous_interface_temperature[i];
+            previous_interface_temperature[i]=Tint;
             auto& values1=fv1.values[controls.region1_patch];
             auto& values2=fv2.values[controls.region2_patch];
             if(values1.size()!=mesh1.n_faces()) values1.resize(mesh1.n_faces(),0.0);
@@ -134,8 +141,9 @@ inline ChtSolveResult solve_two_region_cht(
         if(!r1.converged || !r2.converged)
             throw std::runtime_error("CHT region energy solve did not converge");
 
-        double qimb=0.0;
-        for(const auto& p:pairs) {
+        double qimb=0.0, qscale=1.0, dtint=0.0;
+        for(std::size_t i=0;i<pairs.size();++i) {
+            const auto& p=pairs[i];
             const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
             const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
             const double Tint=fv1.values.at(controls.region1_patch)[p.face1];
@@ -144,11 +152,18 @@ inline ChtSolveResult solve_two_region_cht(
             const double qflux2=controls.conductivity2*
                 (Tint-T2(p.cell2))/d2;
             qimb=std::max(qimb,std::abs(qflux1-qflux2));
+            qscale=std::max(qscale,std::abs(qflux1));
+            qscale=std::max(qscale,std::abs(qflux2));
+            const double current_tint=fv1.values.at(controls.region1_patch)[p.face1];
+            if(std::isfinite(previous_interface_temperature[i]))
+                dtint=std::max(dtint,std::abs(current_tint-previous_interface_temperature[i]));
         }
-        result.interface_imbalance=qimb;
+        result.interface_imbalance=qimb/qscale;
+        result.interface_temperature_change=dtint;
         result.iterations=iter;
 
-        if(qimb<=controls.tolerance) {
+        if(result.interface_imbalance<=controls.tolerance &&
+           result.interface_temperature_change<=controls.matching_tolerance) {
             result.converged=true;
             break;
         }
