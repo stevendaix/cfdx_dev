@@ -100,6 +100,18 @@ struct IncompressibleIteration {
     double reconstructed_velocity_continuity_linf = std::numeric_limits<double>::infinity();
     // Maximum face-flux discrepancy between the conservative flux and reconstructed U flux.
     double flux_velocity_mismatch_linf = std::numeric_limits<double>::infinity();
+    // Component-wise and location-aware diagnostics for independently
+    // reassembled momentum equations. These are diagnostic signals only;
+    // acceptance thresholds remain owned by the validation tests.
+    std::array<double, 3> momentum_equation_residual_components{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    double momentum_equation_residual_internal = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_boundary = std::numeric_limits<double>::infinity();
+    double pressure_gradient_linf = std::numeric_limits<double>::infinity();
+    double pressure_gradient_l2 = std::numeric_limits<double>::infinity();
+    std::size_t momentum_residual_cell = 0;
 };
 
 struct IncompressibleSolveResult {
@@ -1297,6 +1309,64 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             scalar_equation_residual_inf(final_ez, final_uz)
         });
 
+        // Recompute the cell-wise residuals explicitly so a large independent
+        // residual can be localized to a component and to an interior/boundary
+        // cell. This is intentionally redundant with scalar_equation_residual_inf:
+        // the purpose is forensic diagnostics, not a second numerical path.
+        const auto cell_has_boundary_face = [&](std::size_t cell) {
+            const Offset off = mesh.cells().offsets_data()[cell];
+            const Offset count = mesh.cells().offsets_data()[cell + 1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t face = mesh.cells().faces_data()[off + k];
+                if (mesh.ownership().neighbour(face) < 0)
+                    return true;
+            }
+            return false;
+        };
+        const auto residual_diagnostics =
+            [&](const ScalarEquation& equation, const Vector& solution) {
+                double global = 0.0;
+                double interior = 0.0;
+                double boundary = 0.0;
+                std::size_t max_cell = 0;
+                for (std::size_t row = 0; row < mesh.n_cells(); ++row) {
+                    double ax = 0.0;
+                    const auto begin = equation.matrix.row_offsets_data()[row];
+                    const auto end = equation.matrix.row_offsets_data()[row + 1];
+                    for (std::uint32_t k = begin; k < end; ++k)
+                        ax += equation.matrix.values_data()[k] *
+                              solution(equation.matrix.columns_data()[k]);
+                    const double residual = std::abs(equation.rhs(row) - ax);
+                    if (residual > global) {
+                        global = residual;
+                        max_cell = row;
+                    }
+                    if (cell_has_boundary_face(row))
+                        boundary = std::max(boundary, residual);
+                    else
+                        interior = std::max(interior, residual);
+                }
+                return std::array<double, 4>{global, interior, boundary,
+                                              static_cast<double>(max_cell)};
+            };
+        const auto rx_diag = residual_diagnostics(final_ex, final_ux);
+        const auto ry_diag = residual_diagnostics(final_ey, final_uy);
+        const auto rz_diag = residual_diagnostics(final_ez, final_uz);
+
+        double pressure_gradient_linf = 0.0;
+        double pressure_gradient_l2_sum = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const double gx = final_grad_p.component_data(0)[c];
+            const double gy = final_grad_p.component_data(1)[c];
+            const double gz = final_grad_p.component_data(2)[c];
+            const double gp2 = gx*gx + gy*gy + gz*gz;
+            pressure_gradient_linf = std::max(pressure_gradient_linf, std::sqrt(gp2));
+            pressure_gradient_l2_sum += gp2;
+        }
+        const double pressure_gradient_l2 =
+            std::sqrt(pressure_gradient_l2_sum /
+                      std::max<std::size_t>(mesh.n_cells(), 1));
+
         double l1 = 0.0, linf = 0.0;
         const auto* cell_faces = mesh.cells().faces_data();
         const auto* cell_offsets = mesh.cells().offsets_data();
@@ -1382,6 +1452,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         h.reconstructed_velocity_continuity_linf = reconstructed_linf;
         h.flux_velocity_mismatch_linf = flux_mismatch_linf;
+        h.momentum_equation_residual_components = {
+            rx_diag[0], ry_diag[0], rz_diag[0]};
+        h.momentum_equation_residual_internal =
+            std::max({rx_diag[1], ry_diag[1], rz_diag[1]});
+        h.momentum_equation_residual_boundary =
+            std::max({rx_diag[2], ry_diag[2], rz_diag[2]});
+        h.pressure_gradient_linf = pressure_gradient_linf;
+        h.pressure_gradient_l2 = pressure_gradient_l2;
+        const auto component_max = std::max({
+            std::pair<double, std::size_t>{rx_diag[0], static_cast<std::size_t>(rx_diag[3])},
+            std::pair<double, std::size_t>{ry_diag[0], static_cast<std::size_t>(ry_diag[3])},
+            std::pair<double, std::size_t>{rz_diag[0], static_cast<std::size_t>(rz_diag[3])}});
+        h.momentum_residual_cell = component_max.second;
         result.history.push_back(h);
 
         if (controls.probe_callback) {
