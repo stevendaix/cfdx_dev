@@ -112,6 +112,9 @@ struct IncompressibleIteration {
     double pressure_gradient_linf = std::numeric_limits<double>::infinity();
     double pressure_gradient_l2 = std::numeric_limits<double>::infinity();
     std::size_t momentum_residual_cell = 0;
+    double momentum_residual_no_pressure = std::numeric_limits<double>::infinity();
+    double momentum_pressure_contribution = std::numeric_limits<double>::infinity();
+    std::string momentum_residual_patch;
 };
 
 struct IncompressibleSolveResult {
@@ -1323,12 +1326,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             return false;
         };
+        struct ResidualDiagnostic {
+            double global = 0.0;
+            double interior = 0.0;
+            double boundary = 0.0;
+            std::size_t max_cell = 0;
+            double no_pressure = 0.0;
+            double pressure_contribution = 0.0;
+            std::string patch;
+        };
         const auto residual_diagnostics =
-            [&](const ScalarEquation& equation, const Vector& solution) {
-                double global = 0.0;
-                double interior = 0.0;
-                double boundary = 0.0;
-                std::size_t max_cell = 0;
+            [&](const ScalarEquation& equation,
+                const Vector& solution,
+                std::size_t component) {
+                ResidualDiagnostic diagnostic;
                 for (std::size_t row = 0; row < mesh.n_cells(); ++row) {
                     double ax = 0.0;
                     const auto begin = equation.matrix.row_offsets_data()[row];
@@ -1336,22 +1347,47 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     for (std::uint32_t k = begin; k < end; ++k)
                         ax += equation.matrix.values_data()[k] *
                               solution(equation.matrix.columns_data()[k]);
-                    const double residual = std::abs(equation.rhs(row) - ax);
-                    if (residual > global) {
-                        global = residual;
-                        max_cell = row;
+                    const double full_signed = ax - equation.rhs(row);
+                    const double residual = std::abs(full_signed);
+                    if (residual > diagnostic.global) {
+                        diagnostic.global = residual;
+                        diagnostic.max_cell = row;
                     }
                     if (cell_has_boundary_face(row))
-                        boundary = std::max(boundary, residual);
+                        diagnostic.boundary = std::max(diagnostic.boundary, residual);
                     else
-                        interior = std::max(interior, residual);
+                        diagnostic.interior = std::max(diagnostic.interior, residual);
+
+                    // final_ex is assembled with source = body - grad(p).
+                    // Remove the pressure source only for diagnosis, never for
+                    // the acceptance metric, to distinguish pressure/transport
+                    // inconsistency from boundary transport inconsistency.
+                    const double pressure = final_grad_p.component_data(component)[row] *
+                                            geometry.cell_volumes[row];
+                    const double transport_signed = full_signed - pressure;
+                    diagnostic.no_pressure =
+                        std::max(diagnostic.no_pressure, std::abs(transport_signed));
+                    diagnostic.pressure_contribution =
+                        std::max(diagnostic.pressure_contribution, std::abs(pressure));
                 }
-                return std::array<double, 4>{global, interior, boundary,
-                                              static_cast<double>(max_cell)};
+                const std::size_t row = diagnostic.max_cell;
+                const Offset off = mesh.cells().offsets_data()[row];
+                const Offset count = mesh.cells().offsets_data()[row + 1] - off;
+                for (Offset k = 0; k < count; ++k) {
+                    const std::size_t face = mesh.cells().faces_data()[off + k];
+                    if (mesh.ownership().neighbour(face) < 0) {
+                        const std::size_t patch = geometry.face_patch[face];
+                        if (patch < mesh.boundary().n_patches()) {
+                            diagnostic.patch = mesh.boundary().patch(patch).name;
+                            break;
+                        }
+                    }
+                }
+                return diagnostic;
             };
-        const auto rx_diag = residual_diagnostics(final_ex, final_ux);
-        const auto ry_diag = residual_diagnostics(final_ey, final_uy);
-        const auto rz_diag = residual_diagnostics(final_ez, final_uz);
+        const auto rx_diag = residual_diagnostics(final_ex, final_ux, 0);
+        const auto ry_diag = residual_diagnostics(final_ey, final_uy, 1);
+        const auto rz_diag = residual_diagnostics(final_ez, final_uz, 2);
 
         double pressure_gradient_linf = 0.0;
         double pressure_gradient_l2_sum = 0.0;
