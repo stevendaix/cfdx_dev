@@ -13,13 +13,13 @@
 #include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 #include <limits>
-#include <iostream>
 
 namespace cfdx::physics {
 
@@ -89,6 +89,30 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         g.cell_volumes[c] = cg.volume;
         if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
             throw std::runtime_error("build_fv_geometry: non-positive cell volume");
+    }
+
+    // Physics kernels use face_area_vectors with the invariant convention
+    // Sf · (C_neighbour - C_owner) > 0 for internal faces and
+    // Sf · (Cf - C_owner) > 0 for boundary faces. The raw face vertex order
+    // is not guaranteed to encode this owner orientation, so normalize the
+    // global face vectors after cell centres are available.
+    for (std::size_t f = 0; f < nf; ++f) {
+        const std::size_t o = mesh.ownership().owner(f);
+        if (o >= nc)
+            throw std::runtime_error("build_fv_geometry: invalid face owner");
+        const auto nraw = mesh.ownership().neighbour(f);
+        if (nraw >= 0) {
+            const std::size_t n = static_cast<std::size_t>(nraw);
+            if (n >= nc)
+                throw std::runtime_error("build_fv_geometry: invalid face neighbour");
+            ensure_face_orientation(
+                g.face_area_vectors[f], g.face_centres[f],
+                g.cell_centres[o], &g.cell_centres[n]);
+        } else {
+            ensure_face_orientation(
+                g.face_area_vectors[f], g.face_centres[f],
+                g.cell_centres[o], nullptr);
+        }
     }
 
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
@@ -383,6 +407,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
+
     if (solution.size() <= 256)
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
                   << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
@@ -419,138 +444,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             controls.max_iterations, controls.tolerance);
     }
 
-    // Very small coupled momentum systems (notably the analytical
-    // acceptance meshes) can legitimately defeat every Krylov/stationary
-    // applicability criterion while remaining perfectly nonsingular. Use a
-    // bounded dense LU fallback only for small systems; production-size
-    // systems continue to use the sparse iterative path above.
-    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
-        solution.size() <= 256) {
-        const std::size_t n = solution.size();
-        std::size_t zero_or_missing_diag = 0;
-        double min_abs_diag = std::numeric_limits<double>::infinity();
-        double max_abs_diag = 0.0;
-        const auto* diag_row = equation.matrix.row_offsets_data();
-        const auto* diag_col = equation.matrix.columns_data();
-        const auto* diag_val = equation.matrix.values_data();
-        for (std::size_t i = 0; i < n; ++i) {
-            double d = 0.0;
-            bool found = false;
-            for (std::uint32_t k = diag_row[i]; k < diag_row[i + 1]; ++k) {
-                if (diag_col[k] == static_cast<std::uint32_t>(i)) {
-                    d += diag_val[k];
-                    found = true;
-                }
-            }
-            if (!found || !std::isfinite(d) || d == 0.0) ++zero_or_missing_diag;
-            else { min_abs_diag = std::min(min_abs_diag, std::abs(d)); max_abs_diag = std::max(max_abs_diag, std::abs(d)); }
-        }
-        std::cerr << "CFDX dense fallback diagnostic: n=" << n
-                  << " pre_status=" << static_cast<int>(result.status)
-                  << " pre_iterations=" << result.iterations
-                  << " pre_residual=" << result.residual
-                  << " nnz=" << equation.matrix.nnz()
-                  << " min_abs_diag=" << min_abs_diag
-                  << " max_abs_diag=" << max_abs_diag
-                  << " zero_or_missing_diag=" << zero_or_missing_diag
-                  << " max_abs_face_flux=" << equation.max_abs_face_flux
-                  << " internal_distance=[" << equation.min_internal_distance << "," << equation.max_internal_distance << "]"
-                  << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\n';
-        std::vector<double> a(n * n, 0.0);
-        std::vector<double> b(n, 0.0);
-        const auto* row = equation.matrix.row_offsets_data();
-        const auto* col = equation.matrix.columns_data();
-        const auto* val = equation.matrix.values_data();
-        for (std::size_t i = 0; i < n; ++i) {
-            b[i] = equation.rhs(i);
-            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
-                a[i * n + col[k]] += val[k];
-        }
-
-        bool singular = false;
-        std::size_t singular_pivot = n;
-        double singular_pivot_abs = 0.0;
-        for (std::size_t k = 0; k < n && !singular; ++k) {
-            std::size_t pivot = k;
-            double pivot_abs = std::abs(a[k * n + k]);
-            for (std::size_t i = k + 1; i < n; ++i) {
-                const double candidate_abs = std::abs(a[i * n + k]);
-                if (candidate_abs > pivot_abs) {
-                    pivot = i;
-                    pivot_abs = candidate_abs;
-                }
-            }
-            const double scale = std::max(1.0, pivot_abs);
-            if (!(pivot_abs > 100.0 * std::numeric_limits<double>::epsilon() * scale) ||
-                !std::isfinite(pivot_abs)) {
-                singular = true;
-                singular_pivot = k;
-                singular_pivot_abs = pivot_abs;
-                break;
-            }
-            if (pivot != k) {
-                for (std::size_t j = k; j < n; ++j)
-                    std::swap(a[k * n + j], a[pivot * n + j]);
-                std::swap(b[k], b[pivot]);
-            }
-            for (std::size_t i = k + 1; i < n; ++i) {
-                const double factor = a[i * n + k] / a[k * n + k];
-                if (!std::isfinite(factor)) {
-                    singular = true;
-                    break;
-                }
-                a[i * n + k] = 0.0;
-                for (std::size_t j = k + 1; j < n; ++j)
-                    a[i * n + j] -= factor * a[k * n + j];
-                b[i] -= factor * b[k];
-            }
-        }
-
-        if (!singular) {
-            candidate = solution;
-            for (std::size_t ii = n; ii-- > 0;) {
-                double value = b[ii];
-                for (std::size_t j = ii + 1; j < n; ++j)
-                    value -= a[ii * n + j] * candidate(j);
-                const double d = a[ii * n + ii];
-                if (!(std::abs(d) > 0.0) || !std::isfinite(d)) {
-                    singular = true;
-                    singular_pivot = ii;
-                    singular_pivot_abs = std::abs(d);
-                    break;
-                }
-                candidate(ii) = value / d;
-                if (!std::isfinite(candidate(ii))) {
-                    singular = true;
-                    break;
-                }
-            }
-        }
-
-        if (singular) {
-            std::cerr << "CFDX dense fallback: singular=" << singular
-                      << " pivot=" << singular_pivot
-                      << " pivot_abs=" << singular_pivot_abs << '\n';
-        }
-
-        if (!singular) {
-            double residual = 0.0;
-            for (std::size_t i = 0; i < n; ++i) {
-                double ri = -equation.rhs(i);
-                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
-                    ri += val[k] * candidate(col[k]);
-                residual = std::max(residual, std::abs(ri));
-            }
-            if (std::isfinite(residual)) {
-                result = {
-                    residual <= controls.tolerance
-                        ? cfdx::core::SolverStatus::CONVERGED
-                        : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-                    n, residual, residual
-                };
-            }
-        }
-    }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
