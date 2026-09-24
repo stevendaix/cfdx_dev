@@ -251,9 +251,12 @@ inline double rhie_chow_pressure_flux_internal(
     if (!(d > 0.0))
         throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate centre distance");
     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-    const double cx = 0.5*(rAU[0][o] + rAU[0][n]);
-    const double cy = 0.5*(rAU[1][o] + rAU[1][n]);
-    const double cz = 0.5*(rAU[2][o] + rAU[2][n]);
+    const double cx = 0.5*(geometry.cell_volumes[o] * rAU[0][o] +
+                           geometry.cell_volumes[n] * rAU[0][n]);
+    const double cy = 0.5*(geometry.cell_volumes[o] * rAU[1][o] +
+                           geometry.cell_volumes[n] * rAU[1][n]);
+    const double cz = 0.5*(geometry.cell_volumes[o] * rAU[2][o] +
+                           geometry.cell_volumes[n] * rAU[2][n]);
     const double rfn = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
     const double orthogonal_area = Sf.dot(e);
     const Vec3 Snon{
@@ -376,9 +379,10 @@ make_rhie_chow_mass_flux(
                         throw std::runtime_error("make_rhie_chow_mass_flux: degenerate boundary distance");
                     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double rfn =
-                        rAU[0][o]*e.x*e.x +
-                        rAU[1][o]*e.y*e.y +
-                        rAU[2][o]*e.z*e.z;
+                        geometry.cell_volumes[o] * (
+                            rAU[0][o]*e.x*e.x +
+                            rAU[1][o]*e.y*e.y +
+                            rAU[2][o]*e.z*e.z);
                     // For a prescribed boundary pressure the normal pressure
                     // difference is implicit. The non-orthogonal remainder
                     // requires a boundary gradient model and is therefore not
@@ -942,6 +946,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         return field;
     };
 
+    // Face pressure projection coefficient.
+    //
+    // Momentum diagonals are integrated finite-volume coefficients A_P [N s/m].
+    // rAU = 1/A_P therefore has units of m/(N s), while the velocity response
+    // to a pressure gradient is dAU = V*rAU.  The same dAU operator must be
+    // used by cell velocity reconstruction, Rhie-Chow face fluxes and the
+    // pressure-correction matrix.
     auto directional_face_coefficient =
         [&](const std::array<std::vector<double>,3>& coeff,
             std::size_t o, std::size_t n,
@@ -950,9 +961,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (!(area > 0.0))
                 throw std::runtime_error("solve_steady_incompressible: degenerate face area");
             const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
-            const double cx = 0.5 * (coeff[0][o] + coeff[0][n]);
-            const double cy = 0.5 * (coeff[1][o] + coeff[1][n]);
-            const double cz = 0.5 * (coeff[2][o] + coeff[2][n]);
+            const double cx = 0.5 * (
+                geometry.cell_volumes[o] * coeff[0][o] +
+                geometry.cell_volumes[n] * coeff[0][n]);
+            const double cy = 0.5 * (
+                geometry.cell_volumes[o] * coeff[1][o] +
+                geometry.cell_volumes[n] * coeff[1][n]);
+            const double cz = 0.5 * (
+                geometry.cell_volumes[o] * coeff[2][o] +
+                geometry.cell_volumes[n] * coeff[2][n]);
             return cx*nf.x*nf.x + cy*nf.y*nf.y + cz*nf.z*nf.z;
         };
 
@@ -1166,12 +1183,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double area = Sf.mag();
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
                 const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
-                const double dx = 0.5*(rAtU[0][o]+rAtU[0][n]) -
-                                  0.5*(rAU[0][o]+rAU[0][n]);
-                const double dy = 0.5*(rAtU[1][o]+rAtU[1][n]) -
-                                  0.5*(rAU[1][o]+rAU[1][n]);
-                const double dz = 0.5*(rAtU[2][o]+rAtU[2][n]) -
-                                  0.5*(rAU[2][o]+rAU[2][n]);
+                const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                       geometry.cell_volumes[n]*rAtU[0][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                       geometry.cell_volumes[n]*rAU[0][n]);
+                const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                       geometry.cell_volumes[n]*rAtU[1][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                       geometry.cell_volumes[n]*rAU[1][n]);
+                const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                       geometry.cell_volumes[n]*rAtU[2][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                       geometry.cell_volumes[n]*rAU[2][n]);
                 const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
                 phiHbyA(f) += controls.density * drn *
                     (p(n)-p(o))/d * area;
@@ -1216,9 +1239,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const Vec3 Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
                 const double d = (geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double rfn = directional_face_coefficient(
-                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                    o, n, Sf);
+                    pressure_coeff, o, n, Sf);
                 const double coeff = controls.density * rfn * area / d;
                 diag[o] += coeff;
                 diag[n] += coeff;
