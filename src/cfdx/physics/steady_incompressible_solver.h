@@ -668,15 +668,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         "solve_coupled_momentum_continuity: invalid momentum diagonal on face " +
                         std::to_string(f) + " cells " + std::to_string(c) + "/" +
                         std::to_string(ncell));
+                // The coupled Schur complement uses the same dAU = V/A_P
+                // pressure response as the segregated Rhie-Chow operator.
                 const double rAUx_f = 0.5 * (
-                    1.0 / aox +
-                    1.0 / anx);
+                    geometry.cell_volumes[c] / aox +
+                    geometry.cell_volumes[ncell] / anx);
                 const double rAUy_f = 0.5 * (
-                    1.0 / aoy +
-                    1.0 / any);
+                    geometry.cell_volumes[c] / aoy +
+                    geometry.cell_volumes[ncell] / any);
                 const double rAUz_f = 0.5 * (
-                    1.0 / aoz +
-                    1.0 / anz);
+                    geometry.cell_volumes[c] / aoz +
+                    geometry.cell_volumes[ncell] / anz);
                 const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
                 if (!(rfn > 0.0) || !std::isfinite(rfn))
                     throw std::runtime_error(
@@ -759,9 +761,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary momentum diagonal on face " +
                             std::to_string(f) + " cell " + std::to_string(c));
-                    const double rAUx = 1.0 / a_x;
-                    const double rAUy = 1.0 / a_y;
-                    const double rAUz = 1.0 / a_z;
+                    const double rAUx = geometry.cell_volumes[c] / a_x;
+                    const double rAUy = geometry.cell_volumes[c] / a_y;
+                    const double rAUz = geometry.cell_volumes[c] / a_z;
                     const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
                     if (!(rfn > 0.0) || !std::isfinite(rfn))
                         throw std::runtime_error(
