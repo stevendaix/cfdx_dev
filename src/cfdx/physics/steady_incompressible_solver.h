@@ -1743,7 +1743,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
 
             const auto reconstructed_flux =
-                make_mass_flux(mesh, geometry, final_ux_field, controls.density, velocity_bcs);
+                make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
             double local_div_authoritative = 0.0;
             double local_div_reconstructed = 0.0;
             double max_delta_phi = 0.0;
