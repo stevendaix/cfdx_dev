@@ -56,12 +56,8 @@ jobs:
         run: |
           set -o pipefail
           CFDX_DEBUG_CELL=70 CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
-            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)'
-        run: |
-          python3 scripts/run_validation.py \
-            --build-dir build-validation \
-            --junit build-validation/validation-junit.xml \
-            --json build-validation/phase13-validation.json
+            -R 'test_(analytical_benchmarks|benchmark_matrix|level_b_reference_benchmarks|level_c_coupled_verification|phase9_acceptance|steady_incompressible_solver|ghia_cavity)' \
+            -V 2>&1 | tee build-validation/ctest-phase9.log
 
       - name: Upload validation JUnit
         if: always()
