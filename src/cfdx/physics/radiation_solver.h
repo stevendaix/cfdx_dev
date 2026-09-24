@@ -437,7 +437,7 @@ inline RadiationSolveResult solve_participating_radiation(
                       << " intensity_relative=" << max_relative_delta
                       << " source_delta=" << max_source_delta
                       << " source_relative=" << max_relative_source_delta
-                      << '\\n';
+                      << '\n';
         }
         if(max_relative_delta<=controls.tolerance &&
            max_relative_source_delta<=controls.tolerance) {
@@ -526,7 +526,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
                       << " dT=" << max_delta
                       << " qrad_delta=" << qrad_delta
                       << " energy_balance=" << energy_balance_residual
-                      << '\\n';
+                      << '\n';
         }
         if(max_delta<=controls.tolerance &&
            qrad_delta<=controls.tolerance &&
