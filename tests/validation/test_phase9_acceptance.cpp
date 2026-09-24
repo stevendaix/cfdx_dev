@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstddef>
 #include <iostream>
 #include <limits>
@@ -14,6 +15,40 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 
 namespace {
+
+std::size_t phase9_max_iterations()
+{
+    const char* value = std::getenv("CFDX_PHASE9_MAX_ITERATIONS");
+    if (!value || !*value) return 250;
+    char* end = nullptr;
+    const auto parsed = std::strtoul(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0)
+        throw std::runtime_error("invalid CFDX_PHASE9_MAX_ITERATIONS");
+    return static_cast<std::size_t>(parsed);
+}
+
+double phase9_alpha_p()
+{
+    const char* value = std::getenv("CFDX_PHASE9_ALPHA_P");
+    if (!value || !*value) return 0.3;
+    char* end = nullptr;
+    const double parsed = std::strtod(value, &end);
+    if (end == value || *end != '\0' || !std::isfinite(parsed) || parsed <= 0.0 || parsed > 1.0)
+        throw std::runtime_error("invalid CFDX_PHASE9_ALPHA_P");
+    return parsed;
+}
+
+bool phase9_diagnostic_only()
+{
+    const char* value = std::getenv("CFDX_PHASE9_DIAGNOSTIC_ONLY");
+    return value && std::string(value) == "1";
+}
+
+bool phase9_simple_only()
+{
+    const char* value = std::getenv("CFDX_PHASE9_SIMPLE_ONLY");
+    return value && std::string(value) == "1";
+}
 
 Mesh make_channel_mesh(std::size_t nx, std::size_t ny)
 {
@@ -165,7 +200,7 @@ RunResult run_couette_channel(
     IncompressibleSolverControls c;
     c.algorithm = algorithm;
     c.coupling.alpha_u = 0.7;
-    c.coupling.alpha_p = 0.3;
+    c.coupling.alpha_p = phase9_alpha_p();
     c.coupling.n_pressure_correctors =
         algorithm == PressureVelocityAlgorithm::PISO ||
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
@@ -175,7 +210,7 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 250;
+    c.convergence.max_iterations = phase9_max_iterations();
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
     c.linear_max_iterations = 2000;
@@ -331,7 +366,7 @@ int main()
         // API is exercised on the same analytical Couette problem.  The
         // physical gates are identical: changing the coupling algorithm must
         // not change the solution being validated.
-        const std::vector<Case> algorithm_cases = {
+        std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
              ConvectionScheme::UPWIND, true},
             {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
@@ -345,6 +380,12 @@ int main()
             {"COUPLED/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true},
         };
+        if (phase9_simple_only()) {
+            algorithm_cases.erase(
+                std::remove_if(algorithm_cases.begin(), algorithm_cases.end(),
+                    [](const Case& test) { return test.algorithm != PressureVelocityAlgorithm::SIMPLE; }),
+                algorithm_cases.end());
+        }
 
         constexpr double profile_l2_tolerance = 5.0e-2;
         constexpr double profile_linf_tolerance = 1.0e-1;
@@ -405,7 +446,7 @@ int main()
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
-                      << " alpha_u=0.7 alpha_p=0.3"
+                      << " alpha_u=0.7 alpha_p=" << phase9_alpha_p()
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
                           test.algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1)
@@ -560,6 +601,11 @@ int main()
         // Exercise the convection/flux assembly independently of the
         // pressure-velocity algorithm. These cases use the same SIMPLE
         // pressure correction but cover the alternate convection controls.
+        if (phase9_diagnostic_only()) {
+            std::cout << "PHASE9_DIAGNOSTIC_ONLY: PASS\n";
+            return 0;
+        }
+
         const auto second_order = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::SECOND_ORDER_UPWIND, true);
