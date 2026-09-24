@@ -116,6 +116,23 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("read_mesh_hdf5_accepts_legacy_schema_v1_without_geometry_hash", []() {
+        Mesh original = make_unit_cube();
+        const std::string filename = "/tmp/cfdx_legacy_v1_no_geometry_hash.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_mesh_hdf5(filename, original));
+        hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Adelete(file, "geometry_hash") >= 0);
+        H5Fclose(file);
+        Mesh loaded;
+        EXPECT_TRUE(read_mesh_hdf5(filename, loaded));
+        EXPECT_TRUE(loaded.n_points() == original.n_points());
+        EXPECT_TRUE(loaded.n_faces() == original.n_faces());
+        EXPECT_TRUE(loaded.n_cells() == original.n_cells());
+        std::remove(filename.c_str());
+    });
+
     run_case("read_mesh_hdf5_rejects_topology_hash_mismatch", []() {
         Mesh original = make_unit_cube();
         const std::string filename = "/tmp/cfdx_bad_topology_hash.h5";
