@@ -176,9 +176,10 @@ make_mass_flux(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs)
+    const ScalarBoundaryConditions& pressure_bcs = {})
 {
     using namespace cfdx::core;
+    (void)pressure_bcs;
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     const auto& own = mesh.ownership();
 
@@ -952,6 +953,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         cfdx::core::SolverResult rx{}, ry{}, rz{};
+        double pressure_residual = std::numeric_limits<double>::infinity();
+        std::size_t pressure_iterations = 0;
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -1101,8 +1104,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        double pressure_residual = std::numeric_limits<double>::infinity();
-        std::size_t pressure_iterations = 0;
         for (std::size_t corr = 0; corr < pcorr; ++corr) {
             const std::size_t nc = mesh.n_cells();
             SparseMatrix A(nc, nc);
