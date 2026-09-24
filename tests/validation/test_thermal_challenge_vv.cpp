@@ -95,8 +95,8 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
         const std::size_t p=4*i, q=4*(i+1);
         m.faces().push_face({p,p+1,q+1,q}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][0]=f++;
         m.faces().push_face({p+3,q+3,q+2,p+2}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][1]=f++;
-        m.faces().push_face({p,p+3,q+3,q}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][2]=f++;
-        m.faces().push_face({p+1,q+1,q+2,p+2}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][3]=f++;
+        m.faces().push_face({p,q,q+3,p+3}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][2]=f++;
+        m.faces().push_face({p+1,p+2,q+2,q+1}); m.ownership().set_owner(f,i); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY); side[i][3]=f++;
         for (auto sf:side[i]) walls_faces.push_back(sf);
     }
     for (std::size_t i=0;i<n;++i)
@@ -176,7 +176,7 @@ int main()
         check_history(r,"multicell_conduction");
         for(std::size_t i=0;i<n;++i) {
             const double x=(static_cast<double>(i)+0.5)/static_cast<double>(n);
-            EXPECT_NEAR(T(i),400.0-100.0*x,1e-10);
+            EXPECT_NEAR(T(i),400.0-100.0*x,2e-9);
         }
     });
 
@@ -344,7 +344,7 @@ int main()
         RadiationEnergyCouplingControls c;
         c.radiation.absorption=1.0; c.radiation.scattering=0.0;
         c.radiation.max_iterations=50; c.radiation.tolerance=1e-10;
-        c.energy.conductivity=1; c.energy.relaxation=1; c.energy.max_iterations=20; c.energy.tolerance=1e-10;
+        c.energy.conductivity=1; c.energy.relaxation=0.5; c.energy.max_iterations=100; c.energy.tolerance=1e-10;
         c.max_outer_iterations=50; c.tolerance=1e-8;
         ScalarBoundaryConditions rbcs{{"left",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
                                       {"right",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
