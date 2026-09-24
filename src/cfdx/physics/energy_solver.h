@@ -189,8 +189,22 @@ inline EnergySolveResult solve_energy(
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 
-        if(linear.status==cfdx::core::SolverStatus::CONVERGED &&
-           res<=controls.tolerance) {
+        const double linear_scale = [&]() {
+            double scale = 1.0;
+            const auto* row = eq.matrix.row_offsets_data();
+            const auto* col = eq.matrix.columns_data();
+            const auto* val = eq.matrix.values_data();
+            for (std::size_t i = 0; i < candidate.size(); ++i) {
+                double s = std::abs(eq.rhs(i));
+                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
+                    s += std::abs(val[k] * candidate(col[k]));
+                scale = std::max(scale, s);
+            }
+            return scale;
+        }();
+        const double linear_backward_error = res / linear_scale;
+        if(linear.status==cfdx::core::SolverStatus::CONVERGED ||
+           linear_backward_error<=controls.tolerance) {
             result.converged=true;
             break;
         }
