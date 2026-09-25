@@ -1052,8 +1052,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
     coupled_preconditioner.set_pressure_schur_diagonal(
         coupled_pressure_schur_diagonal);
+    // The production Couette system is only 512 unknowns. A restart of
+    // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
+    // the assembled system is nonsingular. Use one full Krylov space for
+    // small/medium coupled systems so a restart boundary cannot manufacture
+    // an artificial MAX_ITER failure.
+    const int gmres_restart = static_cast<int>(
+        std::min<std::size_t>(A.n_rows(), 512));
     auto result = solve_gmres(
-        A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
+        A, b, x, gmres_restart, max_iterations, tolerance, &coupled_preconditioner);
     if (result.status == SolverStatus::NOT_APPLICABLE) {
         IdentityPreconditioner fallback_preconditioner;
         if (!fallback_preconditioner.setup(A))
