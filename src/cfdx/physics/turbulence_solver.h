@@ -200,6 +200,47 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
 }
 
 
+struct KOmegaCellSources {
+    double nut=0.0, sk=0.0, spk=0.0, sw=0.0, spw=0.0, gamma_k=0.0, gamma_w=0.0;
+};
+
+inline KOmegaCellSources komega2006_cell_sources(
+    double k, double omega, double strain, double grad_k_dot_grad_omega,
+    const TurbulenceTransportControls& c)
+{
+    if(!std::isfinite(k)||!std::isfinite(omega)||!std::isfinite(strain)||
+       !std::isfinite(grad_k_dot_grad_omega))
+        throw std::invalid_argument("komega2006_cell_sources: non-finite input");
+    const double ki=std::max(k,c.k_min), wi=std::max(omega,c.omega_min);
+    const double S=std::max(strain,0.0);
+    const double omega_t=std::max(wi,c.komega_clim*S/std::sqrt(c.beta_star));
+    KOmegaCellSources q;
+    q.nut=ki/omega_t;
+    const double Pk=c.density*q.nut*S*S;
+    q.sk=Pk; q.spk=-c.density*c.beta_star*wi;
+    const double sigma_d=grad_k_dot_grad_omega>0.0?c.komega_sigma_d0:0.0;
+    q.sw=c.komega_alpha*(wi/ki)*Pk+c.density*sigma_d/wi*grad_k_dot_grad_omega;
+    q.spw=-c.density*c.komega_beta0*wi;
+    q.gamma_k=c.density*(c.molecular_viscosity+c.komega_sigma_k*ki/wi);
+    q.gamma_w=c.density*(c.molecular_viscosity+c.komega_sigma_w*ki/wi);
+    return q;
+}
+
+inline std::vector<double> cell_gradient_dot(
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& a,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& b,
+    const cfdx::core::Mesh& mesh)
+{
+    const auto ga=cfdx::core::compute_gradient_gauss(a,mesh);
+    const auto gb=cfdx::core::compute_gradient_gauss(b,mesh);
+    std::vector<double> dot(mesh.n_cells());
+    for(std::size_t i=0;i<mesh.n_cells();++i)
+        dot[i]=ga.component_data(0)[i]*gb.component_data(0)[i]+
+               ga.component_data(1)[i]*gb.component_data(1)[i]+
+               ga.component_data(2)[i]*gb.component_data(2)[i];
+    return dot;
+}
+
 inline TurbulenceTransportResult solve_komega_transport(
     const cfdx::core::Mesh& mesh,const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
@@ -220,13 +261,11 @@ inline TurbulenceTransportResult solve_komega_transport(
         cfdx::core::Field<double,cfdx::core::Location::CELL> sk(n,"Sk","W/m3",1),sw(n,"Sw","W/m3",1);
         cfdx::core::Field<double,cfdx::core::Location::CELL> spk(n,"Spk","kg/m3/s",1),spw(n,"Spw","kg/m3/s",1);
         std::vector<double> gk(n),gw(n);
+        const auto cross=cell_gradient_dot(k,omega,mesh);
         for(std::size_t i=0;i<n;++i){
-            const double ki=std::max(k(i),controls.k_min), wi=std::max(omega(i),controls.omega_min);
-            const double nut=controls.a1*ki/wi, P=controls.density*nut*strain_rate(i)*strain_rate(i);
-            sk(i)=P; spk(i)=-controls.density*controls.beta_star*wi;
-            sw(i)=controls.gamma1*P/std::max(nut,1e-20); spw(i)=-controls.density*controls.beta1*wi;
-            gk[i]=controls.density*(controls.molecular_viscosity+controls.sigma_k*nut);
-            gw[i]=controls.density*(controls.molecular_viscosity+controls.sigma_epsilon*nut);
+            const auto q=komega2006_cell_sources(k(i),omega(i),strain_rate(i),cross[i],controls);
+            sk(i)=q.sk; spk(i)=q.spk; sw(i)=q.sw; spw(i)=q.spw;
+            gk[i]=q.gamma_k; gw[i]=q.gamma_w;
         }
         auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gk);
         auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,nullptr,&gw);
