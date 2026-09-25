@@ -167,7 +167,7 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
             const double ki=std::max(k(i),controls.k_min), ei=std::max(epsilon(i),controls.epsilon_min);
             const double nut=controls.rng_C_mu*ki*ki/ei;
             const double S=std::max(strain_rate(i),0.0);
-            const double P=2.0*controls.density*nut*S*S;
+            const double P=controls.density*nut*S*S;
             const double eta=S*ki/ei;
             const double C1star=controls.rng_C1-
                 eta*(1.0-eta/controls.rng_eta0)/(1.0+controls.rng_beta*eta*eta*eta);
