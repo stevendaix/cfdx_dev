@@ -38,7 +38,8 @@ jobs:
             -DCFDX_BUILD_TESTS=ON \
             -DCFDX_ENABLE_MPI=OFF \
             -DCFDX_BUILD_PYTHON=OFF \
-            -DCFDX_USE_HDF5_SERIAL=OFF
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DPython3_EXECUTABLE=${{ github.workspace }}/.venv-validation/bin/python
 
       - name: Build Phase 13 validation executables
         run: |
