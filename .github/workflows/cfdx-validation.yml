@@ -27,6 +27,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3 python3-venv
+          python3 -m venv .venv-validation
+          .venv-validation/bin/python -m pip install --upgrade pip
+          .venv-validation/bin/python -m pip install h5py meshio pytest
 
       - name: Configure
         run: |
@@ -68,7 +71,7 @@ jobs:
 
       - name: Run campaign driver
         run: |
-          python3 scripts/run_validation.py \
+          .venv-validation/bin/python scripts/run_validation.py \
             --build-dir build-validation \
             --junit build-validation/validation-junit.xml \
             --json build-validation/phase13-validation.json
@@ -108,7 +111,7 @@ jobs:
       - name: Capture validation evidence metadata
         if: always()
         run: |
-          python3 scripts/ci_capture_validation.py \
+          .venv-validation/bin/python scripts/ci_capture_validation.py \
             --build-dir build-validation \
             --output-dir build-validation/diagnostic-evidence
 
