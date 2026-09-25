@@ -114,6 +114,8 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
             const double arnoldi_action_norm =
                 krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            const double arnoldi_orthogonalized_norm =
+                krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
             // Modified Gram-Schmidt once is vulnerable to loss of
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
@@ -150,7 +152,8 @@ inline SolverResult solve_gmres(
                 128.0 * std::numeric_limits<double>::epsilon() *
                 std::max(arnoldi_action_norm, 1e-300);
             const bool arnoldi_breakdown_detected =
-                hnext <= arnoldi_breakdown_floor && arnoldi_action_norm > 0.0;
+                arnoldi_orthogonalized_norm <= arnoldi_breakdown_floor &&
+                arnoldi_action_norm > 0.0;
             if (hnext > 0.0) {
                 double* vnext = w.v(static_cast<std::size_t>(j + 1));
                 for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
