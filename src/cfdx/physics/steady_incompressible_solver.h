@@ -952,7 +952,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_preconditioner.set_pressure_schur_diagonal(
         coupled_pressure_schur_diagonal);
     auto result = solve_gmres(
-        A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
+        A, b, x, 128, max_iterations, tolerance, nullptr);
     if (result.status == SolverStatus::NOT_APPLICABLE) {
         IdentityPreconditioner fallback_preconditioner;
         if (!fallback_preconditioner.setup(A))
