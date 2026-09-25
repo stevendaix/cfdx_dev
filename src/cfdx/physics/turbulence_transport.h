@@ -122,7 +122,7 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
         c.sa_kappa,c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4,
         c.komega_alpha,c.komega_beta0,c.komega_sigma_k,c.komega_sigma_w,
         c.komega_sigma_d0,c.komega_clim,c.sst_sigma_k1,c.sst_sigma_k2,c.sst_sigma_w1,c.sst_sigma_w2,
-        c.sst_production_limiter};
+        c.sst_production_limiter,c.smagorinsky_Cs,c.des_Cdes};
     for (double v : values)
         if (!std::isfinite(v)) throw std::invalid_argument("non-finite turbulence coefficient");
     if(c.C_mu<=0.0 || c.C1<0.0 || c.C2<0.0 || c.beta_star<=0.0 ||
@@ -131,7 +131,11 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        c.rng_C2<=0.0 || c.rng_sigma_k<=0.0 || c.rng_sigma_epsilon<=0.0 ||
        c.rng_eta0<=0.0 || c.rng_beta<=0.0 || c.sa_cb1<=0.0 || c.sa_cb2<0.0 ||
        c.sa_sigma<=0.0 || c.sa_kappa<=0.0 || c.sa_cw2<0.0 || c.sa_cw3<=0.0 ||
-       c.sa_cv1<=0.0 || c.sa_ct3<0.0 || c.sa_ct4<0.0)
+       c.sa_cv1<=0.0 || c.sa_ct3<0.0 || c.sa_ct4<0.0 || c.komega_alpha<=0.0 ||
+       c.komega_beta0<=0.0 || c.komega_sigma_k<=0.0 || c.komega_sigma_w<=0.0 ||
+       c.komega_sigma_d0<0.0 || c.komega_clim<0.0 || c.sst_sigma_k1<=0.0 ||
+       c.sst_sigma_k2<=0.0 || c.sst_sigma_w1<=0.0 || c.sst_sigma_w2<=0.0 ||
+       c.sst_production_limiter<=0.0 || c.smagorinsky_Cs<0.0 || c.des_Cdes<=0.0)
         throw std::invalid_argument("invalid turbulence coefficients");
 }
 
