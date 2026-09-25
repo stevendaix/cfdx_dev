@@ -885,6 +885,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
     if (!has_fixed_pressure) {
         // Rebuild the matrix while eliminating the known gauge column.
+        if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED"); debug && *debug) {
+            const auto* dbg_ro = A.row_offsets_data();
+            std::cerr << "COUPLED_MATRIX_PRE_REDUCE row0_nnz="
+                      << (dbg_ro[1] - dbg_ro[0])
+                      << " ex_diag0=" << ex.diagonal[0]
+                      << " ey_diag0=" << ey.diagonal[0]
+                      << " ez_diag0=" << ez.diagonal[0] << "\\n";
+        }
         SparseMatrix reduced(n, n);
         const auto* ro = A.row_offsets_data();
         const auto* co = A.columns_data();
@@ -906,6 +914,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         reduced.finalize();
         A = std::move(reduced);
+        if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED"); debug && *debug) {
+            const auto* dbg_ro = A.row_offsets_data();
+            std::cerr << "COUPLED_MATRIX_POST_REDUCE row0_nnz="
+                      << (dbg_ro[1] - dbg_ro[0]) << "\\n";
+        }
     } else {
         A.finalize();
     }
