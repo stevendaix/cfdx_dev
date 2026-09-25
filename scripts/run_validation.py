@@ -82,9 +82,24 @@ def main() -> int:
         return 2
 
     results: list[tuple[str, int]] = []
+
+    # The campaign driver is also a closure gate: a Phase-13 label pass must
+    # never hide a failure in the production coupled acceptance test or in the
+    # complete CTest suite.
+    full_ctest = ["ctest", "--test-dir", str(args.build_dir), "--output-on-failure"]
+    full_rc = run(full_ctest)
+    results.append(("full-ctest-closure", full_rc))
+
     ctest = ["ctest", "--test-dir", str(args.build_dir), "-L", P13_LABEL, "--output-on-failure"]
-    rc = run(ctest)
-    results.append(("phase13-labeled-software-campaign", rc))
+    phase13_rc = run(ctest)
+    results.append(("phase13-labeled-software-campaign", phase13_rc))
+
+    phase9_rc = run([
+        "ctest", "--test-dir", str(args.build_dir),
+        "-R", "test_phase9_acceptance", "--output-on-failure"
+    ])
+    results.append(("phase9-coupled-closure", phase9_rc))
+    rc = max(full_rc, phase13_rc, phase9_rc)
 
     print("\nPHASE 13 CAMPAIGN MATRIX")
     print("========================")
