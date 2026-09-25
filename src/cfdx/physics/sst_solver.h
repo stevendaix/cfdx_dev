@@ -13,9 +13,14 @@ inline std::pair<double,double> compute_sst_blending(
     double molecular_viscosity, double beta_star,
     double grad_k_dot_grad_omega, double density, double sigma_w2)
 {
-    if(!std::isfinite(grad_k_dot_grad_omega) || !(density>0.0) || !(sigma_w2>0.0))
-        throw std::invalid_argument("compute_sst_blending: invalid cross-diffusion inputs");
-    const double ki=std::max(k,0.0), wi=std::max(omega,1e-20), y=std::max(wall_distance,1e-12);
+    if(!std::isfinite(k) || !std::isfinite(omega) || !std::isfinite(wall_distance) ||
+       !std::isfinite(molecular_viscosity) || !std::isfinite(beta_star) ||
+       !std::isfinite(grad_k_dot_grad_omega) ||
+       !(k >= 0.0) || !(omega > 0.0) || !(wall_distance > 0.0) ||
+       !(molecular_viscosity >= 0.0) || !(beta_star > 0.0) ||
+       !(density > 0.0) || !(sigma_w2 > 0.0))
+        throw std::invalid_argument("compute_sst_blending: invalid inputs");
+    const double ki=k, wi=omega, y=wall_distance;
     const double cd_kw=std::max(2.0*density*sigma_w2/wi*grad_k_dot_grad_omega,1e-10);
     const double arg1=std::min(
         std::max(std::sqrt(ki)/(beta_star*wi*y),500.0*molecular_viscosity/(y*y*wi)),
