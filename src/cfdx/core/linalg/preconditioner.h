@@ -224,6 +224,159 @@ private:
     std::vector<std::array<double, 16>> inv_blocks_;
 };
 
+
+/**
+ * SIMPLE-type block Schur preconditioner for the monolithic
+ * [ M  G ] [u] = [fu]
+ * [ D  C ] [p]   [fp]
+ * pressure-velocity system.
+ *
+ * The velocity block is approximated by its diagonal and the pressure
+ * Schur complement by the diagonal of D diag(M)^-1 G - C.  This is the
+ * algebraic analogue of the SIMPLE pressure correction and, unlike scalar
+ * Jacobi, explicitly represents the velocity-pressure coupling.
+ *
+ * Application:
+ *   zu = Mdiag^-1 * ru
+ *   zp = (D zu - rp) / (D Mdiag^-1 G - C)_diag
+ *   zu = Mdiag^-1 * (ru - G zp)
+ *
+ * The reference-pressure row is treated as an identity equation.
+ */
+class CoupledBlockSchurPreconditioner final : public Preconditioner {
+public:
+    explicit CoupledBlockSchurPreconditioner(std::size_t n_cells)
+        : n_cells_(n_cells), nv_(3 * n_cells) {}
+
+    bool setup(const SparseMatrix& A) override {
+        const std::size_t n = 4 * n_cells_;
+        if (n_cells_ == 0 || A.n_rows() != n || A.n_cols() != n)
+            return false;
+
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+
+        inv_velocity_diag_.assign(nv_, 0.0);
+        for (std::size_t i = 0; i < nv_; ++i) {
+            double d = 0.0;
+            bool found = false;
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i) {
+                    d += val[k];
+                    found = true;
+                }
+            }
+            if (!found || !std::isfinite(d) || d == 0.0)
+                return false;
+            inv_velocity_diag_[i] = 1.0 / d;
+        }
+
+        pressure_velocity_rows_.assign(n_cells_, {});
+        velocity_pressure_rows_.assign(nv_, {});
+        for (std::size_t p = 0; p < n_cells_; ++p) {
+            const std::size_t prow = nv_ + p;
+            for (std::uint32_t k = row[prow]; k < row[prow + 1]; ++k) {
+                if (col[k] < nv_) pressure_velocity_rows_[p].push_back({col[k], val[k]});
+            }
+        }
+        for (std::size_t i = 0; i < nv_; ++i) {
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] >= nv_) velocity_pressure_rows_[i].push_back({col[k] - nv_, val[k]});
+            }
+        }
+
+        schur_diag_.assign(n_cells_, 0.0);
+        for (std::size_t p = 0; p < n_cells_; ++p) {
+            const std::size_t prow = nv_ + p;
+
+            // The pressure reference row is an identity row after gauge fixing.
+            double cdiag = 0.0;
+            bool pressure_identity = false;
+            for (std::uint32_t k = row[prow]; k < row[prow + 1]; ++k) {
+                if (col[k] == prow) {
+                    cdiag += val[k];
+                    if (std::abs(cdiag - 1.0) <= 64.0 * std::numeric_limits<double>::epsilon())
+                        pressure_identity = true;
+                }
+            }
+            if (pressure_identity) {
+                schur_diag_[p] = 1.0;
+                continue;
+            }
+
+            // Form the diagonal of D diag(M)^-1 G - C.
+            // The pressure row provides D entries. For each coupled velocity
+            // DOF, find the matching pressure coefficient in its momentum row.
+            double s = -cdiag;
+            for (std::uint32_t dk = row[prow]; dk < row[prow + 1]; ++dk) {
+                const std::size_t u = col[dk];
+                if (u >= nv_) continue;
+                const double d = val[dk];
+
+                double g = 0.0;
+                for (std::uint32_t gk = row[u]; gk < row[u + 1]; ++gk) {
+                    if (col[gk] == prow) {
+                        g += val[gk];
+                    }
+                }
+                s += d * inv_velocity_diag_[u] * g;
+            }
+
+            if (!std::isfinite(s) || std::abs(s) <=
+                    64.0 * std::numeric_limits<double>::epsilon()) {
+                return false;
+            }
+            schur_diag_[p] = s;
+        }
+        return true;
+    }
+
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != 4 * n_cells_ || z.size() != r.size() ||
+            inv_velocity_diag_.size() != nv_ ||
+            schur_diag_.size() != n_cells_)
+            return false;
+
+        // First velocity predictor: diag(M)^-1 r_u.
+        for (std::size_t i = 0; i < nv_; ++i)
+            z(i) = inv_velocity_diag_[i] * r(i);
+
+        // Pressure correction from the approximate Schur complement.
+        // rhs_p = D M^-1 r_u - r_p.
+        for (std::size_t p = 0; p < n_cells_; ++p) {
+            double rhs = -r(nv_ + p);
+            // D is stored in the pressure row of the original matrix. The
+            // Schur application is reconstructed from the matrix-independent
+            // sparsity captured during setup below.
+            for (const auto& e : pressure_velocity_rows_[p])
+                rhs += e.second * z(e.first);
+            z(nv_ + p) = rhs / schur_diag_[p];
+        }
+
+        // Velocity correction: M^-1 (r_u - G z_p).
+        for (std::size_t i = 0; i < nv_; ++i) {
+            double rhs = r(i);
+            for (const auto& e : velocity_pressure_rows_[i])
+                rhs -= e.second * z(nv_ + e.first);
+            z(i) = inv_velocity_diag_[i] * rhs;
+        }
+        return true;
+    }
+
+    const char* name() const override { return "CoupledBlockSchur"; }
+
+private:
+    std::size_t n_cells_ = 0;
+    std::size_t nv_ = 0;
+    std::vector<double> inv_velocity_diag_;
+    std::vector<double> schur_diag_;
+    // Sparse coupling maps cached at setup so apply() is O(nnz) and does not
+    // rescan the matrix.
+    std::vector<std::vector<std::pair<std::size_t, double>>> pressure_velocity_rows_;
+    std::vector<std::vector<std::pair<std::size_t, double>>> velocity_pressure_rows_;
+};
+
 class MixedPrecisionJacobiPreconditioner final : public Preconditioner {
 public:
     explicit MixedPrecisionJacobiPreconditioner(SolverPrecision precision=SolverPrecision::FP32)
