@@ -123,6 +123,7 @@ struct IncompressibleSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
+    double reference_momentum_residual = 0.0;
 };
 
 inline void validate_incompressible_controls(
@@ -1805,8 +1806,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             linf = std::max(linf, std::abs(div));
         }
 
+        constexpr double tiny = 1e-300;
         double velocity_change_inf = 0.0, pressure_change_inf = 0.0;
-        double velocity_scale = 1.0, pressure_scale = 1.0;
+        double velocity_scale = 0.0;
+        double pressure_min = std::numeric_limits<double>::infinity();
+        double pressure_max = -std::numeric_limits<double>::infinity();
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             for (std::size_t d = 0; d < 3; ++d) {
                 velocity_change_inf = std::max(
@@ -1817,15 +1821,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             pressure_change_inf = std::max(
                 pressure_change_inf, std::abs(p(c)-p_old(c)));
-            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
+            pressure_min = std::min(pressure_min, p(c));
+            pressure_max = std::max(pressure_max, p(c));
         }
-        velocity_change_inf /= velocity_scale;
+        velocity_change_inf /= std::max(velocity_scale, tiny);
+        const double pressure_scale = std::max(pressure_max-pressure_min, tiny);
         pressure_change_inf /= pressure_scale;
 
-        double momentum_rhs_scale = 1.0;
+        double momentum_rhs_scale = 0.0;
         for (const auto* eq : {&final_ex, &final_ey, &final_ez})
             for (std::size_t c = 0; c < mesh.n_cells(); ++c)
                 momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
+        momentum_rhs_scale = std::max(momentum_rhs_scale, tiny);
 
         IncompressibleIteration h;
         h.iteration = iter;
@@ -1839,14 +1846,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_equation_residual = final_momentum_residual;
         h.momentum_equation_residual_relative =
             final_momentum_residual / momentum_rhs_scale;
-        const double domain_volume =
-            std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
-        const double characteristic_area =
-            std::max(std::pow(domain_volume, 2.0/3.0), 1e-30);
-        h.continuity_normalized =
-            linf / std::max(controls.density*velocity_scale*characteristic_area, 1e-30);
+        double flux_reference = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            flux_reference += std::abs(mass_flux(f));
+        h.continuity_normalized = l1 / std::max(flux_reference, tiny);
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
             h.pressure_residual = h.continuity_normalized;
+        if (iter == 1)
+            result.reference_momentum_residual =
+                std::max(final_momentum_residual, tiny);
+        h.momentum_equation_residual_relative =
+            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations =
@@ -1925,7 +1935,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.momentum_residual <= controls.convergence.relative_tolerance &&
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance &&
+            h.continuity_normalized <= controls.convergence.continuity_tolerance &&
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
