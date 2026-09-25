@@ -160,8 +160,12 @@ inline SolverResult solve_gmres(
             // Arnoldi vectors are normalized, so loss of the new direction is
             // a breakdown. Use a relative test against the current operator
             // action, but never let a tiny absolute value trigger it.
+            // Treat loss of the Arnoldi direction as a numerical rank
+            // breakdown. A few thousand ulps are still far below any
+            // physically meaningful Krylov scale, but leave enough margin for
+            // the second MGS pass and different BLAS/reduction orderings.
             const double arnoldi_breakdown_floor =
-                128.0 * std::numeric_limits<double>::epsilon() *
+                4096.0 * std::numeric_limits<double>::epsilon() *
                 std::max(arnoldi_action_norm, 1e-300);
             const bool arnoldi_breakdown_detected =
                 hnext <= arnoldi_breakdown_floor &&
