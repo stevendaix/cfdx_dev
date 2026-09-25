@@ -31,6 +31,7 @@ struct EnergySolverControls {
 struct EnergyIteration {
     std::size_t iteration = 0;
     double residual = 0.0;
+    double backward_error = 0.0;
     double energy_imbalance = 0.0;
 };
 
@@ -61,8 +62,7 @@ inline ScalarEquation assemble_energy_equation(
     const EnergySolverControls& c,
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* previous_time_temperature = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
@@ -262,7 +262,6 @@ inline EnergySolveResult solve_energy(
         }
 
         const double imbalance=energy_balance_relative_from_equation(eq,accepted);
-        result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 
         // Validate the *accepted* state, not the unrelaxed predictor.
@@ -289,7 +288,9 @@ inline EnergySolveResult solve_energy(
         const bool linear_converged =
             linear.status == cfdx::core::SolverStatus::CONVERGED &&
             std::isfinite(res) && std::isfinite(linear_backward_error) &&
-            res<=linear_tolerance && linear_backward_error<=linear_tolerance;
+            std::isfinite(linear.residual_relative) &&
+            linear.residual_relative<=linear_tolerance &&
+            linear_backward_error<=linear_tolerance;
 
         // The energy equation assembled here is linear for a fixed source,
         // conductivity and transient reference state. Therefore a fully
@@ -299,10 +300,12 @@ inline EnergySolveResult solve_energy(
         const bool accepted_state_converged =
             controls.relaxation >= 1.0 - 10.0*std::numeric_limits<double>::epsilon() ||
             relative_temperature_change <= temperature_tolerance;
+        result.history.push_back({iter,res,linear_backward_error,imbalance});
         if (mesh.n_cells() <= 64) {
             std::cerr << "THERMAL_RESIDUAL: iteration=" << iter
                       << " linear_status=" << static_cast<int>(linear.status)
                       << " residual=" << res
+                      << " backward_error=" << linear_backward_error
                       << " linear_relative=" << linear.residual_relative
                       << " dT_relative=" << relative_temperature_change
                       << " energy_balance=" << imbalance
