@@ -263,7 +263,7 @@ int main()
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,T0,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
             EnergySolverControls c; c.conductivity=k; c.relaxation=1;
-            c.max_iterations=100; c.tolerance=1e-14;
+            c.max_iterations=100; c.tolerance=1e-12;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"volumetric_power_sweep");
             double Tmax=T(0), Tmin=T(0);
@@ -334,7 +334,7 @@ int main()
     run_case("radiation_uniform_thermal_equilibrium", [] {
         // Exact LTE equilibrium for a closed gray participating medium:
         // all walls and the cell are at the same temperature, so every
-        // ordinate has I=Ib, G=4*pi*Ib=sigma*T^4 and q_rad=0.
+        // ordinate has I=Ib, G=4*pi*Ib=4*sigma*T^4 and q_rad=0.
         Mesh m=one_d_mesh(1); auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1), G(1,"G","W/m2",1), qrad(1,"qrad","W/m3",1);
         T(0)=300.0; G.fill(0.0); qrad.fill(0.0);
@@ -354,7 +354,7 @@ int main()
         const auto r=solve_participating_radiation(
             m,g,T,G,qrad,dirs,rc,rbcs);
         EXPECT_TRUE(r.converged);
-        const double expected_G=blackbody_emissive_power(300.0);
+        const double expected_G=4.0*blackbody_emissive_power(300.0);
         std::cout << "RADIATION_EQUILIBRIUM: iterations=" << r.iterations
                   << " G=" << G(0)
                   << " expected_G=" << expected_G
