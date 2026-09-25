@@ -154,6 +154,19 @@ struct Diagnostics {
         failures.push_back(name + " — exception: " + e.what());
         std::cout << "  FAIL  " << name << " — exception: " << e.what() << '\n';
     }
+
+    void diagnostic(bool condition, const std::string& name, const std::string& detail)
+    {
+        ++checks;
+        if (condition) {
+            ++passed;
+            std::cout << "  DIAG-PASS  " << name;
+        } else {
+            std::cout << "  DIAG-FAIL  " << name;
+        }
+        if (!detail.empty()) std::cout << " — " << detail;
+        std::cout << '\n';
+    }
 };
 
 std::string sci(double x)
