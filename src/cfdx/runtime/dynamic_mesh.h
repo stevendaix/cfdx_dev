@@ -36,8 +36,9 @@ inline std::vector<double> cell_volumes(const cfdx::core::Mesh& mesh)
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         const auto off = mesh.cells().offsets_data()[c];
         const auto count = mesh.cells().offsets_data()[c + 1] - off;
-        volumes[c] = compute_cell_geometry(
-            fc.data(), sf.data(), mesh.cells().faces_data() + off, count).volume;
+        volumes[c] = compute_cell_geometry_oriented(
+            fc.data(), sf.data(), mesh.cells().faces_data() + off, count,
+            static_cast<CellIndex>(c), mesh.ownership()).volume;
     }
     return volumes;
 }
