@@ -21,10 +21,15 @@ public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
                                    double omega = 0.7,
                                    std::size_t pre = 4,
-                                   std::size_t post = 4)
-        : op_(op), omega_(omega), pre_(pre), post_(post)
+                                   std::size_t post = 4,
+                                   double strength_threshold = 0.25,
+                                   std::size_t max_levels = 25)
+        : op_(op), omega_(omega), pre_(pre), post_(post),
+          strength_threshold_(strength_threshold), max_levels_(max_levels)
     {
-        if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0)) {
+        if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
+            !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
+            strength_threshold_ > 1.0 || max_levels_ == 0) {
             throw std::invalid_argument("invalid AMG operator");
         }
     }
@@ -51,10 +56,11 @@ public:
 
         // Build a genuine multilevel hierarchy until the coarse problem is
         // small. Keep the first aggregation public for diagnostics/tests.
-        while (levels_.back().A.n_rows() > 2) {
+        while (levels_.back().A.n_rows() > 2 && levels_.size() < max_levels_) {
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
-            build_pair_aggregation(levels_.back(), aggregate, coarse_n);
+            build_pair_aggregation(
+                levels_.back(), strength_threshold_, aggregate, coarse_n);
             if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
                 break;
             }
@@ -162,6 +168,7 @@ private:
     }
 
     static void build_pair_aggregation(const Level& level,
+                                       double strength_threshold,
                                        std::vector<std::size_t>& aggregate,
                                        std::size_t& coarse_n)
     {
@@ -180,10 +187,15 @@ private:
             std::size_t best = n;
             double best_strength = -1.0;
             const double di = 1.0 / level.inv_diag[i];
+            double row_max = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] != i) row_max = std::max(row_max, std::abs(val[k]));
+            }
 
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
                 if (j == i || j >= n || matched[j]) continue;
+                if (std::abs(val[k]) < strength_threshold * row_max) continue;
                 const double dj = 1.0 / level.inv_diag[j];
                 const double denom = std::sqrt(std::max(std::abs(di * dj), 1e-60));
                 const double strength = std::abs(val[k]) / denom;
@@ -361,6 +373,8 @@ private:
     const LinearOperatorBase& op_;
     double omega_;
     std::size_t pre_, post_;
+    double strength_threshold_;
+    std::size_t max_levels_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
 };

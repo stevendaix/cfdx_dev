@@ -39,7 +39,7 @@ public:
                 for (std::size_t k = row[global_row]; k < row[global_row + 1]; ++k) {
                     for (std::size_t j = 0; j < m; ++j) {
                         if (col[k] == block[j]) {
-                            at(i, j) = val[k];
+                            at(i, j) += val[k];
                             break;
                         }
                     }
@@ -119,7 +119,14 @@ private:
 };
 
 
-// Lower-triangular block Schur preconditioner for a two-field system
+enum class SchurFactorization {
+    Diagonal,
+    Lower,
+    Upper,
+    Full
+};
+
+// Block Schur preconditioner for a two-field system
 // A = [A11 A12; A21 A22]. A11 is inverted exactly as a dense block and
 // the Schur complement S = A22 - A21*A11^{-1}*A12 is formed explicitly.
 // This is a deterministic baseline for coupled pressure/velocity-like
@@ -127,8 +134,12 @@ private:
 class SchurComplementPreconditioner final : public Preconditioner {
 public:
     SchurComplementPreconditioner(std::vector<std::size_t> first,
-                                   std::vector<std::size_t> second)
-        : first_(std::move(first)), second_(std::move(second)) {}
+                                   std::vector<std::size_t> second,
+                                   SchurFactorization factorization = SchurFactorization::Lower,
+                                   double diagonal_schur_scale = -1.0)
+        : first_(std::move(first)), second_(std::move(second)),
+          factorization_(factorization),
+          diagonal_schur_scale_(diagonal_schur_scale) {}
 
     bool setup(const SparseMatrix& A) override {
         if (A.n_rows() != A.n_cols()) return false;
@@ -156,16 +167,17 @@ public:
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
                 if (r1) {
-                    if (pos1[j] < n1) a11[ri * n1 + pos1[j]] = val[k];
-                    else if (pos2[j] < n2) a12[ri * n2 + pos2[j]] = val[k];
+                    if (pos1[j] < n1) a11[ri * n1 + pos1[j]] += val[k];
+                    else if (pos2[j] < n2) a12[ri * n2 + pos2[j]] += val[k];
                 } else {
-                    if (pos1[j] < n1) a21[ri * n1 + pos1[j]] = val[k];
-                    else if (pos2[j] < n2) a22[ri * n2 + pos2[j]] = val[k];
+                    if (pos1[j] < n1) a21[ri * n1 + pos1[j]] += val[k];
+                    else if (pos2[j] < n2) a22[ri * n2 + pos2[j]] += val[k];
                 }
             }
         }
 
         if (!invert_dense(a11, n1, inv_a11_)) return false;
+        a12_ = a12;
         a21_ = a21;
 
         // S = A22 - A21 * inv(A11) * A12.
@@ -192,19 +204,52 @@ public:
         const std::size_t n2 = second_.size();
 
         std::vector<double> y1(n1, 0.0);
-        for (std::size_t i = 0; i < n1; ++i)
-            for (std::size_t j = 0; j < n1; ++j)
-                y1[i] += inv_a11_[i * n1 + j] * r(first_[j]);
+        std::vector<double> y2(n2, 0.0);
+        const auto solve_first = [&](const std::vector<double>& rhs) {
+            std::vector<double> solution(n1, 0.0);
+            for (std::size_t i = 0; i < n1; ++i)
+                for (std::size_t j = 0; j < n1; ++j)
+                    solution[i] += inv_a11_[i * n1 + j] * rhs[j];
+            return solution;
+        };
+        const auto solve_second = [&](const std::vector<double>& rhs) {
+            std::vector<double> solution(n2, 0.0);
+            for (std::size_t i = 0; i < n2; ++i)
+                for (std::size_t j = 0; j < n2; ++j)
+                    solution[i] += inv_schur_[i * n2 + j] * rhs[j];
+            return solution;
+        };
 
-        // The lower-triangular approximation solves
-        // A11*y1=r1, S*y2=r2-A21*y1.
-        // Reconstruct A21 from the stored coupling-free action used at setup.
-        std::vector<double> rhs2 = second_rhs_(y1, r);
+        std::vector<double> rhs1(n1, 0.0);
+        std::vector<double> rhs2(n2, 0.0);
+        for (std::size_t i = 0; i < n1; ++i) rhs1[i] = r(first_[i]);
+        for (std::size_t i = 0; i < n2; ++i) rhs2[i] = r(second_[i]);
+
+        if (factorization_ == SchurFactorization::Upper) {
+            y2 = solve_second(rhs2);
+            for (std::size_t i = 0; i < n1; ++i)
+                for (std::size_t j = 0; j < n2; ++j)
+                    rhs1[i] -= a12_[i * n2 + j] * y2[j];
+            y1 = solve_first(rhs1);
+        } else {
+            y1 = solve_first(rhs1);
+            if (factorization_ != SchurFactorization::Diagonal)
+                rhs2 = second_rhs_(y1, r);
+            y2 = solve_second(rhs2);
+            if (factorization_ == SchurFactorization::Diagonal)
+                for (double& value : y2) value *= diagonal_schur_scale_;
+            if (factorization_ == SchurFactorization::Full) {
+                std::vector<double> upper_coupling(n1, 0.0);
+                for (std::size_t i = 0; i < n1; ++i)
+                    for (std::size_t j = 0; j < n2; ++j)
+                        upper_coupling[i] += a12_[i * n2 + j] * y2[j];
+                const auto correction = solve_first(upper_coupling);
+                for (std::size_t i = 0; i < n1; ++i) y1[i] -= correction[i];
+            }
+        }
+
         for (std::size_t i = 0; i < n2; ++i) {
-            double value = 0.0;
-            for (std::size_t j = 0; j < n2; ++j)
-                value += inv_schur_[i * n2 + j] * rhs2[j];
-            z(second_[i]) = value;
+            z(second_[i]) = y2[i];
         }
         for (std::size_t i = 0; i < n1; ++i) z(first_[i]) = y1[i];
         return true;
@@ -282,7 +327,10 @@ private:
     std::vector<std::size_t> second_;
     std::vector<double> inv_a11_;
     std::vector<double> inv_schur_;
+    std::vector<double> a12_;
     std::vector<double> a21_;
+    SchurFactorization factorization_;
+    double diagonal_schur_scale_;
     std::size_t n_{0};
 };
 

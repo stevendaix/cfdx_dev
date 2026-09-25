@@ -13,6 +13,7 @@
 #include "vector.h"
 #include "mixed_precision.h"
 #include "krylov_reductions.h"
+#include "preconditioner.h"
 #include <cstddef>
 #include <stdexcept>
 #include <cmath>
@@ -54,14 +55,16 @@ struct SolverResult {
 //   tolerance  : tolérance sur le résidu relatif.
 //
 // Retourne un SolverResult.
-inline SolverResult solve_cg(
+namespace detail {
+inline SolverResult solve_cg_impl(
     const SparseMatrix& A,
     const Vector& b,
     Vector& x,
-    std::size_t max_iter = 1000,
-    double tolerance = 1e-12,
-    PrecisionPolicy precision = {},
-    KrylovReductionPolicy reduction = {})
+    std::size_t max_iter,
+    double tolerance,
+    PrecisionPolicy precision,
+    KrylovReductionPolicy reduction,
+    Preconditioner* preconditioner)
 {
     SolverResult result;
 
@@ -95,18 +98,26 @@ inline SolverResult solve_cg(
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
 
-    // Préconditionneur diagonal : M = diag(A).
+    // Preserve the historical Jacobi path when no external preconditioner is
+    // supplied. This keeps the native solver behavior and API unchanged.
     std::vector<double> M(n, 0.0);
-    for (std::size_t i = 0; i < n; ++i) {
-        for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-            if (Ac[k] == static_cast<std::uint32_t>(i)) {
-                M[i] = Av[k];
-                break;
-            }
-        }
-        if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+    if (preconditioner) {
+        if (!preconditioner->setup(A)) {
             result.status = SolverStatus::NOT_APPLICABLE;
             return result;
+        }
+    } else {
+        for (std::size_t i = 0; i < n; ++i) {
+            for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+                if (Ac[k] == static_cast<std::uint32_t>(i)) {
+                    M[i] = Av[k];
+                    break;
+                }
+            }
+            if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+                result.status = SolverStatus::NOT_APPLICABLE;
+                return result;
+            }
         }
     }
 
@@ -117,17 +128,29 @@ inline SolverResult solve_cg(
 
     // z = M^{-1} r
     std::vector<double> z(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        z[i] = r[i] / M[i];
-        if (!std::isfinite(z[i])) { result.status=SolverStatus::DIVERGED; return result; }
+    Vector z_vector(n);
+    Vector r_vector(n);
+    const auto apply_preconditioner = [&]() {
+        if (preconditioner) {
+            for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
+            if (!preconditioner->apply(r_vector, z_vector)) return false;
+            for (std::size_t i = 0; i < n; ++i) z[i] = z_vector(i);
+        } else {
+            for (std::size_t i = 0; i < n; ++i) z[i] = r[i] / M[i];
+        }
+        for (const double value : z)
+            if (!std::isfinite(value)) return false;
+        return true;
+    };
+    if (!apply_preconditioner()) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
     }
 
     // p = z
     std::vector<double> p = z;
 
-    Vector z_vector(n);
     for (std::size_t i = 0; i < n; ++i) z_vector(i) = z[i];
-    Vector r_vector(n);
     for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
     double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
 
@@ -136,10 +159,15 @@ inline SolverResult solve_cg(
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
 
-    if (rsold < tol_abs * tol_abs) {
+    const double initial_true_residual =
+        krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
+    if ((preconditioner && initial_true_residual <= tol_abs) ||
+        (!preconditioner && rsold < tol_abs * tol_abs)) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
-        result.residual = krylov_norm2(rv, redp, reduction);
+        result.residual = preconditioner
+            ? initial_true_residual
+            : krylov_norm2(rv, redp, reduction);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
@@ -181,8 +209,10 @@ inline SolverResult solve_cg(
             if (!std::isfinite(x(i)) || !std::isfinite(r[i])) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
 
         // z = M^{-1} r
-        for (std::size_t i = 0; i < n; ++i) {
-            z[i] = r[i] / M[i];
+        if (!apply_preconditioner()) {
+            result.status = SolverStatus::NOT_APPLICABLE;
+            result.iterations = iter;
+            return result;
         }
 
         // rsnew = r · z
@@ -193,7 +223,9 @@ inline SolverResult solve_cg(
         const double rsnew = krylov_dot(r_vector, z_vector, redp, reduction);
 
         if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
-        const double res = std::sqrt(std::abs(rsnew));
+        const double res = preconditioner
+            ? krylov_norm2(r_vector, SolverPrecision::FP64, reduction)
+            : std::sqrt(std::abs(rsnew));
         if (res < tol_abs) {
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
@@ -218,6 +250,34 @@ inline SolverResult solve_cg(
     result.residual = mixed_precision_true_residual(A,b,x,rv);
     result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
     return result;
+}
+} // namespace detail
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction, nullptr);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction, &preconditioner);
 }
 
 }  // namespace core

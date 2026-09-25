@@ -1,61 +1,52 @@
 #pragma once
 
-#include "cfdx/core/linalg/sparse_matrix.h"
-#include "cfdx/core/linalg/vector.h"
+#include "cfdx/core/linalg/preconditioner.h"
+
+#include <cstddef>
+#include <memory>
 #include <string>
 
-namespace cfdx::core::linalg {
+namespace cfdx::core {
 
-// ============================================
-// Vertical Slice 1 — Hypre BoomerAMG Wrapper
-// ============================================
-
-//! AMG memory policy per v4 spec (A8-T08 / B2-T05)
 enum class AMGMemoryPolicy {
-    Low,     // Aggressive coarsening, minimized setup memory
-    Balanced,  // Standard (HMIS coarsening)
-    Fast    // Maximize convergence (strong threshold 0.5)
+    Low,
+    Balanced,
+    Fast
 };
 
-//! Hypre BoomerAMG wrapper implementing the preconditioner interface.
-//!
-//! Uses HYPRE's BoomerAMG library with configuration optimized for
-//! CFD polyhedral meshes (coarsening HMIS, relaxation hybrid, etc.).
-//! Memory policies control coarsening aggressiveness per v4 spec.
-class HypreAMG {
+// Dependency-free AMG recipe using the parts of the BoomerAMG method that fit
+// CFDX's native algebra: strength-based aggregation, Galerkin coarse operators,
+// smoothing, restriction/prolongation and a coarse solve. This is not HYPRE and
+// does not claim binary or numerical equivalence with HYPRE BoomerAMG.
+class NativeBoomerAMGPreconditioner final : public Preconditioner {
 public:
-    HypreAMG();
-    ~HypreAMG();
+    NativeBoomerAMGPreconditioner();
+    ~NativeBoomerAMGPreconditioner() override;
 
-    //! Configure AMG with specified memory/performance policy
+    NativeBoomerAMGPreconditioner(const NativeBoomerAMGPreconditioner&) = delete;
+    NativeBoomerAMGPreconditioner& operator=(const NativeBoomerAMGPreconditioner&) = delete;
+    NativeBoomerAMGPreconditioner(NativeBoomerAMGPreconditioner&&) noexcept;
+    NativeBoomerAMGPreconditioner& operator=(NativeBoomerAMGPreconditioner&&) noexcept;
+
     void configure(AMGMemoryPolicy policy);
+    bool setup(const SparseMatrix& matrix) override;
+    bool apply(const Vector& residual, Vector& correction) const override;
+    const char* name() const override { return "NativeBoomerStyleAMG"; }
 
-    //! Initialize AMG with matrix (setup phase — memory intensive)
-    bool setup(const SparseMatrix& A, int num_partitions = 1);
-
-    //! Apply preconditioner (y = M⁻¹ x) — called per CG iteration
-    bool apply(const Vector& x, Vector& y) const;
-
-    //! Measure memory usage (setup + solve peaks) for budget tracking
-    struct AMGMemoryUsage {
-        size_t setup_peak_bytes;
-        size_t solve_peak_bytes;
-        size_t temporary_bytes;
-        int num_levels;
-        int iterations;
-    };
-    AMGMemoryUsage measureMemoryUsage() const;
-
-    //! Get estimated speedup vs no preconditioner (benchmark)
-    double estimateSpeedup() const;
-
-    //! Access underlying Hypre solver (for advanced tuning)
-    void* hypreSolver();
+    bool is_ready() const noexcept;
+    AMGMemoryPolicy memory_policy() const noexcept;
+    std::size_t coarse_size() const noexcept;
+    const std::string& last_error() const noexcept;
 
 private:
-    AMGMemoryPolicy current_policy_;
-    void* hypre_solver_;  // HYPRE_Solver (opaque pointer)
-    bool is_initialized_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
-} // namespace cfdx::core::linalg
+} // namespace cfdx::core
+
+namespace cfdx::core::linalg {
+using AMGMemoryPolicy = cfdx::core::AMGMemoryPolicy;
+using HypreAMG [[deprecated("Use NativeBoomerAMGPreconditioner; this is not HYPRE")]] =
+    cfdx::core::NativeBoomerAMGPreconditioner;
+}
