@@ -290,19 +290,23 @@ public:
 
         for (std::size_t j = 0; j < nv_; ++j) {
             const auto [found, d] = diagonal(j);
-            if (!found || !std::isfinite(d) ||
-                std::abs(d) <= 64.0 * std::numeric_limits<double>::epsilon()) {
-                if (std::getenv("CFDX_DEBUG_COUPLED"))
-                    std::cerr << "COUPLED_SCHUR_SETUP velocity_diag_failure row=" << j
-                              << " found=" << found << " diag=" << d
-                              << " nnz=" << (row[j + 1] - row[j]) << " entries=";
-                    for (std::size_t kk = row[j]; kk < row[j + 1]; ++kk)
-                        std::cerr << " (" << col[kk] << "," << val[kk] << ")";
-                    std::cerr << "\\n";
-                clear();
-                return false;
+            if (found && std::isfinite(d) &&
+                std::abs(d) > 64.0 * std::numeric_limits<double>::epsilon()) {
+                inv_velocity_diag_[j] = 1.0 / d;
+                continue;
             }
-            inv_velocity_diag_[j] = 1.0 / d;
+
+            // Some CFDX transport rows are intentionally represented without
+            // a stored diagonal (for example an inactive/degenerate component).
+            // Do not make that representation detail disable the whole
+            // saddle-point preconditioner. Use a conservative row scaling:
+            // the row infinity norm, or unity for an entirely empty row.
+            double row_scale = 0.0;
+            for (std::size_t k = row[j]; k < row[j + 1]; ++k)
+                row_scale = std::max(row_scale, std::abs(val[k]));
+            if (!std::isfinite(row_scale))
+                return false;
+            inv_velocity_diag_[j] = 1.0 / std::max(row_scale, 1.0);
         }
 
         // The coupled FV continuity assembly already contains the
