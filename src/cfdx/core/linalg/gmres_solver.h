@@ -114,7 +114,10 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
             const double arnoldi_action_norm =
                 krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
-
+            // Modified Gram-Schmidt once is vulnerable to loss of
+            // orthogonality on nonsymmetric saddle-point systems. A second
+            // orthogonalization pass is inexpensive for the small acceptance
+            // systems and substantially improves the Hessenberg relation.
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
                 Vector vi_vector(n);
@@ -122,6 +125,15 @@ inline SolverResult solve_gmres(
                 const double h = krylov_dot(vi_vector, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
+            }
+            for (int i = 0; i <= j; ++i) {
+                const double* vi = w.v(static_cast<std::size_t>(i));
+                Vector vi_vector(n);
+                for (std::size_t k = 0; k < n; ++k) vi_vector(k) = vi[k];
+                const double correction = krylov_dot(
+                    vi_vector, w.w, SolverPrecision::FP64, controls.reduction);
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
+                for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
             }
 
             // Scale the breakdown test with ||A z_j||, not with an arbitrary
