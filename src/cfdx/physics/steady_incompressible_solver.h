@@ -683,8 +683,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     }
 
     // Continuity is assembled from the same face velocity interpolation used
-    // by the pressure-based solver. The pressure block is the implicit
-    // momentum-weighted (Rhie-Chow) face-flux derivative.
+    // by the pressure-based solver. The pressure Schur diagonal below is the
+    // exact diagonal of the same momentum-weighted (Rhie-Chow) face-flux
+    // derivative and is passed explicitly to the coupled preconditioner.
+    std::vector<double> coupled_pressure_schur_diagonal(nc, 0.0);
     for (std::size_t c = 0; c < nc; ++c) {
         const std::size_t row = nv + c;
         const Offset off = mesh.cells().offsets_data()[c];
@@ -784,6 +786,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // as in the segregated Rhie-Chow operator.
                 A.push_back(row, nv + c, D);
                 A.push_back(row, nv + ncell, -D);
+                coupled_pressure_schur_diagonal[c] += D;
 
                 const Vec3 dvec = geometry.cell_centres[ncell] -
                                   geometry.cell_centres[c];
@@ -867,6 +870,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
                             std::to_string(f));
                     A.push_back(row, nv + c, D);
+                    coupled_pressure_schur_diagonal[c] += D;
                     b(row) += D * pbc->value;
                 }
             }
@@ -944,6 +948,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // preconditioner with a diagonal velocity solve and pressure Schur
     // complement. Identity remains only as an applicability fallback.
     CoupledBlockSchurPreconditioner coupled_preconditioner(nc);
+    coupled_pressure_schur_diagonal[reference_cell] = 1.0;
+    coupled_preconditioner.set_pressure_schur_diagonal(
+        coupled_pressure_schur_diagonal);
     auto result = solve_gmres(
         A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
     if (result.status == SolverStatus::NOT_APPLICABLE) {
