@@ -279,38 +279,74 @@ int main()
                 Tmax=std::max(Tmax,T(i));
                 Tmin=std::min(Tmin,T(i));
             }
-            double exact_dT_cell=0.0;
+            const double h=L/static_cast<double>(n);
+            const double exact_dT_continuous=qv*L*L/(8.0*k);
+
+            // For the two-point FVM stencil with Dirichlet values imposed at
+            // a half-cell distance from the boundary, the exact discrete
+            // solution at cell centres is the continuous quadratic plus the
+            // boundary truncation correction q''' h^2/(8 k):
+            //
+            //   T_i^disc = T0 + q'''/(2k) *
+            //                    [x_i(L-x_i) + h^2/4].
+            //
+            // Therefore, on an even uniform mesh, the discrete maximum is
+            // exactly the continuous maximum at the two central cells. The
+            // previous test incorrectly compared T_max to T_exact(x_i), which
+            // differs by q''' h^2/(8k) = 0.00610352 K for q'''=100,
+            // n=32, k=2.
+            double exact_dT_discrete_max=0.0;
+            double continuous_cell_error=0.0;
             for(std::size_t i=0;i<n;++i) {
                 const double x=g.cell_centres[i].x;
                 EXPECT_TRUE(x>=0.0 && x<=L);
-                exact_dT_cell=std::max(
-                    exact_dT_cell,qv*x*(L-x)/(2.0*k));
+                const double exact_dT_cell_continuous =
+                    qv*x*(L-x)/(2.0*k);
+                const double exact_dT_cell_discrete =
+                    exact_dT_cell_continuous + qv*h*h/(8.0*k);
+                exact_dT_discrete_max =
+                    std::max(exact_dT_discrete_max,
+                             exact_dT_cell_discrete);
+                continuous_cell_error =
+                    std::max(continuous_cell_error,
+                             std::abs((T(i)-T0) - exact_dT_cell_continuous));
+                EXPECT_NEAR(T(i)-T0, exact_dT_cell_discrete,
+                            2e-12*std::max(1.0,exact_dT_cell_discrete));
             }
-            const double exact_dT_continuous=qv*L*L/(8.0*k);
+
             const double expected_power=qv*L; // unit cross-sectional area
             const double generated_power=qv*std::accumulate(
                 g.cell_volumes.begin(),g.cell_volumes.end(),0.0);
-            const double center_x=g.cell_centres[n/2].x;
-            const double center_exact=T0+qv*center_x*(L-center_x)/(2.0*k);
             std::cout << "THERMAL_POWER_STUDY: qvol=" << qv
                       << " W/m3 Tmax=" << Tmax
                       << " dTmax=" << (Tmax-T0)
-                      << " exact_dTmax_cell=" << exact_dT_cell
+                      << " exact_dTmax_discrete=" << exact_dT_discrete_max
                       << " exact_dTmax_continuous=" << exact_dT_continuous
+                      << " expected_discretization_error="
+                      << qv*h*h/(8.0*k)
+                      << " observed_continuous_cell_error="
+                      << continuous_cell_error
                       << " generated_power=" << generated_power
                       << " expected_power=" << expected_power
-                      << " center_exact=" << center_exact
                       << " Tmin=" << Tmin << '\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            // Use the actual geometric cell centres as the analytical oracle.
-            // This avoids silently assuming a particular cell indexing/centroid
-            // convention in the validation mesh.
-            EXPECT_NEAR(Tmax-T0, exact_dT_cell,
-                         1e-12*std::max(1.0,exact_dT_cell));
-            EXPECT_NEAR(generated_power,expected_power,1e-12);
+
+            // The primary oracle is the exact solution of the *discrete*
+            // FVM equations, not the continuous solution sampled at cell
+            // centres.
+            EXPECT_NEAR(Tmax-T0, exact_dT_discrete_max,
+                         2e-12*std::max(1.0,exact_dT_discrete_max));
+            EXPECT_NEAR(generated_power,expected_power,
+                        1e-12*std::max(1.0,expected_power));
+
+            // The same solution must converge to the continuous solution
+            // with the expected O(h^2) boundary discretization error.
+            EXPECT_NEAR(continuous_cell_error, qv*h*h/(8.0*k),
+                        2e-12*std::max(1.0,qv*h*h/(8.0*k)));
+
             if(previous_dT > 0.0)
-                EXPECT_NEAR((Tmax-T0)/previous_dT, 10.0, 1e-12);
+                EXPECT_NEAR((Tmax-T0)/previous_dT, 10.0, 2e-12);
             previous_dT=Tmax-T0;
         }
     });
