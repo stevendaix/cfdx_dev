@@ -282,9 +282,23 @@ public:
                     found = true;
                 }
             }
-            if (!found || !std::isfinite(d) || d == 0.0)
-                return false;
-            inv_velocity_diag_[i] = 1.0 / d;
+            if (!found || !std::isfinite(d) || d == 0.0) {
+                // A structurally inactive momentum row is converted to an
+                // exact identity row by the coupled assembly. Treat that row
+                // as M=I rather than rejecting the whole saddle-point
+                // preconditioner; any other zero/missing diagonal remains a
+                // genuine assembly error and is not silently regularized.
+                const bool identity_row =
+                    row[i + 1] - row[i] == 1 &&
+                    col[row[i]] == i &&
+                    std::abs(val[row[i]] - 1.0) <=
+                        64.0 * std::numeric_limits<double>::epsilon();
+                if (!identity_row)
+                    return false;
+                inv_velocity_diag_[i] = 1.0;
+            } else {
+                inv_velocity_diag_[i] = 1.0 / d;
+            }
         }
 
         pressure_velocity_rows_.assign(n_cells_, {});
