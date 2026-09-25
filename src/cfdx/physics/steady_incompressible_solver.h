@@ -583,6 +583,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     double reference_value,
     std::size_t max_iterations,
     double tolerance,
+    const DiagnosticsControls& diagnostics,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
 {
@@ -778,7 +779,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area) ||
                     !(D > 0.0) || !std::isfinite(D)) {
-                    if (controls.diagnostics.coupled_matrix_summary) {
+                    if (diagnostics.coupled_matrix_summary) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
                                   << " cells=" << c << "/" << ncell
                                   << " area=" << area
@@ -966,7 +967,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Optional algebraic microscope. It is deliberately computed from
     // the exact post-gauge matrix passed to GMRES, so it exposes the actual
     // M/G/D/C blocks rather than reconstructed proxy operators.
-    if (controls.diagnostics.coupled_matrix_summary) {
+    if (diagnostics.coupled_matrix_summary) {
         double m2 = 0.0, g2 = 0.0, d2 = 0.0, c2 = 0.0;
         std::size_t zero_rows = 0;
         std::vector<std::size_t> row_nnz(n, 0);
@@ -1083,7 +1084,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
-    if (controls.diagnostics.coupled_matrix_summary) {
+    if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
@@ -1126,7 +1127,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result.residual_relative = std::numeric_limits<double>::infinity();
         return result;
     }
-    if (controls.diagnostics.coupled_matrix_summary) {
+    if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
                   << coupled_matrix_residual
                   << " relative=" << coupled_matrix_relative
@@ -1344,6 +1345,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.pressure_reference_value,
                 controls.coupling.coupled_max_iterations,
                 controls.coupling.coupled_linear_tolerance,
+                controls.diagnostics,
                 U, p);
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
