@@ -113,13 +113,13 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
         double ny = (range.y > 0) ? (cell_centres[c].y - min_corner.y) / range.y : 0.5;
         double nz = (range.z > 0) ? (cell_centres[c].z - min_corner.z) / range.z : 0.5;
         
-        std::uint32_t ix = static_cast<std::uint32_t>(std::clamp(nx * 1023.0, 0.0, 1023.0));
-        std::uint32_t iy = static_cast<std::uint32_t>(std::clamp(ny * 1023.0, 0.0, 1023.0));
-        std::uint32_t iz = static_cast<std::uint32_t>(std::clamp(nz * 1023.0, 0.0, 1023.0));
+        std::uint32_t ix = static_cast<std::uint32_t>(std::clamp(nx * 2097151.0, 0.0, 2097151.0));
+        std::uint32_t iy = static_cast<std::uint32_t>(std::clamp(ny * 2097151.0, 0.0, 2097151.0));
+        std::uint32_t iz = static_cast<std::uint32_t>(std::clamp(nz * 2097151.0, 0.0, 2097151.0));
         
         // Interleave bits (Morton code)
         std::uint64_t morton = 0;
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 21; ++i) {
             morton |= (std::uint64_t)((ix >> i) & 1) << (3 * i);
             morton |= (std::uint64_t)((iy >> i) & 1) << (3 * i + 1);
             morton |= (std::uint64_t)((iz >> i) & 1) << (3 * i + 2);
@@ -130,15 +130,13 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
     
     // Sort by Morton code
     std::sort(keys.begin(), keys.end(), [](const CellKey& a, const CellKey& b) {
-        return a.morton < b.morton;
+        return a.morton != b.morton ? a.morton < b.morton : a.index < b.index;
     });
     
     // Assign cells to ranks evenly
-    const std::size_t cells_per_part = (n_cells + n_parts - 1) / n_parts;
     for (std::size_t i = 0; i < n_cells; ++i) {
-        int target_rank = static_cast<int>(i / cells_per_part);
-        if (target_rank >= n_parts) target_rank = n_parts - 1;
-        part.cell_rank[keys[i].index] = target_rank;
+        const int target_rank = static_cast<int>((i * static_cast<std::size_t>(n_parts)) / n_cells);
+        part.cell_rank[keys[i].index] = std::min(target_rank, n_parts - 1);
     }
     
     // Set face owner ranks
