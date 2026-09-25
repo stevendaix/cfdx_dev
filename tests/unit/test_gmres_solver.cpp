@@ -176,15 +176,15 @@ int main() {
         //
         // [ 1  0  1 ] [u]   [1]
         // [ 0  1  1 ] [v] = [1]
-        // [-1 -1  0 ] [p]   [3]
+        // [-1 -1 -2 ] [p]   [0]
         //
-        // The first two rows imply u=v, while the continuity equation has
-        // zero left-null-space compatibility for this deliberately
-        // inconsistent RHS.
+        // The third row is exactly the negative sum of the first two rows,
+        // so the matrix is singular.  With b=(1,1,0), the left-null-space
+        // compatibility condition is violated: b_3 != -(b_1+b_2).
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 1.0); A.push_back(0, 2, 1.0);
         A.push_back(1, 1, 1.0); A.push_back(1, 2, 1.0);
-        A.push_back(2, 0, -1.0); A.push_back(2, 1, -1.0);
+        A.push_back(2, 0, -1.0); A.push_back(2, 1, -1.0); A.push_back(2, 2, -2.0);
         A.finalize();
 
         Vector b(3);
