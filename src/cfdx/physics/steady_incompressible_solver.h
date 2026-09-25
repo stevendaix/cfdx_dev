@@ -1836,10 +1836,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         IncompressibleIteration h;
         h.iteration = iter;
-        h.momentum_residual =
-            controls.algorithm == PressureVelocityAlgorithm::COUPLED
-                ? final_momentum_residual / momentum_rhs_scale
-                : std::max({rx.residual_relative, ry.residual_relative, rz.residual_relative});
+        h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
