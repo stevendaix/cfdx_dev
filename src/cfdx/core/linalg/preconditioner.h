@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <iostream>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
@@ -290,6 +292,9 @@ public:
             const auto [found, d] = diagonal(j);
             if (!found || !std::isfinite(d) ||
                 std::abs(d) <= 64.0 * std::numeric_limits<double>::epsilon()) {
+                if (std::getenv("CFDX_DEBUG_COUPLED"))
+                    std::cerr << "COUPLED_SCHUR_SETUP velocity_diag_failure row=" << j
+                              << " found=" << found << " diag=" << d << "\\n";
                 clear();
                 return false;
             }
@@ -335,6 +340,11 @@ public:
             if (!std::isfinite(schur) ||
                 std::abs(schur) <=
                     64.0 * std::numeric_limits<double>::epsilon()) {
+                if (std::getenv("CFDX_DEBUG_COUPLED"))
+                    std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
+                              << " has_diag=" << has_pressure_diagonal
+                              << " pressure_diag=" << pressure_diagonal
+                              << " schur=" << schur << "\\n";
                 clear();
                 return false;
             }
