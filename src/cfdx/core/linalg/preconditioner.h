@@ -292,14 +292,22 @@ public:
 
             // The pressure reference row is an identity row after gauge fixing.
             double cdiag = 0.0;
-            bool pressure_identity = false;
+            bool has_pressure_diag = false;
             for (std::uint32_t k = row[prow]; k < row[prow + 1]; ++k) {
                 if (col[k] == prow) {
                     cdiag += val[k];
-                    if (std::abs(cdiag - 1.0) <= 64.0 * std::numeric_limits<double>::epsilon())
-                        pressure_identity = true;
+                    has_pressure_diag = true;
                 }
             }
+            // Only an actual one-entry identity row is the pressure gauge.
+            // A physical pressure block is allowed to have a unit diagonal
+            // coefficient as part of a larger row and must still be Schur
+            // preconditioned.
+            const bool pressure_identity =
+                has_pressure_diag &&
+                row[prow + 1] - row[prow] == 1 &&
+                std::abs(cdiag - 1.0) <=
+                    64.0 * std::numeric_limits<double>::epsilon();
             if (pressure_identity) {
                 schur_diag_[p] = 1.0;
                 continue;
