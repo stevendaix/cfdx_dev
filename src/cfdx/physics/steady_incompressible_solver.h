@@ -1068,27 +1068,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
+    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
+        (void)debug;
+        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
+                  << " restart=" << gmres_restart
+                  << " adaptive_restart=0\\n";
+    }
     auto result = solve_gmres(
         A, b, x, gmres_restart, max_iterations, tolerance,
         &coupled_preconditioner, coupled_gmres_controls);
-    if (result.status == SolverStatus::NOT_APPLICABLE) {
-        IdentityPreconditioner fallback_preconditioner;
-        if (!fallback_preconditioner.setup(A))
-            return result;
-        std::cerr << "CFDX coupled solver: Schur preconditioner unavailable; "
-                     "falling back to identity-preconditioned GMRES\\n";
-        cfdx::core::KrylovControls identity_gmres_controls;
-        identity_gmres_controls.restart_min = gmres_restart;
-        identity_gmres_controls.restart_max = gmres_restart;
-        identity_gmres_controls.adaptive_restart = false;
-        result = solve_gmres(
-            A, b, x, gmres_restart, max_iterations, tolerance,
-            &fallback_preconditioner, identity_gmres_controls);
-    }
 
-    // Keep coupled-solver failures visible. A second Krylov method using the
-    // same Schur approximation can mask an assembly or preconditioning defect
-    // and makes the Phase-9 failure non-diagnostic.
+    // Keep coupled-solver failures visible. Do not replace a failed Schur
+    // setup by identity-preconditioned GMRES: that would hide the defect in
+    // the production preconditioner and make the numerical gate non-diagnostic.
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
@@ -1110,8 +1102,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         coupled_rhs_norm_sq += b(row) * b(row);
     }
     const double coupled_matrix_residual = std::sqrt(coupled_matrix_residual_sq);
+    const double coupled_rhs_norm = std::sqrt(coupled_rhs_norm_sq);
     const double coupled_matrix_relative =
-        coupled_matrix_residual / std::max(std::sqrt(coupled_rhs_norm_sq), 1.0);
+        coupled_matrix_residual / (coupled_rhs_norm > 0.0 ? coupled_rhs_norm : 1.0);
     if (!std::isfinite(coupled_matrix_residual) ||
         !std::isfinite(coupled_matrix_relative)) {
         result.status = SolverStatus::DIVERGED;
