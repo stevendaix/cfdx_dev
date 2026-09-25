@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cfdx/physics/wall_functions.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -152,7 +154,7 @@ inline double van_driest_damping(double y_plus, double A_plus = 26.0)
 inline double wall_function_u_plus(double y_plus, double E = 9.793)
 {
     if (y_plus <= 0.0 || E <= 0.0) throw std::invalid_argument("invalid wall-function input");
-    if (y_plus < 11.0) return y_plus;
+    if (y_plus < cfdx::physics::wall::log_layer_crossover(kappa, E)) return y_plus;
     return std::log(E * y_plus) / kappa;
 }
 
