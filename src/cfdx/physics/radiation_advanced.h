@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -431,6 +432,196 @@ inline bool radiation_ray_triangle_hit(
     return true;
 }
 
+
+// -----------------------------------------------------------------------------
+// CPU BVH acceleration for S2S ray traversal.
+// -----------------------------------------------------------------------------
+
+struct RadiationAabb {
+    std::array<double,3> lo{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<double,3> hi{
+        -std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()};
+};
+
+inline RadiationAabb radiation_triangle_aabb(const RadiationTriangle& t)
+{
+    RadiationAabb b;
+    for (int k=0;k<3;++k) {
+        if (!std::isfinite(t.a[k]) || !std::isfinite(t.b[k]) ||
+            !std::isfinite(t.c[k]))
+            throw std::invalid_argument("radiation triangle coordinates must be finite");
+        b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
+        b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
+    }
+    return b;
+}
+
+inline RadiationAabb radiation_merge_aabb(const RadiationAabb& a,
+                                          const RadiationAabb& b)
+{
+    RadiationAabb r;
+    for (int k=0;k<3;++k) {
+        r.lo[k]=std::min(a.lo[k],b.lo[k]);
+        r.hi[k]=std::max(a.hi[k],b.hi[k]);
+    }
+    return r;
+}
+
+inline std::array<double,3> radiation_aabb_centroid(const RadiationAabb& b)
+{
+    return {(b.lo[0]+b.hi[0])*0.5,(b.lo[1]+b.hi[1])*0.5,
+            (b.lo[2]+b.hi[2])*0.5};
+}
+
+inline bool radiation_ray_aabb_hit(
+    const std::array<double,3>& origin,
+    const std::array<double,3>& direction,
+    const RadiationAabb& box,
+    double max_distance)
+{
+    double tmin=0.0;
+    double tmax=max_distance;
+    for (int k=0;k<3;++k) {
+        if (std::abs(direction[k])<1e-15) {
+            if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+            continue;
+        }
+        const double inv=1.0/direction[k];
+        double t1=(box.lo[k]-origin[k])*inv;
+        double t2=(box.hi[k]-origin[k])*inv;
+        if (t1>t2) std::swap(t1,t2);
+        tmin=std::max(tmin,t1);
+        tmax=std::min(tmax,t2);
+        if (tmin>tmax) return false;
+    }
+    return tmax>=std::max(tmin,1e-11);
+}
+
+class RadiationBvh {
+public:
+    struct Node {
+        RadiationAabb bounds;
+        std::uint32_t begin=0;
+        std::uint32_t count=0;
+        std::int32_t left=-1;
+        std::int32_t right=-1;
+        bool leaf() const { return left<0; }
+    };
+
+    RadiationBvh() = default;
+    explicit RadiationBvh(const std::vector<RadiationTriangle>& triangles) {
+        build(triangles);
+    }
+    RadiationBvh(std::vector<RadiationTriangle>&&) = delete;
+
+    void build(const std::vector<RadiationTriangle>& triangles)
+    {
+        if (triangles.size() > std::numeric_limits<std::uint32_t>::max())
+            throw std::length_error("radiation BVH triangle index overflow");
+        for (const auto& triangle:triangles)
+            (void)radiation_triangle_aabb(triangle);
+        triangles_=&triangles;
+        indices_.resize(triangles.size());
+        for (std::size_t i=0;i<indices_.size();++i)
+            indices_[i]=static_cast<std::uint32_t>(i);
+        nodes_.clear();
+        if (!indices_.empty()) build_node(0,indices_.size());
+    }
+    void build(std::vector<RadiationTriangle>&&) = delete;
+
+    bool nearest_hit(const std::array<double,3>& origin,
+                     const std::array<double,3>& direction,
+                     double& distance) const
+    {
+        double direction_norm_squared=0.0;
+        for (int k=0;k<3;++k) {
+            if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
+                throw std::invalid_argument("radiation BVH ray must be finite");
+            direction_norm_squared+=direction[k]*direction[k];
+        }
+        if (!(direction_norm_squared>0.0) || !std::isfinite(direction_norm_squared))
+            throw std::invalid_argument("radiation BVH ray direction must be non-zero");
+        distance=std::numeric_limits<double>::infinity();
+        if (nodes_.empty()) return false;
+        std::vector<std::int32_t> stack{0};
+        bool hit=false;
+        while (!stack.empty()) {
+            const auto ni=stack.back();
+            stack.pop_back();
+            const auto& node=nodes_[ni];
+            if (!radiation_ray_aabb_hit(origin,direction,node.bounds,distance))
+                continue;
+            if (node.leaf()) {
+                for (std::uint32_t k=0;k<node.count;++k) {
+                    const auto ti=indices_[node.begin+k];
+                    double d=0.0;
+                    if (radiation_ray_triangle_hit(origin,direction,
+                                                   (*triangles_)[ti],d) &&
+                        d<distance) {
+                        distance=d;
+                        hit=true;
+                    }
+                }
+            } else {
+                stack.push_back(node.left);
+                stack.push_back(node.right);
+            }
+        }
+        return hit;
+    }
+
+private:
+    const std::vector<RadiationTriangle>* triangles_=nullptr;
+    std::vector<std::uint32_t> indices_;
+    std::vector<Node> nodes_;
+
+    std::int32_t build_node(std::size_t begin,std::size_t end)
+    {
+        const auto id=static_cast<std::int32_t>(nodes_.size());
+        nodes_.push_back({});
+        RadiationAabb bounds;
+        RadiationAabb centroids;
+        for (std::size_t k=begin;k<end;++k) {
+            const auto b=radiation_triangle_aabb((*triangles_)[indices_[k]]);
+            bounds=radiation_merge_aabb(bounds,b);
+            const auto c=radiation_aabb_centroid(b);
+            centroids=radiation_merge_aabb(centroids,RadiationAabb{c,c});
+        }
+        nodes_[id].bounds=bounds;
+        nodes_[id].begin=static_cast<std::uint32_t>(begin);
+        nodes_[id].count=static_cast<std::uint32_t>(end-begin);
+        constexpr std::size_t leaf_size=8;
+        if (end-begin<=leaf_size) return id;
+
+        const std::array<double,3> extent{
+            centroids.hi[0]-centroids.lo[0],
+            centroids.hi[1]-centroids.lo[1],
+            centroids.hi[2]-centroids.lo[2]};
+        int axis=0;
+        if (extent[1]>extent[axis]) axis=1;
+        if (extent[2]>extent[axis]) axis=2;
+        const auto mid=begin+(end-begin)/2;
+        std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
+                         indices_.begin()+end,[&](std::uint32_t a,
+                                                   std::uint32_t b) {
+            const auto ca=radiation_aabb_centroid(
+                radiation_triangle_aabb((*triangles_)[a]));
+            const auto cb=radiation_aabb_centroid(
+                radiation_triangle_aabb((*triangles_)[b]));
+            return ca[axis]<cb[axis];
+        });
+        nodes_[id].left=build_node(begin,mid);
+        nodes_[id].right=build_node(mid,end);
+        nodes_[id].count=0;
+        return id;
+    }
+};
+
 inline double estimate_view_factor_ray_traced(
     const std::vector<RadiationTriangle>& source,
     const std::vector<RadiationTriangle>& target,
@@ -439,6 +630,9 @@ inline double estimate_view_factor_ray_traced(
 {
     if(source.empty() || target.empty() || samples==0)
         throw std::invalid_argument("ray-traced view factor requires non-empty surfaces");
+
+    RadiationBvh target_bvh(target);
+    RadiationBvh blocker_bvh(blockers);
     double source_area=0.0;
     for(const auto& t:source) source_area+=radiation_triangle_area(t);
     if(!(source_area>0.0)) throw std::invalid_argument("source surface has zero area");
@@ -484,25 +678,14 @@ inline double estimate_view_factor_ray_traced(
         const double dn=radiation_norm(dir);
         dir=radiation_scale(dir,1.0/dn);
 
+        const auto ray_origin=radiation_add(p,radiation_scale(n,1e-9));
         double nearest=std::numeric_limits<double>::infinity();
-        bool target_hit=false;
-        for(const auto& tt:target) {
-            double d=0.0;
-            if(radiation_ray_triangle_hit(radiation_add(p,radiation_scale(n,1e-9)),
-                                           dir,tt,d) && d<nearest) {
-                nearest=d; target_hit=true;
-            }
-        }
-        if(!target_hit) continue;
-
-        bool blocked=false;
-        for(const auto& bt:blockers) {
-            double d=0.0;
-            if(radiation_ray_triangle_hit(radiation_add(p,radiation_scale(n,1e-9)),
-                                           dir,bt,d) && d<nearest-1e-9) {
-                blocked=true; break;
-            }
-        }
+        if(!target_bvh.nearest_hit(ray_origin,dir,nearest))
+            continue;
+        double blocker_distance=std::numeric_limits<double>::infinity();
+        const bool blocked=blocker_bvh.nearest_hit(
+            ray_origin,dir,blocker_distance) &&
+            blocker_distance < nearest-1e-9;
         if(!blocked) ++visible;
     }
     return static_cast<double>(visible)/static_cast<double>(samples);

@@ -5,6 +5,7 @@
 #include "cfdx/physics/radiation_advanced.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 #include <vector>
 
 using namespace cfdx::physics;
@@ -123,6 +124,75 @@ int main()
         auto b=radiation_balance(100.0,100.0);
         EXPECT_NEAR(b.net,0.0,1e-14);
         EXPECT_NEAR(b.relative_error,0.0,1e-14);
+    });
+
+    run_case("s2s_bvh_matches_bruteforce", [] {
+        // More than the leaf size so the regression exercises an actual BVH split.
+        std::vector<RadiationTriangle> target;
+        target.reserve(16);
+        target.push_back({{0,0,1},{0,1,1},{1,0,1}});
+        for (int i=1; i<16; ++i) {
+            const double x=10.0 + static_cast<double>(i);
+            target.push_back({{x,0,1},{x,1,1},{x+1,0,1}});
+        }
+
+        RadiationBvh bvh(target);
+        const auto brute_force = [&target](
+            const std::array<double,3>& origin,
+            const std::array<double,3>& direction,
+            double& distance) {
+            distance=std::numeric_limits<double>::infinity();
+            bool hit=false;
+            for(const auto& tri:target) {
+                double d=0.0;
+                if(radiation_ray_triangle_hit(origin,direction,tri,d) &&
+                   d<distance) {
+                    distance=d;
+                    hit=true;
+                }
+            }
+            return hit;
+        };
+        const std::vector<std::pair<std::array<double,3>,std::array<double,3>>> rays{
+            {{{0.1,0.1,0.0}},{{0.0,0.0,1.0}}},
+            {{{0.1,0.1,2.0}},{{0.0,0.0,-1.0}}},
+            {{{-0.5,0.1,0.0}},{{0.6,0.0,1.0}}},
+            {{{0.1,0.1,0.0}},{{0.0,1.0,0.0}}}
+        };
+        for(const auto& ray:rays) {
+            double direct=0.0, accelerated=0.0;
+            const bool direct_hit=brute_force(ray.first,ray.second,direct);
+            const bool accelerated_hit=bvh.nearest_hit(
+                ray.first,ray.second,accelerated);
+            EXPECT_TRUE(accelerated_hit==direct_hit);
+            if(direct_hit) EXPECT_NEAR(accelerated,direct,1e-14);
+            else EXPECT_TRUE(std::isinf(accelerated));
+        }
+
+        std::vector<RadiationTriangle> blockers{
+            {{0,0,0.5},{0,1,0.5},{1,0,0.5}}};
+        RadiationBvh blocker_bvh(blockers);
+        double blocker_distance=0.0;
+        EXPECT_TRUE(blocker_bvh.nearest_hit(
+            {0.1,0.1,0.0},{0.0,0.0,1.0},blocker_distance));
+        EXPECT_NEAR(blocker_distance,0.5,1e-14);
+
+        RadiationBvh empty_bvh;
+        double empty_distance=123.0;
+        EXPECT_TRUE(!empty_bvh.nearest_hit(
+            {0.1,0.1,0.0},{0.0,0.0,1.0},empty_distance));
+        EXPECT_TRUE(std::isinf(empty_distance));
+        EXPECT_THROW(
+            bvh.nearest_hit({0.0,0.0,0.0},{0.0,0.0,0.0},empty_distance),
+            std::invalid_argument);
+
+        auto invalid=target;
+        invalid[0].a[0]=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(bvh.build(invalid),std::invalid_argument);
+        double preserved_distance=0.0;
+        EXPECT_TRUE(bvh.nearest_hit(
+            {0.1,0.1,0.0},{0.0,0.0,1.0},preserved_distance));
+        EXPECT_NEAR(preserved_distance,1.0,1e-14);
     });
 
     return run_all();
