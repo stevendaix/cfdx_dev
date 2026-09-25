@@ -218,6 +218,162 @@ private:
     std::vector<std::array<double, 16>> inv_blocks_;
 };
 
+
+/**
+ * Approximate block-LU preconditioner for the pressure-based coupled system
+ *
+ *     [ M  G ] [u] = [ru]
+ *     [ D  0 ] [p]   [rp]
+ *
+ * with CFDX ordering [Ux, Uy, Uz, p]. The velocity block is inverted with
+ * cell-local scalar diagonal factors and the pressure Schur complement is
+ * approximated by the diagonal of -D M^{-1} G.
+ */
+class CoupledBlockSchurPreconditioner final : public Preconditioner {
+public:
+    explicit CoupledBlockSchurPreconditioner(std::size_t n_cells)
+        : n_cells_(n_cells), nv_(3 * n_cells) {}
+
+    bool setup(const SparseMatrix& A) override {
+        if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
+            A.n_rows() != 4 * n_cells_)
+            return false;
+
+        inv_velocity_diag_.assign(nv_, 0.0);
+        inv_schur_diag_.assign(n_cells_, 0.0);
+
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        row_offsets_.assign(row, row + A.n_rows() + 1);
+        columns_.assign(col, col + A.nnz());
+        values_.assign(val, val + A.nnz());
+
+        auto diagonal = [&](std::size_t r) {
+            double d = 0.0;
+            bool found = false;
+            for (std::size_t k = row[r]; k < row[r + 1]; ++k) {
+                if (col[k] == r) {
+                    d += val[k];
+                    found = true;
+                }
+            }
+            return std::pair<bool, double>{found, d};
+        };
+
+        for (std::size_t j = 0; j < nv_; ++j) {
+            const auto [found, d] = diagonal(j);
+            if (!found || !std::isfinite(d) ||
+                std::abs(d) <= 64.0 * std::numeric_limits<double>::epsilon()) {
+                clear();
+                return false;
+            }
+            inv_velocity_diag_[j] = 1.0 / d;
+        }
+
+        // Approximate S = -D M^{-1} G. The reference-pressure row is an
+        // identity row and is retained exactly.
+        for (std::size_t c = 0; c < n_cells_; ++c) {
+            const std::size_t pressure_row = nv_ + c;
+            const std::size_t pressure_col = nv_ + c;
+            const auto [has_pressure_diagonal, pressure_diagonal] =
+                diagonal(pressure_row);
+
+            bool has_velocity_coupling = false;
+            double schur = 0.0;
+
+            for (std::size_t kd = row[pressure_row];
+                 kd < row[pressure_row + 1]; ++kd) {
+                const std::size_t velocity_col = col[kd];
+                if (velocity_col >= nv_)
+                    continue;
+                has_velocity_coupling = true;
+
+                double g = 0.0;
+                for (std::size_t kg = row[velocity_col];
+                     kg < row[velocity_col + 1]; ++kg) {
+                    if (col[kg] == pressure_col)
+                        g += val[kg];
+                }
+                schur -= val[kd] * inv_velocity_diag_[velocity_col] * g;
+            }
+
+            if (has_pressure_diagonal && !has_velocity_coupling &&
+                std::isfinite(pressure_diagonal) &&
+                std::abs(pressure_diagonal) >
+                    64.0 * std::numeric_limits<double>::epsilon()) {
+                schur = pressure_diagonal;
+            }
+
+            if (!std::isfinite(schur) ||
+                std::abs(schur) <= 64.0 * std::numeric_limits<double>::epsilon()) {
+                clear();
+                return false;
+            }
+            inv_schur_diag_[c] = 1.0 / schur;
+        }
+
+        return true;
+    }
+
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != 4 * n_cells_ || z.size() != r.size() ||
+            inv_velocity_diag_.size() != nv_ ||
+            inv_schur_diag_.size() != n_cells_)
+            return false;
+
+        Vector velocity_predictor(nv_);
+        for (std::size_t i = 0; i < nv_; ++i)
+            velocity_predictor(i) = inv_velocity_diag_[i] * r(i);
+
+        // Pressure Schur RHS: rp - D M^{-1} ru.
+        for (std::size_t c = 0; c < n_cells_; ++c) {
+            double rhs_p = r(nv_ + c);
+            const std::size_t rb = row_offsets_[nv_ + c];
+            const std::size_t re = row_offsets_[nv_ + c + 1];
+            for (std::size_t k = rb; k < re; ++k) {
+                const std::size_t j = columns_[k];
+                if (j < nv_)
+                    rhs_p -= values_[k] * velocity_predictor(j);
+            }
+            z(nv_ + c) = inv_schur_diag_[c] * rhs_p;
+        }
+
+        // Velocity back-substitution: M^{-1}(ru - G zp).
+        for (std::size_t j = 0; j < nv_; ++j) {
+            double value = velocity_predictor(j);
+            const std::size_t rb = row_offsets_[j];
+            const std::size_t re = row_offsets_[j + 1];
+            for (std::size_t k = rb; k < re; ++k) {
+                const std::size_t pcol = columns_[k];
+                if (pcol >= nv_)
+                    value -= inv_velocity_diag_[j] * values_[k] * z(pcol);
+            }
+            z(j) = value;
+        }
+        return true;
+    }
+
+    const char* name() const override { return "CoupledBlockSchur"; }
+
+private:
+    void clear() {
+        inv_velocity_diag_.clear();
+        inv_schur_diag_.clear();
+        row_offsets_.clear();
+        columns_.clear();
+        values_.clear();
+    }
+
+    std::size_t n_cells_ = 0;
+    std::size_t nv_ = 0;
+    std::vector<double> inv_velocity_diag_;
+    std::vector<double> inv_schur_diag_;
+    std::vector<std::uint32_t> row_offsets_;
+    std::vector<std::uint32_t> columns_;
+    std::vector<double> values_;
+};
+
 class MixedPrecisionJacobiPreconditioner final : public Preconditioner {
 public:
     explicit MixedPrecisionJacobiPreconditioner(SolverPrecision precision=SolverPrecision::FP32)
