@@ -281,7 +281,8 @@ int main()
             }
             double exact_dT_cell=0.0;
             for(std::size_t i=0;i<n;++i) {
-                const double x=(static_cast<double>(i)+0.5)/static_cast<double>(n);
+                const double x=g.cell_centres[i].x;
+                EXPECT_TRUE(x>=0.0 && x<=L);
                 exact_dT_cell=std::max(
                     exact_dT_cell,qv*x*(L-x)/(2.0*k));
             }
@@ -289,7 +290,7 @@ int main()
             const double expected_power=qv*L; // unit cross-sectional area
             const double generated_power=qv*std::accumulate(
                 g.cell_volumes.begin(),g.cell_volumes.end(),0.0);
-            const double center_x=0.5;
+            const double center_x=g.cell_centres[n/2].x;
             const double center_exact=T0+qv*center_x*(L-center_x)/(2.0*k);
             std::cout << "THERMAL_POWER_STUDY: qvol=" << qv
                       << " W/m3 Tmax=" << Tmax
@@ -302,10 +303,9 @@ int main()
                       << " Tmin=" << Tmin << '\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            // CFDX stores the volumetric-heating solution at cell centres and
-            // the exact oracle used by the solver is T(x_c). Therefore the
-            // maximum over the discrete cell-centre samples is the correct
-            // pointwise analytical oracle for this validation.
+            // Use the actual geometric cell centres as the analytical oracle.
+            // This avoids silently assuming a particular cell indexing/centroid
+            // convention in the validation mesh.
             EXPECT_NEAR(Tmax-T0, exact_dT_cell,
                          1e-12*std::max(1.0,exact_dT_cell));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
