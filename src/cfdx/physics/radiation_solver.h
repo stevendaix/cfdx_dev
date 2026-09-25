@@ -453,10 +453,12 @@ struct RadiationEnergyCouplingControls {
     EnergySolverControls energy;
     std::size_t max_outer_iterations = 100;
     // Relax the nonlinear radiation/energy fixed-point update separately from
-    // the linear energy solver relaxation. This prevents the explicit q_rad(T)
-    // Picard iteration from overshooting when radiation feedback is stiff.
+    // the linear energy solver relaxation.
     double outer_relaxation = 0.5;
+    // Legacy common tolerance; dedicated criteria override it when > 0.
     double tolerance = 1e-8;
+    double source_tolerance = -1.0;
+    double energy_balance_tolerance = -1.0;
 };
 
 struct RadiationEnergyCouplingResult {
@@ -479,6 +481,8 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     const ScalarBoundaryConditions& thermal_bcs = {})
 {
     if(controls.max_outer_iterations==0 || controls.tolerance<=0.0 ||
+       (controls.source_tolerance<=0.0 && controls.source_tolerance!=-1.0) ||
+       (controls.energy_balance_tolerance<=0.0 && controls.energy_balance_tolerance!=-1.0) ||
        !(controls.outer_relaxation>0.0 && controls.outer_relaxation<=1.0))
         throw std::invalid_argument("invalid radiation-energy coupling controls");
 
@@ -534,11 +538,25 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         }
 
         double qrad_delta=0.0;
-        for(std::size_t c=0;c<nc;++c)
+        double qrad_scale=1.0;
+        for(std::size_t c=0;c<nc;++c) {
             qrad_delta=std::max(qrad_delta,std::abs(qrad(c)-old_qrad(c)));
-        const double energy_balance_residual = er.history.empty()
-            ? std::numeric_limits<double>::infinity()
-            : er.history.back().energy_imbalance;
+            qrad_scale=std::max(qrad_scale,std::abs(qrad(c)));
+            qrad_scale=std::max(qrad_scale,std::abs(old_qrad(c)));
+        }
+        const double source_relative=qrad_delta/qrad_scale;
+
+        // Reassemble the thermal equation at the actually accepted outer
+        // state. This avoids reporting the predictor balance after relaxation.
+        for(std::size_t c=0;c<nc;++c)
+            source(c)=non_radiative_source(c)-qrad(c);
+        auto accepted_eq=assemble_energy_equation(
+            mesh,geometry,mass_flux,source,oldT,controls.energy,thermal_bcs);
+        cfdx::core::Vector accepted_vec(nc,0.0);
+        for(std::size_t c=0;c<nc;++c) accepted_vec(c)=temperature(c);
+        const double energy_balance_residual =
+            energy_balance_relative_from_equation(accepted_eq,accepted_vec);
+
         result.source_residuals.push_back(qrad_delta);
         result.energy_balance_residuals.push_back(energy_balance_residual);
         result.iterations=iter;
@@ -546,12 +564,17 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             std::cerr << "THERMAL_RADIATION_RESIDUAL: iteration=" << iter
                       << " dT=" << max_delta
                       << " qrad_delta=" << qrad_delta
+                      << " qrad_relative=" << source_relative
                       << " energy_balance=" << energy_balance_residual
                       << '\n';
         }
+        const double source_tolerance =
+            controls.source_tolerance > 0.0 ? controls.source_tolerance : controls.tolerance;
+        const double energy_balance_tolerance =
+            controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
         if(max_delta<=controls.tolerance &&
-           qrad_delta<=controls.tolerance &&
-           energy_balance_residual<=controls.tolerance) {
+           source_relative<=source_tolerance &&
+           energy_balance_residual<=energy_balance_tolerance) {
             result.converged=true;
             break;
         }
