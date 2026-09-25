@@ -84,6 +84,16 @@ inline void write_dat_restart_fields(
     write_field("T", fields.temperature);
     write_field("k", fields.k);
     write_field("second_turbulence", fields.second_turbulence);
+    if (!out) {
+        out.close();
+        std::remove(tmp_path.c_str());
+        throw std::runtime_error("write_dat_restart_fields: write failed for " + path);
+    }
+    out.close();
+    if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
+        std::remove(tmp_path.c_str());
+        throw std::runtime_error("write_dat_restart_fields: cannot replace " + path);
+    }
 }
 inline DatRestartState read_dat_restart_fields(
     const std::string& path,
