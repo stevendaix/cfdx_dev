@@ -1,11 +1,9 @@
 name: CFDX validation
-# Validation rerun after Couette numerical-state restoration.
-# CI audit trigger: preserve full Couette residual/evidence capture on every fix-branch push.
 
 on:
-  workflow_dispatch:
   pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -58,53 +56,26 @@ jobs:
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
 
-      - name: Run Couette residual microscope
+      - name: Run Couette residual validation
+        if: always()
         run: |
           set -o pipefail
           CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
             -R 'test_(phase9_acceptance|steady_incompressible_solver)' \
             -V 2>&1 | tee build-validation/couette-residuals.log
 
-      - name: Run Phase 9 validation and preserve full numerical log
-        run: |
-          set -o pipefail
-          CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
-            -R 'test_(phase9_acceptance|steady_incompressible_solver)' \
-            -V 2>&1 | tee build-validation/ctest-phase9.log
-
       - name: Run campaign driver
+        if: always()
         run: |
           .venv-validation/bin/python scripts/run_validation.py \
             --build-dir build-validation \
             --junit build-validation/validation-junit.xml \
             --json build-validation/phase13-validation.json
 
-      - name: Upload validation JUnit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfdx-validation-junit
-          path: |
-            build-validation/validation-junit.xml
-            build-validation/phase13-validation.json
-          if-no-files-found: ignore
-
-      - name: Upload validation logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfdx-validation-logs
-          path: |
-            build-validation/Testing/
-            build-validation/**/*.log
-          if-no-files-found: ignore
-
       - name: Run application E2E regression
+        if: always()
         run: |
-          python3 -m venv .venv-e2e
-          .venv-e2e/bin/python -m pip install --upgrade pip
-          .venv-e2e/bin/python -m pip install pytest h5py
-          PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
+          .venv-validation/bin/python -m pytest -q tests/python/test_application_e2e.py
 
       - name: Capture complete CTest log
         if: always()
@@ -118,12 +89,15 @@ jobs:
             --build-dir build-validation \
             --output-dir build-validation/diagnostic-evidence
 
-      - name: Upload complete numerical evidence
+      - name: Upload validation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-complete-validation-evidence
+          name: cfdx-validation-evidence
           path: |
+            build-validation/Testing/
+            build-validation/**/*.log
+            build-validation/validation-junit.xml
+            build-validation/phase13-validation.json
             build-validation/diagnostic-evidence/
-            build-validation/ctest-full.log
           if-no-files-found: warn
