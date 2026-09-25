@@ -613,7 +613,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const auto nr = mesh.ownership().neighbour(f);
 
             if (nr >= 0) {
-                const std::size_t ncell = static_cast<std::size_t>(nr);
+                // Same owner/neighbour rule as the continuity block below:
+                // if c is the neighbour, nr points back to c itself.
+                const int other_cell = owner
+                    ? nr
+                    : static_cast<int>(mesh.ownership().owner(f));
+                if (other_cell < 0 ||
+                    static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 // Internal Gauss face pressure is the arithmetic average.
                 const double coeff = 0.5;
                 A.push_back(c, 3*nc + c, Sf.x * coeff);
@@ -667,7 +678,20 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const auto nr = mesh.ownership().neighbour(f);
 
             if (nr >= 0) {
-                const std::size_t ncell = static_cast<std::size_t>(nr);
+                // neighbour(f) is the opposite cell only on the owner side.
+                // When c is the neighbour, neighbour(f) == c; using it directly
+                // creates a self-coupled face (zero centre distance) and corrupts
+                // the coupled pressure Schur coefficient.
+                const int other_cell = owner
+                    ? nr
+                    : static_cast<int>(mesh.ownership().owner(f));
+                if (other_cell < 0 ||
+                    static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 const double half_rho = 0.5 * rho;
                 A.push_back(row, c, half_rho * Sf.x);
                 A.push_back(row, ncell, half_rho * Sf.x);
@@ -1088,11 +1112,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
 
-        // Preserve the pre-solve velocity. HbyA is the explicit momentum
-        // predictor H/A and must be reconstructed from the velocity state that
-        // was used to assemble the current matrix, not from the already solved
-        // momentum state. Using the post-solve vector here double-counts the
-        // momentum solve and leaves the independent momentum residual O(1).
+        // Preserve the pre-solve velocity for equation relaxation. HbyA is
+        // reconstructed after the momentum solve from the solved neighbour
+        // values, which is the algebraic H/A split of the assembled equation.
+        // The pre-solve state is used only for the under-relaxation source term.
         Vector ux(mesh.n_cells()), uy(mesh.n_cells()), uz(mesh.n_cells());
         Vector ux_old(mesh.n_cells()), uy_old(mesh.n_cells()), uz_old(mesh.n_cells());
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
