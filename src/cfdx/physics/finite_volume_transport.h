@@ -13,13 +13,13 @@
 #include "cfdx/core/numerics/gradient.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 #include <limits>
-#include <iostream>
 
 namespace cfdx::physics {
 
@@ -89,6 +89,30 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         g.cell_volumes[c] = cg.volume;
         if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
             throw std::runtime_error("build_fv_geometry: non-positive cell volume");
+    }
+
+    // Physics kernels use face_area_vectors with the invariant convention
+    // Sf · (C_neighbour - C_owner) > 0 for internal faces and
+    // Sf · (Cf - C_owner) > 0 for boundary faces. The raw face vertex order
+    // is not guaranteed to encode this owner orientation, so normalize the
+    // global face vectors after cell centres are available.
+    for (std::size_t f = 0; f < nf; ++f) {
+        const std::size_t o = mesh.ownership().owner(f);
+        if (o >= nc)
+            throw std::runtime_error("build_fv_geometry: invalid face owner");
+        const auto nraw = mesh.ownership().neighbour(f);
+        if (nraw >= 0) {
+            const std::size_t n = static_cast<std::size_t>(nraw);
+            if (n >= nc)
+                throw std::runtime_error("build_fv_geometry: invalid face neighbour");
+            ensure_face_orientation(
+                g.face_area_vectors[f], g.face_centres[f],
+                g.cell_centres[o], &g.cell_centres[n]);
+        } else {
+            ensure_face_orientation(
+                g.face_area_vectors[f], g.face_centres[f],
+                g.cell_centres[o], nullptr);
+        }
     }
 
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
@@ -245,6 +269,10 @@ inline ScalarEquation assemble_scalar_equation(
             }
         } else {
             const std::size_t patch = geometry.face_patch[f];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+
             ScalarBoundaryCondition bc;
             if (patch < mesh.boundary().n_patches()) {
                 const auto& patch_name = mesh.boundary().patch(patch).name;
@@ -383,6 +411,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
+
     if (solution.size() <= 256)
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
                   << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
@@ -551,6 +580,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             }
         }
     }
+
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
