@@ -944,25 +944,44 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     SolverResult result = solve_gmres(
         A, b, x, 128, max_iterations, tolerance, &schur_preconditioner);
 
-    if (result.status == SolverStatus::NOT_APPLICABLE) {
-        // A local block-Jacobi fallback is still useful for unusual boundary
-        // conditions where the algebraic Schur diagonal is singular.
+    // A Krylov breakdown/stagnation is not evidence that the physical coupled
+    // matrix is singular. The Schur preconditioner is an approximation, so a
+    // failed Schur-preconditioned solve must be retried from the same nonlinear
+    // state with independent Krylov operators. Never continue from an
+    // unconverged iterate produced by a failed method.
+    if (result.status != SolverStatus::CONVERGED) {
+        x = Vector(n, 0.0);
+        for (std::size_t c = 0; c < nc; ++c) {
+            x(c) = U_old.component_data(0)[c];
+            x(nc + c) = U_old.component_data(1)[c];
+            x(2*nc + c) = U_old.component_data(2)[c];
+            x(nv + c) = p_old(c);
+        }
+        std::cerr << "CFDX coupled solver: Schur GMRES did not converge "
+                     "(status=" << static_cast<int>(result.status)
+                  << ", iterations=" << result.iterations
+                  << ", residual=" << result.residual
+                  << "); retrying with CellBlockJacobi GMRES\\n";
         CellBlockJacobiPreconditioner block_fallback(nc);
-        std::cerr << "CFDX coupled solver: Schur preconditioner unavailable; "
-                     "trying CellBlockJacobi GMRES\\n";
         result = solve_gmres(
             A, b, x, 128, max_iterations, tolerance, &block_fallback);
     }
 
-    if (result.status == SolverStatus::NOT_APPLICABLE) {
+    if (result.status != SolverStatus::CONVERGED) {
+        x = Vector(n, 0.0);
+        for (std::size_t c = 0; c < nc; ++c) {
+            x(c) = U_old.component_data(0)[c];
+            x(nc + c) = U_old.component_data(1)[c];
+            x(2*nc + c) = U_old.component_data(2)[c];
+            x(nv + c) = p_old(c);
+        }
         JacobiPreconditioner fallback_preconditioner;
-        if (!fallback_preconditioner.setup(A))
-            return result;
-        std::cerr << "CFDX coupled solver: block preconditioners unavailable; "
-                     "falling back to scalar Jacobi GMRES\\n";
+        std::cerr << "CFDX coupled solver: block/Schur GMRES did not converge; "
+                     "retrying with scalar Jacobi GMRES\\n";
         result = solve_gmres(
             A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
     }
+
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
