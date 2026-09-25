@@ -265,21 +265,29 @@ inline EnergySolveResult solve_energy(
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 
-        const double linear_scale = [&]() {
-            double scale = 1.0;
-            const auto* row = eq.matrix.row_offsets_data();
-            const auto* col = eq.matrix.columns_data();
-            const auto* val = eq.matrix.values_data();
-            for (std::size_t i = 0; i < candidate.size(); ++i) {
-                double s = std::abs(eq.rhs(i));
-                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
-                    s += std::abs(val[k] * candidate(col[k]));
-                scale = std::max(scale, s);
+        // Validate the *accepted* state, not the unrelaxed predictor.
+        // The backward error is ||Ax-b||_inf divided by a componentwise
+        // row scale ||A_i,: x||_1 + |b_i|. This must use the same state as
+        // the absolute residual; otherwise under-relaxation can report
+        // convergence for a state that does not actually solve the equation.
+        double linear_backward_error = 0.0;
+        const auto* row = eq.matrix.row_offsets_data();
+        const auto* col = eq.matrix.columns_data();
+        const auto* val = eq.matrix.values_data();
+        for (std::size_t i = 0; i < accepted.size(); ++i) {
+            double row_residual = -eq.rhs(i);
+            double row_scale = std::abs(eq.rhs(i));
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                const double term = val[k] * accepted(col[k]);
+                row_residual += term;
+                row_scale += std::abs(term);
             }
-            return scale;
-        }();
-        const double linear_backward_error = res / linear_scale;
+            linear_backward_error = std::max(
+                linear_backward_error,
+                std::abs(row_residual) / std::max(1.0, row_scale));
+        }
         const bool linear_converged =
+            linear.status == cfdx::core::SolverStatus::CONVERGED &&
             std::isfinite(res) && std::isfinite(linear_backward_error) &&
             res<=linear_tolerance && linear_backward_error<=linear_tolerance;
 
