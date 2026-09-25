@@ -154,7 +154,8 @@ void test_constant_flux_conservation(
 {
     Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     U.fill(0.0);
-    for (std::size_t c = 0; c < mesh.n_cells(); ++c)\n        U.component_data(0)[c] = 1.0;
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+        U.component_data(0)[c] = 1.0;
 
     VelocityBoundaryConditions bcs;
     for (const char* name : {"inlet", "outlet", "front", "back"})
@@ -274,7 +275,8 @@ void test_rhie_chow_pressure_operators(
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         if (mesh.ownership().neighbour(f) < 0) continue;
         const double flux = phi_linear(f);
-        const std::size_t owner = mesh.ownership().owner(f);\n        const double expected = -geometry.cell_volumes[owner] * 0.5 * geometry.face_area_vectors[f].x;
+        const std::size_t owner = mesh.ownership().owner(f);
+        const double expected = -geometry.cell_volumes[owner] * 0.5 * geometry.face_area_vectors[f].x;
         if (std::abs(geometry.face_area_vectors[f].x) > 0.5) {
             if (first) { first_x_flux = flux; first = false; }
             internal_x_variation = std::max(internal_x_variation, std::abs(flux - first_x_flux));
