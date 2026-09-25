@@ -72,8 +72,12 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
-        EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
+        std::vector<double> extra_diagonal{10.0};
+        const auto eq = assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,false,nullptr,&extra_diagonal);
+        // Outflow and inflow contributions cancel for a zero-gradient field;
+        // the only remaining diagonal is the independently supplied term.
+        EXPECT_NEAR(eq.diagonal[0],10.0,1e-12);
     });
 
     run_case("bounded_zero_gradient_inflow_has_no_artificial_sink", [] {
