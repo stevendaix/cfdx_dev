@@ -614,6 +614,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 eq.rhs(r) + grad_p_old.component_data(component)[r] * geometry.cell_volumes[r];
         }
     };
+    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED"); debug && *debug) {
+        const auto* ex_ro = ex.matrix.row_offsets_data();
+        std::cerr << "COUPLED_EQ_DEBUG ex_nnz=" << ex.matrix.nnz()
+                  << " ex_row0_nnz=" << (ex_ro[1] - ex_ro[0])
+                  << " ex_diag0=" << ex.diagonal[0] << "\\n";
+    }
     add_momentum_block(ex, 0);
     add_momentum_block(ey, 1);
     add_momentum_block(ez, 2);
