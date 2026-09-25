@@ -288,25 +288,31 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
     return result;
 }
 
-inline ScalarBoundaryCondition wall_k_epsilon(double k_value, double epsilon_value)
+inline ScalarBoundaryCondition wall_k_fixed_value(double k_value)
 {
-    if(k_value<0.0 || epsilon_value<=0.0)
-        throw std::invalid_argument("invalid wall turbulence values");
+    if(!std::isfinite(k_value) || k_value<0.0)
+        throw std::invalid_argument("invalid wall k value");
     return {ScalarBoundaryType::FIXED_VALUE,k_value,0.0};
 }
 
-inline double wall_epsilon_from_k(double k, double y, double Cmu=0.09)
+inline ScalarBoundaryCondition wall_k_epsilon(double k_value, double epsilon_value)
 {
-    if(k<0.0 || y<=0.0 || Cmu<=0.0)
-        throw std::invalid_argument("invalid wall epsilon input");
-    return std::pow(Cmu,0.75)*std::pow(std::max(k,0.0),1.5)/y;
+    if(epsilon_value<=0.0) throw std::invalid_argument("invalid wall turbulence values");
+    return wall_k_fixed_value(k_value);
 }
 
-inline double wall_omega_from_k(double k, double y, double betaStar=0.09)
+inline double wall_epsilon_from_k(double k, double y, double Cmu=0.09, double kappa=0.41)
 {
-    if(k<0.0 || y<=0.0 || betaStar<=0.0)
+    if(k<0.0 || y<=0.0 || Cmu<=0.0 || kappa<=0.0)
+        throw std::invalid_argument("invalid wall epsilon input");
+    return std::pow(Cmu,0.75)*std::pow(k,1.5)/(kappa*y);
+}
+
+inline double wall_omega_from_k(double k, double y, double betaStar=0.09, double kappa=0.41)
+{
+    if(k<0.0 || y<=0.0 || betaStar<=0.0 || kappa<=0.0)
         throw std::invalid_argument("invalid wall omega input");
-    return std::sqrt(std::max(k,0.0))/(std::sqrt(betaStar)*y);
+    return std::sqrt(k)/(std::pow(betaStar,0.25)*kappa*y);
 }
 
 } // namespace cfdx::physics
