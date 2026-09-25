@@ -47,7 +47,7 @@ inline void validate_energy_controls(const EnergySolverControls& c)
         c.max_iterations == 0 || c.tolerance <= 0.0 ||
         (c.linear_tolerance <= 0.0 && c.linear_tolerance != -1.0) ||
         (c.temperature_tolerance <= 0.0 && c.temperature_tolerance != -1.0) ||
-        (c.energy_balance_tolerance <= 0.0 && c.energy_balance_tolerance != -1.0)
+        (c.energy_balance_tolerance <= 0.0 && c.energy_balance_tolerance != -1.0))
         throw std::invalid_argument("invalid energy solver controls");
     if (c.dt < 0.0) throw std::invalid_argument("energy time step must be >= 0");
 }
@@ -198,7 +198,8 @@ inline EnergySolveResult solve_energy(
     const EnergySolverControls& controls = {},
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* previous_time_temperature = nullptr)
 {
     validate_energy_controls(controls);
     if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
@@ -232,7 +233,9 @@ inline EnergySolveResult solve_energy(
         ScalarSolveControls sc;
         sc.max_iterations=2000;
         sc.tolerance=linear_tolerance;
-        sc.relaxation=controls.relaxation;
+        // solve_scalar_equation returns the fully solved linear predictor;
+        // nonlinear temperature relaxation is applied exactly once below.
+        sc.relaxation=1.0;
         const auto linear=solve_scalar_equation(eq,candidate,sc);
         cfdx::core::Vector accepted(candidate.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
