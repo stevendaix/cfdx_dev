@@ -95,6 +95,7 @@ inline SolverResult solve_gmres(
 
         int used = 0;
         double estimated_residual = beta;
+        bool arnoldi_breakdown = false;
 
         for (int j = 0; j < current_restart && iterations < max_iter; ++j) {
             if (preconditioner) {
@@ -169,7 +170,12 @@ inline SolverResult solve_gmres(
                 }
             }
 
-            if (estimated_residual <= tol || hnext == 0.0) break;
+            if (estimated_residual <= tol)
+                break;
+            if (hnext == 0.0) {
+                arnoldi_breakdown = true;
+                break;
+            }
         }
 
         if (used == 0) break;
