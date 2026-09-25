@@ -568,7 +568,8 @@ inline RosselandSolveResult solve_rosseland_energy(
     for (std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         for(std::size_t c=0;c<mesh.n_cells();++c) {
             const double T=std::max(controls.minimum_temperature,temperature(c));
-            conductivity(c)=rosseland_conductivity(T,absorption(c));
+            conductivity(c)=energy_controls.conductivity+
+                rosseland_conductivity(T,absorption(c));
             su(c)=source(c);
             sp(c)=0.0;
         }
@@ -586,8 +587,10 @@ inline RosselandSolveResult solve_rosseland_energy(
         std::vector<double> conductivity_values(mesh.n_cells(),0.0);
         for(std::size_t c=0;c<mesh.n_cells();++c)
             conductivity_values[c]=conductivity(c);
+        const auto enthalpy_flux=
+            enthalpy_face_flux(mass_flux,energy_controls.cp);
         auto eq=assemble_scalar_equation(
-            mesh,geometry,mass_flux,0.0,su,sp,bcs,true,nullptr,
+            mesh,geometry,enthalpy_flux,0.0,su,sp,bcs,true,nullptr,
             &transient_diag,&transient_rhs,&conductivity_values);
 
         cfdx::core::Vector candidate(mesh.n_cells(),0.0);
@@ -612,7 +615,8 @@ inline RosselandSolveResult solve_rosseland_energy(
         const double rel=max_delta/scale;
         result.temperature_residuals.push_back(rel);
         result.energy_balance_residuals.push_back(energy_balance_relative(
-            mesh,geometry,mass_flux,temperature,old,source,energy_controls,bcs));
+            mesh,geometry,mass_flux,temperature,old,source,energy_controls,bcs,
+            nullptr,&conductivity_values));
         result.iterations=iter;
         if(rel<=controls.tolerance &&
            result.energy_balance_residuals.back()<=controls.tolerance) {

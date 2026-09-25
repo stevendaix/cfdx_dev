@@ -6,11 +6,18 @@
 
 namespace cfdx::physics {
 
-enum class RadiationApproximation { Rosseland, P1, DOM };
+enum class RadiationApproximation { Rosseland, P1, DOM, S2S, S2S_MONTE_CARLO };
 
 struct RadiationModelSelector {
     double optical_thick = 3.0;
     double optical_thin = 0.1;
+
+    // Surface-to-surface is selected explicitly because it is a boundary
+    // radiation model rather than a participating-medium approximation.
+    RadiationApproximation select_surface_to_surface(bool monte_carlo = false) const {
+        return monte_carlo ? RadiationApproximation::S2S_MONTE_CARLO
+                           : RadiationApproximation::S2S;
+    }
 
     RadiationApproximation select(double absorption, double scattering, double length) const {
         if (!std::isfinite(absorption) || !std::isfinite(scattering) ||

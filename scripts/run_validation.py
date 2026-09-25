@@ -31,7 +31,7 @@ SOFTWARE_CAMPAIGNS = {
     "13.7": ["test_steady_incompressible_solver", "test_phase9_acceptance"],
     "13.8": ["test_cht_validation", "test_level_c_coupled_verification"],
     "13.9": ["test_phase10_turbulence_hardening", "test_thermophysical_models_vv"],
-    "13.10": ["test_level_c_coupled_verification", "test_analytical_benchmarks"],
+    "13.10": ["test_level_c_coupled_verification", "test_analytical_benchmarks", "test_radiation_vv", "test_s2s_radiation_vv"],
     "13.11": ["test_phase8_mpi_poisson"],
 }
 

@@ -164,7 +164,8 @@ struct ThermophysicalProperties {
                         integral += tab.value.front()*(lo-a);
                     else {
                         const double slope=(tab.value[1]-tab.value[0])/(tab.temperature[1]-tab.temperature[0]);
-                        integral += tab.value.front()*(lo-a) + 0.5*slope*((lo-a)*(lo-a));
+                        const double d=lo-a;
+                        integral += tab.value.front()*d - 0.5*slope*d*d;
                     }
                 }
                 if (b>hi) {
