@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Callable
 
 from .metrics import SolverMetrics, SolverMetricsParser
@@ -31,6 +32,7 @@ class ExecutionController:
         self.on_metrics: Callable[[SolverMetrics], None] | None = None
         self.on_complete: Callable[[ProcessResult], None] | None = None
         self._stop_requested = False
+        self._monitor_lock = Lock()
 
     def restart(self, dat_path: str | Path) -> None:
         """Restart through the runner using the case-configured checkpoint option."""
@@ -45,7 +47,8 @@ class ExecutionController:
         self.session.run()
         self.error = None
         self.latest_metrics = None
-        self.monitor_series = MonitorSeries("solver", [])
+        with self._monitor_lock:
+            self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
         self.runner.start(self._output, self._complete, restart_path=path, restart_option=restart_option)
 
@@ -77,7 +80,8 @@ class ExecutionController:
                 values = {name: value for name, value in metrics.residuals}
                 if metrics.cfl is not None:
                     values["CFL"] = metrics.cfl
-                self.monitor_series.upsert(MonitorSample(iteration, time_value, values))
+                with self._monitor_lock:
+                    self.monitor_series.upsert(MonitorSample(iteration, time_value, values))
             if self.on_metrics:
                 self.on_metrics(metrics)
         if self.on_output:
