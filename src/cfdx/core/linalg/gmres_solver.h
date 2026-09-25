@@ -249,6 +249,19 @@ inline SolverResult solve_gmres(
             return result;
         }
 
+        // Arnoldi breakdown means that the Krylov space stopped growing.
+        // If the updated iterate is still not converged, continuing into a
+        // fresh cycle can only repeat the same subspace and misclassify a
+        // singular/inconsistent system as MAX_ITER_REACHED. Report the
+        // physical residual as a genuine solver failure instead.
+        if (arnoldi_breakdown) {
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / std::max(b_norm, 1.0);
+            return result;
+        }
+
         if (std::getenv("CFDX_DEBUG_COUPLED"))
             std::cerr << "GMRES_CYCLE iterations=" << iterations
                       << " true_residual=" << beta
@@ -272,10 +285,11 @@ inline SolverResult solve_gmres(
     const SparseMatrix& A,
     const Vector& b,
     Vector& x,
-    int restart = 30,
-    std::size_t max_iter = 1000,
-    double tolerance = 1e-12,
-    Preconditioner* preconditioner = nullptr,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
     PrecisionPolicy precision = {}) {
     LinearOperator op;
     op.size = A.n_rows();
@@ -297,7 +311,22 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
-    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, {});
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {})
+{
+    return solve_gmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision);
 }
 
 } // namespace cfdx::core
