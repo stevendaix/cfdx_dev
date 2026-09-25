@@ -25,7 +25,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3 python3-venv
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
           python3 -m venv .venv-validation
           .venv-validation/bin/python -m pip install --upgrade pip
           .venv-validation/bin/python -m pip install h5py meshio pytest
@@ -36,17 +36,17 @@ jobs:
           cmake -S . -B build-validation -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_ENABLE_MPI=ON \
             -DCFDX_BUILD_PYTHON=OFF \
             -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
             -DPython3_EXECUTABLE=${{ github.workspace }}/.venv-validation/bin/python
 
       - name: Build validation test suite
         run: |
-          # ctest -L phase13 also contains dependency/regression tests outside
-          # the explicit Phase 13 target list. Building only selected targets
-          # made CTest report dozens of unrelated tests as "Not Run" because
-          # their executables did not exist in build-validation.
+          # Build the complete CTest suite before executing validation labels.
+          # This prevents missing executables from being reported as 90+ false
+          # test failures when one target fails to compile.
           cmake --build build-validation --parallel 2
 
       - name: Run Phase 13 validation tests
