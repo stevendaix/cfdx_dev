@@ -141,6 +141,12 @@ RunResult run_couette_channel(
     std::size_t ny = 16)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
+    const auto topo = mesh.topo_validate();
+    if (!topo.ok) {
+        throw std::runtime_error(
+            "Couette channel mesh topology invalid: " +
+            (topo.errors.empty() ? std::string("unknown error") : topo.errors.front()));
+    }
     Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
     U.fill(0.0);
@@ -175,7 +181,7 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 250;
+    c.convergence.max_iterations = 500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
     c.linear_max_iterations = 2000;
