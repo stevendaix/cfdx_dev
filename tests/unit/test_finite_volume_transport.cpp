@@ -73,7 +73,9 @@ int main()
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
-        EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
+        // The boundary operator is exactly F*phi_owner. The two opposite
+        // boundary fluxes therefore cancel for a zero-gradient constant field.
+        EXPECT_NEAR(eq.diagonal[0],0.0,1e-12);
     });
 
     run_case("bounded_zero_gradient_inflow_has_no_artificial_sink", [] {
