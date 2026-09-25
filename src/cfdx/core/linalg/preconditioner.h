@@ -496,8 +496,9 @@ private:
             const auto first = schur_columns_.begin() + schur_row_offsets_[row];
             const auto last = schur_columns_.begin() + schur_row_offsets_[row + 1];
             const auto it = std::lower_bound(first, last, static_cast<std::uint32_t>(col));
-            return it == last ? schur_columns_.size()
-                              : static_cast<std::size_t>(it - schur_columns_.begin());
+            if (it == last || *it != static_cast<std::uint32_t>(col))
+                return schur_columns_.size();
+            return static_cast<std::size_t>(it - schur_columns_.begin());
         };
 
         double matrix_scale = 0.0;
