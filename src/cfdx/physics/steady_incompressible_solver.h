@@ -588,7 +588,26 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const auto* ro = eq.matrix.row_offsets_data();
         const auto* co = eq.matrix.columns_data();
         const auto* va = eq.matrix.values_data();
+        const double* old_component = U_old.component_data(component);
+
         for (std::size_t r = 0; r < nc; ++r) {
+            // Empty 2-D/2-D-like patches intentionally deactivate the normal
+            // momentum component. The segregated transport assembly represents
+            // that component with a zero equation row (and zero diagonal).
+            // Carrying such a row into the 4x4 coupled system makes both
+            // CellBlockJacobi and scalar Jacobi report NOT_APPLICABLE, even
+            // though the physical 2-D coupled problem is well posed.
+            //
+            // Preserve the inactive component explicitly instead: U_component
+            // is constrained to its current value for this coupled solve. This
+            // adds no physics and keeps the coupled matrix nonsingular.
+            const double diagonal = eq.diagonal[r];
+            if (!(diagonal > 0.0) || !std::isfinite(diagonal)) {
+                A.push_back(row_base + r, row_base + r, 1.0);
+                b(row_base + r) = old_component[r];
+                continue;
+            }
+
             for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
                 A.push_back(row_base + r, component * nc + co[k], va[k]);
             b(row_base + r) =
