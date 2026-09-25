@@ -140,7 +140,7 @@ inline double p1_radiative_source(double absorption, double mean_intensity,
     validate_finite(temperature, "temperature");
     if (absorption < 0.0 || mean_intensity < 0.0 || temperature < 0.0)
         throw std::invalid_argument("p1_radiative_source: invalid input");
-    return 4.0 * absorption *
+    return 4.0 * M_PI * absorption *
            (blackbody_intensity(temperature) - mean_intensity);
 }
 

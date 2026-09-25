@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 #include <limits>
@@ -430,6 +431,14 @@ inline RadiationSolveResult solve_participating_radiation(
             max_relative_source_delta=std::max(max_relative_source_delta,
                 max_source_delta/source_scale);
         }
+        if (mesh.n_cells() <= 64) {
+            std::cerr << "RADIATION_RESIDUAL: iteration=" << iter
+                      << " intensity_delta=" << max_delta
+                      << " intensity_relative=" << max_relative_delta
+                      << " source_delta=" << max_source_delta
+                      << " source_relative=" << max_relative_source_delta
+                      << '\n';
+        }
         if(max_relative_delta<=controls.tolerance &&
            max_relative_source_delta<=controls.tolerance) {
             result.converged=true;
@@ -443,7 +452,14 @@ struct RadiationEnergyCouplingControls {
     RadiationTransportControls radiation;
     EnergySolverControls energy;
     std::size_t max_outer_iterations = 100;
+    // Relax the nonlinear radiation/energy fixed-point update separately from
+    // the linear energy solver relaxation.
+    double outer_relaxation = 0.5;
+    // Legacy common tolerance; dedicated criteria override it when > 0.
     double tolerance = 1e-8;
+    double temperature_tolerance = -1.0;
+    double source_tolerance = -1.0;
+    double energy_balance_tolerance = -1.0;
 };
 
 struct RadiationEnergyCouplingResult {
@@ -465,7 +481,11 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     const ScalarBoundaryConditions& radiation_bcs = {},
     const ScalarBoundaryConditions& thermal_bcs = {})
 {
-    if(controls.max_outer_iterations==0 || controls.tolerance<=0.0)
+    if(controls.max_outer_iterations==0 || controls.tolerance<=0.0 ||
+       (controls.temperature_tolerance<=0.0 && controls.temperature_tolerance!=-1.0) ||
+       (controls.source_tolerance<=0.0 && controls.source_tolerance!=-1.0) ||
+       (controls.energy_balance_tolerance<=0.0 && controls.energy_balance_tolerance!=-1.0) ||
+       !(controls.outer_relaxation>0.0 && controls.outer_relaxation<=1.0))
         throw std::invalid_argument("invalid radiation-energy coupling controls");
 
     const std::size_t nc=mesh.n_cells();
@@ -475,6 +495,9 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         nc,"qtot","W/m3",1);
 
     RadiationEnergyCouplingResult result;
+    // Keep the physical time level fixed across the nonlinear radiation/energy
+    // outer iterations. The outer iterate is allowed to move independently.
+    const auto T_previous_time=temperature;
     for(std::size_t iter=1;iter<=controls.max_outer_iterations;++iter) {
         cfdx::core::Field<double,cfdx::core::Location::CELL> oldT=temperature;
         cfdx::core::Field<double,cfdx::core::Location::CELL> old_qrad=qrad;
@@ -485,33 +508,98 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             mesh,geometry,temperature,irradiation,qrad,directions,
             controls.radiation,radiation_bcs);
         if(!rr.converged)
-            throw std::runtime_error("radiation inner solve did not converge");
+            throw std::runtime_error("radiation inner solve did not converge after " + std::to_string(rr.iterations) + " iterations");
 
-        for(std::size_t c=0;c<nc;++c)
-            source(c)=non_radiative_source(c)+qrad(c);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> source_implicit(
+            nc,"radiation_source_sp","W/m3/K",1);
+        // Linearize the radiation source about the current outer iterate:
+        // S(T) = non_radiative_source - q_rad(T),
+        // Sp = dS/dT = -16 * absorption * sigma * T^3 <= 0,
+        // Su = S(T*) - Sp*T*. This gives the energy solver the local Jacobian
+        // while preserving the exact source value at the current iterate.
+        for(std::size_t c=0;c<nc;++c) {
+            const double Tstar=temperature(c);
+            const double sigma=5.670374419e-8;
+            const double sp=-16.0*controls.radiation.absorption*sigma*Tstar*Tstar*Tstar;
+            source_implicit(c)=sp;
+            source(c)=non_radiative_source(c)-qrad(c)-sp*Tstar;
+        }
 
+        // Solve the energy equation into a predictor, then relax the
+        // nonlinear radiation/energy coupling update. The inner energy
+        // relaxation controls linear/nonlinear convergence of that solve;
+        // it must not be confused with the outer Picard relaxation.
+        auto predictedT=temperature;
         auto er=solve_energy(
-            mesh,geometry,mass_flux,temperature,source,
-            controls.energy,thermal_bcs);
+            mesh,geometry,mass_flux,predictedT,source,
+            controls.energy,thermal_bcs,nullptr,&source_implicit,&T_previous_time);
         if(!er.converged)
-            throw std::runtime_error("energy inner solve did not converge");
+            throw std::runtime_error("energy inner solve did not converge after " + std::to_string(er.iterations) + " iterations");
 
         double max_delta=0.0;
-        for(std::size_t c=0;c<nc;++c)
-            max_delta=std::max(max_delta,std::abs(temperature(c)-oldT(c)));
+        for(std::size_t c=0;c<nc;++c) {
+            const double candidate=predictedT(c);
+            if(!std::isfinite(candidate) || candidate<0.0)
+                throw std::runtime_error(
+                    "radiation-energy coupling produced non-physical predicted temperature");
+            const double updated =
+                oldT(c) + controls.outer_relaxation*(candidate-oldT(c));
+            if(!std::isfinite(updated) || updated<0.0)
+                throw std::runtime_error(
+                    "radiation-energy coupling produced non-physical temperature");
+            temperature(c)=updated;
+            max_delta=std::max(max_delta,std::abs(updated-oldT(c)));
+        }
 
         double qrad_delta=0.0;
-        for(std::size_t c=0;c<nc;++c)
+        double qrad_scale=1.0;
+        for(std::size_t c=0;c<nc;++c) {
             qrad_delta=std::max(qrad_delta,std::abs(qrad(c)-old_qrad(c)));
-        const double energy_balance_residual = er.history.empty()
-            ? std::numeric_limits<double>::infinity()
-            : er.history.back().energy_imbalance;
+            qrad_scale=std::max(qrad_scale,std::abs(qrad(c)));
+            qrad_scale=std::max(qrad_scale,std::abs(old_qrad(c)));
+        }
+        const double source_relative=qrad_delta/qrad_scale;
+
+        // Reassemble the thermal equation at the actually accepted outer
+        // state. This avoids reporting the predictor balance after relaxation.
+        for(std::size_t c=0;c<nc;++c)
+            source(c)=non_radiative_source(c)-qrad(c);
+        cfdx::core::Field<double,cfdx::core::Location::CELL> accepted_source(
+            nc,"accepted_radiation_source","W/m3",1);
+        for(std::size_t c=0;c<nc;++c)
+            accepted_source(c)=non_radiative_source(c)-qrad(c);
+        auto accepted_eq=assemble_energy_equation(
+            mesh,geometry,mass_flux,accepted_source,T_previous_time,controls.energy,thermal_bcs);
+        cfdx::core::Vector accepted_vec(nc,0.0);
+        for(std::size_t c=0;c<nc;++c) accepted_vec(c)=temperature(c);
+        const double energy_balance_residual =
+            energy_balance_relative_from_equation(accepted_eq,accepted_vec);
+
         result.source_residuals.push_back(qrad_delta);
         result.energy_balance_residuals.push_back(energy_balance_residual);
         result.iterations=iter;
-        if(max_delta<=controls.tolerance &&
-           qrad_delta<=controls.tolerance &&
-           energy_balance_residual<=controls.tolerance) {
+        if (mesh.n_cells() <= 64) {
+            std::cerr << "THERMAL_RADIATION_RESIDUAL: iteration=" << iter
+                      << " dT=" << max_delta
+                      << " qrad_delta=" << qrad_delta
+                      << " qrad_relative=" << source_relative
+                      << " energy_balance=" << energy_balance_residual
+                      << '\n';
+        }
+        const double source_tolerance =
+            controls.source_tolerance > 0.0 ? controls.source_tolerance : controls.tolerance;
+        const double temperature_tolerance =
+            controls.temperature_tolerance > 0.0 ? controls.temperature_tolerance : controls.tolerance;
+        const double energy_balance_tolerance =
+            controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
+        const double temperature_scale = [&]() {
+            double scale=1.0;
+            for(std::size_t c=0;c<nc;++c) scale=std::max(scale,std::abs(temperature(c)));
+            return scale;
+        }();
+        if(max_delta/temperature_scale<=temperature_tolerance &&
+           source_relative<=source_tolerance &&
+           energy_balance_residual<=energy_balance_tolerance) {
             result.converged=true;
             break;
         }

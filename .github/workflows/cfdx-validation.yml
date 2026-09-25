@@ -53,6 +53,44 @@ jobs:
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
 
+      - name: Run thermal V&V with residual logs
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_thermal_vv 2>&1 | tee build-validation/thermal-vv.log
+
+      - name: Run radiation V&V with residual logs
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_radiation_vv 2>&1 | tee build-validation/radiation-vv.log
+
+      - name: Run S2S radiation V&V with residual logs
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_s2s_radiation_vv 2>&1 | tee build-validation/s2s-radiation-vv.log
+
+      - name: Run complete thermal/radiation model matrix
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_thermal_radiation_model_matrix 2>&1 | tee build-validation/thermal-radiation-model-matrix.log
+
+      - name: Run thermal/radiation regression campaign and generate report
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/thermal_radiation_regression.py \
+            --build-dir build-validation \
+            --output-dir build-validation/thermal-radiation-regression 2>&1 | tee build-validation/thermal-radiation-regression.log
+
+      - name: Run thermal challenge and coupled audit
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/test_thermal_challenge_vv 2>&1 | tee build-validation/thermal-challenge-vv.log
+
       - name: Run Couette residual validation
         if: always()
         run: |
@@ -129,4 +167,5 @@ jobs:
             build-validation/validation-junit.xml
             build-validation/phase13-validation.json
             build-validation/diagnostic-evidence/
+            build-validation/thermal-radiation-regression/*
           if-no-files-found: warn

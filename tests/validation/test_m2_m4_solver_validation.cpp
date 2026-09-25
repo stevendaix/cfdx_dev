@@ -82,6 +82,27 @@ int main()
         EXPECT_NEAR(T(0),1000.0,1e-8);
     });
 
+    run_case("rosseland_adds_molecular_and_radiative_conductivity",[] {
+        Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);phi.fill(0.0);
+        Field<double,Location::CELL> T(1,"T","K",1),S(1,"S","W/m3",1),a(1,"a","1/m",1);
+        T(0)=1000.0;S(0)=1200.0;a(0)=1.0;
+        ScalarBoundaryConditions bc;bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1000.0,0.0};
+        EnergySolverControls ec;ec.density=1.0;ec.cp=1000.0;ec.conductivity=10000.0;
+        ec.max_iterations=100;ec.tolerance=1e-10;ec.relaxation=1.0;
+        RosselandSolveControls rc;rc.max_iterations=100;rc.tolerance=1e-10;rc.relaxation=1.0;
+        const auto r=solve_rosseland_energy(m,g,phi,T,S,a,ec,rc,bc);
+        std::cout << "ROSSELAND_TOTAL_CONDUCTIVITY: converged=" << r.converged
+                  << " iterations=" << r.iterations
+                  << " temperature=" << T(0)
+                  << " residual=" << r.temperature_residuals.back()
+                  << " balance=" << r.energy_balance_residuals.back() << '\n';
+        EXPECT_TRUE(r.converged);
+        const double total_conductivity=
+            ec.conductivity+rosseland_conductivity(T(0),a(0));
+        EXPECT_NEAR(T(0)-1000.0,1200.0/(12.0*total_conductivity),1e-9);
+    });
+
     run_case("advanced_radiation_variable_properties_and_spectral",[] {
         Mesh m=make_unit_cube();auto g=build_fv_geometry(m);
         Field<double,Location::CELL> T(1,"T","K",1),G(1,"G","W/m2",1),Q(1,"Q","W/m3",1);
