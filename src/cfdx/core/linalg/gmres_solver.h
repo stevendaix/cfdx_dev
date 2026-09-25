@@ -123,6 +123,20 @@ inline SolverResult solve_gmres(
 
             const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
+            // Arnoldi vectors are normalized, so a genuinely zero h_next is a
+            // breakdown. Treat a value at roundoff scale as the same event;
+            // otherwise an inconsistent saddle-point system can consume the
+            // entire restart budget with a numerically stagnant Krylov space.
+            double hcolumn_scale = 0.0;
+            for (int i = 0; i <= j; ++i)
+                hcolumn_scale = std::max(
+                    hcolumn_scale,
+                    std::abs(w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j))));
+            const double arnoldi_breakdown_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(1.0, hcolumn_scale);
+            const bool arnoldi_breakdown_detected =
+                hnext <= arnoldi_breakdown_floor;
             if (hnext > 0.0) {
                 double* vnext = w.v(static_cast<std::size_t>(j + 1));
                 for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
@@ -172,7 +186,7 @@ inline SolverResult solve_gmres(
 
             if (estimated_residual <= tol)
                 break;
-            if (hnext == 0.0) {
+            if (arnoldi_breakdown_detected) {
                 arnoldi_breakdown = true;
                 break;
             }
@@ -234,6 +248,12 @@ inline SolverResult solve_gmres(
             result.residual_relative = beta / std::max(b_norm, 1.0);
             return result;
         }
+
+        if (std::getenv("CFDX_DEBUG_COUPLED"))
+            std::cerr << "GMRES_CYCLE iterations=" << iterations
+                      << " true_residual=" << beta
+                      << " relative=" << beta / std::max(b_norm, 1.0)
+                      << " restart=" << current_restart << "\n";
 
         const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
         if (controls.adaptive_restart)
