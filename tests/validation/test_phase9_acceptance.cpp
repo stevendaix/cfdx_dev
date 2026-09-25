@@ -175,15 +175,11 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    // Couette has an exact zero streamwise pressure gradient. The previous
-    // 1e-8 nonlinear gate could stop while a small pressure drift accumulated
-    // under alpha_p=0.3. Use a tighter physical convergence target and a larger
-    // iteration budget rather than relaxing the pressure-uniformity acceptance.
-    c.convergence.max_iterations = 800;
-    c.convergence.relative_tolerance = 1e-10;
-    c.convergence.continuity_tolerance = 1e-10;
-    c.linear_max_iterations = 3000;
-    c.linear_tolerance = 1e-12;
+    c.convergence.max_iterations = 250;
+    c.convergence.relative_tolerance = 1e-8;
+    c.convergence.continuity_tolerance = 1e-8;
+    c.linear_max_iterations = 2000;
+    c.linear_tolerance = 1e-10;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
     c.body_force = {0.0, 0.0, 0.0};
