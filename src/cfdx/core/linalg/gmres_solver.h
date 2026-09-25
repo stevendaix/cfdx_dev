@@ -312,12 +312,6 @@ inline SolverResult solve_gmres(
             return result;
         }
 
-        if (std::getenv("CFDX_DEBUG_COUPLED"))
-            std::cerr << "GMRES_CYCLE iterations=" << iterations
-                      << " true_residual=" << beta
-                      << " relative=" << beta / rhs_scale
-                      << " restart=" << current_restart << "\n";
-
         const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
         if (controls.adaptive_restart)
             current_restart = choose_gmres_restart(current_restart, reduction, controls);
