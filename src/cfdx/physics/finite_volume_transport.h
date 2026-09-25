@@ -372,14 +372,27 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
         if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
-        const double candidate_value = equation.rhs(0) / diagonal;
-        const double residual = std::abs(diagonal * candidate_value - equation.rhs(0));
-        solution(0) += controls.relaxation * (candidate_value - solution(0));
+
+        // Treat relaxation as an actual fixed-point iteration. The previous
+        // implementation reported CONVERGED from the unrelaxed exact solution
+        // even when the returned value had only been moved part-way toward it.
+        // That made the convergence status inconsistent with the accepted state.
+        const double exact_value = equation.rhs(0) / diagonal;
+        if (!std::isfinite(exact_value))
+            throw std::runtime_error("solve_scalar_equation: non-finite 1x1 solution");
+        double residual = std::abs(diagonal * solution(0) - equation.rhs(0));
+        for (std::size_t iter = 1; iter <= controls.max_iterations; ++iter) {
+            solution(0) += controls.relaxation * (exact_value - solution(0));
+            residual = std::abs(diagonal * solution(0) - equation.rhs(0));
+            if (residual <= controls.tolerance)
+                return {
+                    cfdx::core::SolverStatus::CONVERGED,
+                    iter, residual, residual
+                };
+        }
         return {
-            residual <= controls.tolerance
-                ? cfdx::core::SolverStatus::CONVERGED
-                : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            1, residual, residual
+            cfdx::core::SolverStatus::MAX_ITER_REACHED,
+            controls.max_iterations, residual, residual
         };
     }
 
