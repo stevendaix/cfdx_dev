@@ -7,7 +7,7 @@ This document separates executable solver comparisons from component-level refer
 | Case | CFDX path | Reference | Current CI role |
 |---|---|---|---|
 | Couette | finite-volume scalar diffusion | exact linear profile | PASS |
-| Plane Poiseuille | finite-volume scalar diffusion/source | exact quadratic profile | PASS, observed order 2.0 |
+| Plane Poiseuille | finite-volume scalar diffusion/source | exact quadratic profile | diagnostic CI gate: profile/QoI/error/conservation/residual/refinement |
 | 1-D conduction | finite-volume scalar diffusion | exact linear profile | PASS within numerical tolerance |
 | Ghia cavity Re=100/400 | steady incompressible SIMPLE | Ghia et al. centreline tables | active solver benchmark; tolerance is mesh-dependent |
 | two-region CHT | coupled energy solver/interface matching | resistance/flux continuity | PASS |
