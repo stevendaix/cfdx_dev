@@ -21,7 +21,11 @@ struct EnergySolverControls {
     double dt = 0.0;                 // <=0 => steady
     double relaxation = 0.9;
     std::size_t max_iterations = 500;
+    // Legacy common tolerance. Dedicated values override it when > 0.
     double tolerance = 1e-10;
+    double linear_tolerance = -1.0;
+    double temperature_tolerance = -1.0;
+    double energy_balance_tolerance = -1.0;
 };
 
 struct EnergyIteration {
@@ -40,7 +44,10 @@ inline void validate_energy_controls(const EnergySolverControls& c)
 {
     if (c.density <= 0.0 || c.cp <= 0.0 || c.conductivity < 0.0 ||
         !(c.relaxation > 0.0 && c.relaxation <= 1.0) ||
-        c.max_iterations == 0 || c.tolerance <= 0.0)
+        c.max_iterations == 0 || c.tolerance <= 0.0 ||
+        (c.linear_tolerance <= 0.0 && c.linear_tolerance != -1.0) ||
+        (c.temperature_tolerance <= 0.0 && c.temperature_tolerance != -1.0) ||
+        (c.energy_balance_tolerance <= 0.0 && c.energy_balance_tolerance != -1.0)
         throw std::invalid_argument("invalid energy solver controls");
     if (c.dt < 0.0) throw std::invalid_argument("energy time step must be >= 0");
 }
@@ -53,7 +60,8 @@ inline ScalarEquation assemble_energy_equation(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
     const EnergySolverControls& c,
     const ScalarBoundaryConditions& bcs = {},
-    const ScalarBoundaryFaceValues* face_values = nullptr)
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
@@ -68,7 +76,7 @@ inline ScalarEquation assemble_energy_equation(
 
     for(std::size_t i=0;i<mesh.n_cells();++i) {
         su(i)=source(i);
-        sp(i)=0.0;
+        sp(i)=source_implicit ? (*source_implicit)(i) : 0.0;
         if(c.dt>0.0) {
             transient_diag[i]=c.density*c.cp*geometry.cell_volumes[i]/c.dt;
             transient_rhs[i]=transient_diag[i]*old_temperature(i);
@@ -78,6 +86,31 @@ inline ScalarEquation assemble_energy_equation(
     return assemble_scalar_equation(
         mesh,geometry,mass_flux,c.conductivity,su,sp,bcs,true,
         face_values,&transient_diag,&transient_rhs);
+}
+
+inline double energy_balance_relative_from_equation(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& temperature)
+{
+    if (temperature.size() != equation.rhs.size())
+        throw std::invalid_argument("energy balance field size mismatch");
+    double imbalance = 0.0;
+    double scale = 1.0;
+    const auto* row = equation.matrix.row_offsets_data();
+    const auto* col = equation.matrix.columns_data();
+    const auto* val = equation.matrix.values_data();
+    for (std::size_t i = 0; i < temperature.size(); ++i) {
+        double ri = -equation.rhs(i);
+        double row_scale = std::abs(equation.rhs(i));
+        for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+            const double term = val[k] * temperature(col[k]);
+            ri += term;
+            row_scale += std::abs(term);
+        }
+        imbalance += ri;
+        scale = std::max(scale, row_scale);
+    }
+    return std::abs(imbalance) / scale;
 }
 
 inline double energy_balance_relative(
@@ -170,38 +203,52 @@ inline EnergySolveResult solve_energy(
         throw std::invalid_argument("energy field size mismatch");
 
     EnergySolveResult result;
-    auto old=temperature;
+    // Previous physical time level stays fixed; T_iterate is the accepted
+    // nonlinear/Picard state.
+    auto T_previous_time=temperature;
+    auto T_iterate=temperature;
+    const double linear_tolerance =
+        controls.linear_tolerance > 0.0 ? controls.linear_tolerance : controls.tolerance;
+    const double temperature_tolerance =
+        controls.temperature_tolerance > 0.0 ? controls.temperature_tolerance : controls.tolerance;
+    const double energy_balance_tolerance =
+        controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,old,controls,bcs,face_values);
+            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values);
         cfdx::core::Vector candidate(temperature.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        sc.tolerance=controls.tolerance;
+        sc.tolerance=linear_tolerance;
         sc.relaxation=controls.relaxation;
         const auto linear=solve_scalar_equation(eq,candidate,sc);
-        const double res=scalar_equation_residual_inf(eq,candidate);
+        cfdx::core::Vector accepted(candidate.size(),0.0);
+        for(std::size_t i=0;i<temperature.size();++i)
+            accepted(i)=T_iterate(i)+controls.relaxation*(candidate(i)-T_iterate(i));
+
+        const double res=scalar_equation_residual_inf(eq,accepted);
 
         double temperature_change=0.0;
         double temperature_scale=1.0;
         for(std::size_t i=0;i<temperature.size();++i) {
             temperature_change=std::max(
                 temperature_change,
-                std::abs(candidate(i)-temperature(i)));
+                std::abs(accepted(i)-T_iterate(i)));
             temperature_scale=std::max(
                 temperature_scale,
-                std::abs(candidate(i)));
+                std::abs(accepted(i)));
         }
         const double relative_temperature_change=
             temperature_change/temperature_scale;
 
-        for(std::size_t i=0;i<temperature.size();++i)
-            temperature(i)=candidate(i);
+        for(std::size_t i=0;i<temperature.size();++i) {
+            temperature(i)=accepted(i);
+            T_iterate(i)=accepted(i);
+        }
 
-        const double imbalance=energy_balance_relative(
-            mesh,geometry,mass_flux,temperature,old,source,controls,bcs,face_values);
+        const double imbalance=energy_balance_relative_from_equation(eq,accepted);
         result.history.push_back({iter,res,imbalance});
         result.iterations=iter;
 
@@ -230,7 +277,7 @@ inline EnergySolveResult solve_energy(
         // predictor and must also stop moving before we declare convergence.
         const bool accepted_state_converged =
             controls.relaxation >= 1.0 - 10.0*std::numeric_limits<double>::epsilon() ||
-            relative_temperature_change <= controls.tolerance;
+            relative_temperature_change <= temperature_tolerance;
         if (mesh.n_cells() <= 64) {
             std::cerr << "THERMAL_RESIDUAL: iteration=" << iter
                       << " linear_status=" << static_cast<int>(linear.status)
@@ -243,13 +290,12 @@ inline EnergySolveResult solve_energy(
         }
         if(linear_converged &&
            accepted_state_converged &&
-           imbalance<=controls.tolerance) {
+           imbalance<=energy_balance_tolerance) {
             result.converged=true;
             break;
         }
-        // For a transient step, "old" is the state at t^n and must remain
-        // fixed throughout the nonlinear iterations of the t^(n+1) solve.
-        // For steady mode dt<=0 and old is only a linearisation reference.
+        // T_previous_time remains fixed for transient physics. T_iterate is
+        // updated above and is the state used for nonlinear/Picard relaxation.
     }
     return result;
 }
