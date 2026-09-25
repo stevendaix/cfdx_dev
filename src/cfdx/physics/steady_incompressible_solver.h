@@ -1096,6 +1096,38 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
+    // Independently recompute ||b-Ax|| after the linear solve.  The Krylov
+    // result already carries a true residual, but keeping an explicit
+    // post-solve matrix check here makes the coupled algebraic gate independent
+    // from the nonlinear FV diagnostics and exposes any stale/inconsistent
+    // solver bookkeeping.
+    double coupled_matrix_residual_sq = 0.0;
+    double coupled_rhs_norm_sq = 0.0;
+    for (std::size_t row = 0; row < A.n_rows(); ++row) {
+        double ax = 0.0;
+        const auto rb = A.row_offsets_data()[row];
+        const auto re = A.row_offsets_data()[row + 1];
+        for (std::size_t k = rb; k < re; ++k)
+            ax += A.values_data()[k] * x(A.columns_data()[k]);
+        const double r = b(row) - ax;
+        coupled_matrix_residual_sq += r * r;
+        coupled_rhs_norm_sq += b(row) * b(row);
+    }
+    const double coupled_matrix_residual = std::sqrt(coupled_matrix_residual_sq);
+    const double coupled_matrix_relative =
+        coupled_matrix_residual / std::max(std::sqrt(coupled_rhs_norm_sq), 1.0);
+    if (!std::isfinite(coupled_matrix_residual) ||
+        !std::isfinite(coupled_matrix_relative)) {
+        return SolverResult{};
+    }
+    if (std::getenv("CFDX_DEBUG_COUPLED")) {
+        std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
+                  << coupled_matrix_residual
+                  << " relative=" << coupled_matrix_relative
+                  << " gmres_reported=" << result.residual
+                  << "\n";
+    }
+
     for (std::size_t c = 0; c < nc; ++c) {
         U.component_data(0)[c] = x(c);
         U.component_data(1)[c] = x(nc + c);
