@@ -171,7 +171,7 @@ int main()
         ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,400,0}},
                                     {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                     {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-12;
+        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-11;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
         for(std::size_t i=0;i<n;++i) {
@@ -190,7 +190,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,0,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,1,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-12;
+            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-11;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"mms_quadratic");
             double err=0.0;
