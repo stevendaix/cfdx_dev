@@ -144,6 +144,21 @@ int main() {
         EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_honors_fixed_restart_controls", []() {
+        const std::size_t n = 12;
+        auto A = make_poisson_1d(n);
+        Vector b(n, 1.0);
+        Vector x(n, 0.0);
+        KrylovControls controls;
+        controls.restart_min = static_cast<int>(n);
+        controls.restart_max = static_cast<int>(n);
+        controls.adaptive_restart = false;
+        const auto result = solve_gmres(A, b, x, static_cast<int>(n), 50, 1e-12,
+                                        nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.residual_relative < 1e-10);
+    });
+
     run_case("gmres_saddle_point_breakdown_reports_true_residual", []() {
         // Small singular saddle-point system without a pressure gauge:
         //
