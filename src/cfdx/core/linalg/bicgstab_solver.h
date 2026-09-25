@@ -40,24 +40,27 @@ inline SolverResult solve_bicgstab(
     };
     for(std::size_t k=0;k<A.nnz();++k)
         if(!std::isfinite(Av[k])){result.status=SolverStatus::DIVERGED;return result;}
-    // Preserve the solver's established applicability contract: BiCGStab
-    // requires a finite, nonzero diagonal even when no explicit
-    // preconditioner is supplied.
-    for (std::size_t i = 0; i < n; ++i) {
-        bool found_diagonal = false;
-        for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-            if (Ac[k] == i) {
-                if (!std::isfinite(Av[k]) || Av[k] == 0.0) {
-                    result.status = SolverStatus::NOT_APPLICABLE;
-                    return result;
+    // Without a preconditioner, retain the established applicability
+    // requirement for an explicit finite diagonal. A block preconditioner
+    // may provide the required scaling itself, so do not reject saddle-point
+    // matrices whose continuity rows have a structural zero diagonal.
+    if (!preconditioner) {
+        for (std::size_t i = 0; i < n; ++i) {
+            bool found_diagonal = false;
+            for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+                if (Ac[k] == i) {
+                    if (!std::isfinite(Av[k]) || Av[k] == 0.0) {
+                        result.status = SolverStatus::NOT_APPLICABLE;
+                        return result;
+                    }
+                    found_diagonal = true;
+                    break;
                 }
-                found_diagonal = true;
-                break;
             }
-        }
-        if (!found_diagonal) {
-            result.status = SolverStatus::NOT_APPLICABLE;
-            return result;
+            if (!found_diagonal) {
+                result.status = SolverStatus::NOT_APPLICABLE;
+                return result;
+            }
         }
     }
     if(!finite_vector(b)||!finite_vector(x)){result.status=SolverStatus::DIVERGED;return result;}
