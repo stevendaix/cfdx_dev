@@ -941,6 +941,101 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
+    // Optional algebraic microscope. It is deliberately computed from
+    // the exact post-gauge matrix passed to GMRES, so it exposes the actual
+    // M/G/D/C blocks rather than reconstructed proxy operators.
+    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
+        (void)debug;
+        double m2 = 0.0, g2 = 0.0, d2 = 0.0, c2 = 0.0;
+        std::size_t zero_rows = 0;
+        std::vector<std::size_t> row_nnz(n, 0);
+        std::vector<std::size_t> col_nnz(n, 0);
+        const auto* ro = A.row_offsets_data();
+        const auto* co = A.columns_data();
+        const auto* va = A.values_data();
+
+        for (std::size_t r = 0; r < n; ++r) {
+            row_nnz[r] = ro[r + 1] - ro[r];
+            if (row_nnz[r] == 0) ++zero_rows;
+            for (std::size_t k = ro[r]; k < ro[r + 1]; ++k) {
+                const std::size_t col = co[k];
+                const double value = va[k];
+                col_nnz[col]++;
+                if (r < nv && col < nv)
+                    m2 += value * value;
+                else if (r < nv && col >= nv)
+                    g2 += value * value;
+                else if (r >= nv && col < nv)
+                    d2 += value * value;
+                else
+                    c2 += value * value;
+            }
+        }
+        std::size_t zero_cols = 0;
+        for (const auto count : col_nnz)
+            if (count == 0) ++zero_cols;
+
+        double schur_diag_min = std::numeric_limits<double>::infinity();
+        double schur_diag_max = 0.0;
+        double schur_mismatch_max = 0.0;
+        std::size_t schur_near_zero = 0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            const std::size_t pr = nv + c;
+            double effective = 0.0;
+            for (std::size_t k = ro[pr]; k < ro[pr + 1]; ++k) {
+                const std::size_t u = co[k];
+                if (u >= nv) continue;
+                const double d = va[k];
+                double inv_m = 0.0;
+                bool found = false;
+                for (std::size_t mk = ro[u]; mk < ro[u + 1]; ++mk) {
+                    if (co[mk] == u) {
+                        const double diag = va[mk];
+                        if (std::isfinite(diag) && std::abs(diag) > 1e-30) {
+                            inv_m = 1.0 / diag;
+                            found = true;
+                        }
+                        break;
+                    }
+                }
+                if (!found) continue;
+                for (std::size_t gk = ro[u]; gk < ro[u + 1]; ++gk) {
+                    const std::size_t q = co[gk];
+                    if (q == pr)
+                        effective -= d * inv_m * va[gk];
+                }
+            }
+            for (std::size_t k = ro[pr]; k < ro[pr + 1]; ++k)
+                if (co[k] == pr) effective += va[k];
+
+            schur_diag_min = std::min(schur_diag_min, effective);
+            schur_diag_max = std::max(schur_diag_max, std::abs(effective));
+            if (std::abs(effective) <=
+                1e-12 * std::max(1.0, schur_diag_max))
+                ++schur_near_zero;
+            if (c < coupled_pressure_schur_diagonal.size() &&
+                std::isfinite(coupled_pressure_schur_diagonal[c]))
+                schur_mismatch_max = std::max(
+                    schur_mismatch_max,
+                    std::abs(effective - coupled_pressure_schur_diagonal[c]));
+        }
+
+        std::cerr << "COUPLED_MATRIX_SUMMARY n=" << n
+                  << " nnz=" << A.nnz()
+                  << " M_l2=" << std::sqrt(m2)
+                  << " G_l2=" << std::sqrt(g2)
+                  << " D_l2=" << std::sqrt(d2)
+                  << " C_l2=" << std::sqrt(c2)
+                  << " zero_rows=" << zero_rows
+                  << " zero_cols=" << zero_cols
+                  << " schur_diag_min=" << schur_diag_min
+                  << " schur_diag_absmax=" << schur_diag_max
+                  << " schur_near_zero=" << schur_near_zero
+                  << " supplied_schur_max_delta=" << schur_mismatch_max
+                  << " gauge_row=" << (nv + reference_cell)
+                  << "\n";
+    }
+
     // The coupled matrix is a saddle-point system. A cell-local 4x4
     // inverse is generally singular because continuity rows have no
     // pressure-pressure diagonal, while Identity does not capture the
