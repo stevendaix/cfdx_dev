@@ -178,8 +178,8 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
             gamma_k[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_k);
             gamma_e[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_epsilon);
         }
-        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,&gamma_k);
-        auto eqe=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,nullptr,nullptr,&gamma_e);
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gamma_k);
+        auto eqe=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,nullptr,nullptr,nullptr,&gamma_e);
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector ks(n,0.0), es(n,0.0);
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);es(i)=epsilon(i);}
