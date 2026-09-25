@@ -62,6 +62,7 @@ jobs:
             -V 2>&1 | tee build-validation/couette-residuals.log
 
       - name: Run campaign driver
+        id: campaign
         if: always()
         run: |
           .venv-validation/bin/python scripts/run_validation.py \
@@ -70,15 +71,32 @@ jobs:
             --json build-validation/phase13-validation.json
 
       - name: Full CTest closure gate
+        id: full_ctest
+        if: always()
         run: |
           ctest --test-dir build-validation --output-on-failure
 
       - name: Phase 9 coupled closure gate
+        id: phase9_closure
+        if: always()
         run: |
           set -o pipefail
           CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
             -R 'test_phase9_acceptance' --output-on-failure -V 2>&1 | tee build-validation/phase9-closure.log
 
+      - name: Final validation decision
+        if: always()
+        run: |
+          echo "campaign=${{ steps.campaign.outcome }}"
+          echo "full_ctest=${{ steps.full_ctest.outcome }}"
+          echo "phase9_closure=${{ steps.phase9_closure.outcome }}"
+          if [[ "${{ steps.campaign.outcome }}" != "success" ||
+                "${{ steps.full_ctest.outcome }}" != "success" ||
+                "${{ steps.phase9_closure.outcome }}" != "success" ]]; then
+            echo "CFDX validation closure FAILED"
+            exit 1
+          fi
+          echo "CFDX validation closure PASSED"
       - name: Run application E2E regression
         if: always()
         run: |
