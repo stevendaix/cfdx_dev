@@ -57,6 +57,13 @@ struct IncompressibleProbeSample {
     double value = 0.0;
 };
 
+struct DiagnosticsControls {
+    bool coupled_matrix_summary = false;
+    bool freeze_state_probe = false;
+    long debug_cell = -1;
+    bool debug_cell_auto = false;
+};
+
 struct IncompressibleSolverControls {
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     CouplingControls coupling;
