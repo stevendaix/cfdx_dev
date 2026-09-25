@@ -108,35 +108,7 @@ int main()
         EXPECT_TRUE(F12>0.0 && F12<1.0);
         EXPECT_NEAR(F12,F21,0.05);
 
-        run_case("s2s_bvh_matches_bruteforce", [] {
-            std::vector<RadiationTriangle> target{
-                {{0,0,1},{0,1,1},{1,0,1}},
-                {{10,0,1},{10,1,1},{11,0,1}}};
-            RadiationBvh bvh(target);
-            const std::array<double,3> origin{0.1,0.1,0.0};
-            const std::array<double,3> direction{0.0,0.0,1.0};
-            double direct=std::numeric_limits<double>::infinity();
-            bool direct_hit=false;
-            for(const auto& tri:target) {
-                double d=0.0;
-                if(radiation_ray_triangle_hit(origin,direction,tri,d) && d<direct) {
-                    direct=d;
-                    direct_hit=true;
-                }
-            }
-            double accelerated=0.0;
-            const bool accelerated_hit=bvh.nearest_hit(origin,direction,accelerated);
-            EXPECT_TRUE(direct_hit);
-            EXPECT_TRUE(accelerated_hit);
-            EXPECT_NEAR(accelerated,direct,1e-14);
-
-            std::vector<RadiationTriangle> blockers{
-                {{0,0,0.5},{0,1,0.5},{1,0,0.5}}};
-            RadiationBvh blocker_bvh(blockers);
-            double blocker_distance=0.0;
-            EXPECT_TRUE(blocker_bvh.nearest_hit(origin,direction,blocker_distance));
-            EXPECT_NEAR(blocker_distance,0.5,1e-14);
-        });
+;
 
         {
             // Explicit area-weighted reciprocity oracle: A1 F12 = A2 F21.
@@ -155,6 +127,36 @@ int main()
         EXPECT_NEAR(b.net,0.0,1e-14);
         EXPECT_NEAR(b.relative_error,0.0,1e-14);
     });
+
+    run_case("s2s_bvh_matches_bruteforce", [] {
+    std::vector<RadiationTriangle> target{
+        {{0,0,1},{0,1,1},{1,0,1}},
+        {{10,0,1},{10,1,1},{11,0,1}}};
+    RadiationBvh bvh(target);
+    const std::array<double,3> origin{0.1,0.1,0.0};
+    const std::array<double,3> direction{0.0,0.0,1.0};
+    double direct=std::numeric_limits<double>::infinity();
+    bool direct_hit=false;
+    for(const auto& tri:target) {
+        double d=0.0;
+        if(radiation_ray_triangle_hit(origin,direction,tri,d) && d<direct) {
+            direct=d;
+            direct_hit=true;
+        }
+    }
+    double accelerated=0.0;
+    const bool accelerated_hit=bvh.nearest_hit(origin,direction,accelerated);
+    EXPECT_TRUE(direct_hit);
+    EXPECT_TRUE(accelerated_hit);
+    EXPECT_NEAR(accelerated,direct,1e-14);
+
+    std::vector<RadiationTriangle> blockers{
+        {{0,0,0.5},{0,1,0.5},{1,0,0.5}}};
+    RadiationBvh blocker_bvh(blockers);
+    double blocker_distance=0.0;
+    EXPECT_TRUE(blocker_bvh.nearest_hit(origin,direction,blocker_distance));
+    EXPECT_NEAR(blocker_distance,0.5,1e-14);
+})
 
     return run_all();
 }
