@@ -937,24 +937,28 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
-    // The coupled matrix has strongly different momentum and pressure
-    // scales. Prefer the local 4x4 block preconditioner, but do not turn a
-    // preconditioner setup limitation into a false "solver not applicable"
-    // result. In particular, the pressure gauge row is intentionally replaced
-    // by an identity row and can make a local block ill-conditioned even when
-    // the global coupled system is perfectly solvable.
-    //
-    // The fallback is scalar Jacobi. It is less aggressive, but it preserves
-    // the mathematical coupled system and lets GMRES diagnose the actual
-    // global convergence rather than stopping at iteration zero.
-    CellBlockJacobiPreconditioner coupled_preconditioner(nc);
+    // Use a SIMPLE-type algebraic Schur preconditioner. The coupled system
+    // is a saddle-point problem; scalar Jacobi ignores the velocity-pressure
+    // coupling and is therefore retained only as a diagnostic fallback.
+    CoupledBlockSchurPreconditioner schur_preconditioner(nc);
     SolverResult result = solve_gmres(
-        A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
+        A, b, x, 128, max_iterations, tolerance, &schur_preconditioner);
+
+    if (result.status == SolverStatus::NOT_APPLICABLE) {
+        // A local block-Jacobi fallback is still useful for unusual boundary
+        // conditions where the algebraic Schur diagonal is singular.
+        CellBlockJacobiPreconditioner block_fallback(nc);
+        std::cerr << "CFDX coupled solver: Schur preconditioner unavailable; "
+                     "trying CellBlockJacobi GMRES\\n";
+        result = solve_gmres(
+            A, b, x, 128, max_iterations, tolerance, &block_fallback);
+    }
+
     if (result.status == SolverStatus::NOT_APPLICABLE) {
         JacobiPreconditioner fallback_preconditioner;
         if (!fallback_preconditioner.setup(A))
             return result;
-        std::cerr << "CFDX coupled solver: CellBlockJacobi setup unavailable; "
+        std::cerr << "CFDX coupled solver: block preconditioners unavailable; "
                      "falling back to scalar Jacobi GMRES\\n";
         result = solve_gmres(
             A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
