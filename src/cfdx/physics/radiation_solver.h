@@ -493,6 +493,9 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         nc,"qtot","W/m3",1);
 
     RadiationEnergyCouplingResult result;
+    // Keep the physical time level fixed across the nonlinear radiation/energy
+    // outer iterations. The outer iterate is allowed to move independently.
+    const auto T_previous_time=temperature;
     for(std::size_t iter=1;iter<=controls.max_outer_iterations;++iter) {
         cfdx::core::Field<double,cfdx::core::Location::CELL> oldT=temperature;
         cfdx::core::Field<double,cfdx::core::Location::CELL> old_qrad=qrad;
@@ -518,7 +521,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         auto predictedT=temperature;
         auto er=solve_energy(
             mesh,geometry,mass_flux,predictedT,source,
-            controls.energy,thermal_bcs);
+            controls.energy,thermal_bcs,{},nullptr,&T_previous_time);
         if(!er.converged)
             throw std::runtime_error("energy inner solve did not converge after " + std::to_string(er.iterations) + " iterations");
 
@@ -551,7 +554,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         for(std::size_t c=0;c<nc;++c)
             source(c)=non_radiative_source(c)-qrad(c);
         auto accepted_eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,oldT,controls.energy,thermal_bcs);
+            mesh,geometry,mass_flux,source,T_previous_time,controls.energy,thermal_bcs);
         cfdx::core::Vector accepted_vec(nc,0.0);
         for(std::size_t c=0;c<nc;++c) accepted_vec(c)=temperature(c);
         const double energy_balance_residual =
