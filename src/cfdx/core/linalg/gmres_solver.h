@@ -11,9 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
-#include <iostream>
 #include <limits>
-#include <cstdlib>
 #include <stdexcept>
 
 namespace cfdx::core {
@@ -260,12 +258,6 @@ inline SolverResult solve_gmres(
                     w.y[static_cast<std::size_t>(i)] = 0.0;
                     continue;
                 }
-                if (std::getenv("CFDX_DEBUG_COUPLED"))
-                    std::cerr << "GMRES_BREAKDOWN i=" << i
-                              << " diag=" << diag
-                              << " rhs=" << sum
-                              << " estimated_residual=" << estimated_residual
-                              << " iterations=" << iterations << "\n";
                 // The Givens/Hessenberg estimate can be exactly zero at a
                 // non-happy breakdown. It is not the physical residual.
                 // Report the true ||b-Ax||_2 at the last admissible iterate.
@@ -279,9 +271,6 @@ inline SolverResult solve_gmres(
                 result.residual = breakdown_residual;
                 result.residual_relative =
                     breakdown_residual / rhs_scale;
-                if (std::getenv("CFDX_DEBUG_COUPLED"))
-                    std::cerr << "GMRES_BREAKDOWN_TRUE_RESIDUAL value="
-                              << breakdown_residual << "\n";
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
