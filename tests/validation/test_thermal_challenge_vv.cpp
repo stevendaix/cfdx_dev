@@ -331,6 +331,39 @@ int main()
         EXPECT_NEAR(T2(0),333.3333333333333,1e-10);
     });
 
+    run_case("radiation_uniform_thermal_equilibrium", [] {
+        // Exact LTE equilibrium for a closed gray participating medium:
+        // all walls and the cell are at the same temperature, so every
+        // ordinate has I=Ib, G=4*pi*Ib=sigma*T^4 and q_rad=0.
+        Mesh m=one_d_mesh(1); auto g=build_fv_geometry(m);
+        Field<double,Location::CELL> T(1,"T","K",1), G(1,"G","W/m2",1), qrad(1,"qrad","W/m3",1);
+        T(0)=300.0; G.fill(0.0); qrad.fill(0.0);
+        auto dirs=sn_quadrature(4);
+        double weight_sum=0.0;
+        for(const auto& d:dirs) weight_sum+=d.weight;
+        EXPECT_NEAR(weight_sum,4.0*M_PI,1e-12);
+
+        RadiationTransportControls rc;
+        rc.absorption=0.1; rc.scattering=0.0;
+        rc.max_iterations=100; rc.tolerance=1e-12;
+        ScalarBoundaryConditions rbcs{
+            {"left",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300.0)/M_PI,0}},
+            {"right",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300.0)/M_PI,0}},
+            {"walls",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300.0)/M_PI,0}}
+        };
+        const auto r=solve_participating_radiation(
+            m,g,T,G,qrad,dirs,rc,rbcs);
+        EXPECT_TRUE(r.converged);
+        const double expected_G=blackbody_emissive_power(300.0);
+        std::cout << "RADIATION_EQUILIBRIUM: iterations=" << r.iterations
+                  << " G=" << G(0)
+                  << " expected_G=" << expected_G
+                  << " qrad=" << qrad(0)
+                  << " weight_sum=" << weight_sum << '\n';
+        EXPECT_NEAR(G(0),expected_G,1e-10*std::max(1.0,expected_G));
+        EXPECT_NEAR(qrad(0),0.0,1e-10);
+    });
+
     run_case("thermal_radiation_coupled_conservation", [] {
         Mesh m=one_d_mesh(1); auto g=build_fv_geometry(m);
         Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0);
@@ -345,7 +378,7 @@ int main()
         c.radiation.absorption=0.1; c.radiation.scattering=0.0;
         c.radiation.max_iterations=100; c.radiation.tolerance=1e-12;
         c.energy.conductivity=1; c.energy.relaxation=0.5; c.energy.max_iterations=200; c.energy.tolerance=1e-12;
-        c.max_outer_iterations=50; c.tolerance=1e-8;
+        c.max_outer_iterations=100; c.outer_relaxation=0.5; c.tolerance=1e-8;
         ScalarBoundaryConditions rbcs{{"left",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
                                       {"right",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
                                       {"walls",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}}};
