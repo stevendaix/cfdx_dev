@@ -888,6 +888,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     }
 
     if (!has_fixed_pressure) {
+        // Finalize the assembled COO matrix before reading its CSR arrays.
+        // Without this explicit finalize(), row_offsets_/values_/columns_ still
+        // describe an empty CSR shell, so gauge elimination would silently
+        // discard every assembled momentum and continuity coefficient.
+        A.finalize();
+
         // Rebuild the matrix while eliminating the known gauge column.
         SparseMatrix reduced(n, n);
         const auto* ro = A.row_offsets_data();
