@@ -16,6 +16,8 @@ Quantities include L2, Linf, conservation/oracle checks and observed spatial ord
 
 The current Couette and Poiseuille Level-A executables solve the corresponding 1-D finite-volume diffusion equation with analytical velocity references. They therefore verify the scalar diffusion/discretisation path used by the momentum assembly, but they are **not yet a full pressure-velocity-coupled Navier-Stokes validation**. The latter requires an actual incompressible solver driver with velocity boundary conditions, pressure correction, continuity monitoring and grid convergence.
 
+The Poiseuille gate is now deliberately diagnostic rather than fail-fast. `test_poiseuille_diagnostics` evaluates geometry/topology invariants, solver convergence, finite values, independent true residual, conservation balance, matrix symmetry/sign structure, profile symmetry, velocity/flow-rate QoIs, analytical L2/Linf errors, and observed order on N=8/16/32/64 before making a single final PASS/FAIL decision. A failure is therefore reported only after the complete diagnostic set has run.
+
 ## Extended component verification
 
 The extended benchmark matrix (`test_benchmark_matrix`) contains 38 executable checks. These are **component-level verification/reference-oracle checks**, not solver-level CFD validation. They exercise implemented CFDX functions for turbulence closures, radiation limits, thermophysical models, linear algebra, temporal operators and numerical invariants. They are run by the campaign driver but must not be interpreted as 38 independent physical CFD cases.
