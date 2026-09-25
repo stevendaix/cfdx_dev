@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <limits>
 #include <vector>
+#include <iostream>
+#include <cstdlib>
 
 namespace cfdx::core {
 
@@ -293,8 +295,13 @@ public:
                     col[row[i]] == i &&
                     std::abs(val[row[i]] - 1.0) <=
                         64.0 * std::numeric_limits<double>::epsilon();
-                if (!identity_row)
+                if (!identity_row) {
+                    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED"); debug && *debug)
+                        std::cerr << "SCHUR_SETUP_FAIL velocity_diag row=" << i
+                                  << " found=" << found << " diag=" << d
+                                  << " nnz_row=" << (row[i + 1] - row[i]) << "\\n";
                     return false;
+                }
                 inv_velocity_diag_[i] = 1.0;
             } else {
                 inv_velocity_diag_[i] = 1.0 / d;
@@ -387,6 +394,11 @@ public:
                 }
                 if (!std::isfinite(scale) || scale <=
                         64.0 * std::numeric_limits<double>::epsilon()) {
+                    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED"); debug && *debug)
+                        std::cerr << "SCHUR_SETUP_FAIL pressure_row=" << p
+                                  << " cdiag=" << cdiag << " schur=" << s
+                                  << " scale=" << scale
+                                  << " nnz_row=" << (row[prow + 1] - row[prow]) << "\\n";
                     return false;
                 }
                 s = scale;
