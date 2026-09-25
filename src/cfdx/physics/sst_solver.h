@@ -85,8 +85,8 @@ inline TurbulenceTransportResult solve_sst_transport(
         throw std::invalid_argument("SST blending field size mismatch");
 
     TurbulenceTransportResult result;
-    const auto cross = cell_gradient_dot(k,omega,mesh);
     for(std::size_t iter=1;iter<=max_iterations;++iter) {
+        const auto cross = cell_gradient_dot(k,omega,mesh);
         auto oldk=k;
         auto oldw=omega;
         cfdx::core::Field<double,cfdx::core::Location::CELL> sk(n,"Sk","W/m3",1),sw(n,"Sw","W/m3",1);
