@@ -313,44 +313,106 @@ public:
             inv_velocity_diag_[j] = 1.0 / std::max(row_scale, 1.0);
         }
 
-        // The coupled FV continuity rows contain the pressure-pressure
-        // stencil after the Rhie-Chow pressure response is assembled.
-        // For a pure continuity row the diagonal may be absent from the
-        // monolithic matrix, but the off-diagonal pressure coefficients are
-        // -D_f. Their absolute sum is therefore the same positive diagonal
-        // scaling used by the segregated pressure equation.
+        // Build the actual algebraic Schur diagonal
+        //
+        //     S = C - D diag(M)^-1 G
+        //
+        // from the assembled monolithic matrix. The previous implementation
+        // used only the Rhie-Chow pressure coefficient C. That is not the
+        // Schur complement: it double-counts the pressure response already
+        // represented by D*diag(M)^-1*G and can make the preconditioned operator
+        // artificially rank-deficient. This is precisely the failure mode seen
+        // in the coupled Couette case (Arnoldi breakdown after 8 steps).
+        //
+        // The supplied pressure_schur_diagonal is retained only as a positive
+        // scale fallback when the local algebraic Schur row is numerically empty
+        // (e.g. a gauge/identity row or a deliberately minimal unit-test matrix).
         for (std::size_t c = 0; c < n_cells_; ++c) {
             const std::size_t pressure_row = nv_ + c;
-            double schur = 0.0;
+            double cdiag = 0.0;
+            double schur_diag = 0.0;
+            double schur_row_l1 = 0.0;
 
-            if (pressure_schur_diagonal_.size() == n_cells_ &&
-                std::isfinite(pressure_schur_diagonal_[c]) &&
-                pressure_schur_diagonal_[c] > 0.0) {
-                schur = pressure_schur_diagonal_[c];
-            } else {
-                const auto [has_pressure_diagonal, pressure_diagonal] =
-                    diagonal(pressure_row);
-                if (has_pressure_diagonal && std::isfinite(pressure_diagonal) &&
-                    std::abs(pressure_diagonal) >
-                        64.0 * std::numeric_limits<double>::epsilon()) {
-                    schur = std::abs(pressure_diagonal);
-                } else {
-                    for (std::size_t k = row[pressure_row];
-                         k < row[pressure_row + 1]; ++k) {
-                        if (col[k] >= nv_)
-                            schur += std::abs(val[k]);
-                    }
+            for (std::size_t k = row[pressure_row];
+                 k < row[pressure_row + 1]; ++k) {
+                const std::size_t q = col[k];
+                if (q >= nv_) {
+                    const double value = val[k];
+                    schur_row_l1 += std::abs(value);
+                    if (q == pressure_row)
+                        cdiag += value;
+                }
+            }
+            schur_diag = cdiag;
+
+            // Subtract D*diag(M)^-1*G. D is stored in the pressure row;
+            // G is stored in the momentum rows. Accumulate the complete local
+            // pressure Schur row norm so that a zero diagonal does not make a
+            // perfectly valid nonsymmetric Schur operator unusable.
+            for (std::size_t k = row[pressure_row];
+                 k < row[pressure_row + 1]; ++k) {
+                const std::size_t u = col[k];
+                if (u >= nv_)
+                    continue;
+                const double d = val[k];
+                if (!std::isfinite(d))
+                    return false;
+
+                const std::size_t ub = row[u];
+                const std::size_t ue = row[u + 1];
+                for (std::size_t gk = ub; gk < ue; ++gk) {
+                    const std::size_t q = col[gk];
+                    if (q < nv_)
+                        continue;
+                    const double contribution =
+                        d * inv_velocity_diag_[u] * val[gk];
+                    if (!std::isfinite(contribution))
+                        return false;
+                    schur_row_l1 += std::abs(contribution);
+                    if (q == pressure_row)
+                        schur_diag -= contribution;
                 }
             }
 
-            if (!(schur > 0.0) || !std::isfinite(schur)) {
-                if (std::getenv("CFDX_DEBUG_COUPLED"))
-                    std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
-                              << " schur=" << schur << "\\n";
-                clear();
+            if (!std::isfinite(schur_diag) || !std::isfinite(schur_row_l1))
                 return false;
+
+            const double scale_floor =
+                64.0 * std::numeric_limits<double>::epsilon() *
+                std::max(1.0, schur_row_l1);
+
+            double schur_scale = 0.0;
+            if (std::abs(schur_diag) > scale_floor) {
+                schur_scale = schur_diag;
+            } else if (schur_row_l1 > scale_floor) {
+                // Preserve the usual positive-pressure-equation scaling when
+                // the diagonal cancellation is exact but neighbouring Schur
+                // coefficients still provide pressure coupling.
+                schur_scale = schur_row_l1;
+            } else if (pressure_schur_diagonal_.size() == n_cells_ &&
+                       std::isfinite(pressure_schur_diagonal_[c]) &&
+                       pressure_schur_diagonal_[c] > 0.0) {
+                schur_scale = pressure_schur_diagonal_[c];
+            } else {
+                // A true identity row is handled as an exact unit block.
+                const bool identity_row =
+                    row[pressure_row + 1] - row[pressure_row] == 1 &&
+                    col[row[pressure_row]] == pressure_row &&
+                    std::abs(val[row[pressure_row]] - 1.0) <=
+                        64.0 * std::numeric_limits<double>::epsilon();
+                if (identity_row) {
+                    schur_scale = 1.0;
+                } else {
+                    if (std::getenv("CFDX_DEBUG_COUPLED"))
+                        std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
+                                  << " schur_diag=" << schur_diag
+                                  << " row_l1=" << schur_row_l1 << "\\n";
+                    clear();
+                    return false;
+                }
             }
-            inv_schur_diag_[c] = 1.0 / schur;
+
+            inv_schur_diag_[c] = 1.0 / schur_scale;
         }
         return true;
     }
