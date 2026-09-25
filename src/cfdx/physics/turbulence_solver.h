@@ -281,6 +281,20 @@ inline TurbulenceTransportResult solve_komega_transport(
     return result;
 }
 
+inline double sa_modified_vorticity(
+    double vorticity, double nu_tilde, double chi, double wall_distance,
+    const SpalartAllmarasModel& sa)
+{
+    if(!(wall_distance>0.0) || !std::isfinite(vorticity) || vorticity<0.0 ||
+       !std::isfinite(nu_tilde) || nu_tilde<0.0)
+        throw std::invalid_argument("sa_modified_vorticity: invalid inputs");
+    constexpr double cv2=0.7, cv3=0.9;
+    const double sbar=nu_tilde*sa.fv2(chi)/(sa.kappa*sa.kappa*wall_distance*wall_distance);
+    if(sbar>=-cv2*vorticity) return vorticity+sbar;
+    return vorticity+vorticity*(cv2*cv2*vorticity+cv3*sbar)/
+                     ((cv3-2.0*cv2)*vorticity-sbar);
+}
+
 inline TurbulenceTransportResult solve_spalart_allmaras_transport(
     const cfdx::core::Mesh& mesh,const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
@@ -309,8 +323,10 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         for(std::size_t i=0;i<n;++i){
             const double wt=std::max(nu_tilde(i),0.0), nu=controls.molecular_viscosity, d=wall_distance(i), vort=std::max(vorticity(i),1e-20);
             if(!(d>0)||!std::isfinite(d)||!std::isfinite(vort)) throw std::invalid_argument("invalid SA wall/vorticity field");
-            const double chi=wt/nu, st=std::max(vort+wt*sa.fv2(chi)/(sa.kappa*sa.kappa*d*d),1e-20);
-            const double r=wt/(st*sa.kappa*sa.kappa*d*d), fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
+            const double chi=wt/nu;
+            const double st=std::max(sa_modified_vorticity(vort,wt,chi,d,sa),1e-20);
+            const double r=std::min(wt/(st*sa.kappa*sa.kappa*d*d),10.0);
+            const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
             const double prod=sa.cb1*(1-ft2)*st;
             const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(d*d);
             const double grad2=gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i];
