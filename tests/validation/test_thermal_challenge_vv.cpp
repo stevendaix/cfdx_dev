@@ -302,9 +302,10 @@ int main()
                       << " Tmin=" << Tmin << '\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            // Tmax is a cell-centre value, so the exact discrete oracle must
-            // use the cell centre nearest x=L/2 rather than the continuous
-            // maximum at x=L/2. The latter differs by O(h^2) on an even mesh.
+            // CFDX stores the volumetric-heating solution at cell centres and
+            // the exact oracle used by the solver is T(x_c). Therefore the
+            // maximum over the discrete cell-centre samples is the correct
+            // pointwise analytical oracle for this validation.
             EXPECT_NEAR(Tmax-T0, exact_dT_cell,
                          1e-12*std::max(1.0,exact_dT_cell));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
