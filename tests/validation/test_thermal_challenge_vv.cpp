@@ -174,7 +174,7 @@ int main()
         EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-11;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
-        ASSERT_TRUE(r.history.back().residual <= c.tolerance);
+        EXPECT_TRUE(r.history.back().residual <= c.tolerance);
         EXPECT_TRUE(std::isfinite(r.history.back().residual));
         EXPECT_TRUE(r.history.back().energy_imbalance <= c.tolerance);
         for(std::size_t i=0;i<n;++i) {
@@ -295,7 +295,7 @@ int main()
                       << " generated_power=" << generated_power
                       << " expected_power=" << expected_power
                       << " center_exact=" << center_exact
-                      << " Tmin=" << Tmin << '\\n';
+                      << " Tmin=" << Tmin << '\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
             // Tmax is a cell-centre value, so the exact discrete oracle must
