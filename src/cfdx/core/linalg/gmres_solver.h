@@ -56,8 +56,8 @@ inline SolverResult solve_gmres(
     // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
     // makes physically small systems appear converged at x=0 and is incorrect
     // for nondimensionalized or otherwise small-scale operators.
+    const double rhs_scale = std::max(b_norm, 1e-300);
     const double tol = tolerance * b_norm;
-
 
     GmresWorkspace w;
     w.resize(n, static_cast<std::size_t>(current_restart));
@@ -257,7 +257,11 @@ inline SolverResult solve_gmres(
                 // The Givens/Hessenberg estimate can be exactly zero at a
                 // non-happy breakdown. It is not the physical residual.
                 // Report the true ||b-Ax||_2 at the last admissible iterate.
-                const double breakdown_residual = true_residual();
+                double breakdown_residual = true_residual();
+                if (best_residual < breakdown_residual) {
+                    x = best_x;
+                    breakdown_residual = best_residual;
+                }
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
@@ -296,6 +300,10 @@ inline SolverResult solve_gmres(
         // singular/inconsistent system as MAX_ITER_REACHED. Report the
         // physical residual as a genuine solver failure instead.
         if (arnoldi_breakdown) {
+            if (best_residual < beta) {
+                x = best_x;
+                beta = best_residual;
+            }
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
             result.residual = beta;
