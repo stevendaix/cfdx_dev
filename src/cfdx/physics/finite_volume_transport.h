@@ -404,6 +404,36 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
                   << " iter=" << result.iterations << " residual=" << result.residual << '\n';
 
+    // Validate the solver status against the assembled FVM equation. Some
+    // Krylov stopping paths can report CONVERGED from an internal criterion
+    // while the actual backward error is still above the requested tolerance.
+    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
+        const double actual_residual = scalar_equation_residual_inf(equation, candidate);
+        double backward_error = 0.0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            double ri = -equation.rhs(i);
+            double scale = std::abs(equation.rhs(i));
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                const double aij = val[k];
+                const double xj = candidate(col[k]);
+                ri += aij * xj;
+                scale += std::abs(aij * xj);
+            }
+            backward_error = std::max(
+                backward_error,
+                std::abs(ri) / std::max(1.0, scale));
+        }
+        if (!std::isfinite(actual_residual) || !std::isfinite(backward_error) ||
+            backward_error > controls.tolerance) {
+            result.status = cfdx::core::SolverStatus::MAX_ITER_REACHED;
+            result.residual = actual_residual;
+            result.residual_relative = backward_error;
+        }
+    }
+
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
     // Momentum matrices can move between nearly symmetric diffusion-dominated
