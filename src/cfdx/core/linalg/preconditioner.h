@@ -294,7 +294,11 @@ public:
                 std::abs(d) <= 64.0 * std::numeric_limits<double>::epsilon()) {
                 if (std::getenv("CFDX_DEBUG_COUPLED"))
                     std::cerr << "COUPLED_SCHUR_SETUP velocity_diag_failure row=" << j
-                              << " found=" << found << " diag=" << d << "\\n";
+                              << " found=" << found << " diag=" << d
+                              << " nnz=" << (row[j + 1] - row[j]) << " entries=";
+                    for (std::size_t kk = row[j]; kk < row[j + 1]; ++kk)
+                        std::cerr << " (" << col[kk] << "," << val[kk] << ")";
+                    std::cerr << "\\n";
                 clear();
                 return false;
             }
