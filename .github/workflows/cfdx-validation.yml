@@ -69,6 +69,16 @@ jobs:
             --junit build-validation/validation-junit.xml \
             --json build-validation/phase13-validation.json
 
+      - name: Full CTest closure gate
+        run: |
+          ctest --test-dir build-validation --output-on-failure
+
+      - name: Phase 9 coupled closure gate
+        run: |
+          set -o pipefail
+          CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
+            -R 'test_phase9_acceptance' --output-on-failure -V 2>&1 | tee build-validation/phase9-closure.log
+
       - name: Run application E2E regression
         if: always()
         run: |
