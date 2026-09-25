@@ -132,13 +132,13 @@ inline SolverResult solve_gmres(
             const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
             // Arnoldi vectors are normalized, so loss of the new direction is
-            // a breakdown. Treat only roundoff relative to the current
-            // operator action as breakdown; this remains scale invariant.
+            // a breakdown. Use a relative test against the current operator
+            // action, but never let a tiny absolute value trigger it.
             const double arnoldi_breakdown_floor =
                 128.0 * std::numeric_limits<double>::epsilon() *
                 std::max(arnoldi_action_norm, 1e-300);
             const bool arnoldi_breakdown_detected =
-                hnext <= arnoldi_breakdown_floor;
+                hnext <= arnoldi_breakdown_floor && arnoldi_action_norm > 0.0;
             if (hnext > 0.0) {
                 double* vnext = w.v(static_cast<std::size_t>(j + 1));
                 for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
