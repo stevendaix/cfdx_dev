@@ -577,18 +577,26 @@ int main()
                  std::pair<const char*, const RunResult*>{"SIMPLE/SOU/bounded", &second_order},
                  {"SIMPLE/upwind/unbounded", &unbounded}}) {
             const auto error = profile_error(*pair.second, 8, 16);
+            const auto& h = pair.second->solve.history.back();
+            std::cout << "CONVECTION_RESULT " << pair.first
+                      << " solver_converged=" << (pair.second->solve.converged ? "true" : "false")
+                      << " iterations=" << pair.second->solve.iterations
+                      << " profile_L2=" << error.l2
+                      << " profile_Linf=" << error.linf
+                      << " continuity=" << h.continuity_linf
+                      << " continuity_norm=" << h.continuity_normalized
+                      << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                      << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
+                      << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
+                      << "\\n";
             if (!(error.l2 < profile_l2_tolerance &&
                   error.linf < profile_linf_tolerance))
                 throw std::runtime_error(
                     std::string(pair.first) + ": convection gate failed");
-            const auto& h = pair.second->solve.history.back();
             if (!(h.continuity_linf < 1e-7) ||
                 !(h.momentum_equation_residual_relative < 1e-7))
                 throw std::runtime_error(
                     std::string(pair.first) + ": conservation gate failed");
-            std::cout << pair.first
-                      << ": profile L2/Linf=" << error.l2 << "/" << error.linf
-                      << " continuity=" << h.continuity_linf << "\n";
         }
 
         // A pure-Neumann pressure field has a gauge freedom. Starting from a
