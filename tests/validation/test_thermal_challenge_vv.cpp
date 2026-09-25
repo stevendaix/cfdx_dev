@@ -31,31 +31,11 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
     }
 
     const std::size_t nf=5*n+2;
-    // FaceConnectivity grows through push_face(); no resize API is exposed.
+    // Build the structured slab topology directly. Each cell has one
+    // left/right x-face and four transverse boundary faces.
     m.ownership().resize(nf);
     std::vector<std::size_t> left_faces, right_faces, walls_faces;
     std::size_t f=0;
-
-    auto add_face = [&](std::initializer_list<std::size_t> ids,
-                        std::size_t owner, long long neighbour,
-                        std::vector<std::size_t>* patch) {
-        m.faces().push_face(ids);
-        m.ownership().set_owner(f,owner);
-        m.ownership().set_neighbour(f,neighbour);
-        if (patch) patch->push_back(f);
-        ++f;
-    };
-
-    add_face({0,3,2,1},0,FaceOwnership::BOUNDARY,&left_faces);
-    for (std::size_t i=0;i<n;++i) {
-        const std::size_t p=4*i;
-        m.cells().push_cell({f, f+1, f+2, f+3, f+4, f+5});
-        if (i>0) {
-            // Replace the cell's left-face entry with the already-created
-            // internal face. The first cell is created below by construction.
-        }
-        (void)p;
-    }
 
     // Rebuild the topology deterministically: each cell has left/right and
     // four transverse faces; transverse faces are boundary faces.
