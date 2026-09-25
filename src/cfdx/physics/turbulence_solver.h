@@ -367,7 +367,7 @@ inline double wall_omega_from_k(double k, double y, double betaStar=0.09, double
 {
     if(k<0.0 || y<=0.0 || betaStar<=0.0 || kappa<=0.0)
         throw std::invalid_argument("invalid wall omega input");
-    return std::sqrt(k)/(std::pow(betaStar,0.25)*kappa*y);
+    return std::sqrt(k)/(std::sqrt(betaStar)*y);
 }
 
 } // namespace cfdx::physics
