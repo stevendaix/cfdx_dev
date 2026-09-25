@@ -313,11 +313,14 @@ inline ScalarEquation assemble_scalar_equation(
                 div_phi[o] += F;
             } else {
                 // Zero-gradient means the boundary value equals the owner
-                // value. With bounded steady convection the boundary flux
-                // must therefore cancel exactly with -div(phi)*psi. Using
-                // max(F,0) here incorrectly leaves an artificial inflow sink.
-                // Keep the historical upwind form for the unbounded operator.
-                diag[o] += bounded_convection ? F : std::max(F, 0.0);
+                // value, so the convective contribution is exactly F*psi_owner
+                // for either flow direction. The bounded steady formulation
+                // subsequently subtracts div(phi)*psi, cancelling this term
+                // when continuity is satisfied. The unbounded formulation must
+                // retain F itself; using max(F,0) drops inflow convection and
+                // creates an artificial mass/momentum imbalance at an outlet/
+                // inlet pair with recirculating or bidirectional flux.
+                diag[o] += F;
                 div_phi[o] += F;
             }
         }
