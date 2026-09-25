@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <cstdlib>
 #include <stdexcept>
 
@@ -121,20 +122,21 @@ inline SolverResult solve_gmres(
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
 
-            const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            // Scale the breakdown test with ||A z_j||, not with an
+            // arbitrary absolute value of one. The operator can legitimately
+            // be very small after nondimensionalisation or physical scaling;
+            // an absolute epsilon floor would then misclassify a valid Krylov
+            // vector as a breakdown.
+            const double w_before_orthogonalization =
+                krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            const double hnext = w_before_orthogonalization;
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
-            // Arnoldi vectors are normalized, so a genuinely zero h_next is a
-            // breakdown. Treat a value at roundoff scale as the same event;
-            // otherwise an inconsistent saddle-point system can consume the
-            // entire restart budget with a numerically stagnant Krylov space.
-            double hcolumn_scale = 0.0;
-            for (int i = 0; i <= j; ++i)
-                hcolumn_scale = std::max(
-                    hcolumn_scale,
-                    std::abs(w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j))));
+            // Arnoldi vectors are normalized, so loss of the new direction is
+            // a breakdown. Treat only roundoff relative to the current
+            // operator action as breakdown; this remains scale invariant.
             const double arnoldi_breakdown_floor =
                 128.0 * std::numeric_limits<double>::epsilon() *
-                std::max(1.0, hcolumn_scale);
+                std::max(w_before_orthogonalization, 1e-300);
             const bool arnoldi_breakdown_detected =
                 hnext <= arnoldi_breakdown_floor;
             if (hnext > 0.0) {
