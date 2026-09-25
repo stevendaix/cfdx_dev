@@ -400,8 +400,22 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
         const double candidate_value = equation.rhs(0) / diagonal;
-        const double residual = std::abs(diagonal * candidate_value - equation.rhs(0));
+        const double candidate_residual =
+            std::abs(diagonal * candidate_value - equation.rhs(0));
+        if (candidate_residual <= controls.tolerance) {
+            // A scalar 1x1 system has an exact closed-form solution. Do not
+            // under-relax an already converged linear solve: doing so makes
+            // the returned state fail the requested residual even though the
+            // reported linear residual is zero.
+            solution(0) = candidate_value;
+            return {
+                cfdx::core::SolverStatus::CONVERGED,
+                1, candidate_residual, candidate_residual
+            };
+        }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
+        const double residual =
+            std::abs(diagonal * solution(0) - equation.rhs(0));
         return {
             residual <= controls.tolerance
                 ? cfdx::core::SolverStatus::CONVERGED
