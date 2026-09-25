@@ -61,35 +61,41 @@ inline void enforce_turbulence_bounds(
 
 inline double turbulence_nu_t(
     double k, double second, double strain, double wall_distance,
-    const TurbulenceTransportControls& c)
+    const TurbulenceTransportControls& c, double cell_volume = -1.0, double F2 = 1.0)
 {
     k=std::max(k,c.k_min);
-    second=std::max(second,
-        c.model==TurbulenceModel::SST ? c.omega_min : c.epsilon_min);
+    const bool omega_based =
+        c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA;
+    if(c.model!=TurbulenceModel::SPALART_ALLMARAS)
+        second=std::max(second, omega_based ? c.omega_min : c.epsilon_min);
     switch(c.model) {
     case TurbulenceModel::LAMINAR: return 0.0;
-    case TurbulenceModel::KEPSILON:
-        return c.C_mu*k*k/second;
-    case TurbulenceModel::RNG_KEPSILON:
-        return c.rng_C_mu*k*k/second;
-    case TurbulenceModel::KOMEGA:
-        return c.a1*k/second;
-    case TurbulenceModel::SPALART_ALLMARAS:
-        return second;
-    case TurbulenceModel::SST: {
-        const double F2=1.0;
-        return c.a1*k/std::max(c.a1*second,strain*F2);
+    case TurbulenceModel::KEPSILON: return c.C_mu*k*k/second;
+    case TurbulenceModel::RNG_KEPSILON: return c.rng_C_mu*k*k/second;
+    case TurbulenceModel::KOMEGA: {
+        const double omega_tilde=std::max(
+            second, c.komega_clim*std::max(strain,0.0)/std::sqrt(c.beta_star));
+        return k/omega_tilde;
     }
-    case TurbulenceModel::SMAGORINSKY: {
-        if(wall_distance<=0.0) throw std::invalid_argument("wall distance must be positive");
-        const double delta=std::cbrt(1.0);
-        return smagorinsky_eddy_viscosity(delta,strain);
+    case TurbulenceModel::SPALART_ALLMARAS: {
+        const double nt=std::max(second,0.0);
+        if(!(c.molecular_viscosity>0.0))
+            throw std::invalid_argument("SA eddy viscosity requires molecular viscosity");
+        const double chi3=std::pow(nt/c.molecular_viscosity,3.0);
+        return nt*chi3/(chi3+std::pow(c.sa_cv1,3.0));
     }
-    case TurbulenceModel::DES: {
-        if(wall_distance<=0.0) throw std::invalid_argument("wall distance must be positive");
-        const double length=std::min(wall_distance,0.65*std::cbrt(1.0));
-        return length*length*strain;
-    }
+    case TurbulenceModel::SST:
+        if(F2<0.0 || F2>1.0) throw std::invalid_argument("SST F2 must lie in [0,1]");
+        return c.a1*k/std::max(c.a1*second,std::max(strain,0.0)*F2);
+    case TurbulenceModel::SMAGORINSKY:
+        if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
+            throw std::invalid_argument("Smagorinsky requires positive cell volume");
+        return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
+    case TurbulenceModel::DES:
+        if(!(cell_volume>0.0) || !std::isfinite(cell_volume) || !(wall_distance>0.0))
+            throw std::invalid_argument("DES requires positive cell volume and wall distance");
+        return des_eddy_viscosity(std::cbrt(cell_volume),wall_distance,strain,
+                                  c.smagorinsky_Cs,c.des_Cdes);
     }
     throw std::invalid_argument("unknown turbulence model");
 }
