@@ -942,7 +942,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // coupling and is therefore retained only as a diagnostic fallback.
     CoupledBlockSchurPreconditioner schur_preconditioner(nc);
     SolverResult result = solve_gmres(
-        A, b, x, 128, max_iterations, tolerance, &schur_preconditioner);
+        A, b, x, 256, max_iterations, tolerance, &schur_preconditioner);
 
     // A Krylov breakdown/stagnation is not evidence that the physical coupled
     // matrix is singular. The Schur preconditioner is an approximation, so a
@@ -961,10 +961,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                      "(status=" << static_cast<int>(result.status)
                   << ", iterations=" << result.iterations
                   << ", residual=" << result.residual
+                  << "); retrying with Schur BiCGStab\\n";
+        result = solve_bicgstab(
+            A, b, x, max_iterations, tolerance, &schur_preconditioner);
+    }
+
+    if (result.status != SolverStatus::CONVERGED) {
+        x = Vector(n, 0.0);
+        for (std::size_t c = 0; c < nc; ++c) {
+            x(c) = U_old.component_data(0)[c];
+            x(nc + c) = U_old.component_data(1)[c];
+            x(2*nc + c) = U_old.component_data(2)[c];
+            x(nv + c) = p_old(c);
+        }
+        std::cerr << "CFDX coupled solver: Schur Krylov cascade did not converge "
+                     "(status=" << static_cast<int>(result.status)
+                  << ", iterations=" << result.iterations
+                  << ", residual=" << result.residual
                   << "); retrying with CellBlockJacobi GMRES\\n";
         CellBlockJacobiPreconditioner block_fallback(nc);
         result = solve_gmres(
-            A, b, x, 128, max_iterations, tolerance, &block_fallback);
+            A, b, x, 256, max_iterations, tolerance, &block_fallback);
     }
 
     if (result.status != SolverStatus::CONVERGED) {
