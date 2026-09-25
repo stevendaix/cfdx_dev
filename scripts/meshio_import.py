@@ -73,6 +73,29 @@ def build(mesh):
         cell_faces.append(refs)
     return points,faces,owner,neighbour,cell_faces,skipped
 
+def orient_faces(points, faces, owner, cells):
+    """Orient each face so its normal points out of its owner cell."""
+    centres=[]
+    for ctype,nodes,_ in cells:
+        ids=sorted({v for fc in nodes for v in fc}) if ctype=="polyhedron" else nodes
+        if not ids:
+            raise ValueError("cell has no vertices")
+        centres.append(np.mean(points[np.asarray(ids,dtype=np.int64)],axis=0))
+    for fid,face in enumerate(faces):
+        if len(face)<3:
+            raise ValueError(f"face {fid}: fewer than 3 vertices")
+        pts=points[np.asarray(face,dtype=np.int64)]
+        xf=np.mean(pts,axis=0)
+        rel=pts-xf
+        S=0.5*np.sum(np.cross(rel,np.roll(rel,-1,axis=0)),axis=0)
+        sd=float(np.dot(S,xf-centres[owner[fid]]))
+        scale=max(float(np.linalg.norm(S))*float(np.linalg.norm(xf-centres[owner[fid]])),1e-300)
+        if not np.isfinite(sd) or abs(sd)<=1e-14*scale:
+            raise ValueError(f"face {fid}: degenerate or tangent owner normal")
+        if sd<0.0:
+            faces[fid].reverse()
+    return faces
+
 def fnv1a_update(hash_value,array):
     for byte in np.asarray(array).tobytes(order="C"):
         hash_value ^= byte; hash_value=(hash_value*1099511628211)&0xFFFFFFFFFFFFFFFF
