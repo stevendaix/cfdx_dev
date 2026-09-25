@@ -30,7 +30,7 @@ inline void compute_kepsilon_production_field(
     for(std::size_t i=0;i<mesh.n_cells();++i) {
         const double nut=c.C_mu*std::max(k(i),c.k_min)*std::max(k(i),c.k_min)/
                          std::max(epsilon(i),c.epsilon_min);
-        production(i)=c.density*2.0*nut*strain_rate(i)*strain_rate(i);
+        production(i)=c.density*nut*strain_rate(i)*strain_rate(i);
     }
 }
 
@@ -222,7 +222,7 @@ inline TurbulenceTransportResult solve_komega_transport(
         std::vector<double> gk(n),gw(n);
         for(std::size_t i=0;i<n;++i){
             const double ki=std::max(k(i),controls.k_min), wi=std::max(omega(i),controls.omega_min);
-            const double nut=controls.a1*ki/wi, P=2.0*controls.density*nut*strain_rate(i)*strain_rate(i);
+            const double nut=controls.a1*ki/wi, P=controls.density*nut*strain_rate(i)*strain_rate(i);
             sk(i)=P; spk(i)=-controls.density*controls.beta_star*wi;
             sw(i)=controls.gamma1*P/std::max(nut,1e-20); spw(i)=-controls.density*controls.beta1*wi;
             gk[i]=controls.density*(controls.molecular_viscosity+controls.sigma_k*nut);
