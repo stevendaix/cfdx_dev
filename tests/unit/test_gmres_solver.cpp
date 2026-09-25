@@ -193,6 +193,7 @@ int main() {
 
         const auto result = solve_gmres(A, b, x, 3, 3, 1e-12);
         EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(result.iterations == 2);
         EXPECT_TRUE(result.residual > 1e-8);
         EXPECT_TRUE(result.residual_relative > 1e-8);
         EXPECT_TRUE(std::isfinite(result.residual));
