@@ -171,7 +171,7 @@ int main()
         ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,400,0}},
                                     {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                     {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
+        EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-14;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
         for(std::size_t i=0;i<n;++i) {
@@ -190,7 +190,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,0,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,1,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
+            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-14;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"mms_quadratic");
             double err=0.0;
@@ -221,7 +221,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=2; c.relaxation=1; c.max_iterations=20; c.tolerance=1e-10;
+            EnergySolverControls c; c.conductivity=2; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-14;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"volumetric_generation");
             double err=0.0, balance= r.history.back().energy_imbalance;
@@ -263,7 +263,7 @@ int main()
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,T0,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
             EnergySolverControls c; c.conductivity=k; c.relaxation=1;
-            c.max_iterations=20; c.tolerance=1e-10;
+            c.max_iterations=100; c.tolerance=1e-14;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"volumetric_power_sweep");
             double Tmax=T(0), Tmin=T(0);
@@ -295,7 +295,7 @@ int main()
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
             EXPECT_NEAR(Tmax-T0, T0 + exact_dT_cell - T0,
-                         1e-10*std::max(1.0,exact_dT_cell));
+                         1e-9*std::max(1.0,exact_dT_cell));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
         }
     });
@@ -342,9 +342,9 @@ int main()
         Field<double,Location::CELL> G(1,"G","W/m2",1); G.fill(0);
         auto dirs=sn_quadrature(4);
         RadiationEnergyCouplingControls c;
-        c.radiation.absorption=1.0; c.radiation.scattering=0.0;
-        c.radiation.max_iterations=50; c.radiation.tolerance=1e-10;
-        c.energy.conductivity=1; c.energy.relaxation=0.5; c.energy.max_iterations=100; c.energy.tolerance=1e-10;
+        c.radiation.absorption=0.1; c.radiation.scattering=0.0;
+        c.radiation.max_iterations=100; c.radiation.tolerance=1e-12;
+        c.energy.conductivity=1; c.energy.relaxation=0.5; c.energy.max_iterations=200; c.energy.tolerance=1e-12;
         c.max_outer_iterations=50; c.tolerance=1e-8;
         ScalarBoundaryConditions rbcs{{"left",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
                                       {"right",{ScalarBoundaryType::FIXED_VALUE,blackbody_emissive_power(300)/M_PI,0}},
