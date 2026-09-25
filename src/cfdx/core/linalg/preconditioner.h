@@ -137,11 +137,17 @@ public:
                         pivot_abs = candidate;
                     }
                 }
-                // Scale the singularity test with the block itself. A fixed
-                // absolute threshold is incorrect because momentum and pressure
-                // coefficients have different physical units and magnitudes.
+                // The matrix being pivoted has already been row-scaled.
+                // pivot_abs is therefore dimensionless and O(1). Comparing it
+                // with the *unscaled* block norm is incorrect and can reject a
+                // perfectly invertible block whenever pressure and momentum
+                // coefficients have different units/scales.
+                //
+                // Use the norm of the scaled matrix instead. Each scaled row
+                // has infinity norm <= 1 by construction.
+                const double scaled_norm_inf = 1.0;
                 const double pivot_floor =
-                    64.0 * std::numeric_limits<double>::epsilon() * block_norm_inf;
+                    64.0 * std::numeric_limits<double>::epsilon() * scaled_norm_inf;
                 if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_floor) {
                     inv_blocks_.clear();
                     return false;
