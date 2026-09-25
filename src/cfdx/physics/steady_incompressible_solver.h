@@ -589,8 +589,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const auto* co = eq.matrix.columns_data();
         const auto* va = eq.matrix.values_data();
         for (std::size_t r = 0; r < nc; ++r) {
-            for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
-                A.push_back(row_base + r, component * nc + co[k], va[k]);
+            bool has_diagonal = false;
+            for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k) {
+                const std::size_t column = component * nc + co[k];
+                A.push_back(row_base + r, column, va[k]);
+                has_diagonal = has_diagonal || (column == row_base + r);
+            }
+            // The scalar equation keeps its authoritative diagonal separately
+            // from the CSR entries. If a transport row reaches the coupled
+            // assembler without an explicit diagonal entry, restore that
+            // coefficient from the authoritative metadata instead of creating
+            // an empty coupled momentum row.
+            if (!has_diagonal)
+                A.push_back(row_base + r, row_base + r, diagonal);
             b(row_base + r) =
                 eq.rhs(r) + grad_p_old.component_data(component)[r] * geometry.cell_volumes[r];
         }
