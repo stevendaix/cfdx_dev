@@ -49,6 +49,12 @@ jobs:
           # test failures when one target fails to compile.
           cmake --build build-validation --parallel 2
 
+      - name: Run S2S BVH regression first
+        run: |
+          ctest --test-dir build-validation \
+            -R '^test_m1_m4_physics$' \
+            --output-on-failure
+
       - name: Run Phase 13 validation tests
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
