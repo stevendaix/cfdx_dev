@@ -84,23 +84,27 @@ jobs:
           CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
             -R 'test_phase9_acceptance' --output-on-failure -V 2>&1 | tee build-validation/phase9-closure.log
 
+      - name: Run application E2E regression
+        id: application_e2e
+        if: always()
+        run: |
+          .venv-validation/bin/python -m pytest -q tests/python/test_application_e2e.py
+
       - name: Final validation decision
         if: always()
         run: |
           echo "campaign=${{ steps.campaign.outcome }}"
           echo "full_ctest=${{ steps.full_ctest.outcome }}"
           echo "phase9_closure=${{ steps.phase9_closure.outcome }}"
+          echo "e2e=${{ steps.application_e2e.outcome }}"
           if [[ "${{ steps.campaign.outcome }}" != "success" ||
                 "${{ steps.full_ctest.outcome }}" != "success" ||
-                "${{ steps.phase9_closure.outcome }}" != "success" ]]; then
+                "${{ steps.phase9_closure.outcome }}" != "success" ||
+                "${{ steps.application_e2e.outcome }}" != "success" ]]; then
             echo "CFDX validation closure FAILED"
             exit 1
           fi
           echo "CFDX validation closure PASSED"
-      - name: Run application E2E regression
-        if: always()
-        run: |
-          .venv-validation/bin/python -m pytest -q tests/python/test_application_e2e.py
 
       - name: Capture complete CTest log
         if: always()
