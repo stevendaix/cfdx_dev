@@ -19,6 +19,21 @@ public:
     virtual const char* name() const = 0;
 };
 
+class IdentityPreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        return A.n_rows() == A.n_cols();
+    }
+
+    bool apply(const Vector& r, Vector& z) const override {
+        if (z.size() != r.size()) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) z(i) = r(i);
+        return true;
+    }
+
+    const char* name() const override { return "Identity"; }
+};
+
 class JacobiPreconditioner final : public Preconditioner {
 public:
     bool setup(const SparseMatrix& A) override;
