@@ -41,17 +41,13 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DPython3_EXECUTABLE=${{ github.workspace }}/.venv-validation/bin/python
 
-      - name: Build Phase 13 validation executables
+      - name: Build validation test suite
         run: |
-          cmake --build build-validation --target \
-            test_analytical_benchmarks test_benchmark_matrix \
-            test_level_b_reference_benchmarks test_level_c_coupled_verification \
-            test_phase9_acceptance test_steady_incompressible_solver \
-            test_mms_scalar_diffusion test_mesh_refinement_order \
-            test_m1_m4_validation test_m2_m4_solver_validation \
-            test_cht_validation test_phase10_turbulence_hardening \
-            test_thermophysical_models_vv test_matrix_free_fv_operator \
-            test_temporal_physics test_core_temporal --parallel 2
+          # ctest -L phase13 also contains dependency/regression tests outside
+          # the explicit Phase 13 target list. Building only selected targets
+          # made CTest report dozens of unrelated tests as "Not Run" because
+          # their executables did not exist in build-validation.
+          cmake --build build-validation --parallel 2
 
       - name: Run Phase 13 validation tests
         run: |
