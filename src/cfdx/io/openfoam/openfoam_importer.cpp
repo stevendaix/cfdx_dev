@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <limits>
 #include <algorithm>
+#include <regex>
 
 namespace cfdx::io::openfoam {
 namespace {
