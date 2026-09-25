@@ -1081,18 +1081,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
     }
 
-    // GMRES may either report a non-happy Krylov breakdown or exhaust its
-    // restart budget on a strongly nonsymmetric saddle-point system. Neither
-    // condition makes the assembled coupled system inapplicable. Reuse the
-    // same algebra and Schur preconditioner with BiCGStab before propagating
-    // a linear-solver failure to the nonlinear driver.
-    if (result.status == SolverStatus::DIVERGED ||
-        result.status == SolverStatus::MAX_ITER_REACHED) {
-        std::cerr << "CFDX coupled solver: GMRES did not converge; retrying "
-                     "coupled system with BiCGStab\\n";
-        result = solve_bicgstab(
-            A, b, x, max_iterations, tolerance, &coupled_preconditioner);
-    }
+    // Keep coupled-solver failures visible. A second Krylov method using the
+    // same Schur approximation can mask an assembly or preconditioning defect
+    // and makes the Phase-9 failure non-diagnostic.
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
