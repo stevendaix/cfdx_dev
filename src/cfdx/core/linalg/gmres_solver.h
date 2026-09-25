@@ -81,6 +81,12 @@ inline SolverResult solve_gmres(
 
     std::size_t iterations = 0;
     double previous_cycle_residual = beta;
+    // Keep the current iterate associated with the best verified true
+    // residual. Restarted Krylov methods can occasionally suffer a loss of
+    // accuracy in the Hessenberg update; never return a worse iterate merely
+    // because the last cycle was numerically unlucky.
+    Vector best_x = x;
+    double best_residual = beta;
 
     while (iterations < max_iter) {
         w.resize(n, static_cast<std::size_t>(current_restart));
@@ -258,6 +264,10 @@ inline SolverResult solve_gmres(
         }
 
         beta = true_residual();
+        if (beta < best_residual) {
+            best_residual = beta;
+            best_x = x;
+        }
         if (beta <= tol) {
             result.status = SolverStatus::CONVERGED;
             result.iterations = iterations;
@@ -291,6 +301,10 @@ inline SolverResult solve_gmres(
         previous_cycle_residual = beta;
     }
 
+    if (best_residual < beta) {
+        x = best_x;
+        beta = best_residual;
+    }
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = iterations;
     result.residual = beta;
