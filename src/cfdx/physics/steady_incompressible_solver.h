@@ -919,11 +919,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     }
 
     // The coupled matrix has strongly different momentum and pressure
-    // scales. CellBlockJacobi is a local exact 4x4 block preconditioner;
-    // block-Schur/AMG remains a separate roadmap item.
+    // scales. Prefer the local 4x4 block preconditioner, but do not turn a
+    // preconditioner setup limitation into a false "solver not applicable"
+    // result. In particular, the pressure gauge row is intentionally replaced
+    // by an identity row and can make a local block ill-conditioned even when
+    // the global coupled system is perfectly solvable.
+    //
+    // The fallback is scalar Jacobi. It is less aggressive, but it preserves
+    // the mathematical coupled system and lets GMRES diagnose the actual
+    // global convergence rather than stopping at iteration zero.
     CellBlockJacobiPreconditioner coupled_preconditioner(nc);
-    auto result = solve_gmres(
-        A, b, x, 64, max_iterations, tolerance, &coupled_preconditioner);
+    SolverResult result = solve_gmres(
+        A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
+    if (result.status == SolverStatus::NOT_APPLICABLE) {
+        JacobiPreconditioner fallback_preconditioner;
+        if (!fallback_preconditioner.setup(A))
+            return result;
+        std::cerr << "CFDX coupled solver: CellBlockJacobi setup unavailable; "
+                     "falling back to scalar Jacobi GMRES\\n";
+        result = solve_gmres(
+            A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
+    }
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
