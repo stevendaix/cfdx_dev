@@ -195,6 +195,7 @@ inline EnergySolveResult solve_energy(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls = {},
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr)
 {
@@ -215,7 +216,7 @@ inline EnergySolveResult solve_energy(
         controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values);
+            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values,source_implicit);
         cfdx::core::Vector candidate(temperature.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
             candidate(i)=temperature(i);
@@ -268,7 +269,7 @@ inline EnergySolveResult solve_energy(
         const double linear_backward_error = res / linear_scale;
         const bool linear_converged =
             linear.status==cfdx::core::SolverStatus::CONVERGED ||
-            linear_backward_error<=controls.tolerance;
+            linear_backward_error<=linear_tolerance;
 
         // The energy equation assembled here is linear for a fixed source,
         // conductivity and transient reference state. Therefore a fully
