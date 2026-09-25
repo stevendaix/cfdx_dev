@@ -64,18 +64,6 @@ struct Cursor {
         p=q; v=x; return true;
     }
 };
-bool list_cursor(const std::string& text, Cursor& c, std::size_t& count) {
-    if(!read_declared_count(text,count)) return false;
-    c.p=text.data(); c.end=c.p+text.size();
-    std::size_t declared=0; if(!c.size(declared)) {
-        const auto pos=text.find('(');
-        if(pos==std::string::npos) return false;
-        c.p=text.data()+pos;
-    } else {
-        if(!c.expect('(')) return false;
-    }
-    return true;
-}
 bool read_declared_count(const std::string& text, std::size_t& count) {
     const auto pos=text.find('\n');
     const char* b=text.data(); const char* e=b+text.size();
