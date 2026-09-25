@@ -53,7 +53,7 @@ int main() {
         // [ 0  0  6  3 ] [uz]   [6]
         // [-1 -2 -3  0 ] [ p]   [2]
         //
-        // S = -D M^-1 G = 1/4 + 4/5 + 9/6 = 2.95.
+        // S = -D M^-1 G = 1/4 + 4/5 + 9/6 = 2.55.
         SparseMatrix A(4, 4);
         A.push_back(0, 0, 4.0); A.push_back(0, 3, 1.0);
         A.push_back(1, 1, 5.0); A.push_back(1, 3, 2.0);
@@ -70,7 +70,7 @@ int main() {
         Vector z(4);
         EXPECT_TRUE(p.apply(r, z));
 
-        const double schur = 2.95;
+        const double schur = 2.55;
         const double zp = 8.0 / schur;
         EXPECT_NEAR(z(3), zp, 1e-12);
         EXPECT_NEAR(z(0), 1.0 - zp / 4.0, 1e-12);
