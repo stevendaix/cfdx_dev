@@ -595,11 +595,15 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                 residual = std::max(residual, std::abs(ri));
             }
             if (std::isfinite(residual)) {
+                double rhs_norm = 0.0;
+                for (std::size_t i = 0; i < n; ++i)
+                    rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+                const double relative = residual / std::max(rhs_norm, 1e-300);
                 result = {
-                    residual <= controls.tolerance
+                    relative <= controls.tolerance
                         ? cfdx::core::SolverStatus::CONVERGED
                         : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-                    n, residual, residual
+                    0, residual, relative
                 };
             }
         }
