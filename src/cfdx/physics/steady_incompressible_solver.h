@@ -21,6 +21,8 @@
 #include <map>
 #include <numeric>
 #include <stdexcept>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <functional>
@@ -1401,14 +1403,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.linear_max_iterations, controls.linear_tolerance, 1.0});
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
-            if (solve.status != cfdx::core::SolverStatus::CONVERGED)
-                throw std::runtime_error(
-                    std::string("solve_steady_incompressible: ") + component +
-                    " momentum solve did not converge (status=" +
-                    std::to_string(static_cast<int>(solve.status)) +
-                    ", iterations=" + std::to_string(solve.iterations) +
-                    ", residual=" + std::to_string(solve.residual) +
-                    ", relative=" + std::to_string(solve.residual_relative) + ")");
+            if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
+                std::ostringstream message;
+                message << "solve_steady_incompressible: " << component
+                        << " momentum solve did not converge (status="
+                        << static_cast<int>(solve.status)
+                        << ", iterations=" << solve.iterations
+                        << ", residual=" << std::scientific << std::setprecision(3)
+                        << solve.residual
+                        << ", relative=" << solve.residual_relative << ")";
+                throw std::runtime_error(message.str());
+            }
         };
         require_linear_convergence("Ux", rx);
         require_linear_convergence("Uy", ry);
