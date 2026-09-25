@@ -392,6 +392,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     add_cfdx_test(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
+    # Phase 9 diagnostics must be deterministic under CTest. The validation
+    # workflow may set these variables at the shell level, but CTest test
+    # properties are the authoritative per-test environment and avoid losing
+    # the microscope when the test is launched through CTest.
+    set_tests_properties(test_phase9_acceptance PROPERTIES
+        ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
@@ -498,7 +504,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction test_phase8_mpi_poisson PROPERTIES
+            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
