@@ -1059,8 +1059,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // an artificial MAX_ITER failure.
     const int gmres_restart = static_cast<int>(
         std::min<std::size_t>(A.n_rows(), 512));
+    // The coupled acceptance problem is small enough for a full Krylov space.
+    // Do not let the global adaptive-restart policy silently clamp 512 back
+    // to its generic [10,40] range: that was the direct cause of the observed
+    // residual plateau around 1.33e-6. Keep the restart fixed for this block
+    // solve; adaptive restart remains available to generic GMRES callers.
+    cfdx::core::KrylovControls coupled_gmres_controls;
+    coupled_gmres_controls.restart_min = gmres_restart;
+    coupled_gmres_controls.restart_max = gmres_restart;
+    coupled_gmres_controls.adaptive_restart = false;
     auto result = solve_gmres(
-        A, b, x, gmres_restart, max_iterations, tolerance, &coupled_preconditioner);
+        A, b, x, gmres_restart, max_iterations, tolerance,
+        &coupled_preconditioner, coupled_gmres_controls);
     if (result.status == SolverStatus::NOT_APPLICABLE) {
         IdentityPreconditioner fallback_preconditioner;
         if (!fallback_preconditioner.setup(A))
