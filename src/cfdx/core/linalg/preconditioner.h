@@ -261,6 +261,10 @@ public:
     explicit CoupledBlockSchurPreconditioner(std::size_t n_cells)
         : n_cells_(n_cells), nv_(3 * n_cells) {}
 
+    void set_pressure_schur_diagonal(const std::vector<double>& diagonal) {
+        pressure_schur_diagonal_ = diagonal;
+    }
+
     bool setup(const SparseMatrix& A) override {
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
             A.n_rows() != 4 * n_cells_)
@@ -317,48 +321,31 @@ public:
         // scaling used by the segregated pressure equation.
         for (std::size_t c = 0; c < n_cells_; ++c) {
             const std::size_t pressure_row = nv_ + c;
-            const auto [has_pressure_diagonal, pressure_diagonal] =
-                diagonal(pressure_row);
-
             double schur = 0.0;
-            if (has_pressure_diagonal && std::isfinite(pressure_diagonal) &&
-                std::abs(pressure_diagonal) >
-                    64.0 * std::numeric_limits<double>::epsilon()) {
-                // Pressure gauge or an explicitly anchored pressure row.
-                schur = std::abs(pressure_diagonal);
-            } else {
-                for (std::size_t k = row[pressure_row];
-                     k < row[pressure_row + 1]; ++k) {
-                    if (col[k] >= nv_)
-                        schur += std::abs(val[k]);
-                }
-            }
 
-            // Last-resort algebraic Schur estimate for a matrix that has
-            // neither a pressure diagonal nor pressure-pressure neighbours.
-            if (!(schur > 0.0) || !std::isfinite(schur)) {
-                const std::size_t pressure_col = nv_ + c;
-                for (std::size_t kd = row[pressure_row];
-                     kd < row[pressure_row + 1]; ++kd) {
-                    const std::size_t velocity_col = col[kd];
-                    if (velocity_col >= nv_)
-                        continue;
-                    double g = 0.0;
-                    for (std::size_t kg = row[velocity_col];
-                         kg < row[velocity_col + 1]; ++kg) {
-                        if (col[kg] == pressure_col)
-                            g += val[kg];
+            if (pressure_schur_diagonal_.size() == n_cells_ &&
+                std::isfinite(pressure_schur_diagonal_[c]) &&
+                pressure_schur_diagonal_[c] > 0.0) {
+                schur = pressure_schur_diagonal_[c];
+            } else {
+                const auto [has_pressure_diagonal, pressure_diagonal] =
+                    diagonal(pressure_row);
+                if (has_pressure_diagonal && std::isfinite(pressure_diagonal) &&
+                    std::abs(pressure_diagonal) >
+                        64.0 * std::numeric_limits<double>::epsilon()) {
+                    schur = std::abs(pressure_diagonal);
+                } else {
+                    for (std::size_t k = row[pressure_row];
+                         k < row[pressure_row + 1]; ++k) {
+                        if (col[k] >= nv_)
+                            schur += std::abs(val[k]);
                     }
-                    schur += std::abs(
-                        val[kd] * inv_velocity_diag_[velocity_col] * g);
                 }
             }
 
             if (!(schur > 0.0) || !std::isfinite(schur)) {
                 if (std::getenv("CFDX_DEBUG_COUPLED"))
                     std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
-                              << " has_diag=" << has_pressure_diagonal
-                              << " pressure_diag=" << pressure_diagonal
                               << " schur=" << schur << "\\n";
                 clear();
                 return false;
@@ -421,6 +408,7 @@ private:
     std::size_t nv_ = 0;
     std::vector<double> inv_velocity_diag_;
     std::vector<double> inv_schur_diag_;
+    std::vector<double> pressure_schur_diagonal_;
     std::vector<std::uint32_t> row_offsets_;
     std::vector<std::uint32_t> columns_;
     std::vector<double> values_;
