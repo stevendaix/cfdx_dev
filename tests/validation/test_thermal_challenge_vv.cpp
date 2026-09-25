@@ -37,21 +37,6 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
     std::vector<std::size_t> left_faces, right_faces, walls_faces;
     std::size_t f=0;
 
-    // Rebuild the topology deterministically: each cell has left/right and
-    // four transverse faces; transverse faces are boundary faces.
-    m = Mesh();
-    m.points().resize(np);
-    for (std::size_t i=0;i<=n;++i) {
-        const double x=x0+(x1-x0)*static_cast<double>(i)/static_cast<double>(n);
-        const std::size_t p=4*i;
-        m.points().set(p,x,0,0); m.points().set(p+1,x,1,0);
-        m.points().set(p+2,x,1,1); m.points().set(p+3,x,0,1);
-    }
-    // FaceConnectivity grows through push_face(); no resize API is exposed.
-    m.ownership().resize(nf);
-    f=0;
-    left_faces.clear(); right_faces.clear(); walls_faces.clear();
-
     // Left boundary.
     m.faces().push_face({0,3,2,1});
     m.ownership().set_owner(f,0); m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
