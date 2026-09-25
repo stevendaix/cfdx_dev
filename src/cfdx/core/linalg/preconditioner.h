@@ -345,10 +345,17 @@ public:
         // Pressure correction from the approximate Schur complement.
         // rhs_p = D M^-1 r_u - r_p.
         for (std::size_t p = 0; p < n_cells_; ++p) {
+            // The gauge row is an actual identity equation, not a Schur
+            // equation. It must be applied exactly or the preconditioner would
+            // re-introduce a pressure null mode that was removed during assembly.
+            if (schur_diag_[p] == 1.0 && pressure_velocity_rows_[p].empty()) {
+                z(nv_ + p) = r(nv_ + p);
+                continue;
+            }
+
             double rhs = -r(nv_ + p);
             // D is stored in the pressure row of the original matrix. The
-            // Schur application is reconstructed from the matrix-independent
-            // sparsity captured during setup below.
+            // Schur application is reconstructed from the cached sparsity.
             for (const auto& e : pressure_velocity_rows_[p])
                 rhs += e.second * z(e.first);
             z(nv_ + p) = rhs / schur_diag_[p];
