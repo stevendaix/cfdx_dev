@@ -1037,17 +1037,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " schur_diag_min=" << schur_diag_min
                   << " schur_diag_absmax=" << schur_diag_max
                   << " schur_near_zero=" << schur_near_zero
-                  << " supplied_schur_max_delta=" << schur_mismatch_max
+                  << " rhie_chow_schur_vs_algebraic_diag_delta=" << schur_mismatch_max
                   << " gauge_row=" << (nv + reference_cell)
                   << "\n";
     }
 
     // The coupled matrix is a saddle-point system. A cell-local 4x4
     // inverse is generally singular because continuity rows have no
-    // pressure-pressure diagonal, while Identity does not capture the
-    // pressure/velocity coupling. Use an approximate block-LU
-    // preconditioner with a diagonal velocity solve and pressure Schur
-    // complement. Identity remains only as an applicability fallback.
+    // pressure-pressure diagonal. Use an approximate block-LU preconditioner
+    // with diagonal momentum solves and an explicit sparse algebraic Schur
+    // complement. The Rhie-Chow Schur diagnostic is kept separate from this
+    // algebraic preconditioner quantity.
     CoupledBlockSchurPreconditioner coupled_preconditioner(nc);
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
     coupled_preconditioner.set_pressure_schur_diagonal(
