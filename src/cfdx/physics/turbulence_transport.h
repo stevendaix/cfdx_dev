@@ -44,6 +44,13 @@ struct TurbulenceTransportControls {
     double sa_cb1 = 0.1355, sa_cb2 = 0.622, sa_sigma = 2.0/3.0;
     double sa_kappa = 0.41, sa_cw2 = 0.3, sa_cw3 = 2.0, sa_cv1 = 7.1;
     double sa_ct3 = 1.2, sa_ct4 = 0.5;
+    double komega_alpha = 13.0/25.0, komega_beta0 = 0.0708;
+    double komega_sigma_k = 0.6, komega_sigma_w = 0.5;
+    double komega_sigma_d0 = 1.0/8.0, komega_clim = 7.0/8.0;
+    double sst_sigma_k1 = 0.85, sst_sigma_k2 = 1.0;
+    double sst_sigma_w1 = 0.5, sst_sigma_w2 = 0.856;
+    double sst_production_limiter = 10.0;
+    double smagorinsky_Cs = 0.17, des_Cdes = 0.65;
 };
 
 inline void enforce_turbulence_bounds(
