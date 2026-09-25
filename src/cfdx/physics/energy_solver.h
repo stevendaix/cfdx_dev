@@ -61,7 +61,8 @@ inline ScalarEquation assemble_energy_equation(
     const EnergySolverControls& c,
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* previous_time_temperature = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
@@ -203,10 +204,18 @@ inline EnergySolveResult solve_energy(
     if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
         throw std::invalid_argument("energy field size mismatch");
 
+    if (source_implicit && source_implicit->size()!=mesh.n_cells())
+        throw std::invalid_argument("energy implicit source field size mismatch");
+    if (previous_time_temperature &&
+        previous_time_temperature->size()!=mesh.n_cells())
+        throw std::invalid_argument("energy previous-time field size mismatch");
+
     EnergySolveResult result;
     // Previous physical time level stays fixed; T_iterate is the accepted
-    // nonlinear/Picard state.
-    auto T_previous_time=temperature;
+    // nonlinear/Picard state. For a coupled outer iteration, the caller can
+    // explicitly provide the physical T^n state.
+    auto T_previous_time = previous_time_temperature
+        ? *previous_time_temperature : temperature;
     auto T_iterate=temperature;
     const double linear_tolerance =
         controls.linear_tolerance > 0.0 ? controls.linear_tolerance : controls.tolerance;
