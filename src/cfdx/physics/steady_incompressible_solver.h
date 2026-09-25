@@ -1835,7 +1835,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             pressure_max = std::max(pressure_max, p(c));
         }
         velocity_change_inf /= std::max(velocity_scale, tiny);
-        const double pressure_scale = std::max(pressure_max-pressure_min, tiny);
+        const double pressure_range = pressure_max - pressure_min;
+        // Use a physical pressure scale when the converged solution is nearly uniform.
+        // Otherwise round-off-level pressure changes are divided by a vanishing range
+        // and can prevent convergence forever on constant-pressure cases.
+        const double pressure_scale = std::max(
+            {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
         pressure_change_inf /= pressure_scale;
 
         double momentum_rhs_scale = 0.0;
