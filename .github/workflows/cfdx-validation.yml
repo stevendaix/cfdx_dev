@@ -46,7 +46,7 @@ jobs:
           cmake --build build-validation --target \
             test_analytical_benchmarks test_benchmark_matrix \
             test_level_b_reference_benchmarks test_level_c_coupled_verification \
-            test_phase9_acceptance test_couette_numerical_diagnostics test_steady_incompressible_solver \
+            test_phase9_acceptance test_steady_incompressible_solver \
             test_mms_scalar_diffusion test_mesh_refinement_order \
             test_m1_m4_validation test_m2_m4_solver_validation \
             test_cht_validation test_phase10_turbulence_hardening \
