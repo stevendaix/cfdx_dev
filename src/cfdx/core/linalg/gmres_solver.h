@@ -233,13 +233,21 @@ inline SolverResult solve_gmres(
                 sum -= w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) *
                        w.y[static_cast<std::size_t>(j)];
             const double diag = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
-            if (std::abs(diag) <= 1e-30) {
+            double h_scale = std::abs(diag);
+            for (int k = 0; k < used; ++k)
+                h_scale = std::max(
+                    h_scale,
+                    std::abs(w.H(static_cast<std::size_t>(k), static_cast<std::size_t>(i))));
+            const double diag_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(h_scale, 1e-300);
+            if (std::abs(diag) <= diag_floor) {
                 // Happy Arnoldi breakdown can produce a zero diagonal in the
                 // Givens-reduced Hessenberg system. If the corresponding
                 // transformed RHS is also zero, that coefficient is free and
                 // must not be reported as a solver divergence. The exact
                 // residual is checked immediately after the Krylov update.
-                if (std::abs(sum) <= tol) {
+                if (std::abs(sum) <= diag_floor) {
                     w.y[static_cast<std::size_t>(i)] = 0.0;
                     continue;
                 }
