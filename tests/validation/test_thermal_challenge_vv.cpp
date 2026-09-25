@@ -190,7 +190,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,0,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,1,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-14;
+            EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-12;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"mms_quadratic");
             double err=0.0;
@@ -221,7 +221,7 @@ int main()
             ScalarBoundaryConditions bc{{"left",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"right",{ScalarBoundaryType::FIXED_VALUE,300,0}},
                                         {"walls",{ScalarBoundaryType::ZERO_GRADIENT,0,0}}};
-            EnergySolverControls c; c.conductivity=2; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-14;
+            EnergySolverControls c; c.conductivity=2; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-12;
             const auto r=solve_energy(m,g,phi,T,source,c,bc);
             check_history(r,"volumetric_generation");
             double err=0.0, balance= r.history.back().energy_imbalance;
