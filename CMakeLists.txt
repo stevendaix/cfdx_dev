@@ -397,12 +397,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     add_cfdx_test(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
-    # Phase 9 diagnostics must be deterministic under CTest. The validation
-    # workflow may set these variables at the shell level, but CTest test
-    # properties are the authoritative per-test environment and avoid losing
-    # the microscope when the test is launched through CTest.
-    set_tests_properties(test_phase9_acceptance PROPERTIES
-        ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
+    # Phase 9 diagnostics are configured explicitly by the validation test.
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
