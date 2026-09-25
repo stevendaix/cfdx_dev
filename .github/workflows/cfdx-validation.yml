@@ -58,11 +58,12 @@ jobs:
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
 
-      - name: Run Couette numerical diagnostics microscope
+      - name: Run Couette residual microscope
         run: |
           set -o pipefail
           CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
-            -R '^test_couette_numerical_diagnostics$' -V 2>&1 | tee build-validation/couette-numerical-diagnostics.log
+            -R 'test_(phase9_acceptance|steady_incompressible_solver)' \
+            -V 2>&1 | tee build-validation/couette-residuals.log
 
       - name: Run Phase 9 validation and preserve full numerical log
         run: |
