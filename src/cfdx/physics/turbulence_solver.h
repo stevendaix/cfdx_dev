@@ -95,10 +95,10 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,&gamma_k);
+            nullptr,nullptr,nullptr,&gamma_k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,&gamma_e);
+            nullptr,nullptr,nullptr,&gamma_e);
 
         ScalarSolveControls sc;
         sc.max_iterations=2000;
@@ -228,7 +228,7 @@ inline TurbulenceTransportResult solve_komega_transport(
             gk[i]=controls.density*(controls.molecular_viscosity+controls.sigma_k*nut);
             gw[i]=controls.density*(controls.molecular_viscosity+controls.sigma_epsilon*nut);
         }
-        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,&gk);
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gk);
         auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,nullptr,&gw);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector ks(n,0.0),ws(n,0.0);
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);ws(i)=omega(i);}
