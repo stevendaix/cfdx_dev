@@ -223,8 +223,11 @@ inline SolverResult solve_cg_impl(
         const double rsnew = krylov_dot(r_vector, z_vector, redp, reduction);
 
         if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+        // A preconditioned norm is not a true residual norm. Re-evaluate
+        // b-A*x in FP64 for the external-preconditioner path before deciding
+        // convergence, just as the reported final residual is evaluated.
         const double res = preconditioner
-            ? krylov_norm2(r_vector, SolverPrecision::FP64, reduction)
+            ? mixed_precision_true_residual(A, b, x, rv)
             : std::sqrt(std::abs(rsnew));
         if (res < tol_abs) {
             result.status = SolverStatus::CONVERGED;

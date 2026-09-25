@@ -11,21 +11,37 @@ PETSc backends and must not be presented as such.
 
 ## Boomer-style AMG recipe
 
-`NativeBoomerAMGPreconditioner` reuses the CFDX Galerkin V-cycle and adds a
-strength-of-connection threshold. Its hierarchy uses:
+`NativeBoomerAMGPreconditioner` reuses the CFDX Galerkin V-cycle. Its setup
+pipeline follows the same high-level order as BoomerAMG:
 
-- strong-neighbour pair aggregation with a default threshold of 0.25;
-- piecewise-constant prolongation and its transpose for restriction;
+- a signed strength-of-connection graph with threshold 0.25 and the default
+  0.9 row-sum guard;
+- a deterministic serial C/F maximal-independent-set split;
+- normalized direct interpolation from C points to F points;
+- transpose interpolation for restriction;
 - Galerkin coarse operators;
 - equal weighted-Jacobi sweeps before and after coarse correction, preserving
   the symmetric application required by CG;
 - a pivoted direct solve on the smallest level.
 
-The policy changes sweep count and maximum hierarchy depth. It does not claim
-to reproduce HMIS coarsening or extended+i interpolation. Those algorithms are
-substantially more involved than the dependency-free vertical implemented here.
+The policy changes sweep count and maximum hierarchy depth. The serial C/F
+split captures the independent-set completion principle, but it is not the
+distributed Ruge + PMIS sequence used by HMIS. Likewise, normalized direct
+interpolation is intentionally smaller than extended+i interpolation.
 
 Reference: [HYPRE BoomerAMG documentation](https://hypre.readthedocs.io/en/stable/solvers-boomeramg.html).
+
+Source paths audited against HYPRE commit
+`5b582610a113ede9162a5744d33873b860498a11`:
+
+- `src/parcsr_ls/par_amg.c`: defaults and solver lifecycle;
+- `src/parcsr_ls/par_amg_setup.c`: strength, coarsening, interpolation and
+  `RAP` setup order;
+- `src/parcsr_ls/par_strength.c`: signed strength and row-sum criteria;
+- `src/parcsr_ls/par_coarsen.c`: HMIS as Ruge coarsening plus PMIS completion;
+- `src/parcsr_ls/par_interp.c`: direct interpolation normalization;
+- `src/parcsr_ls/par_cycle.c`: smooth, residual, restrict, coarse solve,
+  prolong and post-smooth order.
 
 ## FieldSplit-style recipe
 
@@ -45,6 +61,12 @@ through the existing CFDX preconditioner interface.
 
 References: [PETSc field splitting manual](https://petsc.org/main/manual/ksp/) and
 [PETSc Schur factorization API](https://petsc.org/main/manualpages/PC/PCFieldSplitSetSchurFactType/).
+
+The application order was also checked against PETSc commit
+`74bbc03299ffb37f3e3b88d943fcbbe2cdac1b1b`, file
+`src/ksp/pc/impls/fieldsplit/fieldsplit.c`: diagonal applies
+`diag(A^-1, -S^-1)`, lower and upper retain the corresponding triangular
+factor, and full performs the two first-field solves required by `LDU`.
 
 ## Solver integration
 

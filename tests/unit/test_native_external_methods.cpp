@@ -94,7 +94,10 @@ int main() {
         Vector solution(96, 0.0);
         const auto result = solve_cg(matrix, rhs, solution, amg, 500, 1e-10);
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
-        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-8);
+        const double amg_true_residual =
+            relative_true_residual(matrix, solution, rhs);
+        EXPECT_TRUE(amg_true_residual < 1e-8);
+        EXPECT_NEAR(result.residual_relative, amg_true_residual, 1e-13);
 
         Vector native_solution(96, 0.0);
         const auto native = solve_cg(matrix, rhs, native_solution, 500, 1e-10);
@@ -124,6 +127,31 @@ int main() {
             if (strategy == FieldSplitStrategy::FullSchur)
                 EXPECT_TRUE(relative_true_residual(matrix, correction, rhs) < 1e-12);
         }
+    });
+
+    run_case("fieldsplit_diagonal_uses_petsc_schur_sign", [] {
+        SparseMatrix matrix(2, 2);
+        matrix.push_back(0, 0, 2.0);
+        matrix.push_back(1, 1, 4.0);
+        matrix.finalize();
+        Vector rhs(2);
+        rhs(0) = 6.0;
+        rhs(1) = 8.0;
+
+        NativeFieldSplitPreconditioner diagonal(
+            {0}, {1}, FieldSplitStrategy::DiagonalSchur);
+        Vector correction(2, 0.0);
+        EXPECT_TRUE(diagonal.setup(matrix));
+        EXPECT_TRUE(diagonal.apply(rhs, correction));
+        EXPECT_NEAR(correction(0), 3.0, 1e-14);
+        EXPECT_NEAR(correction(1), -2.0, 1e-14);
+
+        NativeFieldSplitPreconditioner full(
+            {0}, {1}, FieldSplitStrategy::FullSchur);
+        EXPECT_TRUE(full.setup(matrix));
+        EXPECT_TRUE(full.apply(rhs, correction));
+        EXPECT_NEAR(correction(0), 3.0, 1e-14);
+        EXPECT_NEAR(correction(1), 2.0, 1e-14);
     });
 
     run_case("gmres_uses_full_schur_fieldsplit", [] {
@@ -157,6 +185,20 @@ int main() {
         EXPECT_TRUE(!split.last_error().empty());
         Vector rhs(4, 1.0), correction(4, 0.0);
         EXPECT_TRUE(!split.apply(rhs, correction));
+    });
+
+    run_case("schur_core_clears_state_after_failed_setup", [] {
+        const auto matrix = make_two_field_system();
+        SchurComplementPreconditioner schur(
+            {0, 1}, {2, 3}, SchurFactorization::Full);
+        EXPECT_TRUE(schur.setup(matrix));
+
+        SparseMatrix nonsquare(4, 3);
+        nonsquare.push_back(0, 0, 1.0);
+        nonsquare.finalize();
+        EXPECT_TRUE(!schur.setup(nonsquare));
+        Vector rhs(4, 1.0), correction(4, 0.0);
+        EXPECT_TRUE(!schur.apply(rhs, correction));
     });
 
     return run_all();

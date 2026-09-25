@@ -5,17 +5,19 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <map>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace cfdx::core {
 
-// Multilevel agglomerated AMG using piecewise-constant aggregation and
-// Galerkin coarse operators. The finest operator remains matrix-free during
+// Multilevel AMG with a serial C/F splitting, normalized direct interpolation
+// and Galerkin coarse operators. The setup follows the transferable parts of
+// BoomerAMG's setup pipeline while deliberately omitting its distributed HMIS
+// and extended+i machinery. The finest operator remains matrix-free during
 // apply(); SparseMatrix is used during setup to build the hierarchy.
-// This is a lightweight AMG implementation: aggregation is pairwise and
-// the tiny coarsest problem is solved directly with pivoted Gaussian elimination.
 class MatrixFreeVcyclePreconditioner final : public Preconditioner {
 public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
@@ -57,15 +59,17 @@ public:
         // Build a genuine multilevel hierarchy until the coarse problem is
         // small. Keep the first aggregation public for diagnostics/tests.
         while (levels_.back().A.n_rows() > 2 && levels_.size() < max_levels_) {
+            std::vector<TransferRow> prolongation;
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
-            build_pair_aggregation(
-                levels_.back(), strength_threshold_, aggregate, coarse_n);
+            build_cf_interpolation(levels_.back(), strength_threshold_,
+                                   prolongation, aggregate, coarse_n);
             if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
                 break;
             }
 
-            SparseMatrix coarse = galerkin_coarse(levels_.back().A, aggregate, coarse_n);
+            SparseMatrix coarse = galerkin_coarse(
+                levels_.back().A, prolongation, coarse_n);
             if (!matrix_is_valid(coarse)) {
                 levels_.clear();
                 first_aggregate_.clear();
@@ -84,6 +88,7 @@ public:
                 return false;
             }
             levels_.back().aggregate = std::move(aggregate);
+            levels_.back().prolongation = std::move(prolongation);
             levels_.push_back(std::move(next));
         }
 
@@ -121,10 +126,13 @@ public:
     const char* name() const override { return "galerkin-agglomerated-amg"; }
 
 private:
+    using TransferRow = std::vector<std::pair<std::size_t, double>>;
+
     struct Level {
         SparseMatrix A;
         std::vector<double> inv_diag;
         std::vector<std::size_t> aggregate;
+        std::vector<TransferRow> prolongation;
     };
 
     static bool matrix_is_valid(const SparseMatrix& A)
@@ -167,56 +175,166 @@ private:
         return true;
     }
 
-    static void build_pair_aggregation(const Level& level,
-                                       double strength_threshold,
-                                       std::vector<std::size_t>& aggregate,
-                                       std::size_t& coarse_n)
+    static std::vector<std::vector<std::size_t>> build_strength_graph(
+        const Level& level, double strength_threshold)
     {
         const std::size_t n = level.A.n_rows();
         const auto* row = level.A.row_offsets_data();
         const auto* col = level.A.columns_data();
         const auto* val = level.A.values_data();
+        std::vector<std::vector<std::size_t>> strong(n);
 
-        aggregate.assign(n, 0);
-        std::vector<bool> matched(n, false);
-        coarse_n = 0;
-
+        // HYPRE's standard strength graph compares entries having the sign
+        // opposite to the diagonal against the largest such entry in the row.
+        // Its default max-row-sum guard (0.9) suppresses coarsening for rows
+        // that are already strongly diagonally dominant.
+        constexpr double max_row_sum = 0.9;
         for (std::size_t i = 0; i < n; ++i) {
-            if (matched[i]) continue;
-
-            std::size_t best = n;
-            double best_strength = -1.0;
             const double di = 1.0 / level.inv_diag[i];
-            double row_max = 0.0;
+            double row_sum = di;
+            double opposite_max = 0.0;
+            double absolute_max = 0.0;
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] != i) row_max = std::max(row_max, std::abs(val[k]));
+                if (col[k] == i) continue;
+                row_sum += val[k];
+                absolute_max = std::max(absolute_max, std::abs(val[k]));
+                if (di * val[k] < 0.0)
+                    opposite_max = std::max(opposite_max, std::abs(val[k]));
             }
+            if (std::abs(row_sum) > std::abs(di) * max_row_sum) continue;
 
+            const bool use_opposite_sign = opposite_max > 0.0;
+            const double scale = use_opposite_sign ? opposite_max : absolute_max;
+            if (!(scale > 0.0) || !std::isfinite(scale)) continue;
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
-                if (j == i || j >= n || matched[j]) continue;
-                if (std::abs(val[k]) < strength_threshold * row_max) continue;
-                const double dj = 1.0 / level.inv_diag[j];
-                const double denom = std::sqrt(std::max(std::abs(di * dj), 1e-60));
-                const double strength = std::abs(val[k]) / denom;
-                if (std::isfinite(strength) && strength > best_strength) {
-                    best_strength = strength;
-                    best = j;
+                if (j == i || j >= n) continue;
+                if (use_opposite_sign && di * val[k] >= 0.0) continue;
+                if (std::abs(val[k]) + std::numeric_limits<double>::epsilon() <
+                    strength_threshold * scale) continue;
+                strong[i].push_back(j);
+            }
+            std::sort(strong[i].begin(), strong[i].end());
+            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),
+                            strong[i].end());
+        }
+        return strong;
+    }
+
+    static void build_cf_interpolation(const Level& level,
+                                       double strength_threshold,
+                                       std::vector<TransferRow>& prolongation,
+                                       std::vector<std::size_t>& aggregate,
+                                       std::size_t& coarse_n)
+    {
+        const std::size_t n = level.A.n_rows();
+        const auto strong = build_strength_graph(level, strength_threshold);
+        std::vector<std::vector<std::size_t>> neighborhood = strong;
+        for (std::size_t i = 0; i < n; ++i) {
+            for (const std::size_t j : strong[i]) neighborhood[j].push_back(i);
+        }
+        for (auto& neighbors : neighborhood) {
+            std::sort(neighbors.begin(), neighbors.end());
+            neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
+                            neighbors.end());
+        }
+
+        // Deterministic serial maximal-independent-set splitting. This is the
+        // local analogue of the independent-set completion used by HMIS: pick
+        // the most connected undecided point as C and mark its graph neighbors F.
+        enum class Point : unsigned char { Undecided, Fine, Coarse };
+        std::vector<Point> point(n, Point::Undecided);
+        std::size_t undecided = n;
+        while (undecided > 0) {
+            std::size_t best = n;
+            std::size_t best_measure = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (point[i] != Point::Undecided) continue;
+                std::size_t measure = 0;
+                for (const std::size_t j : neighborhood[i])
+                    if (point[j] == Point::Undecided) ++measure;
+                if (best == n || measure > best_measure ||
+                    (measure == best_measure && i < best)) {
+                    best = i;
+                    best_measure = measure;
                 }
             }
-
-            aggregate[i] = coarse_n;
-            matched[i] = true;
-            if (best < n) {
-                aggregate[best] = coarse_n;
-                matched[best] = true;
+            point[best] = Point::Coarse;
+            --undecided;
+            for (const std::size_t j : neighborhood[best]) {
+                if (point[j] == Point::Undecided) {
+                    point[j] = Point::Fine;
+                    --undecided;
+                }
             }
-            ++coarse_n;
+        }
+
+        // Every F point needs a direct C interpolatory neighbor. Promote any
+        // exceptional isolated point instead of manufacturing a hidden fallback.
+        for (std::size_t i = 0; i < n; ++i) {
+            if (point[i] != Point::Fine) continue;
+            const bool has_coarse = std::any_of(
+                neighborhood[i].begin(), neighborhood[i].end(),
+                [&](std::size_t j) { return point[j] == Point::Coarse; });
+            if (!has_coarse) point[i] = Point::Coarse;
+        }
+
+        std::vector<std::size_t> coarse_index(n, n);
+        coarse_n = 0;
+        for (std::size_t i = 0; i < n; ++i)
+            if (point[i] == Point::Coarse) coarse_index[i] = coarse_n++;
+
+        const auto* row = level.A.row_offsets_data();
+        const auto* col = level.A.columns_data();
+        const auto* val = level.A.values_data();
+        prolongation.assign(n, {});
+        aggregate.assign(n, 0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (point[i] == Point::Coarse) {
+                prolongation[i].push_back({coarse_index[i], 1.0});
+                aggregate[i] = coarse_index[i];
+                continue;
+            }
+
+            std::vector<std::pair<std::size_t, double>> raw;
+            double raw_sum = 0.0;
+            double magnitude_sum = 0.0;
+            const double diagonal = 1.0 / level.inv_diag[i];
+            for (const std::size_t j : neighborhood[i]) {
+                if (point[j] != Point::Coarse) continue;
+                double aij = 0.0;
+                for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                    if (col[k] == j) aij += val[k];
+                const double weight = -aij / diagonal;
+                raw.push_back({coarse_index[j], weight});
+                raw_sum += weight;
+                magnitude_sum += std::abs(weight);
+            }
+
+            if (std::abs(raw_sum) <= 1e-30 || !std::isfinite(raw_sum)) {
+                raw_sum = magnitude_sum;
+                for (auto& entry : raw) entry.second = std::abs(entry.second);
+            }
+            if (!(std::abs(raw_sum) > 1e-30) || !std::isfinite(raw_sum)) {
+                const double uniform = 1.0 / static_cast<double>(raw.size());
+                for (auto& entry : raw) entry.second = uniform;
+            } else {
+                for (auto& entry : raw) entry.second /= raw_sum;
+            }
+
+            double largest = -1.0;
+            for (const auto& entry : raw) {
+                prolongation[i].push_back(entry);
+                if (std::abs(entry.second) >= largest) {
+                    largest = std::abs(entry.second);
+                    aggregate[i] = entry.first;
+                }
+            }
         }
     }
 
     static SparseMatrix galerkin_coarse(const SparseMatrix& A,
-                                        const std::vector<std::size_t>& aggregate,
+                                        const std::vector<TransferRow>& prolongation,
                                         std::size_t coarse_n)
     {
         std::vector<std::map<std::size_t, double>> rows(coarse_n);
@@ -225,10 +343,11 @@ private:
         const auto* val = A.values_data();
 
         for (std::size_t i = 0; i < A.n_rows(); ++i) {
-            const std::size_t ci = aggregate[i];
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                const std::size_t cj = aggregate[col[k]];
-                rows[ci][cj] += val[k];
+                const std::size_t j = col[k];
+                for (const auto& [ci, wi] : prolongation[i])
+                    for (const auto& [cj, wj] : prolongation[j])
+                        rows[ci][cj] += wi * val[k] * wj;
             }
         }
 
@@ -283,18 +402,21 @@ private:
         Vector Ax(r.size());
         if (!apply_operator(level, x, Ax)) return false;
 
-        const auto& aggregate = current.aggregate;
+        const auto& prolongation = current.prolongation;
         const std::size_t nc = levels_[level + 1].A.n_rows();
         Vector coarse_r(nc, 0.0);
         for (std::size_t i = 0; i < r.size(); ++i) {
-            coarse_r(aggregate[i]) += r(i) - Ax(i);
+            const double residual = r(i) - Ax(i);
+            for (const auto& [coarse, weight] : prolongation[i])
+                coarse_r(coarse) += weight * residual;
         }
 
         Vector coarse_x(nc, 0.0);
         if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
 
         for (std::size_t i = 0; i < r.size(); ++i) {
-            x(i) += coarse_x(aggregate[i]);
+            for (const auto& [coarse, weight] : prolongation[i])
+                x(i) += weight * coarse_x(coarse);
             if (!std::isfinite(x(i))) return false;
         }
 

@@ -17,11 +17,12 @@ public:
         : blocks_(std::move(blocks)) {}
 
     bool setup(const SparseMatrix& A) override {
+        n_ = 0;
+        inverse_blocks_.clear();
         if (A.n_rows() != A.n_cols()) return false;
         n_ = A.n_rows();
         if (!validate()) return false;
 
-        inverse_blocks_.clear();
         inverse_blocks_.reserve(blocks_.size());
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
@@ -142,6 +143,11 @@ public:
           diagonal_schur_scale_(diagonal_schur_scale) {}
 
     bool setup(const SparseMatrix& A) override {
+        n_ = 0;
+        inv_a11_.clear();
+        inv_schur_.clear();
+        a12_.clear();
+        a21_.clear();
         if (A.n_rows() != A.n_cols()) return false;
         n_ = A.n_rows();
         if (!validate()) return false;
