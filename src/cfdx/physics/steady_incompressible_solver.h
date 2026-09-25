@@ -1077,8 +1077,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             return result;
         std::cerr << "CFDX coupled solver: Schur preconditioner unavailable; "
                      "falling back to identity-preconditioned GMRES\\n";
+        cfdx::core::KrylovControls identity_gmres_controls;
+        identity_gmres_controls.restart_min = gmres_restart;
+        identity_gmres_controls.restart_max = gmres_restart;
+        identity_gmres_controls.adaptive_restart = false;
         result = solve_gmres(
-            A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
+            A, b, x, gmres_restart, max_iterations, tolerance,
+            &fallback_preconditioner, identity_gmres_controls);
     }
 
     // Keep coupled-solver failures visible. A second Krylov method using the
