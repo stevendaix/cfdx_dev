@@ -94,13 +94,10 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        // The raw unbounded convection operator is conservative, but this
-        // scalar assembly contract rejects a non-positive diagonal as a
-        // singular equation. The signed fluxes therefore produce a deliberate
-        // applicability error rather than a usable equation.
-        EXPECT_THROW(
-            assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false),
-            std::runtime_error);
+        // Unbounded zero-gradient convection must retain the positive
+        // outflow contribution without manufacturing an artificial sink.
+        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
+        EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
     });
 
     run_case("bounded_zero_gradient_inflow_has_no_artificial_sink", [] {
