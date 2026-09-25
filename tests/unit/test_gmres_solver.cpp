@@ -144,6 +144,26 @@ int main() {
         EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_nonhappy_breakdown_reports_true_residual", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+
+        Vector b(2);
+        b(0) = 1.0;
+        b(1) = 1.0;
+        Vector x(2, 0.0);
+
+        const auto result = solve_gmres(A, b, x, 2, 2, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_TRUE(result.residual > 0.5);
+        EXPECT_TRUE(std::isfinite(result.residual_relative));
+        EXPECT_TRUE(result.residual_relative > 0.5);
+        EXPECT_NEAR(x(0), 1.0, 1e-12);
+        EXPECT_NEAR(x(1), 0.0, 1e-12);
+    });
+
     run_case("gmres_lucky_breakdown_converges_without_nan", []() {
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 1.0);
