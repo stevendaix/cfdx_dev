@@ -196,11 +196,19 @@ inline SolverResult solve_gmres(
                               << " diag=" << diag
                               << " rhs=" << sum
                               << " estimated_residual=" << estimated_residual
-                              << " iterations=" << iterations << "\\n";
+                              << " iterations=" << iterations << "\n";
+                // The Givens/Hessenberg estimate can be exactly zero at a
+                // non-happy breakdown. It is not the physical residual.
+                // Report the true ||b-Ax||_2 at the last admissible iterate.
+                const double breakdown_residual = true_residual();
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
-                result.residual = estimated_residual;
-                result.residual_relative = estimated_residual / std::max(b_norm, 1.0);
+                result.residual = breakdown_residual;
+                result.residual_relative =
+                    breakdown_residual / std::max(b_norm, 1.0);
+                if (std::getenv("CFDX_DEBUG_COUPLED"))
+                    std::cerr << "GMRES_BREAKDOWN_TRUE_RESIDUAL value="
+                              << breakdown_residual << "\n";
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
