@@ -44,6 +44,7 @@ jobs:
       - name: Build Phase 13 validation executables
         run: |
           cmake --build build-validation --target \
+            cfdx_production_solver \
             test_analytical_benchmarks test_benchmark_matrix \
             test_level_b_reference_benchmarks test_level_c_coupled_verification \
             test_phase9_acceptance test_steady_incompressible_solver \
