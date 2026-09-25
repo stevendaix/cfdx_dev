@@ -38,7 +38,7 @@ int main() {
     run_case("M2_wall_treatment_identities", [] {
         const double k=0.25, y=0.01;
         EXPECT_NEAR(wall_epsilon_from_k(k,y),
-                    std::pow(0.09,0.75)*std::pow(k,1.5)/y,1e-14);
+                    std::pow(0.09,0.75)*std::pow(k,1.5)/(0.41*y),1e-14);
         EXPECT_NEAR(wall_omega_from_k(k,y),
                     std::sqrt(k)/(std::sqrt(0.09)*y),1e-14);
         EXPECT_TRUE(wall_epsilon_from_k(k,y) > 0.0);
