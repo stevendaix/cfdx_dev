@@ -195,9 +195,9 @@ inline EnergySolveResult solve_energy(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls = {},
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
     const ScalarBoundaryConditions& bcs = {},
-    const ScalarBoundaryFaceValues* face_values = nullptr)
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
 {
     validate_energy_controls(controls);
     if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
@@ -268,7 +268,7 @@ inline EnergySolveResult solve_energy(
         }();
         const double linear_backward_error = res / linear_scale;
         const bool linear_converged =
-            linear.status==cfdx::core::SolverStatus::CONVERGED ||
+            std::isfinite(linear_backward_error) &&
             linear_backward_error<=linear_tolerance;
 
         // The energy equation assembled here is linear for a fixed source,
