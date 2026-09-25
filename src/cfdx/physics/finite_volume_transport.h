@@ -397,9 +397,22 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     }
 
     cfdx::core::Vector candidate = solution;
+
+    // The Krylov solvers interpret tolerance as a relative residual with
+    // respect to ||b||_2, whereas ScalarSolveControls::tolerance is an
+    // absolute FVM residual target. Convert the requested absolute target
+    // before entering the Krylov cascade; otherwise a large ||b|| can make
+    // BiCGStab stop with an absolute residual orders of magnitude above the
+    // tolerance requested by the energy/momentum solver.
+    double rhs_norm = 0.0;
+    for (std::size_t i = 0; i < equation.rhs.size(); ++i)
+        rhs_norm = std::hypot(rhs_norm, equation.rhs(i));
+    const double krylov_tolerance =
+        std::min(1.0, controls.tolerance / std::max(rhs_norm, controls.tolerance));
+
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+        controls.max_iterations, krylov_tolerance);
     if (solution.size() <= 256)
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
                   << " iter=" << result.iterations << " residual=" << result.residual << '\n';
