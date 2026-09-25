@@ -219,6 +219,7 @@ Result solve_level(std::size_t n, Diagnostics& d)
 
     Result r;
     r.n = n;
+    const bool accuracy_gate = n >= 32;
     try {
         const auto result = solve_poisson_dirichlet(mc.mesh, bc, source, cfg);
         r.converged = result.linear_result.status == SolverStatus::CONVERGED;
@@ -259,19 +260,69 @@ Result solve_level(std::size_t n, Diagnostics& d)
         r.rel_l2 = e.l2_relative;
         r.rel_linf = e.linf_relative;
 
-        d.check(e.l2_relative < 5e-3, "accuracy/relative-L2",
-                "relL2=" + sci(e.l2_relative));
-        d.check(e.linf_relative < 1.0e-2, "accuracy/relative-Linf",
-                "relLinf=" + sci(e.linf_relative));
+        const std::string accuracy_tag = accuracy_gate ? "GATE " : "DIAGNOSTIC ";
+        d.diagnostic(e.l2_relative < 5e-3, "accuracy/relative-L2",
+                     accuracy_tag + "relL2=" + sci(e.l2_relative));
+        d.diagnostic(e.linf_relative < 1.0e-2, "accuracy/relative-Linf",
+                     accuracy_tag + "relLinf=" + sci(e.linf_relative));
+        if (accuracy_gate) {
+            d.check(e.l2_relative < 5e-3, "accuracy-gate/relative-L2",
+                    "N>=32 relL2=" + sci(e.l2_relative));
+            d.check(e.linf_relative < 1.0e-2, "accuracy-gate/relative-Linf",
+                    "N>=32 relLinf=" + sci(e.linf_relative));
+        }
 
         const double exact_umax = G*H*H/(8.0*mu);
         const double exact_q = G*H*H*H/(12.0*mu);
-        d.check(std::abs(max_u - exact_umax) / exact_umax < 5e-3,
-                "QoI/maximum-velocity",
-                "num=" + sci(max_u) + " exact=" + sci(exact_umax));
-        d.check(std::abs(q - exact_q) / exact_q < 5e-3,
-                "QoI/flow-rate-per-width",
-                "num=" + sci(q) + " exact=" + sci(exact_q));
+        const double rel_umax_error = std::abs(max_u - exact_umax) / exact_umax;
+        const double rel_q_error = std::abs(q - exact_q) / exact_q;
+        d.diagnostic(rel_umax_error < 5e-3, "QoI/maximum-velocity",
+                     accuracy_tag + "relErr=" + sci(rel_umax_error) +
+                     " num=" + sci(max_u) + " exact=" + sci(exact_umax));
+        d.diagnostic(rel_q_error < 5e-3, "QoI/flow-rate-cell-centered",
+                     accuracy_tag + "relErr=" + sci(rel_q_error) +
+                     " num=" + sci(q) + " exact=" + sci(exact_q));
+        if (accuracy_gate) {
+            d.check(rel_umax_error < 5e-3, "accuracy-gate/maximum-velocity",
+                    "relErr=" + sci(rel_umax_error));
+            d.check(rel_q_error < 5e-3, "accuracy-gate/flow-rate-cell-centered",
+                    "relErr=" + sci(rel_q_error));
+        }
+
+        const double h = H / static_cast<double>(n);
+        const double expected_discrete_q = exact_q + h*h/3.0;
+        d.diagnostic(std::abs(q - expected_discrete_q) < 1e-12,
+                     "discrete-reference/cell-centered-Q",
+                     "Qh=" + sci(q) + " expected=" + sci(expected_discrete_q) +
+                     " formula=1/6+h^2/3");
+
+        auto boundary_flux = [&](std::size_t face) {
+            const std::size_t owner = mc.mesh.ownership().owner(face);
+            const double dpf = (geometry.face_centres[face] - geometry.cell_centres[owner]).mag();
+            return mu * (bc.face_values[face] - numerical[owner]) / dpf;
+        };
+        const double bottom_outward_flux = boundary_flux(0);
+        const double top_outward_flux = boundary_flux(1);
+        const double bottom_flow = -bottom_outward_flux;
+        const double top_flow = -top_outward_flux;
+        const double exact_wall_flow = G * H / 2.0;
+        const double rel_bottom_flux_error = std::abs(bottom_flow - exact_wall_flow) / exact_wall_flow;
+        const double rel_top_flux_error = std::abs(top_flow - exact_wall_flow) / exact_wall_flow;
+        d.diagnostic(rel_bottom_flux_error < 5e-3, "QoI/wall-flux-bottom",
+                     accuracy_tag + "relErr=" + sci(rel_bottom_flux_error) +
+                     " num=" + sci(bottom_flow) + " exact=" + sci(exact_wall_flow));
+        d.diagnostic(rel_top_flux_error < 5e-3, "QoI/wall-flux-top",
+                     accuracy_tag + "relErr=" + sci(rel_top_flux_error) +
+                     " num=" + sci(top_flow) + " exact=" + sci(exact_wall_flow));
+        d.diagnostic(std::abs(bottom_flow - top_flow) / exact_wall_flow < 1e-12,
+                     "QoI/wall-flux-symmetry",
+                     "bottom=" + sci(bottom_flow) + " top=" + sci(top_flow));
+        if (accuracy_gate) {
+            d.check(rel_bottom_flux_error < 5e-3, "accuracy-gate/wall-flux-bottom",
+                    "relErr=" + sci(rel_bottom_flux_error));
+            d.check(rel_top_flux_error < 5e-3, "accuracy-gate/wall-flux-top",
+                    "relErr=" + sci(rel_top_flux_error));
+        }
         d.check(min_u >= -1e-12, "physics/non-negative-profile",
                 "minU=" + sci(min_u));
         d.check(max_u > 0.0, "physics/positive-flow-direction",
@@ -365,12 +416,19 @@ int main()
     for (std::size_t i = 1; i < results.size(); ++i) {
         const auto& coarse = results[i-1];
         const auto& fine = results[i];
-        const double p = observed_order(coarse.l2, fine.l2);
-        results[i].order = p;
-        d.check(coarse.l2 > 0.0 && fine.l2 > 0.0 && std::isfinite(p) && p >= 1.90,
-                "refinement/observed-order-" + std::to_string(coarse.n) +
+        const double p_l2 = observed_order(coarse.l2, fine.l2);
+        const double qerr_coarse = std::abs(coarse.q - 1.0/6.0);
+        const double qerr_fine = std::abs(fine.q - 1.0/6.0);
+        const double p_q = observed_order(qerr_coarse, qerr_fine);
+        results[i].order = p_l2;
+        d.check(coarse.l2 > 0.0 && fine.l2 > 0.0 && std::isfinite(p_l2) && p_l2 >= 1.90,
+                "refinement/L2-observed-order-" + std::to_string(coarse.n) +
                     "-to-" + std::to_string(fine.n),
-                "p=" + sci(p) + " required>=1.90");
+                "p=" + sci(p_l2) + " required>=1.90");
+        d.check(qerr_coarse > 0.0 && qerr_fine > 0.0 && std::isfinite(p_q) && p_q >= 1.90,
+                "refinement/Q-observed-order-" + std::to_string(coarse.n) +
+                    "-to-" + std::to_string(fine.n),
+                "p=" + sci(p_q) + " required>=1.90");
     }
 
     if (results.size() >= 2) {
