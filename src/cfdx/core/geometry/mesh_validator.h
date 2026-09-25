@@ -102,9 +102,10 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
         const auto offset = m.cells().cell_offset(c);
         const auto size = m.cells().cell_size(c);
         try {
-            auto geom = compute_cell_geometry(
+            auto geom = compute_cell_geometry_oriented(
                 face_centres.data(), face_Sf.data(),
-                m.cells().faces_data() + offset, size);
+                m.cells().faces_data() + offset, size,
+                static_cast<CellIndex>(c), m.ownership());
             cell_centres[c] = geom.centre;
             cell_volumes[c] = geom.volume;
 
@@ -156,7 +157,8 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
         Vec3 sum_Sf;
         for (std::size_t k = 0; k < size; ++k) {
             const FaceIndex f = m.cells().faces_data()[offset + k];
-            sum_Sf = sum_Sf + face_Sf[f];
+            const bool owner = m.ownership().owner(f) == c;
+            sum_Sf = sum_Sf + (owner ? face_Sf[f] : face_Sf[f] * (-1.0));
         }
         const double closure_error = sum_Sf.mag();
         if (closure_error > report.surface_closure_error)
