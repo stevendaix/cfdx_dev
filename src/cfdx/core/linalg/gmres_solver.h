@@ -213,12 +213,20 @@ inline SolverResult solve_gmres(
                 }
             }
 
-            if (estimated_residual <= tol)
-                break;
+            // Preserve the Arnoldi-breakdown classification even when
+            // the Givens residual estimate reaches zero. For a singular
+            // inconsistent system, the projected least-squares residual can
+            // be zero while the true ||b-Ax|| remains non-zero. In that case
+            // the exact residual check after the Krylov update must decide
+            // between a happy breakdown (CONVERGED) and a non-happy breakdown
+            // (DIVERGED), rather than allowing the solver to continue into
+            // another restart and eventually report MAX_ITER_REACHED.
             if (arnoldi_breakdown_detected) {
                 arnoldi_breakdown = true;
                 break;
             }
+            if (estimated_residual <= tol)
+                break;
         }
 
         if (used == 0) break;
