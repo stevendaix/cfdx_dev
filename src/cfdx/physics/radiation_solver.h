@@ -452,6 +452,10 @@ struct RadiationEnergyCouplingControls {
     RadiationTransportControls radiation;
     EnergySolverControls energy;
     std::size_t max_outer_iterations = 100;
+    // Relax the nonlinear radiation/energy fixed-point update separately from
+    // the linear energy solver relaxation. This prevents the explicit q_rad(T)
+    // Picard iteration from overshooting when radiation feedback is stiff.
+    double outer_relaxation = 0.5;
     double tolerance = 1e-8;
 };
 
@@ -474,7 +478,8 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
     const ScalarBoundaryConditions& radiation_bcs = {},
     const ScalarBoundaryConditions& thermal_bcs = {})
 {
-    if(controls.max_outer_iterations==0 || controls.tolerance<=0.0)
+    if(controls.max_outer_iterations==0 || controls.tolerance<=0.0 ||
+       !(controls.outer_relaxation>0.0 && controls.outer_relaxation<=1.0))
         throw std::invalid_argument("invalid radiation-energy coupling controls");
 
     const std::size_t nc=mesh.n_cells();
@@ -502,15 +507,31 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             // uses the opposite sign convention: positive source = heating.
             source(c)=non_radiative_source(c)-qrad(c);
 
+        // Solve the energy equation into a predictor, then relax the
+        // nonlinear radiation/energy coupling update. The inner energy
+        // relaxation controls linear/nonlinear convergence of that solve;
+        // it must not be confused with the outer Picard relaxation.
+        auto predictedT=temperature;
         auto er=solve_energy(
-            mesh,geometry,mass_flux,temperature,source,
+            mesh,geometry,mass_flux,predictedT,source,
             controls.energy,thermal_bcs);
         if(!er.converged)
             throw std::runtime_error("energy inner solve did not converge after " + std::to_string(er.iterations) + " iterations");
 
         double max_delta=0.0;
-        for(std::size_t c=0;c<nc;++c)
-            max_delta=std::max(max_delta,std::abs(temperature(c)-oldT(c)));
+        for(std::size_t c=0;c<nc;++c) {
+            const double candidate=predictedT(c);
+            if(!std::isfinite(candidate) || candidate<0.0)
+                throw std::runtime_error(
+                    "radiation-energy coupling produced non-physical predicted temperature");
+            const double updated =
+                oldT(c) + controls.outer_relaxation*(candidate-oldT(c));
+            if(!std::isfinite(updated) || updated<0.0)
+                throw std::runtime_error(
+                    "radiation-energy coupling produced non-physical temperature");
+            temperature(c)=updated;
+            max_delta=std::max(max_delta,std::abs(updated-oldT(c)));
+        }
 
         double qrad_delta=0.0;
         for(std::size_t c=0;c<nc;++c)
