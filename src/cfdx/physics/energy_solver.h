@@ -267,7 +267,15 @@ inline EnergySolveResult solve_energy(
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        sc.tolerance=linear_tolerance;
+        // Leave margin between the Krylov stopping criterion and the
+        // componentwise backward-error gate below. This is deliberately
+        // local to energy solves: ScalarSolveControls::tolerance remains a
+        // relative Krylov tolerance for the shared momentum/pressure paths.
+        sc.tolerance=temperature.size()==1
+            ? linear_tolerance
+            : std::max(
+                10.0*std::numeric_limits<double>::epsilon(),
+                0.001*linear_tolerance);
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
