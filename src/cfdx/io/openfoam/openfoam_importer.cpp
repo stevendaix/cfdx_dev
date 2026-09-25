@@ -90,7 +90,11 @@ bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3
         double x,y,z; if(!c.real(x)||!c.real(y)||!c.real(z)||!c.expect(')')) return false;
         points.emplace_back(x,y,z);
     }
-    c.ws(); return c.expect(')') && c.p==c.end;
+    c.ws();
+    if (!c.expect(')')) return false;
+    c.ws();
+    if (c.p < c.end && *c.p == ')') { ++c.p; c.ws(); }
+    return c.p == c.end;
 }
 bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
     std::string text; if(!read_text(path,text)) return false;
@@ -100,7 +104,13 @@ bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t
     Cursor c{text.data()+pos,text.data()+text.size()}; if(!c.expect('(')) return false;
     values.clear(); values.reserve(declared);
     for(std::size_t i=0;i<declared;++i) { std::int64_t v; if(!c.i64(v)) return false; values.push_back(v); }
-    c.ws(); return c.expect(')') && c.p==c.end && values.size()==declared;
+    c.ws();
+    if (!c.expect(')') || values.size()!=declared) return false;
+    c.ws();
+    // Some legacy CFDX/OpenFOAM fixtures contain one redundant outer ')'.
+    // Accept it only after the declared list has been parsed completely.
+    if (c.p < c.end && *c.p == ')') { ++c.p; c.ws(); }
+    return c.p == c.end;
 }
 bool read_faces(const std::filesystem::path& path,std::vector<std::vector<std::uint32_t>>& faces) {
     std::string text; if(!read_text(path,text)) return false;
@@ -116,7 +126,11 @@ bool read_faces(const std::filesystem::path& path,std::vector<std::vector<std::u
         if(!c.expect(')')) return false;
         faces.push_back(std::move(face));
     }
-    c.ws(); return c.expect(')') && c.p==c.end && faces.size()==declared;
+    c.ws();
+    if (!c.expect(')') || faces.size()!=declared) return false;
+    c.ws();
+    if (c.p < c.end && *c.p == ')') { ++c.p; c.ws(); }
+    return c.p == c.end;
 }
 
 cfdx::core::PatchType patch_type(const std::string& type) {
