@@ -73,9 +73,12 @@ int main()
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
-        // The boundary operator is exactly F*phi_owner. The two opposite
-        // boundary fluxes therefore cancel for a zero-gradient constant field.
-        EXPECT_NEAR(eq.diagonal[0],0.0,1e-12);
+        // The raw unbounded convection operator is conservative, but this
+        // scalar assembly contract rejects a non-positive diagonal as a
+        // singular equation. The signed fluxes therefore produce a deliberate
+        // applicability error rather than a usable equation.
+        (void)eq;
+        EXPECT_TRUE(false);
     });
 
     run_case("bounded_zero_gradient_inflow_has_no_artificial_sink", [] {
