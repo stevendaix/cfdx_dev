@@ -307,20 +307,29 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += a_boundary * bc.value;
                 div_phi[o] += F;
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
-                diag[o] += std::max(F, 0.0);
-                rhs[o] += (F < 0.0 ? -F * bc.value : 0.0);
-                rhs[o] += diffusion_coefficient * area * bc.gradient;
+                const double gamma_owner = cell_diffusion
+                    ? (*cell_diffusion)[o] : diffusion_coefficient;
+                if (!(gamma_owner >= 0.0) || !std::isfinite(gamma_owner))
+                    throw std::invalid_argument(
+                        "assemble_scalar_equation: invalid boundary diffusion");
+                // phi_b = phi_P + grad(phi).d: convection and diffusion use
+                // the same boundary state.
+                diag[o] += F;
+                rhs[o] -= F * bc.gradient * distance;
+                rhs[o] += gamma_owner * area * bc.gradient;
                 div_phi[o] += F;
             } else {
-                // Zero-gradient means the boundary value equals the owner
-                // value, so the convective contribution is exactly F*psi_owner
-                // for either flow direction. The bounded steady formulation
-                // subsequently subtracts div(phi)*psi, cancelling this term
-                // when continuity is satisfied. The unbounded formulation must
-                // retain F itself; using max(F,0) drops inflow convection and
-                // creates an artificial mass/momentum imbalance at an outlet/
-                // inlet pair with recirculating or bidirectional flux.
-                diag[o] += F;
+                // Zero-gradient: phi_b = phi_P. For bounded convection the
+                // later -div(phi)*phi_P correction cancels this term. For the
+                // unbounded form, defer inflow rather than creating a sink or
+                // a non-positive diagonal.
+                if (bounded_convection) {
+                    diag[o] += F;
+                } else {
+                    diag[o] += std::max(F, 0.0);
+                    if (F < 0.0 && convected_field)
+                        deferred_rhs[o] -= F * (*convected_field)(o);
+                }
                 div_phi[o] += F;
             }
         }
