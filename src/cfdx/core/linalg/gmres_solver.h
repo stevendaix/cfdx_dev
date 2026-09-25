@@ -53,7 +53,11 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::DIVERGED;
         return result;
     }
-    const double tol = tolerance * std::max(b_norm, 1.0);
+    // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
+    // makes physically small systems appear converged at x=0 and is incorrect
+    // for nondimensionalized or otherwise small-scale operators.
+    const double tol = tolerance * b_norm;
+
 
     GmresWorkspace w;
     w.resize(n, static_cast<std::size_t>(current_restart));
@@ -71,6 +75,13 @@ inline SolverResult solve_gmres(
     };
 
     double beta = true_residual();
+    if (b_norm == 0.0) {
+        result.status = beta == 0.0 ? SolverStatus::CONVERGED : SolverStatus::DIVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta;
+        return result;
+    }
     if (beta <= tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
@@ -120,9 +131,7 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
             const double arnoldi_action_norm =
                 krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
-            const double arnoldi_orthogonalized_norm =
-                krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
-            // Modified Gram-Schmidt once is vulnerable to loss of
+                // Modified Gram-Schmidt once is vulnerable to loss of
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
             // systems and substantially improves the Hessenberg relation.
@@ -158,7 +167,7 @@ inline SolverResult solve_gmres(
                 128.0 * std::numeric_limits<double>::epsilon() *
                 std::max(arnoldi_action_norm, 1e-300);
             const bool arnoldi_breakdown_detected =
-                arnoldi_orthogonalized_norm <= arnoldi_breakdown_floor &&
+                hnext <= arnoldi_breakdown_floor &&
                 arnoldi_action_norm > 0.0;
             if (hnext > 0.0) {
                 double* vnext = w.v(static_cast<std::size_t>(j + 1));
