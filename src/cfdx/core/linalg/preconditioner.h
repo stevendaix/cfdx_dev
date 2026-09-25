@@ -296,48 +296,50 @@ public:
             inv_velocity_diag_[j] = 1.0 / d;
         }
 
-        // Approximate S = -D M^{-1} G. The reference-pressure row is an
-        // identity row and is retained exactly.
+        // The coupled FV continuity assembly already contains the
+        // pressure Schur operator used by Rhie-Chow: its A_pp diagonal is
+        // the sum of the positive face pressure-response coefficients D.
+        // Use that discrete pressure operator directly as the Schur
+        // approximation. This is consistent with the segregated pressure
+        // equation and, unlike a purely local G_jc product, does not suffer
+        // cancellation of opposing face-area contributions on Cartesian cells.
         for (std::size_t c = 0; c < n_cells_; ++c) {
             const std::size_t pressure_row = nv_ + c;
-            const std::size_t pressure_col = nv_ + c;
             const auto [has_pressure_diagonal, pressure_diagonal] =
                 diagonal(pressure_row);
 
-            bool has_velocity_coupling = false;
             double schur = 0.0;
-
-            for (std::size_t kd = row[pressure_row];
-                 kd < row[pressure_row + 1]; ++kd) {
-                const std::size_t velocity_col = col[kd];
-                if (velocity_col >= nv_)
-                    continue;
-                has_velocity_coupling = true;
-
-                double g = 0.0;
-                for (std::size_t kg = row[velocity_col];
-                     kg < row[velocity_col + 1]; ++kg) {
-                    if (col[kg] == pressure_col)
-                        g += val[kg];
-                }
-                schur -= val[kd] * inv_velocity_diag_[velocity_col] * g;
-            }
-
-            if (has_pressure_diagonal && !has_velocity_coupling &&
-                std::isfinite(pressure_diagonal) &&
+            if (has_pressure_diagonal && std::isfinite(pressure_diagonal) &&
                 std::abs(pressure_diagonal) >
                     64.0 * std::numeric_limits<double>::epsilon()) {
                 schur = pressure_diagonal;
+            } else {
+                // Conservative algebraic fallback for matrices that expose
+                // no explicit pressure diagonal: approximate -D M^-1 G.
+                const std::size_t pressure_col = nv_ + c;
+                for (std::size_t kd = row[pressure_row];
+                     kd < row[pressure_row + 1]; ++kd) {
+                    const std::size_t velocity_col = col[kd];
+                    if (velocity_col >= nv_)
+                        continue;
+                    double g = 0.0;
+                    for (std::size_t kg = row[velocity_col];
+                         kg < row[velocity_col + 1]; ++kg) {
+                        if (col[kg] == pressure_col)
+                            g += val[kg];
+                    }
+                    schur -= val[kd] * inv_velocity_diag_[velocity_col] * g;
+                }
             }
 
             if (!std::isfinite(schur) ||
-                std::abs(schur) <= 64.0 * std::numeric_limits<double>::epsilon()) {
+                std::abs(schur) <=
+                    64.0 * std::numeric_limits<double>::epsilon()) {
                 clear();
                 return false;
             }
             inv_schur_diag_[c] = 1.0 / schur;
         }
-
         return true;
     }
 
