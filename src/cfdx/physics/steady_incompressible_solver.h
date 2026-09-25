@@ -165,8 +165,22 @@ gauss_gradient_with_boundary(
             double vf = field(c);
 
             if (own.neighbour(f) >= 0) {
-                const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
-                vf = 0.5 * (field(c) + field(n));
+                // The mesh stores owner/neighbour independent of the cell being
+                // visited.  When c is the neighbour, own.neighbour(f) == c;
+                // using it again would therefore collapse the face interpolation
+                // to field(c) and halve the Green-Gauss pressure gradient.
+                const std::size_t other = owner
+                    ? static_cast<std::size_t>(own.neighbour(f))
+                    : static_cast<std::size_t>(own.owner(f));
+                const double dc = (geometry.face_centres[f] -
+                                   geometry.cell_centres[c]).mag();
+                const double dn = (geometry.cell_centres[other] -
+                                   geometry.face_centres[f]).mag();
+                if (!(dc + dn > 0.0))
+                    throw std::runtime_error(
+                        "gauss_gradient_with_boundary: degenerate face distance");
+                const double w = dn / (dc + dn);
+                vf = w * field(c) + (1.0 - w) * field(other);
             } else {
                 const std::size_t p = geometry.face_patch[f];
                 if (p < mesh.boundary().n_patches() &&
