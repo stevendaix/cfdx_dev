@@ -122,6 +122,7 @@ static void check_history(const EnergySolveResult& r, const char* name)
     std::cout << "THERMAL_CHALLENGE: case=" << name
               << " iterations=" << r.iterations
               << " residual=" << r.history.back().residual
+              << " backward_error=" << r.history.back().backward_error
               << " energy_imbalance=" << r.history.back().energy_imbalance << '\n';
 }
 
@@ -174,8 +175,11 @@ int main()
         EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-11;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
-        EXPECT_TRUE(r.history.back().residual <= c.tolerance);
         EXPECT_TRUE(std::isfinite(r.history.back().residual));
+        EXPECT_TRUE(std::isfinite(r.history.back().backward_error));
+        // The absolute matrix residual is scale-dependent. Use the
+        // componentwise backward error as the convergence criterion.
+        EXPECT_TRUE(r.history.back().backward_error <= c.tolerance);
         EXPECT_TRUE(r.history.back().energy_imbalance <= c.tolerance);
         for(std::size_t i=0;i<n;++i) {
             const double x=(static_cast<double>(i)+0.5)/static_cast<double>(n);
