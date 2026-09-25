@@ -154,7 +154,7 @@ void test_constant_flux_conservation(
 {
     Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     U.fill(0.0);
-    U.component_data(0).assign(mesh.n_cells(), 1.0);
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c)\n        U.component_data(0)[c] = 1.0;
 
     VelocityBoundaryConditions bcs;
     for (const char* name : {"inlet", "outlet", "front", "back"})
