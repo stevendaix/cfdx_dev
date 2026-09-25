@@ -272,6 +272,10 @@ public:
 
         inv_velocity_diag_.assign(nv_, 0.0);
         inv_schur_diag_.assign(n_cells_, 0.0);
+        schur_row_offsets_.clear();
+        schur_columns_.clear();
+        schur_values_.clear();
+        schur_ilu_valid_ = false;
 
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
@@ -300,11 +304,6 @@ public:
                 continue;
             }
 
-            // Some CFDX transport rows are intentionally represented without
-            // a stored diagonal (for example an inactive/degenerate component).
-            // Do not make that representation detail disable the whole
-            // saddle-point preconditioner. Use a conservative row scaling:
-            // the row infinity norm, or unity for an entirely empty row.
             double row_scale = 0.0;
             for (std::size_t k = row[j]; k < row[j + 1]; ++k)
                 row_scale = std::max(row_scale, std::abs(val[k]));
@@ -313,106 +312,127 @@ public:
             inv_velocity_diag_[j] = 1.0 / std::max(row_scale, 1.0);
         }
 
-        // Build the actual algebraic Schur diagonal
+        // Form the pressure Schur approximation explicitly:
         //
-        //     S = C - D diag(M)^-1 G
+        //   S_tilde = C - D diag(M)^-1 G .
         //
-        // from the assembled monolithic matrix. The previous implementation
-        // used only the Rhie-Chow pressure coefficient C. That is not the
-        // Schur complement: it double-counts the pressure response already
-        // represented by D*diag(M)^-1*G and can make the preconditioned operator
-        // artificially rank-deficient. This is precisely the failure mode seen
-        // in the coupled Couette case (Arnoldi breakdown after 8 steps).
-        //
-        // The supplied pressure_schur_diagonal is retained only as a positive
-        // scale fallback when the local algebraic Schur row is numerically empty
-        // (e.g. a gauge/identity row or a deliberately minimal unit-test matrix).
+        // Unlike the former diagonal-only implementation, retain the complete
+        // pressure-pressure sparsity pattern. This lets the pressure block
+        // carry neighbouring pressure coupling instead of collapsing it to
+        // one scalar per cell.
+        schur_row_offsets_.resize(n_cells_ + 1, 0);
+        std::vector<std::vector<std::pair<std::size_t, double>>> schur_rows(n_cells_);
+
         for (std::size_t c = 0; c < n_cells_; ++c) {
-            const std::size_t pressure_row = nv_ + c;
-            double cdiag = 0.0;
-            double schur_diag = 0.0;
-            double schur_row_l1 = 0.0;
+            const std::size_t pr = nv_ + c;
+            auto& entries = schur_rows[c];
 
-            for (std::size_t k = row[pressure_row];
-                 k < row[pressure_row + 1]; ++k) {
-                const std::size_t q = col[k];
-                if (q >= nv_) {
-                    const double value = val[k];
-                    schur_row_l1 += std::abs(value);
-                    if (q == pressure_row)
-                        cdiag += value;
+            auto add_entry = [&](std::size_t q, double contribution) {
+                const std::size_t pc = q - nv_;
+                for (auto& item : entries) {
+                    if (item.first == pc) {
+                        item.second += contribution;
+                        return;
+                    }
                 }
-            }
-            schur_diag = cdiag;
+                entries.emplace_back(pc, contribution);
+            };
 
-            // Subtract D*diag(M)^-1*G. D is stored in the pressure row;
-            // G is stored in the momentum rows. Accumulate the complete local
-            // pressure Schur row norm so that a zero diagonal does not make a
-            // perfectly valid nonsymmetric Schur operator unusable.
-            for (std::size_t k = row[pressure_row];
-                 k < row[pressure_row + 1]; ++k) {
+            for (std::size_t k = row[pr]; k < row[pr + 1]; ++k) {
+                const std::size_t q = col[k];
+                if (q >= nv_)
+                    add_entry(q, val[k]);
+            }
+
+            // For each pressure-row D coefficient, multiply by the matching
+            // momentum-row G coefficients. Only diagonal M^{-1} is used here;
+            // a future block-M option can replace this without changing the
+            // Schur interface.
+            for (std::size_t k = row[pr]; k < row[pr + 1]; ++k) {
                 const std::size_t u = col[k];
                 if (u >= nv_)
                     continue;
                 const double d = val[k];
-                if (!std::isfinite(d))
-                    return false;
-
-                const std::size_t ub = row[u];
-                const std::size_t ue = row[u + 1];
-                for (std::size_t gk = ub; gk < ue; ++gk) {
+                for (std::size_t gk = row[u]; gk < row[u + 1]; ++gk) {
                     const std::size_t q = col[gk];
                     if (q < nv_)
                         continue;
-                    const double contribution =
-                        d * inv_velocity_diag_[u] * val[gk];
-                    if (!std::isfinite(contribution))
-                        return false;
-                    schur_row_l1 += std::abs(contribution);
-                    if (q == pressure_row)
-                        schur_diag -= contribution;
+                    add_entry(q, -d * inv_velocity_diag_[u] * val[gk]);
                 }
             }
 
-            if (!std::isfinite(schur_diag) || !std::isfinite(schur_row_l1))
-                return false;
+            std::sort(entries.begin(), entries.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+
+            double diag = 0.0;
+            for (const auto& [q, value] : entries)
+                if (q == c) diag = value;
+
+            const double row_l1 = [&]() {
+                double s = 0.0;
+                for (const auto& [q, value] : entries) s += std::abs(value);
+                return s;
+            }();
 
             const double scale_floor =
-                64.0 * std::numeric_limits<double>::epsilon() *
-                std::max(1.0, schur_row_l1);
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(row_l1, 1e-300);
 
-            double schur_scale = 0.0;
-            if (std::abs(schur_diag) > scale_floor) {
-                schur_scale = schur_diag;
-            } else if (schur_row_l1 > scale_floor) {
-                // Preserve the usual positive-pressure-equation scaling when
-                // the diagonal cancellation is exact but neighbouring Schur
-                // coefficients still provide pressure coupling.
-                schur_scale = schur_row_l1;
-            } else if (pressure_schur_diagonal_.size() == n_cells_ &&
-                       std::isfinite(pressure_schur_diagonal_[c]) &&
-                       pressure_schur_diagonal_[c] > 0.0) {
-                schur_scale = pressure_schur_diagonal_[c];
-            } else {
-                // A true identity row is handled as an exact unit block.
-                const bool identity_row =
-                    row[pressure_row + 1] - row[pressure_row] == 1 &&
-                    col[row[pressure_row]] == pressure_row &&
-                    std::abs(val[row[pressure_row]] - 1.0) <=
-                        64.0 * std::numeric_limits<double>::epsilon();
-                if (identity_row) {
-                    schur_scale = 1.0;
+            if (!std::isfinite(row_l1) || !std::isfinite(diag))
+                return false;
+
+            // A gauge identity row has no physical Schur operator.
+            if (std::abs(diag) <= scale_floor && row_l1 <= scale_floor) {
+                if (pressure_schur_diagonal_.size() == n_cells_ &&
+                    std::isfinite(pressure_schur_diagonal_[c]) &&
+                    pressure_schur_diagonal_[c] > 0.0) {
+                    entries.emplace_back(c, pressure_schur_diagonal_[c]);
+                    std::sort(entries.begin(), entries.end(),
+                              [](const auto& a, const auto& b) { return a.first < b.first; });
                 } else {
-                    if (std::getenv("CFDX_DEBUG_COUPLED"))
-                        std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
-                                  << " schur_diag=" << schur_diag
-                                  << " row_l1=" << schur_row_l1 << "\\n";
-                    clear();
-                    return false;
+                    entries.emplace_back(c, 1.0);
+                    std::sort(entries.begin(), entries.end(),
+                              [](const auto& a, const auto& b) { return a.first < b.first; });
                 }
             }
 
-            inv_schur_diag_[c] = 1.0 / schur_scale;
+            schur_row_offsets_[c + 1] =
+                schur_row_offsets_[c] + entries.size();
+        }
+
+        schur_columns_.reserve(schur_row_offsets_.back());
+        schur_values_.reserve(schur_row_offsets_.back());
+        for (const auto& entries : schur_rows) {
+            for (const auto& [q, value] : entries) {
+                if (!std::isfinite(value))
+                    return false;
+                schur_columns_.push_back(static_cast<std::uint32_t>(q));
+                schur_values_.push_back(value);
+            }
+        }
+
+        // Factor the explicit sparse Schur matrix in its own sparsity pattern.
+        // ILU(0) is used deliberately: no hidden dense pressure solve and no
+        // extra fill are introduced into the coupled preconditioner.
+        schur_ilu_values_ = schur_values_;
+        schur_ilu_valid_ = factor_schur_ilu0();
+        if (!schur_ilu_valid_) {
+            // The diagonal is still a valid algebraic fallback. Keep it
+            // available so an ILU pivot failure does not make the entire
+            // coupled system "not applicable".
+            for (std::size_t c = 0; c < n_cells_; ++c) {
+                const std::size_t rb = schur_row_offsets_[c];
+                const std::size_t re = schur_row_offsets_[c + 1];
+                double d = 0.0;
+                for (std::size_t k = rb; k < re; ++k)
+                    if (schur_columns_[k] == c) d = schur_values_[k];
+                const double floor =
+                    128.0 * std::numeric_limits<double>::epsilon() *
+                    std::max(std::abs(d), 1e-300);
+                if (!std::isfinite(d) || std::abs(d) <= floor)
+                    return false;
+                inv_schur_diag_[c] = 1.0 / d;
+            }
         }
         return true;
     }
@@ -420,14 +440,14 @@ public:
     bool apply(const Vector& r, Vector& z) const override {
         if (r.size() != 4 * n_cells_ || z.size() != r.size() ||
             inv_velocity_diag_.size() != nv_ ||
-            inv_schur_diag_.size() != n_cells_)
+            schur_row_offsets_.size() != n_cells_ + 1)
             return false;
 
         Vector velocity_predictor(nv_);
         for (std::size_t i = 0; i < nv_; ++i)
             velocity_predictor(i) = inv_velocity_diag_[i] * r(i);
 
-        // Pressure Schur RHS: rp - D M^{-1} ru.
+        Vector pressure_rhs(n_cells_);
         for (std::size_t c = 0; c < n_cells_; ++c) {
             double rhs_p = r(nv_ + c);
             const std::size_t rb = row_offsets_[nv_ + c];
@@ -437,10 +457,18 @@ public:
                 if (j < nv_)
                     rhs_p -= values_[k] * velocity_predictor(j);
             }
-            z(nv_ + c) = inv_schur_diag_[c] * rhs_p;
+            pressure_rhs(c) = rhs_p;
         }
 
-        // Velocity back-substitution: M^{-1}(ru - G zp).
+        if (schur_ilu_valid_) {
+            if (!solve_schur_ilu0(pressure_rhs, z)) return false;
+        } else {
+            if (inv_schur_diag_.size() != n_cells_) return false;
+            for (std::size_t c = 0; c < n_cells_; ++c)
+                z(nv_ + c) = inv_schur_diag_[c] * pressure_rhs(c);
+        }
+
+        // Velocity back-substitution: M^-1(ru - G zp).
         for (std::size_t j = 0; j < nv_; ++j) {
             double value = velocity_predictor(j);
             const std::size_t rb = row_offsets_[j];
@@ -455,15 +483,117 @@ public:
         return true;
     }
 
-    const char* name() const override { return "CoupledBlockSchur"; }
+    const char* name() const override { return "CoupledBlockSchur-ILU0"; }
 
 private:
+    bool factor_schur_ilu0() {
+        const std::size_t n = n_cells_;
+        if (schur_row_offsets_.size() != n + 1 ||
+            schur_ilu_values_.size() != schur_columns_.size())
+            return false;
+
+        auto find_position = [&](std::size_t row, std::size_t col) -> std::size_t {
+            const auto first = schur_columns_.begin() + schur_row_offsets_[row];
+            const auto last = schur_columns_.begin() + schur_row_offsets_[row + 1];
+            const auto it = std::lower_bound(first, last, static_cast<std::uint32_t>(col));
+            return it == last ? schur_columns_.size()
+                              : static_cast<std::size_t>(it - schur_columns_.begin());
+        };
+
+        double matrix_scale = 0.0;
+        for (const double value : schur_ilu_values_)
+            matrix_scale = std::max(matrix_scale, std::abs(value));
+        if (!std::isfinite(matrix_scale) || matrix_scale == 0.0)
+            return false;
+
+        for (std::size_t i = 0; i < n; ++i) {
+            const std::size_t rb = schur_row_offsets_[i];
+            const std::size_t re = schur_row_offsets_[i + 1];
+
+            for (std::size_t pos = rb; pos < re; ++pos) {
+                const std::size_t j = schur_columns_[pos];
+                if (j >= i) break;
+
+                const std::size_t pivot_pos = find_position(j, j);
+                if (pivot_pos == schur_columns_.size()) return false;
+                const double pivot = schur_ilu_values_[pivot_pos];
+                const double pivot_floor =
+                    128.0 * std::numeric_limits<double>::epsilon() *
+                    std::max(matrix_scale, std::abs(pivot));
+                if (!std::isfinite(pivot) || std::abs(pivot) <= pivot_floor)
+                    return false;
+
+                schur_ilu_values_[pos] /= pivot;
+                const double lij = schur_ilu_values_[pos];
+
+                for (std::size_t qpos = schur_row_offsets_[j];
+                     qpos < schur_row_offsets_[j + 1]; ++qpos) {
+                    const std::size_t q = schur_columns_[qpos];
+                    if (q <= j) continue;
+                    const std::size_t target = find_position(i, q);
+                    if (target == schur_columns_.size()) continue;
+                    schur_ilu_values_[target] -=
+                        lij * schur_ilu_values_[qpos];
+                }
+            }
+
+            const std::size_t diag_pos = find_position(i, i);
+            if (diag_pos == schur_columns_.size()) return false;
+            const double pivot = schur_ilu_values_[diag_pos];
+            const double pivot_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(matrix_scale, std::abs(pivot));
+            if (!std::isfinite(pivot) || std::abs(pivot) <= pivot_floor)
+                return false;
+        }
+        return true;
+    }
+
+    bool solve_schur_ilu0(const Vector& rhs, Vector& x) const {
+        if (rhs.size() != n_cells_ || x.size() != 4 * n_cells_)
+            return false;
+        Vector y(n_cells_, 0.0);
+
+        // L has unit diagonal.
+        for (std::size_t i = 0; i < n_cells_; ++i) {
+            double value = rhs(i);
+            for (std::size_t k = schur_row_offsets_[i];
+                 k < schur_row_offsets_[i + 1]; ++k) {
+                const std::size_t j = schur_columns_[k];
+                if (j >= i) break;
+                value -= schur_ilu_values_[k] * y(j);
+            }
+            y(i) = value;
+        }
+
+        // U back solve.
+        for (std::size_t ii = 0; ii < n_cells_; ++ii) {
+            const std::size_t i = n_cells_ - 1 - ii;
+            double value = y(i);
+            double diag = 0.0;
+            for (std::size_t k = schur_row_offsets_[i];
+                 k < schur_row_offsets_[i + 1]; ++k) {
+                const std::size_t j = schur_columns_[k];
+                if (j == i) diag = schur_ilu_values_[k];
+                else if (j > i) value -= schur_ilu_values_[k] * x(nv_ + j);
+            }
+            if (!std::isfinite(diag) || diag == 0.0) return false;
+            x(nv_ + i) = value / diag;
+        }
+        return true;
+    }
+
     void clear() {
         inv_velocity_diag_.clear();
         inv_schur_diag_.clear();
         row_offsets_.clear();
         columns_.clear();
         values_.clear();
+        schur_row_offsets_.clear();
+        schur_columns_.clear();
+        schur_values_.clear();
+        schur_ilu_values_.clear();
+        schur_ilu_valid_ = false;
     }
 
     std::size_t n_cells_ = 0;
@@ -474,6 +604,11 @@ private:
     std::vector<std::uint32_t> row_offsets_;
     std::vector<std::uint32_t> columns_;
     std::vector<double> values_;
+    std::vector<std::uint32_t> schur_row_offsets_;
+    std::vector<std::uint32_t> schur_columns_;
+    std::vector<double> schur_values_;
+    std::vector<double> schur_ilu_values_;
+    bool schur_ilu_valid_ = false;
 };
 
 class MixedPrecisionJacobiPreconditioner final : public Preconditioner {
