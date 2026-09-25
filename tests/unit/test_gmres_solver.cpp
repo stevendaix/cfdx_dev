@@ -144,6 +144,18 @@ int main() {
         EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_tiny_operator_scale_is_not_breakdown", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1e-15);
+        A.finalize();
+        Vector b(1);
+        b(0) = 1e-15;
+        Vector x(1, 0.0);
+        const auto result = solve_gmres(A, b, x, 1, 2, 1e-14);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0), 1.0, 1e-12);
+    });
+
     run_case("gmres_honors_fixed_restart_controls", []() {
         const std::size_t n = 12;
         auto A = make_poisson_1d(n);
