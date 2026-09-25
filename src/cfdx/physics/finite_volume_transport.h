@@ -168,6 +168,20 @@ inline void validate_scalar_controls(const ScalarSolveControls& c)
         throw std::invalid_argument("invalid scalar solver controls");
 }
 
+inline double boundary_normal_distance(
+    const FvGeometry& geometry, std::size_t face, std::size_t cell)
+{
+    const auto& Sf=geometry.face_area_vectors[face];
+    const double area=Sf.mag();
+    if(!(area>0.0)||!std::isfinite(area))
+        throw std::runtime_error("boundary_normal_distance: degenerate face");
+    const auto d=geometry.face_centres[face]-geometry.cell_centres[cell];
+    const double dn=std::abs(d.dot(Sf))/area;
+    if(!(dn>0.0)||!std::isfinite(dn))
+        throw std::runtime_error("boundary_normal_distance: invalid normal distance");
+    return dn;
+}
+
 // Assemble:
 //     div(phi*psi) - div(gamma grad(psi)) = Su + Sp*psi
 // with first-order upwind convection and two-point orthogonal diffusion.
@@ -305,7 +319,7 @@ inline ScalarEquation assemble_scalar_equation(
             }
 
             const double area = geometry.face_area_vectors[f].mag();
-            const double distance = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+            const double distance = boundary_normal_distance(geometry, f, o);
             min_face_area = std::min(min_face_area, area);
             max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
@@ -452,9 +466,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
-    if (solution.size() <= 256)
-        std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
-                  << " iter=" << result.iterations << " residual=" << result.residual << '\n';
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -469,9 +480,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
-        if (solution.size() <= 256)
-            std::cerr << "CFDX solver cascade: gmres status=" << static_cast<int>(result.status)
-                      << " iter=" << result.iterations << " residual=" << result.residual << '\n';
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
