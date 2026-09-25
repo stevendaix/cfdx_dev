@@ -174,6 +174,9 @@ int main()
         EnergySolverControls c; c.conductivity=1; c.relaxation=1; c.max_iterations=100; c.tolerance=1e-11;
         const auto r=solve_energy(m,g,phi,T,source,c,bc);
         check_history(r,"multicell_conduction");
+        ASSERT_TRUE(r.history.back().residual <= c.tolerance);
+        EXPECT_TRUE(std::isfinite(r.history.back().residual));
+        EXPECT_TRUE(r.history.back().energy_imbalance <= c.tolerance);
         for(std::size_t i=0;i<n;++i) {
             const double x=(static_cast<double>(i)+0.5)/static_cast<double>(n);
             EXPECT_NEAR(T(i),400.0-100.0*x,2e-9);
@@ -254,6 +257,7 @@ int main()
         const double T0=300.0;
         const double L=1.0;
         const std::size_t n=32;
+        double previous_dT = 0.0;
         for(const double qv:powers) {
             Mesh m=one_d_mesh(n); auto g=build_fv_geometry(m);
             Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0.0);
@@ -294,9 +298,15 @@ int main()
                       << " Tmin=" << Tmin << '\\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            EXPECT_NEAR(Tmax-T0, exact_dT_continuous,
-                         1e-9*std::max(1.0,exact_dT_continuous));
+            // Tmax is a cell-centre value, so the exact discrete oracle must
+            // use the cell centre nearest x=L/2 rather than the continuous
+            // maximum at x=L/2. The latter differs by O(h^2) on an even mesh.
+            EXPECT_NEAR(Tmax-T0, exact_dT_cell,
+                         1e-12*std::max(1.0,exact_dT_cell));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
+            if(previous_dT > 0.0)
+                EXPECT_NEAR((Tmax-T0)/previous_dT, 10.0, 1e-12);
+            previous_dT=Tmax-T0;
         }
     });
 
