@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <fstream>
 #include <limits>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
@@ -52,7 +53,13 @@ inline void write_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
 
-    std::ofstream out(path);
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
+            !std::isfinite(U.component_data(2)[c]) || !std::isfinite(p(c)))
+            throw std::invalid_argument("write_dat_restart_fields: non-finite field value");
+    }
+    const std::string tmp_path = path + ".tmp";
+    std::ofstream out(tmp_path);
     if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
     out.precision(std::numeric_limits<double>::max_digits10);
     out << "CFDX-DAT 2\n";
@@ -85,6 +92,10 @@ inline DatRestartState read_dat_restart_fields(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     DatRestartFields fields)
 {
+    if (U.dimension() != 3 || U.size() != mesh.n_cells())
+        throw std::invalid_argument("read_dat_restart_fields: invalid velocity field");
+    if (p.dimension() != 1 || p.size() != mesh.n_cells())
+        throw std::invalid_argument("read_dat_restart_fields: invalid pressure field");
     validate_optional_restart_field(mesh, fields.temperature, "temperature");
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
@@ -189,7 +200,13 @@ inline void write_dat_restart(
     if (!std::isfinite(time))
         throw std::invalid_argument("write_dat_restart: non-finite time");
 
-    std::ofstream out(path);
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
+            !std::isfinite(U.component_data(2)[c]) || !std::isfinite(p(c)))
+            throw std::invalid_argument("write_dat_restart: non-finite field value");
+    }
+    const std::string tmp_path = path + ".tmp";
+    std::ofstream out(tmp_path);
     if (!out)
         throw std::runtime_error("write_dat_restart: cannot open " + path);
 
@@ -206,8 +223,16 @@ inline void write_dat_restart(
     out << "field p 1\n";
     for (std::size_t c = 0; c < mesh.n_cells(); ++c)
         out << p(c) << "\n";
-    if (!out)
+    if (!out) {
+        out.close();
+        std::remove(tmp_path.c_str());
         throw std::runtime_error("write_dat_restart: write failed for " + path);
+    }
+    out.close();
+    if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
+        std::remove(tmp_path.c_str());
+        throw std::runtime_error("write_dat_restart: cannot replace " + path);
+    }
 }
 
 inline DatRestartState read_dat_restart(
