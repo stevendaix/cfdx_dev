@@ -280,8 +280,8 @@ inline EnergySolveResult solve_energy(
         }();
         const double linear_backward_error = res / linear_scale;
         const bool linear_converged =
-            std::isfinite(linear_backward_error) &&
-            linear_backward_error<=linear_tolerance;
+            std::isfinite(res) && std::isfinite(linear_backward_error) &&
+            res<=linear_tolerance && linear_backward_error<=linear_tolerance;
 
         // The energy equation assembled here is linear for a fixed source,
         // conductivity and transient reference state. Therefore a fully
