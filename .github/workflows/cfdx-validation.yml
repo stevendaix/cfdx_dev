@@ -29,6 +29,7 @@ jobs:
           python3 -m venv .venv-validation
           .venv-validation/bin/python -m pip install --upgrade pip
           .venv-validation/bin/python -m pip install h5py meshio pytest
+          .venv-validation/bin/python -m pip install -e .
 
       - name: Configure
         run: |
