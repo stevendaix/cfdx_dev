@@ -962,6 +962,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result = solve_gmres(
             A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
     }
+
+    // A restarted GMRES breakdown is a Krylov failure, not evidence that the
+    // coupled algebraic system is inapplicable. BiCGStab uses the same coupled
+    // matrix and Schur preconditioner and provides a robust nonsymmetric
+    // fallback for these saddle-point systems.
+    if (result.status == SolverStatus::DIVERGED) {
+        std::cerr << "CFDX coupled solver: GMRES breakdown; retrying "
+                     "coupled system with BiCGStab\\n";
+        result = solve_bicgstab(
+            A, b, x, max_iterations, tolerance, &coupled_preconditioner);
+    }
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
