@@ -11,6 +11,8 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <iostream>
+#include <cstdlib>
 #include <stdexcept>
 
 namespace cfdx::core {
@@ -189,6 +191,12 @@ inline SolverResult solve_gmres(
                     w.y[static_cast<std::size_t>(i)] = 0.0;
                     continue;
                 }
+                if (std::getenv("CFDX_DEBUG_COUPLED"))
+                    std::cerr << "GMRES_BREAKDOWN i=" << i
+                              << " diag=" << diag
+                              << " rhs=" << sum
+                              << " estimated_residual=" << estimated_residual
+                              << " iterations=" << iterations << "\\n";
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = estimated_residual;
