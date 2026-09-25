@@ -90,8 +90,7 @@ jobs:
           grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \\(complete list\\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
 
       - name: Upload test logs on failure
-        if: always()
-        if: failure()
+        if: ${{ !cancelled() && (steps.build.outcome != 'success' || steps.ctest.outcome != 'success') }}
         uses: actions/upload-artifact@v4
         with:
           name: ctest-${{ matrix.build_type }}-logs
