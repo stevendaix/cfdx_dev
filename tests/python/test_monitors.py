@@ -16,6 +16,15 @@ def test_monitor_series_upsert_merges_values_for_same_timestep():
     assert series.at(3).values == {"CFL": 0.5, "p": 1.0e-3}
 
 
+def test_monitor_series_upsert_reorders_out_of_order_callbacks():
+    series = MonitorSeries("solver", [])
+    series.upsert(MonitorSample(2, 0.2, {"p": 2.0}))
+    series.upsert(MonitorSample(1, 0.1, {"CFL": 0.5}))
+    assert [(sample.iteration, sample.time) for sample in series.samples] == [(1, 0.1), (2, 0.2)]
+    assert series.at(1).values["CFL"] == 0.5
+    assert series.at(2).values["p"] == 2.0
+
+
 def test_monitor_series_json_roundtrip_preserves_iteration_time_and_values(tmp_path):
     series = MonitorSeries("solver", [])
     series.upsert(MonitorSample(1, 0.1, {"CFL": 0.5}))
