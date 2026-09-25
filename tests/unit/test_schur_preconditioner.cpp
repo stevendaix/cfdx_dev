@@ -1,4 +1,5 @@
 #include "cfdx/core/linalg/block_preconditioner.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
 
@@ -42,6 +43,60 @@ int main() {
 
         SchurComplementPreconditioner incomplete({0}, {2});
         EXPECT_TRUE(!incomplete.setup(A));
+    });
+
+    run_case("coupled_block_schur_setup_and_apply", [] {
+        // One-cell saddle-point system:
+        //
+        // [ 4  0  0  1 ] [ux]   [4]
+        // [ 0  5  0  2 ] [uy] = [5]
+        // [ 0  0  6  3 ] [uz]   [6]
+        // [-1 -2 -3  0 ] [ p]   [2]
+        //
+        // S = -D M^-1 G = 1/4 + 4/5 + 9/6 = 2.95.
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 4.0); A.push_back(0, 3, 1.0);
+        A.push_back(1, 1, 5.0); A.push_back(1, 3, 2.0);
+        A.push_back(2, 2, 6.0); A.push_back(2, 3, 3.0);
+        A.push_back(3, 0, -1.0); A.push_back(3, 1, -2.0);
+        A.push_back(3, 2, -3.0);
+        A.finalize();
+
+        CoupledBlockSchurPreconditioner p(1);
+        EXPECT_TRUE(p.setup(A));
+
+        Vector r(4);
+        r(0) = 4.0; r(1) = 5.0; r(2) = 6.0; r(3) = 2.0;
+        Vector z(4);
+        EXPECT_TRUE(p.apply(r, z));
+
+        const double schur = 2.95;
+        const double zp = 8.0 / schur;
+        EXPECT_NEAR(z(3), zp, 1e-12);
+        EXPECT_NEAR(z(0), 1.0 - zp / 4.0, 1e-12);
+        EXPECT_NEAR(z(1), 1.0 - 2.0 * zp / 5.0, 1e-12);
+        EXPECT_NEAR(z(2), 1.0 - 3.0 * zp / 6.0, 1e-12);
+    });
+
+    run_case("coupled_block_schur_accepts_pressure_gauge_row", [] {
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 1, 3.0);
+        A.push_back(2, 2, 4.0);
+        A.push_back(3, 3, 1.0);
+        A.finalize();
+
+        CoupledBlockSchurPreconditioner p(1);
+        EXPECT_TRUE(p.setup(A));
+
+        Vector r(4);
+        r(0) = 2.0; r(1) = 3.0; r(2) = 4.0; r(3) = 7.0;
+        Vector z(4);
+        EXPECT_TRUE(p.apply(r, z));
+        EXPECT_NEAR(z(0), 1.0, 1e-12);
+        EXPECT_NEAR(z(1), 1.0, 1e-12);
+        EXPECT_NEAR(z(2), 1.0, 1e-12);
+        EXPECT_NEAR(z(3), 7.0, 1e-12);
     });
 
     return run_all();
