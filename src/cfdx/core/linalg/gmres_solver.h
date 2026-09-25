@@ -86,7 +86,7 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = beta;
-        result.residual_relative = beta / std::max(b_norm, 1.0);
+        result.residual_relative = beta / rhs_scale;
         return result;
     }
 
@@ -137,18 +137,15 @@ inline SolverResult solve_gmres(
             // systems and substantially improves the Hessenberg relation.
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                Vector vi_vector(n);
-                for (std::size_t k = 0; k < n; ++k) vi_vector(k) = vi[k];
-                const double h = krylov_dot(vi_vector, w.w, SolverPrecision::FP64, controls.reduction);
+                double h = 0.0;
+                for (std::size_t k = 0; k < n; ++k) h += vi[k] * w.w(k);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                Vector vi_vector(n);
-                for (std::size_t k = 0; k < n; ++k) vi_vector(k) = vi[k];
-                const double correction = krylov_dot(
-                    vi_vector, w.w, SolverPrecision::FP64, controls.reduction);
+                double correction = 0.0;
+                for (std::size_t k = 0; k < n; ++k) correction += vi[k] * w.w(k);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
             }
@@ -211,7 +208,7 @@ inline SolverResult solve_gmres(
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
                     result.residual = exact;
-                    result.residual_relative = exact / std::max(b_norm, 1.0);
+                    result.residual_relative = exact / rhs_scale;
                     return result;
                 }
             }
@@ -265,7 +262,7 @@ inline SolverResult solve_gmres(
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
                 result.residual_relative =
-                    breakdown_residual / std::max(b_norm, 1.0);
+                    breakdown_residual / rhs_scale;
                 if (std::getenv("CFDX_DEBUG_COUPLED"))
                     std::cerr << "GMRES_BREAKDOWN_TRUE_RESIDUAL value="
                               << breakdown_residual << "\n";
@@ -289,7 +286,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / std::max(b_norm, 1.0);
+            result.residual_relative = beta / rhs_scale;
             return result;
         }
 
@@ -302,14 +299,14 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / std::max(b_norm, 1.0);
+            result.residual_relative = beta / rhs_scale;
             return result;
         }
 
         if (std::getenv("CFDX_DEBUG_COUPLED"))
             std::cerr << "GMRES_CYCLE iterations=" << iterations
                       << " true_residual=" << beta
-                      << " relative=" << beta / std::max(b_norm, 1.0)
+                      << " relative=" << beta / rhs_scale
                       << " restart=" << current_restart << "\n";
 
         const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
@@ -325,7 +322,7 @@ inline SolverResult solve_gmres(
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = iterations;
     result.residual = beta;
-    result.residual_relative = beta / std::max(b_norm, 1.0);
+    result.residual_relative = beta / rhs_scale;
     return result;
 }
 
