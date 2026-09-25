@@ -323,9 +323,36 @@ public:
                 s += d * inv_velocity_diag_[u] * g;
             }
 
-            if (!std::isfinite(s) || std::abs(s) <=
-                    64.0 * std::numeric_limits<double>::epsilon()) {
+            if (!std::isfinite(s)) {
                 return false;
+            }
+
+            // On collocated FV/Rhie-Chow systems the exact diagonal
+            // D*diag(M)^-1*G can cancel algebraically on some rows even though
+            // the pressure Schur complement is nonsingular (the useful
+            // pressure coupling then sits in neighbouring pressure columns).
+            // A preconditioner must not reject such a row. Build a positive
+            // diagonal scale from the L1 strength of the complete local
+            // pressure Schur row instead. This preserves the pressure
+            // propagation scale without modifying the physical matrix.
+            if (std::abs(s) <=
+                    64.0 * std::numeric_limits<double>::epsilon()) {
+                double scale = std::abs(cdiag);
+                for (std::uint32_t dk = row[prow]; dk < row[prow + 1]; ++dk) {
+                    const std::size_t u = col[dk];
+                    if (u >= nv_) continue;
+                    const double d = val[dk];
+                    for (std::uint32_t gk = row[u]; gk < row[u + 1]; ++gk) {
+                        if (col[gk] < nv_) continue;
+                        const double g = val[gk];
+                        scale += std::abs(d * inv_velocity_diag_[u] * g);
+                    }
+                }
+                if (!std::isfinite(scale) || scale <=
+                        64.0 * std::numeric_limits<double>::epsilon()) {
+                    return false;
+                }
+                s = scale;
             }
             schur_diag_[p] = s;
         }
