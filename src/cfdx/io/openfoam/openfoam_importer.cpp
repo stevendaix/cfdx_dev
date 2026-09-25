@@ -2,8 +2,9 @@
 
 #include "cfdx/core/mesh/boundary.h"
 #include <fstream>
-#include <regex>
 #include <sstream>
+#include <cctype>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -14,87 +15,118 @@
 namespace cfdx::io::openfoam {
 namespace {
 
-std::string strip_comments(std::string text) {
-    text = std::regex_replace(text, std::regex(R"(//[^\n]*)"), "");
-    text = std::regex_replace(text, std::regex(R"(/\*[\s\S]*?\*/)"), "");
-    return text;
+std::string strip_comments(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    bool line=false, block=false;
+    for(std::size_t i=0;i<text.size();++i) {
+        const char c=text[i];
+        const char n=(i+1<text.size()?text[i+1]:'\0');
+        if(line) { if(c=='\n') { line=false; out.push_back(c); } continue; }
+        if(block) { if(c=='*'&&n=='/') { block=false; ++i; } else if(c=='\n') out.push_back('\n'); continue; }
+        if(c=='/'&&n=='/') { line=true; ++i; continue; }
+        if(c=='/'&&n=='*') { block=true; ++i; continue; }
+        out.push_back(c);
+    }
+    return out;
 }
-
 bool read_text(const std::filesystem::path& path, std::string& text) {
     std::ifstream in(path);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    text = strip_comments(buffer.str());
+    if(!in) return false;
+    std::ostringstream buffer; buffer << in.rdbuf();
+    text=strip_comments(buffer.str());
     return true;
 }
-
-
-bool read_declared_count(const std::string& text, std::size_t& count) {
-    static const std::regex count_re(R"(\n\s*(\d+)\s*\()");
-    std::smatch m;
-    if (!std::regex_search(text, m, count_re)) return false;
-    count = static_cast<std::size_t>(std::stoull(m[1].str()));
-    return true;
-}
-
-bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3>& points) {
-    std::string text;
-    if (!read_text(path, text)) return false;
-    const auto begin = text.find('(');
-    const auto end = text.rfind(')');
-    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
-
-    std::size_t declared = 0;
-    if (!read_declared_count(text, declared)) return false;
-    const std::string body = text.substr(begin + 1, end - begin - 1);
-    std::regex point_re(R"(\(\s*([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*\))");
-    for (std::sregex_iterator it(body.begin(), body.end(), point_re), e; it != e; ++it) {
-        points.emplace_back(
-            std::stod((*it)[1].str()),
-            std::stod((*it)[2].str()),
-            std::stod((*it)[3].str()));
-    }
-    return points.size() == declared && declared > 0;
-}
-
-bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
-    std::string text;
-    if (!read_text(path, text)) return false;
-    const auto begin = text.find('(');
-    const auto end = text.rfind(')');
-    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
-    std::istringstream in(text.substr(begin + 1, end - begin - 1));
-    std::int64_t value = 0;
-    while (in >> value) values.push_back(value);
-    return true;
-}
-
-bool read_faces(const std::filesystem::path& path,
-                std::vector<std::vector<std::uint32_t>>& faces) {
-    std::string text;
-    if (!read_text(path, text)) return false;
-    const auto begin = text.find('(');
-    const auto end = text.rfind(')');
-    if (begin == std::string::npos || end == std::string::npos || end <= begin) return false;
-    std::size_t declared = 0;
-    if (!read_declared_count(text, declared)) return false;
-    const std::string body = text.substr(begin + 1, end - begin - 1);
-
-    std::regex face_re(R"(\b(\d+)\s*\(([^()]*)\))");
-    for (std::sregex_iterator it(body.begin(), body.end(), face_re), e; it != e; ++it) {
-        const std::size_t count = static_cast<std::size_t>(std::stoull((*it)[1].str()));
-        std::istringstream in((*it)[2].str());
-        std::vector<std::uint32_t> face;
-        std::uint64_t index = 0;
-        while (in >> index) {
-            if (index > std::numeric_limits<std::uint32_t>::max()) return false;
-            face.push_back(static_cast<std::uint32_t>(index));
+struct Cursor {
+    const char* p; const char* end;
+    void ws() { while(p<end && std::isspace(static_cast<unsigned char>(*p))) ++p; }
+    bool expect(char c) { ws(); if(p<end && *p==c){++p;return true;} return false; }
+    bool size(std::size_t& v) {
+        ws(); if(p>=end || *p<'0' || *p>'9') return false;
+        std::uint64_t x=0;
+        while(p<end && std::isdigit(static_cast<unsigned char>(*p))) {
+            x=x*10+static_cast<unsigned>(*p-'0'); ++p;
+            if(x>std::numeric_limits<std::size_t>::max()) return false;
         }
-        if (face.size() != count || face.size() < 3) return false;
+        v=static_cast<std::size_t>(x); return true;
+    }
+    bool i64(std::int64_t& v) {
+        ws(); char* q=nullptr; errno=0;
+        const double probe=0.0; (void)probe;
+        long long x=std::strtoll(p,&q,10);
+        if(q==p || errno==ERANGE || q>end) return false;
+        p=q; v=static_cast<std::int64_t>(x); return true;
+    }
+    bool real(double& v) {
+        ws(); char* q=nullptr; errno=0;
+        double x=std::strtod(p,&q);
+        if(q==p || errno==ERANGE || q>end || !std::isfinite(x)) return false;
+        p=q; v=x; return true;
+    }
+};
+bool list_cursor(const std::string& text, Cursor& c, std::size_t& count) {
+    if(!read_declared_count(text,count)) return false;
+    c.p=text.data(); c.end=c.p+text.size();
+    std::size_t declared=0; if(!c.size(declared)) {
+        const auto pos=text.find('(');
+        if(pos==std::string::npos) return false;
+        c.p=text.data()+pos;
+    } else {
+        if(!c.expect('(')) return false;
+    }
+    return true;
+}
+bool read_declared_count(const std::string& text, std::size_t& count) {
+    const auto pos=text.find('\n');
+    const char* b=text.data(); const char* e=b+text.size();
+    Cursor c{b,e};
+    while(c.p<c.end) {
+        c.ws(); std::size_t v=0;
+        if(c.size(v)) { c.ws(); if(c.p<c.end && *c.p=='(') { count=v; return true; } }
+        while(c.p<c.end && *c.p!='\n') ++c.p;
+    }
+    (void)pos; return false;
+}
+bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3>& points) {
+    std::string text; if(!read_text(path,text)) return false;
+    std::size_t declared=0; if(!read_declared_count(text,declared) || declared==0) return false;
+    const auto pos=text.find('(', text.find(std::to_string(declared)));
+    if(pos==std::string::npos) return false;
+    Cursor c{text.data()+pos,text.data()+text.size()};
+    if(!c.expect('(')) return false;
+    points.clear(); points.reserve(declared);
+    for(std::size_t i=0;i<declared;++i) {
+        if(!c.expect('(')) return false;
+        double x,y,z; if(!c.real(x)||!c.real(y)||!c.real(z)||!c.expect(')')) return false;
+        points.emplace_back(x,y,z);
+    }
+    c.ws(); return c.expect(')') && c.p==c.end;
+}
+bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
+    std::string text; if(!read_text(path,text)) return false;
+    std::size_t declared=0; if(!read_declared_count(text,declared)) return false;
+    const auto pos=text.find('(', text.find(std::to_string(declared)));
+    if(pos==std::string::npos) return false;
+    Cursor c{text.data()+pos,text.data()+text.size()}; if(!c.expect('(')) return false;
+    values.clear(); values.reserve(declared);
+    for(std::size_t i=0;i<declared;++i) { std::int64_t v; if(!c.i64(v)) return false; values.push_back(v); }
+    c.ws(); return c.expect(')') && c.p==c.end && values.size()==declared;
+}
+bool read_faces(const std::filesystem::path& path,std::vector<std::vector<std::uint32_t>>& faces) {
+    std::string text; if(!read_text(path,text)) return false;
+    std::size_t declared=0; if(!read_declared_count(text,declared)||declared==0) return false;
+    const auto pos=text.find('(', text.find(std::to_string(declared)));
+    if(pos==std::string::npos) return false;
+    Cursor c{text.data()+pos,text.data()+text.size()}; if(!c.expect('(')) return false;
+    faces.clear(); faces.reserve(declared);
+    for(std::size_t i=0;i<declared;++i) {
+        std::size_t n=0; if(!c.size(n)||n<3||!c.expect('(')) return false;
+        std::vector<std::uint32_t> face; face.reserve(n);
+        for(std::size_t j=0;j<n;++j) { std::size_t v; if(!c.size(v)||v>std::numeric_limits<std::uint32_t>::max()) return false; face.push_back(static_cast<std::uint32_t>(v)); }
+        if(!c.expect(')')) return false;
         faces.push_back(std::move(face));
     }
-    return faces.size() == declared && declared > 0;
+    c.ws(); return c.expect(')') && c.p==c.end && faces.size()==declared;
 }
 
 cfdx::core::PatchType patch_type(const std::string& type) {
