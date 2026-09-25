@@ -1,4 +1,5 @@
 name: CFDX validation
+# Validation rerun after Couette numerical-state restoration.
 # CI audit trigger: preserve full Couette residual/evidence capture on every fix-branch push.
 
 on:
