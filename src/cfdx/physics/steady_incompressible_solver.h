@@ -1109,7 +1109,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         coupled_matrix_residual / std::max(std::sqrt(coupled_rhs_norm_sq), 1.0);
     if (!std::isfinite(coupled_matrix_residual) ||
         !std::isfinite(coupled_matrix_relative)) {
-        return SolverResult{};
+        result.status = SolverStatus::DIVERGED;
+        result.residual = std::numeric_limits<double>::infinity();
+        result.residual_relative = std::numeric_limits<double>::infinity();
+        return result;
     }
     if (std::getenv("CFDX_DEBUG_COUPLED")) {
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
