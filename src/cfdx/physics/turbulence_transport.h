@@ -113,7 +113,9 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
         c.gamma1,c.gamma2,c.a1,c.rng_C_mu,c.rng_C1,c.rng_C2,c.rng_sigma_k,
         c.rng_sigma_epsilon,c.rng_eta0,c.rng_beta,c.sa_cb1,c.sa_cb2,c.sa_sigma,
         c.sa_kappa,c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4,
-        c.smagorinsky_Cs,c.des_Cdes,c.komega_clim};
+        c.smagorinsky_Cs,c.des_Cdes,c.komega_clim,
+        c.sst_sigma_k1,c.sst_sigma_k2,c.sst_sigma_w1,c.sst_sigma_w2,
+        c.sst_production_limiter};
     for (double v : values)
         if (!std::isfinite(v)) throw std::invalid_argument("non-finite turbulence coefficient");
     if(c.C_mu<=0.0 || c.C1<0.0 || c.C2<0.0 || c.beta_star<=0.0 ||
