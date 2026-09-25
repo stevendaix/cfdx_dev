@@ -178,9 +178,10 @@ int main() {
         // [ 0  1  1 ] [v] = [1]
         // [-1 -1  0 ] [p]   [3]
         //
-        // The first two rows imply u=v, while the continuity equation has
-        // zero left-null-space compatibility for this deliberately
-        // inconsistent RHS.
+        // The first two rows imply u=v. For this deliberately inconsistent
+        // RHS, b=(1,1,1), the continuity equation cannot be satisfied together
+        // with the two momentum equations, so the system has a nonzero true
+        // residual at Krylov breakdown.
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 1.0); A.push_back(0, 2, 1.0);
         A.push_back(1, 1, 1.0); A.push_back(1, 2, 1.0);
@@ -188,7 +189,7 @@ int main() {
         A.finalize();
 
         Vector b(3);
-        b(0) = 1.0; b(1) = 1.0; b(2) = 0.0;
+        b(0) = 1.0; b(1) = 1.0; b(2) = 1.0;
         Vector x(3, 0.0);
 
         const auto result = solve_gmres(A, b, x, 3, 3, 1e-12);
