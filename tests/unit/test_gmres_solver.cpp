@@ -144,6 +144,85 @@ int main() {
         EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_tiny_operator_scale_is_not_breakdown", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1e-15);
+        A.finalize();
+        Vector b(1);
+        b(0) = 1e-15;
+        Vector x(1, 0.0);
+        const auto result = solve_gmres(A, b, x, 1, 2, 1e-14);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0), 1.0, 1e-12);
+    });
+
+    run_case("gmres_honors_fixed_restart_controls", []() {
+        const std::size_t n = 12;
+        auto A = make_poisson_1d(n);
+        Vector b(n, 1.0);
+        Vector x(n, 0.0);
+        KrylovControls controls;
+        controls.restart_min = static_cast<int>(n);
+        controls.restart_max = static_cast<int>(n);
+        controls.adaptive_restart = false;
+        const auto result = solve_gmres(A, b, x, static_cast<int>(n), 50, 1e-12,
+                                        nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.residual_relative < 1e-10);
+    });
+
+    run_case("gmres_saddle_point_breakdown_reports_true_residual", []() {
+        // Small singular saddle-point system without a pressure gauge:
+        //
+        // [ 1  0  1 ] [u]   [1]
+        // [ 0  1  1 ] [v] = [1]
+        // [-1 -1 -2 ] [p]   [0]
+        //
+        // The third row is exactly the negative sum of the first two rows,
+        // so the matrix is singular.  With b=(1,1,0), the left-null-space
+        // compatibility condition is violated: b_3 != -(b_1+b_2).
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0); A.push_back(0, 2, 1.0);
+        A.push_back(1, 1, 1.0); A.push_back(1, 2, 1.0);
+        A.push_back(2, 0, -1.0); A.push_back(2, 1, -1.0); A.push_back(2, 2, -2.0);
+        A.finalize();
+
+        Vector b(3);
+        b(0) = 1.0; b(1) = 1.0; b(2) = 0.0;
+        Vector x(3, 0.0);
+
+        const auto result = solve_gmres(A, b, x, 3, 3, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(result.iterations == 2);
+        EXPECT_TRUE(result.residual > 1e-8);
+        EXPECT_TRUE(result.residual_relative > 1e-8);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_TRUE(std::isfinite(result.residual_relative));
+    });
+
+    run_case("gmres_nonhappy_breakdown_reports_true_residual", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+
+        Vector b(2);
+        b(0) = 1.0;
+        b(1) = 1.0;
+        Vector x(2, 0.0);
+
+        const auto result = solve_gmres(A, b, x, 2, 2, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_TRUE(result.residual > 0.5);
+        EXPECT_TRUE(std::isfinite(result.residual_relative));
+        EXPECT_TRUE(result.residual_relative > 0.5);
+        EXPECT_NEAR(x(0), 1.0, 1e-12);
+        // GMRES returns the minimum-residual iterate in the reachable Krylov
+        // space; for diag(1,0) this is x=(1,1), not the arbitrary null-space
+        // representative (1,0).
+        EXPECT_NEAR(x(1), 1.0, 1e-12);
+    });
+
     run_case("gmres_lucky_breakdown_converges_without_nan", []() {
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 1.0);

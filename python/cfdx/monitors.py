@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -29,19 +30,23 @@ class MonitorSeries:
         self.samples.append(sample)
 
     def upsert(self, sample: MonitorSample) -> None:
-        """Append a sample or merge values for the current iteration/time."""
-        if not self.samples:
-            self.samples.append(sample)
-            return
-        current = self.samples[-1]
-        if sample.iteration < current.iteration or sample.time < current.time:
-            raise ValueError("monitor samples must be monotonic")
-        if sample.iteration == current.iteration and sample.time == current.time:
+        """Insert a sample in chronological order or merge an existing key.
+
+        Solver stdout and stderr are consumed by independent threads, so their
+        callbacks can arrive out of order even though each stream is ordered.
+        ``upsert`` therefore keeps the public series ordered instead of treating
+        callback arrival order as physical iteration order.
+        """
+        key = (sample.iteration, sample.time)
+        keys = [(item.iteration, item.time) for item in self.samples]
+        index = bisect_left(keys, key)
+        if index < len(self.samples) and keys[index] == key:
+            current = self.samples[index]
             values = dict(current.values)
             values.update(sample.values)
-            self.samples[-1] = MonitorSample(current.iteration, current.time, values)
+            self.samples[index] = MonitorSample(current.iteration, current.time, values)
             return
-        self.samples.append(sample)
+        self.samples.insert(index, sample)
 
     def to_dict(self) -> dict[str, object]:
         """Return a stable, JSON-serializable monitor representation."""

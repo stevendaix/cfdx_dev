@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -140,6 +141,12 @@ RunResult run_couette_channel(
     std::size_t ny = 16)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
+    const auto topo = mesh.topo_validate();
+    if (!topo.ok) {
+        throw std::runtime_error(
+            "Couette channel mesh topology invalid: " +
+            (topo.errors.empty() ? std::string("unknown error") : topo.errors.front()));
+    }
     Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
     Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
     U.fill(0.0);
@@ -168,9 +175,13 @@ RunResult run_couette_channel(
     c.coupling.n_pressure_correctors =
         algorithm == PressureVelocityAlgorithm::PISO ||
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
+    c.coupling.n_fractional_steps =
+        algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
+    c.coupling.coupled_max_iterations = 2000;
+    c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 250;
+    c.convergence.max_iterations = 500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
     c.linear_max_iterations = 2000;
@@ -183,20 +194,69 @@ RunResult run_couette_channel(
     c.use_bounded_convection = bounded;
     c.convection_scheme = scheme;
 
+    const auto diagnostic_geometry = build_fv_geometry(mesh);
+    c.iteration_output_callback =
+        [algorithm, scheme, bounded, diagnostic_geometry, ubc, pbc](
+            std::size_t iter,
+            double,
+            const Mesh& callback_mesh,
+            const Field<double, Location::CELL>& callback_U,
+            const Field<double, Location::CELL>& callback_p) {
+            const auto grad_p = gauss_gradient_with_boundary(
+                callback_p, callback_mesh, diagnostic_geometry, pbc);
+            double gradp_linf = 0.0;
+            double gradp_l2_sum = 0.0;
+            double u_linf = 0.0;
+            for (std::size_t cell = 0; cell < callback_mesh.n_cells(); ++cell) {
+                const double gx = grad_p.component_data(0)[cell];
+                const double gy = grad_p.component_data(1)[cell];
+                const double gz = grad_p.component_data(2)[cell];
+                const double gp2 = gx*gx + gy*gy + gz*gz;
+                gradp_linf = std::max(gradp_linf, std::sqrt(gp2));
+                gradp_l2_sum += gp2;
+                for (std::size_t d = 0; d < 3; ++d)
+                    u_linf = std::max(u_linf,
+                        std::abs(callback_U.component_data(d)[cell]));
+            }
+            auto reconstructed_flux = make_mass_flux(
+                callback_mesh, diagnostic_geometry, callback_U, 1.0, ubc);
+            double reconstructed_cont_linf = 0.0;
+            const auto* faces = callback_mesh.cells().faces_data();
+            const auto* offsets = callback_mesh.cells().offsets_data();
+            for (std::size_t cell = 0; cell < callback_mesh.n_cells(); ++cell) {
+                double div = 0.0;
+                for (Offset k = offsets[cell]; k < offsets[cell + 1]; ++k) {
+                    const std::size_t face = faces[k];
+                    div += callback_mesh.ownership().owner(face) == cell
+                        ? reconstructed_flux(face) : -reconstructed_flux(face);
+                }
+                reconstructed_cont_linf =
+                    std::max(reconstructed_cont_linf, std::abs(div));
+            }
+            std::cout << "TRACE iter=" << iter
+                      << " algorithm=" << static_cast<int>(algorithm)
+                      << " scheme=" << static_cast<int>(scheme)
+                      << " bounded=" << (bounded ? "true" : "false")
+                      << " gradp_linf=" << gradp_linf
+                      << " gradp_l2=" << std::sqrt(
+                             gradp_l2_sum / std::max<std::size_t>(
+                                 callback_mesh.n_cells(), 1))
+                      << " U_linf=" << u_linf
+                      << " reconstructed_continuity=" << reconstructed_cont_linf
+                      << "\n";
+            return true;
+        };
+
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
-    if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("Couette channel did not converge");
-
-    const auto& h = solve.history.back();
-    if (!(h.continuity_linf < 1e-7) ||
-        !(h.continuity_normalized < 1e-7) ||
-        !(h.momentum_equation_residual_relative < 1e-7))
-        throw std::runtime_error("physical convergence gate failed");
-
     return {std::move(U), std::move(p), solve, build_fv_geometry(mesh)};
 }
 
-double profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
+struct ProfileError {
+    double l2 = 0.0;
+    double linf = 0.0;
+};
+
+ProfileError profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
 {
     double l2 = 0.0;
     double linf = 0.0;
@@ -207,14 +267,14 @@ double profile_error(const RunResult& r, std::size_t nx, std::size_t ny)
         const std::size_t j = c / nx;
         if (i >= nx || j >= ny) continue;
         const double y = (static_cast<double>(j) + 0.5) / static_cast<double>(ny);
-        const double exact = y;
-        const double error = r.U.component_data(0)[c] - exact;
+        const double error = r.U.component_data(0)[c] - y;
         l2 += error * error;
         linf = std::max(linf, std::abs(error));
         ++count;
     }
 
-    return std::sqrt(l2 / static_cast<double>(count)) + linf;
+    if (count == 0) throw std::runtime_error("empty Couette profile");
+    return {std::sqrt(l2 / static_cast<double>(count)), linf};
 }
 
 void assert_close(double value, double reference, double tolerance, const char* label)
@@ -264,33 +324,248 @@ void run_pure_neumann_gauge()
 int main()
 {
     try {
-        std::cout << "PHASE9: Couette analytical verification\n";
+        std::cout << "PHASE9: Couette full pressure-velocity-system verification\n";
 
-        const auto simple = run_couette_channel(
-            PressureVelocityAlgorithm::SIMPLE, ConvectionScheme::UPWIND, true);
-        const auto simplec = run_couette_channel(
-            PressureVelocityAlgorithm::SIMPLEC, ConvectionScheme::UPWIND, true);
-        const auto piso = run_couette_channel(
-            PressureVelocityAlgorithm::PISO, ConvectionScheme::UPWIND, true);
-        const auto pimple = run_couette_channel(
-            PressureVelocityAlgorithm::PIMPLE, ConvectionScheme::UPWIND, true);
+        struct Case {
+            const char* name;
+            PressureVelocityAlgorithm algorithm;
+            ConvectionScheme scheme;
+            bool bounded;
+        };
 
-        const double e_simple = profile_error(simple, 8, 16);
-        const double e_simplec = profile_error(simplec, 8, 16);
-        const double e_piso = profile_error(piso, 8, 16);
-        const double e_pimple = profile_error(pimple, 8, 16);
-        if (pimple.solve.iterations < 2)
-            throw std::runtime_error("PIMPLE n_outer_correctors was not honored");
+        // Every pressure-velocity algorithm currently exposed by the Phase 9
+        // API is exercised on the same analytical Couette problem.  The
+        // physical gates are identical: changing the coupling algorithm must
+        // not change the solution being validated.
+        const std::vector<Case> algorithm_cases = {
+            {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
+             ConvectionScheme::UPWIND, true},
+            {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
+             ConvectionScheme::UPWIND, true},
+            {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
+             ConvectionScheme::UPWIND, true},
+            {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
+             ConvectionScheme::UPWIND, true},
+            {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
+             ConvectionScheme::UPWIND, true},
+            {"COUPLED/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+             ConvectionScheme::UPWIND, true},
+        };
 
-        std::cout << "Couette profile error: SIMPLE=" << e_simple
-                  << " SIMPLEC=" << e_simplec
-                  << " PISO=" << e_piso
-                  << " PIMPLE=" << e_pimple << "\n";
+        constexpr double profile_l2_tolerance = 5.0e-2;
+        constexpr double profile_linf_tolerance = 1.0e-1;
+        constexpr double transverse_velocity_tolerance = 1.0e-7;
+        constexpr double pressure_uniformity_tolerance = 1.0e-7;
+        constexpr double boundary_velocity_tolerance = 1.0e-8;
 
-        if (!(e_simple < 0.20 && e_simplec < 0.20 &&
-              e_piso < 0.20 && e_pimple < 0.20))
-            throw std::runtime_error("Couette profile validation failed");
+        std::vector<RunResult> results;
+        std::vector<std::string> successful_models;
+        std::vector<std::string> failed_models;
+        results.reserve(algorithm_cases.size());
 
+        // Diagnostic history intentionally records several distinct operators:
+        //   continuity              -> authoritative conservative flux balance
+        //   continuity_norm         -> scale-normalized conservation measure
+        //   corrected_flux_continuity -> post-pressure-correction flux balance
+        //   reconstructed_velocity_continuity -> flux reconstructed from cell U
+        //   flux_velocity_mismatch  -> diagnostic only (Rhie-Chow is pressure-dependent)
+        //   mom_internal/boundary   -> localisation of a possible residual floor
+        // These are evidence channels, not interchangeable acceptance metrics.
+        // In particular, Rhie-Chow flux and arithmetic interpolation of U are
+        // different operators by construction, so their mismatch is not required
+        // to vanish even when the conservative continuity equation converges.
+
+        auto print_history = [](const char* name, const RunResult& result) {
+            std::cout << "MODEL_BEGIN " << name << "\n";
+            std::cout << "ITERATION_HISTORY_BEGIN " << name << "\n";
+            for (const auto& ih : result.solve.history) {
+                std::cout << "ITER " << ih.iteration
+                          << " continuity=" << ih.continuity_linf
+                          << " continuity_norm=" << ih.continuity_normalized
+                          << " momentum=" << ih.momentum_residual
+                          << " momentum_eq_rel=" << ih.momentum_equation_residual_relative
+                          << " pressure=" << ih.pressure_residual
+                          << " dU=" << ih.velocity_change_inf
+                          << " dp=" << ih.pressure_change_inf
+                          << " corrected_flux_continuity=" << ih.corrected_flux_continuity_linf
+                          << " reconstructed_velocity_continuity=" << ih.reconstructed_velocity_continuity_linf
+                          << " flux_velocity_mismatch=" << ih.flux_velocity_mismatch_linf
+                          << " mom_x=" << ih.momentum_equation_residual_components[0]
+                          << " mom_y=" << ih.momentum_equation_residual_components[1]
+                          << " mom_z=" << ih.momentum_equation_residual_components[2]
+                          << " mom_internal=" << ih.momentum_equation_residual_internal
+                          << " mom_boundary=" << ih.momentum_equation_residual_boundary
+                          << " mom_cell=" << ih.momentum_residual_cell
+                          << " mom_patch=" << ih.momentum_residual_patch
+                          << " mom_no_pressure=" << ih.momentum_residual_no_pressure
+                          << " mom_pressure=" << ih.momentum_pressure_contribution
+                          << " gradp_linf=" << ih.pressure_gradient_linf
+                          << " gradp_l2=" << ih.pressure_gradient_l2
+                          << " momentum_linear_iterations=" << ih.momentum_linear_iterations
+                          << " pressure_linear_iterations=" << ih.pressure_linear_iterations
+                          << "\n";
+            }
+            std::cout << "ITERATION_HISTORY_END " << name << "\n";
+        };
+
+        for (const auto& test : algorithm_cases) {
+            std::cout << "MODEL_CONFIG algorithm=" << test.name
+                      << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
+                      << " alpha_u=0.7 alpha_p=0.3"
+                      << " pressure_correctors="
+                      << (test.algorithm == PressureVelocityAlgorithm::PISO ||
+                          test.algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1)
+                      << " fractional_steps="
+                      << (test.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1)
+                      << "\n";
+
+            try {
+                auto result = run_couette_channel(
+                    test.algorithm, test.scheme, test.bounded, 8, 16);
+
+                print_history(test.name, result);
+
+                const auto error = profile_error(result, 8, 16);
+                double max_abs_uy = 0.0;
+                double max_abs_uz = 0.0;
+                double max_u = -std::numeric_limits<double>::infinity();
+                double min_u = std::numeric_limits<double>::infinity();
+                double p_min = std::numeric_limits<double>::infinity();
+                double p_max = -std::numeric_limits<double>::infinity();
+
+                for (std::size_t c = 0; c < result.U.size(); ++c) {
+                    const double ux = result.U.component_data(0)[c];
+                    const double uy = result.U.component_data(1)[c];
+                    const double uz = result.U.component_data(2)[c];
+                    const double pc = result.p(c);
+                    if (!std::isfinite(ux) || !std::isfinite(uy) ||
+                        !std::isfinite(uz) || !std::isfinite(pc))
+                        throw std::runtime_error("non-finite solution field");
+                    max_abs_uy = std::max(max_abs_uy, std::abs(uy));
+                    max_abs_uz = std::max(max_abs_uz, std::abs(uz));
+                    max_u = std::max(max_u, ux);
+                    min_u = std::min(min_u, ux);
+                    p_min = std::min(p_min, pc);
+                    p_max = std::max(p_max, pc);
+                }
+
+                std::vector<std::string> gates;
+                if (!result.solve.converged)
+                    gates.push_back("solver_not_converged");
+                if (result.solve.history.empty())
+                    gates.push_back("empty_iteration_history");
+                else {
+                    const auto& h = result.solve.history.back();
+                    if (!(h.continuity_linf < 1e-7))
+                        gates.push_back("continuity_linf");
+                    if (!(h.continuity_normalized < 1e-7))
+                        gates.push_back("continuity_normalized");
+                    if (!(h.momentum_equation_residual_relative < 1e-7))
+                        gates.push_back("momentum_equation_residual_relative");
+                    if (!(h.corrected_flux_continuity_linf < 1e-7))
+                        gates.push_back("corrected_flux_continuity");
+                    if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
+                        result.solve.iterations < 2)
+                        gates.push_back("pimple_outer_correctors");
+                }
+                if (!(error.l2 < profile_l2_tolerance && error.linf < profile_linf_tolerance))
+                    gates.push_back("analytical_profile");
+                if (!(max_abs_uy < transverse_velocity_tolerance))
+                    gates.push_back("Uy");
+                if (!(max_abs_uz < transverse_velocity_tolerance))
+                    gates.push_back("Uz");
+                if (!(max_u > 0.90 && max_u < 1.10))
+                    gates.push_back("Umax");
+                if (!(min_u > -boundary_velocity_tolerance))
+                    gates.push_back("Umin");
+                if (!std::isfinite(p_min) || !std::isfinite(p_max) ||
+                    p_max - p_min > pressure_uniformity_tolerance)
+                    gates.push_back("pressure_uniformity");
+
+                const auto& h = result.solve.history.empty()
+                    ? IncompressibleIteration{}
+                    : result.solve.history.back();
+
+                std::cout << "MODEL_RESULT " << test.name
+                          << " solver_converged=" << (result.solve.converged ? "true" : "false")
+                          << " iterations=" << result.solve.iterations
+                          << " history_size=" << result.solve.history.size()
+                          << " profile_L2=" << error.l2
+                          << " profile_Linf=" << error.linf
+                          << " Umax=" << max_u
+                          << " Umin=" << min_u
+                          << " |Uy|max=" << max_abs_uy
+                          << " |Uz|max=" << max_abs_uz
+                          << " dp_range=" << (p_max - p_min)
+                          << " continuity=" << h.continuity_linf
+                          << " continuity_norm=" << h.continuity_normalized
+                          << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                          << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
+                          << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
+                          << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
+                          << " mom_x=" << h.momentum_equation_residual_components[0]
+                          << " mom_y=" << h.momentum_equation_residual_components[1]
+                          << " mom_z=" << h.momentum_equation_residual_components[2]
+                          << " mom_internal=" << h.momentum_equation_residual_internal
+                          << " mom_boundary=" << h.momentum_equation_residual_boundary
+                          << " mom_cell=" << h.momentum_residual_cell
+                          << " mom_patch=" << h.momentum_residual_patch
+                          << " mom_no_pressure=" << h.momentum_residual_no_pressure
+                          << " mom_pressure=" << h.momentum_pressure_contribution
+                          << " gradp_linf=" << h.pressure_gradient_linf
+                          << " gradp_l2=" << h.pressure_gradient_l2
+                          << " gates_failed=" << gates.size()
+                          << "\n";
+
+                if (gates.empty()) {
+                    successful_models.push_back(test.name);
+                    results.push_back(std::move(result));
+                } else {
+                    failed_models.push_back(test.name);
+                    std::cout << "MODEL_FAILURES " << test.name;
+                    for (const auto& gate : gates) std::cout << " " << gate;
+                    std::cout << "\n";
+                }
+            } catch (const std::exception& e) {
+                failed_models.push_back(test.name);
+                std::cout << "MODEL_RESULT " << test.name
+                          << " execution_exception=" << e.what() << "\n";
+                std::cout << "MODEL_FAILURES " << test.name
+                          << " execution_exception\n";
+            }
+        }
+
+        std::cout << "MODEL_SUMMARY successful=" << successful_models.size()
+                  << " failed=" << failed_models.size() << "\n";
+        if (!failed_models.empty()) {
+            std::cout << "FAILED_MODELS";
+            for (const auto& name : failed_models) std::cout << " " << name;
+            std::cout << "\n";
+        }
+
+        // Algorithm invariance is evaluated only across models that actually
+        // produced a valid result. A failure in one model must not prevent the
+        // remaining models from running and exposing their diagnostics.
+        if (!results.empty()) {
+            for (std::size_t k = 1; k < results.size(); ++k) {
+                double max_du = 0.0;
+                for (std::size_t c = 0; c < results[k].U.size(); ++c)
+                    max_du = std::max(
+                        max_du,
+                        std::abs(results[k].U.component_data(0)[c] -
+                                 results.front().U.component_data(0)[c]));
+                std::cout << "ALGORITHM_INVARIANCE model=" << successful_models[k]
+                          << " vs=" << successful_models.front()
+                          << " max_abs_dU=" << max_du << "\n";
+                if (!(max_du < 5.0e-2))
+                    failed_models.push_back(
+                        successful_models[k] + ":algorithm_invariance");
+            }
+        }
+
+        // Exercise the convection/flux assembly independently of the
+        // pressure-velocity algorithm. These cases use the same SIMPLE
+        // pressure correction but cover the alternate convection controls.
         const auto second_order = run_couette_channel(
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::SECOND_ORDER_UPWIND, true);
@@ -298,23 +573,33 @@ int main()
             PressureVelocityAlgorithm::SIMPLE,
             ConvectionScheme::UPWIND, false);
 
-        const double e_second = profile_error(second_order, 8, 16);
-        const double e_unbounded = profile_error(unbounded, 8, 16);
-        std::cout << "Convection/boundedness error: SOU=" << e_second
-                  << " unbounded-upwind=" << e_unbounded << "\n";
-        if (!(e_second < 0.20 && e_unbounded < 0.20))
-            throw std::runtime_error("convection/bounded-deferred-correction gate failed");
+        for (const auto& pair : {
+                 std::pair<const char*, const RunResult*>{"SIMPLE/SOU/bounded", &second_order},
+                 {"SIMPLE/upwind/unbounded", &unbounded}}) {
+            const auto error = profile_error(*pair.second, 8, 16);
+            if (!(error.l2 < profile_l2_tolerance &&
+                  error.linf < profile_linf_tolerance))
+                throw std::runtime_error(
+                    std::string(pair.first) + ": convection gate failed");
+            const auto& h = pair.second->solve.history.back();
+            if (!(h.continuity_linf < 1e-7) ||
+                !(h.momentum_equation_residual_relative < 1e-7))
+                throw std::runtime_error(
+                    std::string(pair.first) + ": conservation gate failed");
+            std::cout << pair.first
+                      << ": profile L2/Linf=" << error.l2 << "/" << error.linf
+                      << " continuity=" << h.continuity_linf << "\n";
+        }
 
+        // A pure-Neumann pressure field has a gauge freedom. Starting from a
+        // non-zero uniform pressure must therefore converge to the same
+        // physical state without introducing a local pressure jump.
         run_pure_neumann_gauge();
 
-        // The analytic profile is u(y)=f_x/(2 nu)*y*(1-y).
-        // With f_x=1 and nu=0.1, u_max=1.25.
-        double max_u = 0.0;
-        for (std::size_t c = 0; c < simple.U.size(); ++c)
-            max_u = std::max(max_u, simple.U.component_data(0)[c]);
-        if (!(max_u > 0.9 && max_u < 1.5))
-            throw std::runtime_error("Couette peak velocity is outside the physical gate");
-
+        if (!failed_models.empty()) {
+            std::cout << "PHASE9_ACCEPTANCE: FAIL\n";
+            return 1;
+        }
         std::cout << "PHASE9_ACCEPTANCE: PASS\n";
         return 0;
     } catch (const std::exception& e) {

@@ -3,7 +3,7 @@ name: CFDX validation
 on:
   pull_request:
   push:
-    branches: [master, "feature/**"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,63 +25,108 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-dev python3 python3-venv
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+          python3 -m venv .venv-validation
+          .venv-validation/bin/python -m pip install --upgrade pip
+          .venv-validation/bin/python -m pip install h5py meshio pytest
+          .venv-validation/bin/python -m pip install -e .
 
       - name: Configure
         run: |
           cmake -S . -B build-validation -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_ENABLE_MPI=ON \
             -DCFDX_BUILD_PYTHON=OFF \
-            -DCFDX_USE_HDF5_SERIAL=OFF
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE=${{ github.workspace }}/.venv-validation/bin/python
 
-      - name: Build Phase 13 validation executables
+      - name: Build validation test suite
         run: |
-          cmake --build build-validation --target \
-            test_analytical_benchmarks test_benchmark_matrix \
-            test_level_b_reference_benchmarks test_level_c_coupled_verification \
-            test_phase9_acceptance test_steady_incompressible_solver \
-            test_mms_scalar_diffusion test_mesh_refinement_order \
-            test_m1_m4_validation test_m2_m4_solver_validation \
-            test_cht_validation test_phase10_turbulence_hardening \
-            test_thermophysical_models_vv test_matrix_free_fv_operator \
-            test_temporal_physics test_core_temporal --parallel 2
+          # Build the complete CTest suite before executing validation labels.
+          # This prevents missing executables from being reported as 90+ false
+          # test failures when one target fails to compile.
+          cmake --build build-validation --parallel 2
 
       - name: Run Phase 13 validation tests
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
 
-      - name: Run campaign driver
+      - name: Run Couette residual validation
+        if: always()
         run: |
-          python3 scripts/run_validation.py \
+          set -o pipefail
+          CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
+            -R 'test_(phase9_acceptance|steady_incompressible_solver)' \
+            -V 2>&1 | tee build-validation/couette-residuals.log
+
+      - name: Run campaign driver
+        id: campaign
+        if: always()
+        run: |
+          .venv-validation/bin/python scripts/run_validation.py \
             --build-dir build-validation \
             --junit build-validation/validation-junit.xml \
             --json build-validation/phase13-validation.json
 
-      - name: Upload validation JUnit
+      - name: Full CTest closure gate
+        id: full_ctest
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfdx-validation-junit
-          path: |
-            build-validation/validation-junit.xml
-            build-validation/phase13-validation.json
-          if-no-files-found: ignore
+        run: |
+          ctest --test-dir build-validation --output-on-failure
 
-      - name: Upload validation logs
+      - name: Phase 9 coupled closure gate
+        id: phase9_closure
+        if: always()
+        run: |
+          set -o pipefail
+          CFDX_DEBUG_CELL=auto CFDX_DEBUG_COUPLED=1 ctest --test-dir build-validation \
+            -R 'test_phase9_acceptance' --output-on-failure -V 2>&1 | tee build-validation/phase9-closure.log
+
+      - name: Run application E2E regression
+        id: application_e2e
+        if: always()
+        run: |
+          .venv-validation/bin/python -m pytest -q tests/python/test_application_e2e.py
+
+      - name: Final validation decision
+        if: always()
+        run: |
+          echo "campaign=${{ steps.campaign.outcome }}"
+          echo "full_ctest=${{ steps.full_ctest.outcome }}"
+          echo "phase9_closure=${{ steps.phase9_closure.outcome }}"
+          echo "e2e=${{ steps.application_e2e.outcome }}"
+          if [[ "${{ steps.campaign.outcome }}" != "success" ||
+                "${{ steps.full_ctest.outcome }}" != "success" ||
+                "${{ steps.phase9_closure.outcome }}" != "success" ||
+                "${{ steps.application_e2e.outcome }}" != "success" ]]; then
+            echo "CFDX validation closure FAILED"
+            exit 1
+          fi
+          echo "CFDX validation closure PASSED"
+
+      - name: Capture complete CTest log
+        if: always()
+        run: |
+          ctest --test-dir build-validation -V 2>&1 | tee build-validation/ctest-full.log
+
+      - name: Capture validation evidence metadata
+        if: always()
+        run: |
+          .venv-validation/bin/python scripts/ci_capture_validation.py \
+            --build-dir build-validation \
+            --output-dir build-validation/diagnostic-evidence
+
+      - name: Upload validation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-validation-logs
+          name: cfdx-validation-evidence
           path: |
             build-validation/Testing/
             build-validation/**/*.log
-          if-no-files-found: ignore
-
-      - name: Run application E2E regression
-        run: |
-          python3 -m venv .venv-e2e
-          .venv-e2e/bin/python -m pip install --upgrade pip
-          .venv-e2e/bin/python -m pip install pytest h5py
-          PYTHONPATH=python .venv-e2e/bin/python -m pytest -q tests/python/test_application_e2e.py
+            build-validation/validation-junit.xml
+            build-validation/phase13-validation.json
+            build-validation/diagnostic-evidence/
+          if-no-files-found: warn
