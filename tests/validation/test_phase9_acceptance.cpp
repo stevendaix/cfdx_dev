@@ -193,6 +193,9 @@ RunResult run_couette_channel(
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = bounded;
     c.convection_scheme = scheme;
+    c.diagnostics.coupled_matrix_summary = true;
+    c.diagnostics.freeze_state_probe = true;
+    c.diagnostics.debug_cell = 33;
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
