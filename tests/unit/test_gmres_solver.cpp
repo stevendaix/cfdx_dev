@@ -144,6 +144,33 @@ int main() {
         EXPECT_TRUE(solve_gmres(A, b, x, 2, 20, 0.0).status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_saddle_point_breakdown_reports_true_residual", []() {
+        // Small singular saddle-point system without a pressure gauge:
+        //
+        // [ 1  0  1 ] [u]   [1]
+        // [ 0  1  1 ] [v] = [1]
+        // [-1 -1  0 ] [p]   [3]
+        //
+        // The first two rows imply u=v=1, while continuity then requires
+        // -u-v=3, so the RHS is inconsistent with the null space.
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0); A.push_back(0, 2, 1.0);
+        A.push_back(1, 1, 1.0); A.push_back(1, 2, 1.0);
+        A.push_back(2, 0, -1.0); A.push_back(2, 1, -1.0);
+        A.finalize();
+
+        Vector b(3);
+        b(0) = 1.0; b(1) = 1.0; b(2) = 3.0;
+        Vector x(3, 0.0);
+
+        const auto result = solve_gmres(A, b, x, 3, 3, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(result.residual > 1e-8);
+        EXPECT_TRUE(result.residual_relative > 1e-8);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_TRUE(std::isfinite(result.residual_relative));
+    });
+
     run_case("gmres_nonhappy_breakdown_reports_true_residual", []() {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1.0);
