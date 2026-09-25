@@ -298,18 +298,28 @@ public:
 
         for (std::size_t j = 0; j < nv_; ++j) {
             const auto [found, d] = diagonal(j);
-            if (found && std::isfinite(d) &&
-                std::abs(d) > 64.0 * std::numeric_limits<double>::epsilon()) {
-                inv_velocity_diag_[j] = 1.0 / d;
-                continue;
-            }
-
             double row_scale = 0.0;
             for (std::size_t k = row[j]; k < row[j + 1]; ++k)
                 row_scale = std::max(row_scale, std::abs(val[k]));
             if (!std::isfinite(row_scale))
                 return false;
-            inv_velocity_diag_[j] = 1.0 / std::max(row_scale, 1.0);
+
+            const double diag_floor =
+                64.0 * std::numeric_limits<double>::epsilon() *
+                std::max(row_scale, 1e-300);
+            if (found && std::isfinite(d) && std::abs(d) > diag_floor) {
+                inv_velocity_diag_[j] = 1.0 / d;
+                continue;
+            }
+
+            if (row_scale == 0.0) {
+                inv_velocity_diag_[j] = 1.0;
+            } else {
+                // Preserve physical scaling.  Using max(row_scale,1) here
+                // would silently change a legitimately small-dimensional
+                // momentum operator into a unit-scaled one.
+                inv_velocity_diag_[j] = 1.0 / row_scale;
+            }
         }
 
         // Form the pressure Schur approximation explicitly:
@@ -501,12 +511,6 @@ private:
             return static_cast<std::size_t>(it - schur_columns_.begin());
         };
 
-        double matrix_scale = 0.0;
-        for (const double value : schur_ilu_values_)
-            matrix_scale = std::max(matrix_scale, std::abs(value));
-        if (!std::isfinite(matrix_scale) || matrix_scale == 0.0)
-            return false;
-
         for (std::size_t i = 0; i < n; ++i) {
             const std::size_t rb = schur_row_offsets_[i];
             const std::size_t re = schur_row_offsets_[i + 1];
@@ -518,9 +522,13 @@ private:
                 const std::size_t pivot_pos = find_position(j, j);
                 if (pivot_pos == schur_columns_.size()) return false;
                 const double pivot = schur_ilu_values_[pivot_pos];
+                double row_scale = 0.0;
+                for (std::size_t k = schur_row_offsets_[i];
+                     k < schur_row_offsets_[i + 1]; ++k)
+                    row_scale = std::max(row_scale, std::abs(schur_ilu_values_[k]));
                 const double pivot_floor =
                     128.0 * std::numeric_limits<double>::epsilon() *
-                    std::max(matrix_scale, std::abs(pivot));
+                    std::max(row_scale, std::abs(pivot));
                 if (!std::isfinite(pivot) || std::abs(pivot) <= pivot_floor)
                     return false;
 
@@ -541,9 +549,13 @@ private:
             const std::size_t diag_pos = find_position(i, i);
             if (diag_pos == schur_columns_.size()) return false;
             const double pivot = schur_ilu_values_[diag_pos];
+            double row_scale = 0.0;
+            for (std::size_t k = schur_row_offsets_[i];
+                 k < schur_row_offsets_[i + 1]; ++k)
+                row_scale = std::max(row_scale, std::abs(schur_ilu_values_[k]));
             const double pivot_floor =
                 128.0 * std::numeric_limits<double>::epsilon() *
-                std::max(matrix_scale, std::abs(pivot));
+                std::max(row_scale, std::abs(pivot));
             if (!std::isfinite(pivot) || std::abs(pivot) <= pivot_floor)
                 return false;
         }
