@@ -992,11 +992,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             x(2*nc + c) = U_old.component_data(2)[c];
             x(nv + c) = p_old(c);
         }
-        JacobiPreconditioner fallback_preconditioner;
+        IdentityPreconditioner identity_fallback;
         std::cerr << "CFDX coupled solver: block/Schur GMRES did not converge; "
-                     "retrying with scalar Jacobi GMRES\\n";
+                     "retrying with identity-preconditioned GMRES\\n";
         result = solve_gmres(
-            A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
+            A, b, x, 256, max_iterations, tolerance, &identity_fallback);
     }
 
     if (result.status != SolverStatus::CONVERGED)
