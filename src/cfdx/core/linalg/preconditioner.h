@@ -309,13 +309,12 @@ public:
             inv_velocity_diag_[j] = 1.0 / std::max(row_scale, 1.0);
         }
 
-        // The coupled FV continuity assembly already contains the
-        // pressure Schur operator used by Rhie-Chow: its A_pp diagonal is
-        // the sum of the positive face pressure-response coefficients D.
-        // Use that discrete pressure operator directly as the Schur
-        // approximation. This is consistent with the segregated pressure
-        // equation and, unlike a purely local G_jc product, does not suffer
-        // cancellation of opposing face-area contributions on Cartesian cells.
+        // The coupled FV continuity rows contain the pressure-pressure
+        // stencil after the Rhie-Chow pressure response is assembled.
+        // For a pure continuity row the diagonal may be absent from the
+        // monolithic matrix, but the off-diagonal pressure coefficients are
+        // -D_f. Their absolute sum is therefore the same positive diagonal
+        // scaling used by the segregated pressure equation.
         for (std::size_t c = 0; c < n_cells_; ++c) {
             const std::size_t pressure_row = nv_ + c;
             const auto [has_pressure_diagonal, pressure_diagonal] =
@@ -325,10 +324,19 @@ public:
             if (has_pressure_diagonal && std::isfinite(pressure_diagonal) &&
                 std::abs(pressure_diagonal) >
                     64.0 * std::numeric_limits<double>::epsilon()) {
-                schur = pressure_diagonal;
+                // Pressure gauge or an explicitly anchored pressure row.
+                schur = std::abs(pressure_diagonal);
             } else {
-                // Conservative algebraic fallback for matrices that expose
-                // no explicit pressure diagonal: approximate -D M^-1 G.
+                for (std::size_t k = row[pressure_row];
+                     k < row[pressure_row + 1]; ++k) {
+                    if (col[k] >= nv_)
+                        schur += std::abs(val[k]);
+                }
+            }
+
+            // Last-resort algebraic Schur estimate for a matrix that has
+            // neither a pressure diagonal nor pressure-pressure neighbours.
+            if (!(schur > 0.0) || !std::isfinite(schur)) {
                 const std::size_t pressure_col = nv_ + c;
                 for (std::size_t kd = row[pressure_row];
                      kd < row[pressure_row + 1]; ++kd) {
@@ -341,13 +349,12 @@ public:
                         if (col[kg] == pressure_col)
                             g += val[kg];
                     }
-                    schur -= val[kd] * inv_velocity_diag_[velocity_col] * g;
+                    schur += std::abs(
+                        val[kd] * inv_velocity_diag_[velocity_col] * g);
                 }
             }
 
-            if (!std::isfinite(schur) ||
-                std::abs(schur) <=
-                    64.0 * std::numeric_limits<double>::epsilon()) {
+            if (!(schur > 0.0) || !std::isfinite(schur)) {
                 if (std::getenv("CFDX_DEBUG_COUPLED"))
                     std::cerr << "COUPLED_SCHUR_SETUP pressure_failure cell=" << c
                               << " has_diag=" << has_pressure_diagonal
