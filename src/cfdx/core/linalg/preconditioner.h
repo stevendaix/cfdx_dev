@@ -493,7 +493,9 @@ public:
         return true;
     }
 
-    const char* name() const override { return "CoupledBlockSchur-ILU0"; }
+    const char* name() const override {
+        return schur_ilu_valid_ ? "CoupledBlockSchur-ILU0" : "CoupledBlockSchur-Diagonal";
+    }
 
 private:
     bool factor_schur_ilu0() {
