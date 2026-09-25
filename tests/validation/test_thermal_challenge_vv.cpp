@@ -294,8 +294,8 @@ int main()
                       << " Tmin=" << Tmin << '\\n';
             EXPECT_TRUE(Tmax>T0);
             EXPECT_TRUE(Tmin>=T0);
-            EXPECT_NEAR(Tmax-T0, T0 + exact_dT_cell - T0,
-                         1e-9*std::max(1.0,exact_dT_cell));
+            EXPECT_NEAR(Tmax-T0, exact_dT_continuous,
+                         1e-9*std::max(1.0,exact_dT_continuous));
             EXPECT_NEAR(generated_power,expected_power,1e-12);
         }
     });
