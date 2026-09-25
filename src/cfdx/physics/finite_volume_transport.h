@@ -115,6 +115,22 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         }
     }
 
+    // Recompute cell geometry after the face vectors have been normalized. This
+    // second pass is required because the first pass may have used an imported
+    // face winding that was inward with respect to the owner.
+    for (std::size_t c = 0; c < nc; ++c) {
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+        const auto cg = compute_cell_geometry_oriented(
+            g.face_centres.data(), g.face_area_vectors.data(),
+            mesh.cells().faces_data() + off, count, static_cast<CellIndex>(c),
+            mesh.ownership());
+        g.cell_centres[c] = cg.centre;
+        g.cell_volumes[c] = cg.volume;
+        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
+            throw std::runtime_error("build_fv_geometry: non-positive cell volume");
+    }
+
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
         for (const auto f : mesh.boundary().patch(p).face_ids) {
             if (f >= nf || mesh.ownership().neighbour(f) >= 0)
