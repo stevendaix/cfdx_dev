@@ -918,12 +918,24 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
-    // The coupled matrix has strongly different momentum and pressure
-    // scales. CellBlockJacobi is a local exact 4x4 block preconditioner;
-    // block-Schur/AMG remains a separate roadmap item.
-    CellBlockJacobiPreconditioner coupled_preconditioner(nc);
+    // The coupled matrix is a saddle-point system. A cell-local 4x4
+    // inverse is generally singular because continuity rows have no
+    // pressure-pressure diagonal, while Identity does not capture the
+    // pressure/velocity coupling. Use an approximate block-LU
+    // preconditioner with a diagonal velocity solve and pressure Schur
+    // complement. Identity remains only as an applicability fallback.
+    CoupledBlockSchurPreconditioner coupled_preconditioner(nc);
     auto result = solve_gmres(
-        A, b, x, 64, max_iterations, tolerance, &coupled_preconditioner);
+        A, b, x, 128, max_iterations, tolerance, &coupled_preconditioner);
+    if (result.status == SolverStatus::NOT_APPLICABLE) {
+        IdentityPreconditioner fallback_preconditioner;
+        if (!fallback_preconditioner.setup(A))
+            return result;
+        std::cerr << "CFDX coupled solver: Schur preconditioner unavailable; "
+                     "falling back to identity-preconditioned GMRES\\n";
+        result = solve_gmres(
+            A, b, x, 128, max_iterations, tolerance, &fallback_preconditioner);
+    }
     if (result.status != SolverStatus::CONVERGED)
         return result;
 
