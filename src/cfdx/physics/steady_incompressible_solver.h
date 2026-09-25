@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <cstddef>
 #include <limits>
@@ -72,6 +71,7 @@ struct IncompressibleSolverControls {
     double pressure_reference_value = 0.0;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
+    DiagnosticsControls diagnostics;
     std::vector<IncompressiblePointProbe> probes;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
@@ -778,8 +778,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area) ||
                     !(D > 0.0) || !std::isfinite(D)) {
-                    const char* debug = std::getenv("CFDX_DEBUG_COUPLED");
-                    if (debug && *debug) {
+                    if (controls.diagnostics.coupled_matrix_summary) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
                                   << " cells=" << c << "/" << ncell
                                   << " area=" << area
@@ -967,8 +966,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Optional algebraic microscope. It is deliberately computed from
     // the exact post-gauge matrix passed to GMRES, so it exposes the actual
     // M/G/D/C blocks rather than reconstructed proxy operators.
-    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
-        (void)debug;
+    if (controls.diagnostics.coupled_matrix_summary) {
         double m2 = 0.0, g2 = 0.0, d2 = 0.0, c2 = 0.0;
         std::size_t zero_rows = 0;
         std::vector<std::size_t> row_nnz(n, 0);
@@ -1085,8 +1083,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
-    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
-        (void)debug;
+    if (controls.diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
@@ -1129,7 +1126,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result.residual_relative = std::numeric_limits<double>::infinity();
         return result;
     }
-    if (std::getenv("CFDX_DEBUG_COUPLED")) {
+    if (controls.diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
                   << coupled_matrix_residual
                   << " relative=" << coupled_matrix_relative
@@ -1261,8 +1258,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
 
-    const char* freeze_state_env = std::getenv("CFDX_FREEZE_STATE");
-    const bool freeze_state = freeze_state_env && std::string(freeze_state_env) == "1";
+    const bool freeze_state = controls.diagnostics.freeze_state_probe;
     Field<double, Location::FACE> phi_used_in_momentum;
     std::array<std::vector<double>, 3> frozen_rAU;
     std::array<std::vector<double>, 3> frozen_hbyA;
@@ -1909,28 +1905,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // CFDX_DEBUG_CELL=auto to inspect the independently reassembled
         // worst-residual cell. The dump is emitted once per algorithm at
         // convergence or at the configured iteration limit.
-        const char* debug_cell_env = std::getenv("CFDX_DEBUG_CELL");
-        bool debug_cell_enabled = false;
-        bool debug_cell_auto = false;
+        const bool debug_cell_auto = controls.diagnostics.debug_cell_auto;
         std::size_t debug_cell = 0;
-        if (debug_cell_env && *debug_cell_env) {
-            try {
-                const std::string value(debug_cell_env);
-                if (value == "auto") {
-                    debug_cell_auto = true;
-                    debug_cell_enabled = true;
-                } else {
-                    std::size_t parsed = 0;
-                    debug_cell = std::stoull(value, &parsed);
-                    debug_cell_enabled =
-                        parsed == value.size() && debug_cell < mesh.n_cells();
-                }
-            } catch (...) {
-                debug_cell_enabled = false;
-            }
-        }
+        const bool debug_cell_enabled =
+            debug_cell_auto ||
+            (controls.diagnostics.debug_cell >= 0 &&
+             static_cast<std::size_t>(controls.diagnostics.debug_cell) < mesh.n_cells());
         if (debug_cell_auto)
             debug_cell = h.momentum_residual_cell;
+        else if (debug_cell_enabled)
+            debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
         const bool converged_now =
             iter >= minimum_outer_correctors && iter > 1 &&
