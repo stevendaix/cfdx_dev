@@ -1,4 +1,5 @@
 #include "cfdx/core/linalg/block_preconditioner.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
 
@@ -29,6 +30,46 @@ int main() {
         EXPECT_NEAR(z(0), 17.0 / 11.0, 1e-12);
         EXPECT_NEAR(z(1), 31.0 / 11.0, 1e-12);
         EXPECT_NEAR(z(2), 72.0 / 23.0, 1e-12);
+        EXPECT_TRUE(std::isfinite(z.norm_inf()));
+    });
+
+
+    run_case("coupled_schur_preserves_pressure_gauge_row", [] {
+        constexpr std::size_t nc = 2;
+        constexpr std::size_t nv = 3 * nc;
+        SparseMatrix A(4 * nc, 4 * nc);
+
+        // Momentum block: positive diagonal, with a pressure gradient coupling
+        // on the x-momentum equations.
+        for (std::size_t i = 0; i < nv; ++i)
+            A.push_back(i, i, 2.0 + static_cast<double>(i % 3));
+        A.push_back(0, nv + 0,  1.0);
+        A.push_back(0, nv + 1,  0.5);
+        A.push_back(3, nv + 0, -0.5);
+        A.push_back(3, nv + 1, -1.0);
+
+        // Reference pressure row is an exact identity after gauge fixing.
+        A.push_back(nv + 0, nv + 0, 1.0);
+
+        // Second pressure row contains the continuity/Schur coupling.
+        A.push_back(nv + 1, 0,  1.0);
+        A.push_back(nv + 1, 3, -1.0);
+        A.finalize();
+
+        CoupledBlockSchurPreconditioner p(nc);
+        EXPECT_TRUE(p.setup(A));
+
+        Vector r(4 * nc);
+        r.fill(0.0);
+        r(nv + 0) = 7.0;
+        r(nv + 1) = 2.0;
+        Vector z(4 * nc);
+        EXPECT_TRUE(p.apply(r, z));
+
+        // The reference pressure must be passed through unchanged. It must
+        // never be reconstructed from the continuity Schur operation.
+        EXPECT_NEAR(z(nv + 0), 7.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(z(nv + 1)));
         EXPECT_TRUE(std::isfinite(z.norm_inf()));
     });
 
