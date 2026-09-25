@@ -349,6 +349,10 @@ inline ScalarEquation assemble_scalar_equation(
     return eq;
 }
 
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution);
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -368,24 +372,80 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
         if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
             throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
-        const double candidate_value = equation.rhs(0) / diagonal;
-        const double residual = std::abs(diagonal * candidate_value - equation.rhs(0));
-        solution(0) += controls.relaxation * (candidate_value - solution(0));
+
+        // Treat relaxation as an actual fixed-point iteration. The previous
+        // implementation reported CONVERGED from the unrelaxed exact solution
+        // even when the returned value had only been moved part-way toward it.
+        // That made the convergence status inconsistent with the accepted state.
+        const double exact_value = equation.rhs(0) / diagonal;
+        if (!std::isfinite(exact_value))
+            throw std::runtime_error("solve_scalar_equation: non-finite 1x1 solution");
+        double residual = std::abs(diagonal * solution(0) - equation.rhs(0));
+        for (std::size_t iter = 1; iter <= controls.max_iterations; ++iter) {
+            solution(0) += controls.relaxation * (exact_value - solution(0));
+            residual = std::abs(diagonal * solution(0) - equation.rhs(0));
+            if (residual <= controls.tolerance)
+                return {
+                    cfdx::core::SolverStatus::CONVERGED,
+                    iter, residual, residual
+                };
+        }
         return {
-            residual <= controls.tolerance
-                ? cfdx::core::SolverStatus::CONVERGED
-                : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            1, residual, residual
+            cfdx::core::SolverStatus::MAX_ITER_REACHED,
+            controls.max_iterations, residual, residual
         };
     }
 
     cfdx::core::Vector candidate = solution;
+
+    // The Krylov solvers interpret tolerance as a relative residual with
+    // respect to ||b||_2, whereas ScalarSolveControls::tolerance is an
+    // absolute FVM residual target. Convert the requested absolute target
+    // before entering the Krylov cascade; otherwise a large ||b|| can make
+    // BiCGStab stop with an absolute residual orders of magnitude above the
+    // tolerance requested by the energy/momentum solver.
+    double rhs_norm = 0.0;
+    for (std::size_t i = 0; i < equation.rhs.size(); ++i)
+        rhs_norm = std::hypot(rhs_norm, equation.rhs(i));
+    const double krylov_tolerance =
+        std::min(1.0, controls.tolerance / std::max(rhs_norm, controls.tolerance));
+
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+        controls.max_iterations, krylov_tolerance);
     if (solution.size() <= 256)
         std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
-                  << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
+                  << " iter=" << result.iterations << " residual=" << result.residual << '\n';
+
+    // Validate the solver status against the assembled FVM equation. Some
+    // Krylov stopping paths can report CONVERGED from an internal criterion
+    // while the actual backward error is still above the requested tolerance.
+    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
+        const double actual_residual = scalar_equation_residual_inf(equation, candidate);
+        double backward_error = 0.0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            double ri = -equation.rhs(i);
+            double scale = std::abs(equation.rhs(i));
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                const double aij = val[k];
+                const double xj = candidate(col[k]);
+                ri += aij * xj;
+                scale += std::abs(aij * xj);
+            }
+            backward_error = std::max(
+                backward_error,
+                std::abs(ri) / std::max(1.0, scale));
+        }
+        if (!std::isfinite(actual_residual) || !std::isfinite(backward_error) ||
+            backward_error > controls.tolerance) {
+            result.status = cfdx::core::SolverStatus::MAX_ITER_REACHED;
+            result.residual = actual_residual;
+            result.residual_relative = backward_error;
+        }
+    }
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -402,7 +462,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             64, controls.max_iterations, controls.tolerance);
         if (solution.size() <= 256)
             std::cerr << "CFDX solver cascade: gmres status=" << static_cast<int>(result.status)
-                      << " iter=" << result.iterations << " residual=" << result.residual << '\\n';
+                      << " iter=" << result.iterations << " residual=" << result.residual << '\n';
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
@@ -549,6 +609,39 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                     n, residual, residual
                 };
             }
+        }
+    }
+
+    // Accept a numerically converged linear solution using a scaled backward
+    // error as well as the raw residual. For diffusion systems the matrix and RHS
+    // scale with the mesh spacing, so an absolute residual alone can reject a
+    // solution whose algebraic error is already at round-off level.
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        double backward_error = 0.0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                backward_error = std::numeric_limits<double>::infinity();
+                break;
+            }
+            double ri = -equation.rhs(i);
+            double scale = std::abs(equation.rhs(i));
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                const double aij = val[k];
+                const double xj = candidate(col[k]);
+                ri += aij * xj;
+                scale += std::abs(aij * xj);
+            }
+            backward_error = std::max(
+                backward_error,
+                std::abs(ri) / std::max(1.0, scale));
+        }
+        if (std::isfinite(backward_error) && backward_error <= controls.tolerance) {
+            result.status = cfdx::core::SolverStatus::CONVERGED;
+            result.residual = scalar_equation_residual_inf(equation, candidate);
+            result.residual_relative = backward_error;
         }
     }
 

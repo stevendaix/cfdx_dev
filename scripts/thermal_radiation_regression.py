@@ -11,11 +11,16 @@ SUITES = [
     ("s2s_radiation", "test_s2s_radiation_vv"),
     ("model_matrix", "test_thermal_radiation_model_matrix"),
     ("regression_core", "test_thermal_radiation_regression"),
+    ("thermal_challenge", "test_thermal_challenge_vv"),
 ]
 RESULT_RE = re.compile(r"Results:\s+(\d+) passed, (\d+) failed")
 PASS_RE = re.compile(r"^\s*PASS:\s+(.+)$", re.MULTILINE)
 FAIL_RE = re.compile(r"^\s*FAIL:\s+(.+)$", re.MULTILINE)
-MARKER_RE = re.compile(r"^(?:THERMAL|RADIATION)_RESIDUAL:.*$", re.MULTILINE)
+MARKER_RE = re.compile(
+    r"^(?:THERMAL_RESIDUAL|RADIATION_RESIDUAL|THERMAL_RADIATION_RESIDUAL|"
+    r"THERMAL_CHALLENGE|THERMAL_POWER_STUDY|RADIATION_EQUILIBRIUM):.*$",
+    re.MULTILINE,
+)
 REG_RE = re.compile(r"^THERMAL_RADIATION_REGRESSION:.*$", re.MULTILINE)
 
 REQUIRED = {
@@ -25,6 +30,14 @@ REQUIRED = {
     "s2s_radiation": ("RADIATION_RESIDUAL:",),
     "model_matrix": ("THERMAL_RESIDUAL:", "RADIATION_RESIDUAL:"),
     "regression_core": ("THERMAL_RADIATION_REGRESSION:",),
+    "thermal_challenge": (
+        "THERMAL_CHALLENGE:",
+        "THERMAL_POWER_STUDY:",
+        "THERMAL_RESIDUAL:",
+        "THERMAL_RADIATION_RESIDUAL:",
+        "RADIATION_RESIDUAL:",
+        "RADIATION_EQUILIBRIUM:",
+    ),
 }
 
 def run_suite(build_dir, name, executable, log_dir):
