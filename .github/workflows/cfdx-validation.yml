@@ -32,6 +32,8 @@ jobs:
           .venv-validation/bin/python -m pip install -e .
 
       - name: Configure
+        id: configure
+        continue-on-error: true
         run: |
           cmake -S . -B build-validation -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -43,6 +45,8 @@ jobs:
             -DPython3_EXECUTABLE=${{ github.workspace }}/.venv-validation/bin/python
 
       - name: Build validation test suite
+        id: build_validation
+        continue-on-error: true
         run: |
           # Build the complete CTest suite before executing validation labels.
           # This prevents missing executables from being reported as 90+ false
@@ -50,40 +54,54 @@ jobs:
           cmake --build build-validation --parallel 2
 
       - name: Run S2S BVH regression first
+        id: s2s_bvh
+        continue-on-error: true
         run: |
           ctest --test-dir build-validation \
             -R '^test_m1_m4_physics$' \
             --output-on-failure
 
       - name: Run Phase 13 validation tests
+        id: phase13
+        continue-on-error: true
         run: |
           ctest --test-dir build-validation -L phase13 --output-on-failure
 
       - name: Run thermal V&V with residual logs
+        id: thermal_vv
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           ./build-validation/test_thermal_vv 2>&1 | tee build-validation/thermal-vv.log
 
       - name: Run radiation V&V with residual logs
+        id: radiation_vv
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           ./build-validation/test_radiation_vv 2>&1 | tee build-validation/radiation-vv.log
 
       - name: Run S2S radiation V&V with residual logs
+        id: s2s_radiation_vv
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           ./build-validation/test_s2s_radiation_vv 2>&1 | tee build-validation/s2s-radiation-vv.log
 
       - name: Run complete thermal/radiation model matrix
+        id: thermal_radiation_matrix
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           ./build-validation/test_thermal_radiation_model_matrix 2>&1 | tee build-validation/thermal-radiation-model-matrix.log
 
       - name: Run thermal/radiation regression campaign and generate report
+        id: thermal_radiation_regression
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -92,12 +110,16 @@ jobs:
             --output-dir build-validation/thermal-radiation-regression 2>&1 | tee build-validation/thermal-radiation-regression.log
 
       - name: Run thermal challenge and coupled audit
+        id: thermal_challenge
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           ./build-validation/test_thermal_challenge_vv 2>&1 | tee build-validation/thermal-challenge-vv.log
 
       - name: Run Couette residual validation
+        id: couette
+        continue-on-error: true
         if: always()
         run: |
           set -o pipefail
@@ -107,6 +129,7 @@ jobs:
 
       - name: Run campaign driver
         id: campaign
+        continue-on-error: true
         if: always()
         run: |
           .venv-validation/bin/python scripts/run_validation.py \
@@ -116,12 +139,14 @@ jobs:
 
       - name: Full CTest closure gate
         id: full_ctest
+        continue-on-error: true
         if: always()
         run: |
           ctest --test-dir build-validation --output-on-failure
 
       - name: Phase 9 coupled closure gate
         id: phase9_closure
+        continue-on-error: true
         if: always()
         run: |
           set -o pipefail
@@ -130,25 +155,10 @@ jobs:
 
       - name: Run application E2E regression
         id: application_e2e
+        continue-on-error: true
         if: always()
         run: |
           .venv-validation/bin/python -m pytest -q tests/python/test_application_e2e.py
-
-      - name: Final validation decision
-        if: always()
-        run: |
-          echo "campaign=${{ steps.campaign.outcome }}"
-          echo "full_ctest=${{ steps.full_ctest.outcome }}"
-          echo "phase9_closure=${{ steps.phase9_closure.outcome }}"
-          echo "e2e=${{ steps.application_e2e.outcome }}"
-          if [[ "${{ steps.campaign.outcome }}" != "success" ||
-                "${{ steps.full_ctest.outcome }}" != "success" ||
-                "${{ steps.phase9_closure.outcome }}" != "success" ||
-                "${{ steps.application_e2e.outcome }}" != "success" ]]; then
-            echo "CFDX validation closure FAILED"
-            exit 1
-          fi
-          echo "CFDX validation closure PASSED"
 
       - name: Capture complete CTest log
         if: always()
@@ -175,3 +185,42 @@ jobs:
             build-validation/diagnostic-evidence/
             build-validation/thermal-radiation-regression/*
           if-no-files-found: warn
+      - name: Final validation decision
+        if: always()
+        shell: bash
+        run: |
+          echo "=== FINAL CFDX VALIDATION DECISION ==="
+          echo "configure=${{ steps.configure.outcome }}"
+          echo "build=${{ steps.build_validation.outcome }}"
+          echo "s2s_bvh=${{ steps.s2s_bvh.outcome }}"
+          echo "phase13=${{ steps.phase13.outcome }}"
+          echo "thermal_vv=${{ steps.thermal_vv.outcome }}"
+          echo "radiation_vv=${{ steps.radiation_vv.outcome }}"
+          echo "s2s_radiation_vv=${{ steps.s2s_radiation_vv.outcome }}"
+          echo "thermal_radiation_matrix=${{ steps.thermal_radiation_matrix.outcome }}"
+          echo "thermal_radiation_regression=${{ steps.thermal_radiation_regression.outcome }}"
+          echo "thermal_challenge=${{ steps.thermal_challenge.outcome }}"
+          echo "couette=${{ steps.couette.outcome }}"
+          echo "campaign=${{ steps.campaign.outcome }}"
+          echo "full_ctest=${{ steps.full_ctest.outcome }}"
+          echo "phase9_closure=${{ steps.phase9_closure.outcome }}"
+          echo "e2e=${{ steps.application_e2e.outcome }}"
+          if [[ "${{ steps.configure.outcome }}" != "success" ||
+                "${{ steps.build_validation.outcome }}" != "success" ||
+                "${{ steps.s2s_bvh.outcome }}" != "success" ||
+                "${{ steps.phase13.outcome }}" != "success" ||
+                "${{ steps.thermal_vv.outcome }}" != "success" ||
+                "${{ steps.radiation_vv.outcome }}" != "success" ||
+                "${{ steps.s2s_radiation_vv.outcome }}" != "success" ||
+                "${{ steps.thermal_radiation_matrix.outcome }}" != "success" ||
+                "${{ steps.thermal_radiation_regression.outcome }}" != "success" ||
+                "${{ steps.thermal_challenge.outcome }}" != "success" ||
+                "${{ steps.couette.outcome }}" != "success" ||
+                "${{ steps.campaign.outcome }}" != "success" ||
+                "${{ steps.full_ctest.outcome }}" != "success" ||
+                "${{ steps.phase9_closure.outcome }}" != "success" ||
+                "${{ steps.application_e2e.outcome }}" != "success" ]]; then
+            echo "CFDX validation closure FAILED — all diagnostics and artifacts have already been collected."
+            exit 1
+          fi
+          echo "CFDX validation closure PASSED — all diagnostics and artifacts have been collected."

@@ -408,6 +408,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
+    add_cfdx_test(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
     add_cfdx_test(test_mms_scalar_diffusion tests/validation/test_mms_scalar_diffusion.cpp)
     add_cfdx_test(test_mesh_refinement_order tests/validation/test_mesh_refinement_order.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
@@ -432,6 +433,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_thermal_challenge_vv
         test_phase10_turbulence_hardening test_thermophysical_models_vv
         test_analytical_benchmarks test_benchmark_matrix
+        test_poiseuille_diagnostics
         test_level_b_reference_benchmarks test_level_c_coupled_verification
         test_steady_incompressible_solver test_matrix_free_fv_operator
         test_temporal_physics test_core_temporal

@@ -63,14 +63,34 @@ jobs:
           echo "=== Failed build commands ==="
           grep -E 'FAILED:|ninja: build stopped|g\+\+|c\+\+|clang\+\+|nvcc' build.log | tail -n 120 || true
 
-      - name: Run CTest
-        run: ctest --test-dir build --output-on-failure --no-tests=error
+      - name: Run CTest (collect all failures; fail only at final gate)
+        id: ctest
+        continue-on-error: true
+        run: |
+          set +e
+          ctest --test-dir build --output-on-failure --no-tests=error
+          rc=$?
+          echo "CTEST_EXIT_CODE=$rc" | tee ctest.exitcode
+          exit $rc
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
 
+      - name: Print validation diagnostics before final decision
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          echo "=== Validation diagnostic summary ==="
+          if [[ -f ctest.exitcode ]]; then cat ctest.exitcode; fi
+          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
+            echo "=== LastTest.log (tail) ==="
+            tail -n 500 build/Testing/Temporary/LastTest.log
+          fi
+          echo "=== Poiseuille diagnostic marker ==="
+          grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \\(complete list\\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
+
       - name: Upload test logs on failure
-        if: failure()
+        if: ${{ !cancelled() && (steps.build.outcome != 'success' || steps.ctest.outcome != 'success') }}
         uses: actions/upload-artifact@v4
         with:
           name: ctest-${{ matrix.build_type }}-logs
@@ -86,3 +106,18 @@ jobs:
           name: compile-commands
           path: build/compile_commands.json
           if-no-files-found: error
+
+      - name: Final CI gate (fail only after diagnostics/artifacts)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -e
+          build_outcome='${{ steps.build.outcome }}'
+          ctest_outcome='${{ steps.ctest.outcome }}'
+          echo "build outcome: $build_outcome"
+          echo "ctest outcome: $ctest_outcome"
+          if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+          echo "CFDX CI FINAL DECISION: PASS"
