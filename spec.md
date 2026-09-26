@@ -665,11 +665,11 @@ Support de deux formats Fluent :
 .dat   — données de résultats (format binaire/texte)
 ```
 
-**HDF5** (`.cas.h5`) — via le lecteur *offline* de pyfluent (`CaseFile`), aucune licence Fluent requise :
+**HDF5** (`.cas.h5` + `.dat.h5`) — via les lecteurs *offline* de pyfluent (`CaseFile` + `FileSession`), aucune licence Fluent requise :
 
 ```text
-.cas.h5 — maillage HDF5 (extrait via h5py par ansys.fluent.core.filereader.CaseFile)
-.dat.h5 — données de résultats (non supporté — nécessite une licence Fluent pour le FileSession)
+.cas.h5 — maillage HDF5 (via CaseFile, h5py direct)
+.dat.h5 — données de résultats (via FileSession, h5py direct)
 ```
 
 L'adaptateur détecte automatiquement le format via `detect_source()` et route vers le parseur approprié :
@@ -679,7 +679,7 @@ L'adaptateur détecte automatiquement le format via `detect_source()` et route v
 Installation optionnelle :
 
 ```bash
-pip install ansys-fluent-core  # fournit CaseFile pour .cas.h5
+pip install ansys-fluent-core  # fournit CaseFile + FileSession
 ```
 
 ---
