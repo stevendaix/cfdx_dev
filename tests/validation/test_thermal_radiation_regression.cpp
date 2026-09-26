@@ -172,6 +172,16 @@ int main()
         EXPECT_NEAR(2.0*F[1],1.0*F[2],1e-12);
         EXPECT_NEAR(F[0]+F[1],1.0,1e-12);
         EXPECT_NEAR(F[2]+F[3],1.0,1e-12);
+
+        auto degenerate=patches;
+        degenerate[1].area=0.0;
+        bool threw=false;
+        try {
+            (void)estimate_view_factor_matrix(degenerate);
+        } catch (const std::invalid_argument&) {
+            threw=true;
+        }
+        EXPECT_TRUE(threw);
         std::cout << "RADIATION_REGRESSION: estimator_reciprocity=PASS\n";
     });
 
