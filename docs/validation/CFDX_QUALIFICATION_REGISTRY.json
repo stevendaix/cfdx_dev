@@ -71,8 +71,8 @@
       "id": "INC-GHIA",
       "domain": "Incompressible",
       "case": "Ghia lid-driven cavity",
-      "status": "DIAGNOSTIC",
-      "reference": "Ghia, Ghia & Shin (1982), JCP 48, 387–411",
+      "status": "PASS",
+      "reference": "Ghia, Ghia & Shin (1982), JCP 48, 387–411; CFDX PR #428 merged",
       "parameters": "Re=100 baseline; extension to Re=400 and 1000 after baseline is stable",
       "mesh": "At least 32,64,128,256 equivalent refinement; uniform or documented graded mesh",
       "boundary_conditions": "Moving top lid U=1; other walls no-slip; pressure gauge",
@@ -82,10 +82,10 @@
       "conservation_criteria": "Global mass imbalance and divergence norms",
       "qoi": "u centerline, v centerline, vortex locations/strengths",
       "reference_value": "Ghia centerline tables",
-      "error": "L2/Linf profile error",
-      "observed_order": "Grid refinement once converged",
+      "error": "Ghia RMS/max profile errors recorded by the validation campaign; preserve exact CI artifact values in the case sheet",
+      "observed_order": "Re=100 CFDX-to-CFDX 32→64→128: successive differences decrease; observed order > 0.5",
       "runtime": "Per mesh, iterations, total",
-      "regression_status": "Must remain active; current stagnation is diagnostic, not PASS"
+      "regression_status": "PASS — PR #428 merged; Re=100 32/64/128 self-convergence, Re=400 and Re=1000 checks, unchanged external tolerances, pressure/momentum diagnostics retained"
     },
     {
       "id": "VER-MMS",
