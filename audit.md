@@ -61,8 +61,8 @@
 
 1. PISO multi-correcteur, PIMPLE multi-correcteur, Rosseland non linéaire, DOM diffuse-gray, SA fv1, diffusion turbulente cell_diffusion et infrastructure Parallel-HDF5 ne doivent plus être décrits comme absents.
 2. ScalarExtraTerms n'est pas une correction physique nécessaire : extra_rhs + cell_diffusion couvrent déjà le besoin fonctionnel.
-3. B10 reste ouvert tant qu'un véritable Newton champ générique n'est pas implémenté.
-4. C6, C15/C19 et C16 restent ouverts/partiels tant que leur preuve de compilation/exécution n'existe pas.
+3. B10 est maintenant implémenté par le solveur Newton générique sur `Field<CELL>` ; il reste à confirmer par le CI de la tête finale.
+4. C6 dispose maintenant d'un test diagonal 4×4 et C16 d'un test VTU dédié ; C15/C19 restent partiels faute de toolchain/runtime CUDA dans cette campagne.
 5. `ConvectionScheme::TVD` is now connected to the scalar FVM assembly with a monotone MUSCL/minmod limiter; a quantitative TVD benchmark is still required.
 6. The existing non-orthogonal/skew campaign provides quantitative correction/conservation evidence; broader convergence-order evidence remains separate.
 7. Parallel-HDF5 possède une infrastructure conditionnelle, mais ne doit pas être déclaré validé sans un run avec une vraie installation MPI-HDF5.
