@@ -1819,7 +1819,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         constexpr double tiny = 1e-300;
         double velocity_change_inf = 0.0, pressure_change_inf = 0.0;
         double velocity_scale = 0.0;
-        double pressure_scale = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             for (std::size_t d = 0; d < 3; ++d) {
                 velocity_change_inf = std::max(
