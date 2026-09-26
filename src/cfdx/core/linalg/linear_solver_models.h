@@ -46,6 +46,8 @@ enum class PreconditionerModel {
 
 enum class ModelAvailability { Available, Planned };
 
+enum class NullSpaceModel { None, Constant };
+
 struct SolverModelDescriptor {
     const char* name;
     ModelAvailability availability;
@@ -87,6 +89,14 @@ inline const std::array<SolverModelDescriptor, 14>& preconditioner_model_catalog
     return models;
 }
 
+inline const std::array<SolverModelDescriptor, 2>& null_space_model_catalog() {
+    static const std::array<SolverModelDescriptor, 2> models{{
+        {"none", ModelAvailability::Available, false, false},
+        {"constant", ModelAvailability::Available, false, false}
+    }};
+    return models;
+}
+
 inline const char* to_string(LinearProblemKind value) {
     switch (value) {
         case LinearProblemKind::General: return "general";
@@ -107,17 +117,23 @@ inline const char* to_string(PreconditionerModel value) {
     return preconditioner_model_catalog()[static_cast<std::size_t>(value)].name;
 }
 
+inline const char* to_string(NullSpaceModel value) {
+    return null_space_model_catalog()[static_cast<std::size_t>(value)].name;
+}
+
 struct LinearSolverRequest {
     KrylovModel krylov = KrylovModel::Auto;
     PreconditionerModel preconditioner = PreconditionerModel::Auto;
     int gmres_restart = 40;
     bool allow_fallback = false;
+    NullSpaceModel null_space = NullSpaceModel::None;
 };
 
 struct LinearSolverPlan {
     LinearProblemKind problem = LinearProblemKind::General;
     KrylovModel krylov = KrylovModel::GMRES;
     PreconditionerModel preconditioner = PreconditionerModel::Jacobi;
+    NullSpaceModel null_space = NullSpaceModel::None;
     bool automatic_krylov = true;
     bool automatic_preconditioner = true;
     std::string reason;
@@ -152,6 +168,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     plan.automatic_krylov = request.krylov == KrylovModel::Auto;
     plan.automatic_preconditioner =
         request.preconditioner == PreconditionerModel::Auto;
+    plan.null_space = request.null_space;
 
     switch (problem) {
         case LinearProblemKind::PressurePoisson:
@@ -186,6 +203,12 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (!plan.automatic_preconditioner)
         plan.preconditioner = request.preconditioner;
 
+    if (plan.null_space == NullSpaceModel::Constant &&
+        plan.automatic_preconditioner) {
+        plan.preconditioner = PreconditionerModel::Jacobi;
+        plan.reason += "; projected constant null space uses an SPD local preconditioner";
+    }
+
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
                             problem == LinearProblemKind::Diffusion;
     if (plan.krylov == KrylovModel::CG && !cg_problem)
@@ -204,6 +227,15 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (plan.preconditioner == PreconditionerModel::CoupledBlockSchur &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("coupled block Schur requires a pressure-velocity profile");
+    if (plan.null_space == NullSpaceModel::Constant && !cg_problem)
+        throw std::invalid_argument(
+            "constant null space is currently qualified only for pressure/diffusion problems");
+    if (plan.null_space == NullSpaceModel::Constant && plan.krylov != KrylovModel::CG)
+        throw std::invalid_argument("constant null space currently requires projected CG");
+    if (plan.null_space == NullSpaceModel::Constant &&
+        plan.preconditioner == PreconditionerModel::NativeAMG)
+        throw std::invalid_argument(
+            "native AMG does not yet propagate near-null-space vectors; use Jacobi");
     return plan;
 }
 

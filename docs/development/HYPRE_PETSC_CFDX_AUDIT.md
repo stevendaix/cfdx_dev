@@ -43,8 +43,9 @@ names:
 - MPI reductions are not systematically fused or overlapped with useful work;
 - the CUDA Poisson solve allocates and transfers on each call, so it is not a
   device-resident CFD solve;
-- pressure null-space handling is a fixed-cell gauge, not a general null-space
-  projection;
+- local CSR pressure systems can use an explicit orthonormal null-space
+  projector and projected CG, but existing CFD algorithms still use a
+  fixed-cell gauge and distributed pure-Neumann Poisson is not yet connected;
 - the coupled velocity-pressure preconditioner has no scalable LSC/MGR-style
   Schur approximation.
 
@@ -212,6 +213,21 @@ and CPU/GPU solution error. Small problems should remain on CPU when transfer
 and launch overhead wins.
 
 ## Prioritized implementation slices
+
+### Implemented foundation
+
+- reusable GMRES workspace/context and native AMG numeric hierarchy refresh;
+- typed equation-specific Krylov/preconditioner selection;
+- explicit constant or multi-vector null-space projection for local CSR
+  systems, including basis orthonormalization, operator-mode validation,
+  incompatible-RHS rejection and a canonical projected-CG gauge;
+- `NullSpaceModel::Constant` selection for pressure/diffusion problems, with
+  conservative Jacobi policy until AMG near-null-space propagation is
+  implemented.
+
+The null-space API is currently host-local. MPI and GPU capability flags remain
+disabled; the distributed pressure solver and CUDA Poisson path must be wired
+and validated before those capabilities are advertised.
 
 ### P0: correctness and reusable lifecycle
 

@@ -13,6 +13,7 @@
 #include "vector.h"
 #include "mixed_precision.h"
 #include "krylov_reductions.h"
+#include "null_space.h"
 #include "preconditioner.h"
 #include <cstddef>
 #include <stdexcept>
@@ -64,7 +65,8 @@ inline SolverResult solve_cg_impl(
     double tolerance,
     PrecisionPolicy precision,
     KrylovReductionPolicy reduction,
-    Preconditioner* preconditioner)
+    Preconditioner* preconditioner,
+    const NullSpaceProjector* null_space)
 {
     SolverResult result;
 
@@ -81,6 +83,14 @@ inline SolverResult solve_cg_impl(
         return result;
     }
 
+    if (null_space &&
+        (null_space->dimension() != A.n_rows() ||
+         !null_space->is_compatible(b) ||
+         !null_space->is_null_space(A))) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
     const std::size_t n = A.n_rows();
     for (std::size_t k = 0; k < A.nnz(); ++k)
         if (!std::isfinite(A.values_data()[k])) {
@@ -92,6 +102,7 @@ inline SolverResult solve_cg_impl(
             result.status = SolverStatus::DIVERGED;
             return result;
         }
+    if (null_space) null_space->remove(x);
     const double* Av = A.values_data();
     const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
     const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
@@ -124,6 +135,7 @@ inline SolverResult solve_cg_impl(
     // r = b - A x
     std::vector<double> r(n);
     Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
+    if (null_space) null_space->remove(rv);
     for (std::size_t i=0;i<n;++i) r[i]=rv(i);
 
     // z = M^{-1} r
@@ -138,6 +150,7 @@ inline SolverResult solve_cg_impl(
         } else {
             for (std::size_t i = 0; i < n; ++i) z[i] = r[i] / M[i];
         }
+        if (null_space) null_space->remove(z);
         for (const double value : z)
             if (!std::isfinite(value)) return false;
         return true;
@@ -182,6 +195,7 @@ inline SolverResult solve_cg_impl(
             }
             Ap[i] = sum;
         }
+        if (null_space) null_space->remove(Ap);
 
         // alpha = rsold / (p · Ap)
         Vector p_vector(n), Ap_vector(n);
@@ -203,6 +217,10 @@ inline SolverResult solve_cg_impl(
         for (std::size_t i = 0; i < n; ++i) {
             x(i) += alpha * p[i];
             r[i] -= alpha * Ap[i];
+        }
+        if (null_space) {
+            null_space->remove(x);
+            null_space->remove(r);
         }
 
         for (std::size_t i = 0; i < n; ++i)
@@ -244,6 +262,7 @@ inline SolverResult solve_cg_impl(
         for (std::size_t i = 0; i < n; ++i) {
             p[i] = z[i] + beta * p[i];
         }
+        if (null_space) null_space->remove(p);
 
         rsold = rsnew;
     }
@@ -266,7 +285,7 @@ inline SolverResult solve_cg(
     KrylovReductionPolicy reduction = {})
 {
     return detail::solve_cg_impl(
-        A, b, x, max_iter, tolerance, precision, reduction, nullptr);
+        A, b, x, max_iter, tolerance, precision, reduction, nullptr, nullptr);
 }
 
 inline SolverResult solve_cg(
@@ -280,7 +299,37 @@ inline SolverResult solve_cg(
     KrylovReductionPolicy reduction = {})
 {
     return detail::solve_cg_impl(
-        A, b, x, max_iter, tolerance, precision, reduction, &preconditioner);
+        A, b, x, max_iter, tolerance, precision, reduction, &preconditioner, nullptr);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    const NullSpaceProjector& null_space,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction, nullptr, &null_space);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    const NullSpaceProjector& null_space,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, &null_space);
 }
 
 }  // namespace core

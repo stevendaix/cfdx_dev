@@ -259,6 +259,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/linear_solver_context.h
     src/cfdx/core/linalg/linear_solver_models.h
     src/cfdx/core/linalg/linear_solver_dispatch.h
+    src/cfdx/core/linalg/null_space.h
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
@@ -369,6 +370,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_vector tests/unit/test_vector.cpp)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
+    add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
     add_cfdx_test(test_krylov_preconditioning tests/unit/test_krylov_preconditioning.cpp)
