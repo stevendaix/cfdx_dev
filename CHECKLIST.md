@@ -8,19 +8,25 @@ Legende : [ ] a faire / [~] en cours / [x] fait
 
 ## Phase 0 — Data model
 
-- [ ] Creer un `case.cfdx.h5` minimal
-- [ ] Recharger le fichier
-- [ ] Reconstruire le mesh depuis le fichier
-- [ ] Reconstruire les fields
-- [ ] Calculer les hashes (topology, mesh, case)
-- [ ] Verifier l'integrite
+- [x] Creer un `case.cfdx.h5` minimal (via pipeline.py)
+- [x] Recharger le fichier (via pipeline.py)
+- [x] Reconstruire le mesh depuis le fichier
+- [x] Reconstruire les fields
+- [x] Calculer les hashes (topology, mesh, case)
+- [x] Verifier l'integrite (case_setup.json validates)
 
 ## Phase 1 — Import
 
-- [ ] Import OpenFOAM (constant/polyMesh : points, faces, owner, neighbour, boundary)
-- [ ] Import Gmsh (.msh)
-- [ ] Import meshio (.vtu, etc.)
-- [ ] Pipeline commun de normalisation
+- [x] Import OpenFOAM (constant/polyMesh : points, faces, owner, neighbour, boundary)
+- [x] Import Gmsh (.msh)
+- [x] Import meshio (.vtu, etc.)
+- [x] Import Fluent legacy ASCII (.cas/.dat)
+- [x] Import Fluent HDF5 (.cas.h5) via pyfluent CaseFile (no license)
+- [x] Import STAR-CCM+ (.sim) — metadata extraction only, topology blocked
+- [x] Import SU2 (.su2/.cfg)
+- [x] Import Code_Saturne (.xml/.py) — config import, mesh requires neutral export
+- [x] Pipeline commun de normalisation
+- [x] Gap Analysis reporting (Markdown + JSON)
 
 ## Phase 2 — Geometry
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Case name="saturne_test">
+  <model physics_model="navier_stokes" turbulence_model="KEPSILON" energy_model="yes" transient="no">
+    <material name="air" density="1.225" viscosity="1.789e-5"/>
+  </model>
+  <boundary_conditions>
+    <boundary name="inlet" type="inlet"/>
+    <boundary name="outlet" type="outlet"/>
+    <boundary name="wall" type="wall"/>
+    <boundary name="symmetry" type="symmetry"/>
+    <boundary name="far_field" type="far_field"/>
+  </boundary_conditions>
+  <numerics>
+    <conv_scheme>momentum=second_order</conv_scheme>
+    <pressure_scheme>standard</pressure_scheme>
+    <under_relaxation momentum="0.7" pressure="0.3"/>
+  </numerics>
+</Case>

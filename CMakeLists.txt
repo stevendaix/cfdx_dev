@@ -124,6 +124,12 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/vtu/vtu_writer.cpp
     src/cfdx/io/openfoam/openfoam_importer.cpp
     src/cfdx/io/gmsh/gmsh_importer.cpp
+    src/cfdx/io/cfdx_io/gap_analysis.cpp
+    src/cfdx/io/cfdx_io/mapping_rules.cpp
+    src/cfdx/io/su2/su2_adapter.cpp
+    src/cfdx/io/fluent/fluent_adapter.cpp
+    src/cfdx/io/starccm/starccm_adapter.cpp
+    src/cfdx/io/saturne/saturne_adapter.cpp
 )
 
 # Physics sources
@@ -291,5 +297,12 @@ if(CFDX_BUILD_TESTS)
 
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
+
+    # I/O adapter tests (M0.10-T03)
+    add_cfdx_test(test_su2_adapter tests/unit/test_su2_adapter.cpp)
+    add_cfdx_test(test_fluent_adapter tests/unit/test_fluent_adapter.cpp)
+    add_cfdx_test(test_starccm_adapter tests/unit/test_starccm_adapter.cpp)
+    add_cfdx_test(test_saturne_adapter tests/unit/test_saturne_adapter.cpp)
+    add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()

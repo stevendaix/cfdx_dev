@@ -654,6 +654,52 @@ Le cœur CFDX ne doit jamais dépendre de l'objet `meshio.Mesh`.
 
 ---
 
+# 23. Fluent importer
+
+Support de deux formats Fluent :
+
+**ASCII legacy** (`.cas` / `.dat`) — parseur S-expression pur, aucune dépendance externe :
+
+```text
+.cas   — maillage (S-expression Lisp style)
+.dat   — données de résultats (format binaire/texte)
+```
+
+**HDF5** (`.cas.h5`) — via le lecteur *offline* de pyfluent (`CaseFile`), aucune licence Fluent requise :
+
+```text
+.cas.h5 — maillage HDF5 (extrait via h5py par ansys.fluent.core.filereader.CaseFile)
+.dat.h5 — données de résultats (non supporté — nécessite une licence Fluent pour le FileSession)
+```
+
+L'adaptateur détecte automatiquement le format via `detect_source()` et route vers le parseur approprié :
+- Si le fichier se termine par `.cas.h5` → utilise `CaseFile` de pyfluent (optionnel)
+- Sinon → parseur ASCII legacy
+
+Installation optionnelle :
+
+```bash
+pip install ansys-fluent-core  # fournit CaseFile pour .cas.h5
+```
+
+---
+
+# 23b. Adaptateurs solveurs externes (issue #425)
+
+Adaptateurs additionnels implémentés :
+
+| Solveur | Format | Parseur | Licence requise |
+|---------|--------|---------|-----------------|
+| STAR-CCM+ | `.sim` | Extraction de chaînes ASCII (scan binaire sûr) | Non |
+| SU2 | `.su2` / `.cfg` | Parseur texte pur | Non |
+| Code_Saturne | `.xml` / `.py` | Parseur XML + Python (regex) | Non |
+
+STAR-CCM+ : le format `.sim` est binaire propriétaire. L'adaptateur effectue un *scan binaire sûr* pour extraire les métadonnées (noms de régions, matériaux, paramètres physiques) mais ne reconstruit pas la topologie du maillage. Rapport d'écart généré automatiquement.
+
+Code_Saturne : l'adaptateur parse les fichiers de configuration XML et Python (`case.set()`, `case.set_*`) pour extraire BCs, matériaux, paramètres physiques. L'import du maillage nécessite une étape d'export vers un format neutre (MED/CGNS/VTK) — signalé dans le rapport d'écart.
+
+---
+
 # 24. Fields
 
 Les champs sont génériques.

@@ -1,0 +1,196 @@
+# CFDX — Solver I/O Mapping Rules
+# Version: 1.0
+# Externalised mapping from vendor-specific strings to CFDX internal taxonomies.
+# These rules can be overridden at runtime; see cfdx::io::MappingRules::load_from_file().
+# ---------------------------------------------------------------------------
+
+# --- Boundary condition type mappings ---
+bc:
+  # Fluent
+  "velocity-inlet": INLET
+  "mass-flow-inlet": INLET
+  "pressure-inlet": INLET
+  "pressure-outlet": PRESSURE_OUTLET
+  "outflow": OUTLET
+  "wall": WALL
+  "symmetry": SYMMETRY
+  "periodic": PERIODIC
+  "interface": INTERFACE
+  "degenerate": EMPTY
+  "internal": INTERNAL
+  "slip-wall": WALL
+
+  # OpenFOAM
+  "fixedValue": INLET
+  "fixedValueOutlet": OUTLET
+  "zeroGradient": INLET
+  "inlet": INLET
+  "outlet": OUTLET
+  "wall": WALL
+  "symmetryPlane": SYMMETRY
+  "symmetry": SYMMETRY
+  "empty": EMPTY
+  "processor": INTERFACE
+  "overset": INTERFACE
+
+  # SU2
+  " inlet": INLET
+  "outlet": PRESSURE_OUTLET
+  "wall": WALL
+  "symmetry": SYMMETRY
+  "periodic": PERIODIC
+  "interface": INTERFACE
+  "far": OUTLET
+  "neumann": OUTLET
+
+  # STAR-CCM+
+  "Inlet": INLET
+  "Pressure Outlet": PRESSURE_OUTLET
+  "Outlet": OUTLET
+  "Wall": WALL
+  "Symmetry": SYMMETRY
+  "Periodic": PERIODIC
+  "Interface": INTERFACE
+  "Free Stream": INLET
+  "Opening": PRESSURE_OUTLET
+
+  # Code_Saturne
+  "inlet": INLET
+  "outlet": OUTLET
+  "wall": WALL
+  "symmetry": SYMMETRY
+  "periodic": PERIODIC
+  "interface": INTERFACE
+  "far_field": OUTLET
+  "opening": PRESSURE_OUTLET
+
+# --- BC value type mappings ---
+bcvt:
+  "velocity-inlet": FIXED
+  "mass-flow-inlet": FIXED
+  "pressure-inlet": FIXED
+  "pressure-outlet": OUTLET_PRESSURE
+  "outflow": ZERO_GRADIENT
+  "wall": WALL_NO_SLIP
+  "symmetry": ZERO_GRADIENT
+  "periodic": MIXED
+  "interface": MIXED
+  "fixedValue": FIXED
+  "zeroGradient": ZERO_GRADIENT
+  "mixed": MIXED
+  "outletInlet": OUTLET_PRESSURE
+  "inletOutlet": FIXED
+  "inlet": FIXED
+  "outlet": ZERO_GRADIENT
+  "Inlet": FIXED
+  "Pressure Outlet": OUTLET_PRESSURE
+  "Outlet": ZERO_GRADIENT
+  "Wall": WALL_NO_SLIP
+  "Symmetry": ZERO_GRADIENT
+  "Periodic": MIXED
+  "Interface": MIXED
+  "far_field": FIXED
+  "opening": OUTLET_PRESSURE
+
+# --- Turbulence model mappings ---
+turbulence:
+  # Fluent
+  "ke-realizable-viscous": realizable_ke
+  "ke-standard-viscous": k_epsilon
+  "ke-pseudo-viscous": k_epsilon
+  "kw-viscous": k_omega_sst
+  "mixing-length": mixing_length
+  "transition-to-turbulence": transition
+  "sST-ko-Transport": k_omega_sst
+
+  # OpenFOAM
+  "kEpsilon": k_epsilon
+  "kOmegaSST": k_omega_sst
+  "kOmega": k_omega
+  "realizableKE": realizable_ke
+  "LRR": reynolds_stress
+  "Boussinesq": buoyant
+
+  # SU2
+  "NONE": laminar
+  "SA": spalart_allmaras
+  "SST_SUTHERLAND": k_omega_sst
+  "SA_NTS": spalart_allmaras_nts
+
+  # STAR-CCM+
+  "k-Epsilon": k_epsilon
+  "k-Omega SST": k_omega_sst
+  "Spalart-Allmaras": spalart_allmaras
+  "Laminar": laminar
+  "Realizable k-Epsilon": realizable_ke
+
+  # Code_Saturne
+  "KEPSILON": k_epsilon
+  "KEPSIL": k_epsilon
+  "KOMEGA": k_omega
+  "K-OMEGA-SST": k_omega_sst
+  "SPALART-ALLMARAS": spalart_allmaras
+  "LES": LES
+  "RANS": RANS
+
+# --- Numerical scheme mappings ---
+schemes:
+  # Fluent
+  "first-order": first_order
+  "second-order-upwind": second_order_upwind
+  "third-order-muscle": third_order_muscle
+  "MUSCL": MUSCL
+  "PRESTO!": PRESTO
+  "STANDARD": standard
+  "body-force-weighted": body_force_weighted
+  "phase-coupled SIMPLE": coupled
+
+  # OpenFOAM
+  "Gauss linear": linear
+  "Gauss linearUpwind": linear_upwind
+  "Gauss upwind": upwind
+  "Gauss limited": limited
+  "Gauss LUST": LUST
+
+  # SU2
+  "GREEN_GAUSS_CELL_VOLUME": green_gauss_cell
+  "LEAST_CONSERVATIVE": least_squares
+
+# --- Patch type mappings ---
+# Values correspond to cfdx::core::PatchType enum:
+#   WALL=0, INLET=1, OUTLET=2, SYMMETRY=3, PERIODIC=4, INTERFACE=5, EMPTY=6, UNKNOWN=7
+patches:
+  # Fluent
+  "wall": 0
+  "velocity-inlet": 1
+  "pressure-inlet": 1
+  "mass-flow-inlet": 1
+  "pressure-outlet": 2
+  "outflow": 2
+  "symmetry": 3
+  "periodic": 4
+  "interface": 5
+  "degenerate": 6
+  "internal": 5
+
+  # OpenFOAM
+  "mappedWall": 0
+  "inlet": 1
+  "outlet": 2
+  "symmetryPlane": 3
+  "empty": 6
+  "processor": 5
+  "overset": 5
+
+  # STAR-CCM+
+  "Wall": 0
+  "Inlet": 1
+  "Pressure Outlet": 2
+  "Outlet": 2
+  "Symmetry": 3
+  "Periodic": 4
+  "Interface": 5
+
+  # Code_Saturne
+  "far_field": 7
+  "opening": 2

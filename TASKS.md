@@ -4,8 +4,6 @@ Dernière mise à jour : 2026-09-19
 
 ## À faire
 
-- [ ] Phase 0 — Data model (Case, Mesh, Field, BoundaryField, HDF5, Hash)
-- [ ] Phase 1 — Import (OpenFOAM, Gmsh, meshio)
 - [ ] Phase 2 — Geometry (face/cell geometry, quality, validation)
 - [ ] Phase 3 — Operators (gradient, interpolation, divergence, laplacien, flux)
 - [ ] Phase 4 — Scalar solver (Poisson, Laplace)
@@ -30,3 +28,14 @@ Dernière mise à jour : 2026-09-19
 - [x] `SPEC_GUIDE.md` — guide de la spécification
 - [x] `CHECKLIST.md` — checklist complète des tâches
 - [x] `TASKS.md` — suivi des tâches (ce fichier)
+- [x] Phase 0 — Data model (Case, Mesh, Field, BoundaryField, HDF5, Hash)
+- [x] Phase 1 — Import (OpenFOAM, Gmsh, meshio, Fluent .cas/.dat, Fluent .cas.h5 via pyfluent, STAR-CCM+, SU2, Code_Saturne)
+- [x] Unified solver I/O converters (issue #425) — C++ headers + Python adapters
+- [x] Gap Analysis reporting (Markdown + JSON, no silent fallbacks)
+- [x] Fluent .cas.h5 support via pyfluent CaseFile (offline, no license required)
+- [x] SU2 adapter — real test case files from SU2 TestCases repo
+- [x] STAR-CCM+ adapter — documented binary .sim scanning with GapAnalysis
+- [x] Code_Saturne adapter — XML + Python setup parsing with GapAnalysis
+- [x] 65 Python unit tests (all passing)
+- [x] C++ unit tests written (test_su2_adapter, test_fluent_adapter, test_starccm_adapter, test_saturne_adapter, test_gap_analysis)
+- [x] requirements.txt for Python I/O package dependencies
