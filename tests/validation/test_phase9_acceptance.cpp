@@ -359,6 +359,9 @@ int main()
         // mesh the exact discrete maximum is (16 - 0.5) / 16 = 0.96875.
         // These gates must therefore be tight enough to detect a biased
         // discretisation or an incompletely converged segregated solve.
+        // Algorithm invariance is a physical-equivalence gate, not merely a
+        // smoke test: the coupling algorithm must agree with SIMPLE to 1e-5
+        // in the cell-centred velocity field.
         constexpr double profile_l2_tolerance = 1.0e-6;
         constexpr double profile_linf_tolerance = 1.0e-6;
         constexpr double couette_umax_exact = (16.0 - 0.5) / 16.0;
@@ -566,7 +569,7 @@ int main()
                 std::cout << "ALGORITHM_INVARIANCE model=" << successful_models[k]
                           << " vs=" << successful_models.front()
                           << " max_abs_dU=" << max_du << "\n";
-                if (!(max_du < 5.0e-2))
+                if (!(max_du < 1.0e-5))
                     failed_models.push_back(
                         successful_models[k] + ":algorithm_invariance");
             }
