@@ -65,7 +65,7 @@ try:
 
     print(
         "VMFL036_MESH: PASS "
-        f"nodes={gmsh.model.mesh.getNodes()[0].size} "
+        f"nodes={len(gmsh.model.mesh.getNodes()[0])} "
         f"surfaces={len(surfaces)} "
         f"sphere_faces={len(groups['sphere'])}"
     )
