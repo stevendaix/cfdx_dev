@@ -1829,8 +1829,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 velocity_scale = std::max(
                     velocity_scale, std::abs(U.component_data(d)[c]));
             }
-            pressure_change_inf = std::max(
-                pressure_change_inf, std::abs(p(c)-p_old(c)));
+            const double pressure_delta = has_fixed_pressure_boundary
+                ? std::abs(p(c) - p_old(c))
+                : std::abs((p(c) - p(controls.pressure_reference_cell)) -
+                            (p_old(c) - p_old(controls.pressure_reference_cell)));
+            pressure_change_inf = std::max(pressure_change_inf, pressure_delta);
             pressure_min = std::min(pressure_min, p(c));
             pressure_max = std::max(pressure_max, p(c));
         }
