@@ -481,6 +481,17 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
     add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
 
+    # Engineering qualification registry contract. This is intentionally a
+    # metadata gate: numerical qualification remains the responsibility of
+    # the executable case and its retained calculation evidence.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_cfdx_qualification_registry
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_qualification_registry.py
+                    ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
+        set_tests_properties(test_cfdx_qualification_registry PROPERTIES
+            LABELS "qualification;validation")
+    endif()
+
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
     set_tests_properties(test_mms_scalar_diffusion
