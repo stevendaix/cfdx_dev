@@ -103,9 +103,9 @@ inline SolverResult solve_newton_field(
         LinearOperator op;
         op.size = n;
         op.apply = [&jacobian](const Vector& x, Vector& y) {
-            const Vector product = jacobian.matvec(x);
+            const auto product = jacobian.matvec(x);
             for (std::size_t i = 0; i < product.size(); ++i)
-                y(i) = product(i);
+                y(i) = product[i];
         };
         const auto linear = solve_gmres(
             op, rhs, delta, controls.gmres_restart, controls.linear_max_iterations,
