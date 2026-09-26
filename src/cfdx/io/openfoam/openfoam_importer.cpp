@@ -66,22 +66,32 @@ struct Cursor {
         p=q; v=x; return true;
     }
 };
-bool read_declared_count(const std::string& text, std::size_t& count) {
-    const auto pos=text.find('\n');
-    const char* b=text.data(); const char* e=b+text.size();
+bool read_declared_list(const std::string& text,
+                        std::size_t& count,
+                        std::size_t& list_pos) {
+    const char* b=text.data();
+    const char* e=b+text.size();
     Cursor c{b,e};
     while(c.p<c.end) {
-        c.ws(); std::size_t v=0;
-        if(c.size(v)) { c.ws(); if(c.p<c.end && *c.p=='(') { count=v; return true; } }
+        c.ws();
+        std::size_t v=0;
+        if(c.size(v)) {
+            c.ws();
+            if(c.p<c.end && *c.p=='(') {
+                count=v;
+                list_pos=static_cast<std::size_t>(c.p-b);
+                return true;
+            }
+        }
         while(c.p<c.end && *c.p!='\n') ++c.p;
     }
-    (void)pos; return false;
+    return false;
 }
 bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3>& points) {
     std::string text; if(!read_text(path,text)) return false;
-    std::size_t declared=0; if(!read_declared_count(text,declared) || declared==0) return false;
-    const auto pos=text.find('(', text.find(std::to_string(declared)));
-    if(pos==std::string::npos) return false;
+    std::size_t declared=0, list_pos=0;
+    if(!read_declared_list(text,declared,list_pos) || declared==0) return false;
+    const auto pos=list_pos;
     Cursor c{text.data()+pos,text.data()+text.size()};
     if(!c.expect('(')) return false;
     points.clear(); points.reserve(declared);
@@ -98,9 +108,9 @@ bool read_points(const std::filesystem::path& path, std::vector<cfdx::core::Vec3
 }
 bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t>& values) {
     std::string text; if(!read_text(path,text)) return false;
-    std::size_t declared=0; if(!read_declared_count(text,declared)) return false;
-    const auto pos=text.find('(', text.find(std::to_string(declared)));
-    if(pos==std::string::npos) return false;
+    std::size_t declared=0, list_pos=0;
+    if(!read_declared_list(text,declared,list_pos)) return false;
+    const auto pos=list_pos;
     Cursor c{text.data()+pos,text.data()+text.size()}; if(!c.expect('(')) return false;
     values.clear(); values.reserve(declared);
     for(std::size_t i=0;i<declared;++i) { std::int64_t v; if(!c.i64(v)) return false; values.push_back(v); }
@@ -114,9 +124,9 @@ bool read_label_list(const std::filesystem::path& path, std::vector<std::int64_t
 }
 bool read_faces(const std::filesystem::path& path,std::vector<std::vector<std::uint32_t>>& faces) {
     std::string text; if(!read_text(path,text)) return false;
-    std::size_t declared=0; if(!read_declared_count(text,declared)||declared==0) return false;
-    const auto pos=text.find('(', text.find(std::to_string(declared)));
-    if(pos==std::string::npos) return false;
+    std::size_t declared=0, list_pos=0;
+    if(!read_declared_list(text,declared,list_pos) || declared==0) return false;
+    const auto pos=list_pos;
     Cursor c{text.data()+pos,text.data()+text.size()}; if(!c.expect('(')) return false;
     faces.clear(); faces.reserve(declared);
     for(std::size_t i=0;i<declared;++i) {
