@@ -7,6 +7,75 @@
 namespace cfdx::physics {
 enum class AdvancedTurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, WALE, DYNAMIC_KEQN, DES, DDES, IDDES };
 enum class TurbulenceImplementationKind { CLOSURE, TRANSPORT_MODEL };
+struct RealizableKEpsilonInvariants {
+    double strain_magnitude=0.0;
+    double rotation_magnitude=0.0;
+    double third_invariant=0.0;
+};
+
+inline double realizable_kepsilon_cmu_from_invariants(
+    const RealizableKEpsilonInvariants& inv,
+    double k, double epsilon, double A0=4.04)
+{
+    if(!std::isfinite(inv.strain_magnitude) || !std::isfinite(inv.rotation_magnitude) ||
+       !std::isfinite(inv.third_invariant) || inv.strain_magnitude<0.0 ||
+       inv.rotation_magnitude<0.0 || k<0.0 || epsilon<=0.0 || A0<=0.0)
+        throw std::invalid_argument("invalid realizable k-epsilon inputs");
+    const double S2=std::max(inv.strain_magnitude*inv.strain_magnitude,1e-30);
+    const double W=std::clamp(inv.third_invariant,-1.0/std::sqrt(6.0),1.0/std::sqrt(6.0));
+    const double phi=std::acos(std::clamp(std::sqrt(6.0)*W,-1.0,1.0))/3.0;
+    const double As=std::sqrt(6.0)*std::cos(phi);
+    const double Ustar=std::sqrt(S2+inv.rotation_magnitude*inv.rotation_magnitude);
+    const double denom=A0+As*Ustar*k/std::max(epsilon,1e-300);
+    if(!(denom>0.0) || !std::isfinite(denom))
+        throw std::domain_error("realizable k-epsilon Cmu denominator is invalid");
+    return 1.0/denom;
+}
+
+inline double rng_kepsilon_c1_star(
+    double eta, double C1=1.42, double eta0=4.38, double beta=0.012)
+{
+    if(!std::isfinite(eta) || eta<0.0 || C1<=0.0 || eta0<=0.0 || beta<=0.0)
+        throw std::invalid_argument("invalid RNG k-epsilon inputs");
+    return C1-eta*(1.0-eta/eta0)/(1.0+beta*eta*eta*eta);
+}
+
+struct SSTBlendedCoefficients {
+    double sigma_k=0.0;
+    double sigma_omega=0.0;
+    double beta=0.0;
+    double gamma=0.0;
+};
+
+inline SSTBlendedCoefficients sst_blended_coefficients(
+    double F1,
+    double sigma_k1, double sigma_k2,
+    double sigma_w1, double sigma_w2,
+    double beta1, double beta2,
+    double gamma1, double gamma2)
+{
+    if(!std::isfinite(F1) || F1<0.0 || F1>1.0)
+        throw std::invalid_argument("SST F1 must lie in [0,1]");
+    const double f=std::clamp(F1,0.0,1.0);
+    return {
+        f*sigma_k1+(1.0-f)*sigma_k2,
+        f*sigma_w1+(1.0-f)*sigma_w2,
+        f*beta1+(1.0-f)*beta2,
+        f*gamma1+(1.0-f)*gamma2
+    };
+}
+
+enum class TurbulenceWallRegime { VISCOSITY_AFFECTED, BUFFER, LOG_LAYER };
+
+inline TurbulenceWallRegime classify_wall_y_plus(double y_plus)
+{
+    if(!std::isfinite(y_plus) || y_plus<0.0)
+        throw std::invalid_argument("wall y+ must be finite and non-negative");
+    if(y_plus<=5.0) return TurbulenceWallRegime::VISCOSITY_AFFECTED;
+    if(y_plus<30.0) return TurbulenceWallRegime::BUFFER;
+    return TurbulenceWallRegime::LOG_LAYER;
+}
+
 struct TurbulenceModelDescriptor {
  AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
  TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
@@ -40,7 +109,10 @@ inline void validate_turbulence_model_coefficients(const TurbulenceModelCoeffici
 }
 inline double k_epsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){if(k<0||epsilon<=0||Cmu<=0||!std::isfinite(k)||!std::isfinite(epsilon))throw std::invalid_argument("k-epsilon invalid inputs");return Cmu*k*k/epsilon;}
 inline double rng_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.0845){return k_epsilon_eddy_viscosity(k,epsilon,Cmu);}
-inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){return k_epsilon_eddy_viscosity(k,epsilon,Cmu);}
+inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){
+ if(k<0||epsilon<=0||Cmu<=0||!std::isfinite(k)||!std::isfinite(epsilon)) throw std::invalid_argument("realizable k-epsilon invalid inputs");
+ return Cmu*k*k/epsilon;
+}
 inline double komega_eddy_viscosity(double k,double omega,double betaStar=.09){if(k<0||omega<=0||betaStar<=0||!std::isfinite(k)||!std::isfinite(omega))throw std::invalid_argument("k-omega invalid inputs");return k/omega;}
 inline double sst_eddy_viscosity(double k,double omega,double strain,double a1=.31,double F2=1.0){
  if(k<0||omega<=0||strain<0||a1<=0||!std::isfinite(F2)||F2<0.0||F2>1.0)
