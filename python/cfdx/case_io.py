@@ -43,8 +43,8 @@ def _canonical_case_hash(case_data: dict, mesh_hash: str | None = None) -> str:
 
 def _validate_path(path: Path) -> Path:
     path = Path(path)
-    if path.suffix.lower() != ".h5":
-        raise ValueError("CFDX case must use an .h5 file")
+    if not path.name.lower().endswith(".cfdx.h5"):
+        raise ValueError("CFDX case must use the canonical .cfdx.h5 extension")
     return path
 
 
