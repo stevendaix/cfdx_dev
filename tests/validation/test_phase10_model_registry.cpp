@@ -45,7 +45,9 @@ int main() {
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
 
-        const double realizable = realizable_kepsilon_eddy_viscosity(0.1, 0.02);
+        // Realizable k-epsilon requires an explicit Cmu: the API intentionally has no default.
+        constexpr double realizable_cmu = 0.09;
+        const double realizable = realizable_kepsilon_eddy_viscosity(0.1, 0.02, realizable_cmu);
         c.model = TurbulenceModel::RNG_KEPSILON;
         const double rng = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c);
         if (!(std::isfinite(realizable) && std::isfinite(rng) &&

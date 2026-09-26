@@ -39,6 +39,15 @@ int main()
         inv.third_invariant=0.0;
         const double cmu=realizable_kepsilon_cmu_from_invariants(inv,0.5,0.1);
         EXPECT_TRUE(cmu>0.0 && cmu<0.25);
+        EXPECT_NEAR(
+            realizable_kepsilon_cmu_from_invariants_unchecked(inv,0.5,0.1),
+            cmu,1e-14);
+        EXPECT_THROW(realizable_kepsilon_cmu_from_invariants(
+            inv,std::numeric_limits<double>::quiet_NaN(),0.1),
+            std::invalid_argument);
+        EXPECT_THROW(rng_kepsilon_c1_star(
+            2.0,std::numeric_limits<double>::quiet_NaN()),
+            std::invalid_argument);
 
         const auto sst=sst_blended_coefficients(
             1.0,0.85,1.0,0.5,0.856,0.075,0.0828,5.0/9.0,0.44);
@@ -46,11 +55,22 @@ int main()
         EXPECT_NEAR(sst.sigma_omega,0.5,1e-14);
         EXPECT_NEAR(sst.beta,0.075,1e-14);
         EXPECT_NEAR(sst.gamma,5.0/9.0,1e-14);
+        EXPECT_THROW(sst_blended_coefficients(
+            0.5,0.85,std::numeric_limits<double>::quiet_NaN(),
+            0.5,0.856,0.075,0.0828,5.0/9.0,0.44),
+            std::invalid_argument);
 
         EXPECT_TRUE(classify_wall_y_plus(1.0)==TurbulenceWallRegime::VISCOSITY_AFFECTED);
         EXPECT_TRUE(classify_wall_y_plus(10.0)==TurbulenceWallRegime::BUFFER);
         EXPECT_TRUE(classify_wall_y_plus(100.0)==TurbulenceWallRegime::LOG_LAYER);
+        EXPECT_TRUE(valid_wall_y_plus(0.0));
+        EXPECT_TRUE(!valid_wall_y_plus(-1.0));
+        EXPECT_TRUE(!valid_wall_y_plus(std::numeric_limits<double>::quiet_NaN()));
+        EXPECT_TRUE(!valid_wall_y_plus(std::numeric_limits<double>::infinity()));
         EXPECT_THROW(classify_wall_y_plus(-1.0),std::invalid_argument);
+        EXPECT_THROW(k_epsilon_eddy_viscosity(
+            1.0,1.0,std::numeric_limits<double>::quiet_NaN()),
+            std::invalid_argument);
     });
 
     run_case("thermal_and_cht_fluxes", [] {
