@@ -11,7 +11,8 @@
 //     uncorrected
 //
 // ORTHOGONAL/UNCORRECTED use the two-point contribution; CORRECTED adds
-// the tangential non-orthogonal correction from cell gradients.
+// the tangential non-orthogonal correction from cell gradients. LIMITED
+// applies the same correction with an OpenFOAM-style face limiter.
 //
 // Pour un champ scalaire φ (Field<double, CELL>) :
 //   For ORTHOGONAL/UNCORRECTED:
@@ -30,9 +31,11 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/mesh/index_types.h"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -78,7 +81,8 @@ inline Field<double, Location::CELL> compute_laplacian(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     const GeometryCache& geometry,
-    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL)
+    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL,
+    double non_orthogonal_limit = 0.5)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (!is_valid(geometry, mesh))
@@ -87,8 +91,11 @@ inline Field<double, Location::CELL> compute_laplacian(
         throw std::runtime_error("compute_laplacian: field size != n_cells");
     if (cell_field.dimension() != 1)
         throw std::runtime_error("compute_laplacian: field must be scalar (dim=1)");
-    if (scheme == LaplacianScheme::LIMITED)
-        throw std::runtime_error("compute_laplacian: limited non-orthogonal scheme is not implemented");
+    if (scheme == LaplacianScheme::LIMITED &&
+        (!std::isfinite(non_orthogonal_limit) ||
+         non_orthogonal_limit < 0.0 || non_orthogonal_limit > 1.0))
+        throw std::invalid_argument(
+            "compute_laplacian: non-orthogonal limit must be in [0, 1]");
 
     Field<double, Location::CELL> lap(
         n_cells, cell_field.name() + "_lap", cell_field.metadata().unit + "/m^2", 1);
@@ -98,7 +105,8 @@ inline Field<double, Location::CELL> compute_laplacian(
     const double* phi = cell_field.component_data(0);
     double* out = lap.component_data(0);
     Field<double, Location::CELL> gradients;
-    if (scheme == LaplacianScheme::CORRECTED)
+    if (scheme == LaplacianScheme::CORRECTED ||
+        scheme == LaplacianScheme::LIMITED)
         gradients = compute_gradient_gauss(cell_field, mesh, geometry);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
@@ -137,14 +145,33 @@ inline Field<double, Location::CELL> compute_laplacian(
             const Vec3 Sf_orth = dvec * (orth_dot / d2);
             const double orth_conductance = orth_dot / d2;
             double contribution = orth_conductance * (phi[nb] - phi[owner]);
-            if (scheme == LaplacianScheme::CORRECTED) {
+            if (scheme == LaplacianScheme::CORRECTED ||
+                scheme == LaplacianScheme::LIMITED) {
                 const Vec3 Sf_corr = Sf - Sf_orth;
                 const Vec3 grad_face{
                     0.5 * (gradients(owner, 0) + gradients(nb, 0)),
                     0.5 * (gradients(owner, 1) + gradients(nb, 1)),
                     0.5 * (gradients(owner, 2) + gradients(nb, 2))
                 };
-                contribution += Sf_corr.dot(grad_face);
+                const double correction = Sf_corr.dot(grad_face);
+                double limiter = 1.0;
+                if (scheme == LaplacianScheme::LIMITED) {
+                    if (non_orthogonal_limit <= 0.0) {
+                        limiter = 0.0;
+                    } else if (non_orthogonal_limit < 1.0) {
+                        const double small =
+                            std::numeric_limits<double>::epsilon() *
+                            std::max({1.0, std::abs(contribution),
+                                      std::abs(correction)});
+                        limiter = std::min(
+                            1.0,
+                            non_orthogonal_limit * std::abs(contribution) /
+                                ((1.0 - non_orthogonal_limit) *
+                                     std::abs(correction) +
+                                 small));
+                    }
+                }
+                contribution += limiter * correction;
             }
             sum += (owner == c) ? contribution : -contribution;
         }
@@ -160,10 +187,12 @@ inline Field<double, Location::CELL> compute_laplacian(
 inline Field<double, Location::CELL> compute_laplacian(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
-    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL)
+    LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL,
+    double non_orthogonal_limit = 0.5)
 {
     const GeometryCache geometry = make_geometry_cache(mesh);
-    return compute_laplacian(cell_field, mesh, geometry, scheme);
+    return compute_laplacian(
+        cell_field, mesh, geometry, scheme, non_orthogonal_limit);
 }
 
 }  // namespace core

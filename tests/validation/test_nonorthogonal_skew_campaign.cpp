@@ -34,7 +34,13 @@ Mesh make_two_cell_unit_cubes()
     m.cells().push_cell({0,1,2,3,4,5}); m.cells().push_cell({5,6,7,8,9,10});
     return m;
 }
-struct Metrics { double orth; double corrected; double conservation; };
+struct Metrics {
+    double orth;
+    double corrected;
+    double limited;
+    double corrected_conservation;
+    double limited_conservation;
+};
 Metrics evaluate(double skew)
 {
     const Mesh mesh=make_two_cell_unit_cubes();
@@ -44,22 +50,40 @@ Metrics evaluate(double skew)
     geometry.face_Sf[2].y=1.0+skew;
     const auto orth=compute_laplacian(field,mesh,geometry,LaplacianScheme::ORTHOGONAL);
     const auto corrected=compute_laplacian(field,mesh,geometry,LaplacianScheme::CORRECTED);
-    return {orth(0),corrected(0),std::abs(geometry.cell_volumes[0]*corrected(0)+geometry.cell_volumes[1]*corrected(1))};
+    const auto limited=compute_laplacian(field,mesh,geometry,LaplacianScheme::LIMITED,0.5);
+    return {
+        orth(0), corrected(0), limited(0),
+        std::abs(geometry.cell_volumes[0]*corrected(0)+geometry.cell_volumes[1]*corrected(1)),
+        std::abs(geometry.cell_volumes[0]*limited(0)+geometry.cell_volumes[1]*limited(1))};
 }
 }
 int main()
 {
-    const std::vector<double> skews={0.0,0.05,0.10,0.20,0.30,0.40};
+    const std::vector<double> skews={0.0,0.05,0.10,0.20,0.30,0.40,1.0,2.0,4.0,8.0};
     std::cout<<std::setprecision(17);
     for(const double skew:skews){
         run_case("phase3_6_skew_"+std::to_string(skew),[skew](){
-            const Metrics m=evaluate(skew); const double correction=std::abs(m.corrected-m.orth);
+            const Metrics m=evaluate(skew);
+            const double correction=std::abs(m.corrected-m.orth);
+            const double limited_correction=std::abs(m.limited-m.orth);
             EXPECT_TRUE(std::isfinite(m.orth)); EXPECT_TRUE(std::isfinite(m.corrected));
-            EXPECT_TRUE(std::isfinite(m.conservation)); EXPECT_NEAR(m.conservation,0.0,1e-12);
-            if(skew==0.0) EXPECT_NEAR(correction,0.0,1e-12);
-            else EXPECT_TRUE(correction>0.0);
+            EXPECT_TRUE(std::isfinite(m.limited));
+            EXPECT_NEAR(m.corrected_conservation,0.0,1e-12);
+            EXPECT_NEAR(m.limited_conservation,0.0,1e-12);
+            EXPECT_TRUE(limited_correction<=correction+1e-12);
+            EXPECT_TRUE(limited_correction<=std::abs(m.orth)+1e-12);
+            if(skew==0.0) {
+                EXPECT_NEAR(correction,0.0,1e-12);
+                EXPECT_NEAR(limited_correction,0.0,1e-12);
+            } else {
+                EXPECT_TRUE(correction>0.0);
+                EXPECT_TRUE(limited_correction>0.0);
+            }
             std::cout<<"PHASE3_6 skew="<<skew<<" orth="<<m.orth<<" corrected="<<m.corrected
-                     <<" correction="<<correction<<" conservation="<<m.conservation<<"\\n";
+                     <<" limited="<<m.limited<<" correction="<<correction
+                     <<" limited_correction="<<limited_correction
+                     <<" corrected_conservation="<<m.corrected_conservation
+                     <<" limited_conservation="<<m.limited_conservation<<"\\n";
         });
     }
     return run_all();
