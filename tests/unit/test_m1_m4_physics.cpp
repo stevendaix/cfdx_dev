@@ -50,7 +50,10 @@ int main()
         EXPECT_TRUE(classify_wall_y_plus(1.0)==TurbulenceWallRegime::VISCOSITY_AFFECTED);
         EXPECT_TRUE(classify_wall_y_plus(10.0)==TurbulenceWallRegime::BUFFER);
         EXPECT_TRUE(classify_wall_y_plus(100.0)==TurbulenceWallRegime::LOG_LAYER);
-        EXPECT_THROW(classify_wall_y_plus(-1.0),std::invalid_argument);
+        EXPECT_TRUE(valid_wall_y_plus(0.0));
+        EXPECT_TRUE(!valid_wall_y_plus(-1.0));
+        EXPECT_TRUE(!valid_wall_y_plus(std::numeric_limits<double>::quiet_NaN()));
+        EXPECT_TRUE(!valid_wall_y_plus(std::numeric_limits<double>::infinity()));
     });
 
     run_case("thermal_and_cht_fluxes", [] {
