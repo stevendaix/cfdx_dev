@@ -40,7 +40,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure CMake
@@ -98,6 +98,8 @@ jobs:
             tail -n 500 build/Testing/Temporary/LastTest.log
           fi
           echo "=== Poiseuille diagnostic marker ==="
+          echo "=== VMFL036 physical CFD result ==="
+          grep -R -E 'VMFL036_(MESH|CFDX START|RESULT|DRAG|CFDX_RESULT)' build/Testing build 2>/dev/null | tail -n 250 || true
           grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \\(complete list\\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
 
       - name: Upload test logs on failure
