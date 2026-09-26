@@ -269,6 +269,10 @@ inline std::vector<double> estimate_view_factor_matrix(
         max_row_sum = std::max(max_row_sum,row_sum);
     }
 
+    // If every row is already closed, the scale is 1. Otherwise a single
+    // global scale <= 1 reduces all off-diagonal exchanges uniformly so that
+    // no row exceeds unity while preserving the area-weighted reciprocity
+    // established above.
     const double closure_scale = 1.0/std::max(1.0,max_row_sum);
     for (std::size_t i=0; i<n; ++i) {
         double row_sum = 0.0;
