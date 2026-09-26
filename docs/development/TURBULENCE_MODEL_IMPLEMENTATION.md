@@ -11,7 +11,7 @@ The transported model uses the standard production/destruction structure:
 - epsilon production = C1 P_k epsilon/k
 - epsilon destruction = C2 rho epsilon^2/k
 
-Positivity floors are applied to k and epsilon by the transport-solver layer before algebraic evaluation. The hot algebraic kernels require finite, physically admissible inputs and use debug assertions rather than exception-based control flow.
+Positivity floors are applied to k and epsilon by the transport-solver layer before algebraic evaluation. Public model helpers validate finite, physically admissible inputs. Explicit `_unchecked` kernels are available for prevalidated hot loops and retain debug assertions.
 
 ## RNG k-epsilon
 
@@ -29,7 +29,7 @@ The model-level kernel exposes the variable C_mu formulation
 
 C_mu = 1 / (A0 + As U* k/epsilon)
 
-where U* combines strain and rotation invariants and As is obtained from the bounded third strain invariant. The kernel requires finite, non-negative strain/rotation/k and strictly positive epsilon/A0. Debug builds assert these preconditions; release builds rely on the solver-layer input conditioning.
+where U* combines strain and rotation invariants and As is obtained from the bounded third strain invariant. The checked helper rejects invalid inputs in every build. Its explicit `_unchecked` counterpart requires finite, non-negative strain/rotation/k and strictly positive epsilon/A0, with debug assertions guarding that contract.
 
 A full transported Realizable k-epsilon solver remains a separate implementation item; this PR does not falsely classify it as a transported model.
 
@@ -59,7 +59,7 @@ Wall y+ is explicitly classified into:
 - buffer region: 5 < y+ < 30;
 - logarithmic region: y+ >= 30.
 
-This classification is diagnostic/model infrastructure. Non-finite/negative y+ is rejected by the `valid_wall_y_plus` precondition check. It does not claim a solver-level wall-function V&V result.
+This classification is diagnostic/model infrastructure. The checked classifier rejects non-finite or negative y+. Prevalidated hot loops may call `classify_wall_y_plus_unchecked`. It does not claim a solver-level wall-function V&V result.
 
 ## Validation boundary
 
