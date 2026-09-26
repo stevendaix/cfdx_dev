@@ -1,11 +1,81 @@
+## MATRICE DE SUIVI COURANTE — PR #419
+
+> Référence : tête actuelle de la PR #419, commit 3bf4f7b3260d67324a8639c7013c94edbbdf7827.
+> Cette matrice prime sur les statuts historiques du rapport lorsque ceux-ci sont devenus obsolètes.
+
+| Domaine | Item | Statut actuel | Action / preuve restante |
+|---|---|---|---|
+| B1 | Diffusion turbulente | **VALIDÉ** | cell_diffusion est utilisé dans k/ε/ω/SST ; conserver les tests de transport. |
+| B2 | Énergie avec cp | **VALIDÉ** | Le terme énergétique actuel inclut rho·cp ; conserver la V&V thermique. |
+| B3 | Rayonnement-énergie | **VALIDÉ** | Solver radiatif non linéaire présent ; verrouiller par bilan/source. |
+| B4 | Spalart-Allmaras | **VALIDÉ** | fw, S̃ et fv1 sont câblés ; tests phase 10. |
+| B5 | Facteurs de forme ray-tracing | **VALIDÉ** | Correctif d'échantillonnage présent et testé. |
+| B6 | Enthalpie tabulée/bornée | **VALIDÉ** | Correction d'extrapolation et bornage testés. |
+| B7 | Lois de paroi | **VALIDÉ** | Constantes/relations corrigées et testées. |
+| B8 | k-omega | **VALIDÉ** | Sources et diffusion corrigées ; tests turbulence présents. |
+| B9 | SST | **VALIDÉ** | Cross-diffusion, blending et limitation de production présents. |
+| B10 | Schémas temporels / Newton champ | **PARTIEL** | Scalaire et BDF2 sont présents/testés ; Newton champ générique reste absent. |
+| B11 | CHT | **VALIDÉ** | Pipeline CHT présent avec tests associés. |
+| B12 | Boussinesq | **VALIDÉ** | Fonction et câblage solveur présents ; conserver un test couplé. |
+| B13 | P1 | **VALIDÉ** | Facteur pi corrigé et test de modèle présent. |
+| B14 | EOS incompressible | **VALIDÉ** | Contrat implémenté et testé. |
+| B15 | Contrat sur S | **VALIDÉ** | Convention documentée/testée. |
+| B16 | LES/DES + DOM diffuse-gray | **VALIDÉ** | Filtre LES/DES et traitement DOM gris diffus existent ; V&V radiation présente. |
+| B17 | S2S | **VALIDÉ** | Implémentation S2S intégrée ; conserver test de bilan/réciprocité. |
+| B18 | Rosseland non linéaire | **PARTIEL → à valider** | solve_rosseland_energy existe avec conductivité radiative dépendante de T et rho·cp ; l'ancien constat de perte de cp/k moléculaire est obsolète, mais le bilan total doit être verrouillé quantitativement. |
+| C1 | NaN dans norme Krylov | **VALIDÉ** | Contrôle non-fini corrigé et testé. |
+| C2 | Statut CG pression | **VALIDÉ** | status vérifié par le solveur. |
+| C3 | Critère CG préconditionné | **VALIDÉ** | Critère et résidu relatif corrigés/testés. |
+| C4/C5 | GMRES restart/contrôles | **VALIDÉ** | Restart non écrêté et politique adaptative corrigée dans #419 ; phase9 doit rester verte. |
+| C6 | Préconditionneur bloc 4x4 | **À FAIRE / NON VALIDÉ** | Correction / row_scale proposée dans l'ancien audit mais non compilée/testée ; ajouter test diagonal. |
+| C7 | Restart hors limites | **VALIDÉ** | Contrôles de bornes présents et testés. |
+| C8 | HDF5 chemin fixe | **VALIDÉ** | Correction présente et testée. |
+| C9 | herr_t ignorés | **VALIDÉ** | Vérification des retours ajoutée. |
+| C10 | Restart non atomique / NaN | **VALIDÉ** | Écriture sécurisée et contrôles présents. |
+| C11 | Budget OOC | **VALIDÉ** | Contrat de budget et tests présents. |
+| C12 | BiCGStab sans préconditionneur | **VALIDÉ** | Diagonale requise explicitement et testée. |
+| C13 | GMRES résidu sur x périmé | **VALIDÉ** | Résidu recalculé sur l'état courant. |
+| C15/C19 | CUDA arrêt/breakdown | **PARTIEL** | Code de correction identifié, mais aucune compilation nvcc ni exécution GPU démontrée. |
+| C16 | VTU | **PARTIEL** | Code relu ; compilation/exécution dédiée à faire si le writer reste hors CI. |
+| C17 | Seuils absolus | **VALIDÉ** | Seuils et normalisation corrigés/testés. |
+| C18 | try/catch MPI | **VALIDÉ** | Test np=2 effectué. |
+| C20 | Import OpenFOAM | **VALIDÉ** | Correction du risque de stack overflow présente et testée. |
+| N1 | Partition Morton | **VALIDÉ** | Rangs vides et limite de 10 bits corrigés/testés. |
+| N2 | Ordre des halos | **VALIDÉ** | Ordre corrigé et test parallèle effectué. |
+| N3 | Réductions Gather+Bcast | **VALIDÉ** | Réduction distribuée corrigée/testée. |
+| N4 | RCM | **VALIDÉ** | Correction/performance testée. |
+| D1 | Protection master/CI | **À VÉRIFIER SUR CI** | Vérifier les checks obligatoires sur la tête finale de #419. |
+| D2 | Validation qui ignore phase9 | **VALIDÉ** | Gate relié aux tests réellement exécutés. |
+| D4 | MPI=OFF | **VALIDÉ** | Inclusion MPI conditionnée/correctif présent. |
+| D5 | HDF5 absent | **VALIDÉ** | Détection/configuration cohérente ; vérifier le build sans HDF5 en CI. |
+| D6 | Tests tautologiques | **VALIDÉ** | Remplacements présents. |
+| D7 | Tests jamais enregistrés | **VALIDÉ** | Enregistrement des suites corrigé. |
+| D8 | Pilote de campagne | **VALIDÉ** | Retour non nul sur campagne rouge. |
+| D9 | Tolérances phase9 | **VALIDÉ** | Tolérances durcies et testées. |
+| D10 | Couverture CI | **PARTIEL** | Couverture améliorée ; GPU/Parallel-HDF5 restent dépendants des toolchains. |
+| D11 | Artefacts build suivis | **À FAIRE** | Le .gitignore existe, mais les artefacts déjà suivis doivent être désindexés dans une PR dédiée. |
+| D12 | Code mort/doublons | **À FAIRE / HORS #419** | Nettoyage validé en scratch mais non nécessaire au correctif numérique de #419. |
+| D13 | Documentation/spécification | **VALIDÉ** | Corriger seulement les anciennes affirmations obsolètes. |
+
+### Points explicitement corrigés dans cet audit
+
+1. PISO multi-correcteur, PIMPLE multi-correcteur, Rosseland non linéaire, DOM diffuse-gray, SA fv1, diffusion turbulente cell_diffusion et infrastructure Parallel-HDF5 ne doivent plus être décrits comme absents.
+2. ScalarExtraTerms n'est pas une correction physique nécessaire : extra_rhs + cell_diffusion couvrent déjà le besoin fonctionnel.
+3. B10 reste ouvert tant qu'un véritable Newton champ générique n'est pas implémenté.
+4. C6, C15/C19 et C16 restent ouverts/partiels tant que leur preuve de compilation/exécution n'existe pas.
+5. Les limiteurs MINMOD/VANLEER/SUPERBEE/VAN_ALBADA existent, mais ConvectionScheme ne fournit toujours pas une branche TVD connectée à l'assemblage FVM : la présence du limiteur ne vaut pas validation TVD.
+6. La correction non orthogonale/higher-order possède des primitives, mais la chaîne complète doit encore être validée quantitativement sur maillage skewed/non-orthogonal.
+7. Parallel-HDF5 possède une infrastructure conditionnelle, mais ne doit pas être déclaré validé sans un run avec une vraie installation MPI-HDF5.
+
+---
 Gmail	Steven daix <steven.daix@gmail.com>
 (aucun objet)
 Steven daix <steven.daix@gmail.com>	25 septembre 2026 à 20:48
 À : Steven daix <steven.daix@gmail.com>
 # Audit détaillé — `stevendaix/cfdx_dev`
 
-- **Date** : 2026-09-25 (v2 : codes de correction complets, revue de la PR #415)
-- **Commit audité** : `master` @ `27bae126`, les branches des PRs ouvertes (`pr/<N>`), et la tête `f829e32f` de #415
+- **Date** : 2026-09-26 (v3 : matrice de suivi de la PR #419)
+- **Commit audité** : PR #419 @ `3bf4f7b3260d67324a8639c7013c94edbbdf7827` (`fix/audit-2026-09-25`)
 - **Méthode** :
   - clone en lecture seule ;
   - build local + `ctest` + `pytest` ;
