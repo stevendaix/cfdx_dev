@@ -83,24 +83,24 @@ Règles impératives :
 3. `<case>.dat.h5` est l'état numérique/checkpoint/restart séparé.
 4. `<case>_<time>.vtu` est un artefact de visualisation/post-traitement.
 5. `case.cfdx.h5` n'est pas un restart numérique.
-3. La topologie est la source de vérité du maillage.
-4. La géométrie est dérivée de la topologie.
-5. OpenFOAM est une référence, pas la définition de CFDX.
-6. meshio est un adaptateur, pas une dépendance du cœur.
-7. Les Fields sont indépendants du backend matériel.
-8. L'algèbre linéaire est indépendante de la physique.
-9. Les opérateurs FVM sont indépendants du backend.
-10. SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.
-11. CPU/GPU/GPU-OOC sont des Execution Policies.
-12. Aucun fallback GPU→CPU silencieux pendant un calcul.
-13. Le choix CPU/GPU/GPU-OOC est fait par le Runtime avant exécution.
-14. Le GPU-OOC utilise domain decomposition + tiles + halos.
-15. Les transferts CPU↔GPU ne doivent pas être présents dans la boucle GPU normale.
-16. Pinned memory est limitée à des buffers de staging.
-17. La physique ne connaît jamais CUDA/MPI/mémoire GPU directement.
-18. Python orchestre ; C++ calcule.
-19. Le parallélisme est une propriété du Runtime, pas de la physique.
-20. Les benchmarks sont mesurés et non définis arbitrairement à l'avance.
+6. La topologie est la source de vérité du maillage.
+7. La géométrie est dérivée de la topologie.
+8. OpenFOAM est une référence, pas la définition de CFDX.
+9. meshio est un adaptateur, pas une dépendance du cœur.
+10. Les Fields sont indépendants du backend matériel.
+11. L'algèbre linéaire est indépendante de la physique.
+12. Les opérateurs FVM sont indépendants du backend.
+13. SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.
+14. CPU/GPU/GPU-OOC sont des Execution Policies.
+15. Aucun fallback GPU→CPU silencieux pendant un calcul.
+16. Le choix CPU/GPU/GPU-OOC est fait par le Runtime avant exécution.
+17. Le GPU-OOC utilise domain decomposition + tiles + halos.
+18. Les transferts CPU↔GPU ne doivent pas être présents dans la boucle GPU normale.
+19. Pinned memory est limitée à des buffers de staging.
+20. La physique ne connaît jamais CUDA/MPI/mémoire GPU directement.
+21. Python orchestre ; C++ calcule.
+22. Le parallélisme est une propriété du Runtime, pas de la physique.
+23. Les benchmarks sont mesurés et non définis arbitrairement à l'avance.
 
 ## Principes fondamentaux
 
