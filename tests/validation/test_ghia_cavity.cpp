@@ -243,6 +243,7 @@ int main()
         const auto r32 = run_case({100.0,32,32,2500});
         const auto r64 = run_case({100.0,64,64,5000});
         const auto r128 = run_case({100.0,128,128,12000});
+        run_case({400.0,64,64,9000});
         const auto r1000_64 = run_case({1000.0,64,64,15000});
 
         const double p_v_max = std::log(r64.v.max_abs / r128.v.max_abs) / std::log(2.0);
@@ -255,6 +256,7 @@ int main()
                   << " V_RMS=" << p_v_rms
                   << " V_max=" << p_v_max << "\n";
         (void)r32;
+        (void)r1000_64;
         if (!(p_u_rms > 0.50) || !(p_v_rms > 0.50) ||
             !(p_u_max > 0.50) || !(p_v_max > 0.50))
             throw std::runtime_error("Ghia Re=100 mesh convergence is insufficient");
