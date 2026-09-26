@@ -34,13 +34,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
 
       - name: Install Python mesh I/O stack
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh
+          .venv/bin/python -c "import gmsh; print(\"Gmsh Python binding:\", gmsh.__version__)"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure CMake
