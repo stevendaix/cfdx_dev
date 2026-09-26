@@ -71,6 +71,7 @@ def build(mesh):
             else: neighbour[fid]=ci
             refs.append(fid)
         cell_faces.append(refs)
+    orient_faces(points, faces, owner, cells)
     return points,faces,owner,neighbour,cell_faces,skipped
 
 def orient_faces(points, faces, owner, cells):
