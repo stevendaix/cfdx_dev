@@ -65,6 +65,9 @@ struct DiagnosticsControls {
     bool freeze_state_probe = false;
     long debug_cell = -1;
     bool debug_cell_auto = false;
+    // Bounded progress trace for long validation solves. Disabled by default.
+    bool iteration_trace = false;
+    std::size_t iteration_trace_frequency = 50;
 };
 
 struct IncompressibleSolverControls {
@@ -1630,39 +1633,75 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 rows[o][o] += controls.density * rfn * area / distance;
             }
 
-            if (!has_fixed_pressure_boundary) {
+            Vector p_corr(nc, 0.0);
+            cfdx::core::SolverResult rp;
+            const auto solve_pressure_system =
+                [&](const SparseMatrix& matrix,
+                    const Vector& rhs,
+                    Vector& correction) {
+                    if (pressure_context) {
+                        return pressure_context->solve(
+                            matrix, rhs, correction,
+                            controls.linear_max_iterations,
+                            controls.linear_tolerance, {}, {},
+                            pressure_null_space.get());
+                    }
+                    return solve_linear_system(
+                        matrix, rhs, correction,
+                        LinearProblemKind::PressurePoisson,
+                        controls.pressure_linear_solver,
+                        controls.linear_max_iterations,
+                        controls.linear_tolerance).result;
+                };
+            if (has_fixed_pressure_boundary) {
+                // With a prescribed pressure boundary the pressure-correction
+                // operator is SPD. The pressure profile selects CG by default
+                // while preserving an explicit user solver request.
+                for (std::size_t row = 0; row < nc; ++row)
+                    for (const auto& [col, value] : rows[row])
+                        A.push_back(row, col, value);
+                A.finalize();
+                rp = solve_pressure_system(A, b, p_corr);
+            } else if (nc == 1) {
+                // Eliminating the only pressure unknown would produce an empty
+                // linear system. Keep the trivial gauge equation instead.
+                A.push_back(0, 0, 1.0);
+                A.finalize();
+                b(0) = 0.0;
+                rp = solve_pressure_system(A, b, p_corr);
+            } else {
+                // Pure-Neumann pressure has one gauge null mode. Replacing one
+                // row by p_ref=0 breaks symmetry. Eliminate the reference DOF
+                // instead: the remaining principal submatrix is SPD for a
+                // connected cavity and remains eligible for the pressure
+                // solver policy and its true-residual convergence checks.
                 const std::size_t ref = controls.pressure_reference_cell;
+                SparseMatrix reduced(nc - 1, nc - 1);
+                Vector reduced_b(nc - 1, 0.0);
+                const auto reduced_index = [ref](std::size_t cell) {
+                    return cell < ref ? cell : cell - 1;
+                };
                 for (std::size_t row = 0; row < nc; ++row) {
                     if (row == ref) continue;
-                    // Keep the column out of the reduced equations. The
-                    // reference row itself is the gauge equation.
-                    rows[row].erase(ref);
+                    const std::size_t rr = reduced_index(row);
+                    reduced_b(rr) = b(row);
+                    for (const auto& [col, value] : rows[row]) {
+                        if (col == ref) continue;
+                        reduced.push_back(rr, reduced_index(col), value);
+                    }
                 }
-                rows[ref].clear();
-                rows[ref][ref] = 1.0;
-                b(ref) = 0.0;
-            }
+                reduced.finalize();
 
-            for (std::size_t row = 0; row < nc; ++row)
-                for (const auto& [col, value] : rows[row])
-                    A.push_back(row, col, value);
-            A.finalize();
-
-            Vector p_corr(nc, 0.0);
-            LinearSolveReport pressure_solve;
-            if (pressure_context) {
-                pressure_solve.plan = pressure_plan;
-                pressure_solve.result = pressure_context->solve(
-                    A, b, p_corr, controls.linear_max_iterations,
-                    controls.linear_tolerance, {}, {},
-                    pressure_null_space.get());
-            } else {
-                pressure_solve = solve_linear_system(
-                    A, b, p_corr, LinearProblemKind::PressurePoisson,
-                    controls.pressure_linear_solver,
-                    controls.linear_max_iterations, controls.linear_tolerance);
+                Vector reduced_corr(nc - 1, 0.0);
+                rp = solve_pressure_system(
+                    reduced, reduced_b, reduced_corr);
+                if (rp.status == cfdx::core::SolverStatus::CONVERGED) {
+                    for (std::size_t cell = 0; cell < nc; ++cell)
+                        if (cell != ref)
+                            p_corr(cell) = reduced_corr(reduced_index(cell));
+                    p_corr(ref) = 0.0;
+                }
             }
-            const auto& rp = pressure_solve.result;
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED)
@@ -1723,6 +1762,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         }
         
+        if (controls.diagnostics.iteration_trace &&
+            (iter == 1 ||
+             iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
+            std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
+                      << " pressure_linear_iterations=" << pressure_iterations
+                      << " pressure_relative_residual=" << pressure_residual
+                      << " momentum_linear_iterations="
+                      << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
+                              ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
+                      << "\n";
+        }
+
         // Independent final momentum residual: evaluate the actual corrected
         // state against freshly assembled equations. Do not use a U reconstructed
         // from the conservative flux as the residual state.
