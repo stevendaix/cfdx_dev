@@ -95,6 +95,20 @@ Re = (1.0 kg/m^3)(1.0 m/s)(1.0 m) / (0.010 Pa.s) = 100.
 
 This is the intentional literature-aligned configuration. The documented Ansys value mu=0.02 Pa.s would instead produce Re=50 and therefore must not be mixed into this CFDX oracle.
 
+## Physical CFD execution
+
+The test `test_vmfl036_reference_case` now:
+1. generates the body-fitted sphere mesh with `scripts/generate_vmfl036_mesh.py`;
+2. imports the Gmsh mesh through the CFDX mesh I/O path;
+3. solves steady incompressible Navier–Stokes at Re=100 with SIMPLE;
+4. records convergence/continuity/momentum diagnostics;
+5. integrates the sphere wall traction independently from the solver result;
+6. reports pressure, viscous and total drag and the resulting (C_D).
+
+The outer cylinder has radius (10D) and extends from (x=-10D) to (x=+10D). This is a finite-domain CFD calculation, not an analytical reconstruction of the reference force.
+
+The CI comparison is intentionally diagnostic at this stage. The number printed as `Cd_reference=1.0895` is still the literature oracle; `Cd_total` is the CFDX result.
+
 ## Build / CI evidence
 
 At the current PR head, both required GitHub Actions workflows have started and reached the compilation stage:
