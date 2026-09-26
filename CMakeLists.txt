@@ -644,6 +644,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_missing_qualification_case_contracts
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
+        set_tests_properties(test_missing_qualification_case_contracts PROPERTIES
+            LABELS "qualification;validation")
+    endif()
+
+    if(Python3_Interpreter_FOUND)
         if(CFDX_HAS_HDF5)
             add_test(NAME test_production_solver_e2e
                      COMMAND ${Python3_EXECUTABLE}
