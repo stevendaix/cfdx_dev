@@ -1819,8 +1819,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         constexpr double tiny = 1e-300;
         double velocity_change_inf = 0.0, pressure_change_inf = 0.0;
         double velocity_scale = 0.0;
-        double pressure_min = std::numeric_limits<double>::infinity();
-        double pressure_max = -std::numeric_limits<double>::infinity();
+        double pressure_scale = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             for (std::size_t d = 0; d < 3; ++d) {
                 velocity_change_inf = std::max(
@@ -1834,8 +1833,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 : std::abs((p(c) - p(controls.pressure_reference_cell)) -
                             (p_old(c) - p_old(controls.pressure_reference_cell)));
             pressure_change_inf = std::max(pressure_change_inf, pressure_delta);
-            pressure_min = std::min(pressure_min, p(c));
-            pressure_max = std::max(pressure_max, p(c));
+            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
         }
         velocity_change_inf /= std::max(velocity_scale, tiny);
         const double pressure_range = pressure_max - pressure_min;
