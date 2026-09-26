@@ -446,6 +446,17 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
+    add_cfdx_test(test_vmfl036_reference_case tests/validation/test_vmfl036_reference_case.cpp)
+    target_compile_definitions(test_vmfl036_reference_case PRIVATE
+        CFDX_SOURCE_DIR="\${CMAKE_SOURCE_DIR}"
+    )
+    if(Python3_Interpreter_FOUND)
+        target_compile_definitions(test_vmfl036_reference_case PRIVATE
+            CFDX_PYTHON_EXECUTABLE="\${Python3_EXECUTABLE}"
+        )
+    endif()
+    set_tests_properties(test_vmfl036_reference_case PROPERTIES
+        LABELS "phase14;qualification;validation")
     add_executable(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
     target_link_libraries(test_poiseuille_diagnostics PRIVATE cfdx_core)
     target_include_directories(test_poiseuille_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/tests)
@@ -484,6 +495,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_thermal_vv
         test_radiation_vv
         test_s2s_radiation_vv
+        test_vmfl036_reference_case
         PROPERTIES LABELS "qualification;validation")
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
