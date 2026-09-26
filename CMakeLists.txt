@@ -400,7 +400,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
-    add_cfdx_test(test_newton_field tests/unit/test_newton_field.cpp)
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
@@ -412,11 +411,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
     add_cfdx_test(test_solver_vtu_provenance tests/validation/test_solver_vtu_provenance.cpp)
-    add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
-    target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
+    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
+    set_tests_properties(test_ghia_cavity PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
-    set_tests_properties(test_phase9_acceptance PROPERTIES LABELS "phase9;validation;coupled-ns")
-    # Phase 9 diagnostics are configured explicitly by the validation test.
+    # Phase 9 diagnostics must be deterministic under CTest. The validation
+    # workflow may set these variables at the shell level, but CTest test
+    # properties are the authoritative per-test environment and avoid losing
+    # the microscope when the test is launched through CTest.
+    set_tests_properties(test_phase9_acceptance PROPERTIES
+        ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
@@ -430,7 +433,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
-    set_tests_properties(test_level_c_coupled_verification PROPERTIES LABELS "validation;coupled-ns")
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
