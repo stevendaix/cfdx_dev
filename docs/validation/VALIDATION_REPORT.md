@@ -46,12 +46,14 @@ The current report contains the full VMFL001--VMFL078 matrix and executable resu
 
 ## GitHub validation campaign
 
-The **CFDX VMFL validation campaign** workflow supports two triggers:
+The **CFDX total validation** workflow supports two triggers:
 
 - **Manual**: GitHub Actions → workflow → **Run workflow**.
-- **PR label**: add the **`validation`** label to a pull request. The campaign is then launched automatically for that PR.
+- **PR label**: add the **`validation-total`** label to a pull request. The campaign is then launched automatically for that PR.
 
-The label trigger is deliberately narrow: adding any other label does not run the campaign. This makes `validation` an explicit request for the expensive full numerical campaign rather than part of ordinary PR CI.
+The label trigger is deliberately narrow: adding any other label does not run the campaign. This makes `validation-total` an explicit request for the expensive full numerical campaign rather than part of ordinary PR CI. While the label remains on the pull request, every new commit reruns the campaign and cancels any obsolete run.
+
+Ordinary pull-request CI keeps short solver checks active: Ghia Re=100 on 32x32, Poiseuille on N=32, and Couette on SIMPLE, PISO and COUPLED. The total campaign additionally runs the complete Ghia mesh/reference study, every Couette pressure-velocity algorithm and the Poiseuille refinement/order checks.
 
 The workflow builds the current validation suite, runs `scripts/validation_report.py`, and publishes the complete evidence as workflow artifacts.
 
@@ -65,4 +67,4 @@ The artifact contains:
 
 A workflow run is intentionally diagnostic as well as gating: missing validation executables and non-zero solver exits remain visible in the report, while the workflow uploads the evidence before enforcing the validation gate.
 
-Use the `validation` label on a PR when a complete campaign is needed to investigate or validate a solver change. The campaign should not be interpreted as a solver PASS merely because the reference oracle succeeds.
+Use the `validation-total` label on a PR when a complete campaign is needed to investigate or validate a solver change. The campaign should not be interpreted as a solver PASS merely because the reference oracle succeeds.

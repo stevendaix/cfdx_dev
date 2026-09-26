@@ -21,7 +21,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Release, DebugSanitizers]
+        build_type: ${{ fromJSON(
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'validation-total') &&
+          '["Release"]' || '["Release", "DebugSanitizers"]'
+          ) }}
 
     steps:
       - name: Checkout
@@ -36,7 +40,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure CMake
@@ -44,6 +48,7 @@ jobs:
           cmake -S . -B build
           -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCFDX_ENABLE_LONG_VALIDATION=OFF
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
@@ -68,13 +73,19 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          ctest --test-dir build --output-on-failure --no-tests=error
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error
           rc=$?
           echo "CTEST_EXIT_CODE=$rc" | tee ctest.exitcode
           exit $rc
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Test validation report generator
+        id: validation_report_test
+        if: matrix.build_type == 'Release'
+        continue-on-error: true
+        run: python -m pytest -q tests/python/test_validation_report.py
 
       - name: Print validation diagnostics before final decision
         if: ${{ !cancelled() }}
@@ -114,9 +125,16 @@ jobs:
           set -e
           build_outcome='${{ steps.build.outcome }}'
           ctest_outcome='${{ steps.ctest.outcome }}'
+          validation_report_outcome='${{ steps.validation_report_test.outcome }}'
           echo "build outcome: $build_outcome"
           echo "ctest outcome: $ctest_outcome"
+          echo "validation report test outcome: $validation_report_outcome"
           if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+          if [[ '${{ matrix.build_type }}' == 'Release' &&
+                "$validation_report_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi

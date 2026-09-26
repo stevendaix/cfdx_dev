@@ -1,5 +1,6 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -9,6 +10,7 @@ SPEC = spec_from_file_location(
 )
 assert SPEC is not None and SPEC.loader is not None
 MODULE = module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
@@ -51,3 +53,76 @@ def test_reference_oracle_is_not_a_solver_pass() -> None:
     }
     assert result["status"] == "PASS"
     assert result["is_solver_validation"] is False
+
+
+def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
+    output = tmp_path / "report.tex"
+    MODULE.write_tex(
+        output,
+        [MODULE.Case("VMFL001", "Case", "READY", "Comparison")],
+        [{
+            "re": 100.0,
+            "grid": "64x64",
+            "continuity": 1e-12,
+            "momentum": 2e-8,
+            "u_rms": 0.01,
+            "u_max": 0.02,
+            "v_rms": 0.03,
+            "v_max": 0.04,
+        }],
+        [{
+            "name": "MODEL",
+            "metric": "error",
+            "value": "1e-6",
+            "reference": "exact",
+        }],
+        {"oracle": (0, "")},
+        {"test_a": 0},
+        None,
+        "2026-09-26 00:00 UTC",
+    )
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+
+    def assert_row(prefix: str, columns: int) -> None:
+        row = next(line for line in lines if line.startswith(prefix))
+        assert row.endswith(r"\\")
+        assert row.count(" & ") == columns - 1
+
+    assert_row(r"\texttt{test\_a}", 2)
+    assert_row("100", 8)
+    assert_row(r"\texttt{MODEL}", 4)
+    assert_row(r"\texttt{VMFL001}", 4)
+
+
+def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
+    output = tmp_path / "report.tex"
+    cases = MODULE.parse_matrix(
+        ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md"
+    )
+    MODULE.write_tex(
+        output,
+        cases,
+        [],
+        [],
+        {},
+        {},
+        None,
+        "2026-09-26 00:00 UTC",
+    )
+
+    tex = output.read_text(encoding="utf-8")
+    assert "Δ" not in tex
+    assert "°" not in tex
+    assert r"$\Delta$p" in tex
+    assert r"90$^\circ$" in tex
+
+
+def test_latex_escape_does_not_reescape_generated_commands() -> None:
+    escaped = MODULE.latex_escape(r"path\name_{x} & 90° Δp")
+    assert r"\textbackslash{}" in escaped
+    assert r"\textbackslash\{\}" not in escaped
+    assert r"\_\{x\}" in escaped
+    assert r"\&" in escaped
+    assert r"90$^\circ$" in escaped
+    assert r"$\Delta$p" in escaped

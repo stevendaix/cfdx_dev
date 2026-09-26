@@ -123,21 +123,45 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.algorithm=PressureVelocityAlgorithm::SIMPLE;
     controls.density=1.0;
     controls.kinematic_viscosity=1.0/test.reynolds;
-    controls.linear_max_iterations=5000;
-    controls.linear_tolerance=1e-10;
-    controls.pressure_reference_cell=0;
+    controls.linear_max_iterations=10000;
+    controls.linear_tolerance=1e-8;
+    // Automatic pressure policy selects CG/native AMG on this mesh. The
+    // incompressible solver keeps the hierarchy across SIMPLE iterations and
+    // refreshes only numerical level coefficients when values change.
+    // Use an interior gauge cell rather than the lower-left corner. This keeps
+    // the pressure reference away from a corner where several wall BCs meet.
+    controls.pressure_reference_cell=(test.ny/2)*test.nx+(test.nx/2);
     controls.pressure_reference_value=0.0;
     controls.use_bounded_convection=true;
     controls.convection_scheme=ConvectionScheme::UPWIND;
-    controls.coupling.alpha_u=0.5;
-    controls.coupling.alpha_p=0.2;
+    controls.coupling.alpha_u=0.7;
+    controls.coupling.alpha_p=0.3;
+    controls.diagnostics.iteration_trace=true;
+    controls.diagnostics.iteration_trace_frequency=50;
     controls.convergence.max_iterations=test.max_iterations;
     controls.convergence.relative_tolerance=1e-8;
     controls.convergence.continuity_tolerance=1e-8;
 
+    std::cerr<<"GHIA START Re="<<test.reynolds
+             <<" grid="<<test.nx<<"x"<<test.ny
+             <<" max_outer_iterations="<<test.max_iterations<<"\n";
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,controls);
     if(!solve.converged)
         throw std::runtime_error("Ghia cavity did not converge for Re="+std::to_string(test.reynolds));
+    const auto& pressure_context=solve.pressure_linear_context;
+    if(pressure_context.full_setups!=1 ||
+       pressure_context.solves!=solve.iterations ||
+       pressure_context.full_setups+
+               pressure_context.numeric_updates+
+               pressure_context.unchanged_reuses!=
+           pressure_context.solves)
+        throw std::runtime_error(
+            "Ghia pressure solver did not reuse its preconditioner lifecycle");
+    std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
+             <<pressure_context.full_setups
+             <<" numeric_updates="<<pressure_context.numeric_updates
+             <<" unchanged_reuses="<<pressure_context.unchanged_reuses
+             <<" solves="<<pressure_context.solves<<"\n";
     return {std::move(U),solve,build_fv_geometry(mesh)};
 }
 
@@ -194,7 +218,8 @@ std::vector<Sample> u_reference(double re)
     static const double y[]={0.0000,0.0547,0.0625,0.0703,0.1016,0.1719,0.2813,0.4531,0.5000,0.6172,0.7344,0.8516,0.9531,0.9609,0.9688,0.9766,1.0000};
     static const double u100[]={0.00000,-0.03717,-0.04192,-0.04775,-0.06434,-0.10150,-0.15662,-0.21090,-0.20581,-0.13641,0.00332,0.23151,0.68717,0.73722,0.78871,0.84123,1.00000};
     static const double u400[]={0.00000,-0.08186,-0.09266,-0.10338,-0.14612,-0.24299,-0.32726,-0.17119,-0.11477,0.02135,0.16256,0.29093,0.55892,0.61756,0.68439,0.75837,1.00000};
-    const double* values=re==100.0?u100:u400;
+    static const double u1000[]={0.00000,-0.18109,-0.20196,-0.22220,-0.29730,-0.38289,-0.27805,-0.10648,-0.06080,0.05702,0.18719,0.33304,0.46604,0.51117,0.57492,0.65928,1.00000};
+    const double* values=re==100.0?u100:(re==400.0?u400:u1000);
     std::vector<Sample> result; for(std::size_t i=0;i<17;++i) result.push_back({y[i],values[i]}); return result;
 }
 
@@ -203,15 +228,18 @@ std::vector<Sample> v_reference(double re)
     static const double x[]={0.0000,0.0625,0.0703,0.0781,0.0938,0.1563,0.2266,0.2344,0.5000,0.8047,0.8594,0.9063,0.9453,0.9531,0.9609,0.9688,1.0000};
     static const double v100[]={0.00000,0.09233,0.10091,0.10890,0.12317,0.16077,0.17507,0.17527,0.05454,-0.24533,-0.22445,-0.16914,-0.10313,-0.08864,-0.07391,-0.05906,0.00000};
     static const double v400[]={0.00000,0.18360,0.19713,0.20920,0.22965,0.28124,0.30203,0.30174,0.05186,-0.38598,-0.44993,-0.23827,-0.22847,-0.19254,-0.15663,-0.12146,0.00000};
-    const double* values=re==100.0?v100:v400;
+    static const double v1000[]={0.00000,0.27485,0.29012,0.30353,0.32627,0.37095,0.33075,0.32235,0.02526,-0.31966,-0.42665,-0.51500,-0.39188,-0.33714,-0.27669,-0.21388,0.00000};
+    const double* values=re==100.0?v100:(re==400.0?v400:v1000);
     std::vector<Sample> result; for(std::size_t i=0;i<17;++i) result.push_back({x[i],values[i]}); return result;
 }
 
 struct CaseMetrics { Comparison u; Comparison v; };
+struct Profile { std::vector<double> u; std::vector<double> v; };
+struct ValidationResult { CavityResult solution; CaseMetrics metrics; };
 
-CaseMetrics run_case(const CavityCase& test)
+ValidationResult run_case(const CavityCase& test)
 {
-    const auto result=solve_cavity(test);
+    auto result=solve_cavity(test);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
@@ -220,8 +248,12 @@ CaseMetrics run_case(const CavityCase& test)
              <<" continuity_norm="<<result.solve.history.back().continuity_normalized
              <<" momentum_eq="<<result.solve.history.back().momentum_equation_residual
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
-    const double max_allowed=test.nx>=64?0.10:0.15;
-    const double rms_allowed=0.075;
+    // The 64x64 first-order-upwind Re=1000 case is deliberately harder than
+    // the Re=100/400 references. Keep separate, measured gates rather than
+    // weakening the lower-Re acceptance criteria.
+    const bool high_re=test.reynolds>=1000.0;
+    const double max_allowed=high_re?0.14:(test.nx>=64?0.10:0.15);
+    const double rms_allowed=high_re?0.085:0.075;
     if(u.max_abs>max_allowed || v.max_abs>max_allowed ||
        u.rms>rms_allowed || v.rms>rms_allowed)
         throw std::runtime_error("Ghia velocity profile mismatch");
@@ -230,30 +262,100 @@ CaseMetrics run_case(const CavityCase& test)
        !std::isfinite(result.solve.history.back().momentum_equation_residual) ||
        result.solve.history.back().momentum_equation_residual>1e-7)
         throw std::runtime_error("Ghia physical residual gate failed");
-    return {u,v};
+    return {{std::move(result.velocity), std::move(result.solve), std::move(result.geometry)}, {u,v}};
+}
+
+Profile sample_profile(const CavityResult& result, std::size_t nx, std::size_t ny)
+{
+    Profile profile;
+    for (const auto& sample : u_reference(100.0))
+        profile.u.push_back(interpolate_line(result.velocity, result.geometry, nx, ny, true, sample.coordinate));
+    for (const auto& sample : v_reference(100.0))
+        profile.v.push_back(interpolate_line(result.velocity, result.geometry, nx, ny, false, sample.coordinate));
+    return profile;
+}
+
+double rms_difference(const std::vector<double>& a, const std::vector<double>& b)
+{
+    if (a.size() != b.size() || a.empty())
+        throw std::invalid_argument("profile comparison size mismatch");
+    double sum2 = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const double d = a[i] - b[i];
+        sum2 += d * d;
+    }
+    return std::sqrt(sum2 / static_cast<double>(a.size()));
+}
+
+double max_difference(const std::vector<double>& a, const std::vector<double>& b)
+{
+    if (a.size() != b.size() || a.empty())
+        throw std::invalid_argument("profile comparison size mismatch");
+    double max_abs = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        max_abs = std::max(max_abs, std::abs(a[i] - b[i]));
+    return max_abs;
+}
+
+double observed_order(double coarse_error, double fine_error)
+{
+    if (!(coarse_error > 0.0) || !(fine_error > 0.0))
+        throw std::runtime_error("Ghia self-convergence error is zero or invalid");
+    return std::log(coarse_error / fine_error) / std::log(2.0);
 }
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     try {
+        const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
+        if (argc > 1 && !quick)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick]");
+
         const auto r32 = run_case({100.0,32,32,2500});
+        if (quick) {
+            std::cout << "GHIA_CAVITY_QUICK: PASS\n";
+            return 0;
+        }
+
         const auto r64 = run_case({100.0,64,64,5000});
         const auto r128 = run_case({100.0,128,128,12000});
         run_case({400.0,64,64,9000});
+        const auto r1000_64 = run_case({1000.0,64,64,15000});
 
-        const double p_v_max = std::log(r64.v.max_abs / r128.v.max_abs) / std::log(2.0);
-        const double p_v_rms = std::log(r64.v.rms / r128.v.rms) / std::log(2.0);
-        const double p_u_max = std::log(r64.u.max_abs / r128.u.max_abs) / std::log(2.0);
-        const double p_u_rms = std::log(r64.u.rms / r128.u.rms) / std::log(2.0);
+        const auto profile32 = sample_profile(r32.solution, 32, 32);
+        const auto profile64 = sample_profile(r64.solution, 64, 64);
+        const auto profile128 = sample_profile(r128.solution, 128, 128);
+
+        const double u_rms_32_64 = rms_difference(profile32.u, profile64.u);
+        const double u_rms_64_128 = rms_difference(profile64.u, profile128.u);
+        const double v_rms_32_64 = rms_difference(profile32.v, profile64.v);
+        const double v_rms_64_128 = rms_difference(profile64.v, profile128.v);
+        const double u_max_32_64 = max_difference(profile32.u, profile64.u);
+        const double u_max_64_128 = max_difference(profile64.u, profile128.u);
+        const double v_max_32_64 = max_difference(profile32.v, profile64.v);
+        const double v_max_64_128 = max_difference(profile64.v, profile128.v);
+
+        const double p_v_max = observed_order(v_max_32_64, v_max_64_128);
+        const double p_v_rms = observed_order(v_rms_32_64, v_rms_64_128);
+        const double p_u_max = observed_order(u_max_32_64, u_max_64_128);
+        const double p_u_rms = observed_order(u_rms_32_64, u_rms_64_128);
         std::cout << "GHIA Re=100 observed_order"
                   << " U_RMS=" << p_u_rms
                   << " U_max=" << p_u_max
                   << " V_RMS=" << p_v_rms
-                  << " V_max=" << p_v_max << "\n";
-        (void)r32;
-        if (!(p_u_rms > 0.50) || !(p_v_rms > 0.50) ||
+                  << " V_max=" << p_v_max
+                  << " dU_RMS(32,64)=" << u_rms_32_64
+                  << " dU_RMS(64,128)=" << u_rms_64_128
+                  << " dV_RMS(32,64)=" << v_rms_32_64
+                  << " dV_RMS(64,128)=" << v_rms_64_128 << "\n";
+        (void)r1000_64;
+        if (!(u_rms_64_128 < u_rms_32_64) ||
+            !(v_rms_64_128 < v_rms_32_64) ||
+            !(u_max_64_128 < u_max_32_64) ||
+            !(v_max_64_128 < v_max_32_64) ||
+            !(p_u_rms > 0.50) || !(p_v_rms > 0.50) ||
             !(p_u_max > 0.50) || !(p_v_max > 0.50))
             throw std::runtime_error("Ghia Re=100 mesh convergence is insufficient");
         std::cout<<"GHIA_CAVITY_VALIDATION: PASS\n";

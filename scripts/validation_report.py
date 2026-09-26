@@ -97,16 +97,26 @@ def latex_escape(value: str) -> str:
         "\\": r"\textbackslash{}",
         "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
         "_": r"\_", "{": r"\{", "}": r"\}",
+        "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+        "Δ": r"$\Delta$", "δ": r"$\delta$",
+        "α": r"$\alpha$", "β": r"$\beta$", "γ": r"$\gamma$",
+        "µ": r"$\mu$", "μ": r"$\mu$", "Ω": r"$\Omega$",
+        "×": r"$\times$", "≤": r"$\leq$", "≥": r"$\geq$",
+        "±": r"$\pm$", "°": r"$^\circ$", "−": r"$-$",
     }
-    for old, new in replacements.items():
-        value = value.replace(old, new)
-    return value
+    # Escape each source character exactly once. Repeated str.replace calls
+    # would also escape braces introduced by an earlier replacement.
+    return "".join(replacements.get(character, character) for character in value)
 
 
 def fmt(value: float | None, digits: int = 5) -> str:
     if value is None or not math.isfinite(value):
         return "n/a"
     return f"{value:.{digits}g}"
+
+
+def latex_table_row(cells: list[str]) -> str:
+    return " & ".join(cells) + r"\\"
 
 
 def make_plot(out: Path, ghia: list[dict]) -> str | None:
@@ -186,7 +196,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for row in reference_values:
-        lines.append(" & ".join(latex_escape(x) for x in row) + r"\\")
+        lines.append(latex_table_row([latex_escape(x) for x in row]))
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
@@ -203,7 +213,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         lines += [
             r"\begin{figure}[h]",
             r"\centering",
-            f"\includegraphics[width=0.92\textwidth]{{{latex_escape(plot_name)}}}",
+            rf"\includegraphics[width=0.92\textwidth]{{{latex_escape(plot_name)}}}",
             r"\caption{Ghia Re=100 centreline RMS error reported by the CFDX solver at three meshes.}",
             r"\end{figure}",
         ]
@@ -216,9 +226,10 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
     ]
     for name, rc in suite_status.items():
         state = "PASS" if rc == 0 else ("MISSING" if rc == -1 else "FAIL")
-        lines.append(
-            f"\\texttt{{{latex_escape(name)}}} & {rc} ({state})\\\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{latex_escape(name)}}}",
+            f"{rc} ({state})",
+        ]))
     lines += [r"\bottomrule", r"\end{longtable}"]
 
     if ghia:
@@ -232,11 +243,16 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
             r"\midrule",
         ]
         for x in ghia:
-            lines.append(
-                f"{fmt(x['re'],4)} & {latex_escape(x['grid'])} & {fmt(x['u_rms'])} & "
-                f"{fmt(x['u_max'])} & {fmt(x['v_rms'])} & {fmt(x['v_max'])} & "
-                f"{fmt(x['continuity'])} & {fmt(x['momentum'])}\\"
-            )
+            lines.append(latex_table_row([
+                fmt(x["re"], 4),
+                latex_escape(x["grid"]),
+                fmt(x["u_rms"]),
+                fmt(x["u_max"]),
+                fmt(x["v_rms"]),
+                fmt(x["v_max"]),
+                fmt(x["continuity"]),
+                fmt(x["momentum"]),
+            ]))
         lines += [r"\bottomrule", r"\end{longtable}"]
     else:
         lines.append("No Ghia solver output was available in this report run.")
@@ -258,10 +274,12 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for m in model_results:
-        lines.append(
-            f"\texttt{{{latex_escape(m['name'])}}} & {latex_escape(m['metric'])} & "
-            f"{latex_escape(m['value'])} & {latex_escape(m['reference'])}\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{latex_escape(m['name'])}}}",
+            latex_escape(m["metric"]),
+            latex_escape(m["value"]),
+            latex_escape(m["reference"]),
+        ]))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
@@ -273,10 +291,12 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for c in cases:
-        lines.append(
-            f"\texttt{{{c.ident}}} & {latex_escape(c.name)} & {latex_escape(c.status)} & "
-            f"{latex_escape(c.comparison)}\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{c.ident}}}",
+            latex_escape(c.name),
+            latex_escape(c.status),
+            latex_escape(c.comparison),
+        ]))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
@@ -356,6 +376,11 @@ def main() -> int:
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
     parser.add_argument("--output-dir", type=Path, default=Path("build/validation-report"))
     parser.add_argument("--matrix", type=Path, default=Path("docs/validation/FLUENT_VMFL_MATRIX.md"))
+    parser.add_argument(
+        "--ghia-log",
+        type=Path,
+        help="reuse output from an already executed full Ghia campaign",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -364,7 +389,6 @@ def main() -> int:
 
     logs: dict[str, tuple[int, str]] = {}
     suite_status = run_validation_suite(args.build_dir, args.output_dir)
-    gate = validation_gate_status(suite_status)
     ref_exe = args.build_dir / "test_fluent_vmfl_reference"
     if ref_exe.exists():
         logs["test_fluent_vmfl_reference"] = run_test(ref_exe, args.output_dir / "test_fluent_vmfl_reference.log")
@@ -382,11 +406,31 @@ def main() -> int:
 
     ghia: list[dict] = []
     ghia_exe = args.build_dir / "test_ghia_cavity"
-    if ghia_exe.exists():
+    if args.ghia_log is not None and args.ghia_log.exists():
+        output = args.ghia_log.read_text(encoding="utf-8")
+        ghia = parse_ghia(output)
+        rc = 0 if ghia and "GHIA_CAVITY_VALIDATION: PASS" in output else 1
+        (args.output_dir / "test_ghia_cavity.log").write_text(
+            output, encoding="utf-8"
+        )
+        logs["test_ghia_cavity"] = (rc, output)
+    elif args.ghia_log is not None:
+        logs["test_ghia_cavity"] = (-1, "Ghia validation log not found")
+    elif ghia_exe.exists():
         rc, output, ghia = run_ghia(ghia_exe, args.output_dir / "test_ghia_cavity.log")
         logs["test_ghia_cavity"] = (rc, output)
     else:
         logs["test_ghia_cavity"] = (-1, "executable not found")
+
+    # The report is a gate for every executable it launches. In particular,
+    # the full Ghia campaign must not be reduced to diagnostic-only evidence.
+    for name in (
+        "test_fluent_vmfl_reference",
+        "test_numerical_model_verification",
+        "test_ghia_cavity",
+    ):
+        suite_status[name] = logs[name][0]
+    gate = validation_gate_status(suite_status)
 
     (args.output_dir / "results.json").write_text(
         json.dumps({

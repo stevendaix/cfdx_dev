@@ -315,6 +315,7 @@ void run_pure_neumann_gauge()
     c.linear_tolerance = 1e-12;
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = 0.0;
+    c.pressure_linear_solver.null_space = NullSpaceModel::Constant;
 
     const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!result.converged)
@@ -324,10 +325,16 @@ void run_pure_neumann_gauge()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     try {
-        std::cout << "PHASE9: Couette full pressure-velocity-system verification\n";
+        const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
+        if (argc > 1 && !quick)
+            throw std::invalid_argument("usage: test_phase9_acceptance [--quick]");
+
+        std::cout << (quick
+            ? "PHASE9: Couette SIMPLE/PISO/COUPLED smoke verification\n"
+            : "PHASE9: Couette full pressure-velocity-system verification\n");
 
         struct Case {
             const char* name;
@@ -336,24 +343,27 @@ int main()
             bool bounded;
         };
 
-        // Every pressure-velocity algorithm currently exposed by the Phase 9
-        // API is exercised on the same analytical Couette problem.  The
-        // physical gates are identical: changing the coupling algorithm must
-        // not change the solution being validated.
-        const std::vector<Case> algorithm_cases = {
+        // The smoke set spans segregated, multi-corrector and monolithic
+        // coupling. The full campaign exercises every exposed algorithm.
+        // Physical gates remain identical in both modes.
+        std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
              ConvectionScheme::UPWIND, true},
-            {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
-             ConvectionScheme::UPWIND, true},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true},
-            {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
-             ConvectionScheme::UPWIND, true},
-            {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
              ConvectionScheme::UPWIND, true},
             {"COUPLED/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true},
         };
+        if (!quick) {
+            algorithm_cases.insert(algorithm_cases.end(), {
+                {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
+                 ConvectionScheme::UPWIND, true},
+                {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
+                 ConvectionScheme::UPWIND, true},
+                {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
+                 ConvectionScheme::UPWIND, true},
+            });
+        }
 
         // Couette is an affine velocity field.  On the cell-centred 16-cell
         // mesh the exact discrete maximum is (16 - 0.5) / 16 = 0.96875.
@@ -597,44 +607,47 @@ int main()
             }
         }
 
-        // Exercise the convection/flux assembly independently of the
-        // pressure-velocity algorithm. These cases use the same SIMPLE
-        // pressure correction but cover the alternate convection controls.
-        const auto second_order = run_couette_channel(
-            PressureVelocityAlgorithm::SIMPLE,
-            ConvectionScheme::SECOND_ORDER_UPWIND, true);
-        const auto unbounded = run_couette_channel(
-            PressureVelocityAlgorithm::SIMPLE,
-            ConvectionScheme::UPWIND, false);
+        if (!quick) {
+            // Exercise the convection/flux assembly independently of the
+            // pressure-velocity algorithm. These cases use the same SIMPLE
+            // pressure correction but cover the alternate convection controls.
+            const auto second_order = run_couette_channel(
+                PressureVelocityAlgorithm::SIMPLE,
+                ConvectionScheme::SECOND_ORDER_UPWIND, true);
+            const auto unbounded = run_couette_channel(
+                PressureVelocityAlgorithm::SIMPLE,
+                ConvectionScheme::UPWIND, false);
 
-        for (const auto& pair : {
-                 std::pair<const char*, const RunResult*>{"SIMPLE/SOU/bounded", &second_order},
-                 {"SIMPLE/upwind/unbounded", &unbounded}}) {
-            const auto error = profile_error(*pair.second, 8, 16);
-            if (!(error.l2 < profile_l2_tolerance &&
-                  error.linf < profile_linf_tolerance))
-                throw std::runtime_error(
-                    std::string(pair.first) + ": convection gate failed");
-            const auto& h = pair.second->solve.history.back();
-            if (!(h.continuity_linf < 1e-7) ||
-                !(h.momentum_equation_residual_relative < 1e-7))
-                throw std::runtime_error(
-                    std::string(pair.first) + ": conservation gate failed");
-            std::cout << pair.first
-                      << ": profile L2/Linf=" << error.l2 << "/" << error.linf
-                      << " continuity=" << h.continuity_linf << "\n";
+            for (const auto& pair : {
+                     std::pair<const char*, const RunResult*>{
+                         "SIMPLE/SOU/bounded", &second_order},
+                     {"SIMPLE/upwind/unbounded", &unbounded}}) {
+                const auto error = profile_error(*pair.second, 8, 16);
+                if (!(error.l2 < profile_l2_tolerance &&
+                      error.linf < profile_linf_tolerance))
+                    throw std::runtime_error(
+                        std::string(pair.first) + ": convection gate failed");
+                const auto& h = pair.second->solve.history.back();
+                if (!(h.continuity_linf < 1e-7) ||
+                    !(h.momentum_equation_residual_relative < 1e-7))
+                    throw std::runtime_error(
+                        std::string(pair.first) + ": conservation gate failed");
+                std::cout << pair.first
+                          << ": profile L2/Linf=" << error.l2 << "/" << error.linf
+                          << " continuity=" << h.continuity_linf << "\n";
+            }
+
+            // A pure-Neumann pressure field has a gauge freedom. Starting from
+            // a non-zero uniform pressure must converge to the same physical
+            // state without introducing a local pressure jump.
+            run_pure_neumann_gauge();
         }
-
-        // A pure-Neumann pressure field has a gauge freedom. Starting from a
-        // non-zero uniform pressure must therefore converge to the same
-        // physical state without introducing a local pressure jump.
-        run_pure_neumann_gauge();
 
         if (!failed_models.empty()) {
             std::cout << "PHASE9_ACCEPTANCE: FAIL\n";
             return 1;
         }
-        std::cout << "PHASE9_ACCEPTANCE: PASS\n";
+        std::cout << (quick ? "COUETTE_QUICK: PASS\n" : "PHASE9_ACCEPTANCE: PASS\n");
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "PHASE9_ACCEPTANCE: FAIL: " << e.what() << "\n";
