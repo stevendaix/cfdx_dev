@@ -64,6 +64,7 @@ endif()
 
 find_package(HDF5 QUIET)
 if(HDF5_FOUND)
+    set(CFDX_HAS_HDF5 ON)
     message(STATUS "Using system HDF5 ${HDF5_VERSION}")
     if(CFDX_ENABLE_PARALLEL_HDF5 AND NOT HDF5_IS_PARALLEL)
         message(FATAL_ERROR "CFDX_ENABLE_PARALLEL_HDF5=ON but detected HDF5 is not parallel-enabled")
@@ -79,11 +80,13 @@ if(HDF5_FOUND)
         set(HDF5_HL_LIBRARIES ${HDF5_HL_LIBRARIES})
     endif()
 elseif(EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
+    set(CFDX_HAS_HDF5 ON)
     message(STATUS "Using locally-built HDF5 (static) at ${CFDX_HDF5_DIR}")
     set(HDF5_INCLUDE_DIRS "${CFDX_HDF5_DIR}/include")
     set(HDF5_C_LIBRARIES "${CFDX_HDF5_DIR}/lib/libhdf5.a")
     set(HDF5_HL_LIBRARIES "${CFDX_HDF5_DIR}/lib/libhdf5_hl.a")
 else()
+    set(CFDX_HAS_HDF5 OFF)
     message(WARNING "HDF5 not found. HDF5-dependent features disabled.")
 endif()
 
@@ -132,13 +135,19 @@ set(CFDX_FIELD_SOURCES
 
 # IO module
 set(CFDX_IO_SOURCES
-    src/cfdx/io/hdf5/hdf5_writer.cpp
-    src/cfdx/io/hdf5/hdf5_reader.cpp
     src/cfdx/io/vtu/vtu_writer.cpp
     src/cfdx/io/openfoam/openfoam_importer.cpp
     src/cfdx/io/gmsh/gmsh_importer.cpp
     src/cfdx/io/mesh/mesh_importer.cpp
 )
+if(CFDX_HAS_HDF5)
+    list(APPEND CFDX_IO_SOURCES
+        src/cfdx/io/hdf5/hdf5_writer.cpp
+        src/cfdx/io/hdf5/hdf5_reader.cpp
+    )
+else()
+    list(APPEND CFDX_IO_SOURCES src/cfdx/io/hdf5/hdf5_unavailable.cpp)
+endif()
 
 # Physics sources
 set(CFDX_PHYSICS_SOURCES
@@ -291,9 +300,12 @@ if(Python3_Interpreter_FOUND)
     target_compile_definitions(cfdx_core PRIVATE CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}")
 endif()
 
-if(HDF5_FOUND OR EXISTS "${CFDX_HDF5_DIR}/include/H5public.h")
+if(CFDX_HAS_HDF5)
     target_include_directories(cfdx_core PUBLIC ${HDF5_INCLUDE_DIRS})
     target_link_libraries(cfdx_core PUBLIC ${HDF5_C_LIBRARIES} ${HDF5_HL_LIBRARIES} z)
+    target_compile_definitions(cfdx_core PUBLIC CFDX_HAS_HDF5=1)
+else()
+    target_compile_definitions(cfdx_core PUBLIC CFDX_HAS_HDF5=0)
 endif()
 
 if(CFDX_ENABLE_GPU)
@@ -544,10 +556,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_cfdx_test(test_phase8_cuda_poisson tests/validation/test_phase8_cuda_poisson.cpp)
     endif()
 
-    # HDF5 tests
-    add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
-    add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
-    add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+    # HDF5 tests require the native reader/writer implementation.
+    if(CFDX_HAS_HDF5)
+        add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
+        add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+        add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+    else()
+        add_cfdx_test(test_hdf5_unavailable tests/unit/test_hdf5_unavailable.cpp)
+    endif()
 
     # Memory Planner tests
     add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
@@ -558,13 +574,17 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
     add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
     add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
-    add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    if(CFDX_HAS_HDF5)
+        add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    endif()
     if(Python3_Interpreter_FOUND)
-        add_test(NAME test_production_solver_e2e
-                 COMMAND ${Python3_EXECUTABLE}
-                         ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
-        set_tests_properties(test_production_solver_e2e PROPERTIES
-            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+        if(CFDX_HAS_HDF5)
+            add_test(NAME test_production_solver_e2e
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
+            set_tests_properties(test_production_solver_e2e PROPERTIES
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+        endif()
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
