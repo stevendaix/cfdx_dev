@@ -21,7 +21,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Release, DebugSanitizers]
+        build_type: ${{ fromJSON(
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'validation-total') &&
+          '["Release"]' || '["Release", "DebugSanitizers"]'
+          ) }}
 
     steps:
       - name: Checkout
