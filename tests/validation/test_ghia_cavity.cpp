@@ -133,10 +133,15 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.convection_scheme=ConvectionScheme::UPWIND;
     controls.coupling.alpha_u=0.7;
     controls.coupling.alpha_p=0.3;
+    controls.diagnostics.iteration_trace=true;
+    controls.diagnostics.iteration_trace_frequency=50;
     controls.convergence.max_iterations=test.max_iterations;
     controls.convergence.relative_tolerance=1e-8;
     controls.convergence.continuity_tolerance=1e-8;
 
+    std::cerr<<"GHIA START Re="<<test.reynolds
+             <<" grid="<<test.nx<<"x"<<test.ny
+             <<" max_outer_iterations="<<test.max_iterations<<"\n";
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,controls);
     if(!solve.converged)
         throw std::runtime_error("Ghia cavity did not converge for Re="+std::to_string(test.reynolds));
