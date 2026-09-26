@@ -22,18 +22,15 @@ using namespace cfdx::testing;
 
 int main()
 {
-    // Compile contracts for the real public module interfaces.
     static_assert(std::is_default_constructible_v<KrylovControls>);
     static_assert(sizeof(BlockDiagonalPreconditioner) > 0);
     static_assert(std::is_default_constructible_v<NativeBoomerAMGPreconditioner>);
     static_assert(sizeof(MatrixFreeFvDiffusionOperator) > 0);
     static_assert(sizeof(memory::MemoryLedger) > 0);
-    static_assert(std::is_function_v<decltype(io::openfoam::import_openfoam_case)>);
+    static_assert(std::is_function_v<decltype(cfdx::io::openfoam::import_openfoam_case)>);
 
     run_case("krylov_restart_contract_is_bounded", [] {
         const auto r = choose_gmres_restart(30, 0.5);
-        // With the default adaptive controls, poor cycle reduction enlarges
-        // the restart by five while remaining inside the configured bounds.
         EXPECT_TRUE(r == 35);
         EXPECT_TRUE(r <= 512);
     });
@@ -57,8 +54,6 @@ int main()
         char second[64]{};
         ledger.allocate(id, first, sizeof(first), MemoryLocation::HOST);
         ledger.allocate(id, second, sizeof(second), MemoryLocation::HOST);
-        // The implementation deliberately replaces an existing record for
-        // the same BufferID; usage must therefore remain balanced.
         EXPECT_TRUE(ledger.currentUsage(MemoryLocation::HOST) == sizeof(second));
         ledger.deallocate(id);
         EXPECT_TRUE(ledger.currentUsage(MemoryLocation::HOST) == 0);
