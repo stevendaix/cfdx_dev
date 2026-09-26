@@ -2,6 +2,7 @@
 #include "cfdx/physics/thermophysical_models.h"
 #include <algorithm>
 #include <cmath>
+#include <cassert>
 #include <stdexcept>
 #include <limits>
 namespace cfdx::physics {
@@ -19,16 +20,20 @@ inline double realizable_kepsilon_cmu_from_invariants(
 {
     if(!std::isfinite(inv.strain_magnitude) || !std::isfinite(inv.rotation_magnitude) ||
        !std::isfinite(inv.third_invariant) || inv.strain_magnitude<0.0 ||
-       inv.rotation_magnitude<0.0 || k<0.0 || epsilon<=0.0 || A0<=0.0)
-        throw std::invalid_argument("invalid realizable k-epsilon inputs");
+       inv.rotation_magnitude<0.0 || k<0.0 || epsilon<=0.0 || A0<=0.0) {
+        assert(false && "invalid realizable k-epsilon inputs");
+        return 0.0;
+    }
     const double S2=std::max(inv.strain_magnitude*inv.strain_magnitude,1e-30);
     const double W=std::clamp(inv.third_invariant,-1.0/std::sqrt(6.0),1.0/std::sqrt(6.0));
-    const double phi=std::acos(std::clamp(std::sqrt(6.0)*W,-1.0,1.0))/3.0;
+    const double phi=std::acos(std::sqrt(6.0)*W)/3.0;
     const double As=std::sqrt(6.0)*std::cos(phi);
     const double Ustar=std::sqrt(S2+inv.rotation_magnitude*inv.rotation_magnitude);
     const double denom=A0+As*Ustar*k/std::max(epsilon,1e-300);
-    if(!(denom>0.0) || !std::isfinite(denom))
-        throw std::domain_error("realizable k-epsilon Cmu denominator is invalid");
+    if(!(denom>0.0) || !std::isfinite(denom)) {
+        assert(false && "realizable k-epsilon Cmu denominator is invalid");
+        return 0.0;
+    }
     return 1.0/denom;
 }
 
@@ -67,10 +72,14 @@ inline SSTBlendedCoefficients sst_blended_coefficients(
 
 enum class TurbulenceWallRegime { VISCOSITY_AFFECTED, BUFFER, LOG_LAYER };
 
+inline bool valid_wall_y_plus(double y_plus)
+{
+    return std::isfinite(y_plus) && y_plus>=0.0;
+}
+
 inline TurbulenceWallRegime classify_wall_y_plus(double y_plus)
 {
-    if(!std::isfinite(y_plus) || y_plus<0.0)
-        throw std::invalid_argument("wall y+ must be finite and non-negative");
+    assert(valid_wall_y_plus(y_plus));
     if(y_plus<=5.0) return TurbulenceWallRegime::VISCOSITY_AFFECTED;
     if(y_plus<30.0) return TurbulenceWallRegime::BUFFER;
     return TurbulenceWallRegime::LOG_LAYER;
@@ -109,7 +118,7 @@ inline void validate_turbulence_model_coefficients(const TurbulenceModelCoeffici
 }
 inline double k_epsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){if(k<0||epsilon<=0||Cmu<=0||!std::isfinite(k)||!std::isfinite(epsilon))throw std::invalid_argument("k-epsilon invalid inputs");return Cmu*k*k/epsilon;}
 inline double rng_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.0845){return k_epsilon_eddy_viscosity(k,epsilon,Cmu);}
-inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){
+inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu){
  if(k<0||epsilon<=0||Cmu<=0||!std::isfinite(k)||!std::isfinite(epsilon)) throw std::invalid_argument("realizable k-epsilon invalid inputs");
  return Cmu*k*k/epsilon;
 }
