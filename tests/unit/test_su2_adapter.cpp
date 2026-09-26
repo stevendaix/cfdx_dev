@@ -63,8 +63,8 @@ int main() {
         bool ok = adapter.convert("tests/data/su2/mesh_NACA0012_inv.su2", result);
         EXPECT_TRUE(ok);
         EXPECT_FALSE(result.gap_report.has_blocking());
-        EXPECT_TRUE(result.mesh.n_vertices() == 5233);
-        EXPECT_TRUE(result.setup.mesh_info.n_vertices == 5233);
+        EXPECT_TRUE(result.mesh.n_points() == 5233);
+        EXPECT_TRUE(adapter.setup().mesh_info.n_vertices == 5233);
     });
 
     return run_all();

@@ -77,7 +77,7 @@ static std::string su2_face_type_name(int type_code) {
 bool Su2Adapter::detect_source(const std::string& case_path,
                                SourceInfo& info) {
     std::string su2_file = case_path;
-    if (su2_file.size() >= 5 && su2_file.substr(su2_file.size() - 5) != ".su2") {
+    if (su2_file.size() < 4 || su2_file.substr(su2_file.size() - 4) != ".su2") {
         su2_file += ".su2";
     }
 
@@ -176,6 +176,7 @@ bool Su2Adapter::parse_mesh(const std::string& su2_file) {
     }
 
     setup_.mesh_info.n_vertices = su2_points_.size();
+    setup_.mesh_info.n_cells = n_elements;
     if (n_dim <= 2) setup_.mesh_info.dimension = 2;
 
     // Collect unique cell types
@@ -482,6 +483,9 @@ bool Su2Adapter::parse_config(const std::string& cfg_file) {
             if (lower_key.find("mach") != std::string::npos) {
                 try { setup_.initial_condition.velocity = std::stod(val) * 340.0; } catch (...) {}
             }
+            if (lower_key == "solver") {
+                setup_.physics_model = to_lower(val);
+            }
             if (lower_key.find("alpha") != std::string::npos &&
                 lower_key.find("aoa") != std::string::npos) {
                 try {
@@ -677,9 +681,9 @@ bool Su2Adapter::convert(const std::string& case_path,
     std::string cfg_file = case_path;
 
     // Handle directory vs. file path
-    if (su2_file.size() > 5 && su2_file.substr(su2_file.size() - 5) == ".su2") {
+    if (su2_file.size() >= 4 && su2_file.substr(su2_file.size() - 4) == ".su2") {
         // Direct file path
-    } else if (cfg_file.size() > 4 && cfg_file.substr(cfg_file.size() - 4) == ".cfg") {
+    } else if (cfg_file.size() >= 4 && cfg_file.substr(cfg_file.size() - 4) == ".cfg") {
         // Direct cfg path
     } else {
         // Assume directory
@@ -823,7 +827,7 @@ bool Su2Adapter::convert(const std::string& case_path,
     }
 
     // Build mesh faces and ownership
-    mesh.faces().build_from_scratch(element_faces);
+    result.mesh.faces().build_from_scratch(element_faces);
 
     result.mesh.ownership().resize(result.mesh.n_faces());
     // Build ownership from boundary info and element connectivity
