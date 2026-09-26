@@ -78,7 +78,7 @@ inline const std::array<SolverModelDescriptor, 14>& preconditioner_model_catalog
         {"ilu0", ModelAvailability::Available, false, false},
         {"ilut", ModelAvailability::Planned, false, false},
         {"native_amg", ModelAvailability::Available, false, false},
-        {"smoothed_aggregation_amg", ModelAvailability::Planned, false, false},
+        {"smoothed_aggregation_amg", ModelAvailability::Available, false, false},
         {"fsai", ModelAvailability::Planned, false, false},
         {"ras", ModelAvailability::Planned, false, true},
         {"native_fieldsplit", ModelAvailability::Available, false, false},
@@ -216,11 +216,15 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (plan.krylov == KrylovModel::CG &&
         plan.preconditioner != PreconditionerModel::None &&
         plan.preconditioner != PreconditionerModel::Jacobi &&
-        plan.preconditioner != PreconditionerModel::NativeAMG)
+        plan.preconditioner != PreconditionerModel::NativeAMG &&
+        plan.preconditioner != PreconditionerModel::SmoothedAggregationAMG)
         throw std::invalid_argument(
-            "CG requires an SPD-qualified preconditioner (none, Jacobi, or native AMG)");
-    if (plan.preconditioner == PreconditionerModel::NativeAMG && !cg_problem)
-        throw std::invalid_argument("native AMG is currently qualified only for SPD elliptic problems");
+            "CG requires an SPD-qualified preconditioner (none, Jacobi, or a native AMG variant)");
+    if ((plan.preconditioner == PreconditionerModel::NativeAMG ||
+         plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG) &&
+        !cg_problem)
+        throw std::invalid_argument(
+            "native AMG is currently qualified only for SPD elliptic problems");
     if (plan.preconditioner == PreconditionerModel::NativeFieldSplit &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("native FieldSplit requires a coupled pressure-velocity profile");
@@ -233,7 +237,8 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (plan.null_space == NullSpaceModel::Constant && plan.krylov != KrylovModel::CG)
         throw std::invalid_argument("constant null space currently requires projected CG");
     if (plan.null_space == NullSpaceModel::Constant &&
-        plan.preconditioner == PreconditionerModel::NativeAMG)
+        (plan.preconditioner == PreconditionerModel::NativeAMG ||
+         plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG))
         throw std::invalid_argument(
             "native AMG does not yet propagate near-null-space vectors; use Jacobi");
     return plan;

@@ -35,7 +35,10 @@ private:
 
 } // namespace
 
-struct NativeBoomerAMGPreconditioner::Impl {
+struct NativeAMGPreconditioner::Impl {
+    explicit Impl(NativeAMGMethod selected_method) : method(selected_method) {}
+
+    NativeAMGMethod method;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
     std::unique_ptr<OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
@@ -44,16 +47,16 @@ struct NativeBoomerAMGPreconditioner::Impl {
     std::size_t numeric_updates = 0;
 };
 
-NativeBoomerAMGPreconditioner::NativeBoomerAMGPreconditioner()
-    : impl_(std::make_unique<Impl>()) {}
+NativeAMGPreconditioner::NativeAMGPreconditioner(NativeAMGMethod method)
+    : impl_(std::make_unique<Impl>(method)) {}
 
-NativeBoomerAMGPreconditioner::~NativeBoomerAMGPreconditioner() = default;
-NativeBoomerAMGPreconditioner::NativeBoomerAMGPreconditioner(
-    NativeBoomerAMGPreconditioner&&) noexcept = default;
-NativeBoomerAMGPreconditioner& NativeBoomerAMGPreconditioner::operator=(
-    NativeBoomerAMGPreconditioner&&) noexcept = default;
+NativeAMGPreconditioner::~NativeAMGPreconditioner() = default;
+NativeAMGPreconditioner::NativeAMGPreconditioner(
+    NativeAMGPreconditioner&&) noexcept = default;
+NativeAMGPreconditioner& NativeAMGPreconditioner::operator=(
+    NativeAMGPreconditioner&&) noexcept = default;
 
-void NativeBoomerAMGPreconditioner::configure(AMGMemoryPolicy policy) {
+void NativeAMGPreconditioner::configure(AMGMemoryPolicy policy) {
     if (impl_->policy != policy) {
         impl_->amg.reset();
         impl_->op.reset();
@@ -62,7 +65,7 @@ void NativeBoomerAMGPreconditioner::configure(AMGMemoryPolicy policy) {
     impl_->error.clear();
 }
 
-bool NativeBoomerAMGPreconditioner::setup(const SparseMatrix& matrix) {
+bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
     impl_->amg.reset();
     impl_->op.reset();
     if (matrix.n_rows() == 0 || matrix.n_rows() != matrix.n_cols() ||
@@ -87,7 +90,10 @@ bool NativeBoomerAMGPreconditioner::setup(const SparseMatrix& matrix) {
     auto next_op = std::make_unique<OwnedSparseOperator>(matrix);
     auto next_amg = std::make_unique<MatrixFreeVcyclePreconditioner>(
         *next_op, omega, pre_sweeps, post_sweeps, 0.25,
-        impl_->policy == AMGMemoryPolicy::Low ? 15 : 25);
+        impl_->policy == AMGMemoryPolicy::Low ? 15 : 25,
+        impl_->method == NativeAMGMethod::SmoothedAggregation
+            ? AMGInterpolationPolicy::SmoothedAggregation
+            : AMGInterpolationPolicy::DirectCF);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
         return false;
@@ -101,7 +107,7 @@ bool NativeBoomerAMGPreconditioner::setup(const SparseMatrix& matrix) {
     return true;
 }
 
-bool NativeBoomerAMGPreconditioner::update_values(const SparseMatrix& matrix) {
+bool NativeAMGPreconditioner::update_values(const SparseMatrix& matrix) {
     if (!impl_->op || !impl_->amg || matrix.n_rows() == 0 ||
         matrix.n_rows() != matrix.n_cols() || !matrix.is_consistent()) {
         impl_->error = "native AMG numeric update requires an existing compatible hierarchy";
@@ -117,7 +123,7 @@ bool NativeBoomerAMGPreconditioner::update_values(const SparseMatrix& matrix) {
     return true;
 }
 
-bool NativeBoomerAMGPreconditioner::apply(
+bool NativeAMGPreconditioner::apply(
     const Vector& residual, Vector& correction) const {
     if (!impl_->amg) {
         impl_->error = "native AMG preconditioner has not been set up";
@@ -131,27 +137,37 @@ bool NativeBoomerAMGPreconditioner::apply(
     return true;
 }
 
-bool NativeBoomerAMGPreconditioner::is_ready() const noexcept {
+const char* NativeAMGPreconditioner::name() const {
+    return impl_->method == NativeAMGMethod::SmoothedAggregation
+        ? "NativeSmoothedAggregationAMG"
+        : "NativeBoomerStyleAMG";
+}
+
+bool NativeAMGPreconditioner::is_ready() const noexcept {
     return static_cast<bool>(impl_->amg);
 }
 
-AMGMemoryPolicy NativeBoomerAMGPreconditioner::memory_policy() const noexcept {
+NativeAMGMethod NativeAMGPreconditioner::method() const noexcept {
+    return impl_->method;
+}
+
+AMGMemoryPolicy NativeAMGPreconditioner::memory_policy() const noexcept {
     return impl_->policy;
 }
 
-std::size_t NativeBoomerAMGPreconditioner::coarse_size() const noexcept {
+std::size_t NativeAMGPreconditioner::coarse_size() const noexcept {
     return impl_->amg ? impl_->amg->coarse_size() : 0;
 }
 
-std::size_t NativeBoomerAMGPreconditioner::hierarchy_builds() const noexcept {
+std::size_t NativeAMGPreconditioner::hierarchy_builds() const noexcept {
     return impl_->hierarchy_builds;
 }
 
-std::size_t NativeBoomerAMGPreconditioner::numeric_updates() const noexcept {
+std::size_t NativeAMGPreconditioner::numeric_updates() const noexcept {
     return impl_->numeric_updates;
 }
 
-const std::string& NativeBoomerAMGPreconditioner::last_error() const noexcept {
+const std::string& NativeAMGPreconditioner::last_error() const noexcept {
     return impl_->error;
 }
 

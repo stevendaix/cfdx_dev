@@ -33,13 +33,15 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
             return std::make_unique<ILU0Preconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>();
+        case PreconditionerModel::SmoothedAggregationAMG:
+            return std::make_unique<
+                NativeSmoothedAggregationAMGPreconditioner>();
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
             throw std::invalid_argument(
                 "block preconditioning needs field metadata; use the coupled solver API");
         case PreconditionerModel::Auto:
         case PreconditionerModel::ILUT:
-        case PreconditionerModel::SmoothedAggregationAMG:
         case PreconditionerModel::FSAI:
         case PreconditionerModel::RAS:
         case PreconditionerModel::LSC:

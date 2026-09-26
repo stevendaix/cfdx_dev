@@ -14,27 +14,31 @@ enum class AMGMemoryPolicy {
     Fast
 };
 
-// Dependency-free AMG recipe using the parts of the BoomerAMG method that fit
-// CFDX's native algebra: strength-based aggregation, Galerkin coarse operators,
-// smoothing, restriction/prolongation and a coarse solve. This is not HYPRE and
-// does not claim binary or numerical equivalence with HYPRE BoomerAMG.
-class NativeBoomerAMGPreconditioner final : public Preconditioner {
-public:
-    NativeBoomerAMGPreconditioner();
-    ~NativeBoomerAMGPreconditioner() override;
+enum class NativeAMGMethod {
+    BoomerStyle,
+    SmoothedAggregation
+};
 
-    NativeBoomerAMGPreconditioner(const NativeBoomerAMGPreconditioner&) = delete;
-    NativeBoomerAMGPreconditioner& operator=(const NativeBoomerAMGPreconditioner&) = delete;
-    NativeBoomerAMGPreconditioner(NativeBoomerAMGPreconditioner&&) noexcept;
-    NativeBoomerAMGPreconditioner& operator=(NativeBoomerAMGPreconditioner&&) noexcept;
+// Shared dependency-free AMG lifecycle for CFDX's Boomer-style and smoothed-
+// aggregation recipes. Neither method wraps or copies a third-party runtime.
+class NativeAMGPreconditioner : public Preconditioner {
+public:
+    explicit NativeAMGPreconditioner(NativeAMGMethod method);
+    ~NativeAMGPreconditioner() override;
+
+    NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
+    NativeAMGPreconditioner& operator=(const NativeAMGPreconditioner&) = delete;
+    NativeAMGPreconditioner(NativeAMGPreconditioner&&) noexcept;
+    NativeAMGPreconditioner& operator=(NativeAMGPreconditioner&&) noexcept;
 
     void configure(AMGMemoryPolicy policy);
     bool setup(const SparseMatrix& matrix) override;
     bool update_values(const SparseMatrix& matrix) override;
     bool apply(const Vector& residual, Vector& correction) const override;
-    const char* name() const override { return "NativeBoomerStyleAMG"; }
+    const char* name() const override;
 
     bool is_ready() const noexcept;
+    NativeAMGMethod method() const noexcept;
     AMGMemoryPolicy memory_policy() const noexcept;
     std::size_t coarse_size() const noexcept;
     std::size_t hierarchy_builds() const noexcept;
@@ -44,6 +48,21 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+};
+
+class NativeBoomerAMGPreconditioner final : public NativeAMGPreconditioner {
+public:
+    NativeBoomerAMGPreconditioner()
+        : NativeAMGPreconditioner(NativeAMGMethod::BoomerStyle) {}
+};
+
+// Dependency-free smoothed-aggregation AMG following the transferable setup
+// concepts of PETSc GAMG. This is not PETSc and does not copy PETSc source.
+class NativeSmoothedAggregationAMGPreconditioner final
+    : public NativeAMGPreconditioner {
+public:
+    NativeSmoothedAggregationAMGPreconditioner()
+        : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation) {}
 };
 
 } // namespace cfdx::core

@@ -220,6 +220,9 @@ and launch overhead wins.
   unchanged-operator counters;
 - native AMG numeric hierarchy refresh that preserves interpolation and the
   Galerkin sparsity structure when the CSR pattern is unchanged;
+- native smoothed-aggregation AMG with deterministic aggregates, a
+  constant-mode tentative prolongator, damped-Jacobi interpolation, Galerkin
+  levels and the same reusable numeric-refresh lifecycle;
 - one pressure CG/preconditioner context per segregated incompressible solve,
   shared by SIMPLE, SIMPLEC, PISO, PIMPLE and fractional-step corrections;
 - typed equation-specific Krylov/preconditioner selection;

@@ -57,7 +57,12 @@ static double true_residual_ratio(const SparseMatrix& A, const Vector& rhs,
     return std::sqrt(after2 / before2);
 }
 
-static bool check_amg(const SparseMatrix& A, Vector rhs, double max_ratio) {
+static bool check_amg(
+    const SparseMatrix& A,
+    Vector rhs,
+    double max_ratio,
+    cfdx::core::AMGInterpolationPolicy interpolation =
+        cfdx::core::AMGInterpolationPolicy::DirectCF) {
     FunctionalLinearOperator op(
         A.n_rows(),
         [&A](const Vector& x, Vector& y) {
@@ -65,7 +70,8 @@ static bool check_amg(const SparseMatrix& A, Vector rhs, double max_ratio) {
             for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
         });
 
-    MatrixFreeVcyclePreconditioner amg(op);
+    MatrixFreeVcyclePreconditioner amg(
+        op, 0.7, 4, 4, 0.25, 25, interpolation);
     if (!amg.setup(A)) return false;
 
     Vector correction;
@@ -176,6 +182,28 @@ int main() {
         return 6;
     }
 
+    MatrixFreeVcyclePreconditioner smoothed_aggregation(
+        op, 0.7, 4, 4, 0.25, 25,
+        AMGInterpolationPolicy::SmoothedAggregation);
+    if (!smoothed_aggregation.setup(A) ||
+        smoothed_aggregation.coarse_size() == 0 ||
+        smoothed_aggregation.coarse_size() >= A.n_rows()) {
+        return 30;
+    }
+    for (std::size_t i = 0; i < A.n_rows(); ++i) {
+        if (std::abs(smoothed_aggregation.prolongation_row_sum(i) - 1.0) >
+            1e-12) {
+            std::cerr << "Smoothed aggregation did not preserve constants\n";
+            return 31;
+        }
+    }
+    Vector sa_correction;
+    if (!smoothed_aggregation.apply(rhs, sa_correction) ||
+        true_residual_ratio(A, rhs, sa_correction) >= 1.0) {
+        std::cerr << "Smoothed aggregation did not reduce the true residual\n";
+        return 32;
+    }
+
     // Quantitative multilevel checks requested by Phase 4.7.
     const SparseMatrix poisson1d = make_poisson_1d(4);
     Vector rhs1d(4);
@@ -192,12 +220,24 @@ int main() {
         std::cerr << "2D Poisson AMG residual reduction failed\\n";
         return 10;
     }
+    if (!check_amg(
+            poisson2d, rhs2d, 0.999,
+            AMGInterpolationPolicy::SmoothedAggregation)) {
+        std::cerr << "2D Poisson smoothed aggregation residual reduction failed\n";
+        return 33;
+    }
 
     const SparseMatrix anisotropic = make_anisotropic_diffusion_2d(16, 16, 1.0, 1000.0);
     Vector rhs_aniso(256, 1.0);
     if (!check_amg(anisotropic, rhs_aniso, 0.99)) {
         std::cerr << "Strongly anisotropic AMG regression failed\\n";
         return 12;
+    }
+    if (!check_amg(
+            anisotropic, rhs_aniso, 0.99,
+            AMGInterpolationPolicy::SmoothedAggregation)) {
+        std::cerr << "Anisotropic smoothed aggregation regression failed\n";
+        return 34;
     }
 
     // Exercise repeated V-cycles rather than only a single residual reduction.

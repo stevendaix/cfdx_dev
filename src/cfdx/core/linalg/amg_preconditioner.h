@@ -13,11 +13,15 @@
 
 namespace cfdx::core {
 
-// Multilevel AMG with a serial C/F splitting, normalized direct interpolation
-// and Galerkin coarse operators. The setup follows the transferable parts of
-// BoomerAMG's setup pipeline while deliberately omitting its distributed HMIS
-// and extended+i machinery. The finest operator remains matrix-free during
-// apply(); SparseMatrix is used during setup to build the hierarchy.
+enum class AMGInterpolationPolicy {
+    DirectCF,
+    SmoothedAggregation
+};
+
+// Multilevel AMG with selectable direct C/F or smoothed-aggregation
+// interpolation and Galerkin coarse operators. The finest operator remains
+// matrix-free during apply(); SparseMatrix is used during setup to build the
+// hierarchy.
 class MatrixFreeVcyclePreconditioner final : public Preconditioner {
 public:
     MatrixFreeVcyclePreconditioner(const LinearOperatorBase& op,
@@ -25,9 +29,12 @@ public:
                                    std::size_t pre = 4,
                                    std::size_t post = 4,
                                    double strength_threshold = 0.25,
-                                   std::size_t max_levels = 25)
+                                   std::size_t max_levels = 25,
+                                   AMGInterpolationPolicy interpolation =
+                                       AMGInterpolationPolicy::DirectCF)
         : op_(op), omega_(omega), pre_(pre), post_(post),
-          strength_threshold_(strength_threshold), max_levels_(max_levels)
+          strength_threshold_(strength_threshold), max_levels_(max_levels),
+          interpolation_(interpolation)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
@@ -62,8 +69,14 @@ public:
             std::vector<TransferRow> prolongation;
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
-            build_cf_interpolation(levels_.back(), strength_threshold_,
-                                   prolongation, aggregate, coarse_n);
+            if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation) {
+                build_smoothed_aggregation_interpolation(
+                    levels_.back(), strength_threshold_, prolongation,
+                    aggregate, coarse_n);
+            } else {
+                build_cf_interpolation(levels_.back(), strength_threshold_,
+                                       prolongation, aggregate, coarse_n);
+            }
             if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
                 break;
             }
@@ -138,6 +151,22 @@ public:
         return first_aggregate_[fine_cell];
     }
 
+    double prolongation_row_sum(std::size_t fine_cell) const
+    {
+        if (levels_.size() < 2 ||
+            fine_cell >= levels_.front().prolongation.size()) {
+            throw std::out_of_range(
+                "prolongation_row_sum: fine-cell index out of range");
+        }
+        double sum = 0.0;
+        for (const auto& [coarse, weight] :
+             levels_.front().prolongation[fine_cell]) {
+            (void)coarse;
+            sum += weight;
+        }
+        return sum;
+    }
+
     bool apply(const Vector& r, Vector& z) const override
     {
         if (levels_.empty() || r.size() != op_.rows() || !r.is_valid()) {
@@ -148,7 +177,12 @@ public:
         return vcycle(0, r, z);
     }
 
-    const char* name() const override { return "galerkin-agglomerated-amg"; }
+    const char* name() const override
+    {
+        return interpolation_ == AMGInterpolationPolicy::SmoothedAggregation
+            ? "smoothed-aggregation-amg"
+            : "galerkin-agglomerated-amg";
+    }
 
 private:
     using TransferRow = std::vector<std::pair<std::size_t, double>>;
@@ -371,6 +405,93 @@ private:
         }
     }
 
+    static void build_smoothed_aggregation_interpolation(
+        const Level& level,
+        double strength_threshold,
+        std::vector<TransferRow>& prolongation,
+        std::vector<std::size_t>& aggregate,
+        std::size_t& coarse_n)
+    {
+        const std::size_t n = level.A.n_rows();
+        const auto strong = build_strength_graph(level, strength_threshold);
+        std::vector<std::vector<std::size_t>> neighborhood = strong;
+        for (std::size_t i = 0; i < n; ++i) {
+            for (const std::size_t j : strong[i]) neighborhood[j].push_back(i);
+        }
+        for (auto& neighbors : neighborhood) {
+            std::sort(neighbors.begin(), neighbors.end());
+            neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
+                            neighbors.end());
+        }
+
+        // Deterministic uncoupled aggregation. The most connected unassigned
+        // point seeds an aggregate and absorbs its unassigned strong
+        // neighbours. Isolated points become singleton aggregates.
+        aggregate.assign(n, n);
+        coarse_n = 0;
+        std::size_t remaining = n;
+        while (remaining > 0) {
+            std::size_t seed = n;
+            std::size_t best_degree = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (aggregate[i] != n) continue;
+                std::size_t degree = 0;
+                for (const std::size_t j : neighborhood[i])
+                    if (aggregate[j] == n) ++degree;
+                if (seed == n || degree > best_degree ||
+                    (degree == best_degree && i < seed)) {
+                    seed = i;
+                    best_degree = degree;
+                }
+            }
+
+            const std::size_t id = coarse_n++;
+            aggregate[seed] = id;
+            --remaining;
+            for (const std::size_t j : neighborhood[seed]) {
+                if (aggregate[j] == n) {
+                    aggregate[j] = id;
+                    --remaining;
+                }
+            }
+        }
+
+        // Smooth the piecewise-constant tentative prolongator with one damped
+        // Jacobi step. Row normalization preserves the constant near-null-space
+        // mode while retaining interpolation to neighbouring aggregates.
+        constexpr double interpolation_omega = 2.0 / 3.0;
+        const auto* row = level.A.row_offsets_data();
+        const auto* col = level.A.columns_data();
+        const auto* val = level.A.values_data();
+        prolongation.assign(n, {});
+        for (std::size_t i = 0; i < n; ++i) {
+            std::map<std::size_t, double> weights;
+            weights[aggregate[i]] = 1.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                weights[aggregate[col[k]]] -=
+                    interpolation_omega * level.inv_diag[i] * val[k];
+            }
+
+            double sum = 0.0;
+            for (const auto& [coarse, weight] : weights) {
+                (void)coarse;
+                if (std::isfinite(weight) && std::abs(weight) > 1e-14)
+                    sum += weight;
+            }
+            if (!std::isfinite(sum) || std::abs(sum) <= 1e-14) {
+                prolongation[i].push_back({aggregate[i], 1.0});
+                continue;
+            }
+            for (const auto& [coarse, weight] : weights) {
+                const double normalized = weight / sum;
+                if (std::isfinite(normalized) && std::abs(normalized) > 1e-14)
+                    prolongation[i].push_back({coarse, normalized});
+            }
+            if (prolongation[i].empty())
+                prolongation[i].push_back({aggregate[i], 1.0});
+        }
+    }
+
     static SparseMatrix galerkin_coarse(const SparseMatrix& A,
                                         const std::vector<TransferRow>& prolongation,
                                         std::size_t coarse_n)
@@ -535,6 +656,7 @@ private:
     std::size_t pre_, post_;
     double strength_threshold_;
     std::size_t max_levels_;
+    AMGInterpolationPolicy interpolation_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
 };
