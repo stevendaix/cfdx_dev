@@ -119,6 +119,40 @@ int main() {
         EXPECT_TRUE((solution - native_solution).norm_inf() < 1e-7);
     });
 
+    run_case("cg_accepts_native_smoothed_aggregation_amg", [] {
+        const auto matrix = make_poisson(96);
+        const auto updated = make_scaled_poisson(96, 1.25);
+        Vector exact(96);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = std::sin(0.05 * static_cast<double>(i + 1));
+
+        NativeSmoothedAggregationAMGPreconditioner amg;
+        EXPECT_TRUE(std::string(amg.name()) ==
+                    "NativeSmoothedAggregationAMG");
+        EXPECT_TRUE(amg.method() == NativeAMGMethod::SmoothedAggregation);
+        ReusableCgContext context(amg);
+
+        Vector solution(96, 0.0);
+        const Vector rhs = multiply(matrix, exact);
+        const auto first = context.solve(
+            matrix, rhs, solution, 300, 1e-10);
+        EXPECT_TRUE(first.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().full_setups == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+
+        solution.fill(0.0);
+        const Vector updated_rhs = multiply(updated, exact);
+        const auto refreshed = context.solve(
+            updated, updated_rhs, solution, 300, 1e-10);
+        EXPECT_TRUE(refreshed.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(
+            updated, solution, updated_rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().numeric_updates == 1);
+        EXPECT_TRUE(amg.numeric_updates() == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+    });
+
     run_case("reusable_gmres_updates_amg_without_rebuilding_hierarchy", [] {
         const auto matrix = make_poisson(96);
         const auto updated = make_scaled_poisson(96, 1.25);
@@ -256,6 +290,23 @@ int main() {
             PreconditionerModel::None);
         EXPECT_TRUE(identity != nullptr);
         EXPECT_TRUE(std::string(identity->name()) == "Identity");
+
+        LinearSolverRequest smoothed_request;
+        smoothed_request.krylov = KrylovModel::CG;
+        smoothed_request.preconditioner =
+            PreconditionerModel::SmoothedAggregationAMG;
+        const auto smoothed = select_linear_solver(
+            LinearProblemKind::PressurePoisson, 96, smoothed_request);
+        EXPECT_TRUE(smoothed.preconditioner ==
+                    PreconditionerModel::SmoothedAggregationAMG);
+        const auto smoothed_pc = make_scalar_preconditioner(
+            PreconditionerModel::SmoothedAggregationAMG);
+        EXPECT_TRUE(std::string(smoothed_pc->name()) ==
+                    "NativeSmoothedAggregationAMG");
+
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::Momentum, 96, smoothed_request),
+            std::invalid_argument);
     });
 
     run_case("selected_pressure_and_momentum_models_solve_their_systems", [] {

@@ -43,6 +43,34 @@ Source paths audited against HYPRE commit
 - `src/parcsr_ls/par_cycle.c`: smooth, residual, restrict, coarse solve,
   prolong and post-smooth order.
 
+## Smoothed-aggregation AMG recipe
+
+`NativeSmoothedAggregationAMGPreconditioner` is the second selectable native
+AMG family. It follows the transferable setup concepts of PETSc GAMG without
+using PETSc source or runtime objects:
+
+- deterministic uncoupled aggregates built from the signed strength graph;
+- a piecewise-constant tentative prolongator `P0`;
+- one damped-Jacobi interpolation step
+  `P = (I - (2/3) D^-1 A) P0`;
+- row normalization that preserves the constant candidate mode;
+- transpose restriction, Galerkin coarse operators, symmetric weighted-Jacobi
+  smoothing and the same pivoted coarse solve as the Boomer-style path.
+
+The model is available as `PreconditionerModel::SmoothedAggregationAMG` and is
+qualified with CG for pressure-Poisson and diffusion operators. Explicit
+selection is propagated through `IncompressibleSolverControls`, so every
+segregated pressure-velocity algorithm can choose it. The hierarchy supports
+the same unchanged-operator reuse and same-pattern numeric refresh as
+`NativeAMG`.
+
+Current near-null-space support is limited to the built-in constant tentative
+mode. Arbitrary vectors, singular coarse-level projection, MPI aggregation and
+GPU kernels remain separate work; constant-null-space pressure solves continue
+to use the projected-CG/Jacobi policy.
+
+Reference: [PETSc GAMG manual page](https://petsc.org/main/manualpages/PC/PCGAMG/).
+
 ## FieldSplit-style recipe
 
 `NativeFieldSplitPreconditioner` accepts two explicit, disjoint index sets that
@@ -94,4 +122,6 @@ enabled without weakening its matrix consistency.
 - no HYPRE or PETSc runtime, ABI, option database or object lifecycle;
 - no claim of numerical identity with either project;
 - no distributed AMG hierarchy in this dependency-free implementation;
+- no arbitrary near-null-space vectors or singular coarse-level projection;
+- no GPU AMG setup or apply kernels yet;
 - no performance claim without a separate reproducible benchmark.
