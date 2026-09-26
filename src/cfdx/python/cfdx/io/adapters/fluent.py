@@ -558,6 +558,13 @@ class FluentAdapter(SolverAdapter):
         self.setup.source.case_name = Path(cas_h5_file).stem.replace(".cas", "")
         self.setup.source.version = "hdf5"
 
+        # Use dedicated CaseFile API methods for metadata
+        self.setup.source_metadata = {
+            "precision": reader.precision(),
+            "num_dimensions": reader.num_dimensions(),
+            "iter_count": reader.iter_count(),
+        }
+
         # Extract turbulence model and physics from RP variables
         rp_vars = reader.rp_vars()
         turb_model = _infer_turbulence_model(rp_vars)
