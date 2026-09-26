@@ -21,6 +21,8 @@
 namespace cfdx {
 namespace io {
 
+struct CaseSetup;
+
 // ---------------------------------------------------------------------------
 // Source identification (solver, version, case path)
 // ---------------------------------------------------------------------------
@@ -142,6 +144,7 @@ struct ConversionResult {
     std::vector<cfdx::core::ScalarCellField> scalar_fields;   // e.g. p, T
     std::vector<cfdx::core::Vec3CellField>   vec_fields;      // e.g. U
     GapAnalysis gap_report;
+    CaseSetup* setup = nullptr;
 
     bool success() const { return !gap_report.has_blocking(); }
     bool has_mesh() const { return mesh.n_cells() > 0; }

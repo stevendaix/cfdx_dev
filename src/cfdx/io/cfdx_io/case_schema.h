@@ -7,6 +7,7 @@
 // The schema is versioned for forward/backward compatibility.
 #pragma once
 
+#include "io_interface.h"
 #include <string>
 #include <vector>
 #include <map>

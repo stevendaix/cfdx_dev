@@ -4,7 +4,6 @@
 // ---------------------------------------------------------------------------
 // Generates human-readable Markdown and machine-readable JSON reports
 // from the accumulated findings of a conversion.
-#include "gap_analysis.h"
 #include "io_interface.h"
 
 #include <sstream>
