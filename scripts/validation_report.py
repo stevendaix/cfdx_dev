@@ -97,10 +97,16 @@ def latex_escape(value: str) -> str:
         "\\": r"\textbackslash{}",
         "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
         "_": r"\_", "{": r"\{", "}": r"\}",
+        "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+        "Δ": r"$\Delta$", "δ": r"$\delta$",
+        "α": r"$\alpha$", "β": r"$\beta$", "γ": r"$\gamma$",
+        "µ": r"$\mu$", "μ": r"$\mu$", "Ω": r"$\Omega$",
+        "×": r"$\times$", "≤": r"$\leq$", "≥": r"$\geq$",
+        "±": r"$\pm$", "°": r"$^\circ$", "−": r"$-$",
     }
-    for old, new in replacements.items():
-        value = value.replace(old, new)
-    return value
+    # Escape each source character exactly once. Repeated str.replace calls
+    # would also escape braces introduced by an earlier replacement.
+    return "".join(replacements.get(character, character) for character in value)
 
 
 def fmt(value: float | None, digits: int = 5) -> str:

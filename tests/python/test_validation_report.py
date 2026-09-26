@@ -93,3 +93,36 @@ def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
     assert_row("100", 8)
     assert_row(r"\texttt{MODEL}", 4)
     assert_row(r"\texttt{VMFL001}", 4)
+
+
+def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
+    output = tmp_path / "report.tex"
+    cases = MODULE.parse_matrix(
+        ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md"
+    )
+    MODULE.write_tex(
+        output,
+        cases,
+        [],
+        [],
+        {},
+        {},
+        None,
+        "2026-09-26 00:00 UTC",
+    )
+
+    tex = output.read_text(encoding="utf-8")
+    assert "Δ" not in tex
+    assert "°" not in tex
+    assert r"$\Delta$p" in tex
+    assert r"90$^\circ$" in tex
+
+
+def test_latex_escape_does_not_reescape_generated_commands() -> None:
+    escaped = MODULE.latex_escape(r"path\name_{x} & 90° Δp")
+    assert r"\textbackslash{}" in escaped
+    assert r"\textbackslash\{\}" not in escaped
+    assert r"\_\{x\}" in escaped
+    assert r"\&" in escaped
+    assert r"90$^\circ$" in escaped
+    assert r"$\Delta$p" in escaped
