@@ -109,6 +109,10 @@ def fmt(value: float | None, digits: int = 5) -> str:
     return f"{value:.{digits}g}"
 
 
+def latex_table_row(cells: list[str]) -> str:
+    return " & ".join(cells) + r"\\"
+
+
 def make_plot(out: Path, ghia: list[dict]) -> str | None:
     if not ghia:
         return None
@@ -186,7 +190,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for row in reference_values:
-        lines.append(" & ".join(latex_escape(x) for x in row) + r"\\")
+        lines.append(latex_table_row([latex_escape(x) for x in row]))
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
@@ -216,9 +220,10 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
     ]
     for name, rc in suite_status.items():
         state = "PASS" if rc == 0 else ("MISSING" if rc == -1 else "FAIL")
-        lines.append(
-            f"\\texttt{{{latex_escape(name)}}} & {rc} ({state})\\\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{latex_escape(name)}}}",
+            f"{rc} ({state})",
+        ]))
     lines += [r"\bottomrule", r"\end{longtable}"]
 
     if ghia:
@@ -232,11 +237,16 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
             r"\midrule",
         ]
         for x in ghia:
-            lines.append(
-                f"{fmt(x['re'],4)} & {latex_escape(x['grid'])} & {fmt(x['u_rms'])} & "
-                f"{fmt(x['u_max'])} & {fmt(x['v_rms'])} & {fmt(x['v_max'])} & "
-                f"{fmt(x['continuity'])} & {fmt(x['momentum'])}\\"
-            )
+            lines.append(latex_table_row([
+                fmt(x["re"], 4),
+                latex_escape(x["grid"]),
+                fmt(x["u_rms"]),
+                fmt(x["u_max"]),
+                fmt(x["v_rms"]),
+                fmt(x["v_max"]),
+                fmt(x["continuity"]),
+                fmt(x["momentum"]),
+            ]))
         lines += [r"\bottomrule", r"\end{longtable}"]
     else:
         lines.append("No Ghia solver output was available in this report run.")
@@ -258,10 +268,12 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for m in model_results:
-        lines.append(
-            f"\texttt{{{latex_escape(m['name'])}}} & {latex_escape(m['metric'])} & "
-            f"{latex_escape(m['value'])} & {latex_escape(m['reference'])}\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{latex_escape(m['name'])}}}",
+            latex_escape(m["metric"]),
+            latex_escape(m["value"]),
+            latex_escape(m["reference"]),
+        ]))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
@@ -273,10 +285,12 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for c in cases:
-        lines.append(
-            f"\texttt{{{c.ident}}} & {latex_escape(c.name)} & {latex_escape(c.status)} & "
-            f"{latex_escape(c.comparison)}\\"
-        )
+        lines.append(latex_table_row([
+            f"\\texttt{{{c.ident}}}",
+            latex_escape(c.name),
+            latex_escape(c.status),
+            latex_escape(c.comparison),
+        ]))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
