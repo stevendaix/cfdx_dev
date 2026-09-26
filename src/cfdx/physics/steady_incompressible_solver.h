@@ -14,13 +14,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <cstddef>
 #include <limits>
 #include <map>
 #include <numeric>
 #include <stdexcept>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <functional>
@@ -56,6 +57,13 @@ struct IncompressibleProbeSample {
     double value = 0.0;
 };
 
+struct DiagnosticsControls {
+    bool coupled_matrix_summary = false;
+    bool freeze_state_probe = false;
+    long debug_cell = -1;
+    bool debug_cell_auto = false;
+};
+
 struct IncompressibleSolverControls {
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     CouplingControls coupling;
@@ -70,6 +78,7 @@ struct IncompressibleSolverControls {
     double pressure_reference_value = 0.0;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
+    DiagnosticsControls diagnostics;
     std::vector<IncompressiblePointProbe> probes;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
@@ -123,6 +132,7 @@ struct IncompressibleSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
+    double reference_momentum_residual = 0.0;
 };
 
 inline void validate_incompressible_controls(
@@ -165,8 +175,22 @@ gauss_gradient_with_boundary(
             double vf = field(c);
 
             if (own.neighbour(f) >= 0) {
-                const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
-                vf = 0.5 * (field(c) + field(n));
+                // The mesh stores owner/neighbour independent of the cell being
+                // visited.  When c is the neighbour, own.neighbour(f) == c;
+                // using it again would therefore collapse the face interpolation
+                // to field(c) and halve the Green-Gauss pressure gradient.
+                const std::size_t other = owner
+                    ? static_cast<std::size_t>(own.neighbour(f))
+                    : static_cast<std::size_t>(own.owner(f));
+                const double dc = (geometry.face_centres[f] -
+                                   geometry.cell_centres[c]).mag();
+                const double dn = (geometry.cell_centres[other] -
+                                   geometry.face_centres[f]).mag();
+                if (!(dc + dn > 0.0))
+                    throw std::runtime_error(
+                        "gauss_gradient_with_boundary: degenerate face distance");
+                const double w = dn / (dc + dn);
+                vf = w * field(c) + (1.0 - w) * field(other);
             } else {
                 const std::size_t p = geometry.face_patch[f];
                 if (p < mesh.boundary().n_patches() &&
@@ -566,6 +590,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     double reference_value,
     std::size_t max_iterations,
     double tolerance,
+    const DiagnosticsControls& diagnostics,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
 {
@@ -761,8 +786,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area) ||
                     !(D > 0.0) || !std::isfinite(D)) {
-                    const char* debug = std::getenv("CFDX_DEBUG_COUPLED");
-                    if (debug && *debug) {
+                    if (diagnostics.coupled_matrix_summary) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
                                   << " cells=" << c << "/" << ncell
                                   << " area=" << area
@@ -950,8 +974,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Optional algebraic microscope. It is deliberately computed from
     // the exact post-gauge matrix passed to GMRES, so it exposes the actual
     // M/G/D/C blocks rather than reconstructed proxy operators.
-    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
-        (void)debug;
+    if (diagnostics.coupled_matrix_summary) {
         double m2 = 0.0, g2 = 0.0, d2 = 0.0, c2 = 0.0;
         std::size_t zero_rows = 0;
         std::vector<std::size_t> row_nnz(n, 0);
@@ -1068,8 +1091,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
-    if (const char* debug = std::getenv("CFDX_DEBUG_COUPLED")) {
-        (void)debug;
+    if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
@@ -1112,7 +1134,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result.residual_relative = std::numeric_limits<double>::infinity();
         return result;
     }
-    if (std::getenv("CFDX_DEBUG_COUPLED")) {
+    if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
                   << coupled_matrix_residual
                   << " relative=" << coupled_matrix_relative
@@ -1244,8 +1266,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
 
-    const char* freeze_state_env = std::getenv("CFDX_FREEZE_STATE");
-    const bool freeze_state = freeze_state_env && std::string(freeze_state_env) == "1";
+    const bool freeze_state = controls.diagnostics.freeze_state_probe;
     Field<double, Location::FACE> phi_used_in_momentum;
     std::array<std::vector<double>, 3> frozen_rAU;
     std::array<std::vector<double>, 3> frozen_hbyA;
@@ -1331,6 +1352,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.pressure_reference_value,
                 controls.coupling.coupled_max_iterations,
                 controls.coupling.coupled_linear_tolerance,
+                controls.diagnostics,
                 U, p);
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
@@ -1386,14 +1408,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.linear_max_iterations, controls.linear_tolerance, 1.0});
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
-            if (solve.status != cfdx::core::SolverStatus::CONVERGED)
-                throw std::runtime_error(
-                    std::string("solve_steady_incompressible: ") + component +
-                    " momentum solve did not converge (status=" +
-                    std::to_string(static_cast<int>(solve.status)) +
-                    ", iterations=" + std::to_string(solve.iterations) +
-                    ", residual=" + std::to_string(solve.residual) +
-                    ", relative=" + std::to_string(solve.residual_relative) + ")");
+            if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
+                std::ostringstream message;
+                message << "solve_steady_incompressible: " << component
+                        << " momentum solve did not converge (status="
+                        << static_cast<int>(solve.status)
+                        << ", iterations=" << solve.iterations
+                        << ", residual=" << std::scientific << std::setprecision(3)
+                        << solve.residual
+                        << ", relative=" << solve.residual_relative << ")";
+                throw std::runtime_error(message.str());
+            }
         };
         require_linear_convergence("Ux", rx);
         require_linear_convergence("Uy", ry);
@@ -1791,8 +1816,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             linf = std::max(linf, std::abs(div));
         }
 
+        constexpr double tiny = 1e-300;
         double velocity_change_inf = 0.0, pressure_change_inf = 0.0;
-        double velocity_scale = 1.0, pressure_scale = 1.0;
+        double velocity_scale = 0.0;
+        double pressure_min = std::numeric_limits<double>::infinity();
+        double pressure_max = -std::numeric_limits<double>::infinity();
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             for (std::size_t d = 0; d < 3; ++d) {
                 velocity_change_inf = std::max(
@@ -1801,38 +1829,49 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 velocity_scale = std::max(
                     velocity_scale, std::abs(U.component_data(d)[c]));
             }
-            pressure_change_inf = std::max(
-                pressure_change_inf, std::abs(p(c)-p_old(c)));
-            pressure_scale = std::max(pressure_scale, std::abs(p(c)));
+            const double pressure_delta = has_fixed_pressure_boundary
+                ? std::abs(p(c) - p_old(c))
+                : std::abs((p(c) - p(controls.pressure_reference_cell)) -
+                            (p_old(c) - p_old(controls.pressure_reference_cell)));
+            pressure_change_inf = std::max(pressure_change_inf, pressure_delta);
+            pressure_min = std::min(pressure_min, p(c));
+            pressure_max = std::max(pressure_max, p(c));
         }
-        velocity_change_inf /= velocity_scale;
+        velocity_change_inf /= std::max(velocity_scale, tiny);
+        const double pressure_range = pressure_max - pressure_min;
+        // Use a physical pressure scale when the converged solution is nearly uniform.
+        // Otherwise round-off-level pressure changes are divided by a vanishing range
+        // and can prevent convergence forever on constant-pressure cases.
+        const double pressure_scale = std::max(
+            {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
         pressure_change_inf /= pressure_scale;
 
-        double momentum_rhs_scale = 1.0;
+        double momentum_rhs_scale = 0.0;
         for (const auto* eq : {&final_ex, &final_ey, &final_ez})
             for (std::size_t c = 0; c < mesh.n_cells(); ++c)
                 momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
+        momentum_rhs_scale = std::max(momentum_rhs_scale, tiny);
 
         IncompressibleIteration h;
         h.iteration = iter;
-        h.momentum_residual =
-            controls.algorithm == PressureVelocityAlgorithm::COUPLED
-                ? final_momentum_residual / momentum_rhs_scale
-                : std::max({rx.residual_relative, ry.residual_relative, rz.residual_relative});
+        h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
         h.momentum_equation_residual = final_momentum_residual;
         h.momentum_equation_residual_relative =
             final_momentum_residual / momentum_rhs_scale;
-        const double domain_volume =
-            std::accumulate(geometry.cell_volumes.begin(), geometry.cell_volumes.end(), 0.0);
-        const double characteristic_area =
-            std::max(std::pow(domain_volume, 2.0/3.0), 1e-30);
-        h.continuity_normalized =
-            linf / std::max(controls.density*velocity_scale*characteristic_area, 1e-30);
+        double flux_reference = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            flux_reference += std::abs(mass_flux(f));
+        h.continuity_normalized = l1 / std::max(flux_reference, tiny);
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
             h.pressure_residual = h.continuity_normalized;
+        if (iter == 1)
+            result.reference_momentum_residual =
+                std::max(final_momentum_residual, tiny);
+        h.momentum_equation_residual_relative =
+            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.momentum_linear_iterations =
@@ -1883,35 +1922,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // CFDX_DEBUG_CELL=auto to inspect the independently reassembled
         // worst-residual cell. The dump is emitted once per algorithm at
         // convergence or at the configured iteration limit.
-        const char* debug_cell_env = std::getenv("CFDX_DEBUG_CELL");
-        bool debug_cell_enabled = false;
-        bool debug_cell_auto = false;
+        const bool debug_cell_auto = controls.diagnostics.debug_cell_auto;
         std::size_t debug_cell = 0;
-        if (debug_cell_env && *debug_cell_env) {
-            try {
-                const std::string value(debug_cell_env);
-                if (value == "auto") {
-                    debug_cell_auto = true;
-                    debug_cell_enabled = true;
-                } else {
-                    std::size_t parsed = 0;
-                    debug_cell = std::stoull(value, &parsed);
-                    debug_cell_enabled =
-                        parsed == value.size() && debug_cell < mesh.n_cells();
-                }
-            } catch (...) {
-                debug_cell_enabled = false;
-            }
-        }
+        const bool debug_cell_enabled =
+            debug_cell_auto ||
+            (controls.diagnostics.debug_cell >= 0 &&
+             static_cast<std::size_t>(controls.diagnostics.debug_cell) < mesh.n_cells());
         if (debug_cell_auto)
             debug_cell = h.momentum_residual_cell;
+        else if (debug_cell_enabled)
+            debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
         const bool converged_now =
             iter >= minimum_outer_correctors && iter > 1 &&
             h.momentum_residual <= controls.convergence.relative_tolerance &&
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
             h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_linf <= controls.convergence.continuity_tolerance &&
+            h.continuity_normalized <= controls.convergence.continuity_tolerance &&
             h.velocity_change_inf <= controls.convergence.relative_tolerance &&
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {

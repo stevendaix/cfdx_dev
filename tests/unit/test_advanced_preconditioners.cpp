@@ -1,4 +1,5 @@
 #include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <algorithm>
 #include <cmath>
@@ -34,6 +35,30 @@ static double residual_inf(const SparseMatrix& A, const Vector& z, const Vector&
 }
 
 int main() {
+    run_case("cell_block_jacobi_diagonal_4x4_exact", [] {
+        constexpr std::size_t n_cells = 2;
+        SparseMatrix A(4 * n_cells, 4 * n_cells);
+        const double diag[4] = {2.0, 3.0, 5.0, 7.0};
+        for (std::size_t c = 0; c < n_cells; ++c)
+            for (std::size_t q = 0; q < 4; ++q)
+                A.push_back(q * n_cells + c, q * n_cells + c, diag[q]);
+        A.finalize();
+
+        CellBlockJacobiPreconditioner p(n_cells);
+        EXPECT_TRUE(p.setup(A));
+
+        Vector r(4 * n_cells, 0.0), z(4 * n_cells, 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i) r(i) = 1.0 + static_cast<double>(i);
+        EXPECT_TRUE(p.apply(r, z));
+
+        for (std::size_t c = 0; c < n_cells; ++c) {
+            EXPECT_NEAR(z(c), r(c) / 2.0, 1e-13);
+            EXPECT_NEAR(z(n_cells + c), r(n_cells + c) / 3.0, 1e-13);
+            EXPECT_NEAR(z(2 * n_cells + c), r(2 * n_cells + c) / 5.0, 1e-13);
+            EXPECT_NEAR(z(3 * n_cells + c), r(3 * n_cells + c) / 7.0, 1e-13);
+        }
+    });
+
     run_case("gauss_seidel_setup_apply", [] {
         auto A = make_poisson();
         GaussSeidelPreconditioner p;

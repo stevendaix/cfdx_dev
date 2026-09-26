@@ -181,7 +181,7 @@ RunResult run_couette_channel(
     c.coupling.coupled_linear_tolerance = 1e-10;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
-    c.convergence.max_iterations = 500;
+    c.convergence.max_iterations = 3000;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
     c.linear_max_iterations = 2000;
@@ -193,6 +193,9 @@ RunResult run_couette_channel(
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = bounded;
     c.convection_scheme = scheme;
+    c.diagnostics.coupled_matrix_summary = true;
+    c.diagnostics.freeze_state_probe = true;
+    c.diagnostics.debug_cell = 33;
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
@@ -352,8 +355,16 @@ int main()
              ConvectionScheme::UPWIND, true},
         };
 
-        constexpr double profile_l2_tolerance = 5.0e-2;
-        constexpr double profile_linf_tolerance = 1.0e-1;
+        // Couette is an affine velocity field.  On the cell-centred 16-cell
+        // mesh the exact discrete maximum is (16 - 0.5) / 16 = 0.96875.
+        // These gates must therefore be tight enough to detect a biased
+        // discretisation or an incompletely converged segregated solve.
+        // Algorithm invariance is a physical-equivalence gate, not merely a
+        // smoke test: the coupling algorithm must agree with SIMPLE to 1e-5
+        // in the cell-centred velocity field.
+        constexpr double profile_l2_tolerance = 1.0e-6;
+        constexpr double profile_linf_tolerance = 1.0e-6;
+        constexpr double couette_umax_exact = (16.0 - 0.5) / 16.0;
         constexpr double transverse_velocity_tolerance = 1.0e-7;
         constexpr double pressure_uniformity_tolerance = 1.0e-7;
         constexpr double boundary_velocity_tolerance = 1.0e-8;
@@ -474,7 +485,8 @@ int main()
                     gates.push_back("Uy");
                 if (!(max_abs_uz < transverse_velocity_tolerance))
                     gates.push_back("Uz");
-                if (!(max_u > 0.90 && max_u < 1.10))
+                if (!(std::isfinite(max_u) &&
+                      std::abs(max_u - couette_umax_exact) < profile_linf_tolerance))
                     gates.push_back("Umax");
                 if (!(min_u > -boundary_velocity_tolerance))
                     gates.push_back("Umin");
@@ -557,7 +569,7 @@ int main()
                 std::cout << "ALGORITHM_INVARIANCE model=" << successful_models[k]
                           << " vs=" << successful_models.front()
                           << " max_abs_dU=" << max_du << "\n";
-                if (!(max_du < 5.0e-2))
+                if (!(max_du < 1.0e-5))
                     failed_models.push_back(
                         successful_models[k] + ":algorithm_invariance");
             }

@@ -41,7 +41,7 @@ int main()
         eb["wall"]={ScalarBoundaryType::FIXED_VALUE,1e-3,0};
         auto r=solve_kepsilon_transport(m,g,phi,k,e,S,c,kb,eb,10,1e-6);
         EXPECT_TRUE(r.iterations>0); EXPECT_TRUE(k(0)>=c.k_min); EXPECT_TRUE(e(0)>=c.epsilon_min);
-        EXPECT_NEAR(wall_epsilon_from_k(1.0,0.1),std::pow(0.09,0.75)/0.1,1e-12);
+        EXPECT_NEAR(wall_epsilon_from_k(1.0,0.1),std::pow(0.09,0.75)/(0.41*0.1),1e-12);
     });
 
     run_case("sst_transport_preserves_positive_turbulence",[] {

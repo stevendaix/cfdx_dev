@@ -83,7 +83,10 @@ inline double krylov_norm2(const Vector& a,
             ? static_cast<double>(static_cast<float>(a(i)) * static_cast<float>(a(i)))
             : a(i) * a(i);
     }
-    return std::sqrt(std::max(0.0, krylov_sum(local, policy)));
+    const double sum = krylov_sum(local, policy);
+    if (!std::isfinite(sum))
+        return std::numeric_limits<double>::quiet_NaN();
+    return std::sqrt(std::max(0.0, sum));
 }
 
 } // namespace cfdx::core

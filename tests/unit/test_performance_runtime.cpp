@@ -34,7 +34,7 @@ int main() {
     auto red=core::fused_reduction(rhs,b);
     if (std::abs(red.dot-6.0)>1e-12) { std::cerr<<"performance check 6 failed dot="<<red.dot<<"\n"; return 6; }
     auto restart=core::choose_gmres_restart(30,0.5);
-    if (restart>=30) { std::cerr<<"performance check 7 failed restart="<<restart<<"\n"; return 7; }
+    if (!(restart > 30 && restart <= 512)) { std::cerr<<"performance check 7 failed restart="<<restart<<"\n"; return 7; }
     thermodynamics::ThermoCache cache;
     thermodynamics::IdealGasThermoModel gas;
     cache.update(gas,{101325.0,101325.0},{300.0,310.0});

@@ -156,8 +156,12 @@ inline DistributedHalo build_distributed_halo(
         }
     }
 
+    // Keep send values in the same global-ID order used by the receiver.
+    // Sorting local indices is incorrect because local numbering is rank-local.
     for (auto& v : halo.send_local_cells) {
-        std::sort(v.begin(), v.end());
+        std::sort(v.begin(), v.end(), [&](std::size_t a, std::size_t b) {
+            return field.global_ids()[a] < field.global_ids()[b];
+        });
         v.erase(std::unique(v.begin(), v.end()), v.end());
     }
     for (auto& v : halo.recv_global_ids) {

@@ -68,23 +68,6 @@ inline double relaxed_value(double old_value, double computed_value, double alph
 // distinction explicit because 1/A_P and V/A_P are both valid quantities,
 // but they belong to different discrete operators.
 
-inline double rhie_chow_face_flux(double interpolated_flux,
-                                  double pressure_owner,
-                                  double pressure_neighbour,
-                                  double d_f,
-                                  double aP_owner,
-                                  double aP_neighbour,
-                                  double area)
-{
-    if (!std::isfinite(d_f) || !std::isfinite(aP_owner) ||
-        !std::isfinite(aP_neighbour) || !std::isfinite(area) ||
-        d_f <= 0.0 || aP_owner <= 0.0 || aP_neighbour <= 0.0 || area < 0.0)
-        throw std::invalid_argument("rhie_chow_face_flux: invalid geometric/momentum coefficient");
-    const double d = 0.5 * (1.0 / aP_owner + 1.0 / aP_neighbour);
-    const double correction = d * (pressure_owner - pressure_neighbour) / d_f * area;
-    return interpolated_flux - correction;
-}
-
 inline double piso_correction_gain(double diagonal, double neighbor_sum)
 {
     if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) || diagonal <= 0.0)

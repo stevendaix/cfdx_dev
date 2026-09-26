@@ -194,7 +194,7 @@ public:
             for (std::size_t r = 0; r < 4; ++r)
                 for (std::size_t q = 0; q < 4; ++q)
                     inv_blocks_[c][4 * r + q] =
-                        aug[8 * r + 4 + q] * row_scale[q];
+                        aug[8 * r + 4 + q] / row_scale[q];
 
             double inverse_residual = 0.0;
             for (std::size_t r = 0; r < 4; ++r) {

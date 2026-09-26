@@ -39,7 +39,9 @@ using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
 
 enum class ConvectionScheme {
     UPWIND,
-    SECOND_ORDER_UPWIND
+    SECOND_ORDER_UPWIND,
+    // Monotone TVD reconstruction using a minmod limiter on the MUSCL slope.
+    TVD
 };
 
 struct ScalarBoundaryFaceValues {
@@ -115,6 +117,22 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
         }
     }
 
+    // Recompute cell geometry after the face vectors have been normalized. This
+    // second pass is required because the first pass may have used an imported
+    // face winding that was inward with respect to the owner.
+    for (std::size_t c = 0; c < nc; ++c) {
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+        const auto cg = compute_cell_geometry_oriented(
+            g.face_centres.data(), g.face_area_vectors.data(),
+            mesh.cells().faces_data() + off, count, static_cast<CellIndex>(c),
+            mesh.ownership());
+        g.cell_centres[c] = cg.centre;
+        g.cell_volumes[c] = cg.volume;
+        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
+            throw std::runtime_error("build_fv_geometry: non-positive cell volume");
+    }
+
     for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
         for (const auto f : mesh.boundary().patch(p).face_ids) {
             if (f >= nf || mesh.ownership().neighbour(f) >= 0)
@@ -150,6 +168,20 @@ inline void validate_scalar_controls(const ScalarSolveControls& c)
     if (c.max_iterations == 0 || !(c.tolerance > 0.0) ||
         !(c.relaxation > 0.0 && c.relaxation <= 1.0))
         throw std::invalid_argument("invalid scalar solver controls");
+}
+
+inline double boundary_normal_distance(
+    const FvGeometry& geometry, std::size_t face, std::size_t cell)
+{
+    const auto& Sf=geometry.face_area_vectors[face];
+    const double area=Sf.mag();
+    if(!(area>0.0)||!std::isfinite(area))
+        throw std::runtime_error("boundary_normal_distance: degenerate face");
+    const auto d=geometry.face_centres[face]-geometry.cell_centres[cell];
+    const double dn=std::abs(d.dot(Sf))/area;
+    if(!(dn>0.0)||!std::isfinite(dn))
+        throw std::runtime_error("boundary_normal_distance: invalid normal distance");
+    return dn;
 }
 
 // Assemble:
@@ -193,9 +225,11 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
-    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+        convection_scheme == ConvectionScheme::TVD) {
         if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
-            throw std::invalid_argument("assemble_scalar_equation: second-order upwind requires a scalar convected field");
+            throw std::invalid_argument(
+                "assemble_scalar_equation: higher-order convection requires a scalar convected field");
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
     }
 
@@ -247,22 +281,44 @@ inline ScalarEquation assemble_scalar_equation(
             div_phi[o] += F;
             div_phi[n] -= F;
 
-            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                convection_scheme == ConvectionScheme::TVD) {
                 const std::size_t upwind = F >= 0.0 ? o : n;
+                const std::size_t downwind = F >= 0.0 ? n : o;
                 const double phi_up = (*convected_field)(upwind);
                 const auto& C_up = geometry.cell_centres[upwind];
                 const auto& Cf = geometry.face_centres[f];
                 const double* gx = reconstructed_gradient.component_data(0);
                 const double* gy = reconstructed_gradient.component_data(1);
                 const double* gz = reconstructed_gradient.component_data(2);
-                double phi_high = phi_up
-                    + gx[upwind] * (Cf.x - C_up.x)
-                    + gy[upwind] * (Cf.y - C_up.y)
-                    + gz[upwind] * (Cf.z - C_up.z);
-                const double phi_other = (*convected_field)(F >= 0.0 ? n : o);
-                const double lo = std::min(phi_up, phi_other);
-                const double hi = std::max(phi_up, phi_other);
-                phi_high = std::clamp(phi_high, lo, hi);
+                const double high_increment =
+                    gx[upwind] * (Cf.x - C_up.x) +
+                    gy[upwind] * (Cf.y - C_up.y) +
+                    gz[upwind] * (Cf.z - C_up.z);
+                double phi_high = phi_up + high_increment;
+                const double phi_other = (*convected_field)(downwind);
+
+                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                    // Keep the historical bounded SOU reconstruction.
+                    phi_high = std::clamp(
+                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                } else {
+                    // MUSCL/minmod TVD limiter. For a face half-way between
+                    // the upwind and downwind centres, the reconstructed
+                    // upstream increment is 2*high_increment-delta_down.
+                    const double delta_down = phi_other - phi_up;
+                    const double delta_upstream = 2.0 * high_increment - delta_down;
+                    double limiter = 0.0;
+                    if (delta_upstream * delta_down > 0.0) {
+                        const double ratio = delta_upstream / delta_down;
+                        if (std::isfinite(ratio))
+                            limiter = std::max(0.0, std::min(1.0, ratio));
+                    }
+                    phi_high = phi_up + limiter * high_increment;
+                    phi_high = std::clamp(
+                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                }
+
                 const double correction = F * (phi_high - phi_up);
                 deferred_rhs[o] -= correction;
                 deferred_rhs[n] += correction;
@@ -289,7 +345,7 @@ inline ScalarEquation assemble_scalar_equation(
             }
 
             const double area = geometry.face_area_vectors[f].mag();
-            const double distance = (geometry.face_centres[f] - geometry.cell_centres[o]).mag();
+            const double distance = boundary_normal_distance(geometry, f, o);
             min_face_area = std::min(min_face_area, area);
             max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
@@ -307,20 +363,29 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += a_boundary * bc.value;
                 div_phi[o] += F;
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
-                diag[o] += std::max(F, 0.0);
-                rhs[o] += (F < 0.0 ? -F * bc.value : 0.0);
-                rhs[o] += diffusion_coefficient * area * bc.gradient;
+                const double gamma_owner = cell_diffusion
+                    ? (*cell_diffusion)[o] : diffusion_coefficient;
+                if (!(gamma_owner >= 0.0) || !std::isfinite(gamma_owner))
+                    throw std::invalid_argument(
+                        "assemble_scalar_equation: invalid boundary diffusion");
+                // phi_b = phi_P + grad(phi).d: convection and diffusion use
+                // the same boundary state.
+                diag[o] += F;
+                rhs[o] -= F * bc.gradient * distance;
+                rhs[o] += gamma_owner * area * bc.gradient;
                 div_phi[o] += F;
             } else {
-                // Zero-gradient means the boundary value equals the owner
-                // value, so the convective contribution is exactly F*psi_owner
-                // for either flow direction. The bounded steady formulation
-                // subsequently subtracts div(phi)*psi, cancelling this term
-                // when continuity is satisfied. The unbounded formulation must
-                // retain F itself; using max(F,0) drops inflow convection and
-                // creates an artificial mass/momentum imbalance at an outlet/
-                // inlet pair with recirculating or bidirectional flux.
-                diag[o] += F;
+                // Zero-gradient: phi_b = phi_P. For bounded convection the
+                // later -div(phi)*phi_P correction cancels this term. For the
+                // unbounded form, defer inflow rather than creating a sink or
+                // a non-positive diagonal.
+                if (bounded_convection) {
+                    diag[o] += F;
+                } else {
+                    diag[o] += std::max(F, 0.0);
+                    if (F < 0.0 && convected_field)
+                        deferred_rhs[o] -= F * (*convected_field)(o);
+                }
                 div_phi[o] += F;
             }
         }
@@ -427,9 +492,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     auto result = cfdx::core::solve_bicgstab(
         equation.matrix, equation.rhs, candidate,
         controls.max_iterations, controls.tolerance);
-    if (solution.size() <= 256)
-        std::cerr << "CFDX solver cascade: bicgstab status=" << static_cast<int>(result.status)
-                  << " iter=" << result.iterations << " residual=" << result.residual << '\n';
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -444,9 +506,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
-        if (solution.size() <= 256)
-            std::cerr << "CFDX solver cascade: gmres status=" << static_cast<int>(result.status)
-                      << " iter=" << result.iterations << " residual=" << result.residual << '\n';
     }
 
     if (result.status != cfdx::core::SolverStatus::CONVERGED) {
@@ -586,11 +645,15 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                 residual = std::max(residual, std::abs(ri));
             }
             if (std::isfinite(residual)) {
+                double rhs_norm = 0.0;
+                for (std::size_t i = 0; i < n; ++i)
+                    rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+                const double relative = residual / std::max(rhs_norm, 1e-300);
                 result = {
-                    residual <= controls.tolerance
+                    relative <= controls.tolerance
                         ? cfdx::core::SolverStatus::CONVERGED
                         : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-                    n, residual, residual
+                    0, residual, relative
                 };
             }
         }

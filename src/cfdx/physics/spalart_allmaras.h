@@ -52,9 +52,13 @@ struct SpalartAllmarasModel {
     double destruction_coefficient(double r) const {
         if(!std::isfinite(r)||r<0.0)
             throw std::invalid_argument("invalid SA destruction ratio");
-        const double g=r+cw2*(std::pow(r,3.0)-r);
-        const double g6=std::pow(g,6.0);
-        return g*(1.0+std::pow(cw3,6.0))/(g6+std::pow(cw3,6.0));
+        // Spalart-Allmaras: r is limited to 10 and fw uses r^6 with
+        // the sixth-root correction. This is the original wall-destruction
+        // function; using r^3 and omitting the root changes the model.
+        const double rr=std::min(r,10.0);
+        const double g=rr+cw2*(std::pow(rr,6.0)-rr);
+        const double cw36=std::pow(cw3,6.0);
+        return g*std::pow((1.0+cw36)/(std::pow(g,6.0)+cw36),1.0/6.0);
     }
 
     double production_coefficient(double chi,double vorticity) const {

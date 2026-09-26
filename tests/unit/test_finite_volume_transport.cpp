@@ -94,13 +94,10 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        // The raw unbounded convection operator is conservative, but this
-        // scalar assembly contract rejects a non-positive diagonal as a
-        // singular equation. The signed fluxes therefore produce a deliberate
-        // applicability error rather than a usable equation.
-        EXPECT_THROW(
-            assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false),
-            std::runtime_error);
+        // Unbounded zero-gradient convection must retain the positive
+        // outflow contribution without manufacturing an artificial sink.
+        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
+        EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
     });
 
     run_case("bounded_zero_gradient_inflow_has_no_artificial_sink", [] {
@@ -138,6 +135,22 @@ int main()
 
         Vector x(1,3.0);
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
+    });
+
+    run_case("tvd_requires_convected_field", [] {
+        const Mesh m = make_unit_cube();
+        const auto g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","1/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        EXPECT_THROW(
+            assemble_scalar_equation(
+                m, g, flux, 1.0, su, sp, bc, true, nullptr, nullptr, nullptr,
+                nullptr, ConvectionScheme::TVD, nullptr),
+            std::invalid_argument);
     });
 
     run_case("second_order_upwind_constant_state_preserves_constant", [] {
