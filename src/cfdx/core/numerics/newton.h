@@ -136,7 +136,7 @@ inline SolverResult solve_newton_field(
         }
     }
 
-    result.status = SolverStatus::MAX_ITER;
+    result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = controls.max_iterations;
     result.residual = r.norm2();
     result.residual_relative = result.residual / std::max(initial_norm, 1e-300);
