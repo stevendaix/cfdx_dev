@@ -1,5 +1,6 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/null_space.h"
 #include "common/test_harness.h"
 
@@ -12,12 +13,13 @@ using namespace cfdx::testing;
 
 namespace {
 
-SparseMatrix make_neumann_laplacian(std::size_t n) {
+SparseMatrix make_neumann_laplacian(std::size_t n, double scale = 1.0) {
     SparseMatrix matrix(n, n);
     for (std::size_t i = 0; i < n; ++i) {
-        matrix.push_back(i, i, (i == 0 || i + 1 == n) ? 1.0 : 2.0);
-        if (i > 0) matrix.push_back(i, i - 1, -1.0);
-        if (i + 1 < n) matrix.push_back(i, i + 1, -1.0);
+        matrix.push_back(
+            i, i, scale * ((i == 0 || i + 1 == n) ? 1.0 : 2.0));
+        if (i > 0) matrix.push_back(i, i - 1, -scale);
+        if (i + 1 < n) matrix.push_back(i, i + 1, -scale);
     }
     matrix.finalize();
     return matrix;
@@ -149,6 +151,120 @@ int main() {
         EXPECT_THROW(select_linear_solver(
             LinearProblemKind::Momentum, matrix.n_rows(), request),
             std::invalid_argument);
+    });
+
+    run_case("projected_cg_automatically_uses_native_amg", [] {
+        constexpr std::size_t n = 65;
+        const auto matrix = make_neumann_laplacian(n);
+        Vector exact(n);
+        for (std::size_t i = 0; i < n; ++i)
+            exact(i) = static_cast<double>(i) -
+                       0.5 * static_cast<double>(n - 1);
+        const Vector rhs = multiply(matrix, exact);
+        Vector solution(n, 4.0);
+
+        LinearSolverRequest request;
+        request.null_space = NullSpaceModel::Constant;
+        const auto report = solve_linear_system(
+            matrix, rhs, solution, LinearProblemKind::PressurePoisson,
+            request, 300, 1e-10);
+        EXPECT_TRUE(report.plan.krylov == KrylovModel::CG);
+        EXPECT_TRUE(report.plan.preconditioner == PreconditionerModel::NativeAMG);
+        EXPECT_TRUE(report.result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(true_residual(matrix, solution, rhs) < 1e-8);
+        EXPECT_TRUE(NullSpaceProjector::constant(n).component_norm(solution) < 1e-10);
+    });
+
+    run_case("projected_cg_supports_smoothed_aggregation_amg", [] {
+        constexpr std::size_t n = 65;
+        const auto matrix = make_neumann_laplacian(n);
+        Vector exact(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            const double coordinate = static_cast<double>(i) /
+                                      static_cast<double>(n - 1);
+            exact(i) = std::cos(2.0 * 3.14159265358979323846 * coordinate);
+        }
+        NullSpaceProjector::constant(n).remove(exact);
+        const Vector rhs = multiply(matrix, exact);
+        Vector solution(n, -3.0);
+
+        LinearSolverRequest request;
+        request.krylov = KrylovModel::CG;
+        request.preconditioner = PreconditionerModel::SmoothedAggregationAMG;
+        request.null_space = NullSpaceModel::Constant;
+        const auto report = solve_linear_system(
+            matrix, rhs, solution, LinearProblemKind::PressurePoisson,
+            request, 300, 1e-10);
+        EXPECT_TRUE(report.plan.preconditioner ==
+                    PreconditionerModel::SmoothedAggregationAMG);
+        EXPECT_TRUE(report.result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(true_residual(matrix, solution, rhs) < 1e-8);
+        EXPECT_TRUE(NullSpaceProjector::constant(n).component_norm(solution) < 1e-10);
+    });
+
+    run_case("singular_amg_reuses_hierarchy_for_numeric_updates", [] {
+        constexpr std::size_t n = 65;
+        const auto matrix = make_neumann_laplacian(n);
+        const auto scaled_matrix = make_neumann_laplacian(n, 1.25);
+        const auto null_space = NullSpaceProjector::constant(n);
+        Vector exact(n);
+        for (std::size_t i = 0; i < n; ++i)
+            exact(i) = static_cast<double>(i) -
+                       0.5 * static_cast<double>(n - 1);
+
+        NativeSmoothedAggregationAMGPreconditioner preconditioner(true);
+        EXPECT_TRUE(preconditioner.uses_constant_null_space());
+        ReusableCgContext context(preconditioner);
+        Vector solution(n, 0.0);
+        const Vector rhs = multiply(matrix, exact);
+        const auto first = context.solve(
+            matrix, rhs, solution, 300, 1e-10, {}, {}, &null_space);
+        EXPECT_TRUE(first.status == SolverStatus::CONVERGED);
+
+        solution.fill(2.0);
+        const Vector scaled_rhs = multiply(scaled_matrix, exact);
+        const auto second = context.solve(
+            scaled_matrix, scaled_rhs, solution, 300, 1e-10,
+            {}, {}, &null_space);
+        EXPECT_TRUE(second.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(true_residual(scaled_matrix, solution, scaled_rhs) < 1e-8);
+        EXPECT_TRUE(context.stats().full_setups == 1);
+        EXPECT_TRUE(context.stats().numeric_updates == 1);
+        EXPECT_TRUE(context.stats().solves == 2);
+        EXPECT_TRUE(preconditioner.hierarchy_builds() == 1);
+        EXPECT_TRUE(preconditioner.numeric_updates() == 1);
+    });
+
+    run_case("singular_amg_application_is_symmetric_positive_on_projected_space", [] {
+        constexpr std::size_t n = 65;
+        const auto matrix = make_neumann_laplacian(n);
+        const auto null_space = NullSpaceProjector::constant(n);
+        Vector left(n);
+        Vector right(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            left(i) = std::sin(0.17 * static_cast<double>(i));
+            right(i) = std::cos(0.11 * static_cast<double>(i));
+        }
+        null_space.remove(left);
+        null_space.remove(right);
+
+        for (const auto method : {NativeAMGMethod::BoomerStyle,
+                                  NativeAMGMethod::SmoothedAggregation}) {
+            NativeAMGPreconditioner preconditioner(method, true);
+            EXPECT_TRUE(preconditioner.setup(matrix));
+            Vector applied_left(n);
+            Vector applied_right(n);
+            EXPECT_TRUE(preconditioner.apply(left, applied_left));
+            EXPECT_TRUE(preconditioner.apply(right, applied_right));
+            const double lhs = left.dot(applied_right);
+            const double rhs = right.dot(applied_left);
+            const double scale = std::max({1.0, std::abs(lhs), std::abs(rhs)});
+            EXPECT_NEAR(lhs, rhs, 1e-11 * scale);
+            EXPECT_TRUE(left.dot(applied_left) > 0.0);
+            EXPECT_TRUE(right.dot(applied_right) > 0.0);
+            EXPECT_TRUE(null_space.component_norm(applied_left) < 1e-12);
+            EXPECT_TRUE(null_space.component_norm(applied_right) < 1e-12);
+        }
     });
 
     return run_all();

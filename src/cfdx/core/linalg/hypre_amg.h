@@ -23,7 +23,8 @@ enum class NativeAMGMethod {
 // aggregation recipes. Neither method wraps or copies a third-party runtime.
 class NativeAMGPreconditioner : public Preconditioner {
 public:
-    explicit NativeAMGPreconditioner(NativeAMGMethod method);
+    explicit NativeAMGPreconditioner(NativeAMGMethod method,
+                                     bool constant_null_space = false);
     ~NativeAMGPreconditioner() override;
 
     NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
@@ -39,6 +40,7 @@ public:
 
     bool is_ready() const noexcept;
     NativeAMGMethod method() const noexcept;
+    bool uses_constant_null_space() const noexcept;
     AMGMemoryPolicy memory_policy() const noexcept;
     std::size_t coarse_size() const noexcept;
     std::size_t hierarchy_builds() const noexcept;
@@ -52,8 +54,9 @@ private:
 
 class NativeBoomerAMGPreconditioner final : public NativeAMGPreconditioner {
 public:
-    NativeBoomerAMGPreconditioner()
-        : NativeAMGPreconditioner(NativeAMGMethod::BoomerStyle) {}
+    explicit NativeBoomerAMGPreconditioner(bool constant_null_space = false)
+        : NativeAMGPreconditioner(
+              NativeAMGMethod::BoomerStyle, constant_null_space) {}
 };
 
 // Dependency-free smoothed-aggregation AMG following the transferable setup
@@ -61,8 +64,10 @@ public:
 class NativeSmoothedAggregationAMGPreconditioner final
     : public NativeAMGPreconditioner {
 public:
-    NativeSmoothedAggregationAMGPreconditioner()
-        : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation) {}
+    explicit NativeSmoothedAggregationAMGPreconditioner(
+        bool constant_null_space = false)
+        : NativeAMGPreconditioner(
+              NativeAMGMethod::SmoothedAggregation, constant_null_space) {}
 };
 
 } // namespace cfdx::core

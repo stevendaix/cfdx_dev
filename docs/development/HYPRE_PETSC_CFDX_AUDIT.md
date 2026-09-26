@@ -230,8 +230,8 @@ and launch overhead wins.
   systems, including basis orthonormalization, operator-mode validation,
   incompatible-RHS rejection and a canonical projected-CG gauge;
 - `NullSpaceModel::Constant` selection for pressure/diffusion problems, with
-  conservative Jacobi policy until AMG near-null-space propagation is
-  implemented.
+  projection through both native AMG families, constant-preserving transfer,
+  projected symmetric smoothing and a constrained zero-mean coarse solve;
 
 The null-space API is currently host-local. MPI and GPU capability flags remain
 disabled; the distributed pressure solver and CUDA Poisson path must be wired
@@ -239,7 +239,8 @@ and validated before those capabilities are advertised.
 
 ### P0: remaining correctness and reusable lifecycle
 
-- near-null-space input and propagation through AMG levels;
+- arbitrary multi-vector near-null-space input and propagation through AMG
+  levels (the constant scalar mode is implemented);
 - quiet-by-default monitors, explicit convergence/divergence reasons and true
   residual refresh;
 - reusable contexts for momentum, scalar transport and coupled Schur solves;
@@ -273,7 +274,8 @@ and validated before those capabilities are advertised.
 
 ### P4: specialized extensions
 
-- smoothed-aggregation AMG with near-null-space preservation;
+- smoothed-aggregation AMG with arbitrary multi-vector near-null-space
+  preservation;
 - structured semicoarsening only for a future structured-grid backend;
 - inexact Newton with line search and nonlinear acceleration;
 - transient BDF/ARKIMEX methods when stiff transient validation is ready.

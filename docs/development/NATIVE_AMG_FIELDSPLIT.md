@@ -22,7 +22,8 @@ pipeline follows the same high-level order as BoomerAMG:
 - Galerkin coarse operators;
 - equal weighted-Jacobi sweeps before and after coarse correction, preserving
   the symmetric application required by CG;
-- a pivoted direct solve on the smallest level.
+- a pivoted direct solve on the smallest level; pure-Neumann systems use a
+  symmetric zero-mean saddle-point augmentation instead of pinning a row.
 
 The policy changes sweep count and maximum hierarchy depth. The serial C/F
 split captures the independent-set completion principle, but it is not the
@@ -64,10 +65,14 @@ segregated pressure-velocity algorithm can choose it. The hierarchy supports
 the same unchanged-operator reuse and same-pattern numeric refresh as
 `NativeAMG`.
 
-Current near-null-space support is limited to the built-in constant tentative
-mode. Arbitrary vectors, singular coarse-level projection, MPI aggregation and
-GPU kernels remain separate work; constant-null-space pressure solves continue
-to use the projected-CG/Jacobi policy.
+Current near-null-space support is limited to the built-in constant mode. For a
+pure-Neumann pressure/diffusion operator, the dispatcher passes that mode into
+either native AMG family. Every residual, smoother correction and coarse right-
+hand side is projected; prolongation reproduces constants; and the smallest
+singular operator is solved with a symmetric zero-mean constraint. Automatic
+selection therefore uses projected CG/AMG for systems of at least 24 equations
+and retains projected CG/Jacobi for smaller systems. Arbitrary user vectors,
+MPI aggregation and GPU kernels remain separate work.
 
 Reference: [PETSc GAMG manual page](https://petsc.org/main/manualpages/PC/PCGAMG/).
 
@@ -122,6 +127,6 @@ enabled without weakening its matrix consistency.
 - no HYPRE or PETSc runtime, ABI, option database or object lifecycle;
 - no claim of numerical identity with either project;
 - no distributed AMG hierarchy in this dependency-free implementation;
-- no arbitrary near-null-space vectors or singular coarse-level projection;
+- no arbitrary near-null-space vectors (the constant pressure mode is supported);
 - no GPU AMG setup or apply kernels yet;
 - no performance claim without a separate reproducible benchmark.
