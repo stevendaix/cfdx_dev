@@ -513,7 +513,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_cfdx_qualification_registry
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_qualification_registry.py
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
+        add_test(NAME test_cfdx_qualification_executable_coverage
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/audit_qualification_executable_coverage.py
+                    ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json
+                    --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
+            LABELS "qualification;validation")
+        set_tests_properties(test_cfdx_qualification_executable_coverage PROPERTIES
             LABELS "qualification;validation")
     endif()
 
