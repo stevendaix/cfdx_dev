@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_field_roundtrip.dir/tests/unit/test_field_roundtrip.cpp.o -o test_field_roundtrip  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 

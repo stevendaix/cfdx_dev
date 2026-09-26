@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -g -O0 CMakeFiles/test_mpi_partition.dir/tests/unit/test_mpi_partition.cpp.o -o test_mpi_partition  -Wl,-rpath,/usr/lib/x86_64-linux-gnu/openmpi/lib libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi_cxx.so /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi.so 
