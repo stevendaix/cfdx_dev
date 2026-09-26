@@ -355,8 +355,13 @@ int main()
              ConvectionScheme::UPWIND, true},
         };
 
-        constexpr double profile_l2_tolerance = 5.0e-2;
-        constexpr double profile_linf_tolerance = 1.0e-1;
+        // Couette is an affine velocity field.  On the cell-centred 16-cell
+        // mesh the exact discrete maximum is (16 - 0.5) / 16 = 0.96875.
+        // These gates must therefore be tight enough to detect a biased
+        // discretisation or an incompletely converged segregated solve.
+        constexpr double profile_l2_tolerance = 1.0e-6;
+        constexpr double profile_linf_tolerance = 1.0e-6;
+        constexpr double couette_umax_exact = (16.0 - 0.5) / 16.0;
         constexpr double transverse_velocity_tolerance = 1.0e-7;
         constexpr double pressure_uniformity_tolerance = 1.0e-7;
         constexpr double boundary_velocity_tolerance = 1.0e-8;
@@ -477,7 +482,8 @@ int main()
                     gates.push_back("Uy");
                 if (!(max_abs_uz < transverse_velocity_tolerance))
                     gates.push_back("Uz");
-                if (!(max_u > 0.90 && max_u < 1.10))
+                if (!(std::isfinite(max_u) &&
+                      std::abs(max_u - couette_umax_exact) < profile_linf_tolerance))
                     gates.push_back("Umax");
                 if (!(min_u > -boundary_velocity_tolerance))
                     gates.push_back("Umin");
