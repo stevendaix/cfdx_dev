@@ -244,14 +244,32 @@ inline std::vector<double> estimate_view_factor_matrix(
             if (i != j)
                 F[i*n+j] = patch_pair_view_factor(patches[i], patches[j]);
 
-    // Enforce enclosure closure while preserving the physically required
-    // reciprocity as far as the centroid approximation permits.
+    // The raw centroid estimator is not reciprocal on unequal-area patches.
+    // First symmetrize the area-weighted exchange Q_ij = A_i F_ij. Then apply
+    // one global closure scale; a row-by-row normalization would destroy
+    // reciprocity again. Finally, assign the remaining row fraction to F_ii.
+    double max_row_sum = 0.0;
     for (std::size_t i=0; i<n; ++i) {
-        double sum = 0.0;
-        for (std::size_t j=0; j<n; ++j) sum += F[i*n+j];
-        if (sum > 1.0) {
-            for (std::size_t j=0; j<n; ++j) F[i*n+j] /= sum;
+        for (std::size_t j=i+1; j<n; ++j) {
+            const double exchange =
+                0.5*(patches[i].area*F[i*n+j] +
+                     patches[j].area*F[j*n+i]);
+            F[i*n+j] = exchange/patches[i].area;
+            F[j*n+i] = exchange/patches[j].area;
         }
+        double row_sum = 0.0;
+        for (std::size_t j=0; j<n; ++j) row_sum += F[i*n+j];
+        max_row_sum = std::max(max_row_sum,row_sum);
+    }
+
+    const double closure_scale = 1.0/std::max(1.0,max_row_sum);
+    for (std::size_t i=0; i<n; ++i) {
+        double row_sum = 0.0;
+        for (std::size_t j=0; j<n; ++j) {
+            if (i!=j) F[i*n+j] *= closure_scale;
+            row_sum += F[i*n+j];
+        }
+        F[i*n+i] = std::max(0.0,1.0-row_sum);
     }
     return F;
 }
@@ -796,6 +814,15 @@ inline RosselandSolveResult solve_rosseland_energy(
         for(std::size_t c=0;c<mesh.n_cells();++c)
             scale=std::max(scale,std::abs(temperature(c)));
         const double rel=max_delta/scale;
+        // Re-evaluate k_rad at the accepted nonlinear iterate. Using the
+        // previous iterate here can make the reported total-energy balance
+        // inconsistent with the field that was just accepted.
+        for(std::size_t c=0;c<mesh.n_cells();++c) {
+            conductivity_values[c]=energy_controls.conductivity+
+                rosseland_conductivity(
+                    std::max(controls.minimum_temperature,temperature(c)),
+                    absorption(c));
+        }
         result.temperature_residuals.push_back(rel);
         result.energy_balance_residuals.push_back(energy_balance_relative(
             mesh,geometry,mass_flux,temperature,old,source,energy_controls,bcs,

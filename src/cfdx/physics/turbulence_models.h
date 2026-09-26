@@ -11,8 +11,22 @@ struct TurbulenceModelDescriptor {
  AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
  TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
 };
-inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbulenceModel){
- return TurbulenceImplementationKind::CLOSURE;
+inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbulenceModel model){
+ switch(model) {
+ case AdvancedTurbulenceModel::KEPSILON:
+ case AdvancedTurbulenceModel::RNG_KEPSILON:
+ case AdvancedTurbulenceModel::KOMEGA:
+ case AdvancedTurbulenceModel::SST:
+ case AdvancedTurbulenceModel::SPALART_ALLMARAS:
+     return TurbulenceImplementationKind::TRANSPORT_MODEL;
+ default:
+     return TurbulenceImplementationKind::CLOSURE;
+ }
+}
+
+inline constexpr bool has_transport_equation(AdvancedTurbulenceModel model)
+{
+ return implementation_kind(model)==TurbulenceImplementationKind::TRANSPORT_MODEL;
 }
 struct TurbulenceModelCoefficients {
  double C_mu=.09,C1=1.44,C2=1.92,sigma_k=1.0,sigma_epsilon=1.3,sigma_omega=.5,beta_star=.09,beta1=.075,beta2=.0828,gamma1=5.0/9.0,gamma2=.44,a1=.31,sigma_nu=2.0/3.0,Cb1=.1355,Cb2=.622,sigma_s=.3,Cs=.17,Cw=.3,CDES=.65,Cddes=.65;
@@ -24,7 +38,14 @@ inline double k_epsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){i
 inline double rng_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.0845){return k_epsilon_eddy_viscosity(k,epsilon,Cmu);}
 inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double Cmu=.09){return k_epsilon_eddy_viscosity(k,epsilon,Cmu);}
 inline double komega_eddy_viscosity(double k,double omega,double betaStar=.09){if(k<0||omega<=0||betaStar<=0||!std::isfinite(k)||!std::isfinite(omega))throw std::invalid_argument("k-omega invalid inputs");return k/omega;}
-inline double sst_eddy_viscosity(double k,double omega,double strain,double a1=.31){if(k<0||omega<=0||strain<0||a1<=0)throw std::invalid_argument("SST invalid inputs");return a1*k/std::max(a1*omega,strain);}
+inline double sst_eddy_viscosity(double k,double omega,double strain,double a1=.31,double F2=1.0){
+ if(k<0||omega<=0||strain<0||a1<=0||!std::isfinite(F2)||F2<0.0||F2>1.0)
+     throw std::invalid_argument("SST invalid inputs");
+ // Menter SST: the strain-rate branch is limited by F2 in the eddy-viscosity
+ // denominator. Keeping F2 explicit avoids silently using the outer-layer form
+ // in the near-wall branch.
+ return a1*k/std::max(a1*omega,strain*F2);
+}
 enum class NegativeNuTildePolicy { CLAMP_ZERO, REJECT };
 inline double spalart_allmaras_nu_t(double nu_tilde,double distance,double molecular_nu,
                                      NegativeNuTildePolicy policy=NegativeNuTildePolicy::CLAMP_ZERO){

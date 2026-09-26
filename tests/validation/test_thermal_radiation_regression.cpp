@@ -1,6 +1,7 @@
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_models.h"
 #include "cfdx/physics/radiation_s2s.h"
+#include "cfdx/physics/radiation_advanced.h"
 #include "cfdx/physics/thermophysical_models.h"
 #include "common/test_harness.h"
 #include <cmath>
@@ -159,6 +160,19 @@ int main()
         validate_s2s_view_factors(F,A,1e-12);
         EXPECT_NEAR(A[0]*F[1],A[1]*F[2],1e-12);
         std::cout << "RADIATION_REGRESSION: view_factors=PASS\n";
+    });
+
+    run_case("radiation_view_factor_estimator_preserves_reciprocity", [] {
+        const std::vector<ViewFactorPatch> patches{
+            {{0,0,0},{0,0,1},2.0},
+            {{0,0,1},{0,0,-1},1.0}
+        };
+        const auto F=estimate_view_factor_matrix(patches);
+        validate_view_factor_matrix(F,2,{2.0,1.0},1e-12);
+        EXPECT_NEAR(2.0*F[1],1.0*F[2],1e-12);
+        EXPECT_NEAR(F[0]+F[1],1.0,1e-12);
+        EXPECT_NEAR(F[2]+F[3],1.0,1e-12);
+        std::cout << "RADIATION_REGRESSION: estimator_reciprocity=PASS\n";
     });
 
     run_case("s2s_radiosity_energy_balance", [] {
