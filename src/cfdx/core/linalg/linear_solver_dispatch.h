@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/linear_solver_models.h"
+#include "cfdx/core/linalg/null_space.h"
 
 #include <memory>
 #include <stdexcept>
@@ -60,12 +61,24 @@ inline LinearSolveReport solve_linear_system(
     report.plan = select_linear_solver(problem, matrix.n_rows(), request);
     auto preconditioner = make_scalar_preconditioner(report.plan.preconditioner);
     Preconditioner* pc = preconditioner.get();
+    std::unique_ptr<NullSpaceProjector> null_space;
+    if (report.plan.null_space == NullSpaceModel::Constant)
+        null_space = std::make_unique<NullSpaceProjector>(
+            NullSpaceProjector::constant(matrix.n_rows()));
 
     switch (report.plan.krylov) {
         case KrylovModel::CG:
-            report.result = pc
-                ? solve_cg(matrix, rhs, solution, *pc, max_iterations, tolerance)
-                : solve_cg(matrix, rhs, solution, max_iterations, tolerance);
+            if (null_space) {
+                report.result = pc
+                    ? solve_cg(matrix, rhs, solution, *pc, *null_space,
+                               max_iterations, tolerance)
+                    : solve_cg(matrix, rhs, solution, *null_space,
+                               max_iterations, tolerance);
+            } else {
+                report.result = pc
+                    ? solve_cg(matrix, rhs, solution, *pc, max_iterations, tolerance)
+                    : solve_cg(matrix, rhs, solution, max_iterations, tolerance);
+            }
             break;
         case KrylovModel::BiCGStab:
             report.result = solve_bicgstab(

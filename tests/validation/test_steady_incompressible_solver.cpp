@@ -274,6 +274,13 @@ int main()
         const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
         EXPECT_TRUE(r.converged);
         EXPECT_TRUE(!r.history.empty());
+        EXPECT_TRUE(r.pressure_linear_context.full_setups == 1);
+        EXPECT_TRUE(r.pressure_linear_context.numeric_updates == 0);
+        EXPECT_TRUE(
+            r.pressure_linear_context.solves == 3 * r.iterations);
+        EXPECT_TRUE(
+            r.pressure_linear_context.unchanged_reuses + 1 ==
+            r.pressure_linear_context.solves);
     });
 
 
