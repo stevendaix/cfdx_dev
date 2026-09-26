@@ -111,11 +111,4 @@ The CI comparison is intentionally diagnostic at this stage. The number printed 
 
 ## Build / CI evidence
 
-At the current PR head, both required GitHub Actions workflows have started and reached the compilation stage:
-
-- CFDX CI, run #1903 — Configure: PASS; Build: running.
-- CFDX MPI and parallel HDF5 integration, run #3531 — Configure: PASS; Build: running.
-
-No compile PASS is claimed until the Build steps complete successfully. The CTest and validation-report stages are downstream of the build and are therefore not yet evidence for this case.
-
-The CI workflow is deliberately configured to diagnose compilation failures before running CTest and to collect diagnostics before the final gate. This record should be updated with the final run conclusions and, if relevant, the exact failing job/log before the PR is considered ready.
+At the current PR head, the Release CI runs the physical VMFL036 test and prints its CFDX result in the validation diagnostics section. Gmsh is installed in the CI Python environment because the reproducible body-fitted mesh is generated during the test. The final solver result must be taken from the `VMFL036 RESULT` and `VMFL036 DRAG` lines in the corresponding CTest log; no numerical result is hard-coded into this document.
