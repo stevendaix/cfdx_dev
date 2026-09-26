@@ -9,8 +9,10 @@ permissions:
   contents: read
 
 concurrency:
+  # Validation runs are long (Ghia includes 32/64/128 grids). Do not cancel
+  # an active PR validation when a diagnostic/re-run is queued on the same ref.
   group: cfdx-validation-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   m1-m4-validation:
