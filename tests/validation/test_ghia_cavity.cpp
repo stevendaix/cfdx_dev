@@ -123,14 +123,16 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.algorithm=PressureVelocityAlgorithm::SIMPLE;
     controls.density=1.0;
     controls.kinematic_viscosity=1.0/test.reynolds;
-    controls.linear_max_iterations=5000;
-    controls.linear_tolerance=1e-10;
-    controls.pressure_reference_cell=0;
+    controls.linear_max_iterations=10000;
+    controls.linear_tolerance=1e-8;
+    // Use an interior gauge cell rather than the lower-left corner. This keeps
+    // the pressure reference away from a corner where several wall BCs meet.
+    controls.pressure_reference_cell=(test.ny/2)*test.nx+(test.nx/2);
     controls.pressure_reference_value=0.0;
     controls.use_bounded_convection=true;
     controls.convection_scheme=ConvectionScheme::UPWIND;
-    controls.coupling.alpha_u=0.5;
-    controls.coupling.alpha_p=0.2;
+    controls.coupling.alpha_u=0.7;
+    controls.coupling.alpha_p=0.3;
     controls.convergence.max_iterations=test.max_iterations;
     controls.convergence.relative_tolerance=1e-8;
     controls.convergence.continuity_tolerance=1e-8;
