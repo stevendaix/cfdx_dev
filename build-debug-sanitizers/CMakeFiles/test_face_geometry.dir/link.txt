@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_face_geometry.dir/tests/numerical/test_face_geometry.cpp.o -o test_face_geometry  libcfdx_core.a ../third_party/hdf5/lib/libhdf5.a ../third_party/hdf5/lib/libhdf5_hl.a -lz 
