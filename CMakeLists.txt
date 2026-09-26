@@ -398,6 +398,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     add_cfdx_test(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
+    set_tests_properties(test_phase9_acceptance PROPERTIES LABELS "phase9;validation;coupled-ns")
     # Phase 9 diagnostics are configured explicitly by the validation test.
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
@@ -411,6 +412,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
+    set_tests_properties(test_level_c_coupled_verification PROPERTIES LABELS "validation;coupled-ns")
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
