@@ -472,6 +472,19 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     set_tests_properties(test_level_c_coupled_verification PROPERTIES LABELS "validation;coupled-ns")
+
+    # Canonical engineering qualification cases. These labels make the
+    # qualification subset independently selectable from ordinary unit tests.
+    set_tests_properties(
+        test_ghia_cavity_quick
+        test_couette_quick
+        test_poiseuille_quick
+        test_mms_scalar_diffusion
+        test_cht_validation
+        test_thermal_vv
+        test_radiation_vv
+        test_s2s_radiation_vv
+        PROPERTIES LABELS "qualification;validation")
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
