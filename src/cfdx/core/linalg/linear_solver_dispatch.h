@@ -18,7 +18,8 @@ struct LinearSolveReport {
 };
 
 inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
-    PreconditionerModel model) {
+    PreconditionerModel model,
+    bool constant_null_space = false) {
     switch (model) {
         case PreconditionerModel::None:
             // CG's legacy null-preconditioner overload installs Jacobi.
@@ -32,10 +33,12 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::ILU0:
             return std::make_unique<ILU0Preconditioner>();
         case PreconditionerModel::NativeAMG:
-            return std::make_unique<NativeBoomerAMGPreconditioner>();
+            return std::make_unique<NativeBoomerAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
-                NativeSmoothedAggregationAMGPreconditioner>();
+                NativeSmoothedAggregationAMGPreconditioner>(
+                    constant_null_space);
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
             throw std::invalid_argument(
@@ -61,7 +64,9 @@ inline LinearSolveReport solve_linear_system(
     double tolerance = 1e-12) {
     LinearSolveReport report;
     report.plan = select_linear_solver(problem, matrix.n_rows(), request);
-    auto preconditioner = make_scalar_preconditioner(report.plan.preconditioner);
+    auto preconditioner = make_scalar_preconditioner(
+        report.plan.preconditioner,
+        report.plan.null_space == NullSpaceModel::Constant);
     Preconditioner* pc = preconditioner.get();
     std::unique_ptr<NullSpaceProjector> null_space;
     if (report.plan.null_space == NullSpaceModel::Constant)

@@ -174,11 +174,59 @@ int main() {
         EXPECT_TRUE(std::isfinite(corrected(1)));
     });
 
-    run_case("laplacian_limited_scheme_is_explicitly_unsupported", []() {
-        Mesh m = make_unit_cube();
-        ScalarCellField f(1, "p", "Pa", 1);
-        f(0) = 42.0;
-        EXPECT_THROW(compute_laplacian(f, m, LaplacianScheme::LIMITED), std::runtime_error);
+    run_case("laplacian_limited_scheme_bounds_nonorthogonal_correction", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        GeometryCache geometry = make_geometry_cache(m);
+        geometry.face_Sf[5].y = 8.0;
+        geometry.face_Sf[2].y = 9.0;
+
+        const auto orth = compute_laplacian(
+            f, m, geometry, LaplacianScheme::ORTHOGONAL);
+        const auto corrected = compute_laplacian(
+            f, m, geometry, LaplacianScheme::CORRECTED);
+        const auto limited = compute_laplacian(
+            f, m, geometry, LaplacianScheme::LIMITED, 0.5);
+
+        const double full_correction = corrected(0) - orth(0);
+        const double bounded_correction = limited(0) - orth(0);
+        EXPECT_TRUE(std::abs(full_correction) > std::abs(orth(0)));
+        EXPECT_TRUE(std::abs(bounded_correction) <=
+                    std::abs(orth(0)) + 1e-12);
+        EXPECT_TRUE(std::abs(bounded_correction) <
+                    std::abs(full_correction));
+        EXPECT_NEAR(limited(0) + limited(1), 0.0, 1e-12);
+    });
+
+    run_case("laplacian_limited_endpoints_match_uncorrected_and_corrected", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        GeometryCache geometry = make_geometry_cache(m);
+        geometry.face_Sf[5].y = 0.4;
+        geometry.face_Sf[2].y = 1.4;
+
+        const auto orth = compute_laplacian(
+            f, m, geometry, LaplacianScheme::ORTHOGONAL);
+        const auto corrected = compute_laplacian(
+            f, m, geometry, LaplacianScheme::CORRECTED);
+        const auto disabled = compute_laplacian(
+            f, m, geometry, LaplacianScheme::LIMITED, 0.0);
+        const auto full = compute_laplacian(
+            f, m, geometry, LaplacianScheme::LIMITED, 1.0);
+        EXPECT_NEAR(disabled(0), orth(0), 1e-12);
+        EXPECT_NEAR(disabled(1), orth(1), 1e-12);
+        EXPECT_NEAR(full(0), corrected(0), 1e-12);
+        EXPECT_NEAR(full(1), corrected(1), 1e-12);
+        EXPECT_THROW(compute_laplacian(
+            f, m, geometry, LaplacianScheme::LIMITED, -0.1),
+            std::invalid_argument);
+        EXPECT_THROW(compute_laplacian(
+            f, m, geometry, LaplacianScheme::LIMITED, 1.1),
+            std::invalid_argument);
     });
 
     run_case("laplacian_reuses_geometry_cache", []() {

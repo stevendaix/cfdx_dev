@@ -31,10 +31,12 @@ public:
                                    double strength_threshold = 0.25,
                                    std::size_t max_levels = 25,
                                    AMGInterpolationPolicy interpolation =
-                                       AMGInterpolationPolicy::DirectCF)
+                                       AMGInterpolationPolicy::DirectCF,
+                                   bool constant_null_space = false)
         : op_(op), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
-          interpolation_(interpolation)
+          interpolation_(interpolation),
+          constant_null_space_(constant_null_space)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
@@ -46,7 +48,8 @@ public:
     bool setup(const SparseMatrix& A) override
     {
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
-            A.n_rows() == 0 || !matrix_is_valid(A)) {
+            A.n_rows() == 0 || !matrix_is_valid(A) ||
+            (constant_null_space_ && !has_constant_null_space(A))) {
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -116,7 +119,8 @@ public:
     {
         if (levels_.empty() || A.n_rows() != op_.rows() ||
             A.n_cols() != op_.cols() || !same_pattern(levels_.front().A, A) ||
-            !matrix_is_valid(A)) {
+            !matrix_is_valid(A) ||
+            (constant_null_space_ && !has_constant_null_space(A))) {
             return false;
         }
 
@@ -172,9 +176,13 @@ public:
         if (levels_.empty() || r.size() != op_.rows() || !r.is_valid()) {
             return false;
         }
+        Vector compatible_r = r;
+        if (constant_null_space_) remove_constant(compatible_r);
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
-        return vcycle(0, r, z);
+        if (!vcycle(0, compatible_r, z)) return false;
+        if (constant_null_space_) remove_constant(z);
+        return z.is_valid();
     }
 
     const char* name() const override
@@ -223,6 +231,38 @@ private:
                           b.row_offsets_data()) &&
                std::equal(a.columns_data(), a.columns_data() + a.nnz(),
                           b.columns_data());
+    }
+
+    static bool has_constant_null_space(const SparseMatrix& A)
+    {
+        const auto* row = A.row_offsets_data();
+        const auto* val = A.values_data();
+        double matrix_scale = 0.0;
+        double residual_scale = 0.0;
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double row_sum = 0.0;
+            double row_norm = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                row_sum += val[k];
+                row_norm += std::abs(val[k]);
+            }
+            matrix_scale = std::max(matrix_scale, row_norm);
+            residual_scale = std::max(residual_scale, std::abs(row_sum));
+        }
+        const double tolerance = 256.0 * std::numeric_limits<double>::epsilon() *
+                                 std::max(1.0, matrix_scale);
+        return std::isfinite(residual_scale) && residual_scale <= tolerance;
+    }
+
+    static void remove_constant(Vector& values)
+    {
+        if (values.size() == 0) return;
+        double mean = 0.0;
+        for (std::size_t i = 0; i < values.size(); ++i)
+            mean += values(i);
+        mean /= static_cast<double>(values.size());
+        for (std::size_t i = 0; i < values.size(); ++i)
+            values(i) -= mean;
     }
 
     static bool build_diagonal(Level& level)
@@ -545,6 +585,7 @@ private:
                 x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
                 if (!std::isfinite(x(i))) return false;
             }
+            if (constant_null_space_) remove_constant(x);
         }
         return true;
     }
@@ -569,6 +610,7 @@ private:
             for (const auto& [coarse, weight] : prolongation[i])
                 coarse_r(coarse) += weight * residual;
         }
+        if (constant_null_space_) remove_constant(coarse_r);
 
         Vector coarse_x(nc, 0.0);
         if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
@@ -578,6 +620,7 @@ private:
                 x(i) += weight * coarse_x(coarse);
             if (!std::isfinite(x(i))) return false;
         }
+        if (constant_null_space_) remove_constant(x);
 
         return smooth(level, r, x, post_);
     }
@@ -593,24 +636,39 @@ private:
         const std::size_t n = A.n_rows();
         if (r.size() != n || n == 0) return false;
 
-        std::vector<double> m(n * n, 0.0);
-        std::vector<double> b(n, 0.0);
+        const std::size_t system_n = n + (constant_null_space_ ? 1 : 0);
+        std::vector<double> m(system_n * system_n, 0.0);
+        std::vector<double> b(system_n, 0.0);
         const auto* row = A.row_offsets_data();
         const auto* col = A.columns_data();
         const auto* val = A.values_data();
         for (std::size_t i = 0; i < n; ++i) {
             b[i] = r(i);
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                m[i * n + col[k]] += val[k];
+                m[i * system_n + col[k]] += val[k];
             }
         }
 
-        constexpr double pivot_tol = 1e-14;
-        for (std::size_t k = 0; k < n; ++k) {
+        // A pure-Neumann coarse operator is singular. The symmetric saddle-
+        // point augmentation enforces a zero-mean correction without pinning
+        // an arbitrary coarse unknown.
+        if (constant_null_space_) {
+            for (std::size_t i = 0; i < n; ++i) {
+                m[i * system_n + n] = 1.0;
+                m[n * system_n + i] = 1.0;
+            }
+        }
+
+        double matrix_scale = 0.0;
+        for (const double value : m)
+            matrix_scale = std::max(matrix_scale, std::abs(value));
+        const double pivot_tol = 128.0 * std::numeric_limits<double>::epsilon() *
+                                 std::max(1.0, matrix_scale);
+        for (std::size_t k = 0; k < system_n; ++k) {
             std::size_t pivot = k;
-            double pivot_abs = std::abs(m[k * n + k]);
-            for (std::size_t i = k + 1; i < n; ++i) {
-                const double candidate = std::abs(m[i * n + k]);
+            double pivot_abs = std::abs(m[k * system_n + k]);
+            for (std::size_t i = k + 1; i < system_n; ++i) {
+                const double candidate = std::abs(m[i * system_n + k]);
                 if (candidate > pivot_abs) {
                     pivot_abs = candidate;
                     pivot = i;
@@ -619,35 +677,40 @@ private:
             if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
 
             if (pivot != k) {
-                for (std::size_t j = k; j < n; ++j) {
-                    std::swap(m[k * n + j], m[pivot * n + j]);
+                for (std::size_t j = k; j < system_n; ++j) {
+                    std::swap(m[k * system_n + j],
+                              m[pivot * system_n + j]);
                 }
                 std::swap(b[k], b[pivot]);
             }
 
-            const double diagonal = m[k * n + k];
-            for (std::size_t i = k + 1; i < n; ++i) {
-                const double factor = m[i * n + k] / diagonal;
+            const double diagonal = m[k * system_n + k];
+            for (std::size_t i = k + 1; i < system_n; ++i) {
+                const double factor = m[i * system_n + k] / diagonal;
                 if (!std::isfinite(factor)) return false;
-                m[i * n + k] = 0.0;
-                for (std::size_t j = k + 1; j < n; ++j) {
-                    m[i * n + j] -= factor * m[k * n + j];
+                m[i * system_n + k] = 0.0;
+                for (std::size_t j = k + 1; j < system_n; ++j) {
+                    m[i * system_n + j] -=
+                        factor * m[k * system_n + j];
                 }
                 b[i] -= factor * b[k];
             }
         }
 
-        if (x.size() != n) x.resize(n);
-        for (std::size_t ii = n; ii-- > 0;) {
+        std::vector<double> solution(system_n, 0.0);
+        for (std::size_t ii = system_n; ii-- > 0;) {
             double sum = b[ii];
-            for (std::size_t j = ii + 1; j < n; ++j) {
-                sum -= m[ii * n + j] * x(j);
+            for (std::size_t j = ii + 1; j < system_n; ++j) {
+                sum -= m[ii * system_n + j] * solution[j];
             }
-            const double diagonal = m[ii * n + ii];
+            const double diagonal = m[ii * system_n + ii];
             if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
-            x(ii) = sum / diagonal;
-            if (!std::isfinite(x(ii))) return false;
+            solution[ii] = sum / diagonal;
+            if (!std::isfinite(solution[ii])) return false;
         }
+        if (x.size() != n) x.resize(n);
+        for (std::size_t i = 0; i < n; ++i) x(i) = solution[i];
+        if (constant_null_space_) remove_constant(x);
         return x.is_valid();
     }
 
@@ -657,6 +720,7 @@ private:
     double strength_threshold_;
     std::size_t max_levels_;
     AMGInterpolationPolicy interpolation_;
+    bool constant_null_space_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
 };

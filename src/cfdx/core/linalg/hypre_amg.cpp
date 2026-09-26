@@ -36,9 +36,12 @@ private:
 } // namespace
 
 struct NativeAMGPreconditioner::Impl {
-    explicit Impl(NativeAMGMethod selected_method) : method(selected_method) {}
+    explicit Impl(NativeAMGMethod selected_method, bool use_constant_null_space)
+        : method(selected_method),
+          constant_null_space(use_constant_null_space) {}
 
     NativeAMGMethod method;
+    bool constant_null_space = false;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
     std::unique_ptr<OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
@@ -47,8 +50,9 @@ struct NativeAMGPreconditioner::Impl {
     std::size_t numeric_updates = 0;
 };
 
-NativeAMGPreconditioner::NativeAMGPreconditioner(NativeAMGMethod method)
-    : impl_(std::make_unique<Impl>(method)) {}
+NativeAMGPreconditioner::NativeAMGPreconditioner(
+    NativeAMGMethod method, bool constant_null_space)
+    : impl_(std::make_unique<Impl>(method, constant_null_space)) {}
 
 NativeAMGPreconditioner::~NativeAMGPreconditioner() = default;
 NativeAMGPreconditioner::NativeAMGPreconditioner(
@@ -93,7 +97,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         impl_->policy == AMGMemoryPolicy::Low ? 15 : 25,
         impl_->method == NativeAMGMethod::SmoothedAggregation
             ? AMGInterpolationPolicy::SmoothedAggregation
-            : AMGInterpolationPolicy::DirectCF);
+            : AMGInterpolationPolicy::DirectCF,
+        impl_->constant_null_space);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
         return false;
@@ -149,6 +154,10 @@ bool NativeAMGPreconditioner::is_ready() const noexcept {
 
 NativeAMGMethod NativeAMGPreconditioner::method() const noexcept {
     return impl_->method;
+}
+
+bool NativeAMGPreconditioner::uses_constant_null_space() const noexcept {
+    return impl_->constant_null_space;
 }
 
 AMGMemoryPolicy NativeAMGPreconditioner::memory_policy() const noexcept {

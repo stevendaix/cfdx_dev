@@ -1237,7 +1237,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.pressure_linear_solver);
         if (pressure_plan.krylov == KrylovModel::CG) {
             pressure_preconditioner =
-                make_scalar_preconditioner(pressure_plan.preconditioner);
+                make_scalar_preconditioner(
+                    pressure_plan.preconditioner,
+                    pressure_plan.null_space == NullSpaceModel::Constant);
             pressure_context = std::make_unique<ReusableCgContext>(
                 *pressure_preconditioner);
             if (pressure_plan.null_space == NullSpaceModel::Constant) {

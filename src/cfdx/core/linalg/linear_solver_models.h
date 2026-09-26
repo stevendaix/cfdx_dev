@@ -205,8 +205,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
 
     if (plan.null_space == NullSpaceModel::Constant &&
         plan.automatic_preconditioner) {
-        plan.preconditioner = PreconditionerModel::Jacobi;
-        plan.reason += "; projected constant null space uses an SPD local preconditioner";
+        plan.reason += "; projected constant null space is enforced across Krylov and compatible preconditioning";
     }
 
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
@@ -236,11 +235,6 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
             "constant null space is currently qualified only for pressure/diffusion problems");
     if (plan.null_space == NullSpaceModel::Constant && plan.krylov != KrylovModel::CG)
         throw std::invalid_argument("constant null space currently requires projected CG");
-    if (plan.null_space == NullSpaceModel::Constant &&
-        (plan.preconditioner == PreconditionerModel::NativeAMG ||
-         plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG))
-        throw std::invalid_argument(
-            "native AMG does not yet propagate near-null-space vectors; use Jacobi");
     return plan;
 }
 
