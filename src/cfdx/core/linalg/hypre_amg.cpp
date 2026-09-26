@@ -27,6 +27,7 @@ public:
     }
 
     const SparseMatrix& matrix() const noexcept { return matrix_; }
+    void update(const SparseMatrix& matrix) { matrix_ = matrix; }
 
 private:
     SparseMatrix matrix_;
@@ -39,6 +40,8 @@ struct NativeBoomerAMGPreconditioner::Impl {
     std::unique_ptr<OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
     std::string error;
+    std::size_t hierarchy_builds = 0;
+    std::size_t numeric_updates = 0;
 };
 
 NativeBoomerAMGPreconditioner::NativeBoomerAMGPreconditioner()
@@ -93,6 +96,23 @@ bool NativeBoomerAMGPreconditioner::setup(const SparseMatrix& matrix) {
     impl_->amg.reset();
     impl_->op = std::move(next_op);
     impl_->amg = std::move(next_amg);
+    ++impl_->hierarchy_builds;
+    impl_->error.clear();
+    return true;
+}
+
+bool NativeBoomerAMGPreconditioner::update_values(const SparseMatrix& matrix) {
+    if (!impl_->op || !impl_->amg || matrix.n_rows() == 0 ||
+        matrix.n_rows() != matrix.n_cols() || !matrix.is_consistent()) {
+        impl_->error = "native AMG numeric update requires an existing compatible hierarchy";
+        return false;
+    }
+    if (!impl_->amg->update_values(matrix)) {
+        impl_->error = "native AMG numeric update requires an unchanged CSR pattern";
+        return false;
+    }
+    impl_->op->update(matrix);
+    ++impl_->numeric_updates;
     impl_->error.clear();
     return true;
 }
@@ -121,6 +141,14 @@ AMGMemoryPolicy NativeBoomerAMGPreconditioner::memory_policy() const noexcept {
 
 std::size_t NativeBoomerAMGPreconditioner::coarse_size() const noexcept {
     return impl_->amg ? impl_->amg->coarse_size() : 0;
+}
+
+std::size_t NativeBoomerAMGPreconditioner::hierarchy_builds() const noexcept {
+    return impl_->hierarchy_builds;
+}
+
+std::size_t NativeBoomerAMGPreconditioner::numeric_updates() const noexcept {
+    return impl_->numeric_updates;
 }
 
 const std::string& NativeBoomerAMGPreconditioner::last_error() const noexcept {
