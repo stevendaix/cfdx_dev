@@ -49,3 +49,59 @@ This is a case definition/reference specification, not a solver PASS.
 A solver-level PASS requires actual CFDX execution, convergence and conservation evidence, independent wall-force integration, coarse/medium/fine mesh refinement, quantitative comparison against Cd=1.0895, CTest/CI execution, and reproducible logs/report.
 
 No numerical Cd tolerance is frozen by this reference-definition change.
+
+## Calculation sheet
+
+All dimensional inputs are SI.
+
+| Quantity | Expression | Value |
+|---|---|---:|
+| Diameter | D | 1.000000 m |
+| Radius | D/2 | 0.500000 m |
+| Density | rho | 1.000000 kg/m^3 |
+| Velocity | U | 1.000000 m/s |
+| Dynamic viscosity | mu | 0.010000 Pa.s |
+| Kinematic viscosity | nu=mu/rho | 0.010000 m^2/s |
+| Reynolds number | rho U D / mu | **100.000000** |
+| Dynamic pressure | 0.5 rho U^2 | 0.500000 Pa |
+| Projected area | pi D^2 / 4 | 0.7853981634 m^2 |
+| Reference Cd | literature datum | 1.089500 |
+| Reference drag force | Cd (0.5 rho U^2 A) | **0.4278456495 N** |
+| Outer radius | 50 D | 50.000000 m |
+
+The reference force above is an oracle derived from the literature Cd, not a CFDX result. CFDX must independently integrate the sphere wall traction and obtain pressure and viscous contributions before comparison.
+
+### Drag decomposition required from CFDX
+
+For the sphere wall S:
+
+F = integral_S (-p n + tau.n) dS
+
+and, for the streamwise direction e_x:
+
+F_D = e_x . F
+
+Cd_pressure = F_D,pressure / (0.5 rho U^2 A)
+
+Cd_viscous = F_D,viscous / (0.5 rho U^2 A)
+
+Cd_total = Cd_pressure + Cd_viscous
+
+The validation result must retain all three values. A total Cd matching the reference while one component is unavailable or silently omitted is not sufficient evidence.
+
+### Re=100 consistency check
+
+Re = (1.0 kg/m^3)(1.0 m/s)(1.0 m) / (0.010 Pa.s) = 100.
+
+This is the intentional literature-aligned configuration. The documented Ansys value mu=0.02 Pa.s would instead produce Re=50 and therefore must not be mixed into this CFDX oracle.
+
+## Build / CI evidence
+
+At the current PR head, both required GitHub Actions workflows have started and reached the compilation stage:
+
+- CFDX CI, run #1903 — Configure: PASS; Build: running.
+- CFDX MPI and parallel HDF5 integration, run #3531 — Configure: PASS; Build: running.
+
+No compile PASS is claimed until the Build steps complete successfully. The CTest and validation-report stages are downstream of the build and are therefore not yet evidence for this case.
+
+The CI workflow is deliberately configured to diagnose compilation failures before running CTest and to collect diagnostics before the final gate. This record should be updated with the final run conclusions and, if relevant, the exact failing job/log before the PR is considered ready.
