@@ -29,7 +29,8 @@ inline SolverResult solve_gmres(
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
     Preconditioner* preconditioner = nullptr,
-    KrylovControls controls = {})
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
 {
     SolverResult result;
     if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
@@ -57,7 +58,8 @@ inline SolverResult solve_gmres(
     const double rhs_scale = std::max(b_norm, 1e-300);
     const double tol = tolerance * b_norm;
 
-    GmresWorkspace w;
+    GmresWorkspace local_workspace;
+    GmresWorkspace& w = reusable_workspace ? *reusable_workspace : local_workspace;
     w.resize(n, static_cast<std::size_t>(current_restart));
 
     auto apply_operator = [&](const double* in, Vector& out) {

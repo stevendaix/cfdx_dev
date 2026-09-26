@@ -19,6 +19,10 @@ class Preconditioner {
 public:
     virtual ~Preconditioner() = default;
     virtual bool setup(const SparseMatrix& A) = 0;
+    // Refresh numerical coefficients while preserving symbolic state when the
+    // CSR pattern is unchanged. Implementations without a split setup retain
+    // the correct behavior by rebuilding through setup().
+    virtual bool update_values(const SparseMatrix& A) { return setup(A); }
     virtual bool apply(const Vector& r, Vector& z) const = 0;
     virtual const char* name() const = 0;
 };

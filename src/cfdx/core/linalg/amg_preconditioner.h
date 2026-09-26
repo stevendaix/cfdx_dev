@@ -99,6 +99,31 @@ public:
         return true;
     }
 
+    bool update_values(const SparseMatrix& A) override
+    {
+        if (levels_.empty() || A.n_rows() != op_.rows() ||
+            A.n_cols() != op_.cols() || !same_pattern(levels_.front().A, A) ||
+            !matrix_is_valid(A)) {
+            return false;
+        }
+
+        std::vector<Level> refreshed = levels_;
+        refreshed.front().A = A;
+        if (!build_diagonal(refreshed.front())) return false;
+
+        for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
+            const std::size_t coarse_n = refreshed[level + 1].A.n_rows();
+            SparseMatrix coarse = galerkin_coarse(
+                refreshed[level].A, refreshed[level].prolongation, coarse_n);
+            if (!matrix_is_valid(coarse)) return false;
+            refreshed[level + 1].A = std::move(coarse);
+            if (!build_diagonal(refreshed[level + 1])) return false;
+        }
+
+        levels_ = std::move(refreshed);
+        return true;
+    }
+
     std::size_t coarse_size() const noexcept
     {
         if (levels_.size() < 2) return levels_.empty() ? 0 : levels_.front().A.n_rows();
@@ -151,6 +176,19 @@ private:
             }
         }
         return true;
+    }
+
+    static bool same_pattern(const SparseMatrix& a, const SparseMatrix& b)
+    {
+        if (a.n_rows() != b.n_rows() || a.n_cols() != b.n_cols() ||
+            a.nnz() != b.nnz() || !a.is_consistent() || !b.is_consistent()) {
+            return false;
+        }
+        return std::equal(a.row_offsets_data(),
+                          a.row_offsets_data() + a.n_rows() + 1,
+                          b.row_offsets_data()) &&
+               std::equal(a.columns_data(), a.columns_data() + a.nnz(),
+                          b.columns_data());
     }
 
     static bool build_diagonal(Level& level)

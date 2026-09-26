@@ -1,6 +1,8 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/native_fieldsplit.h"
 #include "common/test_harness.h"
 
@@ -20,6 +22,17 @@ SparseMatrix make_poisson(std::size_t n) {
         matrix.push_back(i, i, 2.0);
         if (i > 0) matrix.push_back(i, i - 1, -1.0);
         if (i + 1 < n) matrix.push_back(i, i + 1, -1.0);
+    }
+    matrix.finalize();
+    return matrix;
+}
+
+SparseMatrix make_scaled_poisson(std::size_t n, double scale) {
+    SparseMatrix matrix(n, n);
+    for (std::size_t i = 0; i < n; ++i) {
+        matrix.push_back(i, i, 2.0 * scale);
+        if (i > 0) matrix.push_back(i, i - 1, -scale);
+        if (i + 1 < n) matrix.push_back(i, i + 1, -scale);
     }
     matrix.finalize();
     return matrix;
@@ -104,6 +117,124 @@ int main() {
         EXPECT_TRUE(native.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(relative_true_residual(matrix, native_solution, rhs) < 1e-8);
         EXPECT_TRUE((solution - native_solution).norm_inf() < 1e-7);
+    });
+
+    run_case("reusable_gmres_updates_amg_without_rebuilding_hierarchy", [] {
+        const auto matrix = make_poisson(96);
+        const auto updated = make_scaled_poisson(96, 1.25);
+        Vector exact(96);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = std::cos(0.03 * static_cast<double>(i + 1));
+
+        NativeBoomerAMGPreconditioner amg;
+        ReusableGmresContext context(amg);
+        KrylovControls controls;
+        controls.adaptive_restart = false;
+        controls.restart_min = 24;
+        controls.restart_max = 24;
+
+        Vector solution(96, 0.0);
+        const Vector rhs = multiply(matrix, exact);
+        const auto first = context.solve(
+            matrix, rhs, solution, 24, 300, 1e-10, controls);
+        EXPECT_TRUE(first.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().full_setups == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+        const auto allocations = context.workspace_reallocations();
+
+        solution.fill(0.0);
+        const auto repeated = context.solve(
+            matrix, rhs, solution, 24, 300, 1e-10, controls);
+        EXPECT_TRUE(repeated.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().unchanged_reuses == 1);
+        EXPECT_TRUE(context.workspace_reallocations() == allocations);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+
+        solution.fill(0.0);
+        const Vector updated_rhs = multiply(updated, exact);
+        const auto refreshed = context.solve(
+            updated, updated_rhs, solution, 24, 300, 1e-10, controls);
+        EXPECT_TRUE(refreshed.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(updated, solution, updated_rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().numeric_updates == 1);
+        EXPECT_TRUE(amg.numeric_updates() == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+    });
+
+    run_case("solver_models_are_selected_by_problem_and_can_be_overridden", [] {
+        const auto pressure = select_linear_solver(
+            LinearProblemKind::PressurePoisson, 96);
+        EXPECT_TRUE(pressure.krylov == KrylovModel::CG);
+        EXPECT_TRUE(pressure.preconditioner == PreconditionerModel::NativeAMG);
+
+        const auto momentum = select_linear_solver(
+            LinearProblemKind::Momentum, 96);
+        EXPECT_TRUE(momentum.krylov == KrylovModel::BiCGStab);
+        EXPECT_TRUE(momentum.preconditioner == PreconditionerModel::ILU0);
+
+        const auto coupled = select_linear_solver(
+            LinearProblemKind::CoupledPressureVelocity, 512);
+        EXPECT_TRUE(coupled.krylov == KrylovModel::FGMRES);
+        EXPECT_TRUE(coupled.preconditioner ==
+                    PreconditionerModel::CoupledBlockSchur);
+
+        LinearSolverRequest request;
+        request.krylov = KrylovModel::FGMRES;
+        request.preconditioner = PreconditionerModel::GaussSeidel;
+        const auto forced = select_linear_solver(
+            LinearProblemKind::Momentum, 96, request);
+        EXPECT_TRUE(forced.krylov == KrylovModel::FGMRES);
+        EXPECT_TRUE(forced.preconditioner == PreconditionerModel::GaussSeidel);
+        EXPECT_TRUE(!forced.automatic_krylov);
+        EXPECT_TRUE(!forced.automatic_preconditioner);
+
+        request.krylov = KrylovModel::LGMRES;
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::Momentum, 96, request), std::invalid_argument);
+
+        request.krylov = KrylovModel::CG;
+        request.preconditioner = PreconditionerModel::ILU0;
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::PressurePoisson, 96, request),
+            std::invalid_argument);
+
+        const auto identity = make_scalar_preconditioner(
+            PreconditionerModel::None);
+        EXPECT_TRUE(identity != nullptr);
+        EXPECT_TRUE(std::string(identity->name()) == "Identity");
+    });
+
+    run_case("selected_pressure_and_momentum_models_solve_their_systems", [] {
+        const auto pressure_matrix = make_poisson(64);
+        Vector exact(64);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = std::sin(0.04 * static_cast<double>(i + 1));
+        const Vector pressure_rhs = multiply(pressure_matrix, exact);
+        Vector pressure_solution(64, 0.0);
+        const auto pressure = solve_linear_system(
+            pressure_matrix, pressure_rhs, pressure_solution,
+            LinearProblemKind::PressurePoisson, {}, 400, 1e-10);
+        EXPECT_TRUE(pressure.result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(
+            pressure_matrix, pressure_solution, pressure_rhs) < 1e-9);
+
+        SparseMatrix momentum_matrix(64, 64);
+        for (std::size_t i = 0; i < 64; ++i) {
+            momentum_matrix.push_back(i, i, 3.0);
+            if (i > 0) momentum_matrix.push_back(i, i - 1, -1.25);
+            if (i + 1 < 64) momentum_matrix.push_back(i, i + 1, -0.75);
+        }
+        momentum_matrix.finalize();
+        const Vector momentum_rhs = multiply(momentum_matrix, exact);
+        Vector momentum_solution(64, 0.0);
+        const auto momentum = solve_linear_system(
+            momentum_matrix, momentum_rhs, momentum_solution,
+            LinearProblemKind::Momentum, {}, 400, 1e-10);
+        EXPECT_TRUE(momentum.result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(
+            momentum_matrix, momentum_solution, momentum_rhs) < 1e-9);
     });
 
     run_case("fieldsplit_schur_variants_are_well_defined", [] {

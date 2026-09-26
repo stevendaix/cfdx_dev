@@ -7,6 +7,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/gauss_seidel_solver.h"
+#include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -161,6 +162,23 @@ struct ScalarSolveControls {
     std::size_t max_iterations = 1000;
     double tolerance = 1e-10;
     double relaxation = 1.0;
+    cfdx::core::LinearProblemKind problem =
+        cfdx::core::LinearProblemKind::ScalarTransport;
+    cfdx::core::LinearSolverRequest linear_solver;
+
+    ScalarSolveControls() = default;
+    ScalarSolveControls(
+        std::size_t iterations,
+        double solve_tolerance,
+        double solve_relaxation,
+        cfdx::core::LinearProblemKind problem_kind =
+            cfdx::core::LinearProblemKind::ScalarTransport,
+        cfdx::core::LinearSolverRequest solver = {})
+        : max_iterations(iterations),
+          tolerance(solve_tolerance),
+          relaxation(solve_relaxation),
+          problem(problem_kind),
+          linear_solver(solver) {}
 };
 
 inline void validate_scalar_controls(const ScalarSolveControls& c)
@@ -489,9 +507,15 @@ inline cfdx::core::SolverResult solve_scalar_equation(
 
     cfdx::core::Vector candidate = solution;
 
-    auto result = cfdx::core::solve_bicgstab(
-        equation.matrix, equation.rhs, candidate,
-        controls.max_iterations, controls.tolerance);
+    const auto selected = cfdx::core::solve_linear_system(
+        equation.matrix, equation.rhs, candidate, controls.problem,
+        controls.linear_solver, controls.max_iterations, controls.tolerance);
+    auto result = selected.result;
+
+    const bool fallback_allowed = controls.linear_solver.allow_fallback ||
+        (controls.linear_solver.krylov == cfdx::core::KrylovModel::Auto &&
+         controls.linear_solver.preconditioner ==
+             cfdx::core::PreconditionerModel::Auto);
 
     // Keep all retries anchored to the same nonlinear iterate; the accepted
     // predictor is updated only after a solver reports convergence.
@@ -501,21 +525,24 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // system is well posed. Retry from the original nonlinear iterate with
     // restarted GMRES, then with CG as a final robust path. Every retry starts
     // from the original iterate so no unconverged Krylov state is injected.
-    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
     }
 
-    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
         result = cfdx::core::solve_gauss_seidel(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
     }
 
-    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED) {
         candidate = solution;
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
@@ -527,38 +554,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // applicability criterion while remaining perfectly nonsingular. Use a
     // bounded dense LU fallback only for small systems; production-size
     // systems continue to use the sparse iterative path above.
-    if (result.status != cfdx::core::SolverStatus::CONVERGED &&
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED &&
         solution.size() <= 256) {
         const std::size_t n = solution.size();
-        std::size_t zero_or_missing_diag = 0;
-        double min_abs_diag = std::numeric_limits<double>::infinity();
-        double max_abs_diag = 0.0;
-        const auto* diag_row = equation.matrix.row_offsets_data();
-        const auto* diag_col = equation.matrix.columns_data();
-        const auto* diag_val = equation.matrix.values_data();
-        for (std::size_t i = 0; i < n; ++i) {
-            double d = 0.0;
-            bool found = false;
-            for (std::uint32_t k = diag_row[i]; k < diag_row[i + 1]; ++k) {
-                if (diag_col[k] == static_cast<std::uint32_t>(i)) {
-                    d += diag_val[k];
-                    found = true;
-                }
-            }
-            if (!found || !std::isfinite(d) || d == 0.0) ++zero_or_missing_diag;
-            else { min_abs_diag = std::min(min_abs_diag, std::abs(d)); max_abs_diag = std::max(max_abs_diag, std::abs(d)); }
-        }
-        std::cerr << "CFDX dense fallback diagnostic: n=" << n
-                  << " pre_status=" << static_cast<int>(result.status)
-                  << " pre_iterations=" << result.iterations
-                  << " pre_residual=" << result.residual
-                  << " nnz=" << equation.matrix.nnz()
-                  << " min_abs_diag=" << min_abs_diag
-                  << " max_abs_diag=" << max_abs_diag
-                  << " zero_or_missing_diag=" << zero_or_missing_diag
-                  << " max_abs_face_flux=" << equation.max_abs_face_flux
-                  << " internal_distance=[" << equation.min_internal_distance << "," << equation.max_internal_distance << "]"
-                  << " face_area=[" << equation.min_face_area << "," << equation.max_face_area << "]" << '\n';
         std::vector<double> a(n * n, 0.0);
         std::vector<double> b(n, 0.0);
         const auto* row = equation.matrix.row_offsets_data();
@@ -571,8 +570,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
 
         bool singular = false;
-        std::size_t singular_pivot = n;
-        double singular_pivot_abs = 0.0;
         for (std::size_t k = 0; k < n && !singular; ++k) {
             std::size_t pivot = k;
             double pivot_abs = std::abs(a[k * n + k]);
@@ -587,8 +584,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             if (!(pivot_abs > 100.0 * std::numeric_limits<double>::epsilon() * scale) ||
                 !std::isfinite(pivot_abs)) {
                 singular = true;
-                singular_pivot = k;
-                singular_pivot_abs = pivot_abs;
                 break;
             }
             if (pivot != k) {
@@ -618,8 +613,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                 const double d = a[ii * n + ii];
                 if (!(std::abs(d) > 0.0) || !std::isfinite(d)) {
                     singular = true;
-                    singular_pivot = ii;
-                    singular_pivot_abs = std::abs(d);
                     break;
                 }
                 candidate(ii) = value / d;
@@ -628,12 +621,6 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                     break;
                 }
             }
-        }
-
-        if (singular) {
-            std::cerr << "CFDX dense fallback: singular=" << singular
-                      << " pivot=" << singular_pivot
-                      << " pivot_abs=" << singular_pivot_abs << '\n';
         }
 
         if (!singular) {

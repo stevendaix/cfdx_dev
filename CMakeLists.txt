@@ -247,6 +247,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/gmres_solver.h
     src/cfdx/core/linalg/linear_operator.h
     src/cfdx/core/linalg/solver_workspace.h
+    src/cfdx/core/linalg/linear_solver_context.h
+    src/cfdx/core/linalg/linear_solver_models.h
+    src/cfdx/core/linalg/linear_solver_dispatch.h
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h

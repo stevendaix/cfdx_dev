@@ -30,12 +30,15 @@ public:
 
     void configure(AMGMemoryPolicy policy);
     bool setup(const SparseMatrix& matrix) override;
+    bool update_values(const SparseMatrix& matrix) override;
     bool apply(const Vector& residual, Vector& correction) const override;
     const char* name() const override { return "NativeBoomerStyleAMG"; }
 
     bool is_ready() const noexcept;
     AMGMemoryPolicy memory_policy() const noexcept;
     std::size_t coarse_size() const noexcept;
+    std::size_t hierarchy_builds() const noexcept;
+    std::size_t numeric_updates() const noexcept;
     const std::string& last_error() const noexcept;
 
 private:

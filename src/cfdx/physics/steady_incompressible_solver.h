@@ -76,6 +76,9 @@ struct IncompressibleSolverControls {
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     std::size_t pressure_reference_cell = 0;
     double pressure_reference_value = 0.0;
+    cfdx::core::LinearSolverRequest momentum_linear_solver;
+    cfdx::core::LinearSolverRequest pressure_linear_solver;
+    cfdx::core::LinearSolverRequest coupled_linear_solver;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
     DiagnosticsControls diagnostics;
@@ -591,6 +594,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     std::size_t max_iterations,
     double tolerance,
     const DiagnosticsControls& diagnostics,
+    const cfdx::core::LinearSolverRequest& solver_request,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
 {
@@ -1080,8 +1084,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // the assembled system is nonsingular. Use one full Krylov space for
     // small/medium coupled systems so a restart boundary cannot manufacture
     // an artificial MAX_ITER failure.
-    const int gmres_restart = static_cast<int>(
-        std::min<std::size_t>(A.n_rows(), 512));
+    const auto solver_plan = select_linear_solver(
+        LinearProblemKind::CoupledPressureVelocity, A.n_rows(), solver_request);
+    if (solver_plan.krylov != KrylovModel::GMRES &&
+        solver_plan.krylov != KrylovModel::FGMRES)
+        throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
+    if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur)
+        throw std::invalid_argument(
+            "coupled solver currently requires the coupled_block_schur model");
+    const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
+        solver_request.preconditioner == PreconditionerModel::Auto;
+    const int gmres_restart = automatic_coupled
+        ? static_cast<int>(std::min<std::size_t>(A.n_rows(), 512))
+        : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
     // The coupled acceptance problem is small enough for a full Krylov space.
     // Do not let the global adaptive-restart policy silently clamp 512 back
     // to its generic [10,40] range: that was the direct cause of the observed
@@ -1353,6 +1368,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.coupled_max_iterations,
                 controls.coupling.coupled_linear_tolerance,
                 controls.diagnostics,
+                controls.coupled_linear_solver,
                 U, p);
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw std::runtime_error(
@@ -1400,12 +1416,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Equation relaxation is already part of the matrix. The Krylov solve
         // therefore returns the solution of the relaxed equation directly;
         // applying alpha_u again here would double-relax the predictor.
-        rx = solve_scalar_equation(ex, ux, {
-            controls.linear_max_iterations, controls.linear_tolerance, 1.0});
-        ry = solve_scalar_equation(ey, uy, {
-            controls.linear_max_iterations, controls.linear_tolerance, 1.0});
-        rz = solve_scalar_equation(ez, uz, {
-            controls.linear_max_iterations, controls.linear_tolerance, 1.0});
+        ScalarSolveControls momentum_solve_controls;
+        momentum_solve_controls.max_iterations = controls.linear_max_iterations;
+        momentum_solve_controls.tolerance = controls.linear_tolerance;
+        momentum_solve_controls.relaxation = 1.0;
+        momentum_solve_controls.problem = LinearProblemKind::Momentum;
+        momentum_solve_controls.linear_solver = controls.momentum_linear_solver;
+        rx = solve_scalar_equation(ex, ux, momentum_solve_controls);
+        ry = solve_scalar_equation(ey, uy, momentum_solve_controls);
+        rz = solve_scalar_equation(ez, uz, momentum_solve_controls);
 
         auto require_linear_convergence = [](const char* component, const auto& solve) {
             if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
@@ -1607,10 +1626,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             A.finalize();
 
             Vector p_corr(nc, 0.0);
-            const auto rp = has_fixed_pressure_boundary
-                ? solve_cg(A, b, p_corr, controls.linear_max_iterations, controls.linear_tolerance)
-                : solve_gmres(A, b, p_corr, 64,
-                              controls.linear_max_iterations, controls.linear_tolerance);
+            const auto pressure_solve = solve_linear_system(
+                A, b, p_corr, LinearProblemKind::PressurePoisson,
+                controls.pressure_linear_solver,
+                controls.linear_max_iterations, controls.linear_tolerance);
+            const auto& rp = pressure_solve.result;
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED)
