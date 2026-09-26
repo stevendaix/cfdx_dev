@@ -140,15 +140,16 @@ public:
     const std::vector<ZoneInfo>& zones() const { return zones_; }
     const CaseSetup& setup() const { return setup_; }
 
-private:
-    // --- .cas parsing ---
+    // --- .cas public parsing (used by tests) ---
     bool parse_cas(const std::string& cas_file);
+
+private:
     bool parse_cas_header(std::istream& in);
     bool parse_cas_nodes(std::istream& in);
     bool parse_cas_faces(std::istream& in);
     bool parse_cas_cells(std::istream& in);
-    bool parse_cas_zones(std::istream& in);
-    bool parse_cas_materials(std::istream& in);
+    bool parse_cas_zones(std::istream& in, int n_zones);
+    bool parse_cas_materials(std::istream& in, int n_materials);
     bool parse_cas_models(std::istream& in);
 
     // --- .dat parsing (results) ---

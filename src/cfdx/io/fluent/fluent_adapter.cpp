@@ -30,6 +30,13 @@ static bool is_section_start(const std::string& line, int* id_out, int* n_vals_o
     return true;
 }
 
+static void skip_section(std::istream& in) {
+    std::string tok;
+    while (in >> tok) {
+        if (tok == ")") break;
+    }
+}
+
 static std::string read_rest_of_line(std::istream& in) {
     std::string line;
     std::getline(in, line);
@@ -244,21 +251,17 @@ bool FluentAdapter::parse_cas_cells(std::istream& in) {
 // ---------------------------------------------------------------------------
 // .cas zones parsing (section 31 - boundary conditions)
 // ---------------------------------------------------------------------------
-bool FluentAdapter::parse_cas_zones(std::istream& in) {
+bool FluentAdapter::parse_cas_zones(std::istream& in, int n_zones) {
     // Section 31 format:
     // n_zones
     // For each zone: zone_id, zone_type, name_len, name, node_count, element_count, ...
-
-    int n_zones = 0;
-    in >> n_zones;
 
     zones_.clear();
     zones_.reserve(n_zones);
 
     for (int i = 0; i < n_zones; ++i) {
         ZoneInfo zone;
-        int unused;
-        in >> zone.zone_id >> zone.zone_type >> unused; // zone_type_code, n_values
+        in >> zone.zone_id;
 
         // Read name (may be quoted)
         std::string name;
@@ -320,7 +323,7 @@ bool FluentAdapter::parse_cas_zones(std::istream& in) {
             patch_type = cfdx::core::PatchType::UNKNOWN;
         }
 
-        Patch p;
+        cfdx::core::Patch p;
         p.name = zone.name;
         p.type = patch_type;
 
@@ -361,10 +364,8 @@ bool FluentAdapter::parse_cas_zones(std::istream& in) {
 // ---------------------------------------------------------------------------
 // .cas materials parsing (section 39)
 // ---------------------------------------------------------------------------
-bool FluentAdapter::parse_cas_materials(std::istream& in) {
+bool FluentAdapter::parse_cas_materials(std::istream& in, int n_materials) {
     // Section 39: materials database (text-based, variable number of entries)
-    int n_materials = 0;
-    in >> n_materials;
 
     for (int m = 0; m < n_materials; ++m) {
         MaterialSpec mat;
@@ -508,21 +509,12 @@ bool FluentAdapter::parse_cas(const std::string& cas_file) {
         if (is_section_start(line, &sec_id, &sec_nvals)) {
             switch (sec_id) {
                 case 1:  parse_cas_header(in); break;
-                case 2:  parse_cas_nodes(in); break;
-                case 3:  parse_cas_faces(in); break;
-                case 4:  parse_cas_faces(in); break;  // faces with owner/neighbour
-                case 5:  parse_cas_cells(in); break;
-                case 31: parse_cas_zones(in); break;
-                case 39: parse_cas_materials(in); break;
-                case 48: parse_cas_models(in); break;
-                default: {
-                    // Skip unknown section
-                    std::string skip;
-                    std::getline(in, skip);
-                    char c;
-                    if (in.peek() == ')') in >> c;
-                    break;
-                }
+                case 2: case 3: case 4: case 5: case 45: case 48:
+                    skip_section(in); break;
+                case 31: parse_cas_zones(in, sec_nvals); break;
+                case 39: parse_cas_materials(in, sec_nvals); break;
+                default:
+                    skip_section(in); break;
             }
         }
     }
@@ -547,8 +539,8 @@ bool FluentAdapter::parse_dat(const std::string& dat_file) {
         if (is_section_start(line, &sec_id, &sec_nvals)) {
             if (sec_id == 19) {
                 // Header: variable names
-                parse_dat_header(in, setup_.numerics.raw_settings.empty()
-                    ? std::vector<std::string>{} : std::vector<std::string>{});
+                std::vector<std::string> vars;
+                parse_dat_header(in, vars);
             } else if (sec_id >= 20 && sec_id <= 40) {
                 // Cell data sections (variable values)
                 parse_dat_cell_data(in, "variable_" + std::to_string(sec_id),
@@ -594,7 +586,13 @@ bool FluentAdapter::parse_dat_cell_data(std::istream& in,
 // ---------------------------------------------------------------------------
 bool FluentAdapter::import_results(const std::string& results_path,
                                    ConversionResult& result) {
-    if (!parse_dat(results_path)) return false;
+    if (!parse_dat(results_path)) {
+        result.gap_report.unsupported_blocking(
+            "results", "cell_data",
+            "Cannot parse Fluent .dat results file: " + results_path,
+            "Ensure the file exists and is a valid Fluent .dat results format");
+        return false;
+    }
 
     // Populate gap analysis
     result.gap_report.supported(

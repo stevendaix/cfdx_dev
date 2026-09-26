@@ -53,8 +53,8 @@ int main() {
         bool ok = adapter.convert("tests/data/fluent/cavity.cas", result);
         EXPECT_TRUE(ok);
         EXPECT_FALSE(result.gap_report.has_blocking());
-        EXPECT_TRUE(result.setup.boundary_conditions.size() >= 8);
-        EXPECT_TRUE(result.setup.materials.size() == 3);
+        EXPECT_TRUE(adapter.setup().boundary_conditions.size() >= 8);
+        EXPECT_TRUE(adapter.setup().materials.size() == 3);
     });
 
     run_case("import_results_unsupported", []() {
