@@ -131,14 +131,11 @@ inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbul
  switch(model) {
  case AdvancedTurbulenceModel::KEPSILON:
  case AdvancedTurbulenceModel::RNG_KEPSILON:
+ case AdvancedTurbulenceModel::REALIZABLE_KEPSILON:
  case AdvancedTurbulenceModel::KOMEGA:
  case AdvancedTurbulenceModel::SST:
  case AdvancedTurbulenceModel::SPALART_ALLMARAS:
      return TurbulenceImplementationKind::TRANSPORT_MODEL;
- case AdvancedTurbulenceModel::REALIZABLE_KEPSILON:
-     // The Realizable k-epsilon kernel currently supplies algebraic Cmu only.
-     // Do not advertise a transport equation until the k/epsilon solver is wired.
-     return TurbulenceImplementationKind::CLOSURE;
  default:
      return TurbulenceImplementationKind::CLOSURE;
  }

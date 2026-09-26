@@ -283,6 +283,37 @@ int main()
             r.pressure_linear_context.solves);
     });
 
+    run_case("piso_adaptive_acceleration_reduces_inner_work", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::PISO;
+        c.convergence.max_iterations = 5;
+        c.convergence.continuity_tolerance = 1e-12;
+        c.acceleration.adaptive_linear_tolerance = true;
+        c.acceleration.adaptive_pressure_correctors = true;
+        c.acceleration.pressure_correctors.min_correctors = 1;
+        c.acceleration.pressure_correctors.max_correctors = 3;
+
+        const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
+        EXPECT_TRUE(r.converged);
+        EXPECT_TRUE(r.history.size() == 2);
+        EXPECT_TRUE(r.history[0].pressure_correctors_used == 3);
+        EXPECT_TRUE(r.history[1].pressure_correctors_used == 1);
+        EXPECT_NEAR(r.history[0].linear_tolerance_used,
+                    c.acceleration.linear_forcing.eta_max,1e-14);
+        EXPECT_NEAR(r.history[1].linear_tolerance_used,
+                    c.acceleration.linear_forcing.eta_min,1e-14);
+        EXPECT_TRUE(r.pressure_linear_context.solves == 4);
+    });
+
 
     run_case("momentum_assembly_uses_matching_pressure_gradient_component", [] {
         const Mesh m = make_unit_cube();

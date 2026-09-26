@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/turbulence.h"
+#include "cfdx/physics/turbulence_models.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -11,7 +12,7 @@
 
 namespace cfdx::physics {
 
-enum class TurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, DES };
+enum class TurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, DES };
 
 struct TurbulenceTransportControls {
     TurbulenceModel model = TurbulenceModel::LAMINAR;
@@ -40,6 +41,11 @@ struct TurbulenceTransportControls {
     double rng_sigma_epsilon = 0.71942;
     double rng_eta0 = 4.38;
     double rng_beta = 0.012;
+    // Realizable k-epsilon defaults used by OpenFOAM's realizableKE model.
+    double realizable_A0 = 4.0;
+    double realizable_C2 = 1.9;
+    double realizable_sigma_k = 1.0;
+    double realizable_sigma_epsilon = 1.2;
     // Spalart-Allmaras constants, using kinematic nu-tilde.
     double sa_cb1 = 0.1355, sa_cb2 = 0.622, sa_sigma = 2.0/3.0;
     double sa_kappa = 0.41, sa_cw2 = 0.3, sa_cw3 = 2.0, sa_cv1 = 7.1;
@@ -79,6 +85,13 @@ inline double turbulence_nu_t(
     case TurbulenceModel::LAMINAR: return 0.0;
     case TurbulenceModel::KEPSILON: return c.C_mu*k*k/second;
     case TurbulenceModel::RNG_KEPSILON: return c.rng_C_mu*k*k/second;
+    case TurbulenceModel::REALIZABLE_KEPSILON: {
+        const RealizableKEpsilonInvariants invariants{
+            std::max(strain, 0.0), 0.0, 0.0};
+        const double cmu = realizable_kepsilon_cmu_from_invariants(
+            invariants, k, second, c.realizable_A0);
+        return cmu*k*k/second;
+    }
     case TurbulenceModel::KOMEGA: {
         const double omega_tilde=std::max(
             second, c.komega_clim*std::max(strain,0.0)/std::sqrt(c.beta_star));
@@ -118,7 +131,9 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
         throw std::invalid_argument("invalid turbulence controls");
     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
         c.gamma1,c.gamma2,c.a1,c.rng_C_mu,c.rng_C1,c.rng_C2,c.rng_sigma_k,
-        c.rng_sigma_epsilon,c.rng_eta0,c.rng_beta,c.sa_cb1,c.sa_cb2,c.sa_sigma,
+        c.rng_sigma_epsilon,c.rng_eta0,c.rng_beta,c.realizable_A0,
+        c.realizable_C2,c.realizable_sigma_k,c.realizable_sigma_epsilon,
+        c.sa_cb1,c.sa_cb2,c.sa_sigma,
         c.sa_kappa,c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4,
         c.komega_alpha,c.komega_beta0,c.komega_sigma_k,c.komega_sigma_w,
         c.komega_sigma_d0,c.komega_clim,c.sst_sigma_k1,c.sst_sigma_k2,c.sst_sigma_w1,c.sst_sigma_w2,
@@ -129,7 +144,9 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        c.beta1<=0.0 || c.beta2<=0.0 || c.gamma1<=0.0 || c.gamma2<=0.0 || c.a1<=0.0 ||
        c.sigma_k<=0.0 || c.sigma_epsilon<=0.0 || c.rng_C_mu<=0.0 || c.rng_C1<=0.0 ||
        c.rng_C2<=0.0 || c.rng_sigma_k<=0.0 || c.rng_sigma_epsilon<=0.0 ||
-       c.rng_eta0<=0.0 || c.rng_beta<=0.0 || c.sa_cb1<=0.0 || c.sa_cb2<0.0 ||
+       c.rng_eta0<=0.0 || c.rng_beta<=0.0 || c.realizable_A0<=0.0 ||
+       c.realizable_C2<=0.0 || c.realizable_sigma_k<=0.0 ||
+       c.realizable_sigma_epsilon<=0.0 || c.sa_cb1<=0.0 || c.sa_cb2<0.0 ||
        c.sa_sigma<=0.0 || c.sa_kappa<=0.0 || c.sa_cw2<0.0 || c.sa_cw3<=0.0 ||
        c.sa_cv1<=0.0 || c.sa_ct3<0.0 || c.sa_ct4<0.0 || c.komega_alpha<=0.0 ||
        c.komega_beta0<=0.0 || c.komega_sigma_k<=0.0 || c.komega_sigma_w<=0.0 ||

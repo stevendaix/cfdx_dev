@@ -35,7 +35,8 @@ int main() {
         TurbulenceTransportControls c;
         for (const auto model : {
             TurbulenceModel::LAMINAR, TurbulenceModel::KEPSILON,
-            TurbulenceModel::RNG_KEPSILON, TurbulenceModel::KOMEGA,
+            TurbulenceModel::RNG_KEPSILON, TurbulenceModel::REALIZABLE_KEPSILON,
+            TurbulenceModel::KOMEGA,
             TurbulenceModel::SST, TurbulenceModel::SPALART_ALLMARAS,
             TurbulenceModel::SMAGORINSKY, TurbulenceModel::DES}) {
             c.model = model;
@@ -45,7 +46,10 @@ int main() {
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
 
-        // Realizable k-epsilon requires an explicit Cmu: the API intentionally has no default.
+        if (!has_transport_equation(AdvancedTurbulenceModel::REALIZABLE_KEPSILON))
+            throw std::runtime_error("realizable k-epsilon transport is not registered");
+
+        // The low-level closure also accepts an explicit Cmu for specialized callers.
         constexpr double realizable_cmu = 0.09;
         const double realizable = realizable_kepsilon_eddy_viscosity(0.1, 0.02, realizable_cmu);
         c.model = TurbulenceModel::RNG_KEPSILON;

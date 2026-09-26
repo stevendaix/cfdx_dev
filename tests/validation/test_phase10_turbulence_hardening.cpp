@@ -166,5 +166,31 @@ int main() {
         EXPECT_TRUE(r.iterations>0); EXPECT_TRUE(k(0)>=c.k_min); EXPECT_TRUE(e(0)>=c.epsilon_min);
     });
 
+    run_case("M2_realizable_kepsilon_sources_match_reference_form", [] {
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::REALIZABLE_KEPSILON;
+        c.molecular_viscosity=1e-5;
+        const RealizableKEpsilonInvariants inv{2.0,1.0,0.0};
+        const auto q=realizable_kepsilon_cell_sources(0.1,0.05,inv,c);
+        const double eta=2.0*0.1/0.05;
+        EXPECT_NEAR(q.c1,std::max(0.43,eta/(eta+5.0)),1e-14);
+        EXPECT_NEAR(q.spe,-c.density*c.realizable_C2*0.05/
+            (0.1+std::sqrt(c.molecular_viscosity*0.05)),1e-14);
+        EXPECT_TRUE(q.cmu>0.0 && q.nut>0.0);
+        EXPECT_TRUE(q.gamma_k>0.0 && q.gamma_epsilon>0.0);
+    });
+
+    run_case("M2_realizable_kepsilon_transport", [] {
+        Mesh m=make_unit_cube(); auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1); flux.fill(0.0);
+        Field<double,Location::CELL> k(1,"k","m2/s2",1),e(1,"epsilon","m2/s3",1),S(1,"S","1/s",1);
+        k(0)=0.1; e(0)=0.05; S(0)=2.0;
+        TurbulenceTransportControls c; c.model=TurbulenceModel::REALIZABLE_KEPSILON; c.molecular_viscosity=1e-5;
+        ScalarBoundaryConditions bc; bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1e-5,0.0};
+        const auto r=solve_realizable_kepsilon_transport(m,g,flux,k,e,S,c,bc,bc,10,1e-6);
+        EXPECT_TRUE(r.iterations>0); EXPECT_TRUE(k(0)>=c.k_min); EXPECT_TRUE(e(0)>=c.epsilon_min);
+        EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
+    });
+
     return run_all();
 }

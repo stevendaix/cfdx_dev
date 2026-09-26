@@ -199,6 +199,127 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
     return result;
 }
 
+struct RealizableKEpsilonCellSources {
+    double cmu = 0.0;
+    double nut = 0.0;
+    double c1 = 0.0;
+    double sk = 0.0;
+    double spk = 0.0;
+    double se = 0.0;
+    double spe = 0.0;
+    double gamma_k = 0.0;
+    double gamma_epsilon = 0.0;
+};
+
+inline RealizableKEpsilonCellSources realizable_kepsilon_cell_sources(
+    double k, double epsilon, const RealizableKEpsilonInvariants& invariants,
+    const TurbulenceTransportControls& c)
+{
+    if (!std::isfinite(k) || !std::isfinite(epsilon) ||
+        !std::isfinite(invariants.strain_magnitude) ||
+        !std::isfinite(invariants.rotation_magnitude) ||
+        !std::isfinite(invariants.third_invariant))
+        throw std::invalid_argument("realizable k-epsilon: non-finite cell state");
+
+    const double ki = std::max(k, c.k_min);
+    const double ei = std::max(epsilon, c.epsilon_min);
+    const double strain = std::max(invariants.strain_magnitude, 0.0);
+    RealizableKEpsilonInvariants bounded = invariants;
+    bounded.strain_magnitude = strain;
+    bounded.rotation_magnitude = std::max(invariants.rotation_magnitude, 0.0);
+
+    RealizableKEpsilonCellSources q;
+    q.cmu = realizable_kepsilon_cmu_from_invariants(
+        bounded, ki, ei, c.realizable_A0);
+    q.nut = q.cmu*ki*ki/ei;
+    const double production = c.density*q.nut*strain*strain;
+    const double eta = strain*ki/ei;
+    q.c1 = std::max(0.43, eta/(eta + 5.0));
+    q.sk = production;
+    q.spk = -c.density*ei/ki;
+    q.se = q.c1*c.density*strain*ei;
+    q.spe = -c.density*c.realizable_C2*ei /
+        (ki + std::sqrt(c.molecular_viscosity*ei));
+    q.gamma_k = c.density*(
+        c.molecular_viscosity + q.nut/c.realizable_sigma_k);
+    q.gamma_epsilon = c.density*(
+        c.molecular_viscosity + q.nut/c.realizable_sigma_epsilon);
+    return q;
+}
+
+inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& epsilon,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs = {},
+    const ScalarBoundaryConditions& epsilon_bcs = {},
+    std::size_t max_iterations = 100, double tolerance = 1e-8,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* rotation_rate = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* normalized_third_invariant = nullptr)
+{
+    validate_turbulence_controls(controls);
+    if (controls.model != TurbulenceModel::REALIZABLE_KEPSILON)
+        throw std::invalid_argument(
+            "solve_realizable_kepsilon_transport requires REALIZABLE_KEPSILON model");
+    const std::size_t n = mesh.n_cells();
+    if (k.size()!=n || epsilon.size()!=n || strain_rate.size()!=n ||
+        mass_flux.size()!=mesh.n_faces() ||
+        (rotation_rate && rotation_rate->size()!=n) ||
+        (normalized_third_invariant && normalized_third_invariant->size()!=n))
+        throw std::invalid_argument("realizable k-epsilon field size mismatch");
+
+    TurbulenceTransportResult result;
+    for (std::size_t iter=1; iter<=max_iterations; ++iter) {
+        auto oldk=k, olde=epsilon;
+        cfdx::core::Field<double,cfdx::core::Location::CELL>
+            sk(n,"Sk","W/m3",1), se(n,"Se","W/m3",1),
+            spk(n,"Spk","kg/m3/s",1), spe(n,"Spe","kg/m3/s",1);
+        std::vector<double> gamma_k(n), gamma_epsilon(n);
+        for (std::size_t i=0; i<n; ++i) {
+            const RealizableKEpsilonInvariants invariants{
+                strain_rate(i), rotation_rate ? (*rotation_rate)(i) : 0.0,
+                normalized_third_invariant ? (*normalized_third_invariant)(i) : 0.0};
+            const auto q = realizable_kepsilon_cell_sources(
+                k(i), epsilon(i), invariants, controls);
+            sk(i)=q.sk; spk(i)=q.spk; se(i)=q.se; spe(i)=q.spe;
+            gamma_k[i]=q.gamma_k; gamma_epsilon[i]=q.gamma_epsilon;
+        }
+
+        auto eqk=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+            nullptr,nullptr,nullptr,&gamma_k);
+        auto eqe=assemble_scalar_equation(
+            mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
+            nullptr,nullptr,nullptr,&gamma_epsilon);
+        ScalarSolveControls sc{2000,tolerance,0.7};
+        cfdx::core::Vector ks(n,0.0), es(n,0.0);
+        for (std::size_t i=0; i<n; ++i) { ks(i)=k(i); es(i)=epsilon(i); }
+        const auto rk=solve_scalar_equation(eqk,ks,sc);
+        const auto re=solve_scalar_equation(eqe,es,sc);
+        for (std::size_t i=0; i<n; ++i) { k(i)=ks(i); epsilon(i)=es(i); }
+        enforce_turbulence_bounds(k,epsilon,controls);
+
+        double dk=0.0, de=0.0;
+        for (std::size_t i=0; i<n; ++i) {
+            dk=std::max(dk,std::abs(k(i)-oldk(i)));
+            de=std::max(de,std::abs(epsilon(i)-olde(i)));
+        }
+        result.k_residual=scalar_equation_residual_inf(eqk,ks);
+        result.second_residual=scalar_equation_residual_inf(eqe,es);
+        result.iterations=iter;
+        if (rk.status==cfdx::core::SolverStatus::CONVERGED &&
+            re.status==cfdx::core::SolverStatus::CONVERGED &&
+            std::max(dk,de)<=tolerance) {
+            result.converged=true;
+            break;
+        }
+    }
+    return result;
+}
+
 
 struct KOmegaCellSources {
     double nut=0.0, sk=0.0, spk=0.0, sw=0.0, spw=0.0, gamma_k=0.0, gamma_w=0.0;

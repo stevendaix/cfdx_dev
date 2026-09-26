@@ -31,7 +31,13 @@ C_mu = 1 / (A0 + As U* k/epsilon)
 
 where U* combines strain and rotation invariants and As is obtained from the bounded third strain invariant. The checked helper rejects invalid inputs in every build. Its explicit `_unchecked` counterpart requires finite, non-negative strain/rotation/k and strictly positive epsilon/A0, with debug assertions guarding that contract.
 
-A full transported Realizable k-epsilon solver remains a separate implementation item; this PR does not falsely classify it as a transported model.
+The transported model is available through `solve_realizable_kepsilon_transport`.
+It uses the variable C_mu closure, the realizable epsilon production coefficient
+`max(0.43, eta/(eta+5))`, and the regularized epsilon destruction denominator
+`k + sqrt(nu epsilon)`. The default A0, C2, sigma_k and sigma_epsilon values
+match OpenFOAM's `realizableKE` implementation. Rotation magnitude and the
+normalized third strain invariant can be supplied when the velocity-gradient
+invariants are available; otherwise the solver uses the strain-only form.
 
 ## k-omega / SST
 
@@ -64,3 +70,24 @@ This classification is diagnostic/model infrastructure. The checked classifier r
 ## Validation boundary
 
 Quantitative channel, flat-plate, cavity, DNS/experimental comparisons, grid convergence, observed order, and VMFL PASS promotion remain under the validation workstream (#118). This PR only adds equation-level model kernels and deterministic regression tests.
+
+## Remaining model gaps
+
+Comparison with the current SU2 and OpenFOAM model families leaves these major
+items deliberately unadvertised as complete transport models:
+
+- SA-negative and the SA rotation/compressibility/QCR variants;
+- transition transport such as Langtry-Menter gamma-Re-theta;
+- Reynolds-stress transport and non-linear eddy-viscosity RANS models;
+- transported LES and hybrid DES/DDES/IDDES models with shielding and wall treatment;
+- complete turbulence wall functions coupled to boundary production terms.
+
+The existing WALE, DES, DDES and IDDES functions remain algebraic closures or
+length-scale kernels until their transport, boundary conditions and validation
+cases are implemented.
+
+## Upstream references
+
+- [OpenFOAM realizableKE source](https://cpp.openfoam.org/v13/realizableKE_8C_source.html)
+- [OpenFOAM turbulence model overview](https://doc.openfoam.com/2212/tools/processing/models/turbulence/)
+- [SU2 turbulence and transition options](https://su2code.github.io/docs_v7/Physical-Definition/)
