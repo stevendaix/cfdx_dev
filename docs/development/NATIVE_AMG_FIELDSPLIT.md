@@ -75,6 +75,20 @@ accepts the same interface; the original overload still selects its historical
 Jacobi path. All convergence tests use an independently recomputed true
 residual.
 
+`ReusableCgContext` and `ReusableGmresContext` split the preconditioner lifecycle
+into full symbolic setup, same-pattern numeric refresh and unchanged-operator
+reuse. The segregated incompressible solver owns one CG context for its whole
+run, so SIMPLE, SIMPLEC, PISO, PIMPLE and fractional-step pressure corrections
+do not rebuild the AMG hierarchy on every solve. A changed CSR pattern triggers
+a full setup; changed values with the same pattern refresh level coefficients;
+an unchanged matrix reuses the prepared hierarchy directly. The counters in
+`IncompressibleSolveResult::pressure_linear_context` make this behavior
+observable in tests and performance measurements.
+
+The coupled pressure-velocity path does not use this scalar context. Its Schur
+preconditioner needs a separate reusable block lifecycle before reuse can be
+enabled without weakening its matrix consistency.
+
 ## Limits
 
 - no HYPRE or PETSc runtime, ABI, option database or object lifecycle;

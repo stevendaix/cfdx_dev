@@ -3,6 +3,8 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
@@ -18,6 +20,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <iomanip>
@@ -136,6 +139,7 @@ struct IncompressibleSolveResult {
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
     double reference_momentum_residual = 0.0;
+    cfdx::core::LinearSolverContextStats pressure_linear_context;
 };
 
 inline void validate_incompressible_controls(
@@ -1211,6 +1215,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             : 1u;
 
     IncompressibleSolveResult result;
+    LinearSolverPlan pressure_plan;
+    std::unique_ptr<Preconditioner> pressure_preconditioner;
+    std::unique_ptr<ReusableCgContext> pressure_context;
+    std::unique_ptr<NullSpaceProjector> pressure_null_space;
+    if (controls.algorithm != PressureVelocityAlgorithm::COUPLED) {
+        pressure_plan = select_linear_solver(
+            LinearProblemKind::PressurePoisson, mesh.n_cells(),
+            controls.pressure_linear_solver);
+        if (pressure_plan.krylov == KrylovModel::CG) {
+            pressure_preconditioner =
+                make_scalar_preconditioner(pressure_plan.preconditioner);
+            pressure_context = std::make_unique<ReusableCgContext>(
+                *pressure_preconditioner);
+            if (pressure_plan.null_space == NullSpaceModel::Constant) {
+                pressure_null_space = std::make_unique<NullSpaceProjector>(
+                    NullSpaceProjector::constant(mesh.n_cells()));
+            }
+        }
+    }
 
     auto build_hbya = [&](const ScalarEquation& eq,
                           const Vector& field,
@@ -1626,10 +1649,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             A.finalize();
 
             Vector p_corr(nc, 0.0);
-            const auto pressure_solve = solve_linear_system(
-                A, b, p_corr, LinearProblemKind::PressurePoisson,
-                controls.pressure_linear_solver,
-                controls.linear_max_iterations, controls.linear_tolerance);
+            LinearSolveReport pressure_solve;
+            if (pressure_context) {
+                pressure_solve.plan = pressure_plan;
+                pressure_solve.result = pressure_context->solve(
+                    A, b, p_corr, controls.linear_max_iterations,
+                    controls.linear_tolerance, {}, {},
+                    pressure_null_space.get());
+            } else {
+                pressure_solve = solve_linear_system(
+                    A, b, p_corr, LinearProblemKind::PressurePoisson,
+                    controls.pressure_linear_solver,
+                    controls.linear_max_iterations, controls.linear_tolerance);
+            }
             const auto& rp = pressure_solve.result;
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
@@ -2350,6 +2382,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         result.iterations = iter;
     }
 
+    if (pressure_context)
+        result.pressure_linear_context = pressure_context->stats();
     return result;
 }
 

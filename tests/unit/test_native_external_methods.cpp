@@ -163,6 +163,58 @@ int main() {
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
     });
 
+    run_case("reusable_cg_updates_amg_without_rebuilding_hierarchy", [] {
+        const auto matrix = make_poisson(96);
+        const auto updated = make_scaled_poisson(96, 1.25);
+        Vector exact(96);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = std::sin(0.02 * static_cast<double>(i + 1));
+
+        NativeBoomerAMGPreconditioner amg;
+        ReusableCgContext context(amg);
+
+        Vector solution(96, 0.0);
+        const Vector rhs = multiply(matrix, exact);
+        const auto first = context.solve(matrix, rhs, solution, 300, 1e-10);
+        EXPECT_TRUE(first.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().full_setups == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+
+        solution.fill(0.0);
+        const auto repeated = context.solve(matrix, rhs, solution, 300, 1e-10);
+        EXPECT_TRUE(repeated.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(matrix, solution, rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().unchanged_reuses == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+
+        solution.fill(0.0);
+        const Vector updated_rhs = multiply(updated, exact);
+        const auto refreshed = context.solve(
+            updated, updated_rhs, solution, 300, 1e-10);
+        EXPECT_TRUE(refreshed.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(updated, solution, updated_rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().numeric_updates == 1);
+        EXPECT_TRUE(context.stats().solves == 3);
+        EXPECT_TRUE(amg.numeric_updates() == 1);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+
+        const auto resized = make_poisson(64);
+        Vector resized_exact(64);
+        for (std::size_t i = 0; i < resized_exact.size(); ++i)
+            resized_exact(i) = std::cos(0.04 * static_cast<double>(i + 1));
+        const Vector resized_rhs = multiply(resized, resized_exact);
+        Vector resized_solution(64, 0.0);
+        const auto rebuilt = context.solve(
+            resized, resized_rhs, resized_solution, 300, 1e-10);
+        EXPECT_TRUE(rebuilt.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(relative_true_residual(
+            resized, resized_solution, resized_rhs) < 1e-9);
+        EXPECT_TRUE(context.stats().full_setups == 2);
+        EXPECT_TRUE(context.stats().solves == 4);
+        EXPECT_TRUE(amg.hierarchy_builds() == 2);
+    });
+
     run_case("solver_models_are_selected_by_problem_and_can_be_overridden", [] {
         const auto pressure = select_linear_solver(
             LinearProblemKind::PressurePoisson, 96);

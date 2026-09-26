@@ -66,7 +66,8 @@ inline SolverResult solve_cg_impl(
     PrecisionPolicy precision,
     KrylovReductionPolicy reduction,
     Preconditioner* preconditioner,
-    const NullSpaceProjector* null_space)
+    const NullSpaceProjector* null_space,
+    bool setup_preconditioner)
 {
     SolverResult result;
 
@@ -113,7 +114,7 @@ inline SolverResult solve_cg_impl(
     // supplied. This keeps the native solver behavior and API unchanged.
     std::vector<double> M(n, 0.0);
     if (preconditioner) {
-        if (!preconditioner->setup(A)) {
+        if (setup_preconditioner && !preconditioner->setup(A)) {
             result.status = SolverStatus::NOT_APPLICABLE;
             return result;
         }
@@ -285,7 +286,8 @@ inline SolverResult solve_cg(
     KrylovReductionPolicy reduction = {})
 {
     return detail::solve_cg_impl(
-        A, b, x, max_iter, tolerance, precision, reduction, nullptr, nullptr);
+        A, b, x, max_iter, tolerance, precision, reduction,
+        nullptr, nullptr, true);
 }
 
 inline SolverResult solve_cg(
@@ -299,7 +301,8 @@ inline SolverResult solve_cg(
     KrylovReductionPolicy reduction = {})
 {
     return detail::solve_cg_impl(
-        A, b, x, max_iter, tolerance, precision, reduction, &preconditioner, nullptr);
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, nullptr, true);
 }
 
 inline SolverResult solve_cg(
@@ -313,7 +316,8 @@ inline SolverResult solve_cg(
     KrylovReductionPolicy reduction = {})
 {
     return detail::solve_cg_impl(
-        A, b, x, max_iter, tolerance, precision, reduction, nullptr, &null_space);
+        A, b, x, max_iter, tolerance, precision, reduction,
+        nullptr, &null_space, true);
 }
 
 inline SolverResult solve_cg(
@@ -329,7 +333,25 @@ inline SolverResult solve_cg(
 {
     return detail::solve_cg_impl(
         A, b, x, max_iter, tolerance, precision, reduction,
-        &preconditioner, &null_space);
+        &preconditioner, &null_space, true);
+}
+
+// Solve with a preconditioner that has already been prepared for A. This is
+// the low-level path used by reusable nonlinear/pressure-solver contexts.
+inline SolverResult solve_cg_prepared(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {},
+    const NullSpaceProjector* null_space = nullptr)
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, null_space, false);
 }
 
 }  // namespace core

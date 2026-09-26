@@ -494,6 +494,20 @@ int main()
                     p_max - p_min > pressure_uniformity_tolerance)
                     gates.push_back("pressure_uniformity");
 
+                const auto& pressure_context =
+                    result.solve.pressure_linear_context;
+                if (test.algorithm != PressureVelocityAlgorithm::COUPLED) {
+                    if (pressure_context.full_setups != 1)
+                        gates.push_back("pressure_context_full_setup");
+                    if (pressure_context.solves <= 1)
+                        gates.push_back("pressure_context_not_reused");
+                    if (pressure_context.full_setups +
+                            pressure_context.numeric_updates +
+                            pressure_context.unchanged_reuses !=
+                        pressure_context.solves)
+                        gates.push_back("pressure_context_accounting");
+                }
+
                 const auto& h = result.solve.history.empty()
                     ? IncompressibleIteration{}
                     : result.solve.history.back();
@@ -526,6 +540,14 @@ int main()
                           << " mom_pressure=" << h.momentum_pressure_contribution
                           << " gradp_linf=" << h.pressure_gradient_linf
                           << " gradp_l2=" << h.pressure_gradient_l2
+                          << " pressure_full_setups="
+                          << pressure_context.full_setups
+                          << " pressure_numeric_updates="
+                          << pressure_context.numeric_updates
+                          << " pressure_unchanged_reuses="
+                          << pressure_context.unchanged_reuses
+                          << " pressure_context_solves="
+                          << pressure_context.solves
                           << " gates_failed=" << gates.size()
                           << "\n";
 

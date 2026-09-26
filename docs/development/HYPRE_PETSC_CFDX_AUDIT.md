@@ -216,7 +216,12 @@ and launch overhead wins.
 
 ### Implemented foundation
 
-- reusable GMRES workspace/context and native AMG numeric hierarchy refresh;
+- reusable CG/GMRES contexts with explicit full-setup, numeric-refresh and
+  unchanged-operator counters;
+- native AMG numeric hierarchy refresh that preserves interpolation and the
+  Galerkin sparsity structure when the CSR pattern is unchanged;
+- one pressure CG/preconditioner context per segregated incompressible solve,
+  shared by SIMPLE, SIMPLEC, PISO, PIMPLE and fractional-step corrections;
 - typed equation-specific Krylov/preconditioner selection;
 - explicit constant or multi-vector null-space projection for local CSR
   systems, including basis orthonormalization, operator-mode validation,
@@ -229,15 +234,14 @@ The null-space API is currently host-local. MPI and GPU capability flags remain
 disabled; the distributed pressure solver and CUDA Poisson path must be wired
 and validated before those capabilities are advertised.
 
-### P0: correctness and reusable lifecycle
+### P0: remaining correctness and reusable lifecycle
 
-- reusable solver context with setup/apply generations and workspace reuse;
-- pressure null-space projection and near-null-space input;
+- near-null-space input and propagation through AMG levels;
 - quiet-by-default monitors, explicit convergence/divergence reasons and true
   residual refresh;
-- equation-specific solver/preconditioner policy;
-- reuse native AMG interpolation and Galerkin structure when sparsity is
-  unchanged.
+- reusable contexts for momentum, scalar transport and coupled Schur solves;
+- replace explicit CSR snapshots with matrix mutation generations once direct
+  coefficient access is encapsulated.
 
 ### P1: scalable segregated solvers
 
