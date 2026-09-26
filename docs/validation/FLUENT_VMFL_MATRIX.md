@@ -53,7 +53,7 @@ The manual defines 78 Fluent/CFX verification cases (VMFL001–VMFL078). CFDX wi
 | VMFL033 | Viscous heating annulus | PARTIAL | temperature |
 | VMFL034 | Particle aggregation stirred tank | BLOCKED | particle distribution |
 | VMFL035 | 3-D axial compressor | BLOCKED | pressure ratio |
-| VMFL036 | Laminar flow past sphere | READY | drag coefficient |
+| VMFL036 | Laminar flow past sphere | READY | drag coefficient at literature Re=100 |
 | VMFL037 | Turbulent forward-facing step | PARTIAL | pressure/forces |
 | VMFL038 | Falling film inclined plane | BLOCKED | film thickness |
 | VMFL039 | Boiling pipe / CHF | BLOCKED | CHF |
