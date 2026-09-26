@@ -203,7 +203,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         lines += [
             r"\begin{figure}[h]",
             r"\centering",
-            f"\includegraphics[width=0.92\textwidth]{{{latex_escape(plot_name)}}}",
+            rf"\includegraphics[width=0.92\textwidth]{{{latex_escape(plot_name)}}}",
             r"\caption{Ghia Re=100 centreline RMS error reported by the CFDX solver at three meshes.}",
             r"\end{figure}",
         ]
@@ -356,6 +356,11 @@ def main() -> int:
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
     parser.add_argument("--output-dir", type=Path, default=Path("build/validation-report"))
     parser.add_argument("--matrix", type=Path, default=Path("docs/validation/FLUENT_VMFL_MATRIX.md"))
+    parser.add_argument(
+        "--ghia-log",
+        type=Path,
+        help="reuse output from an already executed full Ghia campaign",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -364,7 +369,6 @@ def main() -> int:
 
     logs: dict[str, tuple[int, str]] = {}
     suite_status = run_validation_suite(args.build_dir, args.output_dir)
-    gate = validation_gate_status(suite_status)
     ref_exe = args.build_dir / "test_fluent_vmfl_reference"
     if ref_exe.exists():
         logs["test_fluent_vmfl_reference"] = run_test(ref_exe, args.output_dir / "test_fluent_vmfl_reference.log")
@@ -382,11 +386,31 @@ def main() -> int:
 
     ghia: list[dict] = []
     ghia_exe = args.build_dir / "test_ghia_cavity"
-    if ghia_exe.exists():
+    if args.ghia_log is not None and args.ghia_log.exists():
+        output = args.ghia_log.read_text(encoding="utf-8")
+        ghia = parse_ghia(output)
+        rc = 0 if ghia and "GHIA_CAVITY_VALIDATION: PASS" in output else 1
+        (args.output_dir / "test_ghia_cavity.log").write_text(
+            output, encoding="utf-8"
+        )
+        logs["test_ghia_cavity"] = (rc, output)
+    elif args.ghia_log is not None:
+        logs["test_ghia_cavity"] = (-1, "Ghia validation log not found")
+    elif ghia_exe.exists():
         rc, output, ghia = run_ghia(ghia_exe, args.output_dir / "test_ghia_cavity.log")
         logs["test_ghia_cavity"] = (rc, output)
     else:
         logs["test_ghia_cavity"] = (-1, "executable not found")
+
+    # The report is a gate for every executable it launches. In particular,
+    # the full Ghia campaign must not be reduced to diagnostic-only evidence.
+    for name in (
+        "test_fluent_vmfl_reference",
+        "test_numerical_model_verification",
+        "test_ghia_cavity",
+    ):
+        suite_status[name] = logs[name][0]
+    gate = validation_gate_status(suite_status)
 
     (args.output_dir / "results.json").write_text(
         json.dumps({

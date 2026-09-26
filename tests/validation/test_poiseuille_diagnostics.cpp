@@ -404,10 +404,18 @@ Result solve_level(std::size_t n, Diagnostics& d)
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
+    if (argc > 1 && !quick) {
+        std::cerr << "usage: test_poiseuille_diagnostics [--quick]\n";
+        return 2;
+    }
+
     Diagnostics d;
-    const std::vector<std::size_t> levels = {8, 16, 32, 64};
+    const std::vector<std::size_t> levels = quick
+        ? std::vector<std::size_t>{32}
+        : std::vector<std::size_t>{8, 16, 32, 64};
     std::vector<Result> results;
 
     std::cout << "=== CFDX Poiseuille Level-A diagnostic validation ===\n";
@@ -464,6 +472,8 @@ int main()
         return 1;
     }
 
-    std::cout << "\nPOISEUILLE_VALIDATION: PASS\n";
+    std::cout << (quick
+        ? "\nPOISEUILLE_QUICK: PASS\n"
+        : "\nPOISEUILLE_VALIDATION: PASS\n");
     return 0;
 }

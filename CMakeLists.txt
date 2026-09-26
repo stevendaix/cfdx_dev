@@ -21,6 +21,7 @@ option(CFDX_ENABLE_MPI "Enable MPI support" ON)
 option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
 option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 distributed checkpoints" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
+option(CFDX_ENABLE_LONG_VALIDATION "Register full long-running validation campaigns" OFF)
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
@@ -412,23 +413,59 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
     add_cfdx_test(test_solver_vtu_provenance tests/validation/test_solver_vtu_provenance.cpp)
-    add_cfdx_test(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
-    set_tests_properties(test_ghia_cavity PROPERTIES LABELS "phase13;validation")
-    add_cfdx_test(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
+    add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
+    target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
+    target_include_directories(test_ghia_cavity PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_ghia_cavity_quick COMMAND test_ghia_cavity --quick)
+    set_tests_properties(test_ghia_cavity_quick PROPERTIES
+        LABELS "phase13;validation")
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_ghia_cavity COMMAND test_ghia_cavity)
+        set_tests_properties(test_ghia_cavity PROPERTIES
+            LABELS "phase13;validation;long")
+    endif()
+    add_executable(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
+    target_link_libraries(test_phase9_acceptance PRIVATE cfdx_core)
+    target_include_directories(test_phase9_acceptance PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_couette_quick COMMAND test_phase9_acceptance --quick)
     # Phase 9 diagnostics must be deterministic under CTest. The validation
     # workflow may set these variables at the shell level, but CTest test
     # properties are the authoritative per-test environment and avoid losing
     # the microscope when the test is launched through CTest.
-    set_tests_properties(test_phase9_acceptance PROPERTIES
+    set_tests_properties(test_couette_quick PROPERTIES
+        LABELS "phase9;validation;coupled-ns"
         ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_phase9_acceptance COMMAND test_phase9_acceptance)
+        set_tests_properties(test_phase9_acceptance PROPERTIES
+            LABELS "phase9;validation;coupled-ns;long"
+            ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
+    endif()
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
-    add_cfdx_test(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
+    add_executable(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
+    target_link_libraries(test_poiseuille_diagnostics PRIVATE cfdx_core)
+    target_include_directories(test_poiseuille_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_poiseuille_quick COMMAND test_poiseuille_diagnostics --quick)
+    set_tests_properties(test_poiseuille_quick PROPERTIES
+        LABELS "phase13;validation")
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_poiseuille_diagnostics COMMAND test_poiseuille_diagnostics)
+        set_tests_properties(test_poiseuille_diagnostics PROPERTIES
+            LABELS "phase13;validation;long")
+    endif()
     add_cfdx_test(test_mms_scalar_diffusion tests/validation/test_mms_scalar_diffusion.cpp)
-    add_cfdx_test(test_mesh_refinement_order tests/validation/test_mesh_refinement_order.cpp)
+    add_executable(test_mesh_refinement_order tests/validation/test_mesh_refinement_order.cpp)
+    target_link_libraries(test_mesh_refinement_order PRIVATE cfdx_core)
+    target_include_directories(test_mesh_refinement_order PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_mesh_refinement_order COMMAND test_mesh_refinement_order)
+        set_tests_properties(test_mesh_refinement_order PROPERTIES
+            LABELS "phase13;validation;long")
+    endif()
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_fluent_vmfl_reference tests/validation/test_fluent_vmfl_reference.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
@@ -446,13 +483,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
-    set_tests_properties(test_mms_scalar_diffusion test_mesh_refinement_order
+    set_tests_properties(test_mms_scalar_diffusion
         test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
         test_thermal_vv test_radiation_vv test_s2s_radiation_vv test_thermal_radiation_model_matrix
         test_thermal_challenge_vv
         test_phase10_turbulence_hardening test_thermophysical_models_vv
         test_analytical_benchmarks test_benchmark_matrix
-        test_poiseuille_diagnostics
         test_level_b_reference_benchmarks test_level_c_coupled_verification
         test_steady_incompressible_solver test_matrix_free_fv_operator
         test_temporal_physics test_core_temporal

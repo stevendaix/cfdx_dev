@@ -29,9 +29,9 @@ The primary published reference for the lid-driven cavity is Ghia, Ghia & Shin, 
 | 9.10 | Bounded deferred correction | Bounded and unbounded paths are executed and compared against the same analytical solution |
 | 9.11 | Residual vs physical convergence | Acceptance requires linear residuals, final momentum-equation residual, continuity and field-change metrics |
 | 9.12 | Mass conservation | Continuity L1/Linf/normalized gates are mandatory |
-| 9.13 | Cavity/Ghia | Existing executable Ghia Re=100/400 campaign remains a required CI gate |
-| 9.14 | Mesh convergence | Existing 32/64/128 Ghia Re=100 refinement gate remains a required CI gate |
-| 9.15 | Canonical benchmarks | Couette is solved by the coupled NS solver against its exact quadratic profile |
+| 9.13 | Cavity/Ghia | Re=100 on 32x32 is a required fast CI gate; the complete campaign is a `validation-total` gate |
+| 9.14 | Mesh convergence | The 32/64/128 Ghia Re=100 refinement gate runs in `validation-total` |
+| 9.15 | Canonical benchmarks | Couette is solved by the coupled NS solver against its exact linear profile |
 | 9.16 | Independent reference comparison | Ghia published-reference comparison is the independent Level-B acceptance; OpenFOAM is treated as an additional implementation/reference comparison, not as the mathematical oracle |
 | 9.17 | Regression suite | Phase-9 acceptance, steady-solver and Ghia executables are all part of the validation CI |
 
@@ -65,7 +65,9 @@ The same physical problem is run through:
 - SIMPLE;
 - SIMPLEC;
 - PISO with two pressure correctors;
-- PIMPLE with two outer correctors and two pressure correctors.
+- PIMPLE with two outer correctors and two pressure correctors;
+- fractional step;
+- coupled.
 
 The acceptance does not rank the algorithms. It verifies that each produces the same physical solution within the analytical tolerance and satisfies the same conservation/physical-residual gates.
 
@@ -90,6 +92,7 @@ test_ghia_cavity remains the independent reference gate. It executes:
 
 - Re=100 on 32x32, 64x64 and 128x128 grids;
 - Re=400 on 64x64;
+- Re=1000 on 64x64;
 - both centreline velocity profiles;
 - RMS and maximum absolute errors;
 - continuity;
@@ -113,12 +116,15 @@ A run must also satisfy:
 
 ## CI gate
 
-.github/workflows/cfdx-validation.yml builds and executes:
+Ordinary pull-request CI executes short physical regressions:
 
-- test_phase9_acceptance;
-- test_steady_incompressible_solver;
-- test_ghia_cavity;
+- `test_couette_quick`: SIMPLE, PISO and COUPLED on the 8x16 channel;
+- `test_ghia_cavity_quick`: Re=100 on 32x32;
+- `test_poiseuille_quick`: N=32.
 
-in addition to the existing M1–M4 validation executables.
+Adding the `validation-total` label runs `.github/workflows/cfdx-validation.yml`.
+That workflow enables `CFDX_ENABLE_LONG_VALIDATION` and additionally executes
+`test_phase9_acceptance`, `test_ghia_cavity`,
+`test_poiseuille_diagnostics` and `test_mesh_refinement_order`.
 
 No Phase-9 roadmap item is promoted to green solely because a target exists or a code path compiles. The green state is tied to executable quantitative evidence.

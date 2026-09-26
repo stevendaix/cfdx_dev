@@ -1,15 +1,9 @@
-name: CFDX build and tests
+name: CFDX MPI and parallel HDF5 integration
 
 on:
   push:
     branches:
       - master
-      - "feature/**"
-      - "feat/**"
-      - "fix/**"
-      - "chore/**"
-      - "refactor/**"
-      - "validation/**"
   pull_request:
     branches:
       - master
@@ -24,6 +18,7 @@ permissions:
 
 jobs:
   build-and-test:
+    name: MPI/HDF5 build and fast tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -46,7 +41,13 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
 
       - name: Build
         id: build
@@ -66,7 +67,11 @@ jobs:
           grep -E 'FAILED:|ninja: build stopped|g\+\+|c\+\+|clang\+\+|nvcc' build.log | tail -n 120 || true
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure --output-junit build/ctest-results.xml
+        run: |
+          ctest --test-dir build \
+            -LE long \
+            --output-on-failure \
+            --output-junit build/ctest-results.xml
 
       - name: Upload CTest diagnostics
         if: failure()

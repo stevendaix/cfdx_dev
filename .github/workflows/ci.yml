@@ -44,6 +44,7 @@ jobs:
           cmake -S . -B build
           -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCFDX_ENABLE_LONG_VALIDATION=OFF
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
@@ -68,7 +69,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          ctest --test-dir build --output-on-failure --no-tests=error
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error
           rc=$?
           echo "CTEST_EXIT_CODE=$rc" | tee ctest.exitcode
           exit $rc
