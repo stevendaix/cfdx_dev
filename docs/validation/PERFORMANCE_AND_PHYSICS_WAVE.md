@@ -30,6 +30,15 @@ The implementation deliberately does not force FP16/BF16 globally: current CFD l
 - adaptive pressure correctors;
 - reduction batching API.
 
+The steady incompressible solver now consumes the inexact linear forcing and
+adaptive pressure-corrector policies. They remain disabled by default so
+existing cases are bit-for-bit policy compatible. Library callers enable them
+through `IncompressibleSolverControls::acceleration`; the production executable
+provides `--adaptive-convergence`. The first PISO/PIMPLE/fractional-step outer
+iteration uses the configured maximum number of pressure corrections, then the
+normalized continuity residual selects subsequent counts. Each iteration
+records the effective linear tolerance and pressure-corrector count.
+
 ### M9 — efficient physics
 - Boussinesq buoyancy;
 - low-Mach thermodynamic density/preconditioning utilities;
@@ -66,3 +75,8 @@ A benchmark should compare at least:
 - MPI communication volume when a distributed backend is enabled.
 
 No performance claim is considered validated until these quantities are measured on the same case, mesh, tolerance and hardware.
+
+The convergence policy follows the same outer/inner accuracy principle described
+in [SU2's linear solver guidance](https://su2code.github.io/docs_v7/Linear-Solvers-and-Preconditioners/)
+and the residual-driven outer-corrector control exposed by
+[OpenFOAM](https://doc.openfoam.com/2306/tools/processing/numerics/solvers/case-termination/).

@@ -17,6 +17,7 @@ struct Options {
     std::filesystem::path output_dir;
     std::filesystem::path restart;
     std::size_t iterations = 2;
+    bool adaptive_convergence = false;
 };
 
 Options parse(int argc, char** argv)
@@ -32,8 +33,10 @@ Options parse(int argc, char** argv)
         else if (arg == "--output-dir") o.output_dir = value("--output-dir");
         else if (arg == "--restart") o.restart = value("--restart");
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
+        else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--help") {
-            std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR [--restart DAT] [--iterations N]\n";
+            std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
+                         "[--restart DAT] [--iterations N] [--adaptive-convergence]\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
@@ -75,6 +78,10 @@ int main(int argc, char** argv)
         controls.convergence.continuity_tolerance = 1e-12;
         controls.linear_max_iterations = 1000;
         controls.linear_tolerance = 1e-11;
+        controls.acceleration.adaptive_linear_tolerance =
+            options.adaptive_convergence;
+        controls.acceleration.adaptive_pressure_correctors =
+            options.adaptive_convergence;
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
 

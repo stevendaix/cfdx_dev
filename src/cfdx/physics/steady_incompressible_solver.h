@@ -10,6 +10,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/restart/dat_restart.h"
+#include "cfdx/physics/advanced_convergence.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
@@ -76,6 +77,7 @@ struct IncompressibleSolverControls {
     ConvergenceCriteria convergence;
     std::size_t linear_max_iterations = 1000;
     double linear_tolerance = 1e-10;
+    ConvergenceAccelerationControls acceleration;
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
     double turbulent_viscosity = 0.0;
@@ -114,6 +116,8 @@ struct IncompressibleIteration {
     double pressure_change_inf = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
+    std::size_t pressure_correctors_used = 0;
+    double linear_tolerance_used = std::numeric_limits<double>::quiet_NaN();
     // Conservative pressure-corrected flux continuity at the end of the iteration.
     double corrected_flux_continuity_linf = std::numeric_limits<double>::infinity();
     // Continuity obtained by reconstructing the face flux from the corrected cell velocity.
@@ -150,6 +154,7 @@ inline void validate_incompressible_controls(
 {
     validate_coupling_controls(c.coupling);
     validate_convergence_criteria(c.convergence);
+    validate_convergence_acceleration_controls(c.acceleration);
     if (!(c.density > 0.0) || !(c.kinematic_viscosity >= 0.0) ||
         !(c.turbulent_viscosity >= 0.0))
         throw std::invalid_argument("invalid incompressible material properties");
@@ -1205,7 +1210,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
     }
 
-    const std::size_t pcorr =
+    const std::size_t configured_pcorr =
         (controls.algorithm == PressureVelocityAlgorithm::PISO ||
          controls.algorithm == PressureVelocityAlgorithm::PIMPLE)
             ? static_cast<std::size_t>(controls.coupling.n_pressure_correctors)
@@ -1326,6 +1331,38 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     bool frozen_state_valid = false;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        double linear_tolerance = controls.linear_tolerance;
+        if (controls.acceleration.adaptive_linear_tolerance) {
+            const auto& forcing = controls.acceleration.linear_forcing;
+            if (result.history.empty()) {
+                linear_tolerance = forcing.eta_max;
+            } else {
+                const auto nonlinear_residual = std::max(
+                    result.history.back().momentum_residual,
+                    result.history.back().continuity_normalized);
+                const auto previous_residual = result.history.size() > 1
+                    ? std::max(result.history[result.history.size()-2].momentum_residual,
+                               result.history[result.history.size()-2].continuity_normalized)
+                    : std::max(nonlinear_residual, forcing.residual_floor);
+                linear_tolerance = nonlinear_forcing_tolerance(
+                    nonlinear_residual,
+                    std::max(previous_residual, forcing.residual_floor), forcing);
+            }
+        }
+
+        std::size_t pressure_correctors = configured_pcorr;
+        const bool supports_multiple_pressure_corrections =
+            controls.algorithm == PressureVelocityAlgorithm::PISO ||
+            controls.algorithm == PressureVelocityAlgorithm::PIMPLE ||
+            controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP;
+        if (supports_multiple_pressure_corrections &&
+            controls.acceleration.adaptive_pressure_correctors) {
+            pressure_correctors = result.history.empty()
+                ? controls.acceleration.pressure_correctors.max_correctors
+                : choose_pressure_correctors(
+                      result.history.back().continuity_normalized,
+                      controls.acceleration.pressure_correctors);
+        }
         const auto U_old = U;
         const auto p_old = p;
 
@@ -1455,7 +1492,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // applying alpha_u again here would double-relax the predictor.
         ScalarSolveControls momentum_solve_controls;
         momentum_solve_controls.max_iterations = controls.linear_max_iterations;
-        momentum_solve_controls.tolerance = controls.linear_tolerance;
+        momentum_solve_controls.tolerance = linear_tolerance;
         momentum_solve_controls.relaxation = 1.0;
         momentum_solve_controls.problem = LinearProblemKind::Momentum;
         momentum_solve_controls.linear_solver = controls.momentum_linear_solver;
@@ -1568,7 +1605,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        for (std::size_t corr = 0; corr < pcorr; ++corr) {
+        for (std::size_t corr = 0; corr < pressure_correctors; ++corr) {
             const std::size_t nc = mesh.n_cells();
             SparseMatrix A(nc, nc);
             Vector b(nc, 0.0);
@@ -1654,7 +1691,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         return pressure_context->solve(
                             matrix, rhs, correction,
                             controls.linear_max_iterations,
-                            controls.linear_tolerance, {}, {},
+                            linear_tolerance, {}, {},
                             pressure_null_space.get());
                     }
                     return solve_linear_system(
@@ -1662,7 +1699,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         LinearProblemKind::PressurePoisson,
                         controls.pressure_linear_solver,
                         controls.linear_max_iterations,
-                        controls.linear_tolerance).result;
+                        linear_tolerance).result;
                 };
             if (has_fixed_pressure_boundary ||
                 use_projected_pressure_null_space) {
@@ -1761,7 +1798,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (corr + 1 < pcorr) {
+            if (corr + 1 < pressure_correctors) {
                 // PISO's next pressure correction is driven by the current
                 // conservative face flux, not by the original predictor.
                 // The momentum matrix is intentionally frozen inside the
@@ -1995,6 +2032,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations});
         h.pressure_linear_iterations =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_iterations;
+        h.pressure_correctors_used =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_correctors;
+        h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
         h.corrected_flux_continuity_linf = linf;
         auto reconstructed_flux =
             make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
