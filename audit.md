@@ -1,6 +1,6 @@
 ## MATRICE DE SUIVI COURANTE — PR #419
 
-> Référence : tête actuelle de la PR #419, commit 3bf4f7b3260d67324a8639c7013c94edbbdf7827.
+> Référence : tête actuelle de la PR #419 après les correctifs Newton/TVD/Couette, tête `fix/audit-2026-09-25`.
 > Cette matrice prime sur les statuts historiques du rapport lorsque ceux-ci sont devenus obsolètes.
 
 | Domaine | Item | Statut actuel | Action / preuve restante |
@@ -14,7 +14,7 @@
 | B7 | Lois de paroi | **VALIDÉ** | Constantes/relations corrigées et testées. |
 | B8 | k-omega | **VALIDÉ** | Sources et diffusion corrigées ; tests turbulence présents. |
 | B9 | SST | **VALIDÉ** | Cross-diffusion, blending et limitation de production présents. |
-| B10 | Schémas temporels / Newton champ | **PARTIEL** | Scalaire et BDF2 sont présents/testés ; Newton champ générique reste absent. |
+| B10 | Schémas temporels / Newton champ | **IMPLÉMENTÉ — CI À CONFIRMER** | Ajout de `core/numerics/newton.h` : Newton générique sur Field CELL + Jacobien sparse + GMRES/Jacobi + backtracking ; test dédié enregistré. |
 | B11 | CHT | **VALIDÉ** | Pipeline CHT présent avec tests associés. |
 | B12 | Boussinesq | **VALIDÉ** | Fonction et câblage solveur présents ; conserver un test couplé. |
 | B13 | P1 | **VALIDÉ** | Facteur pi corrigé et test de modèle présent. |
@@ -27,7 +27,7 @@
 | C2 | Statut CG pression | **VALIDÉ** | status vérifié par le solveur. |
 | C3 | Critère CG préconditionné | **VALIDÉ** | Critère et résidu relatif corrigés/testés. |
 | C4/C5 | GMRES restart/contrôles | **VALIDÉ** | Restart non écrêté et politique adaptative corrigée dans #419 ; phase9 doit rester verte. |
-| C6 | Préconditionneur bloc 4x4 | **À FAIRE / NON VALIDÉ** | Correction / row_scale proposée dans l'ancien audit mais non compilée/testée ; ajouter test diagonal. |
+| C6 | Préconditionneur bloc 4x4 | **IMPLÉMENTÉ — TEST AJOUTÉ** | Le row-scaling et contrôle du résidu d'inversion sont déjà dans `CellBlockJacobiPreconditioner`; test diagonal 4×4 ajouté. CI à confirmer. |
 | C7 | Restart hors limites | **VALIDÉ** | Contrôles de bornes présents et testés. |
 | C8 | HDF5 chemin fixe | **VALIDÉ** | Correction présente et testée. |
 | C9 | herr_t ignorés | **VALIDÉ** | Vérification des retours ajoutée. |
@@ -36,7 +36,7 @@
 | C12 | BiCGStab sans préconditionneur | **VALIDÉ** | Diagonale requise explicitement et testée. |
 | C13 | GMRES résidu sur x périmé | **VALIDÉ** | Résidu recalculé sur l'état courant. |
 | C15/C19 | CUDA arrêt/breakdown | **PARTIEL** | Code de correction identifié, mais aucune compilation nvcc ni exécution GPU démontrée. |
-| C16 | VTU | **PARTIEL** | Code relu ; compilation/exécution dédiée à faire si le writer reste hors CI. |
+| C16 | VTU | **VALIDÉ PAR TEST DÉDIÉ** | `test_vtu_writer_validation` écrit/lit un VTU polyhedron, vérifie topologie, field et metadata. |
 | C17 | Seuils absolus | **VALIDÉ** | Seuils et normalisation corrigés/testés. |
 | C18 | try/catch MPI | **VALIDÉ** | Test np=2 effectué. |
 | C20 | Import OpenFOAM | **VALIDÉ** | Correction du risque de stack overflow présente et testée. |
@@ -51,20 +51,20 @@
 | D6 | Tests tautologiques | **VALIDÉ** | Remplacements présents. |
 | D7 | Tests jamais enregistrés | **VALIDÉ** | Enregistrement des suites corrigé. |
 | D8 | Pilote de campagne | **VALIDÉ** | Retour non nul sur campagne rouge. |
-| D9 | Tolérances phase9 | **VALIDÉ** | Tolérances durcies et testées. |
+| D9 | Tolérances phase9 | **CORRIGÉ — CI À CONFIRMER** | Couette L2/L∞ durcis à `1e-6` et `Umax` verrouillé à `0.96875`; le run CI de la tête finale reste la preuve d'acceptation. |
 | D10 | Couverture CI | **PARTIEL** | Couverture améliorée ; GPU/Parallel-HDF5 restent dépendants des toolchains. |
 | D11 | Artefacts build suivis | **À FAIRE** | Le .gitignore existe, mais les artefacts déjà suivis doivent être désindexés dans une PR dédiée. |
 | D12 | Code mort/doublons | **À FAIRE / HORS #419** | Nettoyage validé en scratch mais non nécessaire au correctif numérique de #419. |
 | D13 | Documentation/spécification | **VALIDÉ** | Corriger seulement les anciennes affirmations obsolètes. |
 
-### Points explicitement corrigés dans cet audit
+### État après implémentation complémentaire — PR #419
 
 1. PISO multi-correcteur, PIMPLE multi-correcteur, Rosseland non linéaire, DOM diffuse-gray, SA fv1, diffusion turbulente cell_diffusion et infrastructure Parallel-HDF5 ne doivent plus être décrits comme absents.
 2. ScalarExtraTerms n'est pas une correction physique nécessaire : extra_rhs + cell_diffusion couvrent déjà le besoin fonctionnel.
 3. B10 reste ouvert tant qu'un véritable Newton champ générique n'est pas implémenté.
 4. C6, C15/C19 et C16 restent ouverts/partiels tant que leur preuve de compilation/exécution n'existe pas.
-5. Les limiteurs MINMOD/VANLEER/SUPERBEE/VAN_ALBADA existent, mais ConvectionScheme ne fournit toujours pas une branche TVD connectée à l'assemblage FVM : la présence du limiteur ne vaut pas validation TVD.
-6. La correction non orthogonale/higher-order possède des primitives, mais la chaîne complète doit encore être validée quantitativement sur maillage skewed/non-orthogonal.
+5. `ConvectionScheme::TVD` is now connected to the scalar FVM assembly with a monotone MUSCL/minmod limiter; a quantitative TVD benchmark is still required.
+6. The existing non-orthogonal/skew campaign provides quantitative correction/conservation evidence; broader convergence-order evidence remains separate.
 7. Parallel-HDF5 possède une infrastructure conditionnelle, mais ne doit pas être déclaré validé sans un run avec une vraie installation MPI-HDF5.
 
 ---
