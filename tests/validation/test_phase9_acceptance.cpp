@@ -315,6 +315,7 @@ void run_pure_neumann_gauge()
     c.linear_tolerance = 1e-12;
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = 0.0;
+    c.pressure_linear_solver.null_space = NullSpaceModel::Constant;
 
     const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!result.converged)

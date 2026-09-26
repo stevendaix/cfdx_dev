@@ -125,10 +125,9 @@ CavityResult solve_cavity(const CavityCase& test)
     controls.kinematic_viscosity=1.0/test.reynolds;
     controls.linear_max_iterations=10000;
     controls.linear_tolerance=1e-8;
-    // The pressure matrix changes at every SIMPLE outer iteration. Keep this
-    // validation on the original CG/Jacobi path until the production solver
-    // can reuse an AMG hierarchy across those numerical updates.
-    controls.pressure_linear_solver.preconditioner=PreconditionerModel::Jacobi;
+    // Automatic pressure policy selects CG/native AMG on this mesh. The
+    // incompressible solver keeps the hierarchy across SIMPLE iterations and
+    // refreshes only numerical level coefficients when values change.
     // Use an interior gauge cell rather than the lower-left corner. This keeps
     // the pressure reference away from a corner where several wall BCs meet.
     controls.pressure_reference_cell=(test.ny/2)*test.nx+(test.nx/2);
@@ -149,6 +148,20 @@ CavityResult solve_cavity(const CavityCase& test)
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,controls);
     if(!solve.converged)
         throw std::runtime_error("Ghia cavity did not converge for Re="+std::to_string(test.reynolds));
+    const auto& pressure_context=solve.pressure_linear_context;
+    if(pressure_context.full_setups!=1 ||
+       pressure_context.solves!=solve.iterations ||
+       pressure_context.full_setups+
+               pressure_context.numeric_updates+
+               pressure_context.unchanged_reuses!=
+           pressure_context.solves)
+        throw std::runtime_error(
+            "Ghia pressure solver did not reuse its preconditioner lifecycle");
+    std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
+             <<pressure_context.full_setups
+             <<" numeric_updates="<<pressure_context.numeric_updates
+             <<" unchanged_reuses="<<pressure_context.unchanged_reuses
+             <<" solves="<<pressure_context.solves<<"\n";
     return {std::move(U),solve,build_fv_geometry(mesh)};
 }
 

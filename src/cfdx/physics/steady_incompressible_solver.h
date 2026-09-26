@@ -1222,9 +1222,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::unique_ptr<Preconditioner> pressure_preconditioner;
     std::unique_ptr<ReusableCgContext> pressure_context;
     std::unique_ptr<NullSpaceProjector> pressure_null_space;
+    const bool use_projected_pressure_null_space =
+        !has_fixed_pressure_boundary &&
+        controls.pressure_linear_solver.null_space ==
+            NullSpaceModel::Constant;
+    const bool reduce_pressure_gauge =
+        !has_fixed_pressure_boundary &&
+        !use_projected_pressure_null_space &&
+        mesh.n_cells() > 1;
     if (controls.algorithm != PressureVelocityAlgorithm::COUPLED) {
         pressure_plan = select_linear_solver(
-            LinearProblemKind::PressurePoisson, mesh.n_cells(),
+            LinearProblemKind::PressurePoisson,
+            reduce_pressure_gauge ? mesh.n_cells() - 1 : mesh.n_cells(),
             controls.pressure_linear_solver);
         if (pressure_plan.krylov == KrylovModel::CG) {
             pressure_preconditioner =
@@ -1653,10 +1662,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.linear_max_iterations,
                         controls.linear_tolerance).result;
                 };
-            if (has_fixed_pressure_boundary) {
+            if (has_fixed_pressure_boundary ||
+                use_projected_pressure_null_space) {
                 // With a prescribed pressure boundary the pressure-correction
-                // operator is SPD. The pressure profile selects CG by default
-                // while preserving an explicit user solver request.
+                // operator is SPD. For pure Neumann pressure, an explicitly
+                // requested constant null-space model instead keeps the
+                // singular operator and projects every CG vector.
                 for (std::size_t row = 0; row < nc; ++row)
                     for (const auto& [col, value] : rows[row])
                         A.push_back(row, col, value);
