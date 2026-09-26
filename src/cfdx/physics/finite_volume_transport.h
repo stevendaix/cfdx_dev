@@ -39,7 +39,9 @@ using ScalarBoundaryConditions = std::map<std::string, ScalarBoundaryCondition>;
 
 enum class ConvectionScheme {
     UPWIND,
-    SECOND_ORDER_UPWIND
+    SECOND_ORDER_UPWIND,
+    // Monotone TVD reconstruction using a minmod limiter on the MUSCL slope.
+    TVD
 };
 
 struct ScalarBoundaryFaceValues {
@@ -223,9 +225,11 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
-    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+        convection_scheme == ConvectionScheme::TVD) {
         if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
-            throw std::invalid_argument("assemble_scalar_equation: second-order upwind requires a scalar convected field");
+            throw std::invalid_argument(
+                "assemble_scalar_equation: higher-order convection requires a scalar convected field");
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
     }
 
@@ -277,22 +281,44 @@ inline ScalarEquation assemble_scalar_equation(
             div_phi[o] += F;
             div_phi[n] -= F;
 
-            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                convection_scheme == ConvectionScheme::TVD) {
                 const std::size_t upwind = F >= 0.0 ? o : n;
+                const std::size_t downwind = F >= 0.0 ? n : o;
                 const double phi_up = (*convected_field)(upwind);
                 const auto& C_up = geometry.cell_centres[upwind];
                 const auto& Cf = geometry.face_centres[f];
                 const double* gx = reconstructed_gradient.component_data(0);
                 const double* gy = reconstructed_gradient.component_data(1);
                 const double* gz = reconstructed_gradient.component_data(2);
-                double phi_high = phi_up
-                    + gx[upwind] * (Cf.x - C_up.x)
-                    + gy[upwind] * (Cf.y - C_up.y)
-                    + gz[upwind] * (Cf.z - C_up.z);
-                const double phi_other = (*convected_field)(F >= 0.0 ? n : o);
-                const double lo = std::min(phi_up, phi_other);
-                const double hi = std::max(phi_up, phi_other);
-                phi_high = std::clamp(phi_high, lo, hi);
+                const double high_increment =
+                    gx[upwind] * (Cf.x - C_up.x) +
+                    gy[upwind] * (Cf.y - C_up.y) +
+                    gz[upwind] * (Cf.z - C_up.z);
+                double phi_high = phi_up + high_increment;
+                const double phi_other = (*convected_field)(downwind);
+
+                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                    // Keep the historical bounded SOU reconstruction.
+                    phi_high = std::clamp(
+                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                } else {
+                    // MUSCL/minmod TVD limiter. For a face half-way between
+                    // the upwind and downwind centres, the reconstructed
+                    // upstream increment is 2*high_increment-delta_down.
+                    const double delta_down = phi_other - phi_up;
+                    const double delta_upstream = 2.0 * high_increment - delta_down;
+                    double limiter = 0.0;
+                    if (delta_upstream * delta_down > 0.0) {
+                        const double ratio = delta_upstream / delta_down;
+                        if (std::isfinite(ratio))
+                            limiter = std::max(0.0, std::min(1.0, ratio));
+                    }
+                    phi_high = phi_up + limiter * high_increment;
+                    phi_high = std::clamp(
+                        phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                }
+
                 const double correction = F * (phi_high - phi_up);
                 deferred_rhs[o] -= correction;
                 deferred_rhs[n] += correction;
