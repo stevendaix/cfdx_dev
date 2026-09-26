@@ -215,7 +215,7 @@ struct ValidationResult { CavityResult solution; CaseMetrics metrics; };
 
 ValidationResult run_case(const CavityCase& test)
 {
-    const auto result=solve_cavity(test);
+    auto result=solve_cavity(test);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
