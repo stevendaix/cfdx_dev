@@ -61,3 +61,27 @@ The campaign follows the usual separation between code verification, solution ve
 References:
 - ASME V&V 20-2009 (R2021): https://www.asme.org/codes-standards/find-codes-standards/standard-for-verification-and-validation-in-computational-fluid-dynamics-and-heat-transfer
 - Roache, P. J., "Code Verification by the Method of Manufactured Solutions", Journal of Fluids Engineering, 124(1), 4-10, 2002: https://doi.org/10.1115/1.1436090
+
+
+## Validation taxonomy — scalar analytical vs coupled Navier–Stokes
+
+The validation matrix now distinguishes two different verification classes; a green result in one class must not be reported as evidence for the other.
+
+### A. Scalar analytical / discretisation verification
+
+These tests solve an independent scalar finite-volume diffusion problem and compare it with a closed-form manufactured/analytical solution:
+
+- `test_analytical_benchmarks`: Couette diffusion, Poiseuille diffusion, 1-D conduction, CHT resistance and radiation oracles.
+- `test_poiseuille_diagnostics`: Poiseuille scalar FV campaign with geometry, matrix, conservation, QoI and refinement diagnostics.
+- `test_mesh_refinement_order`: independent Poiseuille refinement/order check.
+- `test_mms_scalar_diffusion`: manufactured scalar-diffusion verification.
+
+These tests establish the correctness and convergence of the scalar FV/discretisation path. They **do not** by themselves validate pressure-velocity coupling, incompressibility, SIMPLE/PISO/PIMPLE/PIMPLE-like algorithms, or a coupled Navier–Stokes solution.
+
+### B. Coupled incompressible Navier–Stokes verification
+
+`test_phase9_acceptance` is classified separately as `coupled-ns`. It exercises the steady pressure-velocity system on the Couette problem with the exposed coupling algorithms and checks the velocity profile, pressure uniformity, transverse velocity, continuity and convergence metrics.
+
+The Couette gate is deliberately based on the discrete cell-centred analytical profile, including `L2 < 1e-6`, `Linf < 1e-6`, and the exact discrete `Umax = 0.96875` for the N=16 cell-centred direction. Algorithm-invariance is additionally constrained to `max_abs_dU < 1e-5`.
+
+The coupled classification is important for reporting: scalar Poiseuille/Couette diffusion results and coupled Couette results are complementary evidence, not interchangeable validation claims. The pressure-driven coupled Poiseuille campaign is tracked separately in PR #420 and is intentionally not duplicated here.
