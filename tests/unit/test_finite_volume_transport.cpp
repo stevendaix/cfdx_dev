@@ -223,10 +223,12 @@ int main()
         // successive-slope ratio is r=1, so minmod must retain the centred
         // face value phi_f=(phi_P+phi_N)/2=0.5. The deferred correction is
         // therefore F*(phi_f-phi_P)=0.25 on the internal face.
-        for (std::size_t f=0; f<m.n_faces(); ++f) {
-            const auto n = m.ownership().neighbour(f);
-            if (n >= 0) flux(f)=1.0;
-        }
+        // Balanced through-flow: inlet=-1, internal=+1, outlet=+1 in the
+        // owner-oriented face convention. This isolates the deferred TVD
+        // correction from an intentionally singular convective balance.
+        flux(0) = -1.0;
+        flux(5) = 1.0;
+        flux(1) = 1.0;
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
