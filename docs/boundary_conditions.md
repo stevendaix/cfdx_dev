@@ -72,7 +72,8 @@ The initial mathematical vocabulary is:
 - Neumann
 - Robin
 - Flux
-- Mixed / flux-dependent
+- Mixed
+- Flux-dependent (direction-dependent inflow/outflow)
 - Coupled
 - Periodic
 
@@ -179,9 +180,25 @@ The BC schema is versioned under:
 ```text
 /boundary_conditions/
     schema_version
+    patches/<patch>/role
+    patches/<patch>/constraints/<field>/kind
+    patches/<patch>/constraints/<field>/provider
 ```
 
-BC configuration is not restart-only runtime state.
+The persisted record stores physical intent/role, mathematical condition kind,
+provider specification and dimensions. Face-resolved numerical arrays do not
+belong in `.cfdx.h5`; they are derived execution data. BC configuration is
+not restart-only runtime state.
+
+The current C++ contract also defines `FluxDependent`: an oriented face flux
+selects the inflow Dirichlet provider for backflow and the outflow Neumann
+provider otherwise. This is now explicit in the pressure-outlet flow contract;
+it is not hidden as a zero-gradient condition.
+
+GPU lowering currently covers constant, linear-time and spatial-linear
+providers. Table/expression providers remain configuration-side until a
+bounded, device-safe representation is defined; they must not be silently
+executed through host virtual dispatch inside a GPU kernel.
 
 ## Legacy migration
 
