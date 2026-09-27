@@ -75,7 +75,18 @@ int main() {
         EXPECT_TRUE(constraints[0].field == "p");
         EXPECT_TRUE(std::holds_alternative<Dirichlet>(constraints[0].condition));
         EXPECT_TRUE(constraints[1].field == "U.x");
-        EXPECT_TRUE(std::holds_alternative<Neumann>(constraints[1].condition));
+        EXPECT_TRUE(std::holds_alternative<FluxDependent>(constraints[1].condition));
+        EXPECT_TRUE(constraints[2].field == "U.y");
+        EXPECT_TRUE(std::holds_alternative<FluxDependent>(constraints[2].condition));
+        EXPECT_TRUE(constraints[3].field == "U.z");
+        EXPECT_TRUE(std::holds_alternative<FluxDependent>(constraints[3].condition));
+        for (std::size_t i = 1; i < constraints.size(); ++i) {
+            const auto& condition = std::get<FluxDependent>(constraints[i].condition);
+            EXPECT_TRUE(condition.inflow_value != nullptr);
+            EXPECT_TRUE(condition.outflow_gradient != nullptr);
+            EXPECT_TRUE(condition.inflow_value->evaluate(ValueContext{}) == 0.0);
+            EXPECT_TRUE(condition.outflow_gradient->evaluate(ValueContext{}) == 0.0);
+        }
     });
     run_case("no_slip_is_compositional", [] {
         NoSlip wall;
