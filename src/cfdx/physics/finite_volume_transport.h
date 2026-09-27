@@ -12,6 +12,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/numerics/interpolation.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -333,13 +334,11 @@ inline ScalarEquation assemble_scalar_equation(
                         gx[upwind] * (C_down.x - C_up.x) +
                         gy[upwind] * (C_down.y - C_up.y) +
                         gz[upwind] * (C_down.z - C_up.z);
-                    double limiter = 0.0;
-                    if (std::abs(delta_down) > 1e-14) {
-                        const double ratio =
-                            (2.0 * delta_upwind_to_down - delta_down) / delta_down;
-                        if (std::isfinite(ratio))
-                            limiter = std::max(0.0, std::min(1.0, ratio));
-                    }
+                    const double ratio = std::abs(delta_down) > 1e-14
+                        ? (2.0 * delta_upwind_to_down - delta_down) / delta_down
+                        : 0.0;
+                    const double limiter =
+                        cfdx::core::limiter_psi(ratio, cfdx::core::LimiterType::MINMOD);
                     phi_high = phi_up + limiter * high_increment;
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
