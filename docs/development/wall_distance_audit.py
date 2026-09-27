@@ -11,7 +11,7 @@ METHODS = [
 ("eikonal","Eikonal","Upwind Eikonal relaxation / fast-sweeping implementation"),
 ("hamilton_jacobi","Hamilton-Jacobi","Modified Eikonal/H-J pseudo-time PDE"),
 ("advection_diffusion","Advection-diffusion","Explicit transport/diffusion PDE relaxation"),
-("hybrid_poisson_eikonal","Hybrid Poisson/Eikonal","Poisson-guided H-J transport; no distance-field blending"),
+("hybrid_poisson_eikonal","Hybrid Poisson/Hamilton-Jacobi","Poisson initialization followed by H-J refinement; no distance-field blending"),
 ]
 EQS = {
 "Exact geometric": r"d(x)=min_f dist(x,f), evaluated by exact point-to-triangle distance.",
@@ -22,7 +22,7 @@ EQS = {
 "Eikonal": r"|∇d|=1, d=0 on Γ. The implementation uses a monotone upwind/fast-sweeping update based on directional one-sided differences; the numerical seed band is an approximation of the wall condition.",
 "Hamilton-Jacobi": r"|∇d|=1+Γ(d)∇²d, with Γ(d)=εd. CFDX advances the residual R=|∇d|_G-1-Γ∇²d in pseudo-time, ∂d/∂τ=-R, using a monotone Godunov gradient and explicit diffusion stability restriction.",
 "Advection-diffusion": r"U·∇d=1+Γ(d)∇²d, with U constructed from the monotone wall-distance gradient. CFDX discretizes U·∇d with upwind differencing and Γ∇²d with the Cartesian central Laplacian.",
-"Hybrid Poisson/Eikonal": r"First solve ∇²φ=-1. Define U_P=∇φ/|∇φ| and U_E from the monotone H-J/Eikonal gradient. The hybrid front direction is U_H=normalize(αU_P+(1-α)U_E), then solve U_H·∇d=1+Γ(d)∇²d. CFDX currently uses α=0.35; d_P and d_E are not blended.",
+"Hybrid Poisson/Hamilton-Jacobi": r"First obtain a smooth initial distance from ∇²φ=-1 and the Tucker Poisson distance reconstruction. Use that field as the initial iterate for |∇d|_G=1+Γ(d)∇²d, Γ(d)=εd. This is a solver hybridization, not an algebraic blend and has no arbitrary Poisson/Eikonal weight.",
 }
 REFS = [
 "1. Tucker, Rumsey, Spalart, Bartels & Biedron, Computations of Wall Distances Based on Differential Equations, AIAA 2004-2232 / AIAA Journal 43(3), 539-549 (2005), DOI 10.2514/1.8626.",
@@ -39,7 +39,7 @@ def main():
     out=Path(sys.argv[2]) if len(sys.argv)>2 else Path('wall_distance_audit.md')
     rows=load(src); by={r['method']:r for r in rows}
     L=["# CFDX wall-distance: equation, code and result audit","",
-       "Source: CI artifact wall-distance-benchmark, PR #467, commit f11228efe15c69994deda6a3583997eb1e7934b6.","",
+       "Source: CI artifact wall-distance-benchmark. The CSV must be regenerated after each wall-distance solver change; do not reuse pre-change benchmark values as post-change results.","",
        "## Benchmark","",
        "Complex wing/body/tail-like triangulated surface; Cartesian sampling grid 40×30×22 = 26,400 points; exact point-to-triangle distance is the reference. Near-wall metric uses 2h, with h=0.21.","",
        "| Method | L2 | L∞ | Near-wall L2 | Monotonicity violations | Time (ms) |","|---|---:|---:|---:|---:|---:|"]
@@ -53,13 +53,14 @@ def main():
     "2. Eikonal now uses the monotone upwind Hamiltonian |∇d|_G=1 and is documented as a numerical fast-sweeping/relaxation method, with the wall-seed band identified as a numerical boundary approximation.",
     "3. Hamilton-Jacobi now documents the actual modified-distance PDE |∇d|_G=1+εd∇²d, its pseudo-time sign, Godunov gradient and explicit diffusion restriction.",
     "4. Poisson now documents the exact continuous PDE, the Tucker distance transformation, and the distinction between the physical wall condition and CFDX's numerical seed-band treatment.",
-    "5. Advection-diffusion is documented as the PDE U·∇d=1+Γ∇²d with upwind advection and central diffusion; it is no longer described as smoothing.",
-    "6. Search-based is the useful production direction. The BVH exact-face query fixes the previous large-face projection defect: the current complex benchmark gives 0% near-wall L2 error. However, the initial vertex search still loops over every wall vertex for every query point, so the complete algorithm is not yet spatially accelerated end-to-end.",
-    "7. Benchmark scope: this validates numerical wall-distance algorithms against the triangulated benchmark surface. It is not yet a turbulence-model V&V case.","",
+    "5. Advection-diffusion is implemented as the Tucker transport form U·∇d=1+Γ∇²d with first-order upwind advection and second-order central diffusion; it is no longer described as smoothing.",
+    "6. The hybrid method is now Poisson-initialized H-J iteration. It no longer uses the arbitrary 0.35/0.65 distance-field blend or a non-literature weighted front direction.",
+    "7. Search-based is the useful production direction. The BVH exact-face query fixes the previous large-face projection defect: the current complex benchmark gives 0% near-wall L2 error. However, the initial vertex search still loops over every wall vertex for every query point, so the complete algorithm is not yet spatially accelerated end-to-end.",
+    "8. Benchmark scope: this validates numerical wall-distance algorithms against the triangulated benchmark surface. It is not yet a turbulence-model V&V case.","",
     "## What should be corrected next","",
     "- Fix and test the directional metric.",
     "- Implement a genuine anisotropic upwind fast-sweeping/fast-marching Eikonal solver.",
-    "- Implement H-J separately, including its diffusion/modified-distance term and a convergence residual.",
+    "- Keep H-J and the hybrid on the same published implicit/iterated formulation, with an explicit residual/convergence diagnostic.",
     "- Rebuild Poisson with the correct anisotropic Laplacian, wall Dirichlet BC, outer Neumann BC and consistent gradient reconstruction.",
     "- Implement the actual transport/advection-diffusion formulation from Tucker et al.; remove the smoothing surrogate.",
     "- Keep search-based as the exact near-wall reference and accelerate its vertex stage with a spatial index; then measure MPI scalability.",
