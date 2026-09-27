@@ -20,6 +20,7 @@ int main() {
             AdvancedTurbulenceModel::SPALART_ALLMARAS,
             AdvancedTurbulenceModel::SMAGORINSKY,
             AdvancedTurbulenceModel::WALE,
+            AdvancedTurbulenceModel::DYNAMIC_KEQN,
             AdvancedTurbulenceModel::DES,
             AdvancedTurbulenceModel::DDES,
             AdvancedTurbulenceModel::IDDES
@@ -87,7 +88,9 @@ int main() {
             TurbulenceModel::RNG_KEPSILON, TurbulenceModel::REALIZABLE_KEPSILON,
             TurbulenceModel::KOMEGA,
             TurbulenceModel::SST, TurbulenceModel::SPALART_ALLMARAS,
-            TurbulenceModel::SMAGORINSKY, TurbulenceModel::DES}) {
+            TurbulenceModel::SMAGORINSKY, TurbulenceModel::WALE,
+            TurbulenceModel::DYNAMIC_KEQN, TurbulenceModel::DES,
+            TurbulenceModel::DDES, TurbulenceModel::IDDES}) {
             c.model = model;
             validate_turbulence_controls(c);
             const double nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
