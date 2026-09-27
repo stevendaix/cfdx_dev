@@ -16,7 +16,7 @@ void expect_close(const char* label,double a,double b,double tol=1e-12) {
         throw std::runtime_error("turbulence equation reference mismatch");
     }
 }
-#define EXPECT_CLOSE(a,b) EXPECT_CLOSE(__func__,a,b)
+#define EXPECT_CLOSE(a,b,...) expect_close(__func__,a,b __VA_OPT__(,) __VA_ARGS__)
 }
 
 int main() {
