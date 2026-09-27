@@ -543,7 +543,17 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(d,g,id);
             const double residual=grad-1.0-gamma*lap;
-            const double dt=relaxation*h*h/std::max(h,gamma);
+            // Explicit pseudo-time update: satisfy both the hyperbolic CFL
+            // restriction and the 3-D diffusion stability bound. The old
+            // h^2/max(h,gamma) estimate was not sufficient for the
+            // six-point Laplacian when gamma >> h.
+            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+                              +1.0/(g.spacing.y*g.spacing.y)
+                              +1.0/(g.spacing.z*g.spacing.z);
+            const double dt_adv=0.25*h;
+            const double dt_diff=gamma>0.0 ? 0.25/(2.0*gamma*inv_h2)
+                                           : std::numeric_limits<double>::infinity();
+            const double dt=relaxation*std::min(dt_adv,dt_diff);
             const double nd=std::max(0.0,d[id]-dt*residual);
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
