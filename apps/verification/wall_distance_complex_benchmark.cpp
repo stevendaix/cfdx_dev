@@ -65,7 +65,7 @@ bool inside_complex(const WallDistanceVec3& p) {
     return false;
 }
 
-struct Row { std::string method; double l2,linf,near_l2,violations; double ms; };
+struct Row { std::string method; double l2,linf,near_l2,violations; std::size_t invalid; double ms; };
 
 } // namespace
 
