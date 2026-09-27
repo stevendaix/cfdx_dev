@@ -11,7 +11,7 @@ int main()
     using namespace cfdx::core;
     using namespace cfdx::physics;
 
-    Boundary boundary{"inlet", BoundaryRole::INLET};
+    Boundary boundary{"inlet", BoundaryRole::INLET, {0, 1, 2}};
 
     VelocityInlet inlet(
         std::make_shared<ConstantValueProvider>(2.0),
@@ -19,17 +19,17 @@ int main()
         std::make_shared<ConstantValueProvider>(0.0));
 
     const auto lowered = lower_boundary_constraints(boundary, inlet);
-    assert(lowered.velocity.at("x").type == VelocityBoundaryCondition::Type::FIXED_VALUE);
-    assert(lowered.velocity.at("x").value.x == 2.0);
-    assert(lowered.velocity.at("y").value.y == -1.0);
-    assert(lowered.velocity.at("z").value.z == 0.0);
-    assert(lowered.pressure.at("default").type == ScalarBoundaryType::ZERO_GRADIENT);
+    assert(lowered.velocity.at("inlet").type == VelocityBoundaryCondition::Type::FIXED_VALUE);
+    assert(lowered.velocity.at("inlet").value.x == 2.0);
+    assert(lowered.velocity.at("inlet").value.y == -1.0);
+    assert(lowered.velocity.at("inlet").value.z == 0.0);
+    assert(lowered.pressure.at("inlet").type == ScalarBoundaryType::ZERO_GRADIENT);
 
     NoSlip wall;
     const auto wall_lowered = lower_boundary_constraints(boundary, wall);
-    assert(wall_lowered.velocity.at("x").value.x == 0.0);
-    assert(wall_lowered.velocity.at("y").value.y == 0.0);
-    assert(wall_lowered.velocity.at("z").value.z == 0.0);
+    assert(wall_lowered.velocity.at("inlet").value.x == 0.0);
+    assert(wall_lowered.velocity.at("inlet").value.y == 0.0);
+    assert(wall_lowered.velocity.at("inlet").value.z == 0.0);
 
     bool rejected = false;
     try {
