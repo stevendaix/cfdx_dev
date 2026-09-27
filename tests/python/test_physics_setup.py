@@ -7,6 +7,8 @@ from cfdx.physics_setup import (
     physics_spec,
     recommend_turbulence_models,
     turbulence_model,
+    turbulence_model_requirements,
+    TURBULENCE_MODEL_GAPS,
 )
 from cfdx.setup_model import ParameterType
 
@@ -76,3 +78,13 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
         assert "kernel_only" in str(exc)
     else:
         raise AssertionError("kernel-only turbulence model must not be production-selectable")
+
+
+def test_every_turbulence_model_has_explicit_requirements_and_gaps():
+    for model in TURBULENCE_CATALOG:
+        required, missing = turbulence_model_requirements(model.key)
+        assert model.key in TURBULENCE_MODEL_GAPS
+        assert isinstance(required, tuple)
+        assert isinstance(missing, tuple)
+        assert all(item.strip() for item in required)
+        assert all(item.strip() for item in missing)
