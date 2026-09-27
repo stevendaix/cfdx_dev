@@ -92,9 +92,9 @@ inline double limiter_psi(double r, LimiterType limiter) {
     switch (limiter) {
         case LimiterType::NONE: return 1.0;
         case LimiterType::MINMOD: return std::max(0.0, std::min(1.0, r));
-        case LimiterType::VANLEER: return (r + std::abs(r)) / (1.0 + std::abs(r) + 1e-15);
+        case LimiterType::VANLEER: return (r + std::abs(r)) / (1.0 + std::abs(r));
         case LimiterType::SUPERBEE: return std::max(0.0, std::max(std::min(1.0, 2.0 * r), std::min(2.0, r)));
-        case LimiterType::VAN_ALBADA: return (r * r + r) / (r * r + 1.0 + 1e-15);
+        case LimiterType::VAN_ALBADA: return (r * r + r) / (r * r + 1.0);
     }
     return 0.0;
 }
