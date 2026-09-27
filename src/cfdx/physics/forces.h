@@ -136,7 +136,7 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
             !std::isfinite(s.viscous_traction.y) || !std::isfinite(s.viscous_traction.z))
             throw std::invalid_argument("forces: invalid surface sample at index "+std::to_string(i));
 
-        const Vec3 fp=(-s.pressure)*s.normal*s.area;
+        const Vec3 fp=(-(s.pressure-ref.pressure_ref))*s.normal*s.area;
         const Vec3 fv=s.viscous_traction*s.area;
         const Vec3 r=s.position-ref.moment_center;
         out.pressure_force += fp;
@@ -170,7 +170,7 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
     const double qAL=q*ref.area*L;
     out.cmx=dot(out.total_moment,{1.0,0.0,0.0})/qAL;
     out.cmy=dot(out.total_moment,{0.0,1.0,0.0})/qAL;
-    out.cmz=dot(out.total_moment,{0.0,0.0,1.0})/qA;
+    out.cmz=dot(out.total_moment,{0.0,0.0,1.0})/qAL;
     return out;
 }
 
