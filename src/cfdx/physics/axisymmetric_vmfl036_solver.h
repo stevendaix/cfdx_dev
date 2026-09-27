@@ -94,8 +94,8 @@ struct AxisymMesh {
             if(!(f.ds>0.0)) throw std::runtime_error("degenerate axisymmetric face");
             // CCW cell boundary: right-hand normal is outward.
             f.nx=dr/f.ds; f.nr=-dx/f.ds;
-            f.area=2.0*pi()*std::max(0.0,f.cr)*f.ds;
             f.axis=boundary && std::abs(p.r)<1e-14 && std::abs(q.r)<1e-14;
+            f.area=f.axis ? 0.0 : 2.0*pi()*std::max(0.0,f.cr)*f.ds;
             // Axis endpoints at the sphere/farfield corners belong only to the
             // zero-radius axis patch, never simultaneously to sphere/outer.
             f.sphere=boundary && m.cells[c].i==0 && !f.axis;
