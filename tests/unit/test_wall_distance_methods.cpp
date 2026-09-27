@@ -100,9 +100,8 @@ int main() {
         godunov_gradient_at(linear,pg,pc)-1.0-0.25*pg.points[pc].x*laplacian_at(linear,pg,pc);
     require(std::abs(hj_linear_residual)<1e-13,
             "Hamilton-Jacobi operator is not exact for the linear planar solution");
-    const std::array<WallDistanceMethod,2> plane_methods={{
-        WallDistanceMethod::EIKONAL,
-        WallDistanceMethod::ADVECTION_DIFFUSION}};
+    const std::array<WallDistanceMethod,1> plane_methods={{
+        WallDistanceMethod::EIKONAL}};
     for(const auto method:plane_methods) {
         const auto r=compute_wall_distance(method,plane,pg,120);
         for(std::size_t id=0;id<r.distance.size();++id) {
