@@ -195,7 +195,7 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
+        "analytical_mms": false,
         "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
