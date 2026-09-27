@@ -46,6 +46,25 @@ int main() {
             if(!g.solid[i]) require(r.valid[i] && std::isfinite(r.distance[i]) && r.distance[i]>=0.0,
                                     "invalid wall distance");
     }
+
+    const WallDistanceBvh bvh(s);
+    require(bvh.triangle_count()==s.triangles.size(),"BVH triangle count mismatch");
+    require(bvh.node_count()>0,"BVH is empty");
+    const std::array<WallDistanceVec3,8> probes={{{-0.2,0.4,0.4},{0.5,0.5,-0.3},
+        {1.2,0.2,0.7},{0.25,0.8,1.4},{-0.4,-0.2,0.3},{0.7,1.3,0.1},
+        {1.4,1.4,1.4},{0.12,0.34,0.91}}};
+    for(const auto& p:probes) {
+        const double brute=exact_point_distance(s,p);
+        const double accelerated=bvh.nearest_distance(p);
+        require(std::abs(brute-accelerated)<1e-12,"BVH nearest distance mismatch");
+    }
+    const auto search=compute_wall_distance(WallDistanceMethod::SEARCH_BASED,s,g,20);
+    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
+        const double brute=ref[i];
+        if(brute<=1.0) require(std::abs(search.distance[i]-brute)<1e-12,
+                               "search-based near-wall distance mismatch");
+    }
+
     const auto exact=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g,20);
     const auto m=compare_wall_distance(g,ref,exact.distance,0.5);
     require(m.l2_relative<1e-14,"exact benchmark regression failed");
