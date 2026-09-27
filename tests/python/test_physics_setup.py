@@ -54,3 +54,25 @@ def test_turbulence_selection_rejects_invalid_context():
         pass
     else:
         raise AssertionError("invalid dimensionality must be rejected")
+
+
+def test_legacy_turbulence_settings_normalize_to_structured_schema():
+    from cfdx.physics_setup import turbulence_model_from_case, validate_turbulence_selection
+
+    normalized = turbulence_model_from_case({"model": "SST"})
+    assert normalized["family"] == "RANS"
+    assert normalized["model"] == "SST"
+    assert normalized["wall_treatment"] == "resolved"
+    assert normalized["transition"] == {"model": "none"}
+    assert validate_turbulence_selection({"model": "SST"})["model"] == "SST"
+
+
+def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
+    from cfdx.physics_setup import validate_turbulence_selection
+
+    try:
+        validate_turbulence_selection({"model": "DES"})
+    except ValueError as exc:
+        assert "kernel_only" in str(exc)
+    else:
+        raise AssertionError("kernel-only turbulence model must not be production-selectable")
