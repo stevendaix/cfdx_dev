@@ -261,9 +261,10 @@ def main():
             p, c, b = bfs(n)
             write_mesh(out / f"bfs_re200_n{n}.h5", p, c, b)
     if args.case in ("naca0012", "all"):
-        n = 64 if args.quick else 128
-        p, c, b = naca_o_grid(n, 24 if args.quick else 48, 20.0)
-        write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
+        levels = ((64,24),) if args.quick else ((64,24),(128,48),(256,96))
+        for n, nr in levels:
+            p, c, b = naca_o_grid(n, nr, 20.0)
+            write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
     print(f"validation meshes written to {out}")
 
 
