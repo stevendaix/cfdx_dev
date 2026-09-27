@@ -14,6 +14,14 @@ The implementation supports two F-relaxation choices:
 - diagonal/Jacobi: M_F = diag(A_FF);
 - ILU(0): M_F is the existing CFDX ILU(0) factorization of the F block.
 
+Important distinction: the assembled coarse operator currently uses the
+non-Galerkin approximation
+S_hat = A_CC - A_CF diag(A_FF)^-1 A_FC
+for both F-relaxation choices. ILU(0) strengthens the F solves in the MGR
+application but does not imply that an exact ILU-based inverse has been
+assembled into S_hat. This is mathematically deliberate and avoids pretending
+that a sparse explicit matrix represents the generally dense A_CF M_F^-1 A_FC.
+
 HYPRE's current MGR documentation explicitly exposes per-level C/F definitions,
 multiple reduction levels and configurable F-relaxation, including ILU/direct
 variants. CFDX now mirrors these concepts at the native API level while keeping
@@ -107,9 +115,11 @@ explicitly requested alternative until the complete Couette and broader coupled
 campaign provides quantitative evidence.
 
 PETSc documents that Schur-preconditioner quality depends strongly on the
-approximation used for the eliminated block; an explicit diag(A_FF) Schur
-approximation is only effective when that diagonal is a good approximation to
-A_FF. citeturn1search0turn1search3
+approximation used for the eliminated block; an explicit
+A_CC - A_CF diag(A_FF)^-1 A_FC approximation is only effective when that
+diagonal is a good approximation to A_FF. HYPRE MGR likewise exposes coarse
+grid methods based on diagonal/block-diagonal approximations independently
+from its F-relaxation choices. citeturn0search4turn0search13 citeturn1search0turn1search3
 
 ## Acceptance status
 
