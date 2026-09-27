@@ -9,6 +9,7 @@
 // general solver.
 
 #include <algorithm>
+#include "cfdx/physics/forces.h"
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -128,40 +129,9 @@ inline double pressure_correction_coefficient(
     return rho * dAU * f.area / f.distance;
 }
 
-struct DragResult {
-    double pressure=0.0;
-    double viscous=0.0;
-    double total=0.0;
-    double cd_pressure=0.0;
-    double cd_viscous=0.0;
-    double cd_total=0.0;
-};
-
-inline DragResult sphere_drag(
-    const std::vector<double>& r,
-    const std::vector<double>& ds,
-    const std::vector<double>& pressure,
-    const std::vector<double>& tau_xn,
-    double rho, double u_inf, double diameter)
-{
-    const auto n=r.size();
-    if (ds.size()!=n || pressure.size()!=n || tau_xn.size()!=n)
-        throw std::invalid_argument("axisymmetric: drag arrays have different sizes");
-    if (!(rho>0.0) || !(u_inf>0.0) || !(diameter>0.0))
-        throw std::invalid_argument("axisymmetric: invalid drag reference");
-    double fp=0.0, fv=0.0;
-    for (std::size_t i=0;i<n;++i) {
-        if (r[i]<0.0 || !std::isfinite(r[i]) || !std::isfinite(ds[i]) ||
-            !std::isfinite(pressure[i]) || !std::isfinite(tau_xn[i]))
-            throw std::invalid_argument("axisymmetric: invalid traction sample");
-        const double dS = revolution_face_measure(ds[i], r[i]);
-        fp += pressure[i]*dS;
-        fv += tau_xn[i]*dS;
-    }
-    const double area = pi*diameter*diameter/4.0;
-    const double q = 0.5*rho*u_inf*u_inf;
-    return {fp,fv,fp+fv,fp/(q*area),fv/(q*area),(fp+fv)/(q*area)};
-}
+// Force extraction is provided by cfdx/physics/forces.h. This kernel only
+// verifies the axisymmetric metric and momentum operators; it intentionally
+// does not maintain a second force-integration implementation.
 
 struct VMFL036Definition {
     double diameter=1.0;
