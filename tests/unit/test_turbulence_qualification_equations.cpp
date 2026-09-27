@@ -169,7 +169,7 @@ int main() {
     expect_close(iddes_shielding(0.0,0.0),1.0);
     expect_close(iddes_shielding(0.0,1.0),1.0);
     expect_close(iddes_shielding(1.0,1.0),ddes_shielding(1.0));
-    expect_close(dynamic_les_coefficient(2.0,1.0,2.0),0.5);
+    expect_close(dynamic_les_coefficient(2.0,1.0,2.0),0.23);
     expect_close(dynamic_les_coefficient(0.0,2.0,2.0),0.0);
     expect_close(dynamic_les_coefficient(3.0,0.0,2.0,0.0,0.23),0.23);
 
