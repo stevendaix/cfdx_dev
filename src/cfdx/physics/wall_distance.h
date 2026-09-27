@@ -755,7 +755,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     // Poisson gives a smooth, robust initial field close to the wall.
     std::vector<double> d=poisson_distance(s,g,std::max<std::size_t>(40,max_iter),1.5);
-    for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
+    for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
 
     const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
     for(std::size_t it=0;it<steps;++it) {
