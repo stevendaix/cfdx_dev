@@ -33,6 +33,7 @@ public:
 
     bool setup(const SparseMatrix& A) override {
         clear();
+        n_ = A.n_rows();
         if (!validate_partition(A)) {
             last_error_ = "invalid MGR fine/coarse partition";
             return false;
@@ -146,7 +147,7 @@ private:
     }
 
     bool assemble_reduced(const SparseMatrix& A, SparseMatrix& reduced,
-                           std::vector<double>& inverse_diag) const {
+                           std::vector<double>& inverse_diag) {
         const std::size_t nf = fine_.size();
         const std::size_t nc = coarse_.size();
         std::vector<std::size_t> fine_pos(A.n_rows(), nf);
