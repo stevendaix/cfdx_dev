@@ -2,6 +2,7 @@
 #include "cfdx/core/boundary/boundary_role.h"
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 namespace cfdx::core {
 class Boundary {
