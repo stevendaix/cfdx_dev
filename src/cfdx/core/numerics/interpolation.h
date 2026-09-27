@@ -189,14 +189,19 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
                 const double* gy = cell_gradient->component_data(1);
                 const double* gz = cell_gradient->component_data(2);
                 const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[up];
+                const Vec3 dUD = geometry.cell_centres[down] - geometry.cell_centres[up];
                 const double delta_extrap =
                     gx[up] * dface.x + gy[up] * dface.y + gz[up] * dface.z;
+                const double delta_down = v_down - v_up;
 
-                const double delta_neighbour = v_down - v_up;
-                const double r = (std::abs(delta_extrap) > 1e-14)
-                    ? delta_neighbour / delta_extrap
+                // Darwish-Moukalled successive-slope ratio. This reduces to
+                // the exact 1-D TVD ratio on uniform structured grids and
+                // remains well-defined from the two adjacent cell centres on
+                // an unstructured mesh.
+                const double r = std::abs(delta_down) > 1e-14
+                    ? (2.0 * (gx[up] * dUD.x + gy[up] * dUD.y + gz[up] * dUD.z)
+                       / delta_down) - 1.0
                     : 0.0;
-
                 const double psi = limiter_psi(r, limiter_type);
                 const double reconstructed = v_up + psi * delta_extrap;
                 v = std::max(std::min(v_up, v_down),
