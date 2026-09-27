@@ -492,14 +492,15 @@ def main() -> int:
         logs["test_ghia_cavity"] = (-1, "executable not found")
 
     vmfl036: dict[str, float | int | str] | None = None
+    logs["test_vmfl036_axisymmetric"] = (-1, "VMFL036 validation log not provided")
     if args.vmfl036_log is not None and args.vmfl036_log.exists():
         output = args.vmfl036_log.read_text(encoding="utf-8")
         vmfl036 = parse_vmfl036(output)
         vm_rc = 0 if vmfl036 is not None and vmfl036.get("status") == "PASS" else 1
-        (args.output_dir / "test_vmfl036_reference_case.log").write_text(output, encoding="utf-8")
-        logs["test_vmfl036_reference_case"] = (vm_rc, output)
+        (args.output_dir / "test_vmfl036_axisymmetric.log").write_text(output, encoding="utf-8")
+        logs["test_vmfl036_axisymmetric"] = (vm_rc, output)
     elif args.vmfl036_log is not None:
-        logs["test_vmfl036_reference_case"] = (-1, "VMFL036 validation log not found")
+        logs["test_vmfl036_axisymmetric"] = (-1, "VMFL036 validation log not found")
 
     # The report is a gate for every executable it launches. In particular,
     # the full Ghia campaign must not be reduced to diagnostic-only evidence.
