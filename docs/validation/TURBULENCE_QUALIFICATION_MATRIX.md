@@ -66,12 +66,13 @@ The registry is intentionally not a claim that the current kernels reproduce the
 - **standard k-epsilon:** the eddy-viscosity identity is present as nu_t = C_mu k^2/epsilon. Transport/source-term equivalence still requires term-level evidence.
 - **RNG k-epsilon:** the RNG correction helper and reference constants are present. The complete production/destruction formulation and its coupling to the transport solver still require an independent equation audit.
 - **Realizable k-epsilon:** a variable C_mu kernel exists, but the strain/rotation/invariant construction used by the generic eddy-viscosity path is not yet sufficient to claim full realizable-model equivalence. This is a qualification gap, not a PASS.
-- **k-omega:** the transport solver exists, but the generic eddy-viscosity path applies an omega limiter based on strain and beta*. This must be explicitly justified against the selected k-omega formulation before promotion.
+- **k-omega:** the baseline transport and closure paths now use the Wilcox-style nu_t = k/omega identity; the SST strain-rate limiter is kept only in the SST path. The remaining transport terms still require independent term-level verification.
 - **SST:** blending, production limiting and cross-diffusion are implemented, but the complete F1/F2 dependency chain must be verified with independent reference values, including density/gradient conventions and wall-distance sensitivity.
 - **Spalart-Allmaras:** the canonical fv1, fv2, ft2, cw1 and sixth-root fw structure is present. The implemented transport coupling and optional corrections still require term-by-term verification.
-- **Smagorinsky / WALE:** closure kernels exist, but the current generic LES path is kernel-level only; it is not a LES solver validation.
-- **Dynamic one-equation LES:** the capability is PLANNED. A registry entry must not be interpreted as an implemented dynamic SGS model.
-- **DES/DDES/IDDES:** the current generic path shares a DES eddy-viscosity helper. This is not sufficient to claim the distinct shielding, length-scale and blending formulations of DDES/IDDES. These models remain KERNEL_ONLY until those terms are independently represented and verified.
+- **Smagorinsky:** the algebraic closure uses Delta^2 |S| with the configured Cs and remains kernel-level only.
+- **WALE:** the closure now requires the independent tensor invariants S2 and Sd2 instead of fabricating Sd2 from the scalar strain rate. It remains kernel-level only until the full velocity-gradient path is wired.
+- **Dynamic one-equation LES:** the generic closure now uses the one-equation SGS relation nu_t = Ck Delta sqrt(k_sgs), with the existing second scalar interpreted as k_sgs. The capability remains PLANNED because the SGS transport, test filtering and dynamic coefficient evaluation are not implemented.
+- **DES/DDES/IDDES:** the closure dispatch now separates the DES length scale, DDES shielding-based length scale, and IDDES shielding/stress blend. They remain KERNEL_ONLY because base-RANS coupling, complete shielding inputs and transient hybrid-solver integration are still missing.
 
 ### Audit rule
 
