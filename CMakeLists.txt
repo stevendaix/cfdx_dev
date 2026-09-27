@@ -533,8 +533,18 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_level_c_coupled_verification tests/validation/test_level_c_coupled_verification.cpp)
     set_tests_properties(test_level_c_coupled_verification PROPERTIES LABELS "validation;coupled-ns")
 
-    # Canonical engineering qualification cases. These labels make the
-    # qualification subset independently selectable from ordinary unit tests.
+    # Canonical engineering qualification cases. Define each CTest entry
+    # before applying its qualification labels; CMake errors if a test name
+    # is referenced by set_tests_properties before add_test has created it.
+    add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
+    add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
+    add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
+    add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
+    add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
+    add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
+    add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
+    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
+
     set_tests_properties(
         test_ghia_cavity_quick
         test_couette_quick
@@ -545,10 +555,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_radiation_vv
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
-    add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
-    add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
-    add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
-    add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
     add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
     add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
