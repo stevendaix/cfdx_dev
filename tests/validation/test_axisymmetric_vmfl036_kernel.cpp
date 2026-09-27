@@ -15,10 +15,11 @@ int main()
     const auto fluent=make_vmfl036_fluent_exact();
     validate_definition(fluent);
     assert(std::abs(fluent.re()-50.0)<1e-12);
+    assert(std::abs(fluent.reference_cd()-1.0875)<1e-12);
 
     assert(std::abs(revolution_face_measure(1.0,1.0)-2.0*pi)<1e-12);
     assert(std::abs(revolution_volume(1.0,1.0)-2.0*pi)<1e-12);
-    assert(std::abs(cylindrical_divergence(2.0,3.0,2.0)-3.5)<1e-12);
+    assert(std::abs(cylindrical_divergence(2.0,1.0,3.0,2.0)-4.5)<1e-12);
 
     const auto visc=cylindrical_momentum_viscous(
         0.01, 1.0, 2.0, 2.0, 3.0, 4.0, 5.0, 2.0, 2.0);
@@ -51,6 +52,6 @@ int main()
     std::cout << "VMFL036_RE100 Re=" << re100.re()
               << " Cd_reference=" << re100.reference_cd() << "\n";
     std::cout << "VMFL036_FLUENT_EXACT Re=" << fluent.re()
-              << " Cd_reference=1.0875\n";
+              << " Cd_reference=" << fluent.reference_cd() << "\n";
     return 0;
 }
