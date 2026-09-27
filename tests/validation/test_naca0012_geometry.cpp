@@ -11,18 +11,18 @@ struct Point { double x; double y; };
 static std::vector<Point> naca0012(std::size_t n)
 {
     if(n<20) throw std::invalid_argument("NACA0012 requires at least 20 panels");
-    constexpr double t=0.12;
+    constexpr double t=0.12;\n    constexpr double pi=3.1415926535897932384626433832795;
     std::vector<Point> p;
     p.reserve(2*n+1);
     for(std::size_t i=0;i<=n;++i) {
-        const double beta=M_PI*static_cast<double>(i)/static_cast<double>(n);
+        const double beta=pi*static_cast<double>(i)/static_cast<double>(n);
         const double x=0.5*(1.0-std::cos(beta));
         const double yt=5.0*t*(0.2969*std::sqrt(x)-0.1260*x-0.3516*x*x+
                                 0.2843*x*x*x-0.1015*x*x*x*x);
         p.push_back({x,yt});
     }
     for(std::size_t i=n;i>0;--i) {
-        const double beta=M_PI*static_cast<double>(i)/static_cast<double>(n);
+        const double beta=pi*static_cast<double>(i)/static_cast<double>(n);
         const double x=0.5*(1.0-std::cos(beta));
         const double yt=5.0*t*(0.2969*std::sqrt(x)-0.1260*x-0.3516*x*x+
                                 0.2843*x*x*x-0.1015*x*x*x*x);
