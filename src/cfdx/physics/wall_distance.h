@@ -705,121 +705,46 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
 
 inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     const WallSurface& s,const WallDistanceGrid& g,std::size_t max_iter,
-    double poisson_fraction=0.35,double epsilon=0.25,double relaxation=0.7) {
-    // Tucker (2011): the Poisson solution supplies an auxiliary front
-    // direction; H-J then propagates the distance with a weighted
-    // Poisson/eikonal front velocity. The distance fields are not blended.
+    double epsilon=0.25,double relaxation=0.7) {
+    // Hybrid strategy consistent with Tucker et al.:
+    // 1) obtain a robust initial distance field from the Poisson formulation;
+    // 2) use that field as the initial iterate for the Hamilton-Jacobi equation.
+    // This is a solver hybridization, not an algebraic blend of distance fields
+    // and does not introduce an arbitrary Poisson/Eikonal weighting.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const auto seeds=wall_seed_nodes(s,g,1.6*h);
-    const std::size_t n=g.points.size();
-
-    // Solve the Poisson auxiliary field phi: laplacian(phi) = -1,
-    // phi=0 on the wall seed band.
-    std::vector<double> phi(n,0.0), next(n,0.0);
-    std::vector<unsigned char> fixed(n,0);
+    std::vector<unsigned char> fixed(g.points.size(),0);
     for(auto id:seeds) fixed[id]=1;
-    for(std::size_t it=0;it<std::max<std::size_t>(40,max_iter);++it) {
-        double change=0.0;
-        for(std::size_t id=0;id<n;++id) {
-            if(g.solid[id] || fixed[id]) { next[id]=0.0; continue; }
-            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-            double sum=0.0,diag=0.0;
-            auto add=[&](std::size_t nb,double hh) {
-                if(!g.solid[nb]) { const double w=1.0/(hh*hh); sum+=w*phi[nb]; diag+=w; }
-            };
-            if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
-            if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
-            if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
-            if(diag==0.0) { next[id]=phi[id]; continue; }
-            next[id]=0.25*phi[id]+0.75*(sum+1.0)/diag;
-            change=std::max(change,std::abs(next[id]-phi[id]));
-        }
-        phi.swap(next);
-        if(change<1e-10*h*h) break;
-    }
 
-    std::vector<double> d=eikonal_fast_sweep(s,g,std::max<std::size_t>(8,max_iter));
+    // Poisson gives a smooth, robust initial field close to the wall.
+    std::vector<double> d=poisson_distance(s,g,std::max<std::size_t>(40,max_iter),0.75);
     for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
 
-    auto phi_gradient=[&](std::size_t id)->WallDistanceVec3 {
-        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        auto der=[&](int axis)->double {
-            if(axis==0) {
-                if(i>0 && i+1<g.nx) return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
-                if(i+1<g.nx) return (phi[g.index(i+1,j,k)]-phi[id])/g.spacing.x;
-                if(i>0) return (phi[id]-phi[g.index(i-1,j,k)])/g.spacing.x;
-            } else if(axis==1) {
-                if(j>0 && j+1<g.ny) return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
-                if(j+1<g.ny) return (phi[g.index(i,j+1,k)]-phi[id])/g.spacing.y;
-                if(j>0) return (phi[id]-phi[g.index(i,j-1,k)])/g.spacing.y;
-            } else {
-                if(k>0 && k+1<g.nz) return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
-                if(k+1<g.nz) return (phi[g.index(i,j,k+1)]-phi[id])/g.spacing.z;
-                if(k>0) return (phi[id]-phi[g.index(i,j,k-1)])/g.spacing.z;
-            }
-            return 0.0;
-        };
-        return {der(0),der(1),der(2)};
-    };
-
-    for(std::size_t it=0;it<std::max<std::size_t>(20,max_iter*10);++it) {
-        double change=0.0;
-        for(std::size_t id=0;id<n;++id) {
+    const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
+    for(std::size_t it=0;it<steps;++it) {
+        double max_change=0.0;
+        for(std::size_t id=0;id<d.size();++id) {
             if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
-            const auto gp=phi_gradient(id);
-            const double np=wd_norm(gp);
-            if(np<1e-14) continue;
 
-            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-            auto component=[&](int axis)->double {
-                double dm=0.0,dp=0.0;
-                if(axis==0) {
-                    if(i>0 && std::isfinite(d[g.index(i-1,j,k)])) dm=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
-                    if(i+1<g.nx && std::isfinite(d[g.index(i+1,j,k)])) dp=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
-                } else if(axis==1) {
-                    if(j>0 && std::isfinite(d[g.index(i,j-1,k)])) dm=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
-                    if(j+1<g.ny && std::isfinite(d[g.index(i,j+1,k)])) dp=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
-                } else {
-                    if(k>0 && std::isfinite(d[g.index(i,j,k-1)])) dm=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
-                    if(k+1<g.nz && std::isfinite(d[g.index(i,j,k+1)])) dp=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
-                }
-                return std::max(dm,0.0)+std::min(dp,0.0);
-            };
-            const WallDistanceVec3 ge{component(0),component(1),component(2)};
-            const double ne=wd_norm(ge);
-            if(ne<1e-14) continue;
-
-            WallDistanceVec3 U=gp*(poisson_fraction/np)+ge*((1.0-poisson_fraction)/ne);
-            const double nu=wd_norm(U);
-            if(nu<1e-14) continue;
-            U=U*(1.0/nu);
-
-            auto adv=[&](int axis,double u)->double {
-                if(axis==0) {
-                    const double dm=i>0?(d[id]-d[g.index(i-1,j,k)])/g.spacing.x:0.0;
-                    const double dp=i+1<g.nx?(d[g.index(i+1,j,k)]-d[id])/g.spacing.x:0.0;
-                    return u>=0.0?u*dm:u*dp;
-                }
-                if(axis==1) {
-                    const double dm=j>0?(d[id]-d[g.index(i,j-1,k)])/g.spacing.y:0.0;
-                    const double dp=j+1<g.ny?(d[g.index(i,j+1,k)]-d[id])/g.spacing.y:0.0;
-                    return u>=0.0?u*dm:u*dp;
-                }
-                const double dm=k>0?(d[id]-d[g.index(i,j,k-1)])/g.spacing.z:0.0;
-                const double dp=k+1<g.nz?(d[g.index(i,j,k+1)]-d[id])/g.spacing.z:0.0;
-                return u>=0.0?u*dm:u*dp;
-            };
+            const double grad=godunov_gradient_at(d,g,id);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv(0,U.x)+adv(1,U.y)+adv(2,U.z)-1.0-gamma*laplacian_at(d,g,id);
-            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
-            const double dt_diff=gamma>0.0?0.25/(2.0*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=relaxation*std::min(0.25*h,dt_diff);
+            const double lap=laplacian_at(d,g,id);
+            const double residual=grad-1.0-gamma*lap;
+
+            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+                              +1.0/(g.spacing.y*g.spacing.y)
+                              +1.0/(g.spacing.z*g.spacing.z);
+            const double dt_adv=0.25*h;
+            const double dt_diff=gamma>0.0
+                ? 0.25/(2.0*gamma*inv_h2)
+                : std::numeric_limits<double>::infinity();
+            const double dt=relaxation*std::min(dt_adv,dt_diff);
             const double nd=std::max(0.0,d[id]-dt*residual);
-            change=std::max(change,std::abs(nd-d[id]));
+            max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
         for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
-        if(change<1e-10*h) break;
+        if(max_change<1e-10*h) break;
     }
     return d;
 }
