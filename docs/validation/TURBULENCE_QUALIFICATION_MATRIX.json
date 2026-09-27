@@ -186,7 +186,7 @@
     {
       "key": "DYNAMIC_KEQN",
       "family": "LES",
-      "status": "PLANNED",
+      "status": "KERNEL_ONLY",
       "equation_level": "closure_kernel",
       "wall_distance": false,
       "stages": {
@@ -195,7 +195,7 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": false,
+        "analytical_mms": true,
         "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
