@@ -140,11 +140,16 @@ set(CFDX_IO_SOURCES
     src/cfdx/io/openfoam/openfoam_importer.cpp
     src/cfdx/io/gmsh/gmsh_importer.cpp
     src/cfdx/io/mesh/mesh_importer.cpp
+    src/cfdx/io/cfdx_io/gap_analysis.cpp
+    src/cfdx/io/cfdx_io/mapping_rules.cpp
 )
 if(CFDX_HAS_HDF5)
     list(APPEND CFDX_IO_SOURCES
         src/cfdx/io/hdf5/hdf5_writer.cpp
         src/cfdx/io/hdf5/hdf5_reader.cpp
+    )
+    list(APPEND CFDX_IO_SOURCES
+        src/cfdx/io/hdf5/case_hdf5_io.cpp
     )
 else()
     list(APPEND CFDX_IO_SOURCES src/cfdx/io/hdf5/hdf5_unavailable.cpp)
@@ -299,11 +304,26 @@ set(CFDX_CORE_HEADERS
     src/cfdx/transport/diffusivity/diffusivity.h
     src/cfdx/io/hdf5/hdf5_writer.h
     src/cfdx/io/hdf5/hdf5_reader.h
+    src/cfdx/io/hdf5/case_hdf5_io.h
+    src/cfdx/io/hdf5/mini_json.h
     src/cfdx/io/vtu/vtu_writer.h
 )
 
 add_executable(cfdx_production_solver apps/production_solver/main.cpp)
 target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+
+add_executable(cfdx_convert
+    apps/cfdx_convert/main.cpp
+    apps/cfdx_convert/PythonBridge.cpp
+)
+target_link_libraries(cfdx_convert PRIVATE cfdx_core)
+if(CFDX_HAS_HDF5)
+    target_include_directories(cfdx_convert PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_link_libraries(cfdx_convert PRIVATE ${HDF5_C_LIBRARIES} ${HDF5_HL_LIBRARIES} z)
+    target_compile_definitions(cfdx_convert PRIVATE CFDX_HAS_HDF5=1)
+else()
+    target_compile_definitions(cfdx_convert PRIVATE CFDX_HAS_HDF5=0)
+endif()
 
 add_executable(cfdx_wall_distance_complex_benchmark apps/verification/wall_distance_complex_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_complex_benchmark PRIVATE cfdx_core)
@@ -715,6 +735,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
         add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
         add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+        add_cfdx_test(test_case_hdf5_io tests/unit/test_case_hdf5_io.cpp)
     else()
         add_cfdx_test(test_hdf5_unavailable tests/unit/test_hdf5_unavailable.cpp)
     endif()
@@ -753,5 +774,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
                          ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
                          ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
     endif()
+
+    # I/O adapter tests (M0.10-T03)
+    add_cfdx_test(test_su2_adapter tests/unit/test_su2_adapter.cpp)
+    add_cfdx_test(test_fluent_adapter tests/unit/test_fluent_adapter.cpp)
+    add_cfdx_test(test_starccm_adapter tests/unit/test_starccm_adapter.cpp)
+    add_cfdx_test(test_saturne_adapter tests/unit/test_saturne_adapter.cpp)
+    add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()
