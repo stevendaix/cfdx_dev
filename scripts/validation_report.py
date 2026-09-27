@@ -82,6 +82,29 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
     return result
 
 
+def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
+    axis = re.findall(
+        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+) "
+        r"iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
+        r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
+        r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
+        output,
+    )
+    if axis:
+        x = axis[-1]
+        data: dict[str, float | int | str] = {
+            "level": x["level"], "iterations": int(x["iterations"]),
+            "continuity": float(x["continuity"]), "momentum": float(x["momentum"]),
+            "pressure_correction": float(x["pcorr"]), "cd_pressure": float(x["cdp"]),
+            "cd_viscous": float(x["cdv"]), "cd_total": float(x["cd"]),
+            "cd_reference": float(x["ref"]),
+        }
+        data["status"] = "PASS" if "VMFL036_AXISYMMETRIC_VALIDATION: PASS" in output else "FAIL"
+        return data
+    return None
+
+
 def parse_model_results(output: str) -> list[dict[str, str]]:
     pattern = re.compile(r"MODEL (?P<name>[A-Z0-9_]+) (?P<metric>[A-Za-z0-9_]+)=(?P<value>[-+0-9.eE]+) reference=(?P<reference>.*)")
     return [m.groupdict() for m in pattern.finditer(output)]
@@ -381,6 +404,7 @@ def main() -> int:
         type=Path,
         help="reuse output from an already executed full Ghia campaign",
     )
+    parser.add_argument("--vmfl036-log", type=Path, help="reuse output from an already executed VMFL036 campaign")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -422,12 +446,24 @@ def main() -> int:
     else:
         logs["test_ghia_cavity"] = (-1, "executable not found")
 
+    vmfl036 = None
+    logs["test_vmfl036_axisymmetric"] = (-1, "VMFL036 validation log not provided")
+    if args.vmfl036_log is not None and args.vmfl036_log.exists():
+        output = args.vmfl036_log.read_text(encoding="utf-8")
+        vmfl036 = parse_vmfl036(output)
+        vm_rc = 0 if vmfl036 is not None and vmfl036.get("status") == "PASS" else 1
+        (args.output_dir / "test_vmfl036_axisymmetric.log").write_text(output, encoding="utf-8")
+        logs["test_vmfl036_axisymmetric"] = (vm_rc, output)
+    elif args.vmfl036_log is not None:
+        logs["test_vmfl036_axisymmetric"] = (-1, "VMFL036 validation log not found")
+
     # The report is a gate for every executable it launches. In particular,
     # the full Ghia campaign must not be reduced to diagnostic-only evidence.
     for name in (
         "test_fluent_vmfl_reference",
         "test_numerical_model_verification",
         "test_ghia_cavity",
+        "test_vmfl036_axisymmetric",
     ):
         suite_status[name] = logs[name][0]
     gate = validation_gate_status(suite_status)
@@ -436,6 +472,7 @@ def main() -> int:
         json.dumps({
             "generated": generated,
             "ghia": ghia,
+            "vmfl036": vmfl036,
             "model_results": model_results,
             "test_status": {k: v[0] for k, v in logs.items()},
             "validation_suite_status": suite_status,
