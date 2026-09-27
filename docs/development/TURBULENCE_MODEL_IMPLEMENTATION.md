@@ -67,6 +67,10 @@ DES/DDES/IDDES remain dependent on a transient 3-D scale-resolving driver and
 base-RANS coupling for production use; the selector therefore does not falsely
 promote these kernels to solver-ready status.
 
+Steady/stationary case files are explicitly rejected for LES and DES-family
+selections by the Python setup validator, independently of GUI filtering.
+This prevents a hand-authored case from bypassing the production-model guard.
+
 ## Wall treatment
 
 Wall y+ is explicitly classified into:
@@ -93,10 +97,27 @@ than creating a new model ID for every combination:
 - SA QCR.
 
 The C++ layer validates the correction controls and provides deterministic
-invariant-based kernels. This follows the separation used by mature CFD
-interfaces: SU2, for example, exposes base turbulence models separately from
-their corrections, while Fluent documents curvature/rotation corrections for
-SA and multiple two-equation families. citeturn0search16turn0search18
+invariant-based kernels. Production corrections are applied through one common
+hook, so multiple enabled corrections compose without duplicating the base
+model production calculation. QCR remains a stress correction rather than a
+production correction.
+
+The current dynamic-LES coefficient kernel uses an explicit hard bound
+[0, 0.23]. This is a numerical safeguard, not a claim of a complete
+Lagrangian/Germano dynamic model: negative coefficients/backscatter are clipped
+in the current kernel and the filtering/averaging strategy remains part of the
+future full dynamic-LES implementation.
+
+Wall distance is currently a required model input for SST/SA/DES-family paths;
+the repository contains wall-distance consumers and y+ utilities, but no
+single mesh-wide Fast-Marching/Poisson wall-distance service is exposed by
+this selection layer. A production mesh pipeline must therefore provide a
+validated wall-distance field before enabling models that require it.
+
+This follows the separation used by mature CFD interfaces: SU2, for example,
+exposes base turbulence models separately from their corrections, while Fluent
+documents curvature/rotation corrections for SA and multiple two-equation
+families. citeturn0search16turn0search18
 
 The remaining implementation work is solver-level rather than selector-level:
 SA-negative/Edwards and exact literature-specific SA/SST correction variants,
