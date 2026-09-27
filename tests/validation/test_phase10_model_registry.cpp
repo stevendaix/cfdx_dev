@@ -27,9 +27,11 @@ int main() {
         TurbulenceModelCoefficients coeff;
         validate_turbulence_model_coefficients(coeff);
         for (const auto model : models) {
-            const TurbulenceModelDescriptor descriptor{model, implementation_kind(model)};
-            if (descriptor.model != model)
+            const auto descriptor = turbulence_model_descriptor(model);
+            if (descriptor.model != model || descriptor.implementation != implementation_kind(model))
                 throw std::runtime_error("model descriptor mismatch");
+            if (descriptor.status != turbulence_capability(model).status)
+                throw std::runtime_error("model capability status mismatch");
         }
 
         TurbulenceTransportControls c;
@@ -46,6 +48,14 @@ int main() {
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
 
+        if (!turbulence_solver_ready(AdvancedTurbulenceModel::SST) ||
+            !turbulence_solver_ready(AdvancedTurbulenceModel::SPALART_ALLMARAS))
+            throw std::runtime_error("solver-ready RANS models are not registered");
+        if (turbulence_solver_ready(AdvancedTurbulenceModel::DES) ||
+            turbulence_capability(AdvancedTurbulenceModel::DES).status != TurbulenceImplementationStatus::KERNEL_ONLY)
+            throw std::runtime_error("DES capability status is incorrect");
+        if (turbulence_capability(AdvancedTurbulenceModel::DYNAMIC_KEQN).status != TurbulenceImplementationStatus::PLANNED)
+            throw std::runtime_error("dynamic LES capability status is incorrect");
         if (!has_transport_equation(AdvancedTurbulenceModel::REALIZABLE_KEPSILON))
             throw std::runtime_error("realizable k-epsilon transport is not registered");
 
