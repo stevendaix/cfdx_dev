@@ -4,6 +4,7 @@
 #include <memory>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -140,6 +141,9 @@ struct DeviceValueProvider {
         return 0.0;
     }
 };
+
+static_assert(std::is_trivially_copyable_v<DeviceValueProvider>,
+              "DeviceValueProvider must remain a compact device-transfer representation");
 
 inline DeviceValueProvider lower_value_provider(const ValueProviderSpec& spec) {
     return std::visit([](const auto& provider) {
