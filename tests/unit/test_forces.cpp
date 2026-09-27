@@ -39,6 +39,8 @@ int main()
     assert(std::abs(ar.pressure_force-2.0*dS)<1e-12);
     assert(std::abs(ar.viscous_force+0.4*dS)<1e-12);
     assert(std::abs(ar.total_force-1.6*dS)<1e-12);
+    const auto ar_ref=integrate_axisymmetric({a},1.0,1.0,3.14159265358979323846/4.0,1.0);
+    assert(std::abs(ar_ref.pressure_force-1.0*dS)<1e-12);
 
     // Reject invalid reference data rather than silently producing invalid coefficients.
     bool rejected=false;
