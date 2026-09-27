@@ -210,25 +210,24 @@ int main()
 
 
     run_case("tvd_linear_reconstruction_is_second_order_bounded", [] {
-        const Mesh m = make_1d_chain(2);
+        const Mesh m = make_1d_chain(3);
         const FvGeometry g = build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
         Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
         Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
         Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
         flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
-        phi(0)=0.25; phi(1)=0.75;
-        // Positive x-directed advection crosses the internal face from cell 0
-        // to cell 1. For this exact linear field the Darwish-Moukalled
-        // successive-slope ratio is r=1, so minmod must retain the centred
-        // face value phi_f=(phi_P+phi_N)/2=0.5. The deferred correction is
-        // therefore F*(phi_f-phi_P)=0.25 on the internal face.
+        phi(0)=0.25; phi(1)=0.50; phi(2)=0.75;
+        // Positive x-directed advection crosses the internal face from cell 1
+        // to cell 2. Cell 1 is an interior cell, so the Gauss gradient is exact
+        // for this linear field. The Darwish-Moukalled successive-slope ratio
+        // is therefore r=1 and MINMOD retains the centred face value 0.625.
+        // The deferred correction is F*(phi_f-phi_P)=0.125.
         // Isolate the internal deferred correction from boundary convection.
-        // The internal face carries F=+1 from cell 0 to cell 1; an independent
-        // positive diagonal keeps the two-cell algebra nonsingular without
-        // introducing a boundary contribution into the TVD correction check.
-        flux(6) = 1.0;
-        std::vector<double> extra_diagonal{1.0, 1.0};
+        // The independent positive diagonals keep the three-cell algebra
+        // nonsingular without introducing a boundary contribution.
+        flux(21) = 1.0;
+        std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
@@ -239,9 +238,9 @@ int main()
         const auto tvd = assemble_scalar_equation(
             m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
             ConvectionScheme::TVD,&phi);
-        EXPECT_NEAR(tvd.rhs(0)-upwind.rhs(0),-0.25,1e-12);
-        EXPECT_NEAR(tvd.rhs(1)-upwind.rhs(1), 0.25,1e-12);
-        EXPECT_NEAR(tvd.rhs(0)+tvd.rhs(1),upwind.rhs(0)+upwind.rhs(1),1e-12);
+        EXPECT_NEAR(tvd.rhs(1)-upwind.rhs(1),-0.125,1e-12);
+        EXPECT_NEAR(tvd.rhs(2)-upwind.rhs(2), 0.125,1e-12);
+        EXPECT_NEAR(tvd.rhs(1)+tvd.rhs(2),upwind.rhs(1)+upwind.rhs(2),1e-12);
     });
 
     run_case("tvd_requires_convected_field", [] {
