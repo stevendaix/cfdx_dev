@@ -32,10 +32,10 @@ void generate(const std::filesystem::path& out, const Level& l)
     if(std::system(cmd.str().c_str())!=0) throw std::runtime_error("axisymmetric mesh generation failed");
 }
 
-AxisymResult run_level(const Level& l)
+AxisymResult run_level(const Level& l, double mu, double cd_ref, const char* tag)
 {
     const auto path=std::filesystem::temp_directory_path() /
-        (std::string("cfdx_vmfl036_")+l.name+".axmesh");
+        (std::string("cfdx_vmfl036_")+tag+"_"+l.name+".axmesh");
     generate(path,l);
     const auto mesh=AxisymMesh::read(path.string());
     if(mesh.outer_radius < 49.999 || mesh.nr != static_cast<std::size_t>(l.nr) ||
@@ -51,7 +51,7 @@ AxisymResult run_level(const Level& l)
     c.continuity_tolerance=2e-6;
     c.alpha_u=0.65;
     c.alpha_p=0.25;
-    VMFL036AxisymmetricSolver solver(mesh,1.0,0.01);
+    VMFL036AxisymmetricSolver solver(mesh,1.0,mu);
     const auto result=solver.solve(c);
     std::error_code ec; std::filesystem::remove(path,ec);
     if(!result.converged) throw std::runtime_error(std::string("VMFL036 axisymmetric solver did not converge on ")+l.name);
@@ -79,7 +79,14 @@ int main(int argc,char** argv)
             : std::vector<Level>{{24,36,"coarse"},{36,54,"medium"},{48,72,"fine"}};
 
         std::vector<AxisymResult> r;
-        for(const auto& l:levels) r.push_back(run_level(l));
+        if(!quick) {
+            const auto fluent_exact=run_level(Level{36,54,"medium"},0.02,1.0875,"re50");
+            const double re50_err=std::abs(fluent_exact.cd_total-1.0875)/1.0875;
+            std::cout << "VMFL036_AXISYM FLUENT_EXACT Re=50 Cd=" << fluent_exact.cd_total
+                      << " reference=1.0875 relative_error=" << re50_err << "\\n";
+            if(re50_err>0.10) throw std::runtime_error("VMFL036 Fluent-exact Re50 comparison exceeds 10%");
+        }
+        for(const auto& l:levels) r.push_back(run_level(l,0.01,1.0895,"re100"));
 
         if(!quick){
             const double ref=1.0895;
