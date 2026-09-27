@@ -135,6 +135,31 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
     ),
 )
 
+# Explicit implementation-gap contract.  This is intentionally separate from
+# the model catalogue so adding a new model cannot silently imply completeness.
+TURBULENCE_MODEL_GAPS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "LAMINAR": (("U",), ()),
+    "KEPSILON": (("k", "epsilon"), ("wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
+    "RNG_KEPSILON": (("k", "epsilon"), ("wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
+    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("mesh/y+ sensitivity", "quantitative benchmark qualification")),
+    "KOMEGA": (("k", "omega"), ("wall treatment contract", "quantitative benchmark qualification")),
+    "SST": (("k", "omega"), ("transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
+    "SPALART_ALLMARAS": (("nu_tilde",), ("negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
+    "SMAGORINSKY": (("velocity gradient", "Delta"), ("LES transient driver", "SGS BC contract", "wall treatment", "V&V")),
+    "WALE": (("velocity-gradient tensor", "Delta"), ("full tensor WALE integration", "LES transient driver", "wall treatment", "V&V")),
+    "DYNAMIC_KEQN": (("k_sgs", "velocity gradient", "Delta"), ("dynamic SGS transport", "test filtering", "clipping", "LES driver", "V&V")),
+    "DES": (("base RANS fields", "Delta", "wall distance"), ("RANS coupling", "shielding/length-scale integration", "transient 3-D driver", "V&V")),
+    "DDES": (("base RANS fields", "Delta", "wall distance", "shielding"), ("base-model coupling", "complete shielding integration", "wall treatment", "transient 3-D driver", "V&V")),
+    "IDDES": (("base RANS fields", "Delta", "wall distance", "shielding"), ("stress/wake shielding and blending integration", "wall treatment", "transient 3-D driver", "V&V")),
+}
+
+def turbulence_model_requirements(key: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    try:
+        return TURBULENCE_MODEL_GAPS[key.upper()]
+    except KeyError as exc:
+        raise KeyError(key) from exc
+
+
 TURBULENCE_MODELS = tuple(
     model.key for model in TURBULENCE_CATALOG
     if model.status is TurbulenceStatus.SOLVER_READY
