@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 int main()
@@ -38,6 +39,21 @@ int main()
     assert(std::abs(ar.pressure_force-2.0*dS)<1e-12);
     assert(std::abs(ar.viscous_force+0.4*dS)<1e-12);
     assert(std::abs(ar.total_force-1.6*dS)<1e-12);
+
+    // Reject invalid reference data rather than silently producing invalid coefficients.
+    bool rejected=false;
+    try {
+        Reference bad=ref; bad.area=std::numeric_limits<double>::infinity();
+        (void)integrate({s},bad);
+    } catch (...) { rejected=true; }
+    assert(rejected);
+
+    rejected=false;
+    try {
+        AxisymmetricSample bad=a; bad.ds=std::numeric_limits<double>::quiet_NaN();
+        (void)integrate_axisymmetric({bad},1.0,1.0,3.14159265358979323846/4.0);
+    } catch (...) { rejected=true; }
+    assert(rejected);
 
     std::cout<<"FORCES_INTEGRATION: PASS\n";
     return 0;
