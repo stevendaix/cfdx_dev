@@ -168,63 +168,35 @@ def channel(nx: int, ny: int, length: float = 4.0):
     })
 
 
-def bfs(nx: int, ny: int, upstream: float = 40.0, downstream: float = 30.0):
-    # Conformal three-block construction: upstream [y=1,2], downstream
-    # lower [y=0,1], downstream upper [y=1,2].
-    nodes = []
-    key = {}
+def bfs(n: int):
+    # VMFL064 / Armaly geometry, nondimensionalized by the step height s.
+    H_in = 5.2 / 4.9
+    H_out = H_in + 1.0
+    L_up = 200.0 / 4.9
+    L_down = 100.0 / 4.9
+    nx_up = 5 * n
+    nx_down = max(2 * n, int(round(nx_up * L_down / L_up)))
+    nodes, key, cells = [], {}, []
     def nid(x, y):
         k = (round(x, 14), round(y, 14))
-        if k not in key:
-            key[k] = len(nodes)
-            nodes.append((x, y))
+        if k not in key: key[k] = len(nodes); nodes.append((x, y))
         return key[k]
-
-    cells = []
-    inlet_edges, outlet_edges, wall_edges = [], [], []
-
-    # Upstream block.
-    for j in range(ny + 1):
-        y = 1.0 + j / ny
-        for i in range(nx + 1):
-            x = -upstream + upstream * i / nx
-            nid(x, y)
-    def U(i, j): return nid(-upstream + upstream * i / nx, 1.0 + j / ny)
-    for j in range(ny):
-        for i in range(nx):
-            cells.append((U(i,j),U(i+1,j),U(i+1,j+1),U(i,j+1)))
-    inlet_edges += [(U(0,j+1), U(0,j)) for j in range(ny)]
-    wall_edges += [(U(i,0), U(i+1,0)) for i in range(nx)]
-
-    # Downstream lower and upper blocks.
-    ndx = max(nx, int(nx * downstream / upstream))
-    def D(x, y): return nid(x, y)
-    for block in (0, 1):
-        y0 = 0.0 if block == 0 else 1.0
-        for j in range(ny + 1):
-            y = y0 + j / ny
-            for i in range(ndx + 1):
-                x = downstream * i / ndx
-                D(x, y)
-        def B(i,j): return D(downstream*i/ndx, y0+j/ny)
+    def block(x0, x1, y0, y1, nx, ny):
+        ids = [[nid(x0+(x1-x0)*i/nx, y0+(y1-y0)*j/ny) for i in range(nx+1)] for j in range(ny+1)]
         for j in range(ny):
-            for i in range(ndx):
-                cells.append((B(i,j),B(i+1,j),B(i+1,j+1),B(i,j+1)))
-        if block == 0:
-            wall_edges += [(B(i,0),B(i+1,0)) for i in range(ndx)]
-            wall_edges += [(B(0,j),B(0,j+1)) for j in range(ny)]
-        else:
-            wall_edges += [(B(i,ny),B(i+1,ny)) for i in range(ndx)]
-            outlet_edges += [(B(ndx,j+1),B(ndx,j)) for j in range(ny)]
-    # The step face is the exposed x=0, y=0..1 edge of the lower block.
-    wall_edges += [(D(0.0, 1.0-j/ny), D(0.0, 1.0-(j+1)/ny)) for j in range(ny)]
-    # Remove the duplicate interface/wall at y=1: it is internal after merging.
-    wall_edges = list(dict.fromkeys(wall_edges))
-    return extrude_2d(nodes, cells, {
-        "inlet": inlet_edges, "outlet": outlet_edges, "wall": wall_edges,
-        "_front_cells": cells,
-    })
-
+            for i in range(nx): cells.append((ids[j][i], ids[j][i+1], ids[j+1][i+1], ids[j+1][i]))
+        return ids
+    up = block(-L_up, 0.0, 1.0, 1.0+H_in, nx_up, n)
+    lo = block(0.0, L_down, 0.0, 1.0, nx_down, n)
+    hi = block(0.0, L_down, 1.0, H_out, nx_down, n)
+    inlet = [(up[j+1][0], up[j][0]) for j in range(n)]
+    outlet = [(hi[j+1][-1], hi[j][-1]) for j in range(n)]
+    wall = []
+    wall += [(up[0][i], up[0][i+1]) for i in range(nx_up)]
+    wall += [(lo[0][i+1], lo[0][i]) for i in range(nx_down)]
+    wall += [(hi[-1][i], hi[-1][i+1]) for i in range(nx_down)]
+    wall += [(lo[j][0], lo[j+1][0]) for j in range(n)]
+    return extrude_2d(nodes, cells, {'inlet': inlet, 'outlet': outlet, 'wall': wall, '_front_cells': cells})
 
 def naca0012_surface(n: int):
     t = 0.12
@@ -284,9 +256,10 @@ def main():
             p, c, b = channel(4*n, n)
             write_mesh(out / f"channel_n{n}.h5", p, c, b)
     if args.case in ("bfs", "all"):
-        n = 16 if args.quick else 32
-        p, c, b = bfs(40*n//16, 16, 40.0, 30.0)
-        write_mesh(out / f"bfs_re200_n{n}.h5", p, c, b)
+        levels = (16,) if args.quick else (16,32,64)
+        for n in levels:
+            p, c, b = bfs(n)
+            write_mesh(out / f"bfs_re200_n{n}.h5", p, c, b)
     if args.case in ("naca0012", "all"):
         n = 64 if args.quick else 128
         p, c, b = naca_o_grid(n, 24 if args.quick else 48, 20.0)
