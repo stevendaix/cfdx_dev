@@ -213,12 +213,13 @@ private:
     static double dist(const AxisymCell&a,const AxisymCell&b){return std::hypot(a.cx-b.cx,a.cr-b.cr);}
     double boundary_ux(const AxisymFace& f,std::size_t o) const {
         if(f.sphere) return 0.0;
-        if(f.outer) return 1.0;
+        if(f.outer && f.cx < 0.0) return 1.0; // documented inlet arc
         return ux_[o];
     }
     double boundary_ur(const AxisymFace& f,std::size_t o) const {
-        if(f.sphere || f.outer || f.axis) return 0.0;
-        return ur_[o];
+        if(f.sphere || f.axis) return 0.0;
+        if(f.outer && f.cx < 0.0) return 0.0; // inlet arc
+        return ur_[o]; // pressure outlet: zero-gradient velocity
     }
 
     void compute_fluxes(){
@@ -281,7 +282,10 @@ private:
                     // symmetry: ux has zero normal gradient, ur=0.
                     ax+=std::max(F,0.0);
                     ar+=D+std::max(F,0.0);
-                    br+= (D+std::max(-F,0.0))*0.0;
+                }else if(f.outer && f.cx >= 0.0){
+                    // Pressure outlet: zero normal velocity gradient.
+                    ax+=std::max(F,0.0);
+                    ar+=std::max(F,0.0);
                 }else{
                     const double ubx=boundary_ux(f,cell), ubr=boundary_ur(f,cell);
                     const double ab=D+std::max(-F,0.0);
@@ -363,12 +367,18 @@ private:
             rhs[cell]=-imbalance;
             for(const auto fid:m_.cells[cell].faces){
                 const auto& f=m_.faces[fid];
-                if(f.neighbour==static_cast<std::size_t>(-1)) continue;
-                const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
-                const double d=dist(m_.cells[cell],m_.cells[nb]);
-                const double df=0.5*(m_.cells[cell].volume/apx_[cell]+m_.cells[nb].volume/apx_[nb]);
-                const double a=rho_*f.area*df/d;
-                diag[cell]+=a; rows[cell].push_back({nb,-a});
+                if(f.neighbour!=static_cast<std::size_t>(-1)){
+                    const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
+                    const double d=dist(m_.cells[cell],m_.cells[nb]);
+                    const double df=0.5*(m_.cells[cell].volume/apx_[cell]+m_.cells[nb].volume/apx_[nb]);
+                    const double a=rho_*f.area*df/d;
+                    diag[cell]+=a; rows[cell].push_back({nb,-a});
+                } else if(f.outer && f.cx >= 0.0){
+                    const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
+                    const double a=rho_*f.area*(m_.cells[cell].volume/apx_[cell])/d;
+                    diag[cell]+=a;
+                    rhs[cell] += a*(-p_[cell]);
+                }
             }
         }
         const std::size_t ref=0;
@@ -392,7 +402,10 @@ private:
             for(const auto fid:m_.cells[cell].faces){
                 const auto& f=m_.faces[fid];
                 double qf=pc_[cell];
-                if(f.neighbour!=static_cast<std::size_t>(-1)) qf=0.5*(pc_[cell]+pc_[f.neighbour]);
+                if(f.neighbour!=static_cast<std::size_t>(-1))
+                    qf=0.5*(pc_[cell]+pc_[f.neighbour]);
+                else if(f.outer && f.cx >= 0.0)
+                    qf=-p_[cell]; // physical outlet pressure is fixed to zero
                 gx+=qf*f.nx*f.area; gr+=qf*f.nr*f.area;
             }
             gx/=m_.cells[cell].volume; gr/=m_.cells[cell].volume;
@@ -405,13 +418,7 @@ private:
             if(m_.cells[cell].j==0 || m_.cells[cell].j+1==m_.nt) ur_[cell]=0.0;
             p_[cell]+=c.alpha_p*pc_[cell];
         }
-        for(std::size_t fid=0;fid<m_.faces.size();++fid){
-            const auto& f=m_.faces[fid];
-            if(f.neighbour==static_cast<std::size_t>(-1)) continue;
-            const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
-            const double df=0.5*(m_.cells[f.owner].volume/apx_[f.owner]+m_.cells[f.neighbour].volume/apx_[f.neighbour]);
-            phi_[fid]+=rho_*f.area*df/d*(pc_[f.owner]-pc_[f.neighbour]);
-        }
+        compute_fluxes();
         return maxcorr;
     }
 
