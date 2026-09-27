@@ -1,5 +1,8 @@
 #include "cfdx/physics/turbulence_models.h"
 #include "cfdx/physics/turbulence_transport.h"
+#include "cfdx/physics/turbulence_solver.h"
+#include "cfdx/physics/sst_solver.h"
+#include "cfdx/physics/spalart_allmaras.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -75,7 +78,7 @@ int main() {
     c.model=TurbulenceModel::SST;
     {
         const double F1=0.3,F2=0.8,cross=-0.4;
-        const auto q=sst_cell_sources(k,omega,S,F1,F2,c);
+        const auto q=sst_cell_sources(k,omega,S,F1,F2,cross,c);
         const double sk=std::sqrt(k)/(c.beta_star*omega*y);
         const double visc=500.0*c.molecular_viscosity/(y*y*omega);
         const double cdkw=std::max(2.0*c.density*c.sst_sigma_w2/omega*cross,1e-10);
