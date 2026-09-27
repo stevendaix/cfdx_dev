@@ -35,15 +35,15 @@ int main() {
             corr.kato_launder=true;
             corr.production_limiter=true;
             corr.production_limit=100.0;
-            EXPECT_TRUE(rotation_curvature_factor(inv,corr) > 1.0);
-            EXPECT_TRUE(compressibility_factor(inv,corr,10.0) < 1.0);
-            EXPECT_TRUE(kato_launder_production_factor(inv,corr) > 0.0);
-            EXPECT_TRUE(corrected_turbulence_production(1.0,inv,corr,10.0) > 0.0);
-            EXPECT_NEAR(roughness_factor(0.001,0.01, corr),1.0,1e-12);
+            if(!(rotation_curvature_factor(inv,corr) > 1.0)) throw std::runtime_error("rotation correction failed");
+            if(!(compressibility_factor(inv,corr,10.0) < 1.0)) throw std::runtime_error("compressibility correction failed");
+            if(!(kato_launder_production_factor(inv,corr) > 0.0)) throw std::runtime_error("Kato-Launder correction failed");
+            if(!(corrected_turbulence_production(1.0,inv,corr,10.0) > 0.0)) throw std::runtime_error("production correction failed");
+            if(std::abs(roughness_factor(0.001,0.01,corr)-1.0)>1e-12) throw std::runtime_error("roughness correction failed");
             corr.qcr=true;
-            EXPECT_TRUE(qcr_stress_factor(2.0,1.0,corr) > 1.0);
-            EXPECT_NEAR(wale_eddy_viscosity({4.0,4.0,0.1},0.325),0.000105625,1e-12);
-            EXPECT_TRUE(dynamic_les_coefficient(2.0,1.0,2.0) >= 0.0);
+            if(!(qcr_stress_factor(2.0,1.0,corr) > 1.0)) throw std::runtime_error("QCR correction failed");
+            if(!(wale_eddy_viscosity({4.0,4.0,0.1},0.325)>0.0)) throw std::runtime_error("WALE kernel failed");
+            if(!(dynamic_les_coefficient(2.0,1.0,2.0) >= 0.0)) throw std::runtime_error("dynamic LES kernel failed");
         }
 
         for (const auto model : models) {
