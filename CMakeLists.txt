@@ -160,6 +160,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
     src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/forces.h
     src/cfdx/physics/local_time_stepping.h
     src/cfdx/physics/low_mach.h
     src/cfdx/physics/compressible_flux.h
@@ -365,6 +366,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
+    add_cfdx_test(test_forces tests/unit/test_forces.cpp)
 
     # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
