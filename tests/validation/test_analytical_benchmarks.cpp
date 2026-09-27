@@ -202,6 +202,69 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     return result;
 }
 
+ScalarResult solve_advection_diffusion_case(std::size_t n, double height,
+                                             double gamma, double mass_flux,
+                                             ConvectionScheme scheme)
+{
+    auto problem = make_channel(n, height);
+    auto geometry = build_fv_geometry(problem.mesh);
+    Field<double,Location::FACE> phi(problem.mesh.n_faces(), "phi", "m3/s", 1);
+    phi.fill(0.0);
+    // Positive flux in +y. The boundary face orientation from make_channel
+    // makes this a positive owner-outward flux at the top and negative at the bottom.
+    for (std::size_t f = 0; f < problem.mesh.n_faces(); ++f) {
+        const auto nbh = problem.mesh.ownership().neighbour(f);
+        if (nbh >= 0) {
+            const auto& Sf = geometry.face_area_vectors[f];
+            phi(f) = mass_flux * Sf.y;
+        } else {
+            phi(f) = mass_flux * geometry.face_area_vectors[f].y;
+        }
+    }
+
+    Field<double,Location::CELL> su(n, "source", "unit", 1);
+    Field<double,Location::CELL> sp(n, "sp", "1/s", 1);
+    Field<double,Location::CELL> value(n, "phi", "1", 1);
+    su.fill(0.0); sp.fill(0.0);
+    for (std::size_t i = 0; i < n; ++i)
+        value(i) = geometry.cell_centres[i].y / height;
+
+    ScalarBoundaryConditions bc;
+    bc["bottom"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+    bc["top"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+    for (const char* name : {"x0", "x1", "z0", "z1"})
+        bc[name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+    for (int iter = 0; iter < 200; ++iter) {
+        const auto eq = assemble_scalar_equation(
+            problem.mesh, geometry, phi, gamma, su, sp, bc, true, nullptr,
+            nullptr, nullptr, nullptr, scheme, &value);
+        Vector next(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) next(i) = value(i);
+        const auto linear = solve_scalar_equation(eq, next, {5000, 1e-13, 1.0});
+        if (linear.status != SolverStatus::CONVERGED)
+            throw std::runtime_error("TVD analytical benchmark: linear solve did not converge");
+        double delta = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            delta = std::max(delta, std::abs(next(i) - value(i)));
+            value(i) = next(i);
+        }
+        if (delta < 1e-12) break;
+        if (iter == 199)
+            throw std::runtime_error("TVD analytical benchmark: nonlinear iteration did not converge");
+    }
+
+    ScalarResult result;
+    result.y.resize(n);
+    result.u.resize(n);
+    result.volume = geometry.cell_volumes;
+    for (std::size_t i = 0; i < n; ++i) {
+        result.y[i] = geometry.cell_centres[i].y;
+        result.u[i] = value(i);
+    }
+    return result;
+}
+
 void report_case(const std::string& name, std::size_t n,
                  const ErrorMetrics& e, double order)
 {
@@ -254,6 +317,35 @@ int main()
             poiseuille_errors.push_back(e.l2);
         }
         require_order(poiseuille_errors,2.0,1.90,"Poiseuille");
+
+        // Smooth 1-D advection-diffusion: F phi' - Gamma phi'' = 0.
+        // Exact solution for Pe=F*H/Gamma is (exp(Pe*y/H)-1)/(exp(Pe)-1).
+        // The TVD branch is solved with Picard iterations because its deferred
+        // correction depends on the current cell field. Require second-order
+        // convergence on this smooth manufactured profile.
+        constexpr double adv_gamma = 1.0;
+        constexpr double adv_flux = 2.0;
+        const double Pe = adv_flux * H / adv_gamma;
+        std::vector<double> tvd_errors;
+        for (const std::size_t n : {8u,16u,32u,64u}) {
+            const auto r = solve_advection_diffusion_case(
+                n, H, adv_gamma, adv_flux, ConvectionScheme::TVD);
+            const double denom = std::exp(Pe) - 1.0;
+            std::vector<double> exact(r.y.size());
+            for (std::size_t i=0; i<r.y.size(); ++i)
+                exact[i] = (std::exp(Pe*r.y[i]/H) - 1.0) / denom;
+            const auto e = error_norms(r.u, exact, r.volume);
+            const double order = tvd_errors.empty()
+                ? std::numeric_limits<double>::quiet_NaN()
+                : observed_order(tvd_errors.back(), e.l2);
+            report_case("TVD advection-diffusion", n, e, order);
+            tvd_errors.push_back(e.l2);
+            for (const double v : r.u) {
+                if (!(v >= -1e-12 && v <= 1.0 + 1e-12))
+                    throw std::runtime_error("TVD analytical benchmark violated bounds");
+            }
+        }
+        require_order(tvd_errors, 2.0, 1.75, "TVD advection-diffusion");
 
         // 1-D conduction: T(y)=T0+(T1-T0)y/H, q=-k*dT/dy.
         constexpr double T0 = 400.0;

@@ -101,6 +101,15 @@ int main()
         const double total_conductivity=
             ec.conductivity+rosseland_conductivity(T(0),a(0));
         EXPECT_NEAR(T(0)-1000.0,1200.0/(12.0*total_conductivity),1e-9);
+        // The temperature residual alone is not a conservation gate: require the
+        // independently evaluated integrated boundary/source balance to close.
+        const std::vector<double> final_conductivity{total_conductivity};
+        const double final_balance = energy_balance_relative(
+            m,g,phi,T,T,S,ec,bc,nullptr,
+            &final_conductivity);
+        EXPECT_TRUE(std::isfinite(final_balance));
+        EXPECT_LT(final_balance,1e-10);
+        EXPECT_NEAR(r.energy_balance_residuals.back(), final_balance, 1e-14);
     });
 
     run_case("advanced_radiation_variable_properties_and_spectral",[] {
