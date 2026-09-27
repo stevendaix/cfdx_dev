@@ -613,8 +613,9 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
             const bool fm=has_minus && std::isfinite(phi[minus]);
             const bool fp=has_plus && std::isfinite(phi[plus]);
             if(fm && fp) lap+=(phi[minus]-2.0*phi[id]+phi[plus])*w;
-            else if(fm) lap+=2.0*(phi[minus]-phi[id])*w;
-            else if(fp) lap+=2.0*(phi[plus]-phi[id])*w;
+            else if(fm) lap+=(phi[minus]-2.0*phi[id])*w;
+            else if(fp) lap+=(phi[plus]-2.0*phi[id])*w;
+            else if(has_minus || has_plus) lap+=-2.0*phi[id]*w;
         };
         const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
         const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
@@ -766,7 +767,8 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
 
 inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     const WallSurface& s,const WallDistanceGrid& g,std::size_t max_iter,
-    double epsilon=0.25,double relaxation=0.7) {
+    double epsilon=0.25,double relaxation=0.9,
+    std::size_t* used_iter=nullptr,double* residual_out=nullptr) {
     // Hybrid strategy consistent with Tucker et al.:
     // 1) obtain a robust initial distance field from the Poisson formulation;
     // 2) use that field as the initial iterate for the Hamilton-Jacobi equation.
@@ -815,6 +817,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             if(final_residual<1e-8 && max_change<1e-9*h) { used=it+1; break; }
         }
     }
+    if(used_iter) *used_iter=used;
+    if(residual_out) *residual_out=final_residual;
     return d;
 }
 
@@ -883,7 +887,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::ADVECTION_DIFFUSION:
             r.distance=advection_diffusion_distance(s,g,iterations,0.05); break;
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9);
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,&r.iterations,&r.residual_inf);
             break;
     }
     for(std::size_t i=0;i<r.distance.size();++i)
