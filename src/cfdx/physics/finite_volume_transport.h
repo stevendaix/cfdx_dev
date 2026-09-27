@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/field/field.h"
+#include "cfdx/physics/boundary_constraint_fvm.h"
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
@@ -221,13 +222,15 @@ inline ScalarEquation assemble_scalar_equation(
     const std::vector<double>* extra_rhs = nullptr,
     const std::vector<double>* cell_diffusion = nullptr,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
     const std::size_t nf = mesh.n_faces();
 
-    if (face_flux.size() != nf || face_flux.dimension() != 1 ||
+    if ((face_conditions && (face_conditions->conditions.size() != nf || face_conditions->specified.size() != nf)) ||
+        face_flux.size() != nf || face_flux.dimension() != 1 ||
         source_explicit.size() != nc || source_explicit.dimension() != 1 ||
         source_implicit.size() != nc || source_implicit.dimension() != 1 ||
         (extra_diagonal && extra_diagonal->size() != nc) ||
@@ -348,7 +351,18 @@ inline ScalarEquation assemble_scalar_equation(
                 continue;
 
             ScalarBoundaryCondition bc;
-            if (patch < mesh.boundary().n_patches()) {
+            if (face_conditions && face_conditions->has(f)) {
+                const auto& resolved = face_conditions->conditions[f];
+                bc.type = resolved.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE
+                    ? ScalarBoundaryType::FIXED_VALUE
+                    : ScalarBoundaryType::FIXED_GRADIENT;
+                if (!std::isfinite(resolved.value))
+                    throw std::invalid_argument("assemble_scalar_equation: non-finite resolved boundary condition");
+                if (bc.type == ScalarBoundaryType::FIXED_VALUE)
+                    bc.value = resolved.value;
+                else
+                    bc.gradient = resolved.value;
+            } else if (patch < mesh.boundary().n_patches()) {
                 const auto& patch_name = mesh.boundary().patch(patch).name;
                 const auto it = boundary_conditions.find(patch_name);
                 if (it != boundary_conditions.end()) bc = it->second;

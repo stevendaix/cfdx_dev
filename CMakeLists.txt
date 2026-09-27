@@ -247,6 +247,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/m1_m4_models.h
     src/cfdx/physics/solver_control.h
     src/cfdx/physics/finite_volume_transport.h
+    src/cfdx/physics/boundary_constraint_fvm.h
     src/cfdx/physics/steady_incompressible_solver.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
@@ -369,6 +370,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_field_wall_hardening tests/unit/test_field_wall_hardening.cpp)
     add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
     add_cfdx_test(test_boundary_contract tests/unit/test_boundary_contract.cpp)
+    add_cfdx_test(test_boundary_fvm_constraints tests/unit/test_boundary_fvm_constraints.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
@@ -456,6 +458,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
+    add_cfdx_test(test_numerical_model_verification tests/validation/test_numerical_model_verification.cpp)
     add_executable(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
     target_link_libraries(test_poiseuille_diagnostics PRIVATE cfdx_core)
     target_include_directories(test_poiseuille_diagnostics PRIVATE ${CMAKE_SOURCE_DIR}/tests)

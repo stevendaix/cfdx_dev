@@ -1,4 +1,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/core/boundary/boundary.h"
+#include "cfdx/core/boundary/mathematical_condition.h"
+#include "cfdx/core/boundary/value_provider.h"
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/thermal.h"
 #include "verification_metrics.h"
@@ -175,16 +178,25 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
     su.fill(source);
     sp.fill(0.0);
 
-    ScalarBoundaryConditions bc;
-    bc["bottom"] = {ScalarBoundaryType::FIXED_VALUE, bottom_value, 0.0};
-    bc["top"] = {ScalarBoundaryType::FIXED_VALUE, top_value, 0.0};
-    bc["x0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
-    bc["x1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
-    bc["z0"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
-    bc["z1"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    BoundaryConstraintMap constraints;
+    const auto constant = [](double value) {
+        return std::make_shared<ConstantValueProvider>(value);
+    };
+    const auto add_constraint = [&](const std::string& name, MathematicalCondition condition) {
+        constraints[name].emplace_back("U.x", std::move(condition));
+    };
+    add_constraint("bottom", Dirichlet{constant(bottom_value)});
+    add_constraint("top", Dirichlet{constant(top_value)});
+    add_constraint("x0", Neumann{constant(0.0)});
+    add_constraint("x1", Neumann{constant(0.0)});
+    add_constraint("z0", Neumann{constant(0.0)});
+    add_constraint("z1", Neumann{constant(0.0)});
 
+    const auto face_conditions = resolve_scalar_boundary_constraints(
+        problem.mesh, geometry.face_centres, constraints, "U.x");
     auto eq = assemble_scalar_equation(
-        problem.mesh, geometry, phi, gamma, su, sp, bc, true);
+        problem.mesh, geometry, phi, gamma, su, sp, {}, true, nullptr, nullptr,
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, &face_conditions);
     Vector solution(n, 0.0);
     const auto linear = solve_scalar_equation(
         eq, solution, {5000, 1e-13, 1.0});
