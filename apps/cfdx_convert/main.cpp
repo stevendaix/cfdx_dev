@@ -1,7 +1,6 @@
 #include "PythonBridge.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
-#include "cfdx/io/cfdx_io/gap_analysis.h"
 #include "cfdx/core/mesh/mesh.h"
 
 #include <filesystem>
