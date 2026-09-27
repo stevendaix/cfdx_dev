@@ -253,6 +253,7 @@ private:
         const auto* ro = A.row_offsets_data();
         const auto* ci = A.columns_data();
         const auto* av = A.values_data();
+        std::vector<std::vector<std::pair<std::size_t,double>>> fine_rows(nf);
 
         for (std::size_t i = 0; i < nf; ++i) {
             const auto row = fine_[i];
@@ -262,6 +263,7 @@ private:
                 if (col == row) {
                     inverse_diag[i] = av[k];
                     found = true;
+                    fine_rows[i].push_back({i, av[k]});
                 } else if (coarse_pos[col] < nc) {
                     fine_to_coarse_[i].push_back({coarse_pos[col], av[k]});
                 } else if (fine_pos[col] < nf) {
@@ -276,9 +278,11 @@ private:
             inverse_diag[i] = 1.0 / inverse_diag[i];
         }
 
-        // ACC and ACF are assembled directly; the diagonal F approximation
-        // contributes -ACF diag(AFF)^-1 AFC.
-        std::vector<std::vector<std::pair<std::size_t,double>>> fine_rows(nf);
+        // ACC and ACF are assembled directly; the current coarse-grid
+        // approximation uses diag(AFF)^-1 for the reduction operator.
+        // F-relaxation may independently be strengthened to ILU(0); this is
+        // deliberately a non-Galerkin MGR choice, matching the separation
+        // between F-relaxation and coarse-grid approximation in MGR.
         std::vector<std::vector<std::pair<std::size_t,double>>> rows(nc);
         for (std::size_t i = 0; i < nc; ++i) {
             const auto row = coarse_[i];
