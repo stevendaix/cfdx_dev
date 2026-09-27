@@ -58,6 +58,28 @@ class TestSu2Adapter:
         assert adapter.setup.initial_condition.velocity > 0
         assert adapter.setup.turbulence_model == "laminar"
 
+
+    def test_parse_incompressible_naca0012_config(self):
+        """INC_RANS must not be classified as compressible RANS."""
+        cfg_file = os.path.join(pytest.DATA_DIR, "su2", "incomp_NACA0012.cfg")
+        adapter = Su2Adapter()
+        assert adapter.parse_config(cfg_file)
+
+        assert adapter.setup.physics_model == "incompressible_rans"
+        assert adapter.setup.energy_model == "isothermal"
+        assert adapter.setup.turbulence_model == "spalart_allmaras"
+        np.testing.assert_allclose(
+            adapter.setup.initial_condition.velocity_vector,
+            [51.36481493540834, 9.0570027322096198, 0.0],
+        )
+        np.testing.assert_allclose(
+            adapter.setup.initial_condition.velocity,
+            np.hypot(51.36481493540834, 9.0570027322096198),
+        )
+        assert adapter.setup.ref_density == 1.0
+        assert adapter.setup.materials[0].density == 2.13163
+        assert adapter.setup.materials[0].dynamic_viscosity == 1.853e-05
+
     def test_convert_full(self, su2_file, cfg_file):
         adapter = Su2Adapter()
         result = ConversionResult(source=SourceInfo())
