@@ -425,6 +425,7 @@ inline double iddes_length_scale(double wall_distance,double delta,double Cdes=.
  const double fd=std::clamp(shielding,0.0,1.0);
  const double fb=std::clamp(stress_blend,0.0,1.0);
  return (1-fb)*wall_distance+fb*std::min(wall_distance,fd*les);
+}
 inline double dynamic_one_equation_eddy_viscosity(double k_sgs,double delta,double Ck=.1){
  if(!std::isfinite(k_sgs)||!std::isfinite(delta)||!std::isfinite(Ck)||
     k_sgs<0.0||delta<=0.0||Ck<0.0)
