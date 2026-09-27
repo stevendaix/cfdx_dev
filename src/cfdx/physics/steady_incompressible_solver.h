@@ -496,6 +496,41 @@ inline ScalarEquation assemble_momentum_component(
         convection_scheme, convected_field);
 }
 
+inline ScalarEquation assemble_momentum_component(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    double effective_dynamic_viscosity,
+    const BoundaryConstraintMap& boundary_constraints,
+    std::size_t component,
+    bool bounded,
+    double time = 0.0,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+{
+    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+        mesh.n_cells(), "momentum_source", "N/m3", 1);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
+        mesh.n_cells(), "momentum_sp", "kg/m3/s", 1);
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        if (pressure_gradient_component.dimension() != 3 ||
+            pressure_gradient_component.size() != mesh.n_cells())
+            throw std::invalid_argument("assemble_momentum_component: pressure gradient must be a 3-component cell field");
+        source(c) = body_component(c) - pressure_gradient_component.component_data(component)[c];
+        sp(c) = 0.0;
+    }
+    if (component >= 3)
+        throw std::invalid_argument("assemble_momentum_component: component index out of range");
+    const std::string field = "U." + std::string(1, static_cast<char>('x' + component));
+    const auto face_conditions = resolve_scalar_boundary_constraints(
+        mesh, geometry.face_centres, boundary_constraints, field, time);
+    return assemble_scalar_equation(
+        mesh, geometry, mass_flux, effective_dynamic_viscosity,
+        source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,
+        convection_scheme, convected_field, &face_conditions);
+}
 inline void apply_velocity_boundary_conditions(
     const cfdx::core::Mesh& mesh,
     const VelocityBoundaryConditions& bcs,
