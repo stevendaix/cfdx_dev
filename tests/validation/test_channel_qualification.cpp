@@ -178,7 +178,8 @@ int main(int argc,char** argv)
 {
     try {
         const bool quick=argc==2 && std::string(argv[1])=="--quick";
-        if(argc>1 && !quick) throw std::invalid_argument("usage: test_channel_qualification [--quick]");
+        if(quick && argc != 3) throw std::invalid_argument("quick channel requires one mesh path");
+        if(!quick && argc != 5) throw std::invalid_argument("full channel requires three mesh paths");
 
         if(argc < 3) throw std::invalid_argument("usage: test_channel_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
         const auto r16=solve_case(argv[2],16);
