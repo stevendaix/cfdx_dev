@@ -108,7 +108,7 @@ int main()
             m,g,phi,T,T,S,ec,bc,nullptr,
             &final_conductivity);
         EXPECT_TRUE(std::isfinite(final_balance));
-        EXPECT_LT(final_balance,1e-10);
+        EXPECT_TRUE(final_balance < 1e-10);
         EXPECT_NEAR(r.energy_balance_residuals.back(), final_balance, 1e-14);
     });
 
