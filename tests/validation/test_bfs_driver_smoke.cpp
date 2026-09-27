@@ -139,5 +139,5 @@ int main(int argc,char**argv)
         std::cout<<"BFS reference target Lr/H=5.0 errors="<<e0<<","<<e1<<","<<e2<<"\n";
         if(!(e2<=e1 && e1<=e0)) throw std::runtime_error("BFS reattachment error is not decreasing under refinement");
     }
-    std::cout<<"BFS_QUALIFICATION: PASS solver_converged conservation wall_shear_reattachment\n";
+    std::cout<<"BFS_QUALIFICATION: DIAGNOSTIC solver_converged conservation wall_shear_reattachment_reference_gate_pending\n";
 }
