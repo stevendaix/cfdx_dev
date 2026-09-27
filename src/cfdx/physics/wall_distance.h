@@ -550,31 +550,6 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
             const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
 
-            auto one_sided=[&](int axis)->double {
-                double backward=0.0, forward=0.0;
-                if(axis==0) {
-                    if(i>0 && std::isfinite(d[g.index(i-1,j,k)]))
-                        backward=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
-                    if(i+1<g.nx && std::isfinite(d[g.index(i+1,j,k)]))
-                        forward=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
-                } else if(axis==1) {
-                    if(j>0 && std::isfinite(d[g.index(i,j-1,k)]))
-                        backward=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
-                    if(j+1<g.ny && std::isfinite(d[g.index(i,j+1,k)]))
-                        forward=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
-                } else {
-                    if(k>0 && std::isfinite(d[g.index(i,j,k-1)]))
-                        backward=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
-                    if(k+1<g.nz && std::isfinite(d[g.index(i,j,k+1)]))
-                        forward=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
-                }
-                // Godunov Hamiltonian for |grad d| with the positive
-                // propagation direction selected independently on each axis:
-                // max(D^- d,0)^2 + min(D^+ d,0)^2.
-                return std::sqrt(std::pow(std::max(backward,0.0),2.0)
-                               + std::pow(std::min(forward,0.0),2.0));
-            };
-
             const double grad=godunov_gradient_at(d,g,id);
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(d,g,id);
