@@ -155,6 +155,20 @@ int main() {
         EXPECT_TRUE(face_field(3) == 30.0);
     });
 
+    run_case("tvd_mc_limiter_contract", []() {
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::MC), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(0.5, LimiterType::MC), 0.75, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(-1.0, LimiterType::MC), 0.0, 1e-12);
+        for (double r : {-10.0,-1.0,0.0,0.25,1.0,2.0,10.0}) {
+            const double psi=apply_limiter_tvd(r,LimiterType::MC);
+            EXPECT_TRUE(std::isfinite(psi));
+            EXPECT_TRUE(psi >= 0.0);
+            EXPECT_TRUE(psi <= 2.0 + 1e-12);
+        }
+        EXPECT_TRUE(limiter_type_from_string("mc") == LimiterType::MC);
+        EXPECT_TRUE(std::string(to_string(LimiterType::MC)) == "mc");
+    });
+
     run_case("interpolate_limited_requires_gradient_and_flux", []() {
         Mesh m = make_two_cell_mesh();
         ScalarCellField f(2, "p", "Pa", 1);
