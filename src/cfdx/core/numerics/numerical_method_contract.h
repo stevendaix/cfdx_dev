@@ -80,6 +80,9 @@ inline void validate_numerical_method_contract(const NumericalMethodContract& c)
         throw std::invalid_argument("numerical method contract id must not contain spaces");
     if (c.formal_spatial_order < 0 || c.formal_temporal_order < 0)
         throw std::invalid_argument("numerical method formal orders must be non-negative");
+    if (c.status >= VerificationStatus::Implemented &&
+        (c.mathematical_formulation.empty() || c.configuration_key.empty()))
+        throw std::invalid_argument("implemented numerical method requires formulation and configuration key");
     if (c.status == VerificationStatus::Validated && c.verification_requirements.empty())
         throw std::invalid_argument("validated numerical method requires verification requirements");
     if (c.bounded && !c.monotone && c.family == NumericalMethodFamily::Convection &&
