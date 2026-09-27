@@ -106,15 +106,15 @@ struct AxisymMesh {
             const auto &v=m.cells[c].nodes;
             const std::size_t edge[4][2]={{v[0],v[1]},{v[1],v[2]},{v[2],v[3]},{v[3],v[0]}};
             for(int e=0;e<4;++e){
-                auto key=std::minmax(edge[e][0],edge[e][1]);
+                const std::pair<std::size_t,std::size_t> key{
+                    std::min(edge[e][0],edge[e][1]), std::max(edge[e][0],edge[e][1])};
                 auto it=std::find_if(pending.begin(),pending.end(),[&](const auto& z){return z.first==key;});
                 if(it==pending.end()){
                     const auto fid=add_face(c,edge[e][0],edge[e][1],true);
                     pending.push_back({key,{fid,c}});
                 } else {
                     const auto fid=it->second.face;
-                    const auto other=it->second.cell;
-                    // Existing face belongs to 'other'; current cell is neighbour.
+                    // Existing face belongs to the previous owner; current cell is neighbour.
                     m.faces[fid].neighbour=c;
                     m.cells[c].faces.push_back(fid);
                     pending.erase(it);
@@ -224,7 +224,7 @@ private:
 
     void compute_fluxes(){
         for(std::size_t k=0;k<m_.faces.size();++k){
-            const auto& f=m_.faces[k]; const auto& o=m_.cells[f.owner];
+            const auto& f=m_.faces[k];
             double u=0.0,v=0.0;
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 u=0.5*(ux_[f.owner]+ux_[f.neighbour]);
@@ -385,6 +385,7 @@ private:
         }
         // The pressure-outlet arc supplies the Dirichlet pressure-correction
         // condition; no artificial reference cell is required.
+        double maxcorr=std::numeric_limits<double>::infinity();
         for(std::size_t s=0;s<c.pressure_sweeps;++s){
             maxcorr=0.0;
             for(std::size_t cell=0;cell<n_;++cell){
@@ -434,6 +435,7 @@ private:
 
     std::array<double,6> drag(const std::vector<double>& gx,const std::vector<double>& gr,
                               const std::vector<double>& rx,const std::vector<double>& rr) const{
+        (void)rr;
         double fp=0.0,fv=0.0;
         for(std::size_t c=0;c<n_;++c){
             if(m_.cells[c].i!=0) continue;
