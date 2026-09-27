@@ -27,7 +27,6 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "phi_U + grad(phi)_U dot (Cf-C_U), bounded to [phi_U,phi_D]","numerics.convection.second_order_upwind",{"smooth_refinement","boundedness","conservation"}},
         {"convection.tvd.minmod","TVD MinMod",F::Convection,S::Implemented,C::LocalFaceConservative,true,true,false,1,0,
          "MUSCL with psi=minmod","numerics.convection.tvd.minmod",{"boundedness","TVD","smooth_refinement","steep_gradient"}},
-         "MUSCL with psi=minmod","numerics.convection.tvd.minmod",{"boundedness","TVD","smooth_refinement","steep_gradient"}},
         {"interpolation.limiter.minmod","MinMod limiter coefficient",F::Interpolation,S::Implemented,C::NotApplicable,true,true,false,0,0,
          "psi=max(0,min(1,r))","numerics.limiter.minmod",{"coefficient_exactness","boundedness"}},
         {"interpolation.limiter.vanleer","Van Leer limiter coefficient",F::Interpolation,S::Implemented,C::NotApplicable,true,true,false,0,0,
