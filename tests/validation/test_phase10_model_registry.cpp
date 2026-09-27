@@ -27,6 +27,25 @@ int main() {
 
         TurbulenceModelCoefficients coeff;
         validate_turbulence_model_coefficients(coeff);
+        {
+            TurbulenceCorrectionControls corr;
+            TurbulenceInvariants inv{2.0,1.0,0.5,0.2,0.01};
+            corr.rotation_curvature=true;
+            corr.compressibility=true;
+            corr.kato_launder=true;
+            corr.production_limiter=true;
+            corr.production_limit=100.0;
+            EXPECT_TRUE(rotation_curvature_factor(inv,corr) > 1.0);
+            EXPECT_TRUE(compressibility_factor(inv,corr,10.0) < 1.0);
+            EXPECT_TRUE(kato_launder_production_factor(inv,corr) > 0.0);
+            EXPECT_TRUE(corrected_turbulence_production(1.0,inv,corr,10.0) > 0.0);
+            EXPECT_NEAR(roughness_factor(0.001,0.01, corr),1.0,1e-12);
+            corr.qcr=true;
+            EXPECT_TRUE(qcr_stress_factor(2.0,1.0,corr) > 1.0);
+            EXPECT_NEAR(wale_eddy_viscosity({4.0,4.0,0.1},0.325),0.000105625,1e-12);
+            EXPECT_TRUE(dynamic_les_coefficient(2.0,1.0,2.0) >= 0.0);
+        }
+
         for (const auto model : models) {
             const auto descriptor = turbulence_model_descriptor(model);
             const auto& capability = turbulence_capability(model);
