@@ -21,7 +21,8 @@ from .boundary_setup import FIELD_SPECS, SCALAR_TYPES, VELOCITY_TYPES
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
 from .materials import MaterialSpec
-from .physics_setup import PHYSICS_SPECS, TURBULENCE_MODELS
+from .physics_setup import (PHYSICS_SPECS, TURBULENCE_CATALOG, TURBULENCE_MODELS,
+                            turbulence_model_from_case, validate_turbulence_selection)
 from .setup_model import ParameterType
 
 
@@ -84,11 +85,27 @@ class CaseSetupPanel(QWidget):
         except StopIteration:
             return
         current = self.case.physics.get(model, {})
+        if model == "turbulence":
+            normalized = turbulence_model_from_case(current)
+            self.turbulence_family = QComboBox()
+            families = sorted({item.family.value.upper() for item in TURBULENCE_CATALOG})
+            self.turbulence_family.addItems(families)
+            self.turbulence_family.setCurrentText(str(normalized.get("family", "RANS")))
+            self.physics_fields["family"] = self.turbulence_family
+            self.physics_fields_form.addRow("Turbulence family", self.turbulence_family)
+
+            self.turbulence_wall = QComboBox()
+            self.turbulence_wall.addItems(["resolved", "wall_function", "all_y_plus", "none"])
+            self.turbulence_wall.setCurrentText(str(normalized.get("wall_treatment", "resolved")))
+            self.physics_fields["wall_treatment"] = self.turbulence_wall
+            self.physics_fields_form.addRow("Wall treatment", self.turbulence_wall)
+
+            self.turbulence_family.currentTextChanged.connect(self._filter_turbulence_models)
         for field in spec.fields:
             if field.name == "model":
                 box = QComboBox()
-                box.addItems(TURBULENCE_MODELS)
-                box.setCurrentText(str(current.get(field.name, field.default)))
+                self.physics_fields["model"] = box
+                self._filter_turbulence_models(str(normalized.get("model", field.default)) if model == "turbulence" else str(current.get(field.name, field.default)))
                 widget: QWidget = box
             elif field.kind is ParameterType.REAL:
                 widget = self._real(float(current.get(field.name, field.default)))
@@ -103,6 +120,24 @@ class CaseSetupPanel(QWidget):
                 label += f" [{field.unit}]"
             self.physics_fields_form.addRow(label, widget)
         self._update_physics_dependencies()
+
+    def _filter_turbulence_models(self, preferred: str | None = None) -> None:
+        box = self.physics_fields.get("model")
+        family_box = self.physics_fields.get("family")
+        if not isinstance(box, QComboBox) or not isinstance(family_box, QComboBox):
+            return
+        family = family_box.currentText().lower()
+        choices = [
+            item.key for item in TURBULENCE_CATALOG
+            if item.status.value == "solver_ready" and item.family.value == family
+        ]
+        current = preferred or box.currentText()
+        box.blockSignals(True)
+        box.clear()
+        box.addItems(choices)
+        if current in choices:
+            box.setCurrentText(current)
+        box.blockSignals(False)
 
     def _update_physics_dependencies(self) -> None:
         model = self.physics_model.currentText()
@@ -140,6 +175,12 @@ class CaseSetupPanel(QWidget):
                 elif isinstance(widget, QComboBox):
                     values[field.name] = widget.currentText()
             break
+        if model == "turbulence":
+            try:
+                values = validate_turbulence_selection(values)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Turbulence selection", str(exc))
+                return
         self.case.physics[model] = values
         self._update_physics_dependencies()
         self.changed.emit()
