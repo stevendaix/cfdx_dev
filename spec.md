@@ -1,6 +1,6 @@
 # CFDX — Spécification technique complète
 
-**Version : 0.7**
+**Version : 0.8**
 **Statut : Architecture cible / spécification de développement**
 **Projet : CFDX — High-Performance General-Purpose CFD Framework**
 
@@ -152,29 +152,46 @@ CFDX doit à terme fournir :
 
 ## 5.1 Principe
 
-Un cas CFDX doit être **autoportant**.
+CFDX sépare définitivement la définition du cas, l'état numérique et la visualisation.
 
-Un fichier :
+Artefacts canoniques :
 
 ```text
-case.cfdx.h5
+<case>.cfdx.h5       définition complète du cas — source de vérité
+<case>.dat.h5        état numérique / checkpoint / restart
+<case>_<time>.vtu    visualisation / post-traitement
 ```
 
-doit contenir toutes les informations nécessaires pour :
+Règles fondamentales :
 
-* reconstruire le maillage ;
-* reconstruire le setup ;
-* reconstruire les champs ;
-* reconstruire les conditions limites ;
-* reconstruire la physique ;
-* reconstruire les paramètres numériques ;
-* reconstruire le solveur ;
-* reprendre un calcul ;
-* identifier précisément l'état du cas.
+- `case.cfdx.h5` est autoportant pour la définition et l'initialisation du calcul.
+- Il contient le maillage, la physique, les matériaux, les BC, les IC, les paramètres numériques et le solveur.
+- Il ne contient pas l'état numérique courant d'une itération ou d'un pas de temps.
+- `case.cfdx.h5` **n'est pas un restart**.
+- `<case>.dat.h5` contient l'état numérique calculé : champs, itération, temps et, lorsque nécessaire, identifiants globaux de cellules.
+- Le DAT ne contient pas le setup source et ne remplace pas le case.
+- Un restart consomme explicitement un case compatible et un DAT compatible.
+- Un VTU est un artefact de sortie et ne doit jamais reconstruire le setup source.
+- L'absence d'un DAT ne rend pas le case invalide.
 
-Le but est d'éviter la dépendance à une arborescence de fichiers dispersée.
+Le suffixe `.h5` désigne le conteneur HDF5 ; `.cfdx` identifie le format logique de définition de cas.
 
----
+## 5.2 Nomenclature canonique
+
+```text
+channel.cfdx.h5
+channel.dat.h5
+channel_000100.vtu
+channel_000200.vtu
+```
+
+L'itération et le temps physique exacts sont également conservés dans les métadonnées du VTU.
+
+## 5.3 Compatibilité case / DAT
+
+La compatibilité est vérifiée au chargement du DAT et au démarrage du restart. Le DAT porte les informations nécessaires à cette vérification, notamment sa version, le nombre de cellules et, pour les restarts MPI N→M, les identifiants globaux persistants.
+
+Le case ne stocke pas le contenu numérique du DAT et ne dépend pas du hash du DAT pour rester valide.
 
 # 6. Structure HDF5
 
@@ -242,7 +259,7 @@ Le `topology_hash` doit être construit à partir des données fondamentales du 
 
 # 8. `/case`
 
-Configuration générale :
+Configuration générale du problème :
 
 ```text
 /case/
@@ -253,11 +270,10 @@ Configuration générale :
     dimension
     start_time
     end_time
-    current_time
     time_step
 ```
 
----
+`current_time`, l'itération courante et les champs numériques de continuation appartiennent au DAT, pas au case.
 
 # 9. `/mesh`
 
@@ -1453,19 +1469,22 @@ GPU-aware MPI
 
 # 57. Checkpoint / Restart
 
-Un checkpoint doit permettre de reconstruire :
+Le checkpoint numérique est un artefact séparé du case :
 
-* maillage ;
-* champs ;
-* état physique ;
-* temps ;
-* timestep ;
-* solveur ;
-* configuration numérique ;
-* décomposition si nécessaire ;
-* état nécessaire au restart.
+```text
+<case>.dat.h5
+```
 
----
+Il contient au minimum :
+
+- version du format DAT ;
+- nombre de cellules ;
+- itération ;
+- temps physique ;
+- champs numériques nécessaires à la continuation ;
+- identifiants globaux persistants lorsque le restart MPI N→M l'exige.
+
+Les métadonnées de runtime éventuellement présentes dans le case ne doivent jamais contenir l'état numérique de continuation.
 
 # 58. Restart indépendant du nombre de MPI ranks
 
@@ -2228,41 +2247,34 @@ Les changements incompatibles doivent incrémenter la version majeure du schema.
 
 # 91. Séparation case / runtime
 
-Les paramètres physiques et numériques doivent être séparés des paramètres d'exécution.
-
-Exemple :
+Le **case** est la définition scientifique et numérique du problème :
 
 ```text
-case:
-    physics
-    numerics
+case.cfdx.h5
     mesh
+    geometry
+    fields / initial fields
+    boundary_conditions
+    physics
+    materials
+    numerics
+    solver
 ```
 
-versus :
+L'**état numérique** est séparé :
 
 ```text
-runtime:
-    CPU/GPU
-    MPI ranks
-    tile size
-    memory policy
-    streams
+case.dat.h5
+    iteration
+    physical time
+    solution fields
+    persistent global cell IDs
+    restart metadata
 ```
 
-Ainsi le même cas peut être exécuté :
+Le runtime peut sélectionner CPU/GPU/GPU-OOC, MPI ranks, memory policy, tile size, streams et I/O policy sans modifier la définition scientifique du case.
 
-```text
-CPU
-GPU
-GPU-OOC
-32 MPI
-128 MPI
-```
-
-sans modifier sa définition physique.
-
----
+Ainsi le même `case.cfdx.h5` peut être exécuté plusieurs fois et repris avec différentes décompositions sans que l'avancement du calcul modifie la source de vérité.
 
 # 92. Execution graph
 
@@ -2687,30 +2699,28 @@ La vision complète est :
 
 # 98. Décisions d'architecture figées
 
-Les décisions suivantes sont considérées comme fondamentales pour CFDX v0.7 :
+Les décisions suivantes sont fondamentales pour CFDX v0.8 :
 
-1. **HDF5 est le format natif du cas.**
-2. **`case.cfdx.h5` est autoportant.**
-3. **La topologie est la source de vérité du maillage.**
-4. **La géométrie est dérivée de la topologie.**
-5. **OpenFOAM est une référence, pas la définition de CFDX.**
-6. **meshio est un adaptateur, pas une dépendance du cœur.**
-7. **Les Fields sont indépendants du backend matériel.**
-8. **L'algèbre linéaire est indépendante de la physique.**
-9. **Les opérateurs FVM sont indépendants du backend.**
-10. **SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.**
-11. **CPU/GPU/GPU-OOC sont des Execution Policies.**
-12. **Aucun fallback GPU→CPU silencieux pendant un calcul.**
-13. **Le choix CPU/GPU/GPU-OOC est fait par le Runtime avant exécution.**
-14. **Le GPU-OOC utilise domain decomposition + tiles + halos.**
-15. **Les transferts CPU↔GPU ne doivent pas être présents dans la boucle GPU normale.**
-16. **Pinned memory est limitée à des buffers de staging.**
-17. **La physique ne connaît jamais CUDA/MPI/mémoire GPU directement.**
-18. **Python orchestre ; C++ calcule.**
-19. **Le parallélisme est une propriété du Runtime, pas de la physique.**
-20. **Les benchmarks sont mesurés et non définis arbitrairement à l'avance.**
-
----
+1. **HDF5 est le format natif.**
+2. **`case.cfdx.h5` est la source de vérité de la définition complète du cas.**
+3. **`case.cfdx.h5` n'est jamais un restart numérique.**
+4. **`<case>.dat.h5` est l'état numérique/checkpoint/restart séparé.**
+5. **Le DAT ne contient pas la définition du cas ni le maillage source.**
+6. **`<case>_<time>.vtu` est un artefact de visualisation/post-traitement.**
+7. **Le case reste valide en l'absence de DAT.**
+8. **Un restart consomme explicitement un case compatible et un DAT compatible.**
+9. **Le case ne stocke ni le contenu numérique ni le hash du DAT comme condition de validité.**
+10. **La topologie est la source de vérité du maillage.**
+11. **La géométrie est dérivée de la topologie.**
+12. **OpenFOAM est une référence, pas la définition de CFDX.**
+13. **meshio est un adaptateur, pas une dépendance du cœur.**
+14. **Les Fields sont indépendants du backend matériel.**
+15. **L'algèbre linéaire est indépendante de la physique.**
+16. **Les opérateurs FVM sont indépendants du backend.**
+17. **SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.**
+18. **CPU/GPU/GPU-OOC sont des Execution Policies.**
+19. **Aucun fallback GPU→CPU silencieux pendant un calcul.**
+20. **Python orchestre ; C++ calcule.**
 
 # 99. Principe directeur final
 
@@ -2771,7 +2781,7 @@ The solver lifecycle is explicit: CREATED, VALIDATING, READY, RUNNING, PAUSED, S
 
 ## 100.5 Checkpoints and revisions
 
-A checkpoint records the case, mesh, physics and numerics revisions together with iteration and physical time. A case edit increments the case revision. Restart/rebuild requirements are explicit so a paused simulation can be modified and continued without silently using stale numerical state.
+A numerical checkpoint is stored in the paired DAT artifact, not in `case.cfdx.h5`. The DAT records case/mesh/physics/numerics revision identifiers together with iteration, physical time and numerical fields. A case edit increments the case revision. Restart/rebuild requirements are explicit so a DAT is consumed only when it is compatible with the selected case.
 
 ## 100.6 Monitoring and post-processing
 

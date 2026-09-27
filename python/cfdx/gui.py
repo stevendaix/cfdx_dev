@@ -362,7 +362,7 @@ if QApplication is not None:
         def _save_case_as(self) -> bool:
             path, _ = QFileDialog.getSaveFileName(
                 self, "Save CFDX Case", self.session.case.name + ".cfdx.h5",
-                "CFDX Case (*.cfdx.h5 *.h5)"
+                "CFDX Case (*.cfdx.h5);;All files (*)"
             )
             if not path:
                 return False
@@ -393,7 +393,7 @@ if QApplication is not None:
                 return False
             dat_path, _ = QFileDialog.getOpenFileName(
                 self, "Select solver DAT restart", str(self._case_path.parent),
-                "CFDX DAT checkpoint (*.dat *.h5);;CFDX DAT text (*.dat);;CFDX DAT HDF5 (*.h5);;All files (*)"
+                "CFDX DAT checkpoint (*.dat.h5 *.dat);;CFDX DAT HDF5 (*.dat.h5);;CFDX DAT text (*.dat);;All files (*)"
             )
             if not dat_path:
                 return False

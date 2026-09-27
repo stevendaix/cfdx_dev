@@ -5,7 +5,7 @@
 Ce répertoire contient la spécification technique complète de **CFDX**, un framework CFD généraliste destiné au calcul scientifique haute performance (CPU / GPU / GPU out-of-core / MPI / HPC).
 
 - **Fichier principal :** [`spec.md`](./spec.md)
-- **Version :** 0.7
+- **Version :** 0.8
 - **Statut :** Architecture cible / spécification de développement
 
 ## Structure des documents
@@ -57,28 +57,50 @@ Ce répertoire contient la spécification technique complète de **CFDX**, un fr
 - **§96** : Critères de sortie du Module 0
 - **§97-99** : Architecture finale, décisions figées, principe directeur
 
-## Décisions d'architecture figées (v0.7)
+## Contrat des artefacts de calcul figé (v0.8)
 
-1. HDF5 est le format natif du cas.
-2. `case.cfdx.h5` est autoportant.
-3. La topologie est la source de vérité du maillage.
-4. La géométrie est dérivée de la topologie.
-5. OpenFOAM est une référence, pas la définition de CFDX.
-6. meshio est un adaptateur, pas une dépendance du cœur.
-7. Les Fields sont indépendants du backend matériel.
-8. L'algèbre linéaire est indépendante de la physique.
-9. Les opérateurs FVM sont indépendants du backend.
-10. SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.
-11. CPU/GPU/GPU-OOC sont des Execution Policies.
-12. Aucun fallback GPU→CPU silencieux pendant un calcul.
-13. Le choix CPU/GPU/GPU-OOC est fait par le Runtime avant exécution.
-14. Le GPU-OOC utilise domain decomposition + tiles + halos.
-15. Les transferts CPU↔GPU ne doivent pas être présents dans la boucle GPU normale.
-16. Pinned memory est limitée à des buffers de staging.
-17. La physique ne connaît jamais CUDA/MPI/mémoire GPU directement.
-18. Python orchestre ; C++ calcule.
-19. Le parallélisme est une propriété du Runtime, pas de la physique.
-20. Les benchmarks sont mesurés et non définis arbitrairement à l'avance.
+CFDX utilise trois classes d'artefacts distinctes :
+
+| Artefact | Rôle | Source de vérité |
+|---|---|---|
+| `<case>.cfdx.h5` | définition complète du cas : mesh, setup, physique, BC, IC, numerics, solver | **oui** |
+| `<case>.dat.h5` | état numérique : champs calculés, itération, temps, IDs globaux, restart | non, dépend du case |
+| `<case>_<time>.vtu` | visualisation / post-traitement | non |
+
+Règles impératives :
+
+- `case.cfdx.h5` est autonome et valide sans DAT.
+- `case.cfdx.h5` n'est jamais un restart numérique.
+- `case.cfdx.h5` ne stocke pas l'itération courante ni les champs de continuation.
+- `<case>.dat.h5` ne contient pas le setup source et ne remplace pas le case.
+- Un restart consomme explicitement un case compatible et un DAT compatible.
+- VTU est une sortie de visualisation et ne doit jamais être utilisé pour reconstruire le setup.
+
+## Décisions d'architecture figées (v0.8)
+
+1. HDF5 est le format natif.
+2. `case.cfdx.h5` est autoportant et constitue la source de vérité de la définition complète du cas.
+3. `<case>.dat.h5` est l'état numérique/checkpoint/restart séparé.
+4. `<case>_<time>.vtu` est un artefact de visualisation/post-traitement.
+5. `case.cfdx.h5` n'est pas un restart numérique.
+6. La topologie est la source de vérité du maillage.
+7. La géométrie est dérivée de la topologie.
+8. OpenFOAM est une référence, pas la définition de CFDX.
+9. meshio est un adaptateur, pas une dépendance du cœur.
+10. Les Fields sont indépendants du backend matériel.
+11. L'algèbre linéaire est indépendante de la physique.
+12. Les opérateurs FVM sont indépendants du backend.
+13. SIMPLE/PISO/PIMPLE/Rhie-Chow appartiennent au Module 1.
+14. CPU/GPU/GPU-OOC sont des Execution Policies.
+15. Aucun fallback GPU→CPU silencieux pendant un calcul.
+16. Le choix CPU/GPU/GPU-OOC est fait par le Runtime avant exécution.
+17. Le GPU-OOC utilise domain decomposition + tiles + halos.
+18. Les transferts CPU↔GPU ne doivent pas être présents dans la boucle GPU normale.
+19. Pinned memory est limitée à des buffers de staging.
+20. La physique ne connaît jamais CUDA/MPI/mémoire GPU directement.
+21. Python orchestre ; C++ calcule.
+22. Le parallélisme est une propriété du Runtime, pas de la physique.
+23. Les benchmarks sont mesurés et non définis arbitrairement à l'avance.
 
 ## Principes fondamentaux
 

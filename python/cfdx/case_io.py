@@ -43,8 +43,8 @@ def _canonical_case_hash(case_data: dict, mesh_hash: str | None = None) -> str:
 
 def _validate_path(path: Path) -> Path:
     path = Path(path)
-    if path.suffix.lower() != ".h5":
-        raise ValueError("CFDX case must use an .h5 file")
+    if not path.name.lower().endswith(".cfdx.h5"):
+        raise ValueError("CFDX case must use the canonical .cfdx.h5 extension")
     return path
 
 
@@ -55,11 +55,11 @@ def _paired_dat_path(case_path: Path) -> Path:
         name = name[:-len(".cfdx.h5")]
     else:
         name = case_path.stem
-    return case_path.with_name(f"{name}.dat")
+    return case_path.with_name(f"{name}.dat.h5")
 
 
 def save_case(session: CFDXSession, path: Path) -> Path:
-    """Save the case configuration and application checkpoint to HDF5."""
+    """Save only the complete case definition to the canonical HDF5 artifact."""
     path = _validate_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     case_data = session.case.as_dict()
@@ -96,9 +96,8 @@ def save_case(session: CFDXSession, path: Path) -> Path:
         if "geometry_hash" in h5.attrs:
             h5.attrs["geometry_hash"] = str(h5.attrs["geometry_hash"])
 
-        checkpoint = h5.require_group(_CHECKPOINT_GROUP)
-        checkpoint.attrs["iteration"] = session.iteration
-        checkpoint.attrs["time"] = session.time
+        # Numerical iteration/time/field state belongs exclusively to DAT.
+        # The case remains the source of truth for setup/definition.
 
     return path
 
@@ -106,7 +105,7 @@ def save_case(session: CFDXSession, path: Path) -> Path:
 def save_case_with_dat(
     session: CFDXSession, path: Path, dat_path: Path
 ) -> tuple[Path, Path]:
-    """Save HDF5 case state and copy the solver DAT beside it."""
+    """Save the case and canonicalize a numerical DAT checkpoint beside it."""
     dat_path = Path(dat_path)
     if not dat_path.is_file():
         raise FileNotFoundError(dat_path)
@@ -115,12 +114,6 @@ def save_case_with_dat(
     target_dat = _paired_dat_path(case_path)
     restart = read_dat_restart(dat_path)
     write_dat_hdf5(target_dat, restart)
-
-    with h5py.File(case_path, "r+") as h5:
-        restart = h5.require_group(_RESTART_GROUP)
-        restart.attrs["dat_filename"] = target_dat.name
-        restart.attrs["dat_sha256"] = _sha256(target_dat)
-        restart.attrs["dat_size"] = target_dat.stat().st_size
 
     return case_path, target_dat
 
@@ -153,15 +146,13 @@ def _read_session(path: Path) -> CFDXSession:
                 materials=dict(data.get("materials", {})),
                 execution=execution,
             )
-            checkpoint = h5[_CHECKPOINT_GROUP].attrs
+            # Loading a case never consumes numerical restart state.
             session = CFDXSession(
                 case=case,
                 case_revision=int(h5.attrs["case_revision"]),
                 mesh_revision=int(h5.attrs["mesh_revision"]),
                 physics_revision=int(h5.attrs["physics_revision"]),
                 numerics_revision=int(h5.attrs["numerics_revision"]),
-                iteration=int(checkpoint["iteration"]),
-                time=float(checkpoint["time"]),
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("invalid CFDX HDF5 case content") from exc
@@ -189,6 +180,10 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
         mesh_hash = h5.attrs.get("mesh_hash")
         if isinstance(mesh_hash, bytes):
             mesh_hash = mesh_hash.decode("utf-8")
+        raw = h5[_CASE_DATASET][()]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        data = json.loads(raw)
         expected_case_hash = _canonical_case_hash(data, mesh_hash)
         recorded_case_hash = h5.attrs["case_hash"]
         if isinstance(recorded_case_hash, bytes):
@@ -197,10 +192,6 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
             raise ValueError("case integrity hash mismatch")
         if "fields" not in h5 or "values" not in h5["fields"]:
             raise ValueError("fields data is missing from the self-contained case")
-        raw = h5[_CASE_DATASET][()]
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        data = json.loads(raw)
         if not isinstance(data.get("physics"), dict):
             raise ValueError("physics configuration is missing")
         if not isinstance(data.get("numerics"), dict):
@@ -221,17 +212,8 @@ def read_case_with_dat(
     case_path = _validate_path(path)
     session = _read_session(case_path)
 
-    with h5py.File(case_path, "r") as h5:
-        if _RESTART_GROUP not in h5:
-            raise ValueError("case does not contain a paired DAT restart")
-        restart = h5[_RESTART_GROUP].attrs
-        recorded_name = str(restart["dat_filename"])
-        recorded_hash = str(restart["dat_sha256"])
-
-    candidate = Path(dat_path) if dat_path is not None else case_path.with_name(recorded_name)
+    candidate = Path(dat_path) if dat_path is not None else _paired_dat_path(case_path)
     if not candidate.is_file():
         raise FileNotFoundError(candidate)
-    if _sha256(candidate) != recorded_hash:
-        raise ValueError("DAT restart is incompatible with the CFDX case")
-
+    read_dat_restart(candidate)
     return session, candidate

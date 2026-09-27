@@ -107,7 +107,7 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         QFileDialog,
         "getSaveFileName",
-        staticmethod(lambda *args, **kwargs: (str(case_path), "CFDX Case (*.cfdx.h5 *.h5)")),
+        staticmethod(lambda *args, **kwargs: (str(case_path), "CFDX Case (*.cfdx.h5)")),
     )
     assert window._save_case_as()
     assert case_path.is_file()
@@ -118,7 +118,7 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         staticmethod(lambda *args, **kwargs: (str(dat_source), "Solver restart (*.dat)")),
     )
     assert window._save_case_with_dat()
-    assert (tmp_path / "channel.dat").is_file()
+    assert (tmp_path / "channel.dat.h5").is_file()
 
     window.close()
     app.quit()
