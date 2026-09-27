@@ -199,8 +199,8 @@ private:
         }
 
         for (std::size_t i = 0; i < nc; ++i) {
-            for (const auto [f, acf] : coarse_to_fine_[i]) {
-                for (const auto [c, afc] : fine_to_coarse_[f]) {
+            for (const auto& [f, acf] : coarse_to_fine_[i]) {
+                for (const auto& [c, afc] : fine_to_coarse_[f]) {
                     rows[i].push_back({c, -acf * inverse_diag[f] * afc});
                 }
             }
