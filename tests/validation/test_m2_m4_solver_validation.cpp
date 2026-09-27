@@ -96,7 +96,7 @@ int main()
                   << " iterations=" << r.iterations
                   << " temperature=" << T(0)
                   << " residual=" << r.temperature_residuals.back()
-                  << " balance=" << r.energy_balance_residuals.back() << '\\n';
+                  << " balance=" << r.energy_balance_residuals.back() << '\n';
         EXPECT_TRUE(r.converged);
         const double total_conductivity=
             ec.conductivity+rosseland_conductivity(T(0),a(0));
