@@ -24,21 +24,23 @@ struct TurbulenceCapability {
     bool supports_transient=true;
     bool supports_2d=true;
     bool supports_3d=true;
+    const char* required_fields="";
+    const char* missing="";
 };
 inline constexpr std::array<TurbulenceCapability,13> turbulence_capabilities{{
-    {AdvancedTurbulenceModel::LAMINAR,"LAMINAR","Laminar",TurbulenceFamily::LAMINAR,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::CLOSURE,0,true,true,true,true},
-    {AdvancedTurbulenceModel::KEPSILON,"KEPSILON","k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
-    {AdvancedTurbulenceModel::RNG_KEPSILON,"RNG_KEPSILON","RNG k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
-    {AdvancedTurbulenceModel::REALIZABLE_KEPSILON,"REALIZABLE_KEPSILON","Realizable k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
-    {AdvancedTurbulenceModel::KOMEGA,"KOMEGA","k-omega",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
-    {AdvancedTurbulenceModel::SST,"SST","k-omega SST",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
-    {AdvancedTurbulenceModel::SPALART_ALLMARAS,"SPALART_ALLMARAS","Spalart-Allmaras",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,1,true,true,true,true},
-    {AdvancedTurbulenceModel::SMAGORINSKY,"SMAGORINSKY","Smagorinsky LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
-    {AdvancedTurbulenceModel::WALE,"WALE","WALE LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
-    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::PLANNED,TurbulenceImplementationKind::CLOSURE,1,false,true,false,true},
-    {AdvancedTurbulenceModel::DES,"DES","DES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
-    {AdvancedTurbulenceModel::DDES,"DDES","DDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
-    {AdvancedTurbulenceModel::IDDES,"IDDES","IDDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true}
+    {AdvancedTurbulenceModel::LAMINAR,"LAMINAR","Laminar",TurbulenceFamily::LAMINAR,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::CLOSURE,0,true,true,true,true,"U","turbulence transport, wall treatment and turbulence V&V are not applicable"},
+    {AdvancedTurbulenceModel::KEPSILON,"KEPSILON","k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","model-specific wall treatment, turbulence inlet specification and quantitative benchmark campaign"},
+    {AdvancedTurbulenceModel::RNG_KEPSILON,"RNG_KEPSILON","RNG k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","wall treatment contract and dedicated quantitative RNG benchmark campaign"},
+    {AdvancedTurbulenceModel::REALIZABLE_KEPSILON,"REALIZABLE_KEPSILON","Realizable k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","full mesh/y+ sensitivity and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::KOMEGA,"KOMEGA","k-omega",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,omega","wall treatment contract and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SST,"SST","k-omega SST",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,omega","transition/corrections are not yet exposed; complete wall-treatment and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SPALART_ALLMARAS,"SPALART_ALLMARAS","Spalart-Allmaras",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,1,true,true,true,true,"nu_tilde","negative/rotation/compressibility/QCR variants and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SMAGORINSKY,"SMAGORINSKY","Smagorinsky LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity gradient,Delta","LES transient driver, SGS BC contract, wall treatment and V&V"},
+    {AdvancedTurbulenceModel::WALE,"WALE","WALE LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity-gradient tensor,Delta","full tensor WALE kernel integration, LES transient driver, wall treatment and V&V"},
+    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::PLANNED,TurbulenceImplementationKind::CLOSURE,1,false,true,false,true,"k_sgs,velocity gradient,Delta","complete dynamic SGS transport, test filtering, clipping, LES driver and V&V"},
+    {AdvancedTurbulenceModel::DES,"DES","DES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance","RANS base-model coupling, shielding/length-scale integration, transient 3-D driver and V&V"},
+    {AdvancedTurbulenceModel::DDES,"DDES","DDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","base-model coupling, complete shielding integration, wall treatment, transient 3-D driver and V&V"},
+    {AdvancedTurbulenceModel::IDDES,"IDDES","IDDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","IDDES stress/wake shielding and blending integration, wall treatment, transient 3-D driver and V&V"}
 }};
 inline constexpr const TurbulenceCapability& turbulence_capability(AdvancedTurbulenceModel model) {
     for (const auto& c : turbulence_capabilities) if (c.model==model) return c;
