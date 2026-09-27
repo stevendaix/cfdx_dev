@@ -327,8 +327,25 @@ def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
 def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object]:
     normalized = turbulence_model_from_case(values)
     model = turbulence_model(str(normalized["model"]))
+
+    # Scale-resolving LES/hybrid closures require the transient 3-D driver.
+    # Keep this guard explicit because manually authored case files bypass the
+    # GUI filtering and must not be able to force a steady DES/DDES/IDDES case.
+    solver_type = str(
+        values.get("solver_type", values.get("time_integration", "steady"))
+    ).strip().lower()
+    if solver_type in {"steady", "stationary"} and model.family in {
+        TurbulenceFamily.LES,
+        TurbulenceFamily.HYBRID,
+    }:
+        raise ValueError(
+            f"{model.label} requires a transient 3-D scale-resolving solver; "
+            "steady/stationary turbulence selection is invalid"
+        )
     if model.status is not TurbulenceStatus.SOLVER_READY:
-        raise ValueError(f"{model.label} is {model.status.value}; it is not a production solver model")
+        raise ValueError(
+            f"{model.label} is {model.status.value}; it is not a production solver model"
+        )
     if normalized["wall_treatment"] not in {"resolved", "wall_function", "all_y_plus", "none"}:
         raise ValueError("unsupported turbulence wall treatment")
     if not isinstance(normalized["corrections"], dict):
