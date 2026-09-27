@@ -42,7 +42,11 @@ int main() {
     {
         const RealizableKEpsilonInvariants inv{S,1.2,0.15};
         const auto q=realizable_kepsilon_cell_sources(k,eps,inv,c);
-        const double cmu=realizable_kepsilon_cmu_from_invariants(inv,k,eps,c.realizable_A0);
+        const double W=std::clamp(inv.third_invariant,-1.0/std::sqrt(6.0),1.0/std::sqrt(6.0));
+        const double phi=std::acos(std::sqrt(6.0)*W)/3.0;
+        const double As=std::sqrt(6.0)*std::cos(phi);
+        const double Ustar=std::sqrt(S*S+inv.rotation_magnitude*inv.rotation_magnitude);
+        const double cmu=1.0/(c.realizable_A0+As*Ustar*k/eps);
         const double nut=cmu*k*k/eps, P=c.density*nut*S*S;
         const double c1=std::max(0.43,(S*k/eps)/((S*k/eps)+5.0));
         expect_close(q.cmu,cmu); expect_close(q.nut,nut);
@@ -88,9 +92,18 @@ int main() {
     {
         SpalartAllmarasModel sa;
         const double rho=c.density, nu=c.molecular_viscosity, wt=0.01, vort=2.0, d=y;
-        const double chi=wt/nu, st=sa_modified_vorticity(vort,wt,chi,d,sa);
+        const double chi=wt/nu;
+        const double chi3=chi*chi*chi;
+        const double fv1=chi3/(chi3+std::pow(sa.cv1,3.0));
+        const double fv2=1.0-chi/(1.0+chi*fv1);
+        const double sbar=wt*fv2/(sa.kappa*sa.kappa*d*d);
+        constexpr double cv2=0.7, cv3=0.9;
+        const double st=sbar>=-cv2*vort ? vort+sbar :
+            vort+vort*(cv2*cv2*vort+cv3*sbar)/((cv3-2.0*cv2)*vort-sbar);
         const double r=std::min(wt/(st*sa.kappa*sa.kappa*d*d),10.0);
-        const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
+        const double g=r+sa.cw2*(std::pow(r,6.0)-r);
+        const double fw=g*std::pow((1.0+std::pow(sa.cw3,6.0))/(std::pow(g,6.0)+std::pow(sa.cw3,6.0)),1.0/6.0);
+        const double ft2=sa.ct3*std::exp(-sa.ct4*chi*chi);
         const double prod=sa.cb1*(1.0-ft2)*st;
         const double destr=(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa))*wt/(d*d);
         const auto chi3=std::pow(chi,3.0);
@@ -135,6 +148,22 @@ int main() {
     const double dynamic_expected=dynamic_Ck*delta*std::sqrt(0.25);
     expect_close(dynamic_one_equation_eddy_viscosity(0.25,delta,dynamic_Ck),dynamic_expected);
     expect_close(dynamic_les_coefficient(0.5,0.2,2.0),0.15);
+
+    expect_close(ddes_shielding(0.0),1.0);
+    expect_close(ddes_shielding(1.0),1.0-std::tanh(std::pow(8.0,3.0)));
+    expect_close(iddes_shielding(0.0,0.0),1.0);
+    expect_close(iddes_shielding(0.0,1.0),1.0);
+    expect_close(iddes_shielding(1.0,1.0),ddes_shielding(1.0));
+    expect_close(dynamic_les_coefficient(2.0,1.0,2.0),0.5);
+    expect_close(dynamic_les_coefficient(0.0,2.0,2.0),0.0);
+    expect_close(dynamic_les_coefficient(3.0,0.0,2.0,0.0,0.23),0.23);
+
+    bool rejected=false;
+    try { (void)dynamic_les_coefficient(1.0,0.0,0.0); } catch(const std::invalid_argument&) { rejected=true; }
+    if(!rejected) throw std::runtime_error("dynamic LES denominator guard failed");
+    rejected=false;
+    try { (void)dynamic_one_equation_eddy_viscosity(-1.0,delta); } catch(const std::invalid_argument&) { rejected=true; }
+    if(!rejected) throw std::runtime_error("dynamic one-equation input guard failed");
 
     std::cout << "turbulence qualification equation references: PASS\n";
     return 0;
