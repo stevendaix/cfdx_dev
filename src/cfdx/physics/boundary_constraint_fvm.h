@@ -4,6 +4,7 @@
 #include "cfdx/core/boundary/mathematical_condition.h"
 #include "cfdx/core/boundary/boundary.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/field/field.h"
 #include <cmath>
 #include <cstddef>
 #include <map>
