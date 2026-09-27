@@ -1168,7 +1168,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
     if (diagnostics.coupled_matrix_summary) {
-        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
+        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner->name()
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
     }
