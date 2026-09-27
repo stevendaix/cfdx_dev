@@ -101,6 +101,142 @@ inline double point_triangle_distance2(const WallDistanceVec3& p,
     return wd_norm2(p-(a+ab*v+ac*w));
 }
 
+struct WallDistanceAabb {
+    WallDistanceVec3 lo{std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::infinity()};
+    WallDistanceVec3 hi{-std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity()};
+};
+
+inline WallDistanceAabb wall_distance_expand(WallDistanceAabb box,
+                                              const WallDistanceVec3& p) {
+    box.lo.x=std::min(box.lo.x,p.x); box.lo.y=std::min(box.lo.y,p.y); box.lo.z=std::min(box.lo.z,p.z);
+    box.hi.x=std::max(box.hi.x,p.x); box.hi.y=std::max(box.hi.y,p.y); box.hi.z=std::max(box.hi.z,p.z);
+    return box;
+}
+
+inline double wall_distance_aabb_distance2(const WallDistanceAabb& box,
+                                            const WallDistanceVec3& p) {
+    const auto axis=[](double x,double lo,double hi) {
+        return x<lo ? lo-x : (x>hi ? x-hi : 0.0);
+    };
+    const double dx=axis(p.x,box.lo.x,box.hi.x);
+    const double dy=axis(p.y,box.lo.y,box.hi.y);
+    const double dz=axis(p.z,box.lo.z,box.hi.z);
+    return dx*dx+dy*dy+dz*dz;
+}
+
+class WallDistanceBvh {
+public:
+    explicit WallDistanceBvh(const WallSurface& surface) : surface_(surface) {
+        if(surface_.points.empty() || surface_.triangles.empty())
+            throw std::invalid_argument("wall distance BVH surface is empty");
+        indices_.resize(surface_.triangles.size());
+        for(std::size_t i=0;i<indices_.size();++i) indices_[i]=i;
+        nodes_.reserve(indices_.size()*2);
+        build(0,indices_.size());
+    }
+
+    double nearest_distance(const WallDistanceVec3& p) const {
+        double best2=std::numeric_limits<double>::infinity();
+        nearest(0,p,best2);
+        return std::sqrt(best2);
+    }
+
+    std::size_t triangle_count() const { return surface_.triangles.size(); }
+    std::size_t node_count() const { return nodes_.size(); }
+
+private:
+    struct Node {
+        WallDistanceAabb box{};
+        std::size_t begin{0}, end{0};
+        std::size_t left{std::numeric_limits<std::size_t>::max()};
+        std::size_t right{std::numeric_limits<std::size_t>::max()};
+        bool leaf{false};
+    };
+
+    const WallSurface& surface_;
+    std::vector<std::size_t> indices_;
+    std::vector<Node> nodes_;
+    static constexpr std::size_t leaf_size_=4;
+
+    WallDistanceAabb triangle_box(std::size_t ti) const {
+        const auto& t=surface_.triangles[ti];
+        WallDistanceAabb box;
+        box=wall_distance_expand(box,surface_.points[t.v[0]]);
+        box=wall_distance_expand(box,surface_.points[t.v[1]]);
+        box=wall_distance_expand(box,surface_.points[t.v[2]]);
+        return box;
+    }
+
+    WallDistanceVec3 triangle_centroid(std::size_t ti) const {
+        const auto& t=surface_.triangles[ti];
+        return (surface_.points[t.v[0]]+surface_.points[t.v[1]]+surface_.points[t.v[2]])*(1.0/3.0);
+    }
+
+    std::size_t build(std::size_t begin,std::size_t end) {
+        const std::size_t node_id=nodes_.size();
+        nodes_.push_back({});
+        Node& node=nodes_.back();
+        node.begin=begin; node.end=end;
+        for(std::size_t i=begin;i<end;++i) {
+            const auto box=triangle_box(indices_[i]);
+            node.box=wall_distance_expand(node.box,box.lo);
+            node.box=wall_distance_expand(node.box,box.hi);
+        }
+        const std::size_t count=end-begin;
+        if(count<=leaf_size_) {
+            node.leaf=true;
+            return node_id;
+        }
+        const auto extent=node.box.hi-node.box.lo;
+        int axis=0;
+        if(extent.y>extent.x && extent.y>=extent.z) axis=1;
+        else if(extent.z>extent.x && extent.z>extent.y) axis=2;
+        const std::size_t mid=begin+count/2;
+        auto coord=[axis](const WallDistanceVec3& p) {
+            return axis==0?p.x:(axis==1?p.y:p.z);
+        };
+        std::nth_element(indices_.begin()+static_cast<std::ptrdiff_t>(begin),
+                         indices_.begin()+static_cast<std::ptrdiff_t>(mid),
+                         indices_.begin()+static_cast<std::ptrdiff_t>(end),
+                         [&](std::size_t a,std::size_t b) {
+                             return coord(triangle_centroid(a))<coord(triangle_centroid(b));
+                         });
+        const std::size_t left=build(begin,mid);
+        const std::size_t right=build(mid,end);
+        nodes_[node_id].left=left;
+        nodes_[node_id].right=right;
+        return node_id;
+    }
+
+    void nearest(std::size_t node_id,const WallDistanceVec3& p,double& best2) const {
+        const Node& node=nodes_[node_id];
+        if(wall_distance_aabb_distance2(node.box,p)>=best2) return;
+        if(node.leaf) {
+            for(std::size_t i=node.begin;i<node.end;++i) {
+                const auto& t=surface_.triangles[indices_[i]];
+                best2=std::min(best2,point_triangle_distance2(
+                    p,surface_.points[t.v[0]],surface_.points[t.v[1]],surface_.points[t.v[2]]));
+            }
+            return;
+        }
+        const Node& left=nodes_[node.left];
+        const Node& right=nodes_[node.right];
+        const double dl=wall_distance_aabb_distance2(left.box,p);
+        const double dr=wall_distance_aabb_distance2(right.box,p);
+        if(dl<dr) {
+            nearest(node.left,p,best2);
+            nearest(node.right,p,best2);
+        } else {
+            nearest(node.right,p,best2);
+            nearest(node.left,p,best2);
+        }
+    }
+};
+
 inline double exact_point_distance(const WallSurface& s,const WallDistanceVec3& p) {
     if(s.points.empty() || s.triangles.empty())
         throw std::invalid_argument("wall distance surface is empty");
@@ -156,12 +292,15 @@ inline std::vector<double> exact_reference(const WallSurface& s,const WallDistan
 
 inline std::vector<double> search_based_reference(const WallSurface& s,const WallDistanceGrid& g,double threshold) {
     // NASA-style two-stage search: vertex distance is a cheap global estimate;
-    // face distance is evaluated only inside the turbulence-relevant threshold.
+    // exact face distance is evaluated only inside the turbulence-relevant threshold.
+    // The exact face query uses a BVH so the production path does not scale as
+    // O(number_of_query_points * number_of_wall_triangles).
+    const WallDistanceBvh bvh(s);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
         double vertex2=std::numeric_limits<double>::infinity();
         for(const auto& v:s.points) vertex2=std::min(vertex2,wd_norm2(g.points[i]-v));
-        if(std::sqrt(vertex2)<=threshold) d[i]=exact_point_distance(s,g.points[i]);
+        if(std::sqrt(vertex2)<=threshold) d[i]=bvh.nearest_distance(g.points[i]);
         else d[i]=std::sqrt(vertex2);
     }
     return d;
