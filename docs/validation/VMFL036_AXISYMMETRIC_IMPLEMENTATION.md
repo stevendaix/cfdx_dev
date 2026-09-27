@@ -1,6 +1,6 @@
 # VMFL036 native axisymmetric implementation
 
-The VMFL036 implementation now has a dedicated native meridional solver backend. It does not reuse the Cartesian 3-D Mesh/FvGeometry operators and does not emulate axisymmetry with an EMPTY extrusion.
+The VMFL036 implementation contains a dedicated native meridional solver backend. It does not reuse the Cartesian 3-D Mesh/FvGeometry operators and does not emulate axisymmetry with an EMPTY extrusion. The backend is still under numerical audit until the physical CI campaign produces finite, converged and mesh-consistent drag results.
 
 ## 11-point implementation status
 
@@ -13,8 +13,8 @@ The VMFL036 implementation now has a dedicated native meridional solver backend.
 7. **Boundary conditions** — no-slip sphere, velocity inlet on the upstream outer arc, pressure outlet on the downstream outer arc, and explicit axis symmetry; together these form the documented circular 50D domain.
 8. **Independent drag** — sphere traction is integrated separately into pressure and viscous components and converted with the projected area pi*D^2/4.
 9. **Operator verification** — test_axisymmetric_vmfl036_kernel checks revolution metrics, cylindrical divergence/Laplacian, viscous terms, axis guards and drag metrics.
-10. **Physical VMFL036 campaign** — test_vmfl036_axisymmetric executes both Fluent-exact mu=0.02 (Re=50) and literature-aligned mu=0.01 (Re=100), with coarse/medium/fine Re=100 refinement.
-11. **CI/V&V traceability** — the physical executable is registered as fast and long validation, and validation_report.py consumes its solver output.
+10. **Physical VMFL036 campaign** — test_vmfl036_axisymmetric executes both Fluent-exact mu=0.02 (Re=50) and literature-aligned mu=0.01 (Re=100), with coarse/medium/fine Re=100 refinement. The campaign is not considered validated until all levels remain finite, converge, and satisfy the refinement/reference gates.
+11. **CI/V&V traceability** — the physical executable is registered as fast and long validation, and validation_report.py consumes its solver output. A failed executable or missing log is a validation failure, not a skip.
 
 ## Canonical cases
 
@@ -50,4 +50,4 @@ The physical campaign must report:
 
 A reference value is never used as a solver result. No fixed-iteration PASS, analytical result injection, tolerance inflation, disabled physical test, or hidden 3-D substitution is permitted.
 
-The standalone axisymmetric backend is intentionally isolated from the generic 3-D solver so that its metric and cylindrical operators can be verified before a future unification of the general geometry API. It is nevertheless a real finite-volume pressure/velocity solve, not a post-processing wrapper around the 3-D Cartesian solver.
+The standalone axisymmetric backend is intentionally isolated from the generic 3-D solver so that its metric and cylindrical operators can be verified before a future unification of the general geometry API. It is nevertheless a real finite-volume pressure/velocity solve, not a post-processing wrapper around the 3-D Cartesian solver. Surface-force extraction is delegated to the solver-independent cfdx/physics/forces.h API; the axisymmetric kernel no longer maintains a second drag implementation.
