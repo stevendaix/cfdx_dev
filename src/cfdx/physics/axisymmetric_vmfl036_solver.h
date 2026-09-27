@@ -256,7 +256,11 @@ private:
             }else{
                 u=boundary_ux(f,f.owner); v=boundary_ur(f,f.owner);
             }
+            if(!std::isfinite(f.area) || f.area<0.0 || !std::isfinite(u) || !std::isfinite(v))
+                throw std::runtime_error("VMFL036 non-finite face flux input at face "+std::to_string(k));
             phi_[k]=rho_*f.area*(u*f.nx+v*f.nr);
+            if(!std::isfinite(phi_[k]))
+                throw std::runtime_error("VMFL036 non-finite face flux at face "+std::to_string(k));
         }
     }
 
@@ -320,9 +324,17 @@ private:
                 }
             }
             // Cylindrical radial viscous term -nu*u_r/r^2, implicit.
-            const double rr=std::max(ce.cr,1e-10);
-            ar+=mu_*m_.cells[cell].volume/(rr*rr);
+            if(!std::isfinite(ce.cr) || !(ce.cr>0.0))
+                throw std::runtime_error("VMFL036 invalid positive cell radius at cell "+std::to_string(cell));
+            const double rr=ce.cr;
+            const double hoop=mu_*m_.cells[cell].volume/(rr*rr);
+            if(!std::isfinite(hoop) || !(hoop>0.0))
+                throw std::runtime_error("VMFL036 invalid radial geometric coefficient at cell "+std::to_string(cell));
+            ar+=hoop;
             const double oldx=ux[cell], oldr=ur[cell];
+            if(!std::isfinite(ax) || !std::isfinite(ar) || !(ax>0.0) || !(ar>0.0))
+                throw std::runtime_error("VMFL036 invalid momentum coefficients at cell "+
+                    std::to_string(cell)+" ax="+std::to_string(ax)+" ar="+std::to_string(ar));
             apx[cell]=ax/c.alpha_u; apr[cell]=ar/c.alpha_u;
             bx+=(1.0-c.alpha_u)/c.alpha_u*ax*oldx;
             br+=(1.0-c.alpha_u)/c.alpha_u*ar*oldr;
@@ -330,6 +342,12 @@ private:
             for(std::size_t s=0;s<c.momentum_sweeps;++s){
                 const double nx=nxux[cell], nr=nxur[cell];
                 const double sx=(nx+bx)/apx[cell], sr=(nr+br)/apr[cell];
+                if(!std::isfinite(sx) || !std::isfinite(sr))
+                    throw std::runtime_error(
+                        "VMFL036 non-finite momentum sweep at cell "+std::to_string(cell)+
+                        " sweep="+std::to_string(s)+
+                        " ux="+std::to_string(sx)+" ur="+std::to_string(sr)+
+                        " apx="+std::to_string(apx[cell])+" apr="+std::to_string(apr[cell]));
                 ux[cell]=sx; ur[cell]=sr;
                 // Remove the old neighbour contribution and refresh on the next sweep.
                 // A full neighbour refresh is inexpensive for this deterministic mesh.
@@ -345,17 +363,21 @@ private:
                         sumx+=aa*ux[nb2]; sumr+=aa*ur[nb2];
                     }
                 }
-                ux[cell]=(sumx+bx)/apx[cell];
-                ur[cell]=(sumr+br)/apr[cell];
+                const double ux_new=(sumx+bx)/apx[cell];
+                const double ur_new=(sumr+br)/apr[cell];
+                if(!std::isfinite(ux_new) || !std::isfinite(ur_new))
+                    throw std::runtime_error(
+                        "VMFL036 non-finite momentum update at cell "+std::to_string(cell)+
+                        " ux="+std::to_string(ux_new)+" ur="+std::to_string(ur_new)+
+                        " apx="+std::to_string(apx[cell])+" apr="+std::to_string(apr[cell])+
+                        " bx="+std::to_string(bx)+" br="+std::to_string(br)+
+                        " r="+std::to_string(ce.cr));
+                ux[cell]=ux_new; ur[cell]=ur_new;
             }
         }
-        for(std::size_t c0=0;c0<n_;++c0){
-            if(m_.cells[c0].i==0){
-                // no-slip sphere includes both velocity components at the body.
-                ux[c0]=std::max(0.0,std::min(0.0,ux[c0]));
-                ur[c0]=0.0;
-            }
-        }
+        // Boundary conditions are imposed through boundary-face fluxes and
+        // diffusion stencils. Do not overwrite cell-centred unknowns here:
+        // boundary cells still represent fluid volume and must remain solvable.
     }
 
     double momentum_residual(const std::vector<double>& ux,const std::vector<double>& ur,
@@ -422,7 +444,14 @@ private:
             if(maxcorr<c.pressure_tolerance) break;
         }
         for(std::size_t cell=0;cell<n_;++cell){
-            // pressure correction gradient; boundary p'=0.
+            if(!std::isfinite(diag[cell]) || !(diag[cell]>0.0))
+                throw std::runtime_error("VMFL036 invalid pressure-correction diagonal at cell "+
+                    std::to_string(cell)+" value="+std::to_string(diag[cell]));
+            if(!std::isfinite(rhs[cell]))
+                throw std::runtime_error("VMFL036 non-finite pressure-correction RHS at cell "+
+                    std::to_string(cell)+" value="+std::to_string(rhs[cell]));
+        }
+        // pressure correction gradient; boundary p'=0.
             double gx=0.0,gr=0.0;
             for(const auto fid:m_.cells[cell].faces){
                 const auto& f=m_.faces[fid];
@@ -434,15 +463,22 @@ private:
                 gx+=qf*f.nx*f.area; gr+=qf*f.nr*f.area;
             }
             gx/=m_.cells[cell].volume; gr/=m_.cells[cell].volume;
+            if(!std::isfinite(apx_[cell]) || !(apx_[cell]>0.0) ||
+               !std::isfinite(apr_[cell]) || !(apr_[cell]>0.0))
+                throw std::runtime_error("VMFL036 invalid momentum diagonal during pressure correction at cell "+
+                    std::to_string(cell));
             ux_[cell]-=c.alpha_u*m_.cells[cell].volume/apx_[cell]*gx;
             ur_[cell]-=c.alpha_u*m_.cells[cell].volume/apr_[cell]*gr;
-        }
-        for(std::size_t cell=0;cell<n_;++cell){
-            if(m_.cells[cell].i==0){ux_[cell]=0.0;ur_[cell]=0.0;}
-            if(m_.cells[cell].i+1==m_.nr){ux_[cell]=1.0;ur_[cell]=0.0;}
-            if(m_.cells[cell].j==0 || m_.cells[cell].j+1==m_.nt) ur_[cell]=0.0;
+            if(!std::isfinite(ux_[cell]) || !std::isfinite(ur_[cell]))
+                throw std::runtime_error("VMFL036 non-finite corrected velocity at cell "+
+                    std::to_string(cell));
             p_[cell]+=c.alpha_p*pc_[cell];
+            if(!std::isfinite(p_[cell]))
+                throw std::runtime_error("VMFL036 non-finite corrected pressure at cell "+
+                    std::to_string(cell));
         }
+        // Do not impose inlet/outlet/wall values by overwriting cell centres.
+        // The boundary-face treatment above is the actual finite-volume BC.
         compute_fluxes();
         return maxcorr;
     }
