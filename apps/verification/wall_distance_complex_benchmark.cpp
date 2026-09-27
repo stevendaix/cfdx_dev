@@ -65,7 +65,7 @@ bool inside_complex(const WallDistanceVec3& p) {
     return false;
 }
 
-struct Row { std::string method; double l2,linf,near_l2,violations; double ms; };
+struct Row { std::string method; double l2,linf,near_l2,violations; std::size_t invalid; double ms; };
 
 } // namespace
 
@@ -101,7 +101,7 @@ int main(int argc,char** argv) {
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,ms});
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,0,ms});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","

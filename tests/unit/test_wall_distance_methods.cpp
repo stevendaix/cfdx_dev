@@ -65,6 +65,104 @@ int main() {
                                "search-based near-wall distance mismatch");
     }
 
+    const auto mesh=compute_wall_distance(WallDistanceMethod::MESH_WAVE,s,g,40);
+    const auto directional=compute_wall_distance(WallDistanceMethod::DIRECTIONAL_MESH_WAVE,s,g,40);
+    const auto eik=compute_wall_distance(WallDistanceMethod::EIKONAL,s,g,40);
+    const auto hj=compute_wall_distance(WallDistanceMethod::HAMILTON_JACOBI,s,g,40);
+    const auto adv=compute_wall_distance(WallDistanceMethod::ADVECTION_DIFFUSION,s,g,40);
+    bool directional_differs=false, hj_differs=false, adv_differs=false;
+    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
+        directional_differs |= std::abs(mesh.distance[i]-directional.distance[i])>1e-13;
+        hj_differs |= std::abs(eik.distance[i]-hj.distance[i])>1e-13;
+        adv_differs |= std::abs(eik.distance[i]-adv.distance[i])>1e-13;
+    }
+    require(directional_differs,"directional mesh wave collapsed to isotropic mesh wave");
+    require(hj_differs,"Hamilton-Jacobi collapsed to Eikonal");
+    require(adv_differs,"advection-diffusion collapsed to Eikonal");
+
+    // Canonical analytical test: an infinite planar wall at x=0 has
+    // d(x,y,z)=x for x>=0, |grad d|=1 and laplacian(d)=0. This isolates
+    // the PDE operators from geometry/corner errors.
+    WallSurface plane;
+    plane.points={{0,-1,-1},{0,1,-1},{0,1,1},{0,-1,1}};
+    plane.triangles={{{0,1,2}},{{0,2,3}}};
+    const auto pg=make_wall_distance_grid(
+        9,5,5,{0,-1,-1},{0.25,0.5,0.5},
+        [](const WallDistanceVec3& p){ return p.x<0.0; });
+    const std::size_t pc=pg.index(4,2,2);
+    std::vector<double> linear(pg.points.size(),0.0);
+    for(std::size_t id=0;id<linear.size();++id) linear[id]=pg.points[id].x;
+    require(std::abs(godunov_gradient_at(linear,pg,pc)-1.0)<1e-13,
+            "Godunov gradient is not exact for d=x");
+    require(std::abs(laplacian_at(linear,pg,pc))<1e-13,
+            "Laplacian is not exact for the linear planar solution");
+    const double hj_linear_residual =
+        godunov_gradient_at(linear,pg,pc)-1.0-0.25*pg.points[pc].x*laplacian_at(linear,pg,pc);
+    require(std::abs(hj_linear_residual)<1e-13,
+            "Hamilton-Jacobi operator is not exact for the linear planar solution");
+    const std::array<WallDistanceMethod,1> plane_methods={{
+        WallDistanceMethod::EIKONAL}};
+    for(const auto method:plane_methods) {
+        const auto r=compute_wall_distance(method,plane,pg,120);
+        for(std::size_t id=0;id<r.distance.size();++id) {
+            const std::size_t k=id/(pg.nx*pg.ny), rem=id%(pg.nx*pg.ny), j=rem/pg.nx, i=rem%pg.nx;
+            // The analytical d=x solution is used only where the Cartesian
+            // stencil is complete. The outer boundary has a separate
+            // numerical boundary condition and is not part of this operator
+            // consistency test.
+            if(pg.solid[id] || i==0 || i+1==pg.nx || j==0 || j+1==pg.ny || k==0 || k+1==pg.nz) continue;
+            const double expected=pg.points[id].x;
+            require(r.valid[id] && std::isfinite(r.distance[id]),
+                    "analytical plane produced an invalid distance");
+            if(std::abs(r.distance[id]-expected)>=2e-10) {
+                const double grad=godunov_gradient_at(r.distance,pg,id);
+                const double lap=laplacian_at(r.distance,pg,id);
+                const double hj_res=grad-1.0-0.25*expected*lap;
+                std::cerr << "planar failure method=" << wall_distance_method_name(method)
+                          << " id=" << id << " i=" << i << " j=" << j << " k=" << k
+                          << " x=" << expected << " value=" << r.distance[id]
+                          << " error=" << std::abs(r.distance[id]-expected)
+                          << " grad=" << grad << " lap=" << lap << " residual=" << hj_res << "\n";
+                throw std::runtime_error("wall-distance PDE failed the analytical planar-wall solution");
+            }
+        }
+    }
+
+    // Poisson operator check independent of the seed-band initialization:
+    // phi(x)=x*L-x^2/2 satisfies phi''=-1 for 0<x<L.
+    const double L=2.0;
+    std::vector<double> phi(pg.points.size(),0.0);
+    std::vector<unsigned char> fixed(pg.points.size(),0);
+    for(std::size_t id=0;id<phi.size();++id) {
+        const double x=pg.points[id].x;
+        phi[id]=x*L-0.5*x*x;
+    }
+    // The quadratic solution is tested only on complete Cartesian
+    // stencils; the truncated outer boundary has its own numerical BC.
+    double poisson_res=0.0;
+    for(std::size_t id=0;id<phi.size();++id) {
+        const std::size_t k=id/(pg.nx*pg.ny), rem=id%(pg.nx*pg.ny), j=rem/pg.nx, i=rem%pg.nx;
+        if(i==0 || i+1==pg.nx || j==0 || j+1==pg.ny || k==0 || k+1==pg.nz) continue;
+        const double h=pg.spacing.x;
+        const double lap=(phi[pg.index(i-1,j,k)]-2.0*phi[id]+phi[pg.index(i+1,j,k)])/(h*h);
+        poisson_res=std::max(poisson_res,std::abs(lap+1.0));
+    }
+    require(poisson_res<1e-13,
+            "discrete Poisson operator is not exact for the analytical planar solution");
+
+    // The hybrid method must be a genuine PDE solve, not an algebraic
+    // combination of completed Poisson and Eikonal distance fields.
+    const auto hybrid=compute_wall_distance(WallDistanceMethod::HYBRID_POISSON_EIKONAL,s,g,40);
+    const auto poisson=compute_wall_distance(WallDistanceMethod::POISSON,s,g,40);
+    const auto eikonal=compute_wall_distance(WallDistanceMethod::EIKONAL,s,g,40);
+    bool differs_from_poisson=false, differs_from_eikonal=false;
+    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
+        differs_from_poisson |= std::abs(hybrid.distance[i]-poisson.distance[i])>1e-10;
+        differs_from_eikonal |= std::abs(hybrid.distance[i]-eikonal.distance[i])>1e-10;
+    }
+    require(differs_from_poisson || differs_from_eikonal,
+            "hybrid method collapsed to an existing completed distance field");
+
     const auto exact=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g,20);
     const auto m=compare_wall_distance(g,ref,exact.distance,0.5);
     require(m.l2_relative<1e-14,"exact benchmark regression failed");
