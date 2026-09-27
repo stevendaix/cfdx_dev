@@ -3,6 +3,7 @@
 #include "cfdx/core/numerics/numerical_method_contract.h"
 
 #include <vector>
+#include <unordered_set>
 
 namespace cfdx::core {
 
@@ -76,8 +77,12 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
 
 inline void validate_numerical_method_registry()
 {
-    for (const auto& method : numerical_method_registry())
+    std::unordered_set<std::string> ids;
+    for (const auto& method : numerical_method_registry()) {
         validate_numerical_method_contract(method);
+        if (!ids.insert(method.id).second)
+            throw std::invalid_argument("duplicate numerical method id: " + method.id);
+    }
 }
 
 } // namespace cfdx::core
