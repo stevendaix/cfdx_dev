@@ -142,14 +142,62 @@ static Result run(const std::string& path, std::size_t level)
     return {lr,last.continuity_linf,solve.iterations};
 }
 
+static void run_quick_contract(const std::string& path)
+{
+    Mesh mesh;
+    if(!cfdx::io::read_mesh_hdf5(path,mesh))
+        throw std::runtime_error("cannot read BFS mesh: "+path);
+    const auto topo=mesh.topo_validate();
+    if(!topo.ok)
+        throw std::runtime_error("invalid BFS topology: "+path);
+
+    const auto geometry=build_fv_geometry(mesh);
+    Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    U.fill(0.0);
+    for(std::size_t i=0;i<mesh.n_cells();++i)
+        U.component_data(0)[i]=1.0;
+
+    cfdx::physics::BoundaryConstraintMap strict_bc;
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "inlet", {1.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_flux_dependent(
+        strict_bc, "outlet", {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "wall", {0.0, 0.0, 0.0});
+    cfdx::validation::add_pressure_neumann(strict_bc, "inlet", 0.0);
+    cfdx::validation::add_pressure_dirichlet(strict_bc, "outlet", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "wall", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "front", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "back", 0.0);
+    const auto validation_flux =
+        cfdx::validation::make_validation_face_flux(mesh, geometry, U);
+    cfdx::validation::exercise_new_velocity_bc_contract(
+        mesh, geometry, strict_bc, validation_flux, "BFS_RE200");
+
+    for(const char* name:{"inlet","outlet","wall","front","back"}) {
+        if(mesh.boundary().find(name)>=mesh.boundary().n_patches())
+            throw std::runtime_error(std::string("BFS required boundary patch is missing: ")+name);
+    }
+    std::cout<<"BFS_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
+             <<" inlet_faces="<<mesh.boundary().patch(mesh.boundary().find("inlet")).size()
+             <<" outlet_faces="<<mesh.boundary().patch(mesh.boundary().find("outlet")).size()
+             <<" wall_faces="<<mesh.boundary().patch(mesh.boundary().find("wall")).size()
+             <<" solver_campaign_pending\\n";
+}
+
 int main(int argc,char**argv)
 {
     const bool quick=argc>=2 && std::string(argv[1])=="--quick";
-    const std::size_t need=quick?1:3;
-    if(argc!=static_cast<int>(need+(quick?2:1)))
-        throw std::invalid_argument("usage: test_bfs_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
+    if(quick) {
+        if(argc!=3)
+            throw std::invalid_argument("usage: test_bfs_qualification --quick mesh_n16.h5");
+        run_quick_contract(argv[2]);
+        return 0;
+    }
+
+    const std::size_t need=3;
+    if(argc!=4)
+        throw std::invalid_argument("usage: test_bfs_qualification mesh_n16.h5 mesh_n32.h5 mesh_n64.h5");
     std::vector<Result> r;
-    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+(quick?2:1)],16u<<i));
+    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],16u<<i));
     for(const auto& x:r) if(!(x.continuity<1e-7)) throw std::runtime_error("BFS continuity gate failed");
     if(!quick) {
         const double e0=std::abs(r[0].lr_h-5.0), e1=std::abs(r[1].lr_h-5.0), e2=std::abs(r[2].lr_h-5.0);
