@@ -97,7 +97,7 @@ struct AxisymMesh {
             f.area=2.0*pi()*std::max(0.0,f.cr)*f.ds;
             f.sphere=boundary && m.cells[c].i==0;
             f.outer=boundary && m.cells[c].i+1==m.nr;
-            f.axis=boundary && (m.cells[c].j==0 || m.cells[c].j+1==m.nt);
+            f.axis=boundary && std::abs(p.r)<1e-14 && std::abs(q.r)<1e-14;
             const std::size_t id=m.faces.size(); m.faces.push_back(f); m.cells[c].faces.push_back(id);
             return id;
         };
