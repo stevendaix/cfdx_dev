@@ -455,16 +455,33 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_link_libraries(test_naca0012_geometry PRIVATE cfdx_core)
     add_test(NAME test_naca0012_geometry COMMAND test_naca0012_geometry --quick)
     set_tests_properties(test_naca0012_geometry PROPERTIES LABELS "qualification;geometry")
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_generate_2d_validation_meshes
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py
+                    all --quick --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
+        set_tests_properties(test_generate_2d_validation_meshes PROPERTIES
+            LABELS "qualification;mesh;validation")
+    endif()
+
     add_executable(test_channel_qualification tests/validation/test_channel_qualification.cpp)
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)
     target_include_directories(test_channel_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick)
+    add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
     set_tests_properties(test_channel_quick PROPERTIES
         LABELS "qualification;validation")
+    if(Python3_Interpreter_FOUND)
+        set_tests_properties(test_channel_quick PROPERTIES DEPENDS test_generate_2d_validation_meshes)
+    endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
-        add_test(NAME test_channel_qualification COMMAND test_channel_qualification)
+        add_test(NAME test_channel_qualification COMMAND test_channel_qualification
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n32.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n64.h5)
         set_tests_properties(test_channel_qualification PROPERTIES
             LABELS "qualification;validation;long")
+        if(Python3_Interpreter_FOUND)
+            set_tests_properties(test_channel_qualification PROPERTIES DEPENDS test_generate_2d_validation_meshes)
+        endif()
     endif()
     add_executable(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
     target_link_libraries(test_poiseuille_diagnostics PRIVATE cfdx_core)
