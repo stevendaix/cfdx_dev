@@ -395,7 +395,6 @@ inline double wall_seed_width(const WallDistanceGrid& g) {
 }
 
 inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid& g,bool directional) {
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
     const auto seeds=wall_seed_nodes(bvh,g,wall_seed_width(g));
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
@@ -695,7 +694,7 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
             add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
             add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
             add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
-            if(diag==0.0) { next[id]=phi[id]; continue; }
+            if(diag==0.0) continue;
             const double target=(sum+1.0)/diag;
             const double updated=(1.0-smooth)*phi[id]+smooth*target;
             max_change=std::max(max_change,std::abs(updated-phi[id]));
