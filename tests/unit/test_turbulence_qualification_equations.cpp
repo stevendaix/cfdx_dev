@@ -10,8 +10,11 @@
 
 namespace {
 void expect_close(double a,double b,double tol=1e-12) {
-    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)}))
+    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {
+        std::cerr << "FAIL actual=" << a << " reference=" << b
+                  << " abs_error=" << std::abs(a-b) << "\\n";
         throw std::runtime_error("turbulence equation reference mismatch");
+    }
 }
 }
 
