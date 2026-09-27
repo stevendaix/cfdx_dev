@@ -105,7 +105,8 @@ struct Result {
 };
 
 inline void validate_reference(const Reference& r) {
-    if (!(r.rho_inf>0.0) || !(r.u_inf>0.0) || !(r.area>0.0))
+    if (!std::isfinite(r.rho_inf) || !std::isfinite(r.u_inf) || !std::isfinite(r.area) ||
+        !(r.rho_inf>0.0) || !(r.u_inf>0.0) || !(r.area>0.0))
         throw std::invalid_argument("forces: invalid reference density, velocity or area");
     if (!std::isfinite(r.pressure_ref))
         throw std::invalid_argument("forces: non-finite reference pressure");
@@ -201,9 +202,12 @@ inline AxisymmetricResult integrate_axisymmetric(
     const std::vector<AxisymmetricSample>& samples,
     double rho_inf, double u_inf, double reference_area)
 {
-    if (!(rho_inf>0.0) || !(u_inf>0.0) || !(reference_area>0.0))
+    if (!std::isfinite(rho_inf) || !std::isfinite(u_inf) || !std::isfinite(reference_area) ||
+        !(rho_inf>0.0) || !(u_inf>0.0) || !(reference_area>0.0))
         throw std::invalid_argument("forces: invalid axisymmetric reference");
     const double q=0.5*rho_inf*u_inf*u_inf;
+    if (!std::isfinite(q) || !(q>0.0))
+        throw std::invalid_argument("forces: invalid axisymmetric dynamic pressure");
     AxisymmetricResult out{};
     for(std::size_t i=0;i<samples.size();++i){
         const auto& s=samples[i];
@@ -214,6 +218,8 @@ inline AxisymmetricResult integrate_axisymmetric(
             !std::isfinite(s.tau_xr) || !std::isfinite(s.tau_rr))
             throw std::invalid_argument("forces: invalid axisymmetric surface sample at index "+std::to_string(i));
         const double dS=2.0*3.141592653589793238462643383279502884*s.r*s.ds;
+        if(!std::isfinite(dS) || dS<0.0)
+            throw std::invalid_argument("forces: invalid axisymmetric surface measure at index "+std::to_string(i));
         // sigma . n, axial component. sigma = -p I + tau.
         const double fp=-s.pressure*s.nx*dS;
         const double fv=(s.tau_xx*s.nx+s.tau_xr*s.nr)*dS;
