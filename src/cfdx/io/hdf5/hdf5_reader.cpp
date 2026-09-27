@@ -173,26 +173,37 @@ static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
         return false;
     }
 
-    hsize_t type_size = H5Tget_size(atype);
-    if (type_size == 0) {
-        type_size = H5Aget_storage_size(attr);
-        if (type_size == 0) type_size = 1;
+    // h5py writes scalar string attributes as HDF5 variable-length strings.
+    // H5Tget_size() is then the size of a char* rather than the string length,
+    // so reading into a char buffer corrupts the value. Handle variable-length
+    // and fixed-length attributes separately.
+    herr_t status = -1;
+    if(H5Tis_variable_str(atype) > 0) {
+        char* value = nullptr;
+        status = H5Aread(attr, atype, &value);
+        if(status >= 0 && value != nullptr) out = value;
+        if(value != nullptr) H5free_memory(value);
+    } else {
+        hsize_t type_size = H5Tget_size(atype);
+        if(type_size == 0) {
+            type_size = H5Aget_storage_size(attr);
+            if(type_size == 0) type_size = 1;
+        }
+        std::size_t buf_size = static_cast<std::size_t>(type_size) + 1;
+        std::vector<char> buf(buf_size, '\0');
+        status = H5Aread(attr, atype, buf.data());
+        if(status >= 0) {
+            out = buf.data();
+            const auto nul = out.find_last_not_of('\0');
+            if(nul == std::string::npos) out.clear();
+            else out.erase(nul + 1);
+        }
     }
-    std::size_t buf_size = static_cast<std::size_t>(type_size) + 1;
-    std::vector<char> buf(buf_size, '\0');
-    
-    herr_t status = H5Aread(attr, atype, buf.data());
-    
+
     H5Tclose(atype);
     H5Aclose(attr);
 
-    if (status < 0) return false;
-
-    out = buf.data();
-    out.erase(out.find_last_not_of('\0') + 1);
-    if (out.empty()) out = std::string(buf.data(), 1);
-
-    return true;
+    return status >= 0;
 }
 
 static std::vector<std::string> parse_patch_metadata(const std::string& patches_str) {
