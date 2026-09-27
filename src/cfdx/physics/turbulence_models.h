@@ -152,6 +152,15 @@ inline double dynamic_les_coefficient(double resolved_stress,double test_stress,
     return std::clamp((resolved_stress-test_stress)/denominator,cmin,cmax);
 }
 
+struct TurbulenceCorrectionCapabilities {
+    bool rotation_curvature=false;
+    bool compressibility=false;
+    bool roughness=false;
+    bool production_limiter=false;
+    bool kato_launder=false;
+    bool qcr=false;
+};
+
 struct TurbulenceCapability {
     AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
     const char* key="LAMINAR";
@@ -166,6 +175,7 @@ struct TurbulenceCapability {
     bool supports_3d=true;
     const char* required_fields="";
     const char* missing="";
+    TurbulenceCorrectionCapabilities corrections{};
 };
 inline constexpr std::array<TurbulenceCapability,13> turbulence_capabilities{{
     {AdvancedTurbulenceModel::LAMINAR,"LAMINAR","Laminar",TurbulenceFamily::LAMINAR,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::CLOSURE,0,true,true,true,true,"U","turbulence transport, wall treatment and turbulence V&V are not applicable"},
@@ -186,6 +196,22 @@ inline constexpr const TurbulenceCapability& turbulence_capability(AdvancedTurbu
     for (const auto& c : turbulence_capabilities) if (c.model==model) return c;
     return turbulence_capabilities[0];
 }
+inline constexpr bool turbulence_correction_supported(
+    AdvancedTurbulenceModel model, TurbulenceCorrection correction)
+{
+    const auto& c=turbulence_capability(model).corrections;
+    switch(correction) {
+    case TurbulenceCorrection::NONE: return true;
+    case TurbulenceCorrection::ROTATION_CURVATURE: return c.rotation_curvature;
+    case TurbulenceCorrection::COMPRESSIBILITY: return c.compressibility;
+    case TurbulenceCorrection::ROUGHNESS: return c.roughness;
+    case TurbulenceCorrection::PRODUCTION_LIMITER: return c.production_limiter;
+    case TurbulenceCorrection::KATO_LAUNDER: return c.kato_launder;
+    case TurbulenceCorrection::QCR: return c.qcr;
+    }
+    return false;
+}
+
 inline constexpr bool turbulence_solver_ready(AdvancedTurbulenceModel model) {
     return turbulence_capability(model).status==TurbulenceImplementationStatus::SOLVER_READY;
 }
