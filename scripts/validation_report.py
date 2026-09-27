@@ -85,7 +85,7 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
 def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
     axis = re.findall(
         r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+) "
-        r"iterations=(?P<iterations>\\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
         r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
         r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
@@ -108,9 +108,9 @@ def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
         return data
 
     result = re.search(
-        r"VMFL036 RESULT iterations=(?P<iterations>\\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"VMFL036 RESULT iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"continuity_norm=(?P<continuity_norm>[-+0-9.eE]+) momentum_eq=(?P<momentum>[-+0-9.eE]+) "
-        r"pressure_linear_iterations=(?P<pressure_iters>\\d+)",
+        r"pressure_linear_iterations=(?P<pressure_iters>\d+)",
         output,
     )
     drag = re.search(
