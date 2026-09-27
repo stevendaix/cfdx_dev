@@ -76,8 +76,8 @@ struct MomentumSource {
 };
 
 inline MomentumSource cylindrical_momentum_viscous(
-    double nu, double d2ux_dr2, double dux_dr, double d2ur_dx2,
-    double d2ur_dr2, double dur_dr, double ur, double r)
+    double nu, double d2ux_dx2, double d2ux_dr2, double dux_dr,
+    double d2ur_dx2, double d2ur_dr2, double dur_dr, double ur, double r)
 {
     if (!(nu >= 0.0) || !std::isfinite(nu))
         throw std::invalid_argument("axisymmetric: invalid viscosity");
@@ -88,7 +88,7 @@ inline MomentumSource cylindrical_momentum_viscous(
     // ∇²u_x = u_x,xx + u_x,rr + (1/r)u_x,r
     // (∇²u)_r = u_r,xx + u_r,rr + (1/r)u_r,r - u_r/r²
     return {
-        nu * (d2ux_dr2 + dux_dr/r + 0.0),
+        nu * (d2ux_dx2 + d2ux_dr2 + dux_dr/r),
         nu * radial_laplacian(d2ur_dr2, dur_dr, ur, r) + nu*d2ur_dx2
     };
 }
