@@ -447,6 +447,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_vmfl036_reference_case tests/validation/test_vmfl036_reference_case.cpp)
+    add_cfdx_test(test_axisymmetric_vmfl036_kernel tests/validation/test_axisymmetric_vmfl036_kernel.cpp)
+    set_tests_properties(test_axisymmetric_vmfl036_kernel PROPERTIES LABELS "phase14;validation;axisymmetric")
     # VMFL036 generates its Gmsh mesh at test runtime. The validation executable
     # therefore needs the repository root itself (and the CI Python interpreter)
     # in its compile-time/runtime configuration. Keep this local to the test;
