@@ -174,6 +174,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/boussinesq.h
     src/cfdx/physics/spalart_allmaras.h
     src/cfdx/physics/wall_distance.h
+    src/cfdx/physics/wall_distance_turbulence.h
     src/cfdx/physics/radiation_streaming.h
     src/cfdx/thermodynamics/thermo_state.h
     src/cfdx/thermodynamics/thermo_cache.h
@@ -258,6 +259,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/steady_incompressible_solver.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
+    src/cfdx/physics/wall_distance_turbulence.h
     src/cfdx/physics/sst_solver.h
     src/cfdx/physics/energy_solver.h
     src/cfdx/physics/cht_solver.h
@@ -722,6 +724,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
+    add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)

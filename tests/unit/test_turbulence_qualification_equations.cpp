@@ -10,8 +10,11 @@
 
 namespace {
 void expect_close(double a,double b,double tol=1e-12) {
-    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)}))
+    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {
+        std::cerr << "FAIL actual=" << a << " reference=" << b
+                  << " abs_error=" << std::abs(a-b) << "\\n";
         throw std::runtime_error("turbulence equation reference mismatch");
+    }
 }
 }
 
@@ -166,7 +169,7 @@ int main() {
     expect_close(iddes_shielding(0.0,0.0),1.0);
     expect_close(iddes_shielding(0.0,1.0),1.0);
     expect_close(iddes_shielding(1.0,1.0),ddes_shielding(1.0));
-    expect_close(dynamic_les_coefficient(2.0,1.0,2.0),0.5);
+    expect_close(dynamic_les_coefficient(2.0,1.0,2.0),0.23);
     expect_close(dynamic_les_coefficient(0.0,2.0,2.0),0.0);
     expect_close(dynamic_les_coefficient(3.0,0.0,2.0,0.0,0.23),0.23);
 

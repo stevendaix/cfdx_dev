@@ -93,7 +93,13 @@ int main() {
             TurbulenceModel::DDES, TurbulenceModel::IDDES}) {
             c.model = model;
             validate_turbulence_controls(c);
-            const double nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
+            double nut = 0.0;
+            if (model == TurbulenceModel::WALE) {
+                nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0,
+                                      1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 0.5);
+            } else {
+                nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
+            }
             if (!std::isfinite(nut) || nut < 0.0)
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
@@ -104,7 +110,7 @@ int main() {
         if (turbulence_solver_ready(AdvancedTurbulenceModel::DES) ||
             turbulence_capability(AdvancedTurbulenceModel::DES).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("DES capability status is incorrect");
-        if (turbulence_capability(AdvancedTurbulenceModel::DYNAMIC_KEQN).status != TurbulenceImplementationStatus::PLANNED)
+        if (turbulence_capability(AdvancedTurbulenceModel::DYNAMIC_KEQN).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("dynamic LES capability status is incorrect");
         if (!has_transport_equation(AdvancedTurbulenceModel::REALIZABLE_KEPSILON))
             throw std::runtime_error("realizable k-epsilon transport is not registered");
