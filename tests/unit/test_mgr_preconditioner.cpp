@@ -1,5 +1,6 @@
 #include "cfdx/core/linalg/mgr_preconditioner.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
