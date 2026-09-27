@@ -446,15 +446,38 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
-    add_executable(test_bfs_driver_smoke tests/validation/test_bfs_driver_smoke.cpp)
-    target_link_libraries(test_bfs_driver_smoke PRIVATE cfdx_core)
-    add_test(NAME test_bfs_driver_smoke COMMAND test_bfs_driver_smoke --quick)
-    set_tests_properties(test_bfs_driver_smoke PROPERTIES LABELS "qualification;geometry")
-
-    add_executable(test_naca0012_geometry tests/validation/test_naca0012_geometry.cpp)
-    target_link_libraries(test_naca0012_geometry PRIVATE cfdx_core)
-    add_test(NAME test_naca0012_geometry COMMAND test_naca0012_geometry --quick)
-    set_tests_properties(test_naca0012_geometry PROPERTIES LABELS "qualification;geometry")
+    add_executable(test_bfs_qualification tests/validation/test_bfs_driver_smoke.cpp)
+    target_link_libraries(test_bfs_qualification PRIVATE cfdx_core)
+    add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick
+             ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n16.h5)
+    set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
+    add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
+    target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
+    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick
+             ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5)
+    set_tests_properties(test_naca0012_quick PROPERTIES LABELS "qualification;validation")
+    if(Python3_Interpreter_FOUND)
+        set_tests_properties(test_bfs_quick test_naca0012_quick PROPERTIES
+            DEPENDS test_generate_2d_validation_meshes)
+    endif()
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_bfs_qualification COMMAND test_bfs_qualification
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n16.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n32.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n64.h5)
+        set_tests_properties(test_bfs_qualification PROPERTIES
+            LABELS "qualification;validation;long")
+        add_test(NAME test_naca0012_qualification COMMAND test_naca0012_qualification
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5
+                 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
+        set_tests_properties(test_naca0012_qualification PROPERTIES
+            LABELS "qualification;validation;long")
+        if(Python3_Interpreter_FOUND)
+            set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES
+                DEPENDS test_generate_2d_validation_meshes)
+        endif()
+    endif()
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_generate_2d_validation_meshes
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py
