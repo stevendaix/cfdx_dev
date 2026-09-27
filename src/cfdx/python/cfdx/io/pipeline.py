@@ -16,6 +16,7 @@ from cfdx.io.adapters.fluent import FluentAdapter
 from cfdx.io.adapters.su2 import Su2Adapter
 from cfdx.io.adapters.starccm import StarCCMAdapter
 from cfdx.io.adapters.saturne import SaturneAdapter
+from cfdx.io.adapters.openfoam import OpenFOAMAdapter
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
 from cfdx.io.gap_analysis import GapAnalysisReport
@@ -26,20 +27,42 @@ _ADAPTER_REGISTRY = {
     "su2": (Su2Adapter, (".su2", ".cfg")),
     "starccm": (StarCCMAdapter, (".sim",)),
     "saturne": (SaturneAdapter, (".xml", ".py")),
+    "openfoam": (OpenFOAMAdapter, ()),
 }
 
 
 def detect_adapter(path: Union[str, Path]) -> Optional[str]:
     """Detect solver type from file extension and content."""
     p = Path(str(path))
+
+    # Check for OpenFOAM case directory first
+    if p.is_dir():
+        if (p / "constant" / "polyMesh").exists():
+            return "openfoam"
+
     ext = p.suffix.lower()
+    stem = p.stem.lower()
+
+    # Check for compound extensions like .cas.h5, .dat.h5
+    if stem.endswith(".cas") or stem.endswith(".dat"):
+        ext = "." + stem.split(".")[-1] + ext
+        # This will make ext = ".cas.h5" or ".dat.h5", but we want to map to fluent
+        # Actually let's just check the stem
+        pass
 
     # Extension-based detection
     ext_map = {
         ".cas": "fluent",
         ".dat": "fluent",
+        ".cas.h5": "fluent",
+        ".dat.h5": "fluent",
         ".sim": "starccm",
     }
+    # Check compound extensions first
+    for comp_ext in [".cas.h5", ".dat.h5"]:
+        if str(p).lower().endswith(comp_ext):
+            return ext_map[comp_ext]
+
     if ext in ext_map:
         return ext_map[ext]
 

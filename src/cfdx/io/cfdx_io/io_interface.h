@@ -17,6 +17,7 @@
 #include <vector>
 #include <memory>
 #include <cstddef>
+#include <utility>
 
 namespace cfdx {
 namespace io {
@@ -183,6 +184,40 @@ public:
         return false;
     }
 };
+
+// ---------------------------------------------------------------------------
+// CFDX case-level HDF5 I/O declarations
+//
+// These functions read and write the ``case.cfdx.h5`` interchange format
+// used by the Python conversion layer and the C++ numerical core.
+// Implemented in src/cfdx/io/hdf5/case_hdf5_io.cpp.
+// ---------------------------------------------------------------------------
+struct CaseSetup;  // forward — full definition in case_schema.h
+
+bool read_case_cfdx_h5(const std::string& filename,
+                       cfdx::core::Mesh& mesh,
+                       SourceInfo& source,
+                       CaseSetup& setup,
+                       GapAnalysis& gap);
+
+bool write_case_cfdx_h5(const std::string& filename,
+                        const cfdx::core::Mesh& mesh,
+                        const SourceInfo& source,
+                        const CaseSetup& setup,
+                        const GapAnalysis& gap);
+
+bool read_scalar_fields_hdf5(
+    const std::string& filename,
+    std::vector<std::pair<std::string, cfdx::core::ScalarCellField>>& fields);
+
+bool read_vector_fields_hdf5(
+    const std::string& filename,
+    std::vector<std::pair<std::string, cfdx::core::Vec3CellField>>& fields);
+
+bool write_fields_hdf5(
+    const std::string& filename,
+    const std::vector<cfdx::core::ScalarCellField>& scalars,
+    const std::vector<cfdx::core::Vec3CellField>& vectors);
 
 }  // namespace io
 }  // namespace cfdx
