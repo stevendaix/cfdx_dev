@@ -226,6 +226,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/boundary/mathematical_condition.h
     src/cfdx/core/boundary/value_provider.h
     src/cfdx/core/boundary/legacy_patch_field_adapter.h
+    src/cfdx/core/boundary/flow_boundary_conditions.h
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
     src/cfdx/core/numerics/divergence.h
