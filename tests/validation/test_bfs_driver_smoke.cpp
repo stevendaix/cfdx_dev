@@ -127,12 +127,12 @@ static Result run(const std::string& path, std::size_t level)
 
 int main(int argc,char**argv)
 {
-    const bool quick=argc==2 && std::string(argv[1])=="--quick";
+    const bool quick=argc>=2 && std::string(argv[1])=="--quick";
     const std::size_t need=quick?1:3;
-    if(argc!=static_cast<int>(need+1))
+    if(argc!=static_cast<int>(need+(quick?2:1)))
         throw std::invalid_argument("usage: test_bfs_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
     std::vector<Result> r;
-    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],16u<<i));
+    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+(quick?2:1)],16u<<i));
     for(const auto& x:r) if(!(x.continuity<1e-7)) throw std::runtime_error("BFS continuity gate failed");
     if(!quick) {
         const double e0=std::abs(r[0].lr_h-5.0), e1=std::abs(r[1].lr_h-5.0), e2=std::abs(r[2].lr_h-5.0);
