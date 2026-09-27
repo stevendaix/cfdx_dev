@@ -19,10 +19,10 @@ def main(path: str) -> int:
         data = json.load(f)
     models = data.get("models", [])
     keys = {m.get("key") for m in models}
-    if keys != EXPECTED or len(models) != 12:
-        raise SystemExit(f"expected 12 non-laminar models, got {len(models)}: {sorted(keys)}")
+    if keys != EXPECTED or len(models) != 13:
+        raise SystemExit(f"expected 13 catalogue models, got {len(models)}: {sorted(keys)}")
     for m in models:
-        if m.get("family") not in {"RANS","LES","HYBRID"}:
+        if m.get("family") not in {"LAMINAR","RANS","LES","HYBRID"}:
             raise SystemExit(f"invalid family for {m.get('key')}")
         if m.get("status") not in {"SOLVER_READY","KERNEL_ONLY","PLANNED"}:
             raise SystemExit(f"invalid status for {m.get('key')}")
@@ -43,7 +43,7 @@ def main(path: str) -> int:
                 "no_tolerance_relaxation","no_disabled_validation"):
         if rules.get(key) is not True:
             raise SystemExit(f"promotion rule missing or false: {key}")
-    print(f"TURBULENCE_QUALIFICATION_MATRIX: PASS ({len(models)} non-laminar models)")
+    print(f"TURBULENCE_QUALIFICATION_MATRIX: PASS ({len(models)} catalogue models)")
     return 0
 
 if __name__ == "__main__":
