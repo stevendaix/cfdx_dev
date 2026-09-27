@@ -100,8 +100,7 @@ static Forces run(const std::string& path,std::size_t level)
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
              <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
              <<" continuity="<<last.continuity_linf
-             <<" iterations="<<solve.iterations<<"
-";
+             <<" iterations="<<solve.iterations<<"\n";
     return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
 }
 
@@ -120,10 +119,8 @@ int main(int argc,char**argv)
     }
     if(!quick) {
         const double d01=std::abs(r[1].cd-r[0].cd), d12=std::abs(r[2].cd-r[1].cd);
-        std::cout<<"NACA0012 Cd mesh differences="<<d01<<","<<d12<<" literature Re=1000 alpha=0 Cd~0.12
-";
+        std::cout<<"NACA0012 Cd mesh differences="<<d01<<","<<d12<<" literature Re=1000 alpha=0 Cd~0.12\n";
         if(!(d12<=d01)) throw std::runtime_error("NACA0012 drag is not stabilizing under refinement");
     }
-    std::cout<<"NACA0012_QUALIFICATION: PASS solver_converged forces_conservation_symmetry
-";
+    std::cout<<"NACA0012_QUALIFICATION: PASS solver_converged forces_conservation_symmetry\n";
 }
