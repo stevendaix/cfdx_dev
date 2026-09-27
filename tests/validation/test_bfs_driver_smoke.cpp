@@ -1,5 +1,6 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "qualification_boundary_helpers.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -71,6 +72,22 @@ static Result run(const std::string& path, std::size_t level)
         const double eta=std::clamp((y-y0)/H,0.0,1.0);
         U.component_data(0)[cell]=6.0*U_bulk*eta*(1.0-eta);
     }
+
+    // Exercise the strict mathematical BC/FVM path before the production solve.
+    // The legacy maps below are retained for the current steady-solver compatibility API.
+    cfdx::physics::BoundaryConstraintMap strict_bc;
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "inlet", {1.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_flux_dependent(
+        strict_bc, "outlet", {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "wall", {0.0, 0.0, 0.0});
+    cfdx::validation::add_pressure_neumann(strict_bc, "inlet", 0.0);
+    cfdx::validation::add_pressure_dirichlet(strict_bc, "outlet", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "wall", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "front", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "back", 0.0);
+    const auto validation_flux = cfdx::validation::make_validation_face_flux(mesh, geometry, U);
+    cfdx::validation::exercise_new_velocity_bc_contract(
+        mesh, geometry, strict_bc, validation_flux, "BFS_RE200");
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if(!solve.converged)
