@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,9 +34,6 @@ static Result run(const std::string& path, std::size_t level)
     VelocityBoundaryConditions ubc;
     const double y0=1.0;
     const double H=H_in;
-    for(std::size_t c=0;c<mesh.n_cells();++c) {
-        (void)c;
-    }
     ubc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1.0,0.0,0.0}};
     ubc["outlet"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
     ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
@@ -103,7 +101,7 @@ static Result run(const std::string& path, std::size_t level)
         const auto n=geometry.face_area_vectors[f].normalized();
         const double txy=rho*nu*(gux.component_data(1)[mesh.ownership().owner(f)] +
                                  guy.component_data(0)[mesh.ownership().owner(f)]);
-        tau.push_back({fc.x,txy*n.y});
+        tau.push_back({fc.x,txy});
     }
     std::sort(tau.begin(),tau.end(),[](const Tau&a,const Tau&b){return a.x<b.x;});
     if(tau.size()<2) throw std::runtime_error("BFS wall-shear extraction returned too few downstream faces");
@@ -123,8 +121,7 @@ static Result run(const std::string& path, std::size_t level)
     std::cout<<"BFS_RE200 level="<<level
              <<" Lr_over_step="<<lr
              <<" continuity="<<last.continuity_linf
-             <<" iterations="<<solve.iterations<<"
-";
+             <<" iterations="<<solve.iterations<<"\\n";
     return {lr,last.continuity_linf,solve.iterations};
 }
 
