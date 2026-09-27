@@ -80,6 +80,39 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
         raise AssertionError("kernel-only turbulence model must not be production-selectable")
 
 
+def test_steady_scale_resolving_models_are_rejected_explicitly():
+    from cfdx.physics_setup import validate_turbulence_selection
+
+    for model in ("SMAGORINSKY", "WALE", "DES", "DDES", "IDDES"):
+        try:
+            validate_turbulence_selection({"model": model, "solver_type": "steady"})
+        except ValueError as exc:
+            assert "transient 3-D" in str(exc)
+        else:
+            raise AssertionError(f"{model} must reject steady selection")
+
+
+def test_transient_hybrid_guard_is_independent_of_gui_filtering():
+    from cfdx.physics_setup import validate_turbulence_selection
+
+    try:
+        validate_turbulence_selection({"model": "DDES", "solver_type": "steady"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("manual steady DDES case must be rejected")
+
+    # The same guard must not reject the intended transient configuration
+    # merely because the model remains KERNEL_ONLY.
+    try:
+        validate_turbulence_selection({"model": "DDES", "solver_type": "transient"})
+    except ValueError as exc:
+        assert "kernel_only" in str(exc)
+    else:
+        raise AssertionError("DDES must still be blocked by production readiness")
+
+
+
 def test_every_turbulence_model_has_explicit_requirements_and_gaps():
     for model in TURBULENCE_CATALOG:
         required, missing = turbulence_model_requirements(model.key)
