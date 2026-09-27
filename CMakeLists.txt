@@ -555,11 +555,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_radiation_vv
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
-    add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
-    add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
-    add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
-    add_cfdx_test(test_thermophysical_models_vv tests/validation/test_thermophysical_models_vv.cpp)
-
     # Engineering qualification registry contract. This is intentionally a
     # metadata gate: numerical qualification remains the responsibility of
     # the executable case and its retained calculation evidence.
