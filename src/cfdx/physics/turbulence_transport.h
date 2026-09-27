@@ -77,7 +77,7 @@ inline double turbulence_nu_t(
     double k, double second, double strain, double wall_distance,
     const TurbulenceTransportControls& c, double cell_volume = -1.0, double F2 = 1.0,
     double rotation = 0.0, double third_invariant = 0.0, double ddes_r = 0.0,
-    double iddes_stress_blend = 1.0)
+    double iddes_stress_blend = 1.0, double wale_S2 = -1.0, double wale_Sd2 = -1.0)
 {
     k=std::max(k,c.k_min);
     const bool omega_based =
@@ -115,7 +115,9 @@ inline double turbulence_nu_t(
     case TurbulenceModel::WALE:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("WALE requires positive cell volume");
-        return wale_eddy_viscosity({strain*strain,strain*strain,std::cbrt(cell_volume)},c.wale_Cw);
+        if(!(wale_S2>=0.0) || !(wale_Sd2>=0.0))
+            throw std::invalid_argument("WALE requires tensor invariants S2 and Sd2");
+        return wale_eddy_viscosity({wale_S2,wale_Sd2,std::cbrt(cell_volume)},c.wale_Cw);
     case TurbulenceModel::DES:
     case TurbulenceModel::DDES:
     case TurbulenceModel::IDDES:
