@@ -134,7 +134,7 @@ int main() {
         // N008: TVD limiter must preserve local extrema.
         {
             for (auto limiter : {LimiterType::MINMOD,LimiterType::VANLEER,LimiterType::SUPERBEE,LimiterType::VAN_ALBADA}) {
-                const double v=apply_limiter_tvd(2.0,1.0,3.0,limiter);
+                const double v=apply_limiter_tvd(1.0,limiter);
                 ok(v>=1.0 && v<=2.0,"TVD limiter violated local bounds");
             }
             std::cout<<"MODEL TVD_LIMITER bound_error=0 reference=0\n";
