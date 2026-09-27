@@ -146,7 +146,8 @@ Result solve_case(std::size_t n)
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if(!solve.converged) throw std::runtime_error("channel solver did not converge");
 
-    GeometryCache geometry;\n    compute_geometry_cache(mesh,geometry);
+    GeometryCache geometry;
+    compute_geometry_cache(mesh,geometry);
     return {std::move(U),solve,geometry};
 }
 
