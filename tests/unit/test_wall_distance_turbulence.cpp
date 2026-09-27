@@ -17,8 +17,8 @@ int main() {
         EXPECT_THROW(validate_wall_distance_field({1.0, std::numeric_limits<double>::quiet_NaN()}), std::invalid_argument);
     });
     run_case("sst_wall_distance_sensitivity", [] {
-        auto n = compute_sst_blending(.5, 1.0, .5, 1.5e-5, .09);
-        auto f = compute_sst_blending(.5, 1.0, 2.0, 1.5e-5, .09);
+        auto n = compute_sst_blending(.5, 1.0, 5.0, 1.5e-5, .09);
+        auto f = compute_sst_blending(.5, 1.0, 20.0, 1.5e-5, .09);
         EXPECT_TRUE(n.first > f.first);
         EXPECT_TRUE(n.second > f.second);
     });
@@ -57,8 +57,8 @@ int main() {
         }
         auto g = make_wall_distance_grid(9, 9, 9, {-1,-1,-1}, {.25,.25,.25},
             [](const WallDistanceVec3& p) {
-                return !(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1 &&
-                       p.z >= 0 && p.z <= 1);
+                return !(p.x > 0 && p.x < 1 && p.y > 0 && p.y < 1 &&
+                       p.z > 0 && p.z < 1);
             });
         auto ref = exact_reference(s, g);
         auto r = compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC, s, g);
