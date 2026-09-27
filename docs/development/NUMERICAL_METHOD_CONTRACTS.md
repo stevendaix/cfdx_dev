@@ -62,3 +62,18 @@ This ordering keeps architecture work separate from numerical changes and makes 
 - True residuals and conservation are recomputed independently where applicable.
 - Configuration must expose the selected method; hidden defaults are not accepted as a final contract.
 - Performance and scaling are separate claims from correctness.
+
+
+## Repository audit baseline (Issue #461)
+
+The registry is intentionally based on the production implementation rather than on the desired future method list.
+
+- **Gradients:** Green-Gauss and least-squares are implemented. Least-squares is currently a field-level wrapper around the existing rank-aware kernel in `core/fvm/least_squares_gradient.h`.
+- **Interpolation/limiters:** linear and upwind interpolation are production paths. MinMod, Van Leer, Superbee, Van Albada and MC exist as limiter coefficient kernels; their presence does **not** imply that all five are selectable production convection schemes.
+- **Convection:** the scalar FVM transport path currently exposes upwind, bounded second-order upwind and TVD; the production TVD branch is currently wired to **MinMod**. Other limiter kernels remain implementation primitives until a complete transport-path integration and V&V campaign exists.
+- **Diffusion:** orthogonal, corrected, limited and uncorrected variants exist in the finite-volume path.
+- **Temporal/CFL:** Euler explicit/implicit, Crank-Nicolson, BDF2, local time stepping, adaptive CFL and pseudo-transient CFL are present.
+- **Linear algebra:** CG, BiCGStab, GMRES and FGMRES are available; native AMG/Smoothed Aggregation AMG and block FieldSplit/Schur infrastructure are present. Planned catalog entries are not registered as implemented methods.
+- **Pressure-velocity:** SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and coupled paths are present. Their registration remains `implemented` until method-specific quantitative evidence is attached.
+
+This audit rule prevents capability inflation: a reusable numerical primitive is not promoted to a production scheme merely because its formula exists.
