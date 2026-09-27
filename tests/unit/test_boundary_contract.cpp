@@ -1,5 +1,6 @@
 #include "cfdx/core/boundary/value_provider.h"
 #include "cfdx/core/boundary/legacy_patch_field_adapter.h"
+#include "cfdx/core/boundary/flow_boundary_conditions.h"
 #include "common/test_harness.h"
 #include <cmath>
 using namespace cfdx::core;
@@ -51,6 +52,36 @@ int main() {
         PatchField patch("inlet", 2, "fixedValue");
         patch(0) = 1.0; patch(1) = 2.0;
         EXPECT_THROW(LegacyPatchFieldAdapter::to_constraint(patch, "T"), std::invalid_argument);
+    });
+    run_case("velocity_inlet_maps_to_field_constraints", [] {
+        auto ux = std::make_shared<ConstantValueProvider>(1.0);
+        auto uy = std::make_shared<ConstantValueProvider>(2.0);
+        auto uz = std::make_shared<ConstantValueProvider>(0.0);
+        VelocityInlet inlet(ux, uy, uz);
+        Boundary b("inlet", BoundaryRole::INLET, {0});
+        const auto constraints = inlet.constraints(b);
+        EXPECT_TRUE(constraints.size() == 4);
+        EXPECT_TRUE(constraints[0].field == "U.x");
+        EXPECT_TRUE(std::holds_alternative<Dirichlet>(constraints[0].condition));
+        EXPECT_TRUE(constraints[3].field == "p");
+        EXPECT_TRUE(std::holds_alternative<Neumann>(constraints[3].condition));
+    });
+    run_case("pressure_outlet_maps_pressure_and_velocity", [] {
+        auto p = std::make_shared<ConstantValueProvider>(0.0);
+        PressureOutlet outlet(p);
+        Boundary b("outlet", BoundaryRole::OUTLET, {1});
+        const auto constraints = outlet.constraints(b);
+        EXPECT_TRUE(constraints.size() == 4);
+        EXPECT_TRUE(constraints[0].field == "p");
+        EXPECT_TRUE(std::holds_alternative<Dirichlet>(constraints[0].condition));
+        EXPECT_TRUE(constraints[1].field == "U.x");
+        EXPECT_TRUE(std::holds_alternative<Neumann>(constraints[1].condition));
+    });
+    run_case("no_slip_is_compositional", [] {
+        NoSlip wall;
+        Boundary b("wall", BoundaryRole::WALL, {2});
+        const auto constraints = wall.constraints(b);
+        EXPECT_TRUE(constraints.size() == 3);
     });
     return run_all();
 }
