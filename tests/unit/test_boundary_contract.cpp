@@ -1,4 +1,5 @@
 #include "cfdx/core/boundary/value_provider.h"
+#include "cfdx/core/boundary/legacy_patch_field_adapter.h"
 #include "common/test_harness.h"
 #include <cmath>
 using namespace cfdx::core;
@@ -32,6 +33,24 @@ int main() {
         const DeviceValueProvider d = lower_value_provider(spec);
         ValueContext c; c.x = 1.0; c.y = 2.0; c.z = 3.0;
         EXPECT_TRUE(std::abs(d.evaluate(c) - 21.0) < 1e-14);
+    });
+    run_case("legacy_fixed_value_adapter", [] {
+        PatchField patch("inlet", 2, "fixedValue");
+        patch.fill(5.0);
+        const BoundaryConstraint c = LegacyPatchFieldAdapter::to_constraint(patch, "T");
+        EXPECT_TRUE(std::holds_alternative<Dirichlet>(c.condition));
+        EXPECT_TRUE(std::get<Dirichlet>(c.condition).value->evaluate(ValueContext{}) == 5.0);
+    });
+    run_case("legacy_zero_gradient_adapter", [] {
+        PatchField patch("outlet", 2, "zeroGradient");
+        const BoundaryConstraint c = LegacyPatchFieldAdapter::to_constraint(patch, "p");
+        EXPECT_TRUE(std::holds_alternative<Neumann>(c.condition));
+        EXPECT_TRUE(std::get<Neumann>(c.condition).gradient->evaluate(ValueContext{}) == 0.0);
+    });
+    run_case("legacy_varying_fixed_value_is_rejected", [] {
+        PatchField patch("inlet", 2, "fixedValue");
+        patch(0) = 1.0; patch(1) = 2.0;
+        EXPECT_THROW(LegacyPatchFieldAdapter::to_constraint(patch, "T"), std::invalid_argument);
     });
     return run_all();
 }
