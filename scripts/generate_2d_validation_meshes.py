@@ -136,6 +136,8 @@ def extrude_2d(nodes2d, cells2d, boundary2d):
 
     bf = {}
     for name, edges in boundary2d.items():
+        if name.startswith("_"):
+            continue
         bf[name] = []
         for a, b in edges:
             bf[name].append((a, b, b + n, a + n))
