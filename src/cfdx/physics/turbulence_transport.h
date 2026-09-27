@@ -120,7 +120,7 @@ inline double turbulence_nu_t(
         return wale_eddy_viscosity({wale_S2,wale_Sd2,std::cbrt(cell_volume)},c.wale_Cw);
     case TurbulenceModel::DES:
     case TurbulenceModel::DDES:
-    case TurbulenceModel::IDDES:
+    case TurbulenceModel::IDDES: {
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume) || !(wall_distance>0.0))
             throw std::invalid_argument("DES family requires positive cell volume and wall distance");
         const double delta=std::cbrt(cell_volume);
@@ -130,6 +130,7 @@ inline double turbulence_nu_t(
             return ddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,c.smagorinsky_Cs,c.des_Cdes);
         return iddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,iddes_stress_blend,
                                     c.smagorinsky_Cs,c.des_Cdes);
+    }
     case TurbulenceModel::DYNAMIC_KEQN:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("dynamic LES requires positive cell volume");
