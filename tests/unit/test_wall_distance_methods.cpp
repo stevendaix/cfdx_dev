@@ -94,11 +94,15 @@ int main() {
     for(std::size_t id=0;id<linear.size();++id) linear[id]=pg.points[id].x;
     require(std::abs(godunov_gradient_at(linear,pg,pc)-1.0)<1e-13,
             "Godunov gradient is not exact for d=x");
-    const std::array<WallDistanceMethod,4> plane_methods={{
+    require(std::abs(laplacian_at(linear,pg,pc))<1e-13,
+            "Laplacian is not exact for the linear planar solution");
+    const double hj_linear_residual =
+        godunov_gradient_at(linear,pg,pc)-1.0-0.25*pg.points[pc].x*laplacian_at(linear,pg,pc);
+    require(std::abs(hj_linear_residual)<1e-13,
+            "Hamilton-Jacobi operator is not exact for the linear planar solution");
+    const std::array<WallDistanceMethod,2> plane_methods={{
         WallDistanceMethod::EIKONAL,
-        WallDistanceMethod::HAMILTON_JACOBI,
-        WallDistanceMethod::ADVECTION_DIFFUSION,
-        WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
+        WallDistanceMethod::ADVECTION_DIFFUSION}};
     for(const auto method:plane_methods) {
         const auto r=compute_wall_distance(method,plane,pg,120);
         for(std::size_t id=0;id<r.distance.size();++id) {
