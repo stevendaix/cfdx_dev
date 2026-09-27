@@ -388,7 +388,38 @@ inline double spalart_allmaras_nu_t(double nu_tilde,double distance,double molec
 }
 inline double smagorinsky_nu_t(double Cs,double delta,double strain){if(Cs<0||delta<=0||strain<0)throw std::invalid_argument("Smagorinsky invalid inputs");return (Cs*delta)*(Cs*delta)*strain;}
 inline double wale_nu_t(double Cw,double delta,double strain){if(Cw<0||delta<=0||strain<0)throw std::invalid_argument("WALE invalid inputs");return (Cw*delta)*(Cw*delta)*strain;}
-inline double des_length_scale(double wall_distance,double delta,double Cdes=.65){if(wall_distance<=0||delta<=0||Cdes<=0)throw std::invalid_argument("DES invalid inputs");return std::min(wall_distance,Cdes*delta);}
+inline double des_length_scale(double wall_distance,double delta,double Cdes=.65){
+ if(wall_distance<=0||delta<=0||Cdes<=0) throw std::invalid_argument("DES invalid inputs");
+ return std::min(wall_distance,Cdes*delta);
+}
+inline double dynamic_one_equation_eddy_viscosity(double k_sgs,double delta,double Ck=.1){
+ if(!std::isfinite(k_sgs)||!std::isfinite(delta)||!std::isfinite(Ck)||
+    k_sgs<0.0||delta<=0.0||Ck<0.0)
+   throw std::invalid_argument("dynamic one-equation SGS inputs are invalid");
+ return Ck*delta*std::sqrt(k_sgs);
+}
+inline double des_eddy_viscosity(double wall_distance,double delta,double strain,double Cs=.17,double Cdes=.65){
+ if(!std::isfinite(wall_distance)||!std::isfinite(delta)||!std::isfinite(strain)||
+    wall_distance<=0.0||delta<=0.0||strain<0.0||Cs<0.0||Cdes<=0.0)
+   throw std::invalid_argument("DES inputs are invalid");
+ const double ldes=des_length_scale(wall_distance,delta,Cdes);
+ return (Cs*ldes)*(Cs*ldes)*strain;
+}
+inline double ddes_eddy_viscosity(double wall_distance,double delta,double strain,
+                                  double r_d,double Cs=.17,double Cdes=.65){
+ const double lddes=ddes_length_scale_from_rd(wall_distance,delta,Cdes,r_d);
+ if(!std::isfinite(strain)||strain<0.0||Cs<0.0)
+   throw std::invalid_argument("DDES strain inputs are invalid");
+ return (Cs*lddes)*(Cs*lddes)*strain;
+}
+inline double iddes_eddy_viscosity(double wall_distance,double delta,double strain,
+                                   double r_d,double stress_blend,
+                                   double Cs=.17,double Cdes=.65){
+ const double liddes=iddes_length_scale_from_rd(wall_distance,delta,Cdes,r_d,stress_blend);
+ if(!std::isfinite(strain)||strain<0.0||Cs<0.0)
+   throw std::invalid_argument("IDDES strain inputs are invalid");
+ return (Cs*liddes)*(Cs*liddes)*strain;
+}
 inline double ddes_shielding(double r_d){
  if(!std::isfinite(r_d)||r_d<0) throw std::invalid_argument("DDES shielding parameter must be non-negative");
  return 1.0-std::tanh(std::pow(8.0*r_d,3));
