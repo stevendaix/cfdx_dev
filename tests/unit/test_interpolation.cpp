@@ -202,6 +202,24 @@ int main() {
         }
     });
 
+    run_case("interpolate_limited_preserves_linear_field", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "phi", "1", 1);
+        f(0) = 10.0;
+        f(1) = 30.0;
+        auto U = make_constant_velocity(m);
+        auto phi = compute_flux(U, m);
+        Field<double, Location::CELL> grad(2, "grad", "1/m", 3);
+        grad.set(0, 20.0, 0.0, 0.0);
+        grad.set(1, 20.0, 0.0, 0.0);
+        for (const auto limiter : {LimiterType::MINMOD, LimiterType::VANLEER,
+                                   LimiterType::SUPERBEE, LimiterType::VAN_ALBADA}) {
+            auto face_field = interpolate_cell_to_face(
+                f, m, InterpScheme::LIMITED, &phi, limiter, &grad);
+            EXPECT_NEAR(face_field(5), 20.0, 1e-12);
+        }
+    });
+
     run_case("interpolate_limited_is_bounded_for_all_limiters", []() {
         Mesh m = make_two_cell_unit_cubes();
         ScalarCellField f(2, "p", "Pa", 1);
