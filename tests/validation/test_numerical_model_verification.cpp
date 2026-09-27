@@ -5,6 +5,8 @@
 #include "cfdx/core/linalg/mixed_precision.h"
 #include "cfdx/core/linalg/communication_avoiding.h"
 #include "cfdx/core/numerics/interpolation.h"
+#include "cfdx/core/numerics/numerical_method_contract.h"
+#include "cfdx/core/numerics/numerical_method_registry.h"
 #include "cfdx/physics/adaptive_cfl.h"
 #include "cfdx/physics/boussinesq.h"
 #include "cfdx/physics/compressible_flux.h"
@@ -18,6 +20,7 @@
 #include "cfdx/physics/source_term_linearization.h"
 #include "cfdx/physics/m1_m4_models.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -267,6 +270,31 @@ int main() {
             close(m1m4::conductive_flux(10,400,300,0.5),2000.0,1e-12,"conductive flux");
             close(m1m4::interface_conductance(10,20,0.1,0.2,2),100.0,1e-12,"interface conductance");
             std::cout<<"MODEL THERMAL_CHT error=0 reference=thermal_resistance\n";
+        }
+        // Issue #461: numerical method metadata must be internally consistent.
+        {
+            NumericalMethodContract contract{
+                "convection.tvd.minmod", "TVD MinMod", NumericalMethodFamily::Convection,
+                VerificationStatus::Implemented, ConservationContract::LocalFaceConservative,
+                true, true, false, 1, 0,
+                "MUSCL face reconstruction with MinMod limiter",
+                "numerics.convection.tvd.minmod",
+                {"boundedness", "conservation", "smooth-field refinement", "steep-gradient regression"}};
+            validate_numerical_method_contract(contract);
+            ok(std::string(to_string(contract.family)) == "convection", "method family metadata");
+            ok(std::string(to_string(contract.status)) == "implemented", "method status metadata");
+            validate_numerical_method_registry();
+            const auto registry = numerical_method_registry();
+            ok(registry.size() >= 30, "numerical method registry unexpectedly small");
+            const auto has_id = [&](const char* id) {
+                return std::any_of(registry.begin(), registry.end(),
+                    [&](const NumericalMethodContract& m) { return m.id == id; });
+            };
+            ok(has_id("gradient.least_squares"), "least-squares gradient registry entry");
+            ok(has_id("convection.second_order_upwind"), "SOU convection registry entry");
+            ok(has_id("preconditioner.native_amg"), "native AMG registry entry");
+            ok(has_id("preconditioner.coupled_block_schur"), "coupled Schur registry entry");
+            ok(has_id("time_step.adaptive_cfl"), "adaptive CFL registry entry");
         }
         // N025: numerical model inventory marker. The report consumes these records.
         std::cout<<"NUMERICAL_MODEL_VERIFICATION: PASS\n";

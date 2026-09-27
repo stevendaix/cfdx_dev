@@ -280,6 +280,51 @@ int main() {
         EXPECT_NEAR(grad.z, 0.0, 1e-12);
     });
 
+    run_case("gradient_least_squares_field_exact_linear", []() {
+        // Three valid 3-D hexahedral cells provide a rank-1 x stencil.
+        // Full 2-D/3-D rank properties are verified by the standalone tests.
+        Mesh m;
+        m.points().resize(16);
+        const double p[16][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{3,0,0},
+            {0,1,0},{1,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{3,0,1},
+            {0,1,1},{1,1,1},{2,1,1},{3,1,1}};
+        for (std::size_t i = 0; i < 16; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        const std::vector<std::vector<Index>> fs = {
+            {0,4,12,8},{1,9,13,5},{2,10,14,6},{3,7,15,11},
+            {0,1,9,8},{4,12,13,5},{0,4,5,1},{8,9,13,12},
+            {1,2,10,9},{5,13,14,6},{1,5,6,2},{9,10,14,13},
+            {2,3,11,10},{6,14,15,7},{2,6,7,3},{10,11,15,14}};
+        for (const auto& face : fs)
+            m.faces().push_face(face);
+        m.ownership().resize(fs.size());
+        for (std::size_t f = 0; f < fs.size(); ++f)
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(0,0);
+        m.ownership().set_owner(1,0); m.ownership().set_neighbour(1,1);
+        m.ownership().set_owner(2,1); m.ownership().set_neighbour(2,2);
+        m.ownership().set_owner(3,2);
+        for (std::size_t f : {4u,5u,6u,7u}) m.ownership().set_owner(f,0);
+        for (std::size_t f : {8u,9u,10u,11u}) m.ownership().set_owner(f,1);
+        for (std::size_t f : {12u,13u,14u,15u}) m.ownership().set_owner(f,2);
+        m.cells().push_cell({0,1,4,5,6,7});
+        m.cells().push_cell({1,2,8,9,10,11});
+        m.cells().push_cell({2,3,12,13,14,15});
+
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(3, "phi", "1", 1);
+        for (std::size_t c = 0; c < 3; ++c)
+            phi(c) = 1.0 + 2.0 * geometry.cell_centres[c].x;
+
+        const auto grad = compute_gradient_least_squares(phi, m);
+        EXPECT_NEAR(grad(1,0), 2.0, 1e-12);
+        EXPECT_NEAR(grad(1,1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(1,2), 0.0, 1e-12);
+    });
+
     run_case("gradient_empty_mesh", []() {
         Mesh m;
         ScalarCellField f(0, "p", "Pa", 1);

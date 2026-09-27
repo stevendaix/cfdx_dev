@@ -23,6 +23,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/fvm/least_squares_gradient.h"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -128,6 +129,54 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 {
     const GeometryCache geometry = make_geometry_cache(mesh);
     return compute_gradient_gauss(cell_field, mesh, geometry);
+}
+
+
+inline Field<double, Location::CELL> compute_gradient_least_squares(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_least_squares: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_least_squares: field must be scalar (dim=1)");
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_ls", cell_field.metadata().unit + "/m", 3);
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const auto& own = mesh.ownership();
+    const auto geometry = make_geometry_cache(mesh);
+    const double* values = cell_field.component_data(0);
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        std::vector<Vec3> neighbours;
+        std::vector<double> neighbour_values;
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const auto nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (nraw >= 0) {
+                nb = static_cast<std::size_t>(nraw);
+            } else if (owner != c) {
+                continue;
+            }
+            if (nb >= n_cells || nb == c)
+                continue;
+            neighbours.push_back(geometry.cell_centres[nb]);
+            neighbour_values.push_back(values[nb]);
+        }
+
+        const Vec3 g = least_squares_gradient(
+            geometry.cell_centres[c], values[c], neighbours, neighbour_values);
+        grad(c, 0) = g.x;
+        grad(c, 1) = g.y;
+        grad(c, 2) = g.z;
+    }
+    return grad;
 }
 
 }  // namespace core

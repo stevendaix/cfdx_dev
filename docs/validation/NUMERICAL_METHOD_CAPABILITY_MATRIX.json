@@ -1,0 +1,380 @@
+{
+  "schema_version": "1.0",
+  "issue": 461,
+  "repository": "stevendaix/cfdx_dev",
+  "principles": {
+    "implementation_is_not_verification": true,
+    "verification_is_not_validation": true,
+    "no_tolerance_relaxation": true,
+    "no_disabled_validation": true,
+    "true_residual_required": true
+  },
+  "methods": [
+    {
+      "id": "gradient.gauss_cell",
+      "family": "gradient",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "constant",
+        "linear",
+        "skewed",
+        "non_orthogonal"
+      ]
+    },
+    {
+      "id": "interpolation.linear",
+      "family": "interpolation",
+      "status": "implemented",
+      "spatial_order": 2,
+      "verification": [
+        "linear_exactness",
+        "conservation"
+      ]
+    },
+    {
+      "id": "convection.upwind",
+      "family": "convection",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "boundedness",
+        "monotonicity",
+        "conservation"
+      ]
+    },
+    {
+      "id": "convection.second_order_upwind",
+      "family": "convection",
+      "status": "implemented",
+      "spatial_order": 2,
+      "verification": [
+        "smooth_refinement",
+        "boundedness",
+        "conservation"
+      ]
+    },
+    {
+      "id": "convection.tvd.minmod",
+      "family": "convection",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "boundedness",
+        "TVD",
+        "smooth_refinement",
+        "steep_gradient"
+      ]
+    },
+    {
+      "id": "interpolation.upwind",
+      "family": "interpolation",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "boundedness",
+        "monotonicity",
+        "conservation"
+      ]
+    },
+    {
+      "id": "gradient.least_squares",
+      "family": "gradient",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "constant",
+        "linear",
+        "rank_detection",
+        "skewed"
+      ]
+    },
+    {
+      "id": "diffusion.uncorrected",
+      "family": "diffusion",
+      "status": "implemented",
+      "spatial_order": 1,
+      "verification": [
+        "MMS",
+        "non_orthogonal_refinement"
+      ]
+    },
+    {
+      "id": "interpolation.limiter.minmod",
+      "family": "interpolation",
+      "status": "implemented",
+      "verification": [
+        "coefficient_exactness",
+        "boundedness"
+      ]
+    },
+    {
+      "id": "interpolation.limiter.vanleer",
+      "family": "interpolation",
+      "status": "implemented",
+      "verification": [
+        "coefficient_exactness",
+        "boundedness"
+      ]
+    },
+    {
+      "id": "interpolation.limiter.superbee",
+      "family": "interpolation",
+      "status": "implemented",
+      "verification": [
+        "coefficient_exactness",
+        "boundedness"
+      ]
+    },
+    {
+      "id": "interpolation.limiter.vanalbada",
+      "family": "interpolation",
+      "status": "implemented",
+      "verification": [
+        "coefficient_exactness",
+        "boundedness"
+      ]
+    },
+    {
+      "id": "interpolation.limiter.mc",
+      "family": "interpolation",
+      "status": "implemented",
+      "verification": [
+        "coefficient_exactness",
+        "boundedness"
+      ]
+    },
+    {
+      "id": "diffusion.orthogonal",
+      "family": "diffusion",
+      "status": "implemented",
+      "verification": [
+        "MMS",
+        "refinement"
+      ]
+    },
+    {
+      "id": "diffusion.corrected",
+      "family": "diffusion",
+      "status": "implemented",
+      "verification": [
+        "MMS",
+        "non_orthogonal_refinement"
+      ]
+    },
+    {
+      "id": "diffusion.limited",
+      "family": "diffusion",
+      "status": "implemented",
+      "verification": [
+        "MMS",
+        "non_orthogonal_robustness"
+      ]
+    },
+    {
+      "id": "temporal.euler_explicit",
+      "family": "temporal",
+      "status": "implemented",
+      "temporal_order": 1,
+      "verification": [
+        "analytical_decay",
+        "temporal_refinement"
+      ]
+    },
+    {
+      "id": "temporal.euler_implicit",
+      "family": "temporal",
+      "status": "implemented",
+      "temporal_order": 1,
+      "verification": [
+        "analytical_decay",
+        "temporal_refinement"
+      ]
+    },
+    {
+      "id": "temporal.crank_nicolson",
+      "family": "temporal",
+      "status": "implemented",
+      "temporal_order": 2,
+      "verification": [
+        "analytical_decay",
+        "temporal_refinement"
+      ]
+    },
+    {
+      "id": "temporal.bdf2",
+      "family": "temporal",
+      "status": "implemented",
+      "temporal_order": 2,
+      "verification": [
+        "transient_MMS",
+        "temporal_refinement",
+        "restart_history"
+      ]
+    },
+    {
+      "id": "linear.cg",
+      "family": "linear_solver",
+      "status": "verified",
+      "verification": [
+        "SPD_exact_solve",
+        "true_residual"
+      ]
+    },
+    {
+      "id": "linear.bicgstab",
+      "family": "linear_solver",
+      "status": "verified",
+      "verification": [
+        "nonsymmetric_exact_solve",
+        "true_residual"
+      ]
+    },
+    {
+      "id": "linear.gmres",
+      "family": "linear_solver",
+      "status": "verified",
+      "verification": [
+        "nonsymmetric_exact_solve",
+        "true_residual"
+      ]
+    },
+    {
+      "id": "preconditioner.native_amg",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "SPD",
+        "anisotropy",
+        "true_residual",
+        "reuse"
+      ]
+    },
+    {
+      "id": "preconditioner.native_fieldsplit",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "block_exact_small_system",
+        "schur_variants"
+      ]
+    },
+    {
+      "id": "pressure_velocity.simple",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "pressure_velocity.simplec",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "pressure_velocity.piso",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "pressure_velocity.pimple",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "pressure_velocity.fractional_step",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "pressure_velocity.coupled_up",
+      "family": "pressure_velocity",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "cavity",
+        "skew_mesh"
+      ]
+    },
+    {
+      "id": "linear.fgmres",
+      "family": "linear_solver",
+      "status": "implemented",
+      "verification": [
+        "nonsymmetric_exact_solve",
+        "true_residual",
+        "variable_preconditioner"
+      ]
+    },
+    {
+      "id": "preconditioner.smoothed_aggregation_amg",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "SPD",
+        "true_residual",
+        "reuse"
+      ]
+    },
+    {
+      "id": "preconditioner.coupled_block_schur",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "block_exact_small_system",
+        "true_residual",
+        "Schur_variants"
+      ]
+    },
+    {
+      "id": "time_step.adaptive_cfl",
+      "family": "time_step",
+      "status": "implemented",
+      "verification": [
+        "analytical_controller",
+        "growth",
+        "shrink",
+        "finite_inputs"
+      ]
+    },
+    {
+      "id": "time_step.pseudo_transient_cfl",
+      "family": "time_step",
+      "status": "implemented",
+      "verification": [
+        "growth",
+        "saturation",
+        "boundedness"
+      ]
+    }
+  ]
+}
