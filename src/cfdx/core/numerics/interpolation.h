@@ -87,39 +87,23 @@ inline LimiterType limiter_type_from_string(const std::string& s) {
 // v_upwind  : valeur dans la cellule amont (upwind)
 // v_extrap  : valeur extrapolée linéairement au centre de la face (v_owner + grad · d)
 // limiter    : MINMOD, VANLEER, SUPERBEE, VAN_ALBADA
-inline double apply_limiter_tvd(double v_owner, double v_upwind, double v_extrap, LimiterType limiter) {
-    double denominator = v_extrap - v_owner;
-    double r = 1.0;    
-    if (std::abs(denominator) > 1e-15) {
-        r = (v_upwind - v_owner) / denominator;
-    }
-
-    double psi = 1.0;
+inline double limiter_psi(double r, LimiterType limiter) {
+    if (!std::isfinite(r)) return 0.0;
     switch (limiter) {
-        case LimiterType::MINMOD:
-            psi = std::max(0.0, std::min(1.0, r));
-            break;
-        case LimiterType::VANLEER:
-            psi = (r + std::abs(r)) / (1.0 + std::abs(r) + 1e-15);
-            break;
-        case LimiterType::SUPERBEE:
-            psi = std::max(0.0, std::max(std::min(1.0, 2.0 * r), std::min(2.0, r)));
-            break;
-        case LimiterType::VAN_ALBADA:
-            psi = (r * r + r) / (r * r + 1.0 + 1e-15);
-            break;
-        default:
-            psi = 1.0;
+        case LimiterType::NONE: return 1.0;
+        case LimiterType::MINMOD: return std::max(0.0, std::min(1.0, r));
+        case LimiterType::VANLEER: return (r + std::abs(r)) / (1.0 + std::abs(r) + 1e-15);
+        case LimiterType::SUPERBEE: return std::max(0.0, std::max(std::min(1.0, 2.0 * r), std::min(2.0, r)));
+        case LimiterType::VAN_ALBADA: return (r * r + r) / (r * r + 1.0 + 1e-15);
     }
-    
-    // Valeur limitée
-    double v_limited = v_owner + psi * (v_extrap - v_owner);
-    
-    // Bornage strict (garantie TVD) : la valeur à la face ne peut pas dépasser les extrêmes locaux
-    double v_min = std::min(v_owner, v_upwind);
-    double v_max = std::max(v_owner, v_upwind);
-    
-    return std::max(v_min, std::min(v_max, v_limited));
+    return 0.0;
+}
+
+// Apply a TVD limiter to an upwind-to-face reconstruction. r is the
+// Darwish-Moukalled successive-slope ratio:
+// r = 2 grad(phi)_U . d_UD / (phi_D - phi_U) - 1.
+inline double apply_limiter_tvd(double r, LimiterType limiter) {
+    return limiter_psi(r, limiter);
 }
 
 // Interpole un champ cellulaire (Field<double, CELL>) vers un champ de faces.
@@ -213,27 +197,7 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
                     ? delta_neighbour / delta_extrap
                     : 0.0;
 
-                double psi = 1.0;
-                switch (limiter_type) {
-                    case LimiterType::NONE:
-                        psi = 1.0;
-                        break;
-                    case LimiterType::MINMOD:
-                        psi = std::max(0.0, std::min(1.0, r));
-                        break;
-                    case LimiterType::VANLEER:
-                        psi = (r + std::abs(r)) / (1.0 + std::abs(r) + 1e-15);
-                        break;
-                    case LimiterType::SUPERBEE:
-                        psi = std::max(0.0,
-                            std::max(std::min(1.0, 2.0 * r),
-                                     std::min(2.0, r)));
-                        break;
-                    case LimiterType::VAN_ALBADA:
-                        psi = (r * r + r) / (r * r + 1.0 + 1e-15);
-                        break;
-                }
-
+                const double psi = limiter_psi(r, limiter_type);
                 const double reconstructed = v_up + psi * delta_extrap;
                 v = std::max(std::min(v_up, v_down),
                              std::min(std::max(v_up, v_down), reconstructed));
