@@ -94,10 +94,11 @@ int main() {
     for(std::size_t id=0;id<linear.size();++id) linear[id]=pg.points[id].x;
     require(std::abs(godunov_gradient_at(linear,pg,pc)-1.0)<1e-13,
             "Godunov gradient is not exact for d=x");
-    const std::array<WallDistanceMethod,3> plane_methods={{
+    const std::array<WallDistanceMethod,4> plane_methods={{
         WallDistanceMethod::EIKONAL,
         WallDistanceMethod::HAMILTON_JACOBI,
-        WallDistanceMethod::ADVECTION_DIFFUSION}};
+        WallDistanceMethod::ADVECTION_DIFFUSION,
+        WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
     for(const auto method:plane_methods) {
         const auto r=compute_wall_distance(method,plane,pg,120);
         for(std::size_t id=0;id<r.distance.size();++id) if(!pg.solid[id]) {
@@ -121,6 +122,18 @@ int main() {
     const double poisson_res=poisson_residual_inf(phi,pg,fixed);
     require(poisson_res<1e-13,
             "discrete Poisson operator is not exact for the analytical planar solution");
+
+    // The hybrid method must solve its transport equation; it must not
+    // reduce to an algebraic blend of two completed distance fields.
+    const auto hybrid=compute_wall_distance(WallDistanceMethod::HYBRID_POISSON_EIKONAL,s,g,40);
+    const auto poisson=compute_wall_distance(WallDistanceMethod::POISSON,s,g,40);
+    const auto eikonal=compute_wall_distance(WallDistanceMethod::EIKONAL,s,g,40);
+    bool hybrid_is_distinct=false;
+    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
+        const double blended=0.35*poisson.distance[i]+0.65*eikonal.distance[i];
+        if(std::abs(hybrid.distance[i]-blended)>1e-8) { hybrid_is_distinct=true; break; }
+    }
+    require(hybrid_is_distinct,"hybrid method is still an algebraic Poisson/Eikonal blend");
 
     const auto exact=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g,20);
     const auto m=compare_wall_distance(g,ref,exact.distance,0.5);
