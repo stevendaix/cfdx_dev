@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace cfdx::physics;
@@ -28,10 +29,18 @@ int main() {
         validate_turbulence_model_coefficients(coeff);
         for (const auto model : models) {
             const auto descriptor = turbulence_model_descriptor(model);
+            const auto& capability = turbulence_capability(model);
             if (descriptor.model != model || descriptor.implementation != implementation_kind(model))
                 throw std::runtime_error("model descriptor mismatch");
-            if (descriptor.status != turbulence_capability(model).status)
+            if (descriptor.status != capability.status)
                 throw std::runtime_error("model capability status mismatch");
+            if (capability.key == nullptr || capability.label == nullptr ||
+                capability.required_fields == nullptr || capability.missing == nullptr)
+                throw std::runtime_error("model capability metadata is incomplete");
+            if (capability.status == TurbulenceImplementationStatus::SOLVER_READY &&
+                capability.model != AdvancedTurbulenceModel::LAMINAR &&
+                std::string(capability.missing).empty())
+                throw std::runtime_error("solver-ready model has no explicit remaining qualification gap");
         }
 
         TurbulenceTransportControls c;
