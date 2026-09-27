@@ -64,5 +64,19 @@ int main() {
         EXPECT_THROW(resolve_scalar_boundary_constraints(mesh, centres, constraints, "T"), std::invalid_argument);
     });
 
+    run_case("flux_dependent_uses_inflow_provider_on_backflow", [] {
+        auto mesh = make_test_mesh();
+        const auto centres = make_face_centres(mesh);
+        BoundaryConstraintMap constraints;
+        auto inflow = std::make_shared<ConstantValueProvider>(7.0);
+        auto outflow = std::make_shared<ConstantValueProvider>(0.0);
+        constraints["outlet"] = {{"T", FluxDependent{inflow, outflow}}};
+        Field<double, Location::FACE> flux(mesh.n_faces(), 1.0);
+        flux.component(0, 0) = -2.0;
+        const auto resolved = resolve_scalar_boundary_constraints(
+            mesh, centres, constraints, "T", 0.0, &flux);
+        EXPECT_TRUE(resolved.has(0));
+    });
+
     return run_all();
 }
