@@ -76,6 +76,15 @@ int main() {
     {
         const double F1=0.3,F2=0.8,cross=-0.4;
         const auto q=sst_cell_sources(k,omega,S,F1,F2,c);
+        const double sk=std::sqrt(k)/(c.beta_star*omega*y);
+        const double visc=500.0*c.molecular_viscosity/(y*y*omega);
+        const double cdkw=std::max(2.0*c.density*c.sst_sigma_w2/omega*cross,1e-10);
+        const double arg1=std::min(std::max(sk,visc),4.0*c.density*c.sst_sigma_w2*k/(cdkw*y*y));
+        const double arg2=std::max(2.0*std::sqrt(k)/(c.beta_star*omega*y),visc);
+        const auto blend_ref=compute_sst_blending(k,omega,y,c.molecular_viscosity,c.beta_star,
+                                                   cross,c.density,c.sst_sigma_w2);
+        expect_close(blend_ref.first,std::tanh(std::pow(arg1,4.0)));
+        expect_close(blend_ref.second,std::tanh(arg2*arg2));
         const auto blend=[F1](double a,double b){return F1*a+(1.0-F1)*b;};
         const double nut=c.a1*k/std::max(c.a1*omega,S*F2);
         const double P=std::min(c.density*nut*S*S,c.sst_production_limiter*c.beta_star*c.density*k*omega);
@@ -106,8 +115,8 @@ int main() {
         const double ft2=sa.ct3*std::exp(-sa.ct4*chi*chi);
         const double prod=sa.cb1*(1.0-ft2)*st;
         const double destr=(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa))*wt/(d*d);
-        const auto chi3=std::pow(chi,3.0);
-        const double expected_nut=wt*chi3/(chi3+std::pow(sa.cv1,3.0));
+        const double chi3_ref=std::pow(chi,3.0);
+        const double expected_nut=wt*chi3_ref/(chi3_ref+std::pow(sa.cv1,3.0));
         expect_close(turbulence_nu_t(0.0,wt,S,d,c),expected_nut,1e-10);
         const double grad2=0.13;
         const auto src=sa_cell_sources(wt,vort,d,grad2,c,sa);
