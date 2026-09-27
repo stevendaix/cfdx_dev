@@ -40,6 +40,7 @@ int main() {
         WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
     for(const auto method:methods) {
         const auto r=compute_wall_distance(method,s,g,20);
+        std::cerr << "wall-distance method: " << wall_distance_method_name(method) << "\\n";
         require(r.distance.size()==g.points.size(),"distance size mismatch");
         for(std::size_t i=0;i<r.distance.size();++i)
             if(!g.solid[i]) require(r.valid[i] && std::isfinite(r.distance[i]) && r.distance[i]>=0.0,
