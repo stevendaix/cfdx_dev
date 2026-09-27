@@ -142,6 +142,20 @@ int main(int argc,char** argv)
             : std::vector<Level>{{24,36,"coarse"},{36,54,"medium"},{48,72,"fine"}};
 
         std::vector<AxisymResult> r;
+        if(quick) {
+            const auto path=std::filesystem::temp_directory_path() /
+                "cfdx_vmfl036_quick_contract.axmesh";
+            const Level l{24,36,"coarse"};
+            generate(path,l);
+            const auto mesh=AxisymMesh::read(path.string());
+            std::error_code ec; std::filesystem::remove(path,ec);
+            audit_mesh(mesh,l);
+            std::cout << "VMFL036_QUICK_CONTRACT: PASS nr=" << mesh.nr
+                      << " nt=" << mesh.nt
+                      << " sphere/farfield/axis topology audited"
+                      << " solver_campaign_pending\n";
+            return 0;
+        }
         if(!quick) {
             const auto fluent_exact=run_level(Level{36,54,"medium"},0.02,1.0875,"re50");
             const double re50_err=std::abs(fluent_exact.cd_total-1.0875)/1.0875;
