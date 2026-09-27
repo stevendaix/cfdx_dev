@@ -264,3 +264,19 @@ It does **not** establish:
 - DES/DDES/IDDES hybrid-mode behaviour.
 
 References used for cross-checking the model families include the OpenFOAM turbulence-model documentation and the original model literature. OpenFOAM's current documentation lists the corresponding RAS, LES and DES model families and their model-specific source implementations.
+
+
+## Reference map
+
+The implementation audit uses the following external references as cross-checks rather than as substitutes for CFDX tests:
+
+1. OpenFOAM turbulence-model catalogue and model-selection documentation:
+   https://www.openfoam.com/documentation/user-guide/a-reference/a.3-standard-libraries
+   https://www.openfoam.com/documentation/user-guide/5-models-and-physical-properties/5.3-turbulence-models
+2. Standard k-epsilon coefficients and tutorial usage are documented in the OpenFOAM turbulence documentation.
+3. DES/DDES/IDDES implementation lineage is documented by OpenFOAM for the k-omega SST DES family, including the references to Strelets (2001) and Gritskevich et al. (2011):
+   https://www.openfoam.com/news/main-news/openfoam-v3.0/solvers-and-physical-modelling
+4. The OpenFOAM LES catalogue explicitly includes Smagorinsky, WALE and dynamic one-equation eddy-viscosity models, while DES models are treated as a subset of LES models:
+   https://www.openfoam.com/documentation/user-guide/a-reference/a.3-standard-libraries
+
+These references establish the model-family and literature traceability. They do not constitute CFDX validation evidence. The CI tests remain the authoritative verification evidence for the implemented CFDX kernels.
