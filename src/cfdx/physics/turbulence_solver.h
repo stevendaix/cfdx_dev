@@ -334,9 +334,10 @@ inline KOmegaCellSources komega2006_cell_sources(
         throw std::invalid_argument("komega2006_cell_sources: non-finite input");
     const double ki=std::max(k,c.k_min), wi=std::max(omega,c.omega_min);
     const double S=std::max(strain,0.0);
-    const double omega_t=std::max(wi,c.komega_clim*S/std::sqrt(c.beta_star));
     KOmegaCellSources q;
-    q.nut=ki/omega_t;
+    // Baseline Wilcox k-omega uses nu_t = k/omega. The SST-specific
+    // strain-rate limiter belongs only to the SST closure.
+    q.nut=ki/wi;
     const double Pk=c.density*q.nut*S*S;
     q.sk=Pk; q.spk=-c.density*c.beta_star*wi;
     const double sigma_d=grad_k_dot_grad_omega>0.0?c.komega_sigma_d0:0.0;
