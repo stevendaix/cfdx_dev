@@ -1,4 +1,5 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/io/hdf5/hdf5_reader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -101,14 +102,15 @@ struct Result {
     GeometryCache geometry;
 };
 
-Result solve_case(std::size_t n)
+Result solve_case(const std::string& mesh_path, std::size_t n)
 {
     constexpr double G=1.0;
     constexpr double nu=0.1;
-    constexpr double length=4.0;
-    Mesh mesh=make_channel_mesh(4*n,n,length);
+    Mesh mesh;
+    if(!cfdx::io::read_mesh_hdf5(mesh_path,mesh))
+        throw std::runtime_error("failed to read Python-generated channel mesh: "+mesh_path);
     const auto topo=mesh.topo_validate();
-    if(!topo.ok) throw std::runtime_error("channel topology invalid");
+    if(!topo.ok) throw std::runtime_error("channel topology invalid: "+mesh_path);
 
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
@@ -178,7 +180,8 @@ int main(int argc,char** argv)
         const bool quick=argc==2 && std::string(argv[1])=="--quick";
         if(argc>1 && !quick) throw std::invalid_argument("usage: test_channel_qualification [--quick]");
 
-        const auto r16=solve_case(16);
+        if(argc < 3) throw std::invalid_argument("usage: test_channel_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
+        const auto r16=solve_case(argv[2],16);
         const double e16=profile_error(r16,16);
         if(quick) {
             if(e16>0.20 || r16.solve.history.back().continuity_linf>1e-8)
@@ -187,8 +190,9 @@ int main(int argc,char** argv)
             return 0;
         }
 
-        const auto r32=solve_case(32);
-        const auto r64=solve_case(64);
+        if(argc < 5) throw std::invalid_argument("full channel qualification requires three Python-generated meshes");
+        const auto r32=solve_case(argv[3],32);
+        const auto r64=solve_case(argv[4],64);
         const double e32=profile_error(r32,32);
         const double e64=profile_error(r64,64);
         if(!(e64<e32 && e32<e16))
