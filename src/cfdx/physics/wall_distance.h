@@ -376,6 +376,8 @@ inline std::vector<double> search_based_reference(const WallSurface& s,const Wal
     return d;
 }
 
+inline std::vector<std::size_t> wall_seed_nodes(const WallDistanceBvh& bvh,const WallDistanceGrid& g,double seed_width);
+
 inline std::vector<std::size_t> wall_seed_nodes(const WallSurface& s,const WallDistanceGrid& g,double seed_width) {
     std::vector<std::size_t> seeds;
     for(std::size_t i=0;i<g.points.size();++i)
@@ -385,7 +387,8 @@ inline std::vector<std::size_t> wall_seed_nodes(const WallSurface& s,const WallD
 
 inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid& g,bool directional) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(s,g,1.6*h);
+    const WallDistanceBvh bvh(s);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     const WallDistanceBvh bvh(s);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     using Item=std::pair<double,std::size_t>;
@@ -442,7 +445,7 @@ inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDis
     const auto seeds=wall_seed_nodes(s,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
-    for(auto id:seeds) { d[id]=exact_point_distance(s,g.points[id]); fixed[id]=1; }
+    for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     const std::array<int,2> signs={-1,1};
     std::size_t it_used=max_iter;
     for(std::size_t it=0;it<max_iter;++it) {
@@ -568,7 +571,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
-        for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
+        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
         if(max_change<1e-10*h) break;
     }
     return d;
