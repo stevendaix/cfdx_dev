@@ -34,15 +34,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
 
       - name: Install Python mesh I/O stack
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          .venv/bin/python -c "import gmsh; print(gmsh.__version__)"
 
       - name: Configure CMake
         run: >
@@ -113,8 +112,6 @@ jobs:
             echo "=== LastTest.log (tail) ==="
             tail -n 500 build/Testing/Temporary/LastTest.log
           fi
-          echo "=== VMFL036 physical CFD result ==="
-          grep -R -E 'VMFL036_(MESH|CFDX START|RESULT|DRAG|CFDX_RESULT)' build/Testing build 2>/dev/null | tail -n 250 || true
           echo "=== Poiseuille diagnostic marker ==="
           grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \\(complete list\\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
 
