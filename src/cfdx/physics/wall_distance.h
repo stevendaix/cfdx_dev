@@ -39,6 +39,7 @@ struct WallDistanceResult {
     std::vector<unsigned char> valid;
     std::string method;
     std::size_t iterations{0};
+    double residual_inf{0.0};
 };
 
 enum class WallDistanceMethod {
