@@ -59,8 +59,9 @@ struct AxisymMesh {
         for(std::size_t i=0;i<m.nr;++i) for(std::size_t j=0;j<m.nt;++j){
             auto& c=m.cells[cid(i,j)];
             c.i=i;c.j=j;
-            c.nodes[0]=nid(i,j); c.nodes[1]=nid(i,j+1);
-            c.nodes[2]=nid(i+1,j+1); c.nodes[3]=nid(i+1,j);
+            // Counter-clockwise in the meridional (x,r) plane.
+            c.nodes[0]=nid(i,j); c.nodes[1]=nid(i+1,j);
+            c.nodes[2]=nid(i+1,j+1); c.nodes[3]=nid(i,j+1);
             const auto &a=m.nodes[c.nodes[0]],&b=m.nodes[c.nodes[1]],
                        &cc=m.nodes[c.nodes[2]],&d=m.nodes[c.nodes[3]];
             double cross=0.0,mx=0.0,mr=0.0;
