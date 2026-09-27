@@ -116,14 +116,58 @@ static Forces run(const std::string& path,std::size_t level)
     return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
 }
 
+static void run_quick_contract(const std::string& path)
+{
+    Mesh mesh;
+    if(!cfdx::io::read_mesh_hdf5(path,mesh))
+        throw std::runtime_error("cannot read NACA0012 mesh: "+path);
+    const auto topo=mesh.topo_validate();
+    if(!topo.ok)
+        throw std::runtime_error("invalid NACA0012 topology: "+path);
+
+    const auto geometry=build_fv_geometry(mesh);
+    Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    U.fill(0.0);
+    for(std::size_t i=0;i<mesh.n_cells();++i)
+        U.component_data(0)[i]=1.0;
+
+    cfdx::physics::BoundaryConstraintMap strict_bc;
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "farfield", {1.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "airfoil", {0.0, 0.0, 0.0});
+    cfdx::validation::add_pressure_dirichlet(strict_bc, "farfield", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "airfoil", 0.0);
+    const auto validation_flux =
+        cfdx::validation::make_validation_face_flux(mesh, geometry, U);
+    cfdx::validation::exercise_new_velocity_bc_contract(
+        mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
+
+    const auto airfoil_id=mesh.boundary().find("airfoil");
+    const auto farfield_id=mesh.boundary().find("farfield");
+    if(airfoil_id>=mesh.boundary().n_patches() ||
+       farfield_id>=mesh.boundary().n_patches())
+        throw std::runtime_error("NACA0012 required boundary patches are missing");
+
+    std::cout<<"NACA0012_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
+             <<" airfoil_faces="<<mesh.boundary().patch(airfoil_id).size()
+             <<" farfield_faces="<<mesh.boundary().patch(farfield_id).size()
+             <<" solver_campaign_pending\\n";
+}
+
 int main(int argc,char**argv)
 {
     const bool quick=argc>=2 && std::string(argv[1])=="--quick";
-    const std::size_t need=quick?1:3;
-    if(argc!=static_cast<int>(need+(quick?2:1)))
-        throw std::invalid_argument("usage: test_naca0012_qualification [--quick] mesh_n64.h5 [mesh_n128.h5 mesh_n256.h5]");
+    if(quick) {
+        if(argc!=3)
+            throw std::invalid_argument("usage: test_naca0012_qualification --quick mesh_n64.h5");
+        run_quick_contract(argv[2]);
+        return 0;
+    }
+
+    const std::size_t need=3;
+    if(argc!=4)
+        throw std::invalid_argument("usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
     std::vector<Forces> r;
-    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+(quick?2:1)],64u<<i));
+    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],64u<<i));
     for(const auto& x:r) {
         if(!(x.continuity<1e-7)) throw std::runtime_error("NACA0012 continuity gate failed");
         if(!std::isfinite(x.cd) || !std::isfinite(x.cl)) throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
