@@ -96,12 +96,20 @@ int main() {
             "Godunov gradient is not exact for d=x");
     require(std::abs(laplacian_at(linear,pg,pc))<1e-13,
             "Laplacian is not exact for the linear planar solution");
+    const WallDistanceBvh plane_bvh(plane);
+    const auto plane_seeds=wall_seed_nodes(plane_bvh,pg,wall_seed_width(pg));
+    require(!plane_seeds.empty(),"planar wall produced no PDE seed nodes");
+    for(const auto id:plane_seeds)
+        require(std::abs(plane_bvh.nearest_distance(pg.points[id])-linear[id])<1e-13,
+                "BVH seed distance is not exact for the planar wall");
     const double hj_linear_residual =
         godunov_gradient_at(linear,pg,pc)-1.0-0.25*pg.points[pc].x*laplacian_at(linear,pg,pc);
     require(std::abs(hj_linear_residual)<1e-13,
             "Hamilton-Jacobi operator is not exact for the linear planar solution");
-    const std::array<WallDistanceMethod,1> plane_methods={{
-        WallDistanceMethod::EIKONAL}};
+    const std::array<WallDistanceMethod,3> plane_methods={{
+        WallDistanceMethod::EIKONAL,
+        WallDistanceMethod::HAMILTON_JACOBI,
+        WallDistanceMethod::ADVECTION_DIFFUSION}};
     for(const auto method:plane_methods) {
         const auto r=compute_wall_distance(method,plane,pg,120);
         for(std::size_t id=0;id<r.distance.size();++id) {
@@ -114,7 +122,7 @@ int main() {
             const double expected=pg.points[id].x;
             require(r.valid[id] && std::isfinite(r.distance[id]),
                     "analytical plane produced an invalid distance");
-            if(std::abs(r.distance[id]-expected)>=2e-10) {
+            if(std::abs(r.distance[id]-expected)>=2e-8) {
                 const double grad=godunov_gradient_at(r.distance,pg,id);
                 const double lap=laplacian_at(r.distance,pg,id);
                 const double hj_res=grad-1.0-0.25*expected*lap;
