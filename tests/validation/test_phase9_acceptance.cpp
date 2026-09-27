@@ -355,9 +355,9 @@ int main(int argc, char** argv)
         // Physical gates remain identical in both modes.
         std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
-             ConvectionScheme::UPWIND, true},
+             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true},
+             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
             {"COUPLED/BlockSchur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true, PreconditionerModel::CoupledBlockSchur},
             {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
