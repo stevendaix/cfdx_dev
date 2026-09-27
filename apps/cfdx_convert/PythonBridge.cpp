@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <sys/wait.h>
 
 namespace fs = std::filesystem;
 namespace cfdx {
@@ -89,10 +90,20 @@ PythonBridgeResult PythonBridge::convert(const std::string& sourcePath, const st
         outputPath
     };
 
+    auto shellQuote = [](const std::string& arg) {
+        std::string quoted = "'";
+        for (char ch : arg) {
+            if (ch == '\'') quoted += "'\\''";
+            else quoted += ch;
+        }
+        quoted += "'";
+        return quoted;
+    };
+
     std::string cmdStr;
     for (const auto& arg : cmd) {
         if (!cmdStr.empty()) cmdStr += " ";
-        cmdStr += arg;
+        cmdStr += shellQuote(arg);
     }
 
     std::array<char, 4096> buffer;
