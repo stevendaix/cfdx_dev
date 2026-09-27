@@ -23,6 +23,7 @@
 #include "cfdx/core/geometry/cell_geometry.h"
 #include "cfdx/core/mesh/index_types.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/fvm/least_squares_gradient.h"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
