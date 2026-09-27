@@ -61,6 +61,19 @@ static Mesh make_1d_chain(std::size_t n)
         m.cells().push_cell({i == 0 ? left[0] : internal[i-1],
                              i + 1 == n ? right[0] : internal[i],
                              y0[i], y1[i], z0[i], z1[i]});
+
+    Patch inlet; inlet.name = "inlet"; inlet.type = PatchType::WALL;
+    inlet.face_ids = left;
+    Patch outlet; outlet.name = "outlet"; outlet.type = PatchType::WALL;
+    outlet.face_ids = right;
+    Patch wall; wall.name = "wall"; wall.type = PatchType::WALL;
+    for (const auto f : y0) wall.face_ids.push_back(f);
+    for (const auto f : y1) wall.face_ids.push_back(f);
+    for (const auto f : z0) wall.face_ids.push_back(f);
+    for (const auto f : z1) wall.face_ids.push_back(f);
+    m.boundary().add_patch(inlet);
+    m.boundary().add_patch(outlet);
+    m.boundary().add_patch(wall);
     return m;
 }
 
@@ -215,6 +228,8 @@ int main()
             if (n >= 0) flux(f)=1.0;
         }
         ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
         bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         const auto upwind = assemble_scalar_equation(
             m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
