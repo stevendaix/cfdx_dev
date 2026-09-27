@@ -55,15 +55,14 @@ def build(mesh):
             for row in b.data: volumes.append(("polyhedron",[[int(x) for x in np.asarray(face)] for face in row],bi))
         else: skipped[ctype]+=len(b.data)
     if not volumes and not surfaces: raise ValueError("no supported cells")
-    cells=volumes if volumes else surfaces
+    if not volumes: return build_surface_2d(points,surfaces,skipped)
+    cells=volumes
     face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
     for ci,(ctype,nodes,_) in enumerate(cells):
-        if volumes and ctype=="polyhedron": templates=tuple(range(len(nodes)))
-        elif volumes: templates=VOLUME_FACES[ctype]
-        else: templates=tuple((i,(i+1)%len(nodes)) for i in range(len(nodes)))
+        templates=tuple(range(len(nodes))) if ctype=="polyhedron" else VOLUME_FACES[ctype]
         refs=[]
         for local in templates:
-            face=nodes[local] if volumes and ctype=="polyhedron" else ([nodes[i] for i in local] if volumes else [nodes[local[0]],nodes[local[1]]])
+            face=nodes[local] if ctype=="polyhedron" else [nodes[i] for i in local]
             key=tuple(sorted(face)); fid=face_map.get(key)
             if fid is None:
                 fid=len(faces); face_map[key]=fid; faces.append(face); owner.append(ci); neighbour.append(-1)
@@ -74,23 +73,74 @@ def build(mesh):
     orient_faces(points, faces, owner, cells)
     return points,faces,owner,neighbour,cell_faces,skipped
 
+def build_surface_2d(points, surfaces, skipped):
+    """Turn a surface-only mesh (SU2 .su2, exported 2D meshes) into a 2D CFDX mesh.
+
+    Such files carry no volume cells, so the cell topology is reconstructed from
+    the surface mesh: every surface element becomes a cell, and its edges become
+    the faces. An edge shared by two elements is an interior face, the remaining
+    ones are the boundary faces of the 2D domain.
+    """
+    cells=surfaces
+    face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
+    for ci,(ctype,nodes,_) in enumerate(cells):
+        if len(nodes)<3: raise ValueError(f"cell {ci}: fewer than 3 vertices")
+        refs=[]
+        for k in range(len(nodes)):
+            face=[nodes[k],nodes[(k+1)%len(nodes)]]
+            if face[0]==face[1]: raise ValueError(f"cell {ci}: repeated vertex {face[0]}")
+            key=tuple(sorted(face)); fid=face_map.get(key)
+            if fid is None:
+                fid=len(faces); face_map[key]=fid; faces.append(face); owner.append(ci); neighbour.append(-1)
+            elif neighbour[fid]!=-1: raise ValueError(f"non-manifold face {key}")
+            else: neighbour[fid]=ci
+            refs.append(fid)
+        cell_faces.append(refs)
+    orient_faces(points, faces, owner, cells)
+    return points,faces,owner,neighbour,cell_faces,skipped
+
+def cell_vertices(ctype,nodes):
+    if ctype=="polyhedron": return sorted({v for fc in nodes for v in fc})
+    return nodes
+
+def newell_normal(pts):
+    xf=np.mean(pts,axis=0)
+    return 0.5*np.sum(np.cross(pts-xf,np.roll(pts-xf,-1,axis=0)),axis=0)
+
+def mid_surface_normal(points, cells):
+    """Unit normal of the plane the cells lie in, used to orient 2D edges."""
+    acc=np.zeros(3)
+    for ctype,nodes,_ in cells:
+        ids=cell_vertices(ctype,nodes)
+        if len(ids)<3: continue
+        acc=acc+newell_normal(points[np.asarray(ids,dtype=np.int64)])
+    norm=float(np.linalg.norm(acc))
+    return acc/norm if norm>0.0 else np.array([0.0,0.0,1.0])
+
 def orient_faces(points, faces, owner, cells):
-    """Orient each face so its normal points out of its owner cell."""
+    """Orient each face so its normal points out of its owner cell.
+
+    Volume faces are tested with the Newell normal of the face; the two-vertex
+    faces of a 2D mesh are tested with the in-plane normal of the edge, i.e.
+    the edge direction rotated by -90 degrees about the mid-surface normal.
+    """
     centres=[]
     for ctype,nodes,_ in cells:
-        ids=sorted({v for fc in nodes for v in fc}) if ctype=="polyhedron" else nodes
+        ids=cell_vertices(ctype,nodes)
         if not ids:
             raise ValueError("cell has no vertices")
         centres.append(np.mean(points[np.asarray(ids,dtype=np.int64)],axis=0))
+    plane=mid_surface_normal(points,cells)
     for fid,face in enumerate(faces):
-        if len(face)<3:
-            raise ValueError(f"face {fid}: fewer than 3 vertices")
+        if len(face)<2:
+            raise ValueError(f"face {fid}: fewer than 2 vertices")
         pts=points[np.asarray(face,dtype=np.int64)]
         xf=np.mean(pts,axis=0)
-        rel=pts-xf
-        S=0.5*np.sum(np.cross(rel,np.roll(rel,-1,axis=0)),axis=0)
-        sd=float(np.dot(S,xf-centres[owner[fid]]))
-        scale=max(float(np.linalg.norm(S))*float(np.linalg.norm(xf-centres[owner[fid]])),1e-300)
+        rel=xf-centres[owner[fid]]
+        if len(face)<3: S=np.cross(pts[1]-pts[0],plane)
+        else: S=newell_normal(pts)
+        sd=float(np.dot(S,rel))
+        scale=max(float(np.linalg.norm(S))*float(np.linalg.norm(rel)),1e-300)
         if not np.isfinite(sd) or abs(sd)<=1e-14*scale:
             raise ValueError(f"face {fid}: degenerate or tangent owner normal")
         if sd<0.0:

@@ -1,5 +1,6 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
+#include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
@@ -54,7 +55,16 @@ int main(int argc, char** argv)
     try {
         const Options options = parse(argc, argv);
         Mesh mesh;
-        if (!gmsh::import_gmsh_mesh(options.mesh, mesh) || mesh.n_cells() == 0)
+        const std::string mesh_path = options.mesh;
+        bool ok = false;
+        if (mesh_path.size() >= 3 && 
+            (mesh_path.substr(mesh_path.size() - 3) == ".h5" ||
+             mesh_path.substr(mesh_path.size() - 8) == ".cfdx.h5")) {
+            ok = read_mesh_hdf5(mesh_path, mesh);
+        } else {
+            ok = gmsh::import_gmsh_mesh(mesh_path, mesh);
+        }
+        if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);

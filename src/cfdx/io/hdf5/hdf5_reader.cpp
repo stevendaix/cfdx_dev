@@ -338,7 +338,8 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             vertices.push_back(
                 static_cast<cfdx::core::FaceConnectivity::Index>(fv[j]));
         }
-        if (vertices.size() < 3) return fail("face contains fewer than three vertices");
+        // 2-vertex faces (edges) are valid for 2D meshes.
+        if (vertices.size() < 2) return fail("face contains fewer than two vertices");
         mesh.faces().push_face(std::move(vertices));
     }
 
