@@ -43,7 +43,8 @@ enum class LimiterType : std::uint8_t {
     MINMOD,
     VANLEER,
     SUPERBEE,
-    VAN_ALBADA
+    VAN_ALBADA,
+    MC
 };
 
 inline const char* to_string(InterpScheme s) {
@@ -62,6 +63,7 @@ inline const char* to_string(LimiterType l) {
         case LimiterType::VANLEER:   return "vanleer";
         case LimiterType::SUPERBEE:  return "superbee";
         case LimiterType::VAN_ALBADA: return "vanalbada";
+        case LimiterType::MC: return "mc";
         default:                     return "unknown";
     }
 }
@@ -79,6 +81,7 @@ inline LimiterType limiter_type_from_string(const std::string& s) {
     if (s == "vanleer")   return LimiterType::VANLEER;
     if (s == "superbee")  return LimiterType::SUPERBEE;
     if (s == "vanalbada") return LimiterType::VAN_ALBADA;
+    if (s == "mc")       return LimiterType::MC;
     throw std::runtime_error("limiter_type_from_string: unknown limiter '" + s + "'");
 }
 
@@ -95,6 +98,7 @@ inline double limiter_psi(double r, LimiterType limiter) {
         case LimiterType::VANLEER: return (r + std::abs(r)) / (1.0 + std::abs(r));
         case LimiterType::SUPERBEE: return std::max(0.0, std::max(std::min(1.0, 2.0 * r), std::min(2.0, r)));
         case LimiterType::VAN_ALBADA: return (r * r + r) / (r * r + 1.0);
+        case LimiterType::MC: return std::max(0.0, std::min({2.0 * r, 0.5 * (1.0 + r), 2.0}));
     }
     return 0.0;
 }
