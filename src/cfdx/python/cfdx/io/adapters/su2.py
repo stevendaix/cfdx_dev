@@ -538,27 +538,30 @@ class Su2Adapter(SolverAdapter):
             return False
 
         n_cells_expected = self.setup.mesh_info.n_cells
+        mismatches = []
         for name, arr in scalar_fields.items():
             if arr.shape[0] != n_cells_expected:
-                result.gap_report.unsupported_nonblocking(
-                    "results", f"field_size_mismatch_{name}",
-                    f"Scalar field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)",
-                    "Ensure solution.csv matches the mesh cell count",
-                )
-            result.scalar_fields.append((name, arr))
+                mismatches.append(f"Scalar field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)")
+            else:
+                result.scalar_fields.append((name, arr))
 
         for name, arr in vec_fields.items():
             if arr.shape[0] != n_cells_expected:
-                result.gap_report.unsupported_nonblocking(
-                    "results", f"field_size_mismatch_{name}",
-                    f"Vector field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)",
-                    "Ensure solution.csv matches the mesh cell count",
-                )
-            result.vec_fields.append((name, arr))
+                mismatches.append(f"Vector field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)")
+            else:
+                result.vec_fields.append((name, arr))
+
+        if mismatches:
+            result.gap_report.unsupported_blocking(
+                "results", "field_size_mismatch",
+                "; ".join(mismatches),
+                "Provide a solution file whose field localisation and cardinality match the imported SU2 mesh",
+            )
+            return False
 
         result.gap_report.supported(
             "results", "solution_csv",
-            f"Imported SU2 solution.csv: {solution_file} ({len(scalar_fields)} scalars, {len(vec_fields)} vectors)"
+            f"Imported SU2 solution.csv: {solution_file} ({len(result.scalar_fields)} scalars, {len(result.vec_fields)} vectors)"
         )
         result.field_data_source = str(solution_file)
         return True
