@@ -36,8 +36,8 @@ int main()
     // The generic force evaluator is the sole force-integration implementation.
     using cfdx::physics::forces::AxisymmetricSample;
     std::vector<AxisymmetricSample> samples{
-        {0.0,0.25,1.0,0.0,0.1,1.0,0.5,0.0,0.0},
-        {0.0,0.50,1.0,0.0,0.1,2.0,1.0,0.0,0.0}
+        {0.0,0.25,-1.0,0.0,0.1,1.0,-0.5,0.0,0.0},
+        {0.0,0.50,-1.0,0.0,0.1,2.0,-1.0,0.0,0.0}
     };
     const auto drag=cfdx::physics::forces::integrate_axisymmetric(
         samples,1.0,1.0,pi/4.0);
