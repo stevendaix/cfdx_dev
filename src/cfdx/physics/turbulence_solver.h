@@ -417,6 +417,30 @@ inline double sa_modified_vorticity(
                      ((cv3-2.0*cv2)*vorticity-sbar);
 }
 
+struct SACellSources {
+    double production=0.0, destruction=0.0, gradient_source=0.0, gamma=0.0;
+};
+
+inline SACellSources sa_cell_sources(
+    double nu_tilde, double vorticity, double wall_distance,
+    double grad_nu_tilde_sq, const TurbulenceTransportControls& c,
+    const SpalartAllmarasModel& sa)
+{
+    const double wt=std::max(nu_tilde,0.0);
+    const double nu=c.molecular_viscosity;
+    if(!(nu>0.0)||!(wall_distance>0.0)||!std::isfinite(grad_nu_tilde_sq)||grad_nu_tilde_sq<0.0)
+        throw std::invalid_argument("invalid SA source state");
+    const double vort=std::max(vorticity,1e-20);
+    const double chi=wt/nu;
+    const double st=std::max(sa_modified_vorticity(vort,wt,chi,wall_distance,sa),1e-20);
+    const double r=std::min(wt/(st*sa.kappa*sa.kappa*wall_distance*wall_distance),10.0);
+    const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
+    const double prod=sa.cb1*(1.0-ft2)*st;
+    const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(wall_distance*wall_distance);
+    return {prod*wt,destr,sa.cb2/sa.sigma*grad_nu_tilde_sq,
+            c.density*(nu+wt)/sa.sigma};
+}
+
 inline TurbulenceTransportResult solve_spalart_allmaras_transport(
     const cfdx::core::Mesh& mesh,const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
@@ -443,17 +467,14 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
         const double* gy = grad_nu_tilde.component_data(1);
         const double* gz = grad_nu_tilde.component_data(2);
         for(std::size_t i=0;i<n;++i){
-            const double wt=std::max(nu_tilde(i),0.0), nu=controls.molecular_viscosity, d=wall_distance(i), vort=std::max(vorticity(i),1e-20);
-            if(!(d>0)||!std::isfinite(d)||!std::isfinite(vort)) throw std::invalid_argument("invalid SA wall/vorticity field");
-            const double chi=wt/nu;
-            const double st=std::max(sa_modified_vorticity(vort,wt,chi,d,sa),1e-20);
-            const double r=std::min(wt/(st*sa.kappa*sa.kappa*d*d),10.0);
-            const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
-            const double prod=sa.cb1*(1-ft2)*st;
-            const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(d*d);
+            const double d=wall_distance(i);
+            if(!(d>0)||!std::isfinite(d)||!std::isfinite(vorticity(i)))
+                throw std::invalid_argument("invalid SA wall/vorticity field");
             const double grad2=gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i];
-            su(i)=controls.density*(prod*wt + sa.cb2/sa.sigma*grad2); spu(i)=-controls.density*destr;
-            gamma[i]=controls.density*(nu+wt)/sa.sigma;
+            const auto q=sa_cell_sources(nu_tilde(i),vorticity(i),d,grad2,controls,sa);
+            su(i)=controls.density*(q.production+q.gradient_source);
+            spu(i)=-controls.density*q.destruction;
+            gamma[i]=q.gamma;
         }
         auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0); for(std::size_t i=0;i<n;++i)sol(i)=nu_tilde(i);
