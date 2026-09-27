@@ -227,7 +227,7 @@ int main()
         // owner-oriented face convention. This isolates the deferred TVD
         // correction from an intentionally singular convective balance.
         flux(0) = -1.0;
-        flux(5) = 1.0;
+        flux(6) = 1.0;
         flux(1) = 1.0;
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
