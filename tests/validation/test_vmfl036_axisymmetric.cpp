@@ -63,6 +63,10 @@ void audit_mesh(const AxisymMesh& mesh, const Level& l)
             if(f.axis) ++axis;
             if((f.sphere?1:0)+(f.outer?1:0)+(f.axis?1:0)!=1)
                 throw std::runtime_error("VMFL036 boundary face classification is not exclusive");
+            const auto& p0=mesh.nodes[f.n0];
+            const auto& p1=mesh.nodes[f.n1];
+            if(f.axis && (std::abs(p0.r)>1e-14 || std::abs(p1.r)>1e-14))
+                throw std::runtime_error("VMFL036 axis face is not geometrically on r=0");
             if(f.axis && std::abs(f.area)>1e-14)
                 throw std::runtime_error("VMFL036 axis face has non-zero revolution area");
             if(!f.axis && !(f.area>0.0))
