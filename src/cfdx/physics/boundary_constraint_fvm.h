@@ -3,13 +3,15 @@
 #include "cfdx/core/boundary/boundary_constraint.h"
 #include "cfdx/core/boundary/mathematical_condition.h"
 #include "cfdx/core/boundary/boundary.h"
-#include "cfdx/core/geometry/face_geometry.h"
 #include "cfdx/core/mesh/mesh.h"
 #include <cmath>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <memory>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace cfdx::physics {
@@ -61,12 +63,12 @@ inline double evaluate_boundary_provider(
 // rejected rather than silently downgraded to a historical PatchField.
 inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
     const cfdx::core::Mesh& mesh,
-    const FvGeometry& geometry,
+    const std::vector<cfdx::core::Vec3>& face_centres,
     const BoundaryConstraintMap& constraints,
     const std::string& field,
     double time = 0.0)
 {
-    if (geometry.face_centres.size() != mesh.n_faces())
+    if (face_centres.size() != mesh.n_faces())
         throw std::invalid_argument("resolve_scalar_boundary_constraints: geometry/mesh mismatch");
 
     ScalarBoundaryFaceConditions resolved(mesh.n_faces());
@@ -101,7 +103,7 @@ inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
                         throw std::out_of_range("boundary patch contains an invalid face id");
                     resolved.conditions[face] = {
                         ScalarBoundaryFaceCondition::Type::FIXED_VALUE,
-                        evaluate_boundary_provider(condition.value, geometry.face_centres[face], face, time)};
+                        evaluate_boundary_provider(condition.value, face_centres[face], face, time)};
                     resolved.specified[face] = 1;
                 }
             } else if constexpr (std::is_same_v<T, cfdx::core::Neumann>) {
