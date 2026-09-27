@@ -143,20 +143,12 @@ class TestSu2Adapter:
 
         # Now import results explicitly
         ok = adapter.import_results(solution_file, result)
-        assert ok
-
-        # Check scalar fields were added
-        assert len(result.scalar_fields) == 3
-        names = [name for name, _ in result.scalar_fields]
-        assert "Density" in names
-        assert "Pressure" in names
-        assert "Temperature" in names
-
-        # Check vector fields were added
-        assert len(result.vec_fields) == 1
-        name, arr = result.vec_fields[0]
-        assert name == "Velocity"
-        assert arr.shape == (10, 3)
+        assert not ok
+        assert result.gap_report.has_blocking()
+        assert result.scalar_fields == []
+        assert result.vec_fields == []
+        mismatch = [f for f in result.gap_report.findings if f.feature == "field_size_mismatch"]
+        assert mismatch
 
     def test_import_results_missing_file(self, su2_file):
         """Test import_results with missing solution file."""
@@ -187,10 +179,10 @@ class TestSu2Adapter:
             result = ConversionResult(source=SourceInfo())
             ok = adapter.convert(su2_file, result)
 
-            assert ok
-            assert not result.gap_report.has_blocking()
-            assert len(result.scalar_fields) == 3
-            assert len(result.vec_fields) == 1
+            assert not ok
+            assert result.gap_report.has_blocking()
+            assert result.scalar_fields == []
+            assert result.vec_fields == []
         finally:
             if target.exists():
                 target.unlink()
