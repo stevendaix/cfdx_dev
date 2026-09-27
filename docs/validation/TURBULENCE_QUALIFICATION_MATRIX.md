@@ -21,7 +21,7 @@ The equation-level closure contract for all 13 models is:
 | RANS | Spalart-Allmaras | SOLVER_READY | Yes | Equation verification now; wall-dependent qualification remains separate |
 | LES | Smagorinsky | KERNEL_ONLY | No | Kernel equations/invariants only |
 | LES | WALE | KERNEL_ONLY | No | Kernel equations/invariants only |
-| LES | Dynamic one-equation | PLANNED | No | Closure kernel contract is testable; transport/filter/dynamic coefficient path remains incomplete |
+| LES | Dynamic one-equation | KERNEL_ONLY | No | Closure kernel and dynamic-coefficient algebra verified; SGS transport/test-filter/complete dynamic path remains incomplete |
 | Hybrid | DES | KERNEL_ONLY | Yes | Length-scale kernel only |
 | Hybrid | DDES | KERNEL_ONLY | Yes | Shielding/length-scale kernel only |
 | Hybrid | IDDES | KERNEL_ONLY | Yes | Shielding/blending kernel only |
@@ -74,11 +74,21 @@ The registry is intentionally not a claim that the current kernels reproduce the
 - **Spalart-Allmaras:** fv1/fv2/ft2, modified vorticity, production, signed destruction, gradient source and effective diffusion are now covered by an explicit reference test.
 - **Smagorinsky:** the algebraic closure uses Delta^2 |S| with the configured Cs and remains kernel-level only.
 - **WALE:** the closure now requires the independent tensor invariants S2 and Sd2 instead of fabricating Sd2 from the scalar strain rate. It remains kernel-level only until the full velocity-gradient path is wired.
-- **Dynamic one-equation LES:** the kernel relation nu_t = Ck Delta sqrt(k_sgs) and the dynamic coefficient algebra are now tested independently. The capability remains PLANNED because SGS transport, test filtering and complete dynamic coefficient evaluation are not implemented.
+- **Dynamic one-equation LES:** the kernel relation nu_t = Ck Delta sqrt(k_sgs) and the dynamic coefficient algebra are now tested independently. The capability is KERNEL_ONLY: the closure kernel is implemented and verified, but SGS transport, test filtering and complete dynamic coefficient evaluation are not implemented.
 - **DES/DDES/IDDES:** the closure dispatch and independent length-scale references now distinguish DES, DDES shielding and IDDES stress/blend behaviour. They remain KERNEL_ONLY because base-RANS coupling, complete shielding inputs and transient hybrid-solver integration are still missing.
 
 ### Audit rule
 
 A test that merely checks nu_t > 0, finite values, or successful convergence is a hardening/regression test. It is not evidence that the governing model equations are correct. Qualification tests must compare each independent term or closed-form identity against a frozen reference value or manufactured solution, with the reference convention recorded.
+
+## Missing work before the next promotion
+
+- Dynamic one-equation LES: implement SGS transport, resolved/test filtering, dynamic coefficient evaluation from filtered fields, consistent coefficient clipping/backscatter policy, LES time integration and quantitative V&V.
+- Smagorinsky/WALE: wire the closure kernels into the LES solver path with the actual velocity-gradient/filter-width pipeline, boundary/wall treatment, transient verification and quantitative V&V.
+- DES: couple the length scale to a complete RANS base model and hybrid transient solver path, then add 3-D verification/V&V.
+- DDES: implement the physical shielding input (including the model-specific r_d chain), couple it to the RANS base model and hybrid transient path, then add 3-D verification/V&V.
+- IDDES: implement the complete model-specific shielding, stress/wake functions and blending, couple them to the RANS base model and hybrid transient path, then add 3-D verification/V&V.
+- SST/SA: complete the independent wall-distance and wall-treatment qualification, then run model-specific quantitative campaigns.
+- All RANS models: complete dedicated quantitative benchmark campaigns; the current SOLVER_READY status means the executable solver path exists, not that physical validation is complete.
 
 This audit is deliberately kept in #474 so implementation can progress without waiting for wall-distance, while preventing premature capability promotion.
