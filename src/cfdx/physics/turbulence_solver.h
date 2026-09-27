@@ -199,6 +199,32 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
     return result;
 }
 
+struct RNGKEpsilonCellSources {
+    double nut=0.0, sk=0.0, spk=0.0, se=0.0, spe=0.0, gamma_k=0.0, gamma_epsilon=0.0;
+};
+
+inline RNGKEpsilonCellSources rng_kepsilon_cell_sources(
+    double k, double epsilon, double strain,
+    const TurbulenceTransportControls& c)
+{
+    if(!std::isfinite(k)||!std::isfinite(epsilon)||!std::isfinite(strain))
+        throw std::invalid_argument("rng_kepsilon_cell_sources: non-finite input");
+    const double ki=std::max(k,c.k_min), ei=std::max(epsilon,c.epsilon_min);
+    const double S=std::max(strain,0.0);
+    RNGKEpsilonCellSources q;
+    q.nut=c.rng_C_mu*ki*ki/ei;
+    const double P=c.density*q.nut*S*S;
+    const double eta=S*ki/ei;
+    const double C1star=rng_kepsilon_c1_star(eta,c.rng_C1,c.rng_eta0,c.rng_beta);
+    q.sk=P;
+    q.spk=-c.density*ei/ki;
+    q.se=C1star*P*ei/ki;
+    q.spe=-c.density*c.rng_C2*ei/ki;
+    q.gamma_k=c.density*(c.molecular_viscosity+q.nut/c.rng_sigma_k);
+    q.gamma_epsilon=c.density*(c.molecular_viscosity+q.nut/c.rng_sigma_epsilon);
+    return q;
+}
+
 struct RealizableKEpsilonCellSources {
     double cmu = 0.0;
     double nut = 0.0;
