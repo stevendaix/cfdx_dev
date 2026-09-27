@@ -33,16 +33,19 @@ int main()
     PressureFace pf{0,1,2.0,0.5,1.0};
     assert(std::abs(pressure_correction_coefficient(pf,1.0,0.25)-1.0)<1e-12);
 
-    std::vector<double> rr{0.25,0.5};
-    std::vector<double> ds{0.1,0.1};
-    std::vector<double> p{1.0,2.0};
-    std::vector<double> tau{0.5,1.0};
-    const auto drag=sphere_drag(rr,ds,p,tau,1.0,1.0,1.0);
+    // The generic force evaluator is the sole force-integration implementation.
+    using cfdx::physics::forces::AxisymmetricSample;
+    std::vector<AxisymmetricSample> samples{
+        {0.0,0.25,1.0,0.0,0.1,1.0,0.5,0.0,0.0},
+        {0.0,0.50,1.0,0.0,0.1,2.0,1.0,0.0,0.0}
+    };
+    const auto drag=cfdx::physics::forces::integrate_axisymmetric(
+        samples,1.0,1.0,pi/4.0);
     const double expected_p=2.0*pi*(0.25+1.0);
     const double expected_v=2.0*pi*(0.125+0.5);
-    assert(std::abs(drag.pressure-expected_p)<1e-12);
-    assert(std::abs(drag.viscous-expected_v)<1e-12);
-    assert(std::abs(drag.total-(expected_p+expected_v))<1e-12);
+    assert(std::abs(drag.pressure_force-expected_p)<1e-12);
+    assert(std::abs(drag.viscous_force-expected_v)<1e-12);
+    assert(std::abs(drag.total_force-(expected_p+expected_v))<1e-12);
 
     std::cout << "AXISYMMETRIC_VMFL036_KERNEL: PASS\n";
     std::cout << "VMFL036_RE100 Re=" << re100.re()
