@@ -525,7 +525,7 @@ inline ScalarEquation assemble_momentum_component(
     }
     const std::string field = "U." + std::string(1, static_cast<char>('x' + component));
     const auto face_conditions = resolve_scalar_boundary_constraints(
-        mesh, geometry.face_centres, boundary_constraints, field, time);
+        mesh, geometry.face_centres, boundary_constraints, field, time, &mass_flux);
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,

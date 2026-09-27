@@ -37,9 +37,9 @@ public:
         auto zero = std::make_shared<ConstantValueProvider>(0.0);
         return {
             {"p", Dirichlet{pressure_}},
-            {"U.x", Neumann{zero}},
-            {"U.y", Neumann{zero}},
-            {"U.z", Neumann{zero}}
+            {"U.x", FluxDependent{zero, zero}},
+            {"U.y", FluxDependent{zero, zero}},
+            {"U.z", FluxDependent{zero, zero}}
         };
     }
 private:

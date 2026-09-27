@@ -67,7 +67,8 @@ inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
     const std::vector<cfdx::core::Vec3>& face_centres,
     const BoundaryConstraintMap& constraints,
     const std::string& field,
-    double time = 0.0)
+    double time = 0.0,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>* face_flux = nullptr)
 {
     if (face_centres.size() != mesh.n_faces())
         throw std::invalid_argument("resolve_scalar_boundary_constraints: geometry/mesh mismatch");
@@ -124,7 +125,27 @@ inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
                     "Flux mathematical condition is deferred until flux-dependent assembly is implemented");
             } else if constexpr (std::is_same_v<T, cfdx::core::Mixed>) {
                 throw std::invalid_argument(
-                    "Mixed mathematical condition is deferred until mixed assembly is implemented");
+                    "Mixed mathematical condition requires a dedicated coupled scalar assembly");
+            } else if constexpr (std::is_same_v<T, cfdx::core::FluxDependent>) {
+                if (face_flux == nullptr)
+                    throw std::invalid_argument(
+                        "FluxDependent boundary condition requires oriented face flux");
+                if (face_flux->size() != mesh.n_faces() || face_flux->dimension() != 1)
+                    throw std::invalid_argument(
+                        "FluxDependent boundary condition received incompatible face flux");
+                for (const std::size_t face : patch.face_ids) {
+                    if (face >= mesh.n_faces())
+                        throw std::out_of_range("boundary patch contains an invalid face id");
+                    const double F = (*face_flux)(face);
+                    const auto& provider = F < 0.0 ? condition.inflow_value
+                                                  : condition.outflow_gradient;
+                    const auto type = F < 0.0
+                        ? ScalarBoundaryFaceCondition::Type::FIXED_VALUE
+                        : ScalarBoundaryFaceCondition::Type::FIXED_GRADIENT;
+                    resolved.conditions[face] = ScalarBoundaryFaceCondition{
+                        type, evaluate_boundary_provider(provider, face_centres[face], face, time)};
+                    resolved.specified[face] = 1;
+                }
             } else if constexpr (std::is_same_v<T, cfdx::core::Coupled>) {
                 throw std::invalid_argument(
                     "Coupled mathematical condition is not valid for scalar local FVM assembly");
