@@ -364,27 +364,15 @@ inline std::vector<double> exact_reference(const WallSurface& s,const WallDistan
 }
 
 inline std::vector<double> search_based_reference(const WallSurface& s,const WallDistanceGrid& g,double threshold) {
-    // NASA-style two-stage search: vertex distance is a cheap global estimate;
-    // exact face distance is evaluated only inside the turbulence-relevant threshold.
-    // The exact face query uses a BVH so the production path does not scale as
-    // O(number_of_query_points * number_of_wall_triangles).
+    // Exact surface search accelerated by a BVH. The threshold argument is
+    // retained for API compatibility, but it must never switch the method to
+    // a vertex-distance approximation: the wall-distance contract is exact
+    // point-to-triangle distance for every fluid query point.
+    (void)threshold;
     const WallDistanceBvh bvh(s);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
-    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
-        double vertex2=std::numeric_limits<double>::infinity();
-        for(const auto& v:s.points) vertex2=std::min(vertex2,wd_norm2(g.points[i]-v));
-        if(std::sqrt(vertex2)<=threshold) {
-            d[i]=bvh.nearest_distance(g.points[i]);
-        } else {
-            // A face can be closer than every wall vertex (e.g. a point
-            // projecting into the interior of a large triangle).  A vertex
-            // threshold alone therefore does not guarantee exactness within
-            // the requested wall-distance threshold.  The BVH lower-bound
-            // traversal closes that gap without evaluating every triangle.
-            const double candidate=bvh.nearest_distance_within(g.points[i],threshold);
-            d[i]=std::isfinite(candidate) ? candidate : std::sqrt(vertex2);
-        }
-    }
+    for(std::size_t i=0;i<g.points.size();++i)
+        if(!g.solid[i]) d[i]=bvh.nearest_distance(g.points[i]);
     return d;
 }
 
