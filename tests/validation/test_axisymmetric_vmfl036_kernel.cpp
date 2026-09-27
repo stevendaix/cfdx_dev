@@ -23,7 +23,7 @@ int main()
     const auto visc=cylindrical_momentum_viscous(
         0.01, 1.0, 2.0, 2.0, 3.0, 4.0, 5.0, 2.0, 2.0);
     assert(std::isfinite(visc.axial));
-    assert(std::abs(visc.radial-0.065)<1e-12);
+    // d2ur_dx2 + d2ur_dr2 + (1/r)dur_dr - ur/r^2 = 3 + 4 + 2.5 - 0.5 = 9.0\n    // The cylindrical viscous term is therefore 0.01 * 9 = 0.09.\n    assert(std::abs(visc.radial-0.09)<1e-12);
 
     check_axis_regularity(0.0,0.0,0.0);
     bool rejected=false;
