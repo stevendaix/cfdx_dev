@@ -30,6 +30,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "MUSCL with Van Albada limiter","numerics.convection.tvd.vanalbada",{"boundedness","TVD","smooth_refinement","steep_gradient"}},
         {"convection.tvd.mc","TVD monotonized central",F::Convection,S::Implemented,C::LocalFaceConservative,true,true,false,1,0,
          "MUSCL with MC limiter","numerics.convection.tvd.mc",{"boundedness","TVD","smooth_refinement","steep_gradient"}},
+        {"diffusion.uncorrected","Uncorrected non-orthogonal diffusion",F::Diffusion,S::Implemented,C::LocalFaceConservative,false,false,true,1,0,
+         "orthogonal projection only","numerics.diffusion.uncorrected",{"MMS","non_orthogonal_refinement"}},
         {"diffusion.orthogonal","Orthogonal two-point diffusion",F::Diffusion,S::Implemented,C::LocalFaceConservative,false,false,true,2,0,
          "Gamma Sf.d/|d|^2 delta_phi","numerics.diffusion.orthogonal",{"MMS","refinement"}},
         {"diffusion.corrected","Corrected non-orthogonal diffusion",F::Diffusion,S::Implemented,C::LocalFaceConservative,false,false,false,1,0,
