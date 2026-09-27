@@ -20,6 +20,7 @@
 #include "cfdx/physics/source_term_linearization.h"
 #include "cfdx/physics/m1_m4_models.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
