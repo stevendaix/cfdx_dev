@@ -183,10 +183,7 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
         return std::make_shared<ConstantValueProvider>(value);
     };
     const auto add_constraint = [&](const std::string& name, MathematicalCondition condition) {
-        const auto& patch = problem.mesh.boundary().patch(problem.mesh.boundary().find(name));
-        Boundary boundary(name, BoundaryRole::WALL, patch.face_ids);
         constraints[name].emplace_back("U.x", std::move(condition));
-        (void)boundary;
     };
     add_constraint("bottom", Dirichlet{constant(bottom_value)});
     add_constraint("top", Dirichlet{constant(top_value)});
