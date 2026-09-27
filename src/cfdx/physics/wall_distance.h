@@ -601,10 +601,11 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
 }
 
 inline double poisson_residual_inf(const std::vector<double>& phi,
-                                      const WallDistanceGrid& g) {
+                                      const WallDistanceGrid& g,
+                                      const std::vector<unsigned char>& fixed) {
     double rmax=0.0;
     for(std::size_t id=0;id<phi.size();++id) {
-        if(g.solid[id] || !std::isfinite(phi[id])) continue;
+        if(g.solid[id] || fixed[id] || !std::isfinite(phi[id])) continue;
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
         double lap=0.0, diag=0.0;
         auto add=[&](std::size_t nb,double h) {
@@ -646,7 +647,7 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
         phi.swap(next);
         // max_change is only an iteration/stagnation indicator. The PDE
         // convergence gate is the discrete Poisson residual itself.
-        if(poisson_residual_inf(phi,g)<1e-10 && max_change<1e-10*h*h) break;
+        if(poisson_residual_inf(phi,g,fixed)<1e-10 && max_change<1e-10*h*h) break;
     }
     std::vector<double> d(n,std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<n;++id) if(!g.solid[id] && !fixed[id]) {
