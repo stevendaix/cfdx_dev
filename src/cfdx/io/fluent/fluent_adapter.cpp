@@ -101,24 +101,36 @@ ZoneType FluentAdapter::zone_type_from_int(int t) const {
 }
 
 // ---------------------------------------------------------------------------
-// .cas header parsing
+// .cas header parsing (section 1)
 // ---------------------------------------------------------------------------
 bool FluentAdapter::parse_cas_header(std::istream& in) {
-    std::string line;
-    std::getline(in, line);
-
-    // Fluent .cas header: first line often contains "ANSYS ..." or version info
+    // Section 1: header tag, e.g. (1 "COMPILED") or (1 "ANSYS/Fluent ...").
     setup_.source.solver = "Fluent";
     setup_.source.version = "legacy (ASCII)";
     setup_.source.format = "cas_dat";
 
-    // Look for version line
-    if (line.find("version") != std::string::npos ||
-        line.find("Version") != std::string::npos) {
-        setup_.source.version = line;
+    // Read the header tag (quoted string or atom)
+    in >> std::ws;
+    std::string tag;
+    if (in.peek() == '"') {
+        char q; in >> q;
+        std::getline(in, tag, '"');
+    } else {
+        in >> tag;
+    }
+    if (tag.find("version") != std::string::npos ||
+        tag.find("Version") != std::string::npos) {
+        setup_.source.version = tag;
+    } else if (tag.find("ANSYS") != std::string::npos ||
+               tag.find("Fluent") != std::string::npos) {
+        setup_.source.version = "202x";
     }
 
-    // Default settings if not found in models section
+    // Read closing paren
+    char c;
+    in >> c;
+
+    // Default physics; may be overridden by section 48 settings.
     setup_.transient = false;
     setup_.physics_model = "incompressible_laminar";
     setup_.turbulence_model = "laminar";
