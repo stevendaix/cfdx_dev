@@ -54,51 +54,46 @@ inline double constant_provider_value(
 
 inline void add_constraint(
     BoundaryConstraintBridge& out,
-    const cfdx::core::BoundaryConstraint& constraint)
+    const cfdx::core::BoundaryConstraint& constraint,
+    const std::string& patch_name)
 {
-    using MC = cfdx::core::MathematicalCondition;
-
     if (constraint.field == "U.x" || constraint.field == "U.y" ||
         constraint.field == "U.z") {
-        const double value = std::visit(
-            [&](const auto& condition) -> double {
-                using T = std::decay_t<decltype(condition)>;
-                if constexpr (std::is_same_v<T, cfdx::core::Dirichlet>) {
-                    return constant_provider_value(condition.value, constraint.field.c_str());
-                } else if constexpr (std::is_same_v<T, cfdx::core::Neumann>) {
-                    throw std::invalid_argument(
-                        "boundary bridge: velocity Neumann requires direct FVM assembly");
-                } else {
-                    throw std::invalid_argument(
-                        "boundary bridge: unsupported velocity mathematical condition");
-                }
-            }, constraint.condition);
-
-        auto& bc = out.velocity[constraint.field == "U.x" ? "x" :
-                                 constraint.field == "U.y" ? "y" : "z"];
-        bc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
-        if (constraint.field == "U.x") bc.value.x = value;
-        if (constraint.field == "U.y") bc.value.y = value;
-        if (constraint.field == "U.z") bc.value.z = value;
+        auto& bc = out.velocity[patch_name];
+        std::visit([&](const auto& condition) {
+            using T = std::decay_t<decltype(condition)>;
+            if constexpr (std::is_same_v<T, cfdx::core::Dirichlet>) {
+                const double value = constant_provider_value(
+                    condition.value, constraint.field.c_str());
+                bc.type = VelocityBoundaryCondition::Type::FIXED_VALUE;
+                if (constraint.field == "U.x") bc.value.x = value;
+                if (constraint.field == "U.y") bc.value.y = value;
+                if (constraint.field == "U.z") bc.value.z = value;
+            } else if constexpr (std::is_same_v<T, cfdx::core::Neumann>) {
+                bc.type = VelocityBoundaryCondition::Type::ZERO_GRADIENT;
+            } else {
+                throw std::invalid_argument(
+                    "boundary bridge: unsupported velocity mathematical condition");
+            }
+        }, constraint.condition);
         return;
     }
 
     if (constraint.field == "p") {
-        std::visit(
-            [&](const auto& condition) {
-                using T = std::decay_t<decltype(condition)>;
-                if constexpr (std::is_same_v<T, cfdx::core::Dirichlet>) {
-                    out.pressure["default"] = {
-                        ScalarBoundaryType::FIXED_VALUE,
-                        constant_provider_value(condition.value, "p")};
-                } else if constexpr (std::is_same_v<T, cfdx::core::Neumann>) {
-                    out.pressure["default"] = {
-                        ScalarBoundaryType::ZERO_GRADIENT, 0.0};
-                } else {
-                    throw std::invalid_argument(
-                        "boundary bridge: unsupported pressure mathematical condition");
-                }
-            }, constraint.condition);
+        std::visit([&](const auto& condition) {
+            using T = std::decay_t<decltype(condition)>;
+            if constexpr (std::is_same_v<T, cfdx::core::Dirichlet>) {
+                out.pressure[patch_name] = {
+                    ScalarBoundaryType::FIXED_VALUE,
+                    constant_provider_value(condition.value, "p")};
+            } else if constexpr (std::is_same_v<T, cfdx::core::Neumann>) {
+                out.pressure[patch_name] = {
+                    ScalarBoundaryType::ZERO_GRADIENT, 0.0};
+            } else {
+                throw std::invalid_argument(
+                    "boundary bridge: unsupported pressure mathematical condition");
+            }
+        }, constraint.condition);
         return;
     }
 
@@ -119,7 +114,7 @@ inline BoundaryConstraintBridge lower_boundary_constraints(
     BoundaryConstraintBridge out;
     const auto constraints = condition.constraints(boundary);
     for (const auto& c : constraints)
-        add_constraint(out, c);
+        add_constraint(out, c, boundary.name());
     return out;
 }
 
