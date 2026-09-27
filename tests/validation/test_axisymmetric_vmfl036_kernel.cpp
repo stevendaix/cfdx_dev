@@ -21,7 +21,7 @@ int main()
     assert(std::abs(cylindrical_divergence(2.0,3.0,2.0)-3.5)<1e-12);
 
     const auto visc=cylindrical_momentum_viscous(
-        0.01, 1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 2.0);
+        0.01, 1.0, 2.0, 2.0, 3.0, 4.0, 5.0, 2.0, 2.0);
     assert(std::isfinite(visc.axial));
     assert(std::abs(visc.radial-0.065)<1e-12);
 
@@ -42,7 +42,7 @@ int main()
     const double expected_v=2.0*pi*(0.125+0.5);
     assert(std::abs(drag.pressure-expected_p)<1e-12);
     assert(std::abs(drag.viscous-expected_v)<1e-12);
-    assert(std::abs(drag.total-expected_p-expected_v)<1e-12);
+    assert(std::abs(drag.total-(expected_p+expected_v))<1e-12);
 
     std::cout << "AXISYMMETRIC_VMFL036_KERNEL: PASS\n";
     std::cout << "VMFL036_RE100 Re=" << re100.re()
