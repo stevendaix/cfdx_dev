@@ -228,6 +228,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/source_term.h
     src/cfdx/core/numerics/temporal.h
     src/cfdx/core/numerics/convection.h
+    src/cfdx/physics/forces.h
     src/cfdx/physics/incompressible.h
     src/cfdx/physics/pressure_velocity.h
     src/cfdx/physics/pressure_velocity_algorithms.h
