@@ -218,12 +218,12 @@ inline ScalarEquation assemble_scalar_equation(
     const ScalarBoundaryConditions& boundary_conditions = {},
     bool bounded_convection = true,
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
     const std::vector<double>* extra_rhs = nullptr,
     const std::vector<double>* cell_diffusion = nullptr,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
