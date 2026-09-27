@@ -163,11 +163,13 @@ int main() {
         EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::LIMITED), std::runtime_error);
     });
 
-    run_case("apply_limiter_bounds_local_extrema", []() {
-        EXPECT_NEAR(apply_limiter_tvd(0.0, 100.0, 150.0, LimiterType::NONE), 100.0, 1e-12);
-        EXPECT_NEAR(apply_limiter_tvd(100.0, 0.0, -50.0, LimiterType::NONE), 0.0, 1e-12);
-        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::MINMOD) >= 0.0);
-        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::VANLEER) <= 100.0);
+    run_case("tvd_limiter_exact_ratio_contract", []() {
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::MINMOD), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(0.5, LimiterType::MINMOD), 0.5, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(-1.0, LimiterType::MINMOD), 0.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::VANLEER), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::SUPERBEE), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::VAN_ALBADA), 1.0, 1e-12);
     });
 
     run_case("apply_limiter_all_tvd_schemes_are_bounded", []() {
@@ -178,7 +180,7 @@ int main() {
             LimiterType::VAN_ALBADA
         };
         for (const auto limiter : limiters) {
-            const double bounded = apply_limiter_tvd(0.0, 1.0, 2.0, limiter);
+            const double bounded = apply_limiter_tvd(2.0, limiter);
             EXPECT_TRUE(std::isfinite(bounded));
             EXPECT_TRUE(bounded >= 0.0);
             EXPECT_TRUE(bounded <= 1.0);
@@ -193,7 +195,7 @@ int main() {
             LimiterType::VAN_ALBADA
         };
         for (const auto limiter : limiters) {
-            const double bounded = apply_limiter_tvd(10.0, 20.0, 0.0, limiter);
+            const double bounded = apply_limiter_tvd(-2.0, limiter);
             EXPECT_TRUE(std::isfinite(bounded));
             EXPECT_TRUE(bounded >= 10.0);
             EXPECT_TRUE(bounded <= 20.0);
