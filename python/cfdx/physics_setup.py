@@ -167,6 +167,27 @@ TURBULENCE_MODELS = tuple(
 
 
 @dataclass(frozen=True)
+class TurbulenceCorrectionSpec:
+    key: str
+    label: str
+    models: tuple[str, ...]
+    description: str
+
+TURBULENCE_CORRECTIONS: tuple[TurbulenceCorrectionSpec, ...] = (
+    TurbulenceCorrectionSpec("rotation_curvature", "Rotation / curvature", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Sensitizes the closure to system rotation and streamline curvature."),
+    TurbulenceCorrectionSpec("compressibility", "Compressibility", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Compressibility correction applied through the model production/closure contract."),
+    TurbulenceCorrectionSpec("roughness", "Wall roughness", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Wall-roughness modifier kept independent from the base model."),
+    TurbulenceCorrectionSpec("production_limiter", "Production limiter", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Bounds excessive turbulent production."),
+    TurbulenceCorrectionSpec("kato_launder", "Kato-Launder", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST"), "Rotation-aware production correction."),
+    TurbulenceCorrectionSpec("qcr", "QCR", ("SPALART_ALLMARAS",), "Quadratic constitutive relation correction for the SA stress."),
+)
+
+def turbulence_corrections_for_model(key: str) -> tuple[TurbulenceCorrectionSpec, ...]:
+    key = key.upper()
+    return tuple(c for c in TURBULENCE_CORRECTIONS if key in c.models)
+
+
+@dataclass(frozen=True)
 class TurbulenceSelectionContext:
     """User-facing context used to produce transparent model suggestions.
 
