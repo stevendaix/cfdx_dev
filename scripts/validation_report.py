@@ -83,6 +83,30 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
 
 
 def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
+    axis = re.findall(
+        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+) "
+        r"iterations=(?P<iterations>\\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
+        r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
+        r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
+        output,
+    )
+    if axis:
+        x = axis[-1]
+        data: dict[str, float | int | str] = {
+            "level": x["level"],
+            "iterations": int(x["iterations"]),
+            "continuity": float(x["continuity"]),
+            "momentum": float(x["momentum"]),
+            "pressure_correction": float(x["pcorr"]),
+            "cd_pressure": float(x["cdp"]),
+            "cd_viscous": float(x["cdv"]),
+            "cd_total": float(x["cd"]),
+            "cd_reference": float(x["ref"]),
+        }
+        data["status"] = "PASS" if "VMFL036_AXISYMMETRIC_VALIDATION: PASS" in output else "FAIL"
+        return data
+
     result = re.search(
         r"VMFL036 RESULT iterations=(?P<iterations>\\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"continuity_norm=(?P<continuity_norm>[-+0-9.eE]+) momentum_eq=(?P<momentum>[-+0-9.eE]+) "
@@ -483,7 +507,7 @@ def main() -> int:
         "test_fluent_vmfl_reference",
         "test_numerical_model_verification",
         "test_ghia_cavity",
-        "test_vmfl036_reference_case",
+        "test_vmfl036_axisymmetric",
     ):
         suite_status[name] = logs[name][0]
     gate = validation_gate_status(suite_status)
