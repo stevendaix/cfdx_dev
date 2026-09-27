@@ -40,6 +40,25 @@ int main() {
             if(!(kato_launder_production_factor(inv,corr) > 0.0)) throw std::runtime_error("Kato-Launder correction failed");
             if(!(corrected_turbulence_production(1.0,inv,corr,10.0) > 0.0)) throw std::runtime_error("production correction failed");
             if(std::abs(roughness_factor(0.001,0.01,corr)-1.0)>1e-12) throw std::runtime_error("roughness correction failed");
+
+            // Composition test: independent correction layers must both remain
+            // active when applied through the common production hook.
+            TurbulenceCorrectionControls composed;
+            composed.production_limiter=false;
+            composed.kato_launder=true;
+            composed.kato_coefficient=1.0;
+            composed.roughness=true;
+            composed.roughness_height=0.01;
+            composed.roughness_coefficient=2.0;
+            const double base=2.0;
+            const double kato_only=corrected_turbulence_production(
+                base, inv, composed, 10.0);
+            const double roughness_only_factor=roughness_factor(
+                composed.roughness_height, inv.wall_distance, composed);
+            const double expected=(base*roughness_only_factor) +
+                kato_launder_production_factor(inv, composed);
+            if(std::abs(kato_only-expected)>1e-12)
+                throw std::runtime_error("correction composition failed");
             corr.qcr=true;
             if(!(qcr_stress_factor(2.0,1.0,corr) > 1.0)) throw std::runtime_error("QCR correction failed");
             if(!(wale_eddy_viscosity({4.0,4.0,0.1},0.325)>0.0)) throw std::runtime_error("WALE kernel failed");
