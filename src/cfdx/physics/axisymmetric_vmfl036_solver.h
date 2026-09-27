@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include "cfdx/physics/forces.h"
 #include <array>
 #include <iostream>
 #include <cmath>
@@ -436,23 +437,26 @@ private:
 
     std::array<double,6> drag(const std::vector<double>& gx,const std::vector<double>& gr,
                               const std::vector<double>& rx,const std::vector<double>& rr) const{
-        (void)rr;
-        double fp=0.0,fv=0.0;
+        std::vector<cfdx::physics::forces::AxisymmetricSample> samples;
         for(std::size_t c=0;c<n_;++c){
             if(m_.cells[c].i!=0) continue;
             for(const auto fid:m_.cells[c].faces){
-                const auto& f=m_.faces[fid]; if(!f.sphere) continue;
-                const double dS=f.area;
-                const double nx=-f.nx,nr=-f.nr;
+                const auto& f=m_.faces[fid];
+                if(!f.sphere) continue;
+                // Mesh face normal points out of the fluid domain, i.e. into the
+                // body. The force library uses the body->fluid normal.
+                const double nx=-f.nx;
+                const double nr=-f.nr;
                 const double tau_xx=2.0*mu_*gx[c];
                 const double tau_xr=mu_*(gr[c]+rx[c]);
-                const double p=p_[c];
-                fp += -p*nx*dS;
-                fv += (tau_xx*nx+tau_xr*nr)*dS;
+                const double tau_rr=2.0*mu_*(rr[c]);
+                samples.push_back({f.cx,f.cr,nx,nr,f.ds,p_[c],tau_xx,tau_xr,tau_rr});
             }
         }
-        const double denom=0.5*rho_*1.0*1.0*(AxisymMesh::pi());
-        return {fp,fv,fp+fv,fp/denom,fv/denom,(fp+fv)/denom};
+        const auto result=cfdx::physics::forces::integrate_axisymmetric(
+            samples,rho_,1.0,AxisymMesh::pi()*m_.diameter*m_.diameter/4.0);
+        return {result.pressure_force,result.viscous_force,result.total_force,
+                result.cd_pressure,result.cd_viscous,result.cd_total};
     }
 };
 
