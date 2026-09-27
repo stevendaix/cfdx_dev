@@ -629,10 +629,27 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
             if(g.solid[id] || fixed[id]) { next[id]=0.0; continue; }
             const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
             double sum=0.0, diag=0.0;
-            auto add=[&](std::size_t nb,double hh){ const double w=1.0/(hh*hh); if(!g.solid[nb]) { sum+=w*phi[nb]; diag+=w; } };
-            if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
-            if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
-            if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
+            auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double hh) {
+                const double w=1.0/(hh*hh);
+                const bool fm=has_minus && !g.solid[minus];
+                const bool fp=has_plus && !g.solid[plus];
+                if(fm && fp) {
+                    sum+=w*(phi[minus]+phi[plus]);
+                    diag+=2.0*w;
+                } else if(fm) {
+                    sum+=2.0*w*phi[minus];
+                    diag+=2.0*w;
+                } else if(fp) {
+                    sum+=2.0*w*phi[plus];
+                    diag+=2.0*w;
+                }
+            };
+            const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+            const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+            const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
+            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
+            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
             if(diag==0.0) { next[id]=phi[id]; continue; }
             const double target=(sum+1.0)/diag;
             next[id]=(1.0-smooth)*phi[id]+smooth*target;
