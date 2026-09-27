@@ -34,14 +34,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
 
       - name: Install Python mesh I/O stack
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python -c "import gmsh; print('Gmsh Python binding:', gmsh.__version__)"
 
       - name: Configure CMake
         run: >
@@ -66,7 +67,7 @@ jobs:
           grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
           echo
           echo "=== Failed build commands ==="
-          grep -E 'FAILED:|ninja: build stopped|g\+\+|c\+\+|clang\+\+|nvcc' build.log | tail -n 120 || true
+          grep -E 'FAILED:|ninja: build stopped|g++|c++|clang++|nvcc' build.log | tail -n 120 || true
 
       - name: Run CTest (collect all failures; fail only at final gate)
         id: ctest
@@ -98,7 +99,9 @@ jobs:
             tail -n 500 build/Testing/Temporary/LastTest.log
           fi
           echo "=== Poiseuille diagnostic marker ==="
-          grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \\(complete list\\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
+          echo "=== VMFL036 physical CFD result ==="
+          grep -R -E 'VMFL036_(MESH|CFDX START|RESULT|DRAG|CFDX_RESULT)' build/Testing build 2>/dev/null | tail -n 250 || true
+          grep -R -E 'POISEUILLE_VALIDATION:|FAILURES \(complete list\):|Poiseuille observed order' build/Testing build 2>/dev/null | tail -n 250 || true
 
       - name: Upload test logs on failure
         if: ${{ !cancelled() && (steps.build.outcome != 'success' || steps.ctest.outcome != 'success') }}
