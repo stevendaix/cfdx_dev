@@ -602,6 +602,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
 
+    add_test(NAME test_turbulence_qualification_matrix
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_turbulence_qualification_matrix.py
+                ${CMAKE_SOURCE_DIR}/docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json)
+    set_tests_properties(test_turbulence_qualification_matrix PROPERTIES
+        LABELS "qualification;validation;turbulence")
+
     # Engineering qualification registry contract. This is intentionally a
     # metadata gate: numerical qualification remains the responsibility of
     # the executable case and its retained calculation evidence.
