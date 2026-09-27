@@ -456,4 +456,3 @@ inline double iddes_eddy_viscosity(double wall_distance,double delta,double stra
 }
 
 }
-}
