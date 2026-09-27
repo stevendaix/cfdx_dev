@@ -246,10 +246,12 @@ private:
                     qf=0.5*(q[c]+q[f.neighbour]);
                 else if(velocity){
                     if(f.sphere) qf=0.0;
-                    else if(f.outer) qf=outer_value;
+                    else if(f.outer && f.cx < 0.0) qf=outer_value;
                     else if(f.axis) qf=(outer_value==0.0?0.0:q[c]);
+                } else if(f.outer && f.cx >= 0.0){
+                    qf=0.0; // pressure outlet
                 }
-                // For pressure, zero normal gradient is represented by q_face=q_cell.
+                // All remaining pressure boundaries use zero normal gradient.
                 gx[c]+=qf*f.nx*f.area;
                 gr[c]+=qf*f.nr*f.area;
             }
