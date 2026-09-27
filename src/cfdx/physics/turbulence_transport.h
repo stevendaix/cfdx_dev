@@ -125,10 +125,10 @@ inline double turbulence_nu_t(
             throw std::invalid_argument("DES family requires positive cell volume and wall distance");
         const double delta=std::cbrt(cell_volume);
         if(c.model==TurbulenceModel::DES)
-            return des_eddy_viscosity(wall_distance,delta,strain,c.smagorinsky_Cs,c.des_Cdes);
+            return des_hybrid_eddy_viscosity(wall_distance,delta,strain,c.smagorinsky_Cs,c.des_Cdes);
         if(c.model==TurbulenceModel::DDES)
-            return ddes_eddy_viscosity(wall_distance,delta,strain,ddes_r,c.smagorinsky_Cs,c.des_Cdes);
-        return iddes_eddy_viscosity(wall_distance,delta,strain,ddes_r,iddes_stress_blend,
+            return ddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,c.smagorinsky_Cs,c.des_Cdes);
+        return iddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,iddes_stress_blend,
                                     c.smagorinsky_Cs,c.des_Cdes);
     case TurbulenceModel::DYNAMIC_KEQN:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
