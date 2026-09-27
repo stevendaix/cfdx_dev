@@ -383,13 +383,11 @@ private:
                 }
             }
         }
-        const std::size_t ref=0;
-        diag[ref]=1.0; rows[ref].clear(); rhs[ref]=0.0;
-        double maxcorr=0.0;
+        // The pressure-outlet arc supplies the Dirichlet pressure-correction
+        // condition; no artificial reference cell is required.
         for(std::size_t s=0;s<c.pressure_sweeps;++s){
             maxcorr=0.0;
             for(std::size_t cell=0;cell<n_;++cell){
-                if(cell==ref) continue;
                 double sum=rhs[cell];
                 for(const auto [nb,a]:rows[cell]) sum-=a*pc_[nb];
                 const double v=sum/diag[cell];
