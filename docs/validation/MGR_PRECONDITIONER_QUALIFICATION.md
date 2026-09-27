@@ -2,47 +2,116 @@
 
 ## Scope
 
-CFDX now contains a dependency-free, one-level MGR-style reduction preconditioner for coupled systems. The implementation is inspired by the reduction hierarchy described by HYPRE MGR, but is not a HYPRE wrapper and does not claim feature or performance parity.
+CFDX contains a dependency-free MGR-style reduction preconditioner inspired by the
+reduction hierarchy exposed by HYPRE MGR. It is not a HYPRE runtime wrapper and
+does not claim feature or performance parity.
 
 For an explicit fine/coarse partition,
 
-A = [A_FF A_FC]\n    [A_CF A_CC]
+A = [A_FF A_FC; A_CF A_CC],  S~ = A_CC - A_CF M_F^-1 A_FC.
 
-The current coarse operator is
+The implementation supports two F-relaxation choices:
+- diagonal/Jacobi: M_F = diag(A_FF);
+- ILU(0): M_F is the existing CFDX ILU(0) factorization of the F block.
 
-S~ = A_CC - A_CF diag(A_FF)^-1 A_FC.
+HYPRE's current MGR documentation explicitly exposes per-level C/F definitions,
+multiple reduction levels and configurable F-relaxation, including ILU/direct
+variants. CFDX now mirrors these concepts at the native API level while keeping
+the implementation smaller and dependency-free. citeturn2search4turn2search5
 
-The application is:
+## Six-point qualification campaign
 
-1. F-relaxation: z_F = diag(A_FF)^-1 r_F;
-2. restrict the coarse residual: r_C - A_CF z_F;
-3. solve S~ z_C with native AMG;
-4. prolongate z_C and apply the F back-substitution z_F <- z_F - diag(A_FF)^-1 A_FC z_C.
+### 1. Couette: MGR versus existing Block-Schur
 
-## CFDX integration
+test_phase9_acceptance now runs both:
+- COUPLED/BlockSchur/upwind/bounded;
+- COUPLED/MGR/upwind/bounded.
 
-The coupled 4N solver can select MGR explicitly through PreconditionerModel::MGR. The default automatic coupled policy remains the existing coupled Block-Schur preconditioner until MGR has passed the full quantitative campaign.
+Both use the same 4N coupled matrix and the same physical acceptance gates:
+analytical velocity profile, Umax, transverse velocity, pressure uniformity,
+conservative continuity, corrected-flux continuity and momentum residuals.
 
-For the current 4N ordering, the natural first reduction is:
+The test also reports iteration counts and algorithm-invariance max_abs_dU.
+MGR is not made the automatic production default by this PR.
 
-- F variables: u_x, u_y, u_z;
-- C variables: pressure.
+### 2. Quantitative qualification
 
-The reference-pressure row remains part of the assembled system, so the reduction does not change the gauge contract.
+Acceptance evidence includes independently:
+- true b-Ax residual;
+- conservative continuity;
+- momentum-equation residual, including component and location diagnostics;
+- analytical solution error where an oracle exists;
+- Krylov/linear iteration counts;
+- absence of hidden fallback or hierarchy rebuild.
+
+A converged Krylov status alone is not an acceptance criterion.
+
+### 3. Stronger F-relaxation
+
+The native MGR API accepts FineRelaxation::Diagonal or FineRelaxation::ILU0.
+ILU(0) reuses the existing CFDX factorization implementation; MGR does not
+duplicate an ILU kernel.
+
+The unit qualification compares both modes on a genuinely coupled F block and
+records their true residuals.
+
+### 4. Multilevel MGR
+
+The constructor accepts additional local C/F partitions. Each additional
+partition recursively reduces the previous coarse operator. The final retained
+operator is handled by native AMG.
+
+This is a configurable native reduction hierarchy, not an automatic coarsening
+heuristic. Each supplied hierarchy level is validated.
+
+### 5. Nested/generic block MGR
+
+The implementation uses arbitrary index sets rather than hard-coded
+velocity/pressure block types. The coupled solver currently supplies the natural
+4N partition F=(u_x,u_y,u_z), C=p.
+
+The unit campaign also exercises a second C/F level on a generic coupled system.
+This is the foundation for later velocity/pressure/temperature nesting without
+duplicating the reduction algorithm.
+
+PETSc's FieldSplit API similarly treats velocity, pressure and temperature as
+arbitrary fields/splits and permits explicit index sets, supporting this generic
+design. citeturn1search2
+
+### 6. MPI/GPU boundary
+
+The native MGR implementation remains CPU/local-CSR only in this PR.
+
+The existing CFDX MPI stack has partition/halo infrastructure, and the GPU stack
+has explicit CUDA execution paths. MGR does not silently fall back to CPU or to a
+different preconditioner when those paths are requested. Distributed coarse
+assembly, coarse-process reduction, device kernels and CPU/GPU numerical
+equivalence remain explicit follow-up work.
+
+This boundary is intentional: CPU emulation is not evidence of CUDA equivalence,
+and a local preconditioner test is not evidence of MPI partition invariance.
 
 ## Lifecycle contract
 
-- setup() constructs the reduced CSR graph and AMG hierarchy.
-- update_values() refreshes numeric coefficients when the reduced graph is unchanged.
-- A changed reduced CSR pattern is rejected explicitly and requires a new setup().
-- The implementation does not silently rebuild a hierarchy during update_values().
+- setup() builds the reduction hierarchy and F-relaxation state.
+- update_values() refreshes numerical values only when relevant CSR patterns are
+  unchanged.
+- A changed reduced or ILU F-operator pattern is rejected explicitly and
+  requires setup().
+- No hierarchy is silently rebuilt from update_values().
 
-## Qualification
+## Current coupled policy
 
-The unit test checks valid C/F partitioning, successful setup, finite non-zero application, numeric refresh with unchanged graph, and changed-topology rejection.
+Automatic coupled solver selection remains CoupledBlockSchur. MGR is an
+explicitly requested alternative until the complete Couette and broader coupled
+campaign provides quantitative evidence.
 
-The next acceptance layer is a coupled CFD campaign with independent b - A x, continuity, momentum residual, solution-oracle and iteration-count diagnostics on Couette/Poiseuille/cavity or an appropriate manufactured coupled matrix.
+PETSc documents that Schur-preconditioner quality depends strongly on the
+approximation used for the eliminated block; an explicit diag(A_FF) Schur
+approximation is only effective when that diagonal is a good approximation to
+A_FF. citeturn1search0turn1search3
 
-## Current limitations
+## Acceptance status
 
-This first implementation intentionally does not claim multiple MGR reduction levels, adaptive C/F selection, F-relaxation beyond diagonal Jacobi, distributed/MPI MGR, coarse-level process reduction, GPU execution, or HYPRE/PETSc runtime compatibility. These are separate implementation and validation slices.
+Keep this PR unmerged until exact-head CI is green and the validation-total
+campaign completes with the MGR Couette case passing all physical gates.
