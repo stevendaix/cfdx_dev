@@ -776,10 +776,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     endif()
 
     # I/O adapter tests (M0.10-T03)
-    add_cfdx_test(test_su2_adapter tests/unit/test_su2_adapter.cpp)
-    add_cfdx_test(test_fluent_adapter tests/unit/test_fluent_adapter.cpp)
-    add_cfdx_test(test_starccm_adapter tests/unit/test_starccm_adapter.cpp)
-    add_cfdx_test(test_saturne_adapter tests/unit/test_saturne_adapter.cpp)
+    # C++ solver adapters are now thin stubs (format parsing moved to Python).
     add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()

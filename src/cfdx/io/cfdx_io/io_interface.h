@@ -157,32 +157,26 @@ struct ConversionResult {
 // Each external solver provides a concrete adapter.
 // Adapters never touch CFDX numerical-core internals; they only populate
 // the common CFDX Mesh, Fields, and GapAnalysis.
+//
+// Architecture: "Python knows the formats, C++ only knows CFDX canonical
+// HDF5."  C++ adapters are thin stubs that detect_source() by extension
+// only and defer all format-specific conversion to the Python layer.
 class SolverAdapter {
 public:
     virtual ~SolverAdapter() = default;
 
-    // --- Identification ---
-    virtual const char* solver_name() const = 0;
-    virtual const char* format_name() const = 0;
+    // --- Source/version detection (cheap: extension check only) ---
+    // Returns true if the path's extension is recognised by this adapter.
+    virtual bool detect_source(const std::string& case_path, SourceInfo& info) {
+        (void)case_path; (void)info;
+        return false;
+    }
 
     // --- Core conversion ---
     // Parses the source files and populates result (mesh + fields + gap report).
     // Returns true if the conversion completed without blocking incompatibilities.
     virtual bool convert(const std::string& case_path,
                          ConversionResult& result) = 0;
-
-    // --- Optional: results-only import (after mesh already loaded) ---
-    virtual bool import_results(const std::string& results_path,
-                                ConversionResult& result) {
-        (void)results_path; (void)result;
-        return false;  // not all adapters support results-only import
-    }
-
-    // --- Source/version detection ---
-    virtual bool detect_source(const std::string& case_path, SourceInfo& info) {
-        (void)case_path; (void)info;
-        return false;
-    }
 };
 
 // ---------------------------------------------------------------------------
