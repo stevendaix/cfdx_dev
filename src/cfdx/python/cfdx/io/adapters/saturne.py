@@ -11,9 +11,32 @@ ARCHITECTURAL NOTE (per issue #425):
 
 This adapter:
   - Parses the Code_Saturne XML case file for physics model, BCs, materials
-  - Parses Python case scripts for case.set() calls (key-value extraction)
+  - Performs SYNTACTIC EXTRACTION of Python case scripts (see the note below)
   - Recognises when a neutral mesh export (MED/CGNS/VTK) is present
   - Documents all limitations in the GapAnalysis
+
+IMPORTANT — SYNTACTIC EXTRACTION vs VALIDATED SETUP MAPPING:
+  `parse_python_setup()` is a *syntactic extractor*, not a validated setup
+  mapper. It recognises one narrow syntactic shape:
+
+      case.set("<literal key>", "<literal value>")
+
+  and nothing else. A Code_Saturne case script is ordinary Python, so a real
+  script can express the same setting in ways this adapter cannot resolve:
+
+    - intermediate variables   ``ref = "k-epsilon"; case.set("model", ref)``
+    - computed/concatenated     ``case.set("n", str(4 * mesh.n_cells))``
+    - function calls            ``case.set("period", period(0.1, 2.0))``
+    - dictionaries              ``params = {...}; case.set("d", params)``
+    - loops                     ``for p in walls: case.set(p, "wall")``
+    - imports / module state    ``from user_usr import *; cs_ = ...``
+    - conditional logic         ``if REYNOLDS > 1e5: case.set(...)``
+
+  Anything that is not a two-string-literal `case.set()` call is therefore
+  *silently skipped*. Absence of an extracted entry means "not recognised",
+  NOT "not set in the case". The parser deliberately does not attempt to
+  evaluate the script; `self._python_extraction` records what was seen so the
+  GapAnalysis can report partial, unvalidated coverage.
 
 Corresponds to the C++ header:
   src/cfdx/io/saturne/saturne_adapter.h
@@ -58,6 +81,36 @@ _SATURNE_XML_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+# Python constructs that a Code_Saturne case script may legitimately use to
+# express a setting, but that `parse_python_setup()` CANNOT resolve. Their
+# presence downgrades the extraction status from "literal_only" to "partial".
+# These are counted for reporting only — no attempt is made to evaluate them.
+_PYTHON_UNRESOLVABLE_PATTERNS: dict[str, re.Pattern] = {
+    "import": re.compile(r"^\s*(?:from\s+\S+\s+import|import\s+\S+)", re.MULTILINE),
+    "function_def": re.compile(r"^\s*def\s+\w+\s*\(", re.MULTILINE),
+    "for_loop": re.compile(r"^\s*for\s+\w+.*:", re.MULTILINE),
+    "while_loop": re.compile(r"^\s*while\s+.*:", re.MULTILINE),
+    "conditional": re.compile(r"^\s*(?:if|elif)\s+.*:", re.MULTILINE),
+    "dict_literal": re.compile(r"=\s*\{[^{}]*\}"),
+    "function_call_value": re.compile(
+        r"case\.set\(\s*[\"'][^\"']+[\"']\s*,\s*[\"'][^\"']+[\"']\s*,\s*[^\"')]"
+    ),
+    "variable_value": re.compile(
+        r"case\.set\(\s*[\"'][^\"']+[\"']\s*,\s*(?![\"'])[A-Za-z_]"
+    ),
+    "f_string": re.compile(r"\bf[\"']"),
+    "call_expression": re.compile(r"=\s*[A-Za-z_]\w*\([^\n]*\)"),
+}
+
+# Code_Saturne exports this adapter recognises.
+_SATURNE_RESULT_EXTS: frozenset[str] = frozenset(
+    {".med", ".cgns", ".vtk", ".vtu", ".case", ".geo", ".scl"}
+)
+# Subset of the above whose field data can ACTUALLY be read (via meshio).
+# The rest are detect-only: presence is recorded, contents are not parsed.
+_SATURNE_READABLE_RESULT_EXTS: frozenset[str] = frozenset({".vtk", ".vtu"})
+
+
 class SaturneAdapter(SolverAdapter):
     solver_name = "Code_Saturne"
     format_name = "saturne_xml_py"
@@ -67,6 +120,14 @@ class SaturneAdapter(SolverAdapter):
         self.setup = CaseSetup(source=SourceInfo(solver="Code_Saturne", format="saturne_xml_py"))
         self._entries: list[dict] = []
         self._neutral_files: list[str] = []
+        # Status of the Python setup extraction. "status" is always one of:
+        #   "not_attempted" — no Python case file was present
+        #   "partial"        — literal case.set() calls were extracted, but the
+        #                      script contains constructs this adapter cannot
+        #                      resolve (see _PYTHON_UNRESOLVABLE_PATTERNS)
+        #   "literal_only"   — every case.set() call seen used two string
+        #                      literals; still NOT a validated mapping
+        self._python_extraction: dict = {"status": "not_attempted", "entries": 0, "unresolved": {}}
 
     def detect_source(self, case_path: str, info: SourceInfo) -> bool:
         p = Path(str(case_path))
@@ -151,11 +212,14 @@ class SaturneAdapter(SolverAdapter):
         result.source = self.setup.source
         result.setup = self.setup.model_copy(deep=True)
 
-        # Mesh: only set if neutral export is available
+        # Mesh: only reported when a neutral export is available. Detection is
+        # not parsing — no mesh geometry is read during convert().
         if self._neutral_files:
-            result.gap_report.supported(
+            result.gap_report.approximated(
                 "mesh", "neutral_export",
-                f"Detected {len(self._neutral_files)} neutral mesh export(s): {', '.join(self._neutral_files)}",
+                f"Detected {len(self._neutral_files)} neutral mesh export(s) "
+                f"({', '.join(self._neutral_files)}); file presence only, mesh not read",
+                "Call import_results() on a readable export (.vtk/.vtu) to load mesh and field data",
             )
         else:
             result.gap_report.unsupported_blocking(
@@ -263,20 +327,53 @@ class SaturneAdapter(SolverAdapter):
         return True
 
     def parse_python_setup(self, py_file: str) -> bool:
+        """Syntactically extract literal ``case.set()`` calls from a case script.
+
+        This is *syntactic extraction only*, not a validated setup mapping: the
+        script is never executed and non-literal arguments are never evaluated.
+        See the module docstring for the full statement of the limitation and
+        ``_PYTHON_UNRESOLVABLE_PATTERNS`` for what gets skipped.
+        """
         text = Path(py_file).read_text(errors="replace")
 
-        # Extract case.set() calls: case.set('key', 'value') or case.set("key", "value")
+        # The ONLY shape understood: case.set('<literal key>', '<literal value>')
         set_pattern = re.compile(
             r'case\.set\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)'
         )
+        matched_spans = []
         for match in set_pattern.finditer(text):
             key, value = match.group(1), match.group(2)
             self._entries.append({"key": key, "value": value, "section": "python", "attributes": {}})
+            matched_spans.append(match.span())
 
-        # Also detect standalone set() calls
-        standalone_pattern = re.compile(
-            r'\bset\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*([^\s,]+(?:\s*[,\)])?)'
-        )
+        # Count case.set() calls whose arguments this regex could NOT capture
+        # (variables, expressions, function calls, dicts, ...). These are
+        # dropped, not approximated.
+        all_set_calls = list(re.finditer(r'\bcase\.set\s*\(', text))
+        captured = sum(1 for s in matched_spans)
+        unresolved_calls = max(0, len(all_set_calls) - captured)
+
+        # Record which unresolvable constructs are present in the script, so the
+        # GapAnalysis can state concretely why coverage is partial.
+        unresolved: dict[str, int] = {}
+        for label, pattern in _PYTHON_UNRESOLVABLE_PATTERNS.items():
+            n = len(pattern.findall(text))
+            if n:
+                unresolved[label] = n
+
+        if unresolved or unresolved_calls:
+            status = "partial"
+        else:
+            status = "literal_only"
+
+        self._python_extraction = {
+            "status": status,
+            "entries": len(matched_spans),
+            "unresolved": unresolved,
+            "unresolved_case_set_calls": unresolved_calls,
+            "file": str(py_file),
+        }
+        self.setup.source_metadata = {**self.setup.source_metadata, "python_extraction": self._python_extraction}
 
         # Apply physics from Python keys
         for entry in self._entries:
@@ -297,27 +394,104 @@ class SaturneAdapter(SolverAdapter):
         return True
 
     def import_results(self, results_path: str, result: ConversionResult) -> bool:
+        """Import field data from a Code_Saturne neutral result export.
+
+        Returns True ONLY when field data was actually read into
+        ``result.scalar_fields`` / ``result.vec_fields``. Merely noticing that a
+        neutral export exists is not a successful import, so the detect-only
+        formats record a GapAnalysis finding and return False.
+        """
         rp = Path(results_path)
         suffix = rp.suffix.lower()
-        supported_results = {".med", ".cgns", ".vtk", ".vtu", ".case", ".geo", ".scl"}
 
-        if suffix not in supported_results:
+        if suffix not in _SATURNE_RESULT_EXTS:
             result.gap_report.unsupported_nonblocking(
                 "results", "saturne_results",
                 f"Code_Saturne results file format '{suffix}' not supported: {results_path}",
-                f"Use a neutral export format: {', '.join(sorted(supported_results))}",
+                f"Use a neutral export format: {', '.join(sorted(_SATURNE_RESULT_EXTS))}",
             )
             return False
 
+        if not rp.exists():
+            result.gap_report.unsupported_nonblocking(
+                "results", "saturne_results",
+                f"Code_Saturne results file does not exist: {results_path}",
+                "Verify the export path and re-export from Code_Saturne",
+            )
+            return False
+
+        if suffix not in _SATURNE_READABLE_RESULT_EXTS:
+            result.gap_report.unsupported_nonblocking(
+                "results", f"neutral_{suffix[1:]}",
+                f"Detected Code_Saturne results in neutral format ({suffix}) but no reader "
+                f"is wired up: presence was recorded, no field data was read",
+                f"Re-export as a readable format ({', '.join(sorted(_SATURNE_READABLE_RESULT_EXTS))}), "
+                f"or convert the {suffix[1:].upper()} file with an external tool first",
+            )
+            return False
+
+        try:
+            import meshio
+        except ImportError:
+            result.gap_report.unsupported_nonblocking(
+                "results", f"neutral_{suffix[1:]}",
+                f"Code_Saturne results in {suffix} require the optional 'meshio' dependency, "
+                "which is not installed; no field data was read",
+                "Install meshio (pip install meshio) and re-run the import",
+            )
+            return False
+
+        try:
+            mesh = meshio.read(str(rp))
+        except (Exception, SystemExit) as e:
+            # meshio's internal readers call sys.exit(1) on an unreadable file,
+            # so SystemExit must be caught here or it kills the whole CLI.
+            reason = "meshio could not parse the file" if isinstance(e, SystemExit) else str(e)
+            result.gap_report.unsupported_nonblocking(
+                "results", f"neutral_{suffix[1:]}",
+                f"Failed to read Code_Saturne results from {results_path}: {reason}",
+                "Re-export the results from Code_Saturne, or use another conversion tool",
+            )
+            return False
+
+        scalars: list[tuple[str, np.ndarray]] = []
+        vecs: list[tuple[str, np.ndarray]] = []
+        for name, data in (mesh.point_data or {}).items():
+            arr = np.asarray(data)
+            if arr.ndim == 2 and arr.shape[1] in (2, 3):
+                vecs.append((name, arr))
+            else:
+                scalars.append((name, arr))
+
+        if not scalars and not vecs:
+            result.gap_report.unsupported_nonblocking(
+                "results", f"neutral_{suffix[1:]}",
+                f"Read {results_path} but found no point data fields; no field data imported",
+                "Ensure the export includes solution fields (velocity, pressure, ...)",
+            )
+            return False
+
+        result.scalar_fields.extend(scalars)
+        result.vec_fields.extend(vecs)
+        result.available_fields = {
+            "scalar": [n for n, _ in scalars],
+            "vector": [n for n, _ in vecs],
+        }
+        result.field_data_source = str(rp)
+        if result.mesh is None and getattr(mesh, "points", None) is not None:
+            result.mesh = {
+                "points": np.asarray(mesh.points),
+                "cells": {c.type: np.asarray(c.data) for c in mesh.cells},
+            }
+
         result.gap_report.supported(
             "results", f"neutral_{suffix[1:]}",
-            f"Detected Code_Saturne results in neutral format: {results_path}",
+            f"Read {len(scalars)} scalar and {len(vecs)} vector field(s) from {results_path}",
         )
-        # Field data would be extracted via meshio or h5py depending on format
         return True
 
     def _detect_neutral_exports(self, base: Path) -> None:
-        neutral_exts = [".med", ".cgns", ".vtk", ".vtu", ".case", ".geo", ".scl"]
+        neutral_exts = sorted(_SATURNE_RESULT_EXTS)
         if base.is_dir():
             for ext in neutral_exts:
                 self._neutral_files.extend([str(f) for f in base.glob(f"*{ext}")])
@@ -326,8 +500,21 @@ class SaturneAdapter(SolverAdapter):
                 self._neutral_files.append(str(base))
 
     def _populate_gap_report(self, gap: GapAnalysis) -> None:
-        gap.supported("config", "saturne_xml", "Code_Saturne XML setup parsed" if self._entries else "No XML setup file found")
-        gap.supported("config", "saturne_py", "Code_Saturne Python setup parsed" if self._entries else "No Python setup file found")
+        xml_entries = [e for e in self._entries if e["section"] != "python"]
+
+        if xml_entries:
+            gap.supported(
+                "config", "saturne_xml",
+                f"Code_Saturne XML setup parsed ({len(xml_entries)} recognised element(s)/attribute(s))",
+            )
+        else:
+            gap.unsupported_nonblocking(
+                "config", "saturne_xml",
+                "No Code_Saturne XML setup entries were recognised",
+                "Provide the XML case file, or map physics/BCs manually in the CFDX setup",
+            )
+
+        self._report_python_extraction(gap)
 
         for entry in self._entries:
             gap.supported("config", entry["key"], f"Parsed '{entry['key']}' = '{entry['value']}' from setup")
@@ -340,7 +527,16 @@ class SaturneAdapter(SolverAdapter):
 
         if self._neutral_files:
             for nf in self._neutral_files:
-                gap.supported("mesh", "neutral_export", f"Detected neutral export: {nf}")
+                gap.approximated(
+                    "mesh", "neutral_export",
+                    f"Detected neutral export: {nf} (presence only, contents not read)",
+                )
+            gap.unsupported_nonblocking(
+                "results", "neutral_field_data",
+                "Neutral exports were detected but no field data was read; "
+                f"readable formats are {', '.join(sorted(_SATURNE_READABLE_RESULT_EXTS))}",
+                "Call import_results() with a .vtk/.vtu export to populate field data",
+            )
         else:
             gap.unsupported_blocking(
                 "mesh", "neutral_mesh",
@@ -348,10 +544,45 @@ class SaturneAdapter(SolverAdapter):
                 "Export mesh via: Computation → Export → Select format (MED, CGNS, VTK, EnSight)",
             )
 
+    def _report_python_extraction(self, gap: GapAnalysis) -> None:
+        """Report the Python setup extraction as partial, never as full support."""
+        ex = self._python_extraction
+        status = ex["status"]
+
+        if status == "not_attempted":
+            gap.unsupported_nonblocking(
+                "config", "saturne_py",
+                "No Code_Saturne Python case script was found or parsed",
+                "Provide the case .py file, or set up boundaries/physics manually",
+            )
+            return
+
+        detail = (
+            f"Syntactic extraction only: {ex['entries']} literal case.set() call(s) "
+            f"recognised in {ex.get('file', 'the case script')}. This is NOT a validated "
+            f"setup mapping — the script is never executed."
+        )
+
+        if status == "literal_only":
+            gap.approximated(
+                "config", "saturne_py",
+                detail + " No unresolvable constructs were detected, but the mapping remains unvalidated.",
+            )
+            return
+
+        reasons = ", ".join(f"{k}×{v}" for k, v in sorted(ex["unresolved"].items()))
+        missed = ex.get("unresolved_case_set_calls", 0)
+        gap.approximated(
+            "config", "saturne_py",
+            detail + f" Unresolvable constructs found ({reasons}); "
+            f"{missed} case.set() call(s) with non-literal arguments were skipped entirely.",
+        )
         gap.unsupported_nonblocking(
             "features", "python_scripting",
-            "Code_Saturne Python scripting (case.set() calls) partially parsed — complex expressions may be missed",
-            "Review all case.set() calls manually; complex Python logic is not auto-translated",
+            "Code_Saturne Python scripting is only syntactically scanned. Settings expressed as "
+            "intermediate variables, expressions, function calls, dictionaries, loops, imports or "
+            "computed values are not extracted and cannot be distinguished from unset settings.",
+            "Review the case script manually and confirm every boundary and physics option in the CFDX setup",
         )
         gap.unsupported_nonblocking(
             "features", "user_subscripts",

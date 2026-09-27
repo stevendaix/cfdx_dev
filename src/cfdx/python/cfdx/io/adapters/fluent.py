@@ -17,6 +17,18 @@ span multiple lines. Nested parens are tracked for correctness.
 Also supports HDF5-based .cas.h5 files via pyfluent's CaseFile reader
 (no Fluent license required — uses h5py directly for mesh extraction).
 
+.. warning::
+    ``.cas.h5`` import is **surface / metadata only**.  The pyfluent
+    ``CaseFile`` reader exposes 2-D face-zone (surface) connectivity and
+    RP-variable metadata, but does NOT provide 3-D volumetric cell
+    connectivity.  This adapter therefore imports surface vertices,
+    boundary zones, materials, and physics metadata, but refuses to
+    fabricate volume cells from surface connectivity.  Volumetric mesh
+    topology is reported as ``unsupported_blocking`` in the gap report
+    until proper volumetric reconstruction is demonstrated.  For full
+    volumetric meshes, use the legacy ASCII ``.cas`` reader
+    (``parse_cas``) or export to CGNS/VTK from Fluent.
+
 Corresponds to the C++ header:
   src/cfdx/io/fluent/fluent_adapter.h
 """
@@ -481,8 +493,13 @@ class FluentAdapter(SolverAdapter):
     def parse_cas_h5(self, cas_h5_file: str) -> bool:
         """Parse Fluent HDF5 case file (.cas.h5) using pyfluent CaseFile.
 
-        Uses pyfluent's offline CaseFile reader — no Fluent license required.
-        Reads mesh data (points, connectivity, zones) directly via h5py.
+        .. warning::
+            Surface / metadata import only — see module docstring.
+
+            The CaseFile reader does NOT provide volumetric (3-D cell)
+            connectivity.  This method imports surface vertices (shared
+            nodes) and per-surface face-node connectivity, but does NOT
+            fabricate volume cells.  ``self._cell_nodes`` is left empty.
         """
         if not _try_pyfluent():
             self.setup.source.version = "pyfluent_not_available"
@@ -503,44 +520,43 @@ class FluentAdapter(SolverAdapter):
         surface_ids = list(mesh.get_surface_ids())
         surface_names = mesh.get_surface_names()
 
-        volume_sid = None
+        # Fluent .cas.h5 surfaces are 2-D face zones.  Each surface exposes
+        # its own vertex subset and face-node connectivity.  The CaseFile
+        # reader does NOT provide 3-D volumetric cell connectivity, so we
+        # must NOT treat a surface's connectivity as volume-cell data.
+        #
+        # Import surface vertices (shared nodes) and per-surface face
+        # connectivity only; fabricate no volume cells.
+        seen: set[tuple[float, float, float]] = set()
         for sid in surface_ids:
-            locs = mesh.get_surface_locs(int(sid))
             v = mesh.get_vertices(int(sid))
-            n_points = len(v) // 3
-            if n_points > 0 and volume_sid is None:
-                volume_sid = int(sid)
-            elif n_points > (len(mesh.get_vertices(int(volume_sid))) // 3 if volume_sid else 0):
-                volume_sid = int(sid)
+            if len(v) == 0:
+                continue
+            pts = np.asarray(v, dtype=np.float64).reshape(-1, 3)
+            for p in pts:
+                key = (float(p[0]), float(p[1]), float(p[2]))
+                if key not in seen:
+                    seen.add(key)
+                    self._points.append([float(p[0]), float(p[1]), float(p[2])])
 
-        if volume_sid is None:
+        if not self._points:
             return False
 
-        v = mesh.get_vertices(volume_sid)
-        points = v.reshape(-1, 3)
-        points = np.ascontiguousarray(points, dtype=np.float64)
-        self._points = points.tolist()
-
-        conn = mesh.get_connectivity(volume_sid)
-        i = 0
-        while i < len(conn):
-            n_cn = int(conn[i])
-            cell = [int(conn[i + j]) - 1 for j in range(1, n_cn + 1)]
-            i += 1 + n_cn
-            self._cell_nodes.append(cell)
-
+        # Extract per-surface face connectivity (2-D surface faces only).
+        # These are NOT volumetric cells; store them as face-node lists.
         for idx, sid in enumerate(surface_ids):
             sid_int = int(sid)
-            if sid_int == volume_sid:
-                continue
             name = surface_names[idx]
-            locs = mesh.get_surface_locs(sid_int)
             face_conn = mesh.get_connectivity(sid_int)
             n_faces = 0
             j = 0
             while j < len(face_conn):
                 n_fn = int(face_conn[j])
-                j += 1 + n_fn
+                j += 1
+                self._face_nodes.append(
+                    [int(face_conn[j + k]) - 1 for k in range(n_fn)]
+                )
+                j += n_fn
                 n_faces += 1
             self._zones.append({
                 "zone_id": sid_int,
@@ -607,6 +623,7 @@ class FluentAdapter(SolverAdapter):
 
         try:
             from ansys.fluent.core.file_session import FileSession
+            from ansys.fluent.core.filereader.data_file import DataFile
         except ImportError:
             return False
 
@@ -623,7 +640,7 @@ class FluentAdapter(SolverAdapter):
             )
             return False
 
-        # Extract available scalar fields
+        # Extract available scalar and vector fields info
         field_info = session.fields.field_info
         scalar_fields = field_info.get_scalar_fields_info()
         vector_fields = field_info.get_vector_fields_info()
@@ -638,23 +655,102 @@ class FluentAdapter(SolverAdapter):
             f"Extracted {len(scalar_fields)} scalar and {len(vector_fields)} vector fields via pyfluent FileSession",
         )
 
-        # Map common Fluent variable names to CFDX field names
-        field_map = {
-            "SV_P": "pressure",
-            "SV_T": "temperature",
-            "SV_U": "velocity_x",
-            "SV_V": "velocity_y",
-            "SV_W": "velocity_z",
-            "SV_K": "turbulent_kinetic_energy",
-            "SV_O": "turbulent_dissipation_rate",
+        # Map Fluent variable names to CFDX field names
+        # Scalar fields (cell-centered)
+        scalar_field_map = {
+            "SV_P": ("pressure", "Pa"),
+            "SV_T": ("temperature", "K"),
+            "SV_DENSITY": ("density", "kg/m3"),
+            "SV_H": ("enthalpy", "J/kg"),
+            "SV_K": ("turbulent_kinetic_energy", "m2/s2"),
+            "SV_O": ("turbulent_dissipation_rate", "m2/s3"),
+            "SV_EPS": ("turbulent_dissipation_rate", "m2/s3"),
+            "SV_NUT": ("turbulent_viscosity", "Pa*s"),
+            "SV_VISCOUS_MU": ("dynamic_viscosity", "Pa*s"),
         }
 
-        for fluent_name, cfdx_name in field_map.items():
-            if fluent_name in scalar_fields:
-                result.gap_report.supported(
-                    "results", cfdx_name,
-                    f"Field '{fluent_name}' available via FileSession (use field_data.get_scalar_field_data)",
-                )
+        # Vector fields (cell-centered) - Fluent stores as separate components
+        vector_field_map = {
+            ("SV_U", "SV_V", "SV_W"): ("velocity", "m/s"),
+        }
+
+        # Get phases from data file
+        phases = session._data_file.get_phases()
+        if not phases:
+            result.gap_report.unsupported_nonblocking(
+                "results", "no_phases",
+                "No phases found in .dat.h5 file",
+                "Check that the data file contains solution data",
+            )
+            return False
+
+        # Use first phase (phase-1 for single-phase)
+        phase_name = phases[0]
+
+        # Import scalar cell fields
+        try:
+            cell_variables = session._data_file.get_cell_variables(phase_name)
+        except Exception as e:
+            result.gap_report.unsupported_nonblocking(
+                "results", "cell_variables",
+                f"Cannot get cell variables: {e}",
+                "Data file may not contain cell-centered solution data",
+            )
+            cell_variables = []
+
+        # Access the raw HDF5 field data structure for cells
+        # Structure: _field_data[phase_name]["cells"][field_name] -> h5py Dataset
+        field_data_cells = session._data_file._field_data.get(phase_name, {}).get("cells", {})
+
+        for fluent_name, (cfdx_name, units) in scalar_field_map.items():
+            if fluent_name in cell_variables:
+                try:
+                    # Get the HDF5 dataset for this field
+                    field_dataset = field_data_cells.get(fluent_name)
+                    if field_dataset is not None:
+                        # Read all cell data (cell-centered, no surface slicing needed)
+                        data = field_dataset[:]
+                        if data.size > 0:
+                            result.scalar_fields.append((cfdx_name, np.asarray(data, dtype=np.float64)))
+                            result.gap_report.supported(
+                                "results", cfdx_name,
+                                f"Imported cell field '{fluent_name}' -> '{cfdx_name}' [{units}], {data.size} cells"
+                            )
+                except Exception as e:
+                    result.gap_report.approximated(
+                        "results", cfdx_name,
+                        f"Failed to import cell field '{fluent_name}': {e}",
+                        "Field data may be corrupted or in unexpected format"
+                    )
+
+        # Import vector cell fields (velocity from SV_U, SV_V, SV_W)
+        for (fluent_u, fluent_v, fluent_w), (cfdx_name, units) in vector_field_map.items():
+            if all(f in cell_variables for f in (fluent_u, fluent_v, fluent_w)):
+                try:
+                    u_data = field_data_cells.get(fluent_u)
+                    v_data = field_data_cells.get(fluent_v)
+                    w_data = field_data_cells.get(fluent_w)
+                    if u_data is not None and v_data is not None and w_data is not None:
+                        u_arr = u_data[:]
+                        v_arr = v_data[:]
+                        w_arr = w_data[:]
+                        if u_arr.size == v_arr.size == w_arr.size and u_arr.size > 0:
+                            # Combine into (N, 3) array
+                            vec_data = np.column_stack([u_arr, v_arr, w_arr]).astype(np.float64)
+                            result.vec_fields.append((cfdx_name, vec_data))
+                            result.gap_report.supported(
+                                "results", cfdx_name,
+                                f"Imported cell vector field '{fluent_u}/{fluent_v}/{fluent_w}' -> '{cfdx_name}' [{units}], {u_arr.size} cells"
+                            )
+                except Exception as e:
+                    result.gap_report.approximated(
+                        "results", cfdx_name,
+                        f"Failed to import cell vector field '{fluent_u}/{fluent_v}/{fluent_w}': {e}",
+                        "Vector component data may be corrupted or mismatched"
+                    )
+
+        # Also import face/surface fields if needed (boundary data)
+        # This can be extended later using session.fields.field_data.get_scalar_field_data()
 
         return True
 
@@ -719,7 +815,13 @@ class FluentAdapter(SolverAdapter):
 
     def _populate_gap_report_hdf5(self, gap: GapAnalysis) -> None:
         gap.supported("mesh", "nodes", f"Parsed {len(self._points)} vertices from .cas.h5 via pyfluent CaseFile")
-        gap.supported("mesh", "cells", f"Parsed {len(self._cell_nodes)} cells from .cas.h5")
+        gap.unsupported_blocking(
+            "mesh", "volume_topology",
+            f"No volumetric cell connectivity available from .cas.h5 "
+            f"(extracted {len(self._cell_nodes)} volume cells, {len(self._face_nodes)} surface faces only)",
+            "For volumetric mesh import, use the legacy ASCII .cas reader (parse_cas) "
+            "or export the mesh to CGNS/VTK from Fluent",
+        )
         for zone in self._zones:
             gap.supported("boundary_zone", zone.get("name", "?"), f"Detected zone '{zone.get('name', '?')}' type={zone.get('zone_type', 'unknown')}")
         for mat in self.setup.materials:

@@ -6,14 +6,16 @@
 //
 // Supported .cas sections (legacy ASCII format):
 //   - Section 1:  Header
-//   - Section 2:  Nodes (coordinates)
-//   - Section 3:  Face nodes (with cell tree)
-//   - Section 4:  Faces (with owner/neighbour)
-//   - Section 5:  Cells (cell-node connectivity)
 //   - Section 31: Boundary conditions (zone + BC type info)
 //   - Section 39: Materials
 //   - Section 45: Cell zone conditions
 //   - Section 48: Model settings (turbulence, transient, etc.)
+//
+// NOT YET SUPPORTED (sections skipped, mesh not imported):
+//   - Section 2:  Nodes (coordinates)
+//   - Section 3:  Face nodes (with cell tree)
+//   - Section 4:  Faces (with owner/neighbour)
+//   - Section 5:  Cells (cell-node connectivity)
 //
 // Supported .dat sections (results):
 //   - Section 19:  Header (variable count)
@@ -161,7 +163,7 @@ private:
 
     // --- Helpers ---
     ZoneType zone_type_from_int(int t) const;
-    void build_cell_topology();
+    void build_cell_topology();  // STUB: mesh topology not yet built
 
     // --- State ---
     MappingRules rules_ = MappingRules::load_default();

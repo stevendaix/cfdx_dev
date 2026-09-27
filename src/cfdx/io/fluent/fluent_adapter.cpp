@@ -483,9 +483,11 @@ bool FluentAdapter::parse_cas_models(std::istream& in) {
 // Build cell topology from parsed data
 // ---------------------------------------------------------------------------
 void FluentAdapter::build_cell_topology() {
-    // In the full implementation, this builds CSR face and cell connectivity
-    // from the parsed face_nodes_, face_owner_, face_neighbour_, cell_faces_
-    // For now, we record the metadata
+    // STUB — not implemented.
+    // A full implementation would reconstruct cell-face connectivity (CSR
+    // face and cell arrays) from face_nodes_, face_owner_, face_neighbour_,
+    // and cell_faces_. Until then, no mesh topology is built and
+    // ConversionResult.has_mesh() returns false.
 }
 
 // ---------------------------------------------------------------------------
@@ -622,17 +624,17 @@ bool FluentAdapter::convert(const std::string& case_path,
     // Populate result source info
     result.source = setup_.source;
     result.mesh = cfdx::core::Mesh{};
-    result.gap_report.supported(
-        "mesh", "nodes",
-        "Parsed " + std::to_string(points_.size()) + " nodes from .cas section 2");
 
-    result.gap_report.supported(
-        "mesh", "faces",
-        "Parsed " + std::to_string(face_nodes_.size()) + " faces from .cas sections 3/4");
-
-    result.gap_report.supported(
-        "mesh", "cells",
-        "Parsed " + std::to_string(cell_faces_.size()) + " cells from .cas section 5");
+    // NOTE: Fluent .cas mesh import (sections 2/3/4/5) is NOT yet implemented.
+    // parse_cas() skips these sections; parse_cas_nodes/faces/cells exist as
+    // stubs but are never called. Only metadata (zones, materials, numerics)
+    // is actually imported.
+    result.gap_report.unsupported_blocking(
+        "mesh", "full_import",
+        "Fluent .cas mesh import not implemented: sections 2 (nodes), "
+        "3/4 (faces), 5 (cells) skipped. 0 nodes, 0 faces, 0 cells parsed.",
+        "Wire parse_cas_nodes(), parse_cas_faces(), parse_cas_cells() into "
+        "parse_cas() sections 2-5 to enable mesh import");
 
     // Boundary conditions
     for (const auto& bc : setup_.boundary_conditions) {

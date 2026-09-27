@@ -9,7 +9,11 @@ Parses the actual SU2 file format:
   - MARKER_ELEMS <n>    face count for this marker
     then `<type> <n1> ...` lines
 
-.cfg format: `%`-commented, `KEY = value` pairs.
+.cfg format: `%-commented, `KEY = value` pairs.
+
+Solution files:
+  - solution.csv (SU2 CSV format with primitive variables per cell/vertex)
+  - history.csv (convergence history)
 
 Corresponds to the C++ header:
   src/cfdx/io/su2/su2_adapter.h
@@ -17,12 +21,11 @@ Corresponds to the C++ header:
 
 from __future__ import annotations
 
-import re
+import csv
 from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-from pydantic import ValidationError
 
 from cfdx.io.interfaces import (
     SolverAdapter,
@@ -34,9 +37,6 @@ from cfdx.io.schema import (
     CaseSetup,
     MaterialSpec,
     BoundarySpec,
-    InitialCondition,
-    NumericalScheme,
-    MeshMetadata,
     SourceInfo,
 )
 from cfdx.io.mapping_rules import MappingRules
@@ -128,6 +128,25 @@ class Su2Adapter(SolverAdapter):
                 "config", "su2_cfg",
                 f"Cannot parse SU2 config file: {cfg_file}",
                 "Config parsing is optional; mesh will still be imported",
+            )
+
+        # Try to import solution.csv if it exists (non-blocking)
+        solution_file = su2_file.with_name(su2_file.stem + "_solution.csv")
+        if not solution_file.exists():
+            # Try common alternative names
+            for alt_name in ["solution.csv", "flow.csv", "surface_flow.csv"]:
+                alt = su2_file.with_name(alt_name)
+                if alt.exists():
+                    solution_file = alt
+                    break
+
+        if solution_file.exists():
+            self.import_results(str(solution_file), result)
+        else:
+            result.gap_report.unsupported_nonblocking(
+                "results", "solution_csv",
+                f"No SU2 solution.csv found alongside mesh (looked for {solution_file.name})",
+                "Run SU2 simulation to generate solution.csv, or provide it manually",
             )
 
         result.source = self.setup.source
@@ -386,6 +405,162 @@ class Su2Adapter(SolverAdapter):
                 pass
 
         self.setup.numerics.raw_settings = dict(p)
+        return True
+
+    def parse_solution_csv(self, csv_file: str) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+        """Parse SU2 solution.csv file and return scalar and vector fields.
+
+        Returns:
+            tuple of (scalar_fields, vec_fields) where each is a dict mapping
+            field name to numpy array of values per cell.
+        """
+        scalar_fields: dict[str, np.ndarray] = {}
+        vec_fields: dict[str, np.ndarray] = {}
+
+        path = Path(csv_file)
+        if not path.exists():
+            return scalar_fields, vec_fields
+
+        try:
+            with open(csv_file, "r") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if not header:
+                    return scalar_fields, vec_fields
+
+                # Normalize header names
+                header = [h.strip() for h in header]
+
+                # Identify column indices for known fields
+                col_indices: dict[str, int] = {}
+                for i, col in enumerate(header):
+                    col_indices[col] = i
+
+                # Read all data rows
+                data_rows: list[list[float]] = []
+                for row in reader:
+                    if not row:
+                        continue
+                    try:
+                        data_rows.append([float(v) for v in row])
+                    except ValueError:
+                        continue
+
+                if not data_rows:
+                    return scalar_fields, vec_fields
+
+                data = np.array(data_rows, dtype=np.float64)
+
+                # Map scalar fields (primitive variables)
+                scalar_mapping = {
+                    "Density": "Density",
+                    "Pressure": "Pressure",
+                    "Temperature": "Temperature",
+                    "Mach": "Mach",
+                    "Pressure_Coeff": "Pressure_Coeff",
+                    "Laminar_Viscosity": "Laminar_Viscosity",
+                    "Eddy_Viscosity": "Eddy_Viscosity",
+                    "Turbulent_Kinetic_Energy": "Turbulent_Kinetic_Energy",
+                    "Dissipation_Rate": "Dissipation_Rate",
+                }
+
+                for su2_name, cfdx_name in scalar_mapping.items():
+                    if su2_name in col_indices:
+                        col = col_indices[su2_name]
+                        scalar_fields[cfdx_name] = data[:, col]
+
+                # Map vector fields (velocity components)
+                vel_components = ["Velocity_x", "Velocity_y", "Velocity_z"]
+                vel_alt = ["Vel_x", "Vel_y", "Vel_z"]
+                vel_su2 = ["VEL_X", "VEL_Y", "VEL_Z"]
+                vel_su2_alt = ["Momentum_x", "Momentum_y", "Momentum_z"]
+
+                vel_cols = None
+                for comp_set in [vel_components, vel_alt, vel_su2, vel_su2_alt]:
+                    if all(c in col_indices for c in comp_set):
+                        vel_cols = [col_indices[c] for c in comp_set]
+                        break
+
+                if vel_cols is not None:
+                    vel_data = data[:, vel_cols]
+                    vec_fields["Velocity"] = vel_data
+
+                # Also check for momentum (rho * velocity) - convert to velocity if density available
+                if "Velocity" not in vec_fields:
+                    mom_cols = None
+                    for comp_set in [["Momentum_x", "Momentum_y", "Momentum_z"],
+                                      ["MOMENTUM-X", "MOMENTUM-Y", "MOMENTUM-Z"]]:
+                        if all(c in col_indices for c in comp_set):
+                            mom_cols = [col_indices[c] for c in comp_set]
+                            break
+                    if mom_cols is not None and "Density" in scalar_fields:
+                        mom_data = data[:, mom_cols]
+                        rho = scalar_fields["Density"]
+                        # Avoid division by zero
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            vel_data = mom_data / rho[:, np.newaxis]
+                        vel_data = np.nan_to_num(vel_data, nan=0.0, posinf=0.0, neginf=0.0)
+                        vec_fields["Velocity"] = vel_data
+
+        except Exception:
+            # If parsing fails, return empty dicts (non-blocking)
+            pass
+
+        return scalar_fields, vec_fields
+
+    def import_results(self, results_path: str, result: ConversionResult) -> bool:
+        """Import SU2 results (solution.csv) into an existing ConversionResult.
+
+        This can be called after convert() to add solution fields.
+        """
+        base = Path(results_path)
+        if base.is_dir():
+            solution_file = base / "solution.csv"
+        else:
+            solution_file = base
+
+        if not solution_file.exists():
+            result.gap_report.unsupported_nonblocking(
+                "results", "solution_csv",
+                f"SU2 solution file not found: {solution_file}",
+                "Provide solution.csv or run SU2 to generate results",
+            )
+            return False
+
+        scalar_fields, vec_fields = self.parse_solution_csv(str(solution_file))
+
+        if not scalar_fields and not vec_fields:
+            result.gap_report.unsupported_nonblocking(
+                "results", "solution_csv",
+                f"No valid fields parsed from SU2 solution.csv: {solution_file}",
+                "Check that the CSV has proper headers and numeric data",
+            )
+            return False
+
+        n_cells_expected = self.setup.mesh_info.n_cells
+        for name, arr in scalar_fields.items():
+            if arr.shape[0] != n_cells_expected:
+                result.gap_report.unsupported_nonblocking(
+                    "results", f"field_size_mismatch_{name}",
+                    f"Scalar field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)",
+                    "Ensure solution.csv matches the mesh cell count",
+                )
+            result.scalar_fields.append((name, arr))
+
+        for name, arr in vec_fields.items():
+            if arr.shape[0] != n_cells_expected:
+                result.gap_report.unsupported_nonblocking(
+                    "results", f"field_size_mismatch_{name}",
+                    f"Vector field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)",
+                    "Ensure solution.csv matches the mesh cell count",
+                )
+            result.vec_fields.append((name, arr))
+
+        result.gap_report.supported(
+            "results", "solution_csv",
+            f"Imported SU2 solution.csv: {solution_file} ({len(scalar_fields)} scalars, {len(vec_fields)} vectors)"
+        )
+        result.field_data_source = str(solution_file)
         return True
 
     def _populate_gap_report(self, gap: GapAnalysis) -> None:

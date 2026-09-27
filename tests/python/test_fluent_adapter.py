@@ -116,7 +116,9 @@ class TestFluentAdapter:
         ok = adapter.parse_cas_h5(h5_file)
         assert ok
         assert len(adapter._points) > 0
-        assert len(adapter._cell_nodes) > 0
+        # .cas.h5 is surface/metadata import only — no fabricated volume cells
+        assert len(adapter._cell_nodes) == 0
+        assert len(adapter._face_nodes) > 0  # surface face connectivity imported
         assert len(adapter._zones) > 1  # at least wall-inlet + wall-outlet + interior
         assert adapter.setup.source.version == "hdf5"
 
@@ -126,8 +128,10 @@ class TestFluentAdapter:
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
         result = ConversionResult(source=SourceInfo())
         ok = adapter.convert(h5_file, result)
-        assert ok
-        assert not result.gap_report.has_blocking()
+        # .cas.h5 is surface/metadata import only — volumetric mesh topology
+        # is unsupported_blocking, so the conversion is blocked.
+        assert not ok
+        assert result.gap_report.has_blocking()
         assert result.mesh is not None
         assert result.mesh["points"].shape[1] == 3  # 3D mesh
         assert result.setup.mesh_info.n_vertices > 0

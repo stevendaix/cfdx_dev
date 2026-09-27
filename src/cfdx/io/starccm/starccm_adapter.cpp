@@ -260,32 +260,119 @@ void StarCCMAdapter::classify_boundary_type(SimZone& zone) {
 
 // ---------------------------------------------------------------------------
 // Source detection
+//
+// A STAR-CCM+ .sim file is a Java-serialized object stream. A positive
+// detection requires BOTH:
+//   1. a .sim extension, and
+//   2. a verifiable header:
+//        - the Java serialization stream magic 0xAC 0xED 0x00 0x05, or
+//        - an ASCII "STAR-CCM+"/"STAR CCM" signature anchored at byte 0
+// File size is never evidence on its own: a large binary file is NOT a .sim.
 // ---------------------------------------------------------------------------
+namespace {
+
+bool has_sim_extension(const std::string& path) {
+    if (path.size() < 4) return false;
+    const std::string ext = path.substr(path.size() - 4);
+    return (ext[0] == '.' &&
+            (ext[1] == 's' || ext[1] == 'S') &&
+            (ext[2] == 'i' || ext[2] == 'I') &&
+            (ext[3] == 'm' || ext[3] == 'M'));
+}
+
+}  // namespace
+
 bool StarCCMAdapter::detect_source(const std::string& sim_path,
                                    SourceInfo& info) {
-    // Check if .sim file exists and has STAR-CCM+ markers
-    std::ifstream test(sim_path, std::ios::binary);
-    if (!test.is_open()) return false;
+    info.solver = "unknown";
+    info.format = "unknown";
+    info.version = "unknown";
 
-    // Read first 1024 bytes
-    std::vector<char> buf(1024);
-    test.read(buf.data(), static_cast<std::streamsize>(
-        std::min(static_cast<std::size_t>(buf.size()),
-                 static_cast<std::size_t>(test.tellg()))));
+    // 1. Extension check — a .sim file is the only thing this adapter claims.
+    if (!has_sim_extension(sim_path)) {
+        std::cerr << "StarCCMAdapter: not a .sim file: " << sim_path << "\n";
+        return false;
+    }
 
-    std::string header_str(buf.begin(), buf.end());
-    bool is_star_ccm = header_str.find("STAR-CCM") != std::string::npos ||
-                       header_str.find("STAR CCM") != std::string::npos ||
-                       header_str.find("cdl") != std::string::npos;  // common in .sim
+    std::ifstream in(sim_path, std::ios::binary);
+    if (!in.is_open()) {
+        std::cerr << "StarCCMAdapter: cannot open .sim file: " << sim_path << "\n";
+        return false;
+    }
 
-    if (!is_star_ccm) {
-        // Still try — some .sim files have binary headers
-        test.seekg(0, std::ios::end);
-        std::size_t sz = static_cast<std::size_t>(test.tellg());
-        if (sz > 1000) {  // .sim files are typically large
-            header_.magic = "binary (STAR-CCM+ proprietary)";
-        } else {
-            return false;
+    // 2. Seek properly to obtain the real file size before any read.
+    in.seekg(0, std::ios::end);
+    const std::streamoff end_pos = in.tellg();
+    if (end_pos <= 0) {
+        std::cerr << "StarCCMAdapter: cannot determine size of " << sim_path << "\n";
+        return false;
+    }
+    const std::size_t file_size = static_cast<std::size_t>(end_pos);
+    in.seekg(0, std::ios::beg);
+    if (!in) {
+        std::cerr << "StarCCMAdapter: cannot rewind " << sim_path << "\n";
+        return false;
+    }
+    header_.file_size = file_size;
+
+    // Read only the header probe — never more than the file actually holds.
+    const std::size_t probe = std::min(file_size, static_cast<std::size_t>(512));
+    if (probe < 4) {
+        std::cerr << "StarCCMAdapter: file too small to be a .sim: " << sim_path << "\n";
+        header_.magic = "unknown";
+        return false;
+    }
+    std::vector<char> buf(probe);
+    in.read(buf.data(), static_cast<std::streamsize>(probe));
+    const std::size_t got = static_cast<std::size_t>(in.gcount());
+    if (got < 4) {
+        std::cerr << "StarCCMAdapter: short read on " << sim_path << "\n";
+        header_.magic = "unknown";
+        return false;
+    }
+    buf.resize(got);
+
+    const unsigned char* raw = reinterpret_cast<const unsigned char*>(buf.data());
+    const std::string header_str(buf.data(), got);
+
+    // 3. Header verification.
+    //    (a) Java object serialization stream magic (real .sim container).
+    const bool java_magic = raw[0] == 0xAC && raw[1] == 0xED &&
+                            raw[2] == 0x00 && raw[3] == 0x05;
+
+    //    (b) ASCII signature anchored at the start, ignoring NUL padding.
+    const std::size_t sig_pos = header_str.find_first_not_of('\0');
+    const std::string sig_str = (sig_pos == std::string::npos)
+                                    ? std::string()
+                                    : header_str.substr(sig_pos);
+    const bool ascii_sig = sig_str.rfind("STAR-CCM", 0) == 0 ||
+                           sig_str.rfind("STAR CCM", 0) == 0;
+
+    if (!java_magic && !ascii_sig) {
+        // 4. No verifiable header: report unknown. Size is not a signature.
+        std::cerr << "StarCCMAdapter: no STAR-CCM+ header in " << sim_path
+                  << " (" << file_size << " bytes) — reporting unknown\n";
+        header_.magic = "unknown";
+        return false;
+    }
+
+    header_.magic = ascii_sig ? "STAR-CCM+" : "binary (STAR-CCM+ proprietary)";
+    header_.is_little_endian = true;
+    if (!ascii_sig) {
+        header_.format_note = "Binary format detected; direct topology parsing not supported";
+    }
+
+    // Version: token following the ASCII signature, e.g. "STAR-CCM+ 19.02".
+    header_.version.clear();
+    if (ascii_sig) {
+        const std::size_t sep = sig_str.find_first_of(" \t");
+        if (sep != std::string::npos) {
+            const std::size_t vs = sig_str.find_first_not_of(" \t", sep);
+            if (vs != std::string::npos) {
+                const std::size_t ve = sig_str.find_first_of(" \t\r\n\0", vs);
+                header_.version = sig_str.substr(
+                    vs, ve == std::string::npos ? std::string::npos : ve - vs);
+            }
         }
     }
 

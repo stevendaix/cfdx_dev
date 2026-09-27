@@ -51,8 +51,9 @@ int main() {
         FluentAdapter adapter;
         cfdx::io::ConversionResult result;
         bool ok = adapter.convert("tests/data/fluent/cavity.cas", result);
-        EXPECT_TRUE(ok);
-        EXPECT_FALSE(result.gap_report.has_blocking());
+        EXPECT_FALSE(ok);
+        EXPECT_TRUE(result.gap_report.has_blocking());
+        EXPECT_FALSE(result.has_mesh());
         EXPECT_TRUE(adapter.setup().boundary_conditions.size() >= 8);
         EXPECT_TRUE(adapter.setup().materials.size() == 3);
     });

@@ -1,12 +1,12 @@
 """Unit tests for the SU2 adapter."""
 import pytest
 import numpy as np
-
 import os
+from pathlib import Path
 
 from cfdx.io.adapters.su2 import Su2Adapter, _SU2_ELEM_TYPES, _to_meshio_type
 from cfdx.io.interfaces import ConversionResult, SourceInfo
-from cfdx.io.schema import BCType, CaseSetup
+from cfdx.io.schema import BCType, CaseSetup, Severity
 
 
 class TestSu2Adapter:
@@ -19,6 +19,10 @@ class TestSu2Adapter:
     @pytest.fixture
     def cfg_file(self):
         return os.path.join(pytest.DATA_DIR, "su2", "inv_NACA0012_basic.cfg")
+
+    @pytest.fixture
+    def solution_file(self):
+        return os.path.join(pytest.DATA_DIR, "su2", "solution.csv")
 
     def test_adapter_metadata(self):
         adapter = Su2Adapter()
@@ -101,3 +105,92 @@ class TestSu2Adapter:
         findings = result.gap_report.findings
         categories = [f.feature for f in findings]
         assert "multiphase" in categories or "turbomachinery" in categories
+
+    def test_parse_solution_csv(self, solution_file):
+        """Test parsing SU2 solution.csv file."""
+        adapter = Su2Adapter()
+        scalar_fields, vec_fields = adapter.parse_solution_csv(solution_file)
+
+        # Check scalar fields
+        assert "Density" in scalar_fields
+        assert "Pressure" in scalar_fields
+        assert "Temperature" in scalar_fields
+        assert scalar_fields["Density"].shape == (10,)
+        assert scalar_fields["Pressure"].shape == (10,)
+        assert scalar_fields["Temperature"].shape == (10,)
+        np.testing.assert_allclose(scalar_fields["Density"], [1.225, 1.200, 1.180, 1.160, 1.140, 1.120, 1.100, 1.080, 1.060, 1.040])
+        np.testing.assert_allclose(scalar_fields["Pressure"], [101325, 100000, 99000, 98000, 97000, 96000, 95000, 94000, 93000, 92000])
+
+        # Check vector fields
+        assert "Velocity" in vec_fields
+        assert vec_fields["Velocity"].shape == (10, 3)
+        np.testing.assert_allclose(vec_fields["Velocity"][:, 0], [50.0, 48.0, 46.0, 45.0, 44.0, 43.0, 42.0, 41.0, 40.0, 39.0])
+        np.testing.assert_allclose(vec_fields["Velocity"][:, 1], [0.0, 1.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5])
+        np.testing.assert_allclose(vec_fields["Velocity"][:, 2], [0.0] * 10)
+
+    def test_import_results(self, su2_file, solution_file):
+        """Test importing solution.csv into ConversionResult."""
+        adapter = Su2Adapter()
+        result = ConversionResult(source=SourceInfo())
+
+        # First convert mesh to populate mesh_info.n_cells
+        ok = adapter.convert(su2_file, result)
+        assert ok
+
+        # Clear any fields that were imported during convert (since convert looks for solution.csv)
+        result.scalar_fields.clear()
+        result.vec_fields.clear()
+
+        # Now import results explicitly
+        ok = adapter.import_results(solution_file, result)
+        assert ok
+
+        # Check scalar fields were added
+        assert len(result.scalar_fields) == 3
+        names = [name for name, _ in result.scalar_fields]
+        assert "Density" in names
+        assert "Pressure" in names
+        assert "Temperature" in names
+
+        # Check vector fields were added
+        assert len(result.vec_fields) == 1
+        name, arr = result.vec_fields[0]
+        assert name == "Velocity"
+        assert arr.shape == (10, 3)
+
+    def test_import_results_missing_file(self, su2_file):
+        """Test import_results with missing solution file."""
+        adapter = Su2Adapter()
+        result = ConversionResult(source=SourceInfo())
+        adapter.convert(su2_file, result)
+
+        # Clear gap report to isolate the import_results call
+        result.gap_report = result.gap_report.__class__()
+
+        ok = adapter.import_results("/nonexistent/solution.csv", result)
+        assert not ok
+        # Should have a non-blocking gap for missing solution
+        findings = result.gap_report.findings
+        solution_findings = [f for f in findings if f.feature == "solution_csv"]
+        assert len(solution_findings) > 0
+        assert solution_findings[0].severity == Severity.UNSUPPORTED_NONBLOCK
+
+    def test_convert_with_solution(self, su2_file, cfg_file, solution_file):
+        """Test full convert including solution import."""
+        # Copy solution.csv to expected location next to mesh file
+        import shutil
+        target = Path(su2_file).with_name(Path(su2_file).stem + "_solution.csv")
+        shutil.copy(solution_file, target)
+
+        try:
+            adapter = Su2Adapter()
+            result = ConversionResult(source=SourceInfo())
+            ok = adapter.convert(su2_file, result)
+
+            assert ok
+            assert not result.gap_report.has_blocking()
+            assert len(result.scalar_fields) == 3
+            assert len(result.vec_fields) == 1
+        finally:
+            if target.exists():
+                target.unlink()
