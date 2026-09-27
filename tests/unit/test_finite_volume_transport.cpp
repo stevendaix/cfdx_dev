@@ -223,21 +223,21 @@ int main()
         // successive-slope ratio is r=1, so minmod must retain the centred
         // face value phi_f=(phi_P+phi_N)/2=0.5. The deferred correction is
         // therefore F*(phi_f-phi_P)=0.25 on the internal face.
-        // Balanced through-flow: inlet=-1, internal=+1, outlet=+1 in the
-        // owner-oriented face convention. This isolates the deferred TVD
-        // correction from an intentionally singular convective balance.
-        flux(0) = -1.0;
+        // Isolate the internal deferred correction from boundary convection.
+        // The internal face carries F=+1 from cell 0 to cell 1; an independent
+        // positive diagonal keeps the two-cell algebra nonsingular without
+        // introducing a boundary contribution into the TVD correction check.
         flux(6) = 1.0;
-        flux(1) = 1.0;
+        std::vector<double> extra_diagonal{1.0, 1.0};
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
         bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         const auto upwind = assemble_scalar_equation(
-            m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
+            m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
             ConvectionScheme::UPWIND,&phi);
         const auto tvd = assemble_scalar_equation(
-            m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
+            m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
             ConvectionScheme::TVD,&phi);
         EXPECT_NEAR(tvd.rhs(0)-upwind.rhs(0),-0.25,1e-12);
         EXPECT_NEAR(tvd.rhs(1)-upwind.rhs(1), 0.25,1e-12);
