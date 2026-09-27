@@ -247,6 +247,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/m1_m4_models.h
     src/cfdx/physics/solver_control.h
     src/cfdx/physics/finite_volume_transport.h
+    src/cfdx/physics/boundary_constraint_fvm.h
     src/cfdx/physics/steady_incompressible_solver.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
@@ -369,6 +370,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_field_wall_hardening tests/unit/test_field_wall_hardening.cpp)
     add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
     add_cfdx_test(test_boundary_contract tests/unit/test_boundary_contract.cpp)
+    add_cfdx_test(test_boundary_fvm_constraints tests/unit/test_boundary_fvm_constraints.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
