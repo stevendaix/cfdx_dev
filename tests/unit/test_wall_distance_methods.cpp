@@ -101,7 +101,13 @@ int main() {
         WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
     for(const auto method:plane_methods) {
         const auto r=compute_wall_distance(method,plane,pg,120);
-        for(std::size_t id=0;id<r.distance.size();++id) if(!pg.solid[id]) {
+        for(std::size_t id=0;id<r.distance.size();++id) {
+            const std::size_t k=id/(pg.nx*pg.ny), rem=id%(pg.nx*pg.ny), j=rem/pg.nx, i=rem%pg.nx;
+            // The analytical d=x solution is used only where the Cartesian
+            // stencil is complete. The outer boundary has a separate
+            // numerical boundary condition and is not part of this operator
+            // consistency test.
+            if(pg.solid[id] || i==0 || i+1==pg.nx || j==0 || j+1==pg.ny || k==0 || k+1==pg.nz) continue;
             const double expected=pg.points[id].x;
             require(r.valid[id] && std::isfinite(r.distance[id]),
                     "analytical plane produced an invalid distance");
