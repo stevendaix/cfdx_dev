@@ -111,8 +111,7 @@ int main() {
             const double expected=pg.points[id].x;
             require(r.valid[id] && std::isfinite(r.distance[id]),
                     "analytical plane produced an invalid distance");
-            require(std::abs(r.distance[id]-expected)<2e-10,
-                    "wall-distance PDE failed the analytical planar-wall solution");
+            if(std::abs(r.distance[id]-expected)>=2e-10) {\n                std::cerr << "planar failure method=" << wall_distance_method_name(method)\n                          << " id=" << id << " i=" << i << " j=" << j << " k=" << k\n                          << " x=" << expected << " value=" << r.distance[id]\n                          << " error=" << std::abs(r.distance[id]-expected) << "\\n";\n                throw std::runtime_error("wall-distance PDE failed the analytical planar-wall solution");\n            }
         }
     }
 
