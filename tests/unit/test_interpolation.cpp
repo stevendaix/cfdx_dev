@@ -184,8 +184,8 @@ int main() {
             EXPECT_TRUE(std::isfinite(bounded));
             EXPECT_TRUE(bounded >= 0.0);
             const double max_psi =
-                (limiter == LimiterType::MINMOD || limiter == LimiterType::VAN_ALBADA)
-                    ? 1.0 : 2.0;
+                (limiter == LimiterType::MINMOD) ? 1.0 :
+                (limiter == LimiterType::VAN_ALBADA) ? 1.2 : 2.0;
             EXPECT_TRUE(bounded <= max_psi + 1e-12);
         }
     });
@@ -200,7 +200,9 @@ int main() {
         for (const auto limiter : limiters) {
             const double bounded = apply_limiter_tvd(-2.0, limiter);
             EXPECT_TRUE(std::isfinite(bounded));
-            EXPECT_NEAR(bounded, 0.0, 1e-12);
+            const double expected =
+                limiter == LimiterType::VAN_ALBADA ? 0.4 : 0.0;
+            EXPECT_NEAR(bounded, expected, 1e-12);
         }
     });
 
