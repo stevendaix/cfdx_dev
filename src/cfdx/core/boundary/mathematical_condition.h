@@ -2,6 +2,8 @@
 #include "cfdx/core/boundary/value_provider.h"
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <type_traits>
 #include <variant>
 namespace cfdx::core {
 struct Dirichlet { std::shared_ptr<const ValueProvider> value; };
@@ -15,9 +17,12 @@ using MathematicalCondition = std::variant<Dirichlet, Neumann, Robin, Flux, Mixe
 inline void validate_condition(const MathematicalCondition& condition) {
     std::visit([](const auto& c) {
         using T = std::decay_t<decltype(c)>;
-        if constexpr (std::is_same_v<T, Dirichlet> || std::is_same_v<T, Neumann> ||
-                      std::is_same_v<T, Flux>) {
-            if (!c.value && !c.gradient) throw std::invalid_argument("boundary condition requires a value provider");
+        if constexpr (std::is_same_v<T, Dirichlet>) {
+            if (!c.value) throw std::invalid_argument("Dirichlet condition requires a value provider");
+        } else if constexpr (std::is_same_v<T, Neumann>) {
+            if (!c.gradient) throw std::invalid_argument("Neumann condition requires a gradient provider");
+        } else if constexpr (std::is_same_v<T, Flux>) {
+            if (!c.value) throw std::invalid_argument("Flux condition requires a value provider");
         } else if constexpr (std::is_same_v<T, Robin>) {
             if (!c.gamma) throw std::invalid_argument("Robin condition requires gamma");
             if (c.alpha == 0.0 && c.beta == 0.0) throw std::invalid_argument("Robin alpha and beta cannot both be zero");
