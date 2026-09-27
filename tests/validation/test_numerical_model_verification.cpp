@@ -283,7 +283,17 @@ int main() {
             ok(std::string(to_string(contract.family)) == "convection", "method family metadata");
             ok(std::string(to_string(contract.status)) == "implemented", "method status metadata");
             validate_numerical_method_registry();
-            ok(numerical_method_registry().size() >= 20, "numerical method registry unexpectedly small");
+            const auto registry = numerical_method_registry();
+            ok(registry.size() >= 30, "numerical method registry unexpectedly small");
+            const auto has_id = [&](const char* id) {
+                return std::any_of(registry.begin(), registry.end(),
+                    [&](const NumericalMethodContract& m) { return m.id == id; });
+            };
+            ok(has_id("gradient.least_squares"), "least-squares gradient registry entry");
+            ok(has_id("convection.second_order_upwind"), "SOU convection registry entry");
+            ok(has_id("preconditioner.native_amg"), "native AMG registry entry");
+            ok(has_id("preconditioner.coupled_block_schur"), "coupled Schur registry entry");
+            ok(has_id("time_step.adaptive_cfl"), "adaptive CFL registry entry");
         }
         // N025: numerical model inventory marker. The report consumes these records.
         std::cout<<"NUMERICAL_MODEL_VERIFICATION: PASS\n";
