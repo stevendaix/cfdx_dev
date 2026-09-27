@@ -1,6 +1,7 @@
 #pragma once
 #include "cfdx/core/boundary/boundary.h"
 #include "cfdx/core/boundary/boundary_constraint.h"
+#include <utility>
 #include <vector>
 namespace cfdx::core {
 class BoundaryCondition {
