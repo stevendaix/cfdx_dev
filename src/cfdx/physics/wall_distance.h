@@ -490,15 +490,26 @@ inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& 
                            std::size_t id) {
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
     double l=0.0;
-    auto add=[&](std::size_t nb,double h) {
-        if(std::isfinite(f[nb])) l+=(f[nb]-f[id])/(h*h);
+    auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double h) {
+        const double w=1.0/(h*h);
+        if(has_minus && std::isfinite(f[minus]) && has_plus && std::isfinite(f[plus])) {
+            l+=(f[minus]-2.0*f[id]+f[plus])*w;
+        } else if(has_minus && std::isfinite(f[minus])) {
+            // Zero-normal-gradient outer boundary: mirror the boundary value.
+            l+=2.0*(f[minus]-f[id])*w;
+        } else if(has_plus && std::isfinite(f[plus])) {
+            l+=2.0*(f[plus]-f[id])*w;
+        }
     };
-    // Missing grid neighbours are zero-normal-gradient boundaries. Solid
-    // neighbours are omitted because the wall Dirichlet condition is imposed
-    // on the fixed seed band.
-    if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
-    if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
-    if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
+    // Missing outer-grid neighbours are homogeneous Neumann boundaries and
+    // therefore use a mirrored ghost value. Solid neighbours are omitted
+    // because the wall condition is represented by the fixed seed band.
+    const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
+    add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
+    add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
     return l;
 }
 
