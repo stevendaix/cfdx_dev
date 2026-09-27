@@ -771,7 +771,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::ADVECTION_DIFFUSION:
             r.distance=advection_diffusion_distance(s,g,iterations,0.05); break;
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.35,0.25,0.7);
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.7);
             break;
     }
     for(std::size_t i=0;i<r.distance.size();++i)
