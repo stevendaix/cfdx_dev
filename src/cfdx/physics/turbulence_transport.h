@@ -56,7 +56,8 @@ struct TurbulenceTransportControls {
     double sst_sigma_k1 = 0.85, sst_sigma_k2 = 1.0;
     double sst_sigma_w1 = 0.5, sst_sigma_w2 = 0.856;
     double sst_production_limiter = 10.0;
-    double smagorinsky_Cs = 0.17, des_Cdes = 0.65;
+    double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
+    TurbulenceCorrectionControls corrections{};
 };
 
 inline void enforce_turbulence_bounds(
@@ -111,11 +112,21 @@ inline double turbulence_nu_t(
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("Smagorinsky requires positive cell volume");
         return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
+    case TurbulenceModel::WALE:
+        if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
+            throw std::invalid_argument("WALE requires positive cell volume");
+        return wale_eddy_viscosity({strain*strain,strain*strain,std::cbrt(cell_volume)},c.wale_Cw);
     case TurbulenceModel::DES:
+    case TurbulenceModel::DDES:
+    case TurbulenceModel::IDDES:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume) || !(wall_distance>0.0))
-            throw std::invalid_argument("DES requires positive cell volume and wall distance");
+            throw std::invalid_argument("DES family requires positive cell volume and wall distance");
         return des_eddy_viscosity(std::cbrt(cell_volume),wall_distance,strain,
                                   c.smagorinsky_Cs,c.des_Cdes);
+    case TurbulenceModel::DYNAMIC_KEQN:
+        if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
+            throw std::invalid_argument("dynamic LES requires positive cell volume");
+        return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
     }
     throw std::invalid_argument("unknown turbulence model");
 }
@@ -137,7 +148,7 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
         c.sa_kappa,c.sa_cw2,c.sa_cw3,c.sa_cv1,c.sa_ct3,c.sa_ct4,
         c.komega_alpha,c.komega_beta0,c.komega_sigma_k,c.komega_sigma_w,
         c.komega_sigma_d0,c.komega_clim,c.sst_sigma_k1,c.sst_sigma_k2,c.sst_sigma_w1,c.sst_sigma_w2,
-        c.sst_production_limiter,c.smagorinsky_Cs,c.des_Cdes};
+        c.sst_production_limiter,c.smagorinsky_Cs,c.wale_Cw,c.des_Cdes};
     for (double v : values)
         if (!std::isfinite(v)) throw std::invalid_argument("non-finite turbulence coefficient");
     if(c.C_mu<=0.0 || c.C1<0.0 || c.C2<0.0 || c.beta_star<=0.0 ||
@@ -154,6 +165,7 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        c.sst_sigma_k2<=0.0 || c.sst_sigma_w1<=0.0 || c.sst_sigma_w2<=0.0 ||
        c.sst_production_limiter<=0.0 || c.smagorinsky_Cs<0.0 || c.des_Cdes<=0.0)
         throw std::invalid_argument("invalid turbulence coefficients");
+    validate_turbulence_correction_controls(c.corrections);
 }
 
 } // namespace cfdx::physics
