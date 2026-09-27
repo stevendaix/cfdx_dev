@@ -593,13 +593,21 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
     for(std::size_t id=0;id<phi.size();++id) {
         if(g.solid[id] || fixed[id] || !std::isfinite(phi[id])) continue;
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        double lap=0.0, diag=0.0;
-        auto add=[&](std::size_t nb,double h) {
-            if(std::isfinite(phi[nb])) { const double w=1.0/(h*h); lap+=(phi[nb]-phi[id])*w; diag+=w; }
+        double lap=0.0;
+        auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double h) {
+            const double w=1.0/(h*h);
+            const bool fm=has_minus && std::isfinite(phi[minus]);
+            const bool fp=has_plus && std::isfinite(phi[plus]);
+            if(fm && fp) lap+=(phi[minus]-2.0*phi[id]+phi[plus])*w;
+            else if(fm) lap+=2.0*(phi[minus]-phi[id])*w;
+            else if(fp) lap+=2.0*(phi[plus]-phi[id])*w;
         };
-        if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
-        if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
-        if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
+        const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+        const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+        const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+        add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
+        add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
+        add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
         if(diag>0.0) rmax=std::max(rmax,std::abs(lap+1.0));
     }
     return rmax;
