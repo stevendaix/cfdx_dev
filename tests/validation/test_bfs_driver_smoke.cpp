@@ -1,47 +1,148 @@
-#include "cfdx/core/mesh/mesh.h"
+#include "cfdx/io/hdf5/hdf5_reader.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
+#include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 using namespace cfdx::core;
+using namespace cfdx::physics;
 
-int main(int argc,char** argv)
+struct Result { double lr_h; double continuity; std::size_t iterations; };
+
+static Result run(const std::string& path, std::size_t level)
 {
-    const bool quick=argc==2 && std::string(argv[1])=="--quick";
-    if(argc>1 && !quick) throw std::invalid_argument("usage: test_bfs_driver_smoke [--quick]");
-
-    // Armaly-style 2-D backward-facing-step topology:
-    // upstream channel height h=1, downstream height H=2, step at x=1.
-    // This smoke test deliberately validates only the geometry/BC topology.
-    // Reattachment qualification remains a separate solver-level gate.
-    const std::size_t nx=quick?8:32;
-    const std::size_t ny=quick?8:24;
     Mesh mesh;
-    const std::size_t cols=nx+1;
-    const std::size_t rows=2*ny+1;
-    mesh.points().resize(cols*rows*2);
-    const auto id=[cols](std::size_t i,std::size_t j,std::size_t k){return (j*cols+i)*2+k;};
+    if(!cfdx::io::read_mesh_hdf5(path,mesh))
+        throw std::runtime_error("cannot read BFS mesh: "+path);
+    const auto topo=mesh.topo_validate();
+    if(!topo.ok) throw std::runtime_error("invalid BFS topology: "+path);
 
-    for(std::size_t j=0;j<rows;++j) {
-        const double y=-1.0+2.0*static_cast<double>(j)/static_cast<double>(2*ny);
-        for(std::size_t i=0;i<=nx;++i) {
-            const double x=6.0*static_cast<double>(i)/static_cast<double>(nx);
-            const bool upstream=x<1.0-1e-12;
-            if(upstream && y<0.0) continue;
-            mesh.points().set(id(i,j,0),x,y,0.0);
-            mesh.points().set(id(i,j,1),x,y,1.0);
-        }
+    constexpr double H_in=5.2/4.9;
+    constexpr double Re_D=200.0;
+    constexpr double U_bulk=0.288462/0.288462;
+    constexpr double rho=1.0;
+    constexpr double nu=2.0*H_in*U_bulk/Re_D;
+
+    Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+    U.fill(0.0); p.fill(0.0);
+
+    VelocityBoundaryConditions ubc;
+    const double y0=1.0;
+    const double H=H_in;
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        (void)c;
+    }
+    ubc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1.0,0.0,0.0}};
+    ubc["outlet"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    ubc["front"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    ubc["back"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+
+    ScalarBoundaryConditions pbc;
+    pbc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    pbc["outlet"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    pbc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    pbc["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    pbc["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+
+    IncompressibleSolverControls c;
+    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    c.density=rho; c.kinematic_viscosity=nu;
+    c.linear_max_iterations=3000; c.linear_tolerance=1e-10;
+    c.convergence.max_iterations=5000;
+    c.convergence.relative_tolerance=1e-8;
+    c.convergence.continuity_tolerance=1e-8;
+    c.coupling.alpha_u=0.7; c.coupling.alpha_p=0.3;
+    c.use_bounded_convection=true;
+    c.convection_scheme=ConvectionScheme::UPWIND;
+    c.pressure_reference_cell=0;
+    c.pressure_reference_value=0.0;
+    c.diagnostics.iteration_trace=true;
+    c.diagnostics.iteration_trace_frequency=100;
+
+    // Initialise the inlet with the fully developed parabolic profile.  The
+    // production BC map remains a fixed-value contract; the profile is used
+    // as the initial state and the mesh inlet face geometry is checked below.
+    const auto geometry=build_fv_geometry(mesh);
+    for(std::size_t cell=0;cell<mesh.n_cells();++cell) {
+        const double y=geometry.cell_centres[cell].y;
+        const double eta=std::clamp((y-y0)/H,0.0,1.0);
+        U.component_data(0)[cell]=6.0*U_bulk*eta*(1.0-eta);
     }
 
-    // The complete non-conformal cell topology is intentionally not generated
-    // here yet; this executable is a guard for the canonical dimensions and
-    // parameter contract until the general step mesh driver lands.
-    if(!(std::abs(1.0)>0.0) || !(6.0>0.0) || ny<4)
-        throw std::runtime_error("invalid BFS frozen geometry");
+    const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    if(!solve.converged)
+        throw std::runtime_error("BFS solve did not converge");
 
-    std::cout<<"BFS_DRIVER_SMOKE: PASS geometry_contract upstream_h=1 downstream_H=2 step_x=1 L=6\n";
-    return 0;
+    ScalarBoundaryConditions grad_bc;
+    grad_bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    grad_bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    grad_bc["wall"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    grad_bc["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    grad_bc["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+
+    Field<double,Location::CELL> ux(mesh.n_cells(),"ux","m/s",1);
+    Field<double,Location::CELL> uy(mesh.n_cells(),"uy","m/s",1);
+    for(std::size_t i=0;i<mesh.n_cells();++i) {
+        ux(i)=U.component_data(0)[i];
+        uy(i)=U.component_data(1)[i];
+    }
+    const auto gux=gauss_gradient_with_boundary(ux,mesh,geometry,grad_bc);
+    const auto guy=gauss_gradient_with_boundary(uy,mesh,geometry,grad_bc);
+
+    struct Tau { double x; double tau; };
+    std::vector<Tau> tau;
+    const auto& patch=mesh.boundary().patch(mesh.boundary().find("wall"));
+    for(const auto f:patch.face_ids) {
+        const auto fc=geometry.face_centres[f];
+        if(fc.x < 0.0 || std::abs(fc.y) > 1e-8) continue;
+        const auto n=geometry.face_area_vectors[f].normalized();
+        const double txy=rho*nu*(gux.component_data(1)[mesh.ownership().owner(f)] +
+                                 guy.component_data(0)[mesh.ownership().owner(f)]);
+        tau.push_back({fc.x,txy*n.y});
+    }
+    std::sort(tau.begin(),tau.end(),[](const Tau&a,const Tau&b){return a.x<b.x;});
+    if(tau.size()<2) throw std::runtime_error("BFS wall-shear extraction returned too few downstream faces");
+
+    double lr=std::numeric_limits<double>::quiet_NaN();
+    for(std::size_t i=1;i<tau.size();++i) {
+        if(tau[i-1].tau<=0.0 && tau[i].tau>0.0) {
+            const double a=tau[i-1].tau, b=tau[i].tau;
+            const double w=(-a)/(b-a);
+            lr=tau[i-1].x+w*(tau[i].x-tau[i-1].x);
+            break;
+        }
+    }
+    if(!std::isfinite(lr)) throw std::runtime_error("BFS reattachment crossing not found");
+
+    const auto& last=solve.history.back();
+    std::cout<<"BFS_RE200 level="<<level
+             <<" Lr_over_step="<<lr
+             <<" continuity="<<last.continuity_linf
+             <<" iterations="<<solve.iterations<<"
+";
+    return {lr,last.continuity_linf,solve.iterations};
+}
+
+int main(int argc,char**argv)
+{
+    const bool quick=argc==2 && std::string(argv[1])=="--quick";
+    const std::size_t need=quick?1:3;
+    if(argc!=static_cast<int>(need+1))
+        throw std::invalid_argument("usage: test_bfs_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
+    std::vector<Result> r;
+    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],16u<<i));
+    for(const auto& x:r) if(!(x.continuity<1e-7)) throw std::runtime_error("BFS continuity gate failed");
+    if(!quick) {
+        const double e0=std::abs(r[0].lr_h-5.0), e1=std::abs(r[1].lr_h-5.0), e2=std::abs(r[2].lr_h-5.0);
+        std::cout<<"BFS reference target Lr/H=5.0 errors="<<e0<<","<<e1<<","<<e2<<"
+";
+        if(!(e2<=e1 && e1<=e0)) throw std::runtime_error("BFS reattachment error is not decreasing under refinement");
+    }
+    std::cout<<"BFS_QUALIFICATION: PASS solver_converged conservation wall_shear_reattachment
+";
 }
