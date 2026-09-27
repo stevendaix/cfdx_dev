@@ -263,3 +263,30 @@ def physics_spec(key: str) -> PhysicsSpec:
         if spec.key == key:
             return spec
     raise KeyError(key)
+
+def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
+    # Normalize legacy flat turbulence settings to the structured contract.
+    model = str(values.get("model", "SST")).upper()
+    spec = turbulence_model(model)
+    family = spec.family.value.upper()
+    return {
+        **values,
+        "family": family,
+        "model": model,
+        "wall_treatment": values.get("wall_treatment", "resolved" if spec.wall_bounded else "none"),
+        "transition": values.get("transition", {"model": "none"}),
+        "corrections": dict(values.get("corrections", {})),
+    }
+
+def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object]:
+    normalized = turbulence_model_from_case(values)
+    model = turbulence_model(str(normalized["model"]))
+    if model.status is not TurbulenceStatus.SOLVER_READY:
+        raise ValueError(f"{model.label} is {model.status.value}; it is not a production solver model")
+    if normalized["wall_treatment"] not in {"resolved", "wall_function", "all_y_plus", "none"}:
+        raise ValueError("unsupported turbulence wall treatment")
+    if not isinstance(normalized["corrections"], dict):
+        raise ValueError("turbulence corrections must be a mapping")
+    if not isinstance(normalized["transition"], dict):
+        raise ValueError("turbulence transition must be a mapping")
+    return normalized
