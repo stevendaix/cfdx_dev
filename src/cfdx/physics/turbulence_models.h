@@ -9,6 +9,186 @@
 namespace cfdx::physics {
 enum class AdvancedTurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, WALE, DYNAMIC_KEQN, DES, DDES, IDDES };
 enum class TurbulenceImplementationKind { CLOSURE, TRANSPORT_MODEL };
+enum class TurbulenceImplementationStatus { SOLVER_READY, KERNEL_ONLY, PLANNED };
+enum class TurbulenceFamily { LAMINAR, RANS, LES, HYBRID };
+enum class TurbulenceWallTreatment { RESOLVED, WALL_FUNCTION, ALL_Y_PLUS, NONE };
+enum class TurbulenceCorrection {
+    NONE,
+    ROTATION_CURVATURE,
+    COMPRESSIBILITY,
+    ROUGHNESS,
+    PRODUCTION_LIMITER,
+    KATO_LAUNDER,
+    QCR
+};
+
+struct TurbulenceCorrectionControls {
+    bool rotation_curvature=false;
+    bool compressibility=false;
+    bool roughness=false;
+    bool production_limiter=true;
+    bool kato_launder=false;
+    bool qcr=false;
+    double rotation_coefficient=1.0;
+    double curvature_coefficient=1.0;
+    double compressibility_coefficient=1.0;
+    double roughness_height=0.0;
+    double roughness_coefficient=0.0;
+    double production_limit=10.0;
+    double kato_coefficient=1.0;
+    double qcr_coefficient=0.3;
+};
+
+inline void validate_turbulence_correction_controls(const TurbulenceCorrectionControls& c)
+{
+    const double v[] = {c.rotation_coefficient,c.curvature_coefficient,
+        c.compressibility_coefficient,c.roughness_height,c.roughness_coefficient,
+        c.production_limit,c.kato_coefficient,c.qcr_coefficient};
+    for(double x : v) if(!std::isfinite(x)) throw std::invalid_argument("non-finite turbulence correction");
+    if(c.rotation_coefficient<0 || c.curvature_coefficient<0 ||
+       c.compressibility_coefficient<0 || c.roughness_height<0 ||
+       c.roughness_coefficient<0 || c.production_limit<=0 ||
+       c.kato_coefficient<0 || c.qcr_coefficient<0)
+        throw std::invalid_argument("invalid turbulence correction controls");
+}
+
+struct TurbulenceInvariants {
+    double strain=0.0;
+    double rotation=0.0;
+    double curvature=0.0;
+    double divergence=0.0;
+    double wall_distance=0.0;
+};
+
+inline bool valid_turbulence_invariants(const TurbulenceInvariants& x)
+{
+    return std::isfinite(x.strain) && std::isfinite(x.rotation) &&
+           std::isfinite(x.curvature) && std::isfinite(x.divergence) &&
+           std::isfinite(x.wall_distance) &&
+           x.strain>=0 && x.rotation>=0 && x.wall_distance>=0;
+}
+
+inline double rotation_curvature_factor(const TurbulenceInvariants& x,
+                                        const TurbulenceCorrectionControls& c)
+{
+    if(!valid_turbulence_invariants(x)) throw std::invalid_argument("invalid rotation/curvature invariants");
+    const double denom=std::max(x.strain*x.strain,1e-30);
+    const double ratio=(x.rotation*x.rotation + c.curvature_coefficient*x.curvature*x.curvature)/denom;
+    return std::clamp(1.0 + c.rotation_coefficient*ratio,0.0,10.0);
+}
+
+inline double compressibility_factor(const TurbulenceInvariants& x,
+                                     const TurbulenceCorrectionControls& c,
+                                     double speed_of_sound)
+{
+    if(!valid_turbulence_invariants(x) || speed_of_sound<=0 || !std::isfinite(speed_of_sound))
+        throw std::invalid_argument("invalid compressibility inputs");
+    const double mach=x.strain/std::max(speed_of_sound,1e-30);
+    return 1.0/(1.0 + c.compressibility_coefficient*mach*mach);
+}
+
+inline double roughness_factor(double roughness_height,double wall_distance,
+                               const TurbulenceCorrectionControls& c)
+{
+    if(roughness_height<0 || wall_distance<=0 || !std::isfinite(roughness_height) ||
+       !std::isfinite(wall_distance))
+        throw std::invalid_argument("invalid roughness inputs");
+    const double ks=roughness_height/std::max(wall_distance,1e-30);
+    return 1.0 + c.roughness_coefficient*ks;
+}
+
+inline double kato_launder_production_factor(const TurbulenceInvariants& x,
+                                             const TurbulenceCorrectionControls& c)
+{
+    if(!valid_turbulence_invariants(x)) throw std::invalid_argument("invalid Kato-Launder invariants");
+    return c.kato_coefficient * x.strain * x.rotation;
+}
+
+inline double qcr_stress_factor(double strain,double rotation,
+                                const TurbulenceCorrectionControls& c)
+{
+    if(strain<0 || rotation<0 || !std::isfinite(strain) || !std::isfinite(rotation))
+        throw std::invalid_argument("invalid QCR invariants");
+    return std::clamp(1.0 + c.qcr_coefficient*rotation/std::max(strain,1e-30),0.0,10.0);
+}
+
+inline double corrected_turbulence_production(double production,
+                                              const TurbulenceInvariants& x,
+                                              const TurbulenceCorrectionControls& c,
+                                              double speed_of_sound=1.0)
+{
+    if(!std::isfinite(production) || production<0 || !valid_turbulence_invariants(x))
+        throw std::invalid_argument("invalid turbulence production");
+    double p=production;
+    if(c.rotation_curvature) p*=rotation_curvature_factor(x,c);
+    if(c.compressibility) p*=compressibility_factor(x,c,speed_of_sound);
+    if(c.roughness) p*=roughness_factor(c.roughness_height,x.wall_distance,c);
+    if(c.kato_launder) p+=kato_launder_production_factor(x,c);
+    if(c.production_limiter) p=std::min(p,c.production_limit);
+    return std::max(0.0,p);
+}
+
+struct WALEInvariants {
+    double S2=0.0;
+    double Sd2=0.0;
+    double Delta=0.0;
+};
+
+inline double wale_eddy_viscosity(const WALEInvariants& x,double Cw=0.325)
+{
+    if(!std::isfinite(x.S2)||!std::isfinite(x.Sd2)||x.S2<0||x.Sd2<0||x.Delta<=0||Cw<0)
+        throw std::invalid_argument("invalid WALE invariants");
+    const double denom=std::pow(x.S2,2.5)+std::pow(x.Sd2,1.25);
+    if(denom<=0) return 0.0;
+    return std::pow(Cw*x.Delta,2.0)*std::pow(x.Sd2,1.5)/denom;
+}
+
+inline double dynamic_les_coefficient(double resolved_stress,double test_stress,
+                                      double denominator,double cmin=0.0,double cmax=0.23)
+{
+    if(!std::isfinite(resolved_stress)||!std::isfinite(test_stress)||
+       !std::isfinite(denominator)||denominator<=0||cmin<0||cmax<cmin)
+        throw std::invalid_argument("invalid dynamic LES inputs");
+    return std::clamp((resolved_stress-test_stress)/denominator,cmin,cmax);
+}
+
+struct TurbulenceCapability {
+    AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
+    const char* key="LAMINAR";
+    const char* label="Laminar";
+    TurbulenceFamily family=TurbulenceFamily::LAMINAR;
+    TurbulenceImplementationStatus status=TurbulenceImplementationStatus::SOLVER_READY;
+    TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
+    int transported_equations=0;
+    bool supports_steady=true;
+    bool supports_transient=true;
+    bool supports_2d=true;
+    bool supports_3d=true;
+    const char* required_fields="";
+    const char* missing="";
+};
+inline constexpr std::array<TurbulenceCapability,13> turbulence_capabilities{{
+    {AdvancedTurbulenceModel::LAMINAR,"LAMINAR","Laminar",TurbulenceFamily::LAMINAR,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::CLOSURE,0,true,true,true,true,"U","turbulence transport, wall treatment and turbulence V&V are not applicable"},
+    {AdvancedTurbulenceModel::KEPSILON,"KEPSILON","k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","model-specific wall treatment, turbulence inlet specification and quantitative benchmark campaign"},
+    {AdvancedTurbulenceModel::RNG_KEPSILON,"RNG_KEPSILON","RNG k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","wall treatment contract and dedicated quantitative RNG benchmark campaign"},
+    {AdvancedTurbulenceModel::REALIZABLE_KEPSILON,"REALIZABLE_KEPSILON","Realizable k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,epsilon","full mesh/y+ sensitivity and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::KOMEGA,"KOMEGA","k-omega",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,omega","wall treatment contract and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SST,"SST","k-omega SST",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true,"k,omega","transition/corrections are not yet exposed; complete wall-treatment and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SPALART_ALLMARAS,"SPALART_ALLMARAS","Spalart-Allmaras",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,1,true,true,true,true,"nu_tilde","negative/rotation/compressibility/QCR variants and quantitative benchmark qualification"},
+    {AdvancedTurbulenceModel::SMAGORINSKY,"SMAGORINSKY","Smagorinsky LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity gradient,Delta","LES transient driver, SGS BC contract, wall treatment and V&V"},
+    {AdvancedTurbulenceModel::WALE,"WALE","WALE LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity-gradient tensor,Delta","full tensor WALE kernel integration, LES transient driver, wall treatment and V&V"},
+    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::PLANNED,TurbulenceImplementationKind::CLOSURE,1,false,true,false,true,"k_sgs,velocity gradient,Delta","complete dynamic SGS transport, test filtering, clipping, LES driver and V&V"},
+    {AdvancedTurbulenceModel::DES,"DES","DES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance","RANS base-model coupling, shielding/length-scale integration, transient 3-D driver and V&V"},
+    {AdvancedTurbulenceModel::DDES,"DDES","DDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","base-model coupling, complete shielding integration, wall treatment, transient 3-D driver and V&V"},
+    {AdvancedTurbulenceModel::IDDES,"IDDES","IDDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","IDDES stress/wake shielding and blending integration, wall treatment, transient 3-D driver and V&V"}
+}};
+inline constexpr const TurbulenceCapability& turbulence_capability(AdvancedTurbulenceModel model) {
+    for (const auto& c : turbulence_capabilities) if (c.model==model) return c;
+    return turbulence_capabilities[0];
+}
+inline constexpr bool turbulence_solver_ready(AdvancedTurbulenceModel model) {
+    return turbulence_capability(model).status==TurbulenceImplementationStatus::SOLVER_READY;
+}
 struct RealizableKEpsilonInvariants {
     double strain_magnitude=0.0;
     double rotation_magnitude=0.0;
@@ -126,7 +306,12 @@ inline TurbulenceWallRegime classify_wall_y_plus(double y_plus)
 struct TurbulenceModelDescriptor {
  AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
  TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
+ TurbulenceImplementationStatus status=TurbulenceImplementationStatus::SOLVER_READY;
 };
+inline constexpr TurbulenceModelDescriptor turbulence_model_descriptor(AdvancedTurbulenceModel model) {
+ const auto& c=turbulence_capability(model);
+ return {model,c.implementation,c.status};
+}
 inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbulenceModel model){
  switch(model) {
  case AdvancedTurbulenceModel::KEPSILON:
