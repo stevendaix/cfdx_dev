@@ -321,14 +321,22 @@ inline ScalarEquation assemble_scalar_equation(
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
                 } else {
-                    // MUSCL/minmod TVD limiter. For a face half-way between
-                    // the upwind and downwind centres, the reconstructed
-                    // upstream increment is 2*high_increment-delta_down.
+                    // Darwish-Moukalled successive-slope ratio for an
+                    // unstructured cell-centred face. The gradient must be
+                    // projected over the full upwind-to-downwind centre
+                    // distance, not the half-distance from the upwind centre
+                    // to the face. For an exact linear field this gives r=1,
+                    // so MINMOD retains the centred linear face value.
                     const double delta_down = phi_other - phi_up;
-                    const double delta_upstream = 2.0 * high_increment - delta_down;
+                    const auto& C_down = geometry.cell_centres[downwind];
+                    const double delta_upwind_to_down =
+                        gx[upwind] * (C_down.x - C_up.x) +
+                        gy[upwind] * (C_down.y - C_up.y) +
+                        gz[upwind] * (C_down.z - C_up.z);
                     double limiter = 0.0;
-                    if (delta_upstream * delta_down > 0.0) {
-                        const double ratio = delta_upstream / delta_down;
+                    if (std::abs(delta_down) > 1e-14) {
+                        const double ratio =
+                            (2.0 * delta_upwind_to_down - delta_down) / delta_down;
                         if (std::isfinite(ratio))
                             limiter = std::max(0.0, std::min(1.0, ratio));
                     }
