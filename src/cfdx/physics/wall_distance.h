@@ -227,8 +227,18 @@ inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDis
                 if(j>0) upd(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) upd(g.index(i,j+1,k),g.spacing.y);
                 if(k>0) upd(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) upd(g.index(i,j,k+1),g.spacing.z);
                 if(std::isfinite(best) && best<d[id]) {
-                    const double nd=d[id]+relaxation*(best-d[id]);
-                    max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
+                    const double old=d[id];
+                    // An uninitialized cell must be seeded with the first finite
+                    // upwind value.  Applying relaxation to infinity would keep
+                    // it non-finite and prevent the sweep from propagating.
+                    const double nd=std::isfinite(old)
+                        ? old+relaxation*(best-old)
+                        : best;
+                    max_change=std::max(max_change,
+                                        std::isfinite(old)
+                                            ? std::abs(nd-old)
+                                            : best);
+                    d[id]=nd;
                 }
             }
         if(max_change<1e-10*h) return d;
