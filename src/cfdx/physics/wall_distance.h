@@ -145,6 +145,15 @@ public:
         return std::sqrt(best2);
     }
 
+    double nearest_distance_within(const WallDistanceVec3& p,double threshold) const {
+        if(threshold<0.0) return std::numeric_limits<double>::infinity();
+        double best2=threshold*threshold;
+        nearest(0,p,best2);
+        return best2<=threshold*threshold
+            ? std::sqrt(best2)
+            : std::numeric_limits<double>::infinity();
+    }
+
     std::size_t triangle_count() const { return surface_.triangles.size(); }
     std::size_t node_count() const { return nodes_.size(); }
 
@@ -300,8 +309,17 @@ inline std::vector<double> search_based_reference(const WallSurface& s,const Wal
     for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
         double vertex2=std::numeric_limits<double>::infinity();
         for(const auto& v:s.points) vertex2=std::min(vertex2,wd_norm2(g.points[i]-v));
-        if(std::sqrt(vertex2)<=threshold) d[i]=bvh.nearest_distance(g.points[i]);
-        else d[i]=std::sqrt(vertex2);
+        if(std::sqrt(vertex2)<=threshold) {
+            d[i]=bvh.nearest_distance(g.points[i]);
+        } else {
+            // A face can be closer than every wall vertex (e.g. a point
+            // projecting into the interior of a large triangle).  A vertex
+            // threshold alone therefore does not guarantee exactness within
+            // the requested wall-distance threshold.  The BVH lower-bound
+            // traversal closes that gap without evaluating every triangle.
+            const double candidate=bvh.nearest_distance_within(g.points[i],threshold);
+            d[i]=std::isfinite(candidate) ? candidate : std::sqrt(vertex2);
+        }
     }
     return d;
 }
