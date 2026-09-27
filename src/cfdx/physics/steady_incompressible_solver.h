@@ -1210,6 +1210,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result.residual_relative = std::numeric_limits<double>::infinity();
         return result;
     }
+    // The independently recomputed residual is the authoritative algebraic
+    // gate. Never accept a Krylov-reported convergence if b-Ax is still above
+    // the requested coupled linear tolerance.
+    result.residual = coupled_matrix_residual;
+    result.residual_relative = coupled_matrix_relative;
+    if (coupled_matrix_relative > tolerance) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
     if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
                   << coupled_matrix_residual
