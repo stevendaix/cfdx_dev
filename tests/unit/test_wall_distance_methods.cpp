@@ -80,6 +80,42 @@ int main() {
     require(hj_differs,"Hamilton-Jacobi collapsed to Eikonal");
     require(adv_differs,"advection-diffusion collapsed to Eikonal");
 
+    // Canonical analytical test: an infinite planar wall at x=0 has
+    // d(x,y,z)=x for x>=0, |grad d|=1 and laplacian(d)=0. This isolates
+    // the PDE operators from geometry/corner errors.
+    WallSurface plane;
+    plane.points={{0,-1,-1},{0,1,-1},{0,1,1},{0,-1,1}};
+    plane.triangles={{{0,1,2}},{{0,2,3}}};
+    const auto pg=make_wall_distance_grid(
+        9,5,5,{0,-1,-1},{0.25,0.5,0.5},
+        [](const WallDistanceVec3& p){ return p.x<0.0; });
+    const std::size_t pc=pg.index(4,2,2);
+    std::vector<double> linear(pg.points.size(),0.0);
+    for(std::size_t id=0;id<linear.size();++id) linear[id]=pg.points[id].x;
+    require(std::abs(godunov_gradient_at(linear,pg,pc)-1.0)<1e-13,
+            "Godunov gradient is not exact for d=x");
+    std::vector<double> peak(pg.points.size(),0.0);
+    peak[pc]=1.0;
+    require(godunov_gradient_at(peak,pg,pc)<1e-13,
+            "Godunov gradient violates the entropy/upwind selection at a local maximum");
+
+    const std::array<WallDistanceMethod,5> plane_methods={{
+        WallDistanceMethod::POISSON,
+        WallDistanceMethod::EIKONAL,
+        WallDistanceMethod::HAMILTON_JACOBI,
+        WallDistanceMethod::ADVECTION_DIFFUSION,
+        WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
+    for(const auto method:plane_methods) {
+        const auto r=compute_wall_distance(method,plane,pg,120);
+        for(std::size_t id=0;id<r.distance.size();++id) if(!pg.solid[id]) {
+            const double expected=pg.points[id].x;
+            require(r.valid[id] && std::isfinite(r.distance[id]),
+                    "analytical plane produced an invalid distance");
+            require(std::abs(r.distance[id]-expected)<2e-10,
+                    "wall-distance PDE failed the analytical planar-wall solution");
+        }
+    }
+
     const auto exact=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g,20);
     const auto m=compare_wall_distance(g,ref,exact.distance,0.5);
     require(m.l2_relative<1e-14,"exact benchmark regression failed");
