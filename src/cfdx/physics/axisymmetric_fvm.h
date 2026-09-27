@@ -57,11 +57,14 @@ inline double revolution_face_measure(double ds, double radius)
     return 2.0*pi*radius*ds;
 }
 
-inline double cylindrical_divergence(double du_dx, double u_r, double r)
+inline double cylindrical_divergence(double dux_dx, double dur_dr, double ur, double r)
 {
     if (!(r > 0.0) || !std::isfinite(r))
         throw std::invalid_argument("axisymmetric: divergence evaluated at r<=0");
-    return du_dx + u_r/r;
+    if (!std::isfinite(dux_dx) || !std::isfinite(dur_dr) || !std::isfinite(ur))
+        throw std::invalid_argument("axisymmetric: non-finite divergence input");
+    // div(U) = dUx/dx + dUr/dr + Ur/r for axisymmetric no-swirl flow.
+    return dux_dx + dur_dr + ur/r;
 }
 
 inline double radial_laplacian(double d2ur_dr2, double dur_dr, double ur, double r)
@@ -139,9 +142,10 @@ struct VMFL036Definition {
     double velocity=1.0;
     double viscosity=0.01;
     double outer_radius=50.0;
+    double reference_cd_value=1.0895;
     double re() const { return rho*velocity*diameter/viscosity; }
     double reference_area() const { return pi*diameter*diameter/4.0; }
-    double reference_cd() const { return 1.0895; }
+    double reference_cd() const { return reference_cd_value; }
 };
 
 inline VMFL036Definition make_vmfl036_re100()
@@ -153,13 +157,18 @@ inline VMFL036Definition make_vmfl036_fluent_exact()
 {
     VMFL036Definition c;
     c.viscosity=0.02;
+    c.reference_cd_value=1.0875;
     return c;
 }
 
 inline void validate_definition(const VMFL036Definition& c)
 {
-    if (!(c.diameter>0.0) || !(c.rho>0.0) || !(c.velocity>0.0) ||
-        !(c.viscosity>0.0) || !(c.outer_radius>=50.0*c.diameter))
+    if (!std::isfinite(c.diameter) || !std::isfinite(c.rho) ||
+        !std::isfinite(c.velocity) || !std::isfinite(c.viscosity) ||
+        !std::isfinite(c.outer_radius) || !std::isfinite(c.reference_cd_value) ||
+        !(c.diameter>0.0) || !(c.rho>0.0) || !(c.velocity>0.0) ||
+        !(c.viscosity>0.0) || !(c.outer_radius>=50.0*c.diameter) ||
+        !(c.reference_cd_value>0.0))
         throw std::invalid_argument("axisymmetric VMFL036: invalid definition");
 }
 
