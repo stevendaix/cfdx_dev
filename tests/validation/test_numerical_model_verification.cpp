@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/mixed_precision.h"
 #include "cfdx/core/linalg/communication_avoiding.h"
 #include "cfdx/core/numerics/interpolation.h"
+#include "cfdx/core/numerics/numerical_method_contract.h"
 #include "cfdx/physics/adaptive_cfl.h"
 #include "cfdx/physics/boussinesq.h"
 #include "cfdx/physics/compressible_flux.h"
@@ -267,6 +268,19 @@ int main() {
             close(m1m4::conductive_flux(10,400,300,0.5),2000.0,1e-12,"conductive flux");
             close(m1m4::interface_conductance(10,20,0.1,0.2,2),100.0,1e-12,"interface conductance");
             std::cout<<"MODEL THERMAL_CHT error=0 reference=thermal_resistance\n";
+        }
+        // Issue #461: numerical method metadata must be internally consistent.
+        {
+            NumericalMethodContract contract{
+                "convection.tvd.minmod", "TVD MinMod", NumericalMethodFamily::Convection,
+                VerificationStatus::Implemented, ConservationContract::LocalFaceConservative,
+                true, true, false, 1, 0,
+                "MUSCL face reconstruction with MinMod limiter",
+                "numerics.convection.tvd.minmod",
+                {"boundedness", "conservation", "smooth-field refinement", "steep-gradient regression"}};
+            validate_numerical_method_contract(contract);
+            ok(std::string(to_string(contract.family)) == "convection", "method family metadata");
+            ok(std::string(to_string(contract.status)) == "implemented", "method status metadata");
         }
         // N025: numerical model inventory marker. The report consumes these records.
         std::cout<<"NUMERICAL_MODEL_VERIFICATION: PASS\n";
