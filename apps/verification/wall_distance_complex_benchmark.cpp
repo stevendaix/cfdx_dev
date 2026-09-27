@@ -65,7 +65,7 @@ bool inside_complex(const WallDistanceVec3& p) {
     return false;
 }
 
-struct Row { std::string method; double l2,linf,near_l2,violations; std::size_t invalid; double ms; };
+struct Row { std::string method; double l2,linf,near_l2,violations,residual; std::size_t invalid,iterations; double ms,init_ms,poisson_ms; };
 
 } // namespace
 
@@ -93,27 +93,44 @@ int main(int argc,char** argv) {
     std::cout << "surface_vertices=" << surface.points.size()
               << " surface_triangles=" << surface.triangles.size()
               << " samples=" << grid.points.size() << " h=" << h << "\n";
-    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms\n";
 
     for(const auto method:methods) {
+        double init_ms=0.0, poisson_ms=0.0;
+        if(method==WallDistanceMethod::HAMILTON_JACOBI) {
+            const auto p0=std::chrono::steady_clock::now();
+            std::size_t init_iter=0;
+            (void)eikonal_fast_sweep(surface,grid,80,&init_iter);
+            const auto p1=std::chrono::steady_clock::now();
+            init_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
+        } else if(method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+            const auto p0=std::chrono::steady_clock::now();
+            std::size_t poisson_iter=0; double poisson_residual=0.0;
+            (void)poisson_distance(surface,grid,80,1.5,&poisson_iter,&poisson_residual);
+            const auto p1=std::chrono::steady_clock::now();
+            poisson_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
+        }
         const auto t0=std::chrono::steady_clock::now();
         const auto result=compute_wall_distance(method,surface,grid,80);
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,0,ms});
+        std::size_t invalid=0; for(std::size_t i=0;i<result.distance.size();++i) if(!result.valid[i]) ++invalid;
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","
+                  << invalid << "," << result.iterations << "," << result.residual_inf << ","
                   << ms << "\n";
     }
 
     std::ofstream csv(output);
     if(!csv) throw std::runtime_error("cannot open benchmark output: "+output);
-    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms\n";
     for(const auto& r:rows)
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
-            << r.violations << "," << r.ms << "\n";
+            << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
+            << "," << r.init_ms << "," << r.poisson_ms << "\n";
     csv.close();
 
     // The exact method must be an exact self-reference. This is a regression
