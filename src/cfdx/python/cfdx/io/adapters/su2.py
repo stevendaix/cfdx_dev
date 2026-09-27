@@ -346,8 +346,22 @@ class Su2Adapter(SolverAdapter):
             except ValueError:
                 pass
         if "SOLVER" in p:
-            solver_val = p["SOLVER"].lower()
-            if "euler" in solver_val:
+            solver_val = p["SOLVER"].strip().lower()
+
+            # SU2 uses distinct INC_* solver names for incompressible flows.
+            # Check these before the generic "euler"/"navier" substrings:
+            # otherwise INC_EULER and INC_NAVIER_STOKES would be classified
+            # incorrectly as compressible.
+            if solver_val == "inc_euler":
+                self.setup.physics_model = "incompressible_euler"
+                self.setup.energy_model = "isothermal"
+            elif solver_val == "inc_navier_stokes":
+                self.setup.physics_model = "incompressible_navier_stokes"
+                self.setup.energy_model = "isothermal"
+            elif solver_val == "inc_rans":
+                self.setup.physics_model = "incompressible_rans"
+                self.setup.energy_model = "isothermal"
+            elif "euler" in solver_val:
                 self.setup.physics_model = "compressible_euler"
                 self.setup.energy_model = "compressible"
             elif "navier" in solver_val:
@@ -356,6 +370,46 @@ class Su2Adapter(SolverAdapter):
             elif "heat" in solver_val:
                 self.setup.physics_model = "heat_equation"
                 self.setup.energy_model = "buoyant"
+
+        # Incompressible SU2 initial conditions.
+        if "INC_DENSITY_INIT" in p:
+            try:
+                rho = float(p["INC_DENSITY_INIT"])
+                self.setup.ref_density = rho
+                if self.setup.materials:
+                    self.setup.materials[0].density = rho
+                else:
+                    self.setup.materials.append(MaterialSpec(name="fluid", density=rho))
+            except ValueError:
+                pass
+        if "INC_VELOCITY_INIT" in p:
+            try:
+                raw = p["INC_VELOCITY_INIT"].strip().strip("()")
+                velocity = [float(v.strip()) for v in raw.split(",")]
+                self.setup.initial_condition.velocity_vector = velocity
+                self.setup.initial_condition.velocity = float(np.linalg.norm(velocity))
+                self.setup.ref_velocity = self.setup.initial_condition.velocity
+            except (ValueError, TypeError):
+                pass
+        if "INC_DENSITY_REF" in p:
+            try:
+                self.setup.ref_density = float(p["INC_DENSITY_REF"])
+            except ValueError:
+                pass
+        if "INC_VELOCITY_REF" in p:
+            try:
+                self.setup.ref_velocity = float(p["INC_VELOCITY_REF"])
+            except ValueError:
+                pass
+        if "MU_CONSTANT" in p:
+            try:
+                mu = float(p["MU_CONSTANT"])
+                if self.setup.materials:
+                    self.setup.materials[0].dynamic_viscosity = mu
+                else:
+                    self.setup.materials.append(MaterialSpec(name="fluid", dynamic_viscosity=mu))
+            except ValueError:
+                pass
 
         # Turbulence model
         if "KIND_TURB_MODEL" in p:
