@@ -65,6 +65,21 @@ int main() {
                                "search-based near-wall distance mismatch");
     }
 
+    const auto mesh=compute_wall_distance(WallDistanceMethod::MESH_WAVE,s,g,40);
+    const auto directional=compute_wall_distance(WallDistanceMethod::DIRECTIONAL_MESH_WAVE,s,g,40);
+    const auto eik=compute_wall_distance(WallDistanceMethod::EIKONAL,s,g,40);
+    const auto hj=compute_wall_distance(WallDistanceMethod::HAMILTON_JACOBI,s,g,40);
+    const auto adv=compute_wall_distance(WallDistanceMethod::ADVECTION_DIFFUSION,s,g,40);
+    bool directional_differs=false, hj_differs=false, adv_differs=false;
+    for(std::size_t i=0;i<g.points.size();++i) if(!g.solid[i]) {
+        directional_differs |= std::abs(mesh.distance[i]-directional.distance[i])>1e-13;
+        hj_differs |= std::abs(eik.distance[i]-hj.distance[i])>1e-13;
+        adv_differs |= std::abs(eik.distance[i]-adv.distance[i])>1e-13;
+    }
+    require(directional_differs,"directional mesh wave collapsed to isotropic mesh wave");
+    require(hj_differs,"Hamilton-Jacobi collapsed to Eikonal");
+    require(adv_differs,"advection-diffusion collapsed to Eikonal");
+
     const auto exact=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g,20);
     const auto m=compare_wall_distance(g,ref,exact.distance,0.5);
     require(m.l2_relative<1e-14,"exact benchmark regression failed");
