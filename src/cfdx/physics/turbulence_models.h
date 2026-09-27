@@ -187,7 +187,7 @@ inline constexpr std::array<TurbulenceCapability,13> turbulence_capabilities{{
     {AdvancedTurbulenceModel::SPALART_ALLMARAS,"SPALART_ALLMARAS","Spalart-Allmaras",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,1,true,true,true,true,"nu_tilde","negative/rotation/compressibility/QCR variants and quantitative benchmark qualification"},
     {AdvancedTurbulenceModel::SMAGORINSKY,"SMAGORINSKY","Smagorinsky LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity gradient,Delta","LES transient driver, SGS BC contract, wall treatment and V&V"},
     {AdvancedTurbulenceModel::WALE,"WALE","WALE LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"velocity-gradient tensor,Delta","full tensor WALE kernel integration, LES transient driver, wall treatment and V&V"},
-    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::PLANNED,TurbulenceImplementationKind::CLOSURE,1,false,true,false,true,"k_sgs,velocity gradient,Delta","complete dynamic SGS transport, test filtering, clipping, LES driver and V&V"},
+    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"k_sgs,velocity gradient,Delta","complete dynamic SGS transport, test filtering, dynamic coefficient evaluation, clipping/backscatter policy, LES driver and V&V"},
     {AdvancedTurbulenceModel::DES,"DES","DES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance","RANS base-model coupling, shielding/length-scale integration, transient 3-D driver and V&V"},
     {AdvancedTurbulenceModel::DDES,"DDES","DDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","base-model coupling, complete shielding integration, wall treatment, transient 3-D driver and V&V"},
     {AdvancedTurbulenceModel::IDDES,"IDDES","IDDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true,"base RANS fields,Delta,wall distance,shielding","IDDES stress/wake shielding and blending integration, wall treatment, transient 3-D driver and V&V"}
@@ -388,7 +388,10 @@ inline double spalart_allmaras_nu_t(double nu_tilde,double distance,double molec
 }
 inline double smagorinsky_nu_t(double Cs,double delta,double strain){if(Cs<0||delta<=0||strain<0)throw std::invalid_argument("Smagorinsky invalid inputs");return (Cs*delta)*(Cs*delta)*strain;}
 inline double wale_nu_t(double Cw,double delta,double strain){if(Cw<0||delta<=0||strain<0)throw std::invalid_argument("WALE invalid inputs");return (Cw*delta)*(Cw*delta)*strain;}
-inline double des_length_scale(double wall_distance,double delta,double Cdes=.65){if(wall_distance<=0||delta<=0||Cdes<=0)throw std::invalid_argument("DES invalid inputs");return std::min(wall_distance,Cdes*delta);}
+inline double des_length_scale(double wall_distance,double delta,double Cdes=.65){
+ if(wall_distance<=0||delta<=0||Cdes<=0) throw std::invalid_argument("DES invalid inputs");
+ return std::min(wall_distance,Cdes*delta);
+}
 inline double ddes_shielding(double r_d){
  if(!std::isfinite(r_d)||r_d<0) throw std::invalid_argument("DDES shielding parameter must be non-negative");
  return 1.0-std::tanh(std::pow(8.0*r_d,3));
@@ -423,4 +426,33 @@ inline double iddes_length_scale(double wall_distance,double delta,double Cdes=.
  const double fb=std::clamp(stress_blend,0.0,1.0);
  return (1-fb)*wall_distance+fb*std::min(wall_distance,fd*les);
 }
+inline double dynamic_one_equation_eddy_viscosity(double k_sgs,double delta,double Ck=.1){
+ if(!std::isfinite(k_sgs)||!std::isfinite(delta)||!std::isfinite(Ck)||
+    k_sgs<0.0||delta<=0.0||Ck<0.0)
+   throw std::invalid_argument("dynamic one-equation SGS inputs are invalid");
+ return Ck*delta*std::sqrt(k_sgs);
+}
+inline double des_hybrid_eddy_viscosity(double wall_distance,double delta,double strain,double Cs=.17,double Cdes=.65){
+ if(!std::isfinite(wall_distance)||!std::isfinite(delta)||!std::isfinite(strain)||
+    wall_distance<=0.0||delta<=0.0||strain<0.0||Cs<0.0||Cdes<=0.0)
+   throw std::invalid_argument("DES inputs are invalid");
+ const double ldes=des_length_scale(wall_distance,delta,Cdes);
+ return (Cs*ldes)*(Cs*ldes)*strain;
+}
+inline double ddes_hybrid_eddy_viscosity(double wall_distance,double delta,double strain,
+                                  double r_d,double Cs=.17,double Cdes=.65){
+ const double lddes=ddes_length_scale_from_rd(wall_distance,delta,Cdes,r_d);
+ if(!std::isfinite(strain)||strain<0.0||Cs<0.0)
+   throw std::invalid_argument("DDES strain inputs are invalid");
+ return (Cs*lddes)*(Cs*lddes)*strain;
+}
+inline double iddes_hybrid_eddy_viscosity(double wall_distance,double delta,double strain,
+                                   double r_d,double stress_blend,
+                                   double Cs=.17,double Cdes=.65){
+ const double liddes=iddes_length_scale_from_rd(wall_distance,delta,Cdes,r_d,stress_blend);
+ if(!std::isfinite(strain)||strain<0.0||Cs<0.0)
+   throw std::invalid_argument("IDDES strain inputs are invalid");
+ return (Cs*liddes)*(Cs*liddes)*strain;
+}
+
 }

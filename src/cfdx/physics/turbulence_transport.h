@@ -75,7 +75,9 @@ inline void enforce_turbulence_bounds(
 
 inline double turbulence_nu_t(
     double k, double second, double strain, double wall_distance,
-    const TurbulenceTransportControls& c, double cell_volume = -1.0, double F2 = 1.0)
+    const TurbulenceTransportControls& c, double cell_volume = -1.0, double F2 = 1.0,
+    double rotation = 0.0, double third_invariant = 0.0, double ddes_r = 0.0,
+    double iddes_stress_blend = 1.0, double wale_S2 = -1.0, double wale_Sd2 = -1.0)
 {
     k=std::max(k,c.k_min);
     const bool omega_based =
@@ -88,15 +90,13 @@ inline double turbulence_nu_t(
     case TurbulenceModel::RNG_KEPSILON: return c.rng_C_mu*k*k/second;
     case TurbulenceModel::REALIZABLE_KEPSILON: {
         const RealizableKEpsilonInvariants invariants{
-            std::max(strain, 0.0), 0.0, 0.0};
+            std::max(strain, 0.0), std::max(rotation, 0.0), third_invariant};
         const double cmu = realizable_kepsilon_cmu_from_invariants(
             invariants, k, second, c.realizable_A0);
         return cmu*k*k/second;
     }
     case TurbulenceModel::KOMEGA: {
-        const double omega_tilde=std::max(
-            second, c.komega_clim*std::max(strain,0.0)/std::sqrt(c.beta_star));
-        return k/omega_tilde;
+        return k/second;
     }
     case TurbulenceModel::SPALART_ALLMARAS: {
         const double nt=std::max(second,0.0);
@@ -115,18 +115,26 @@ inline double turbulence_nu_t(
     case TurbulenceModel::WALE:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("WALE requires positive cell volume");
-        return wale_eddy_viscosity({strain*strain,strain*strain,std::cbrt(cell_volume)},c.wale_Cw);
+        if(!(wale_S2>=0.0) || !(wale_Sd2>=0.0))
+            throw std::invalid_argument("WALE requires tensor invariants S2 and Sd2");
+        return wale_eddy_viscosity({wale_S2,wale_Sd2,std::cbrt(cell_volume)},c.wale_Cw);
     case TurbulenceModel::DES:
     case TurbulenceModel::DDES:
-    case TurbulenceModel::IDDES:
+    case TurbulenceModel::IDDES: {
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume) || !(wall_distance>0.0))
             throw std::invalid_argument("DES family requires positive cell volume and wall distance");
-        return des_eddy_viscosity(std::cbrt(cell_volume),wall_distance,strain,
-                                  c.smagorinsky_Cs,c.des_Cdes);
+        const double delta=std::cbrt(cell_volume);
+        if(c.model==TurbulenceModel::DES)
+            return des_hybrid_eddy_viscosity(wall_distance,delta,strain,c.smagorinsky_Cs,c.des_Cdes);
+        if(c.model==TurbulenceModel::DDES)
+            return ddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,c.smagorinsky_Cs,c.des_Cdes);
+        return iddes_hybrid_eddy_viscosity(wall_distance,delta,strain,ddes_r,iddes_stress_blend,
+                                    c.smagorinsky_Cs,c.des_Cdes);
+    }
     case TurbulenceModel::DYNAMIC_KEQN:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("dynamic LES requires positive cell volume");
-        return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
+        return dynamic_one_equation_eddy_viscosity(second,std::cbrt(cell_volume),0.1);
     }
     throw std::invalid_argument("unknown turbulence model");
 }

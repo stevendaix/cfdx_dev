@@ -482,6 +482,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     endif()
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
+    add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
     add_test(NAME benchmark_wall_distance_complex
@@ -601,6 +602,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_radiation_vv
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
+
+    add_test(NAME test_turbulence_qualification_matrix
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_turbulence_qualification_matrix.py
+                ${CMAKE_SOURCE_DIR}/docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json)
+    set_tests_properties(test_turbulence_qualification_matrix PROPERTIES
+        LABELS "qualification;validation;turbulence")
 
     # Engineering qualification registry contract. This is intentionally a
     # metadata gate: numerical qualification remains the responsibility of
