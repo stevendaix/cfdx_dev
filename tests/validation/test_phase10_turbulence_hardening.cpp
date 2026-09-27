@@ -114,6 +114,49 @@ int main() {
         EXPECT_NEAR(expected_sp/(nu_tilde/(d*d)),coefficient,1e-14);
     });
 
+    run_case("M2_correction_capabilities_are_explicit", [] {
+        const auto sst=AdvancedTurbulenceModel::SST;
+        const auto sa=AdvancedTurbulenceModel::SPALART_ALLMARAS;
+        const auto les=AdvancedTurbulenceModel::SMAGORINSKY;
+
+        // Correction kernels exist, but no model is allowed to advertise
+        // production integration until its model-specific coupling is wired
+        // and verified. This prevents a generic correction helper from being
+        // mistaken for a production turbulence-model capability.
+        EXPECT_TRUE(turbulence_correction_supported(
+            sst, TurbulenceCorrection::NONE));
+        EXPECT_TRUE(turbulence_correction_supported(
+            sa, TurbulenceCorrection::NONE));
+        EXPECT_TRUE(turbulence_correction_supported(
+            les, TurbulenceCorrection::NONE));
+
+        for (const auto model : {
+            AdvancedTurbulenceModel::KEPSILON,
+            AdvancedTurbulenceModel::RNG_KEPSILON,
+            AdvancedTurbulenceModel::REALIZABLE_KEPSILON,
+            AdvancedTurbulenceModel::KOMEGA,
+            AdvancedTurbulenceModel::SST,
+            AdvancedTurbulenceModel::SPALART_ALLMARAS,
+            AdvancedTurbulenceModel::SMAGORINSKY,
+            AdvancedTurbulenceModel::WALE,
+            AdvancedTurbulenceModel::DES,
+            AdvancedTurbulenceModel::DDES,
+            AdvancedTurbulenceModel::IDDES}) {
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::ROTATION_CURVATURE));
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::COMPRESSIBILITY));
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::ROUGHNESS));
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::PRODUCTION_LIMITER));
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::KATO_LAUNDER));
+            EXPECT_TRUE(!turbulence_correction_supported(
+                model, TurbulenceCorrection::QCR));
+        }
+    });
+
     run_case("M2_controls_reject_nonfinite_values", [] {
         TurbulenceTransportControls c;
         c.model=TurbulenceModel::KEPSILON;
