@@ -149,8 +149,7 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if(!solve.converged) throw std::runtime_error("channel solver did not converge");
 
-    GeometryCache geometry;
-    compute_geometry_cache(mesh,geometry);
+    const FvGeometry geometry = build_fv_geometry(mesh);
 
     // Exercise the strict mathematical BC/FVM path used by the current boundary contract.
     // The legacy maps remain the compatibility input of the steady solver; this preflight
