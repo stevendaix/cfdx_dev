@@ -776,6 +776,49 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     return d;
 }
 
+inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
+                                                        const std::vector<double>& d,
+                                                        const WallDistanceGrid& g) {
+    double rmax=0.0;
+    for(std::size_t id=0;id<d.size();++id) {
+        if(g.solid[id] || !std::isfinite(d[id])) continue;
+        if(method==WallDistanceMethod::EIKONAL) {
+            rmax=std::max(rmax,std::abs(godunov_gradient_at(d,g,id)-1.0));
+        } else if(method==WallDistanceMethod::HAMILTON_JACOBI ||
+                  method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+            const double gamma=0.25*std::max(d[id],0.0);
+            rmax=std::max(rmax,std::abs(godunov_gradient_at(d,g,id)-1.0-gamma*laplacian_at(d,g,id)));
+        } else if(method==WallDistanceMethod::ADVECTION_DIFFUSION) {
+            // The transport form uses U=grad(d)/|grad(d)| in this implementation.
+            // Reconstruct the same discrete directional operator used by the solver.
+            const double gn=godunov_gradient_at(d,g,id);
+            if(gn>1e-14) {
+                const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+                auto upwind=[&](int axis,double h,double u) {
+                    if(u>0.0 && ((axis==0&&i>0)||(axis==1&&j>0)||(axis==2&&k>0))) {
+                        const auto m=axis==0?g.index(i-1,j,k):axis==1?g.index(i,j-1,k):g.index(i,j,k-1);
+                        return u*(d[id]-d[m])/h;
+                    }
+                    if(u<0.0 && ((axis==0&&i+1<g.nx)||(axis==1&&j+1<g.ny)||(axis==2&&k+1<g.nz))) {
+                        const auto q=axis==0?g.index(i+1,j,k):axis==1?g.index(i,j+1,k):g.index(i,j,k+1);
+                        return u*(d[q]-d[id])/h;
+                    }
+                    return 0.0;
+                };
+                double gx=0.0,gy=0.0,gz=0.0;
+                if(i>0 && i+1<g.nx) gx=(d[g.index(i+1,j,k)]-d[g.index(i-1,j,k)])/(2*g.spacing.x);
+                if(j>0 && j+1<g.ny) gy=(d[g.index(i,j+1,k)]-d[g.index(i,j-1,k)])/(2*g.spacing.y);
+                if(k>0 && k+1<g.nz) gz=(d[g.index(i,j,k+1)]-d[g.index(i,j,k-1)])/(2*g.spacing.z);
+                const double inv=1.0/std::max(std::sqrt(gx*gx+gy*gy+gz*gz),1e-14);
+                const double ux=gx*inv,uy=gy*inv,uz=gz*inv;
+                const double transport=upwind(0,g.spacing.x,ux)+upwind(1,g.spacing.y,uy)+upwind(2,g.spacing.z,uz);
+                rmax=std::max(rmax,std::abs(transport-1.0-0.05*laplacian_at(d,g,id)));
+            }
+        }
+    }
+    return rmax;
+}
+
 inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const WallSurface& s,
                                                  const WallDistanceGrid& g,
                                                  std::size_t iterations=80) {
@@ -803,6 +846,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
     }
     for(std::size_t i=0;i<r.distance.size();++i)
         if(g.solid[i] || !std::isfinite(r.distance[i]) || r.distance[i]<0.0) r.valid[i]=0;
+    if(r.residual_inf==0.0 && (method==WallDistanceMethod::EIKONAL || method==WallDistanceMethod::ADVECTION_DIFFUSION || method==WallDistanceMethod::HYBRID_POISSON_EIKONAL))
+        r.residual_inf=wall_distance_pde_residual_inf(method,r.distance,g);
     return r;
 }
 
