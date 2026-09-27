@@ -1,5 +1,6 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
+#include "qualification_boundary_helpers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -150,6 +151,25 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
 
     GeometryCache geometry;
     compute_geometry_cache(mesh,geometry);
+
+    // Exercise the strict mathematical BC/FVM path used by the current boundary contract.
+    // The legacy maps remain the compatibility input of the steady solver; this preflight
+    // prevents the qualification case from silently bypassing the new FluxDependent path.
+    cfdx::physics::BoundaryConstraintMap strict_bc;
+    cfdx::validation::add_velocity_flux_dependent(
+        strict_bc, "inlet", {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_flux_dependent(
+        strict_bc, "outlet", {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "bottom", {0.0, 0.0, 0.0});
+    cfdx::validation::add_velocity_dirichlet(strict_bc, "top", {0.0, 0.0, 0.0});
+    cfdx::validation::add_pressure_neumann(strict_bc, "inlet", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "outlet", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "bottom", 0.0);
+    cfdx::validation::add_pressure_neumann(strict_bc, "top", 0.0);
+    const auto validation_flux = cfdx::validation::make_validation_face_flux(mesh, geometry, U);
+    cfdx::validation::exercise_new_velocity_bc_contract(
+        mesh, geometry, strict_bc, validation_flux, "channel");
+
     return {std::move(U),solve,geometry};
 }
 
