@@ -65,7 +65,8 @@ AxisymResult run_level(const Level& l, double mu, double cd_ref, const char* tag
               << " Cd_pressure=" << result.cd_pressure
               << " Cd_viscous=" << result.cd_viscous
               << " Cd_total=" << result.cd_total
-              << " Cd_reference=1.0895\n";
+              << " Cd_reference=" << cd_ref
+              << " Cd_relative_error=" << std::abs(result.cd_total-cd_ref)/cd_ref << "\n";
     return result;
 }
 }
@@ -83,7 +84,7 @@ int main(int argc,char** argv)
             const auto fluent_exact=run_level(Level{36,54,"medium"},0.02,1.0875,"re50");
             const double re50_err=std::abs(fluent_exact.cd_total-1.0875)/1.0875;
             std::cout << "VMFL036_AXISYM FLUENT_EXACT Re=50 Cd=" << fluent_exact.cd_total
-                      << " reference=1.0875 relative_error=" << re50_err << "\\n";
+                      << " reference=1.0875 relative_error=" << re50_err << "\n";
             if(re50_err>0.10) throw std::runtime_error("VMFL036 Fluent-exact Re50 comparison exceeds 10%");
         }
         for(const auto& l:levels) r.push_back(run_level(l,0.01,1.0895,"re100"));
