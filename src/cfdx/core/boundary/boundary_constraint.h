@@ -1,5 +1,6 @@
 #pragma once
 #include "cfdx/core/boundary/mathematical_condition.h"
+#include <stdexcept>
 #include <string>
 #include <utility>
 namespace cfdx::core {
