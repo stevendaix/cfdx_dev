@@ -148,10 +148,9 @@ public:
     double nearest_distance_within(const WallDistanceVec3& p,double threshold) const {
         if(threshold<0.0) return std::numeric_limits<double>::infinity();
         double best2=threshold*threshold;
-        nearest(0,p,best2);
-        return best2<=threshold*threshold
-            ? std::sqrt(best2)
-            : std::numeric_limits<double>::infinity();
+        bool found=false;
+        nearest_within(0,p,best2,found);
+        return found ? std::sqrt(best2) : std::numeric_limits<double>::infinity();
     }
 
     std::size_t triangle_count() const { return surface_.triangles.size(); }
@@ -219,6 +218,36 @@ private:
         nodes_[node_id].left=left;
         nodes_[node_id].right=right;
         return node_id;
+    }
+
+    void nearest_within(std::size_t node_id,const WallDistanceVec3& p,
+                         double& best2,bool& found) const {
+        const Node& node=nodes_[node_id];
+        const double box_d2=wall_distance_aabb_distance2(node.box,p);
+        if(box_d2>best2) return;
+        if(node.leaf) {
+            for(std::size_t i=node.begin;i<node.end;++i) {
+                const auto& t=surface_.triangles[indices_[i]];
+                const double d2=point_triangle_distance2(
+                    p,surface_.points[t.v[0]],surface_.points[t.v[1]],surface_.points[t.v[2]]);
+                if(d2<=best2) {
+                    best2=d2;
+                    found=true;
+                }
+            }
+            return;
+        }
+        const Node& left=nodes_[node.left];
+        const Node& right=nodes_[node.right];
+        const double dl=wall_distance_aabb_distance2(left.box,p);
+        const double dr=wall_distance_aabb_distance2(right.box,p);
+        if(dl<dr) {
+            nearest_within(node.left,p,best2,found);
+            nearest_within(node.right,p,best2,found);
+        } else {
+            nearest_within(node.right,p,best2,found);
+            nearest_within(node.left,p,best2,found);
+        }
     }
 
     void nearest(std::size_t node_id,const WallDistanceVec3& p,double& best2) const {
