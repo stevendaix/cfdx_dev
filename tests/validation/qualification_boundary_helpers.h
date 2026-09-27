@@ -133,7 +133,7 @@ inline void exercise_new_velocity_bc_contract(
             mesh, geometry, mass_flux, grad_p, body, 1.0,
             constraints, component, false, 0.0,
             cfdx::physics::ConvectionScheme::UPWIND, nullptr);
-        if (equation.matrix.rows() != mesh.n_cells())
+        if (equation.matrix.n_rows() != mesh.n_cells())
             throw std::runtime_error(label + ": new BC FVM assembly returned invalid matrix");
     }
 }
