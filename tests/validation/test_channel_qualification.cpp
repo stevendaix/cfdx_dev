@@ -100,7 +100,7 @@ Mesh make_channel_mesh(std::size_t nx, std::size_t ny, double length)
 struct Result {
     Field<double,Location::CELL> U;
     IncompressibleSolveResult solve;
-    GeometryCache geometry;
+    FvGeometry geometry;
 };
 
 Result solve_case(const std::string& mesh_path, std::size_t n)
