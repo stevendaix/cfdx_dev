@@ -9,6 +9,44 @@
 namespace cfdx::physics {
 enum class AdvancedTurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, WALE, DYNAMIC_KEQN, DES, DDES, IDDES };
 enum class TurbulenceImplementationKind { CLOSURE, TRANSPORT_MODEL };
+enum class TurbulenceImplementationStatus { SOLVER_READY, KERNEL_ONLY, PLANNED };
+enum class TurbulenceFamily { LAMINAR, RANS, LES, HYBRID };
+enum class TurbulenceWallTreatment { RESOLVED, WALL_FUNCTION, ALL_Y_PLUS, NONE };
+struct TurbulenceCapability {
+    AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
+    const char* key="LAMINAR";
+    const char* label="Laminar";
+    TurbulenceFamily family=TurbulenceFamily::LAMINAR;
+    TurbulenceImplementationStatus status=TurbulenceImplementationStatus::SOLVER_READY;
+    TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
+    int transported_equations=0;
+    bool supports_steady=true;
+    bool supports_transient=true;
+    bool supports_2d=true;
+    bool supports_3d=true;
+};
+inline constexpr std::array<TurbulenceCapability,13> turbulence_capabilities{{
+    {AdvancedTurbulenceModel::LAMINAR,"LAMINAR","Laminar",TurbulenceFamily::LAMINAR,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::CLOSURE,0,true,true,true,true},
+    {AdvancedTurbulenceModel::KEPSILON,"KEPSILON","k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
+    {AdvancedTurbulenceModel::RNG_KEPSILON,"RNG_KEPSILON","RNG k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
+    {AdvancedTurbulenceModel::REALIZABLE_KEPSILON,"REALIZABLE_KEPSILON","Realizable k-epsilon",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
+    {AdvancedTurbulenceModel::KOMEGA,"KOMEGA","k-omega",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
+    {AdvancedTurbulenceModel::SST,"SST","k-omega SST",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,2,true,true,true,true},
+    {AdvancedTurbulenceModel::SPALART_ALLMARAS,"SPALART_ALLMARAS","Spalart-Allmaras",TurbulenceFamily::RANS,TurbulenceImplementationStatus::SOLVER_READY,TurbulenceImplementationKind::TRANSPORT_MODEL,1,true,true,true,true},
+    {AdvancedTurbulenceModel::SMAGORINSKY,"SMAGORINSKY","Smagorinsky LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
+    {AdvancedTurbulenceModel::WALE,"WALE","WALE LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
+    {AdvancedTurbulenceModel::DYNAMIC_KEQN,"DYNAMIC_KEQN","Dynamic one-equation LES",TurbulenceFamily::LES,TurbulenceImplementationStatus::PLANNED,TurbulenceImplementationKind::CLOSURE,1,false,true,false,true},
+    {AdvancedTurbulenceModel::DES,"DES","DES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
+    {AdvancedTurbulenceModel::DDES,"DDES","DDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true},
+    {AdvancedTurbulenceModel::IDDES,"IDDES","IDDES",TurbulenceFamily::HYBRID,TurbulenceImplementationStatus::KERNEL_ONLY,TurbulenceImplementationKind::CLOSURE,0,false,true,false,true}
+}};
+inline constexpr const TurbulenceCapability& turbulence_capability(AdvancedTurbulenceModel model) {
+    for (const auto& c : turbulence_capabilities) if (c.model==model) return c;
+    return turbulence_capabilities[0];
+}
+inline constexpr bool turbulence_solver_ready(AdvancedTurbulenceModel model) {
+    return turbulence_capability(model).status==TurbulenceImplementationStatus::SOLVER_READY;
+}
 struct RealizableKEpsilonInvariants {
     double strain_magnitude=0.0;
     double rotation_magnitude=0.0;
@@ -126,7 +164,12 @@ inline TurbulenceWallRegime classify_wall_y_plus(double y_plus)
 struct TurbulenceModelDescriptor {
  AdvancedTurbulenceModel model=AdvancedTurbulenceModel::LAMINAR;
  TurbulenceImplementationKind implementation=TurbulenceImplementationKind::CLOSURE;
+ TurbulenceImplementationStatus status=TurbulenceImplementationStatus::SOLVER_READY;
 };
+inline constexpr TurbulenceModelDescriptor turbulence_model_descriptor(AdvancedTurbulenceModel model) {
+ const auto& c=turbulence_capability(model);
+ return {model,c.implementation,c.status};
+}
 inline constexpr TurbulenceImplementationKind implementation_kind(AdvancedTurbulenceModel model){
  switch(model) {
  case AdvancedTurbulenceModel::KEPSILON:
