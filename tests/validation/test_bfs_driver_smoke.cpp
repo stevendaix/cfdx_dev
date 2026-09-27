@@ -121,7 +121,7 @@ static Result run(const std::string& path, std::size_t level)
     std::cout<<"BFS_RE200 level="<<level
              <<" Lr_over_step="<<lr
              <<" continuity="<<last.continuity_linf
-             <<" iterations="<<solve.iterations<<"\\n";
+             <<" iterations="<<solve.iterations<<"\n";
     return {lr,last.continuity_linf,solve.iterations};
 }
 
@@ -136,10 +136,8 @@ int main(int argc,char**argv)
     for(const auto& x:r) if(!(x.continuity<1e-7)) throw std::runtime_error("BFS continuity gate failed");
     if(!quick) {
         const double e0=std::abs(r[0].lr_h-5.0), e1=std::abs(r[1].lr_h-5.0), e2=std::abs(r[2].lr_h-5.0);
-        std::cout<<"BFS reference target Lr/H=5.0 errors="<<e0<<","<<e1<<","<<e2<<"
-";
+        std::cout<<"BFS reference target Lr/H=5.0 errors="<<e0<<","<<e1<<","<<e2<<"\n";
         if(!(e2<=e1 && e1<=e0)) throw std::runtime_error("BFS reattachment error is not decreasing under refinement");
     }
-    std::cout<<"BFS_QUALIFICATION: PASS solver_converged conservation wall_shear_reattachment
-";
+    std::cout<<"BFS_QUALIFICATION: PASS solver_converged conservation wall_shear_reattachment\n";
 }
