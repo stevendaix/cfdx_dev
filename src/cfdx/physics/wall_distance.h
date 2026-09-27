@@ -608,7 +608,7 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
         add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
         add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
         add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
-        if(diag>0.0) rmax=std::max(rmax,std::abs(lap+1.0));
+        rmax=std::max(rmax,std::abs(lap+1.0));
     }
     return rmax;
 }
