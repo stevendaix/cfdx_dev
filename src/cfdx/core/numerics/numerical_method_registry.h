@@ -60,6 +60,16 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "BiCGStab Krylov iteration","linear.bicgstab",{"nonsymmetric_exact_solve","true_residual"}},
         {"linear.gmres","GMRES",F::LinearSolver,S::Verified,C::NotApplicable,false,false,false,0,0,
          "Restarted/unrestarted GMRES operator iteration","linear.gmres",{"nonsymmetric_exact_solve","true_residual"}},
+        {"linear.fgmres","Flexible GMRES",F::LinearSolver,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Flexible Krylov iteration for varying preconditioners","linear.fgmres",{"nonsymmetric_exact_solve","true_residual","variable_preconditioner"}},
+        {"preconditioner.native_amg","Native AMG",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Smoothed aggregation / native AMG hierarchy for SPD elliptic systems","preconditioner.native_amg",{"SPD","anisotropy","true_residual","reuse"}},
+        {"preconditioner.smoothed_aggregation_amg","Smoothed aggregation AMG",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Smoothed aggregation AMG for SPD elliptic systems","preconditioner.smoothed_aggregation_amg",{"SPD","true_residual","reuse"}},
+        {"preconditioner.native_fieldsplit","Native FieldSplit",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Block field split for coupled pressure-velocity systems","preconditioner.native_fieldsplit",{"block_exact_small_system","Schur_variants"}},
+        {"preconditioner.coupled_block_schur","Coupled block Schur",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Velocity block plus pressure Schur approximation","preconditioner.coupled_block_schur",{"block_exact_small_system","true_residual","Schur_variants"}},
         {"pressure_velocity.simple","SIMPLE",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
          "segregated pressure correction","pressure_velocity.simple",{"Couette","Poiseuille","cavity","skew_mesh"}},
         {"pressure_velocity.simplec","SIMPLEC",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
@@ -71,7 +81,11 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
         {"pressure_velocity.fractional_step","Fractional step",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
          "projection/fractional-step coupling","pressure_velocity.fractional_step",{"Couette","Poiseuille","cavity","skew_mesh"}},
         {"pressure_velocity.coupled","Fully coupled U-p",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
-         "block coupled momentum-pressure system","pressure_velocity.coupled",{"Couette","Poiseuille","cavity","skew_mesh"}}
+         "block coupled momentum-pressure system","pressure_velocity.coupled",{"Couette","Poiseuille","cavity","skew_mesh"}},
+        {"time_step.adaptive_cfl","Adaptive CFL controller",F::TimeStep,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "dt_new=dt*clip(CFL_target/CFL_current,min_factor,max_factor)","adaptive_cfl.adaptive_time_step",{"analytical_controller","growth","shrink","finite_inputs"}},
+        {"time_step.pseudo_transient_cfl","Pseudo-transient CFL controller",F::TimeStep,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "bounded CFL growth/saturation schedule","adaptive_cfl.pseudo_transient_cfl",{"growth","saturation","boundedness"}}
     };
 }
 
