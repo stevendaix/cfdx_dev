@@ -111,7 +111,7 @@ inline double turbulence_nu_t(
     case TurbulenceModel::SMAGORINSKY:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("Smagorinsky requires positive cell volume");
-        return dynamic_one_equation_eddy_viscosity(second,std::cbrt(cell_volume),0.1);
+        return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
     case TurbulenceModel::WALE:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("WALE requires positive cell volume");
@@ -133,7 +133,7 @@ inline double turbulence_nu_t(
     case TurbulenceModel::DYNAMIC_KEQN:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("dynamic LES requires positive cell volume");
-        return smagorinsky_eddy_viscosity(std::cbrt(cell_volume),strain,c.smagorinsky_Cs);
+        return dynamic_one_equation_eddy_viscosity(second,std::cbrt(cell_volume),0.1);
     }
     throw std::invalid_argument("unknown turbulence model");
 }
