@@ -558,7 +558,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
 
-    const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
+    const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps;
     double final_residual=std::numeric_limits<double>::infinity();
     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
@@ -572,10 +572,13 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(d,g,id);
             const double residual=grad-1.0-gamma*lap;
-            const double dt_adv=0.25*h;
-            const double dt_diff=gamma>0.0 ? 0.25/(2.0*gamma*inv_h2)
+            // Use the full explicit CFL limits of the upwind advection and
+            // central diffusion terms. The previous 0.25 safety factor was
+            // unnecessarily restrictive and made H-J convergence ~4x slower.
+            const double dt_adv=0.9*h;
+            const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
-            const double dt=relaxation*std::min(dt_adv,dt_diff);
+            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
             const double nd=std::max(0.0,d[id]-dt*residual);
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
@@ -625,7 +628,9 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
 }
 
 inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
-                                             std::size_t max_iter,double smooth) {
+                                             std::size_t max_iter,double smooth,
+                                             std::size_t* used_iter=nullptr,
+                                             double* residual_out=nullptr) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     const std::size_t n=g.points.size();
@@ -635,6 +640,8 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
     // Solve ∇²phi = -1 with phi=0 on the wall seed band. Missing outer
     // neighbours are omitted, which is the discrete zero-normal-gradient BC.
     const double omega=std::clamp(smooth,0.05,1.95);
+    std::size_t used=max_iter;
+    double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
         for(std::size_t id=0;id<n;++id) {
@@ -646,8 +653,9 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
                 const bool fm=has_minus && !g.solid[minus];
                 const bool fp=has_plus && !g.solid[plus];
                 if(fm && fp) { sum+=w*(phi[minus]+phi[plus]); diag+=2.0*w; }
-                else if(fm) { sum+=2.0*w*phi[minus]; diag+=2.0*w; }
-                else if(fp) { sum+=2.0*w*phi[plus]; diag+=2.0*w; }
+                else if(fm) { sum+=w*phi[minus]; diag+=2.0*w; }
+                else if(fp) { sum+=w*phi[plus]; diag+=2.0*w; }
+                else if(has_minus || has_plus) { diag+=2.0*w; }
             };
             const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
             const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
@@ -661,8 +669,10 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
             phi[id]=(1.0-omega)*old+omega*target;
             max_change=std::max(max_change,std::abs(phi[id]-old));
         }
-        if((it&3u)==3u || max_change<1e-10*h*h)
-            if(poisson_residual_inf(phi,g,fixed)<1e-9 && max_change<1e-10*h*h) break;
+        if((it&3u)==3u || max_change<1e-10*h*h) {
+            final_residual=poisson_residual_inf(phi,g,fixed);
+            if(final_residual<1e-9 && max_change<1e-10*h*h) { used=it+1; break; }
+        }
     }
     std::vector<double> d(n,std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<n;++id) if(!g.solid[id] && !fixed[id]) {
@@ -688,13 +698,17 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
         d[id]=std::max(0.0,std::sqrt(rad)-grad);
     }
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+    if(used_iter) *used_iter=used;
+    if(residual_out) *residual_out=final_residual;
     return d;
 }
 
 inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
-                                             std::size_t max_iter,double smooth) {
+                                             std::size_t max_iter,double smooth,
+                                             std::size_t* used_iter=nullptr,
+                                             double* residual_out=nullptr) {
     const WallDistanceBvh bvh(s);
-    return poisson_distance(bvh,g,max_iter,smooth);
+    return poisson_distance(bvh,g,max_iter,smooth,used_iter,residual_out);
 }
 
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
@@ -768,7 +782,12 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::vector<double> d=poisson_distance(bvh,g,std::max<std::size_t>(40,max_iter),1.5);
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
 
-    const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
+    const std::size_t steps=std::max<std::size_t>(20,max_iter);
+    const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+                      +1.0/(g.spacing.y*g.spacing.y)
+                      +1.0/(g.spacing.z*g.spacing.z);
+    std::size_t used=steps;
+    double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
         for(std::size_t id=0;id<d.size();++id) {
@@ -779,20 +798,22 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double lap=laplacian_at(d,g,id);
             const double residual=grad-1.0-gamma*lap;
 
-            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
-                              +1.0/(g.spacing.y*g.spacing.y)
-                              +1.0/(g.spacing.z*g.spacing.z);
-            const double dt_adv=0.25*h;
+            const double dt_adv=0.9*h;
             const double dt_diff=gamma>0.0
-                ? 0.25/(2.0*gamma*inv_h2)
+                ? 0.9/(2.0*gamma*inv_h2)
                 : std::numeric_limits<double>::infinity();
-            const double dt=relaxation*std::min(dt_adv,dt_diff);
+            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
             const double nd=std::max(0.0,d[id]-dt*residual);
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
-        for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
-        if(max_change<1e-10*h) break;
+        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+        if((it&3u)==3u || max_change<1e-10*h) {
+            final_residual=0.0;
+            for(std::size_t id=0;id<d.size();++id) if(!g.solid[id] && !fixed[id] && std::isfinite(d[id]))
+                final_residual=std::max(final_residual,std::abs(godunov_gradient_at(d,g,id)-1.0-0.25*std::max(d[id],0.0)*laplacian_at(d,g,id)));
+            if(final_residual<1e-8 && max_change<1e-9*h) { used=it+1; break; }
+        }
     }
     return d;
 }
@@ -854,7 +875,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::DIRECTIONAL_MESH_WAVE:
             r=graph_wave(s,g,true); break;
         case WallDistanceMethod::POISSON:
-            r.distance=poisson_distance(s,g,iterations,1.5); r.iterations=iterations; break;
+            r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf); break;
         case WallDistanceMethod::EIKONAL:
             r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations); break;
         case WallDistanceMethod::HAMILTON_JACOBI:
@@ -862,7 +883,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::ADVECTION_DIFFUSION:
             r.distance=advection_diffusion_distance(s,g,iterations,0.05); break;
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.7);
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9);
             break;
     }
     for(std::size_t i=0;i<r.distance.size();++i)
