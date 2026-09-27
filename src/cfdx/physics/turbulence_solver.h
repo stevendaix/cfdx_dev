@@ -462,7 +462,7 @@ inline SACellSources sa_cell_sources(
     const double r=std::min(wt/(st*sa.kappa*sa.kappa*wall_distance*wall_distance),10.0);
     const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
     const double prod=sa.cb1*(1.0-ft2)*st;
-    const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(wall_distance*wall_distance);
+    const double destr=(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa))*wt/(wall_distance*wall_distance);
     return {prod*wt,destr,sa.cb2/sa.sigma*grad_nu_tilde_sq,
             c.density*(nu+wt)/sa.sigma};
 }
