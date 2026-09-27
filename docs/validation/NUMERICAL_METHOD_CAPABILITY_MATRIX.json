@@ -324,6 +324,57 @@
         "cavity",
         "skew_mesh"
       ]
+    },
+    {
+      "id": "linear.fgmres",
+      "family": "linear_solver",
+      "status": "implemented",
+      "verification": [
+        "nonsymmetric_exact_solve",
+        "true_residual",
+        "variable_preconditioner"
+      ]
+    },
+    {
+      "id": "preconditioner.smoothed_aggregation_amg",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "SPD",
+        "true_residual",
+        "reuse"
+      ]
+    },
+    {
+      "id": "preconditioner.coupled_block_schur",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "block_exact_small_system",
+        "true_residual",
+        "Schur_variants"
+      ]
+    },
+    {
+      "id": "time_step.adaptive_cfl",
+      "family": "time_step",
+      "status": "implemented",
+      "verification": [
+        "analytical_controller",
+        "growth",
+        "shrink",
+        "finite_inputs"
+      ]
+    },
+    {
+      "id": "time_step.pseudo_transient_cfl",
+      "family": "time_step",
+      "status": "implemented",
+      "verification": [
+        "growth",
+        "saturation",
+        "boundedness"
+      ]
     }
   ]
 }
