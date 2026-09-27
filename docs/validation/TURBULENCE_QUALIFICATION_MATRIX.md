@@ -5,6 +5,9 @@ This document is the model-level qualification map for Issue #461 N17. It delibe
 The canonical machine-readable registry is:
 `docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json`
 
+The equation-level closure contract for all 13 models is:
+`docs/validation/TURBULENCE_CLOSURE_EQUATIONS.md`
+
 ## Catalogue
 
 | Family | Model | Implementation status | Wall distance | Current qualification boundary |
@@ -18,7 +21,7 @@ The canonical machine-readable registry is:
 | RANS | Spalart-Allmaras | SOLVER_READY | Yes | Equation verification now; wall-dependent qualification remains separate |
 | LES | Smagorinsky | KERNEL_ONLY | No | Kernel equations/invariants only |
 | LES | WALE | KERNEL_ONLY | No | Kernel equations/invariants only |
-| LES | Dynamic one-equation | PLANNED | No | Contract/schema only until transport/filter implementation exists |
+| LES | Dynamic one-equation | PLANNED | No | Closure kernel contract is testable; transport/filter/dynamic coefficient path remains incomplete |
 | Hybrid | DES | KERNEL_ONLY | Yes | Length-scale kernel only |
 | Hybrid | DDES | KERNEL_ONLY | Yes | Shielding/length-scale kernel only |
 | Hybrid | IDDES | KERNEL_ONLY | Yes | Shielding/blending kernel only |
@@ -63,16 +66,16 @@ No tolerance relaxation, disabled test, oracle substitution or fixed-iteration P
 
 The registry is intentionally not a claim that the current kernels reproduce the named literature models exactly. The first code audit found several items that must remain explicit qualification gaps:
 
-- **standard k-epsilon:** the eddy-viscosity identity is present as nu_t = C_mu k^2/epsilon. Transport/source-term equivalence still requires term-level evidence.
-- **RNG k-epsilon:** the RNG correction helper and reference constants are present. The complete production/destruction formulation and its coupling to the transport solver still require an independent equation audit.
-- **Realizable k-epsilon:** a variable C_mu kernel exists, but the strain/rotation/invariant construction used by the generic eddy-viscosity path is not yet sufficient to claim full realizable-model equivalence. This is a qualification gap, not a PASS.
-- **k-omega:** the baseline transport and closure paths now use the Wilcox-style nu_t = k/omega identity; the SST strain-rate limiter is kept only in the SST path. The remaining transport terms still require independent term-level verification.
-- **SST:** blending, production limiting and cross-diffusion are implemented, but the complete F1/F2 dependency chain must be verified with independent reference values, including density/gradient conventions and wall-distance sensitivity.
-- **Spalart-Allmaras:** the canonical fv1, fv2, ft2, cw1 and sixth-root fw structure is present. The implemented transport coupling and optional corrections still require term-by-term verification.
+- **standard k-epsilon:** the eddy-viscosity identity and transport/source-term reference terms are now covered by the equation-level test.
+- **RNG k-epsilon:** the RNG C1* correction, production, destruction and diffusion coefficients now have an explicit independent reference test.
+- **Realizable k-epsilon:** variable C_mu, invariant inputs, production, epsilon production/destruction and diffusion coefficients now have an explicit equation-level test; physical/mesh qualification remains open.
+- **k-omega:** the baseline nu_t = k/omega identity, production, destruction, cross-diffusion sign convention and diffusion coefficients now have an explicit reference test.
+- **SST:** blending, production limiting, cross-diffusion and diffusion coefficients have explicit reference terms; the F1/F2 dependency chain and wall-distance sensitivity still require dedicated verification.
+- **Spalart-Allmaras:** fv1/fv2/ft2, modified vorticity, production, signed destruction, gradient source and effective diffusion are now covered by an explicit reference test.
 - **Smagorinsky:** the algebraic closure uses Delta^2 |S| with the configured Cs and remains kernel-level only.
 - **WALE:** the closure now requires the independent tensor invariants S2 and Sd2 instead of fabricating Sd2 from the scalar strain rate. It remains kernel-level only until the full velocity-gradient path is wired.
-- **Dynamic one-equation LES:** the generic closure now uses the one-equation SGS relation nu_t = Ck Delta sqrt(k_sgs), with the existing second scalar interpreted as k_sgs. The capability remains PLANNED because the SGS transport, test filtering and dynamic coefficient evaluation are not implemented.
-- **DES/DDES/IDDES:** the closure dispatch now separates the DES length scale, DDES shielding-based length scale, and IDDES shielding/stress blend. They remain KERNEL_ONLY because base-RANS coupling, complete shielding inputs and transient hybrid-solver integration are still missing.
+- **Dynamic one-equation LES:** the kernel relation nu_t = Ck Delta sqrt(k_sgs) and the dynamic coefficient algebra are now tested independently. The capability remains PLANNED because SGS transport, test filtering and complete dynamic coefficient evaluation are not implemented.
+- **DES/DDES/IDDES:** the closure dispatch and independent length-scale references now distinguish DES, DDES shielding and IDDES stress/blend behaviour. They remain KERNEL_ONLY because base-RANS coupling, complete shielding inputs and transient hybrid-solver integration are still missing.
 
 ### Audit rule
 
