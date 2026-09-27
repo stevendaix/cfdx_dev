@@ -458,7 +458,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_generate_2d_validation_meshes
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py
-                    all --quick --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
+                    all --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
         set_tests_properties(test_generate_2d_validation_meshes PROPERTIES
             LABELS "qualification;mesh;validation")
     endif()
