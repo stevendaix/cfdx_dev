@@ -110,7 +110,7 @@ int main() {
         if (turbulence_solver_ready(AdvancedTurbulenceModel::DES) ||
             turbulence_capability(AdvancedTurbulenceModel::DES).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("DES capability status is incorrect");
-        if (turbulence_capability(AdvancedTurbulenceModel::DYNAMIC_KEQN).status != TurbulenceImplementationStatus::PLANNED)
+        if (turbulence_capability(AdvancedTurbulenceModel::DYNAMIC_KEQN).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("dynamic LES capability status is incorrect");
         if (!has_transport_equation(AdvancedTurbulenceModel::REALIZABLE_KEPSILON))
             throw std::runtime_error("realizable k-epsilon transport is not registered");
