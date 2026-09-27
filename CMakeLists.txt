@@ -218,6 +218,13 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/field/field.h
     src/cfdx/core/field/storage.h
     src/cfdx/core/boundary/boundary_field.h
+    src/cfdx/core/boundary/boundary.h
+    src/cfdx/core/boundary/boundary_role.h
+    src/cfdx/core/boundary/boundary_condition.h
+    src/cfdx/core/boundary/boundary_constraint.h
+    src/cfdx/core/boundary/boundary_validator.h
+    src/cfdx/core/boundary/mathematical_condition.h
+    src/cfdx/core/boundary/value_provider.h
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
     src/cfdx/core/numerics/divergence.h
@@ -359,6 +366,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_field_storage tests/unit/test_field_storage.cpp)
     add_cfdx_test(test_field_wall_hardening tests/unit/test_field_wall_hardening.cpp)
     add_cfdx_test(test_boundary_field tests/unit/test_boundary_field.cpp)
+    add_cfdx_test(test_boundary_contract tests/unit/test_boundary_contract.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
