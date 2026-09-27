@@ -442,10 +442,9 @@ inline double eikonal_update(const std::array<double,3>& a,
     return x;
 }
 
-inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDistanceGrid& g,
+inline std::vector<double> eikonal_fast_sweep(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                                std::size_t max_iter,std::size_t* used_iter=nullptr) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const WallDistanceBvh bvh(s);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
@@ -479,6 +478,12 @@ inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDis
     }
     if(used_iter) *used_iter=it_used;
     return d;
+}
+
+inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDistanceGrid& g,
+                                               std::size_t max_iter,std::size_t* used_iter=nullptr) {
+    const WallDistanceBvh bvh(s);
+    return eikonal_fast_sweep(bvh,g,max_iter,used_iter);
 }
 
 inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& g,
@@ -549,7 +554,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     const WallDistanceBvh bvh(s);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
-    std::vector<double> d=eikonal_fast_sweep(s,g,std::max<std::size_t>(8,max_iter));
+    std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
 
     const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
@@ -618,10 +623,9 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
     return rmax;
 }
 
-inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
+inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                              std::size_t max_iter,double smooth) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const WallDistanceBvh bvh(s);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     const std::size_t n=g.points.size();
     std::vector<double> phi(n,0.0);
@@ -686,6 +690,12 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
     return d;
 }
 
+inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
+                                             std::size_t max_iter,double smooth) {
+    const WallDistanceBvh bvh(s);
+    return poisson_distance(bvh,g,max_iter,smooth);
+}
+
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                         std::size_t max_iter,double gamma=0.05) {
     // NASA/Tucker transport form: U·∇d = 1 + Gamma ∇²d, with U derived
@@ -695,7 +705,7 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     const WallDistanceBvh bvh(s);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
-    std::vector<double> d=eikonal_fast_sweep(s,g,std::max<std::size_t>(8,max_iter/2));
+    std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter/2));
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
@@ -754,7 +764,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     for(auto id:seeds) fixed[id]=1;
 
     // Poisson gives a smooth, robust initial field close to the wall.
-    std::vector<double> d=poisson_distance(s,g,std::max<std::size_t>(40,max_iter),1.5);
+    std::vector<double> d=poisson_distance(bvh,g,std::max<std::size_t>(40,max_iter),1.5);
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
 
     const std::size_t steps=std::max<std::size_t>(20,max_iter*10);
