@@ -177,12 +177,10 @@ double profile_error(const Result& r,std::size_t n)
 int main(int argc,char** argv)
 {
     try {
-        const bool quick=argc==2 && std::string(argv[1])=="--quick";
-        if(quick && argc != 3) throw std::invalid_argument("quick channel requires one mesh path");
-        if(!quick && argc != 5) throw std::invalid_argument("full channel requires three mesh paths");
-
-        if(argc < 3) throw std::invalid_argument("usage: test_channel_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
-        const auto r16=solve_case(argv[2],16);
+        const bool quick=argc>=2 && std::string(argv[1])=="--quick";
+        if((quick && argc != 3) || (!quick && argc != 4))
+            throw std::invalid_argument("usage: test_channel_qualification [--quick] mesh_n16.h5 [mesh_n32.h5 mesh_n64.h5]");
+        const auto r16=solve_case(quick ? argv[2] : argv[1],16);
         const double e16=profile_error(r16,16);
         if(quick) {
             if(e16>0.20 || r16.solve.history.back().continuity_linf>1e-8)
@@ -191,9 +189,8 @@ int main(int argc,char** argv)
             return 0;
         }
 
-        if(argc < 5) throw std::invalid_argument("full channel qualification requires three Python-generated meshes");
-        const auto r32=solve_case(argv[3],32);
-        const auto r64=solve_case(argv[4],64);
+        const auto r32=solve_case(argv[2],32);
+        const auto r64=solve_case(argv[3],64);
         const double e32=profile_error(r32,32);
         const double e64=profile_error(r64,64);
         if(!(e64<e32 && e32<e16))
