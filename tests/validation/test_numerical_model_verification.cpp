@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/communication_avoiding.h"
 #include "cfdx/core/numerics/interpolation.h"
 #include "cfdx/core/numerics/numerical_method_contract.h"
+#include "cfdx/core/numerics/numerical_method_registry.h"
 #include "cfdx/physics/adaptive_cfl.h"
 #include "cfdx/physics/boussinesq.h"
 #include "cfdx/physics/compressible_flux.h"
@@ -281,6 +282,8 @@ int main() {
             validate_numerical_method_contract(contract);
             ok(std::string(to_string(contract.family)) == "convection", "method family metadata");
             ok(std::string(to_string(contract.status)) == "implemented", "method status metadata");
+            validate_numerical_method_registry();
+            ok(numerical_method_registry().size() >= 20, "numerical method registry unexpectedly small");
         }
         // N025: numerical model inventory marker. The report consumes these records.
         std::cout<<"NUMERICAL_MODEL_VERIFICATION: PASS\n";
