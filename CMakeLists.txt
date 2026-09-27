@@ -160,6 +160,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
     src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/forces.h
     src/cfdx/physics/local_time_stepping.h
     src/cfdx/physics/low_mach.h
     src/cfdx/physics/compressible_flux.h
@@ -236,6 +237,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/source_term.h
     src/cfdx/core/numerics/temporal.h
     src/cfdx/core/numerics/convection.h
+    src/cfdx/physics/forces.h
     src/cfdx/physics/incompressible.h
     src/cfdx/physics/pressure_velocity.h
     src/cfdx/physics/pressure_velocity_algorithms.h
@@ -378,6 +380,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
+    add_cfdx_test(test_forces tests/unit/test_forces.cpp)
 
     # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
@@ -459,6 +462,31 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
+    add_cfdx_test(test_vmfl036_reference_case tests/validation/test_vmfl036_reference_case.cpp)
+    add_cfdx_test(test_axisymmetric_vmfl036_kernel tests/validation/test_axisymmetric_vmfl036_kernel.cpp)
+    add_executable(test_vmfl036_axisymmetric tests/validation/test_vmfl036_axisymmetric.cpp)
+    target_link_libraries(test_vmfl036_axisymmetric PRIVATE cfdx_core)
+    target_include_directories(test_vmfl036_axisymmetric PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    target_compile_definitions(test_vmfl036_axisymmetric PRIVATE CFDX_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    if(Python3_Interpreter_FOUND)
+        target_compile_definitions(test_vmfl036_axisymmetric PRIVATE CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}")
+    endif()
+    add_test(NAME test_vmfl036_axisymmetric_quick COMMAND test_vmfl036_axisymmetric --quick)
+    set_tests_properties(test_vmfl036_axisymmetric_quick PROPERTIES LABELS "phase14;validation;axisymmetric")
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_vmfl036_axisymmetric COMMAND test_vmfl036_axisymmetric)
+        set_tests_properties(test_vmfl036_axisymmetric PROPERTIES LABELS "phase14;validation;axisymmetric;long")
+    endif()
+    set_tests_properties(test_axisymmetric_vmfl036_kernel PROPERTIES LABELS "phase14;validation;axisymmetric")
+    target_compile_definitions(test_vmfl036_reference_case PRIVATE
+        CFDX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    if(Python3_Interpreter_FOUND)
+        target_compile_definitions(test_vmfl036_reference_case PRIVATE
+            CFDX_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
+        )
+    endif()
+    set_tests_properties(test_vmfl036_reference_case PROPERTIES LABELS "phase14;validation;reference")
     add_cfdx_test(test_numerical_model_verification tests/validation/test_numerical_model_verification.cpp)
     add_executable(test_poiseuille_diagnostics tests/validation/test_poiseuille_diagnostics.cpp)
     target_link_libraries(test_poiseuille_diagnostics PRIVATE cfdx_core)
