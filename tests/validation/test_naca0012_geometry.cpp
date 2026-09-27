@@ -106,12 +106,12 @@ static Forces run(const std::string& path,std::size_t level)
 
 int main(int argc,char**argv)
 {
-    const bool quick=argc==2 && std::string(argv[1])=="--quick";
+    const bool quick=argc>=2 && std::string(argv[1])=="--quick";
     const std::size_t need=quick?1:3;
-    if(argc!=static_cast<int>(need+1))
+    if(argc!=static_cast<int>(need+(quick?2:1)))
         throw std::invalid_argument("usage: test_naca0012_qualification [--quick] mesh_n64.h5 [mesh_n128.h5 mesh_n256.h5]");
     std::vector<Forces> r;
-    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],64u<<i));
+    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+(quick?2:1)],64u<<i));
     for(const auto& x:r) {
         if(!(x.continuity<1e-7)) throw std::runtime_error("NACA0012 continuity gate failed");
         if(!std::isfinite(x.cd) || !std::isfinite(x.cl)) throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
