@@ -35,7 +35,7 @@ q_\infty=\frac12\rho_\infty U_\infty^2,
 C_D=\frac{F_D}{q_\infty A_{ref}}.
 \]
 
-The reference area is supplied explicitly by the caller; CFDX does not infer it from the mesh.
+The reference area is supplied explicitly by the caller; CFDX does not infer it from the mesh. The reference length for moment coefficients is also supplied explicitly, so the force API does not assume a particular body scale or area/length relationship.
 
 ## Axisymmetric surfaces
 
