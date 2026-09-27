@@ -139,8 +139,9 @@ def extrude_2d(nodes2d, cells2d, boundary2d):
         bf[name] = []
         for a, b in edges:
             bf[name].append((a, b, b + n, a + n))
-    bf["front"] = [(b, a, a + n, b + n) for a, b in boundary2d.get("_front", [])]
-    bf["back"] = [(a + n, b + n, b, a) for a, b in boundary2d.get("_front", [])]
+    front_cells = boundary2d.get("_front_cells", cells2d)
+    bf["front"] = [tuple(cell) for cell in front_cells]
+    bf["back"] = [tuple(reversed(tuple(v + n for v in cell))) for cell in front_cells]
     return points, cells, {k: v for k, v in bf.items() if not k.startswith("_")}
 
 
@@ -221,7 +222,7 @@ def bfs(nx: int, ny: int, upstream: float = 40.0, downstream: float = 30.0):
     wall_edges = list(dict.fromkeys(wall_edges))
     return extrude_2d(nodes, cells, {
         "inlet": inlet_edges, "outlet": outlet_edges, "wall": wall_edges,
-        "_front": [(cells[0][0], cells[0][1])],
+        "_front_cells": cells,
     })
 
 
@@ -266,7 +267,7 @@ def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
     nodes2d = pts
     return extrude_2d(nodes2d, cells2d, {
         "airfoil": airfoil, "farfield": farfield,
-        "_front": [(P(0,0), P(0,1))],
+        "_front_cells": cells2d,
     })
 
 
