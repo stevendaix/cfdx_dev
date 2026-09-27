@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,10 +27,23 @@ namespace cfdx::core {
 // feature or performance parity with it.
 class NativeMGRPreconditioner final : public Preconditioner {
 public:
-    NativeMGRPreconditioner(std::vector<std::size_t> fine_variables,
-                            std::vector<std::size_t> coarse_variables)
+    enum class FineRelaxation {
+        Diagonal,
+        ILU0
+    };
+
+    using ReductionPartition =
+        std::pair<std::vector<std::size_t>, std::vector<std::size_t>>;
+
+    NativeMGRPreconditioner(
+        std::vector<std::size_t> fine_variables,
+        std::vector<std::size_t> coarse_variables,
+        FineRelaxation fine_relaxation = FineRelaxation::Diagonal,
+        std::vector<ReductionPartition> additional_levels = {})
         : fine_(std::move(fine_variables)),
-          coarse_(std::move(coarse_variables)) {}
+          coarse_(std::move(coarse_variables)),
+          fine_relaxation_(fine_relaxation),
+          additional_levels_(std::move(additional_levels)) {}
 
     bool setup(const SparseMatrix& A) override {
         clear();
@@ -39,8 +53,16 @@ public:
             return false;
         }
         if (!build_reduction(A)) return false;
-        if (!coarse_amg_.setup(coarse_operator_)) {
-            last_error_ = "AMG setup failed on MGR reduced operator";
+        if (fine_relaxation_ == FineRelaxation::ILU0) {
+            fine_ilu_ = std::make_unique<ILU0Preconditioner>();
+            if (!fine_ilu_->setup(fine_operator_)) {
+                last_error_ = "ILU(0) setup failed on MGR F operator";
+                clear_state_only();
+                return false;
+            }
+        }
+        if (!setup_coarse_solver()) {
+            last_error_ = "coarse solver setup failed on MGR reduced operator";
             clear_state_only();
             return false;
         }
@@ -57,14 +79,25 @@ public:
             return false;
         }
         SparseMatrix next;
+        SparseMatrix next_fine_operator;
         std::vector<double> next_fine_diag;
-        if (!assemble_reduced(A, next, next_fine_diag)) return false;
+        if (!assemble_reduced(A, next, next_fine_diag, next_fine_operator)) return false;
 
-        if (same_pattern(coarse_operator_, next)) {
+        const bool fine_pattern_ok =
+            fine_relaxation_ == FineRelaxation::Diagonal ||
+            same_pattern(fine_operator_, next_fine_operator);
+        if (same_pattern(coarse_operator_, next) && fine_pattern_ok) {
             coarse_operator_ = std::move(next);
+            fine_operator_ = std::move(next_fine_operator);
             fine_inv_diag_ = std::move(next_fine_diag);
-            if (!coarse_amg_.update_values(coarse_operator_)) {
-                last_error_ = "AMG numeric refresh failed on MGR reduced operator";
+            if (fine_relaxation_ == FineRelaxation::ILU0) {
+                if (!fine_ilu_ || !fine_ilu_->setup(fine_operator_)) {
+                    last_error_ = "ILU(0) numeric refresh failed on MGR F operator";
+                    return false;
+                }
+            }
+            if (!update_coarse_solver()) {
+                last_error_ = "coarse solver numeric refresh failed on MGR reduced operator";
                 return false;
             }
             ++numeric_updates_;
@@ -72,7 +105,9 @@ public:
             return true;
         }
 
-        last_error_ = "MGR reduced CSR pattern changed; explicit setup() required";
+        last_error_ = fine_pattern_ok
+            ? "MGR reduced CSR pattern changed; explicit setup() required"
+            : "MGR F-operator CSR pattern changed; explicit setup() required";
         return false;
     }
 
@@ -82,14 +117,24 @@ public:
 
         correction.fill(0.0);
         Vector fine_rhs(fine_.size(), 0.0);
+        Vector fine_correction(fine_.size(), 0.0);
         Vector coarse_rhs(coarse_.size(), 0.0);
 
         for (std::size_t i = 0; i < fine_.size(); ++i)
             fine_rhs(i) = residual(fine_[i]);
 
-        // F-relaxation: z_F = diag(A_FF)^-1 r_F.
+        // F-relaxation. Diagonal Jacobi is the baseline; ILU(0) is the
+        // stronger local option used to test whether weak F relaxation is the
+        // limiting factor on coupled velocity blocks.
+        if (fine_relaxation_ == FineRelaxation::ILU0) {
+            if (!fine_ilu_ || !fine_ilu_->apply(fine_rhs, fine_correction))
+                return false;
+        } else {
+            for (std::size_t i = 0; i < fine_.size(); ++i)
+                fine_correction(i) = fine_inv_diag_[i] * fine_rhs(i);
+        }
         for (std::size_t i = 0; i < fine_.size(); ++i)
-            correction(fine_[i]) = fine_inv_diag_[i] * fine_rhs(i);
+            correction(fine_[i]) = fine_correction(i);
 
         // Coarse residual: r_C - A_CF z_F.
         for (std::size_t i = 0; i < coarse_.size(); ++i) {
@@ -100,7 +145,7 @@ public:
         }
 
         Vector coarse_correction(coarse_.size(), 0.0);
-        if (!coarse_amg_.apply(coarse_rhs, coarse_correction))
+        if (!apply_coarse_solver(coarse_rhs, coarse_correction))
             return false;
 
         // Prolongate and apply the approximate block elimination correction:
@@ -112,7 +157,12 @@ public:
             double coupling = 0.0;
             for (const auto& [j, aij] : fine_to_coarse_[i])
                 coupling += aij * coarse_correction(j);
-            correction(fine_[i]) -= fine_inv_diag_[i] * coupling;
+            if (fine_relaxation_ == FineRelaxation::ILU0) {
+                fine_correction(i) -= coupling;
+            } else {
+                fine_correction(i) -= fine_inv_diag_[i] * coupling;
+            }
+            correction(fine_[i]) = fine_correction(i);
         }
 
         return correction.is_valid();
@@ -124,6 +174,10 @@ public:
     std::size_t numeric_updates() const noexcept { return numeric_updates_; }
     std::size_t fine_size() const noexcept { return fine_.size(); }
     std::size_t coarse_size() const noexcept { return coarse_.size(); }
+    FineRelaxation fine_relaxation() const noexcept { return fine_relaxation_; }
+    std::size_t reduction_levels() const noexcept {
+        return 1 + additional_levels_.size();
+    }
 
 private:
     bool validate_partition(const SparseMatrix& A) const {
@@ -143,11 +197,40 @@ private:
     }
 
     bool build_reduction(const SparseMatrix& A) {
-        return assemble_reduced(A, coarse_operator_, fine_inv_diag_);
+        return assemble_reduced(
+            A, coarse_operator_, fine_inv_diag_, fine_operator_);
+    }
+
+    bool setup_coarse_solver() {
+        if (additional_levels_.empty()) {
+            coarse_mgr_.reset();
+            return coarse_amg_.setup(coarse_operator_);
+        }
+        const auto& level = additional_levels_.front();
+        auto nested = std::make_unique<NativeMGRPreconditioner>(
+            level.first, level.second, fine_relaxation_,
+            std::vector<ReductionPartition>(
+                additional_levels_.begin() + 1, additional_levels_.end()));
+        if (!nested->setup(coarse_operator_))
+            return false;
+        coarse_mgr_ = std::move(nested);
+        return true;
+    }
+
+    bool update_coarse_solver() {
+        if (coarse_mgr_) return coarse_mgr_->update_values(coarse_operator_);
+        return coarse_amg_.update_values(coarse_operator_);
+    }
+
+    bool apply_coarse_solver(
+        const Vector& rhs, Vector& correction) const {
+        if (coarse_mgr_) return coarse_mgr_->apply(rhs, correction);
+        return coarse_amg_.apply(rhs, correction);
     }
 
     bool assemble_reduced(const SparseMatrix& A, SparseMatrix& reduced,
-                           std::vector<double>& inverse_diag) {
+                          std::vector<double>& inverse_diag,
+                          SparseMatrix& fine_operator) {
         const std::size_t nf = fine_.size();
         const std::size_t nc = coarse_.size();
         std::vector<std::size_t> fine_pos(A.n_rows(), nf);
@@ -174,6 +257,8 @@ private:
                     found = true;
                 } else if (coarse_pos[col] < nc) {
                     fine_to_coarse_[i].push_back({coarse_pos[col], av[k]});
+                } else if (fine_pos[col] < nf) {
+                    fine_rows[i].push_back({fine_pos[col], av[k]});
                 }
             }
             if (!found || !std::isfinite(inverse_diag[i]) ||
@@ -186,6 +271,7 @@ private:
 
         // ACC and ACF are assembled directly; the diagonal F approximation
         // contributes -ACF diag(AFF)^-1 AFC.
+        std::vector<std::vector<std::pair<std::size_t,double>>> fine_rows(nf);
         std::vector<std::vector<std::pair<std::size_t,double>>> rows(nc);
         for (std::size_t i = 0; i < nc; ++i) {
             const auto row = coarse_[i];
@@ -204,6 +290,30 @@ private:
                     rows[i].push_back({c, -acf * inverse_diag[f] * afc});
                 }
             }
+        }
+
+        fine_operator = SparseMatrix(nf, nf);
+        for (std::size_t i = 0; i < nf; ++i) {
+            auto& row = fine_rows[i];
+            std::sort(row.begin(), row.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+            for (std::size_t k = 0; k < row.size();) {
+                const std::size_t column = row[k].first;
+                double value = 0.0;
+                while (k < row.size() && row[k].first == column)
+                    value += row[k++].second;
+                if (!std::isfinite(value)) {
+                    last_error_ = "non-finite coefficient in MGR F operator";
+                    return false;
+                }
+                if (value != 0.0)
+                    fine_operator.push_back(i, column, value);
+            }
+        }
+        fine_operator.finalize();
+        if (!fine_operator.is_consistent()) {
+            last_error_ = "invalid MGR F operator";
+            return false;
         }
 
         reduced = SparseMatrix(nc, nc);
@@ -241,8 +351,11 @@ private:
 
     void clear_state_only() {
         ready_ = false;
+        coarse_mgr_.reset();
         coarse_operator_ = SparseMatrix();
+        fine_operator_ = SparseMatrix();
         fine_inv_diag_.clear();
+        fine_ilu_.reset();
         coarse_to_fine_.clear();
         fine_to_coarse_.clear();
     }
@@ -257,7 +370,12 @@ private:
     std::vector<std::size_t> coarse_;
     std::size_t n_{0};
     SparseMatrix coarse_operator_;
+    SparseMatrix fine_operator_;
     std::vector<double> fine_inv_diag_;
+    FineRelaxation fine_relaxation_{FineRelaxation::Diagonal};
+    std::vector<ReductionPartition> additional_levels_;
+    std::unique_ptr<ILU0Preconditioner> fine_ilu_;
+    std::unique_ptr<NativeMGRPreconditioner> coarse_mgr_;
     std::vector<std::vector<std::pair<std::size_t,double>>> coarse_to_fine_;
     std::vector<std::vector<std::pair<std::size_t,double>>> fine_to_coarse_;
     NativeBoomerAMGPreconditioner coarse_amg_;
