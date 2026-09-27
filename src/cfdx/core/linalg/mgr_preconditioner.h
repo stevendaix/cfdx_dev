@@ -207,9 +207,23 @@ private:
         }
 
         reduced = SparseMatrix(nc, nc);
-        for (std::size_t i = 0; i < nc; ++i)
-            for (const auto [j, value] : rows[i])
-                reduced.push_back(i, j, value);
+        for (std::size_t i = 0; i < nc; ++i) {
+            auto& row = rows[i];
+            std::sort(row.begin(), row.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+            for (std::size_t k = 0; k < row.size();) {
+                const std::size_t column = row[k].first;
+                double value = 0.0;
+                while (k < row.size() && row[k].first == column)
+                    value += row[k++].second;
+                if (!std::isfinite(value)) {
+                    last_error_ = "non-finite coefficient in MGR reduced operator";
+                    return false;
+                }
+                if (value != 0.0)
+                    reduced.push_back(i, column, value);
+            }
+        }
         reduced.finalize();
         return reduced.is_consistent();
     }
