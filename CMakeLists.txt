@@ -167,6 +167,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/radiation_s2s.h
     src/cfdx/physics/boussinesq.h
     src/cfdx/physics/spalart_allmaras.h
+    src/cfdx/physics/wall_distance.h
     src/cfdx/physics/radiation_streaming.h
     src/cfdx/thermodynamics/thermo_state.h
     src/cfdx/thermodynamics/thermo_cache.h
@@ -302,6 +303,9 @@ set(CFDX_CORE_HEADERS
 
 add_executable(cfdx_production_solver apps/production_solver/main.cpp)
 target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+
+add_executable(cfdx_wall_distance_complex_benchmark apps/verification/wall_distance_complex_benchmark.cpp)
+target_link_libraries(cfdx_wall_distance_complex_benchmark PRIVATE cfdx_core)
 
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
 target_include_directories(cfdx_core PUBLIC
@@ -457,6 +461,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_m2_m4_solver_validation tests/validation/test_m2_m4_solver_validation.cpp)
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
+    add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_test(NAME benchmark_wall_distance_complex
+             COMMAND cfdx_wall_distance_complex_benchmark ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv)
+    set_tests_properties(benchmark_wall_distance_complex PROPERTIES LABELS "phase13;validation;benchmark")
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_numerical_model_verification tests/validation/test_numerical_model_verification.cpp)
