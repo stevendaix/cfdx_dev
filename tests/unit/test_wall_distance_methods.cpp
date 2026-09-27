@@ -112,10 +112,14 @@ int main() {
             require(r.valid[id] && std::isfinite(r.distance[id]),
                     "analytical plane produced an invalid distance");
             if(std::abs(r.distance[id]-expected)>=2e-10) {
+                const double grad=godunov_gradient_at(r.distance,pg,id);
+                const double lap=laplacian_at(r.distance,pg,id);
+                const double hj_res=grad-1.0-0.25*expected*lap;
                 std::cerr << "planar failure method=" << wall_distance_method_name(method)
                           << " id=" << id << " i=" << i << " j=" << j << " k=" << k
                           << " x=" << expected << " value=" << r.distance[id]
-                          << " error=" << std::abs(r.distance[id]-expected) << "\n";
+                          << " error=" << std::abs(r.distance[id]-expected)
+                          << " grad=" << grad << " lap=" << lap << " residual=" << hj_res << "\n";
                 throw std::runtime_error("wall-distance PDE failed the analytical planar-wall solution");
             }
         }
