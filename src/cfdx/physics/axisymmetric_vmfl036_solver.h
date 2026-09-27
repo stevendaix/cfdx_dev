@@ -194,6 +194,7 @@ public:
                 std::cout<<"VMFL036_AXISYM ITER="<<it<<" continuity="<<continuity
                          <<" momentum="<<mom<<" pcorr="<<pcorr<<"\n";
             if(continuity<c.continuity_tolerance && mom<c.momentum_tolerance && pcorr<c.pressure_tolerance){
+                gradients(ux_,gux_x,gux_r,true,1.0); gradients(ur_,gur_x,gur_r,true,0.0);
                 const auto d=drag(gux_x,gux_r,gur_x,gur_r);
                 return {true,it,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
             }
