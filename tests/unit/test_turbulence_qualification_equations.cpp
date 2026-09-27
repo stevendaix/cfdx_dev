@@ -92,7 +92,7 @@ int main() {
         const double r=std::min(wt/(st*sa.kappa*sa.kappa*d*d),10.0);
         const double fw=sa.destruction_coefficient(r), ft2=sa.ft2(chi);
         const double prod=sa.cb1*(1.0-ft2)*st;
-        const double destr=std::max(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa),0.0)*wt/(d*d);
+        const double destr=(sa.cw1*fw-sa.cb1*ft2/(sa.kappa*sa.kappa))*wt/(d*d);
         const auto chi3=std::pow(chi,3.0);
         const double expected_nut=wt*chi3/(chi3+std::pow(sa.cv1,3.0));
         expect_close(turbulence_nu_t(0.0,wt,S,d,c),expected_nut,1e-10);
@@ -120,14 +120,21 @@ int main() {
     expect_close(turbulence_nu_t(k,eps,S,y,c,volume),0.17*0.17*y*y*S);
 
     c.model=TurbulenceModel::DDES;
-    const double rd=0.5;
+    const double rd=0.05;
     const double fd=1.0-std::tanh(std::pow(8.0*rd,3.0));
     const double lddes=y-fd*std::max(0.0,y-c.des_Cdes*delta);
     expect_close(turbulence_nu_t(k,eps,S,y,c,volume,1.0,0.0,0.0,rd),0.17*0.17*lddes*lddes*S);
 
     c.model=TurbulenceModel::IDDES;
+    const double iddes_shield=(1.0-0.25)+0.25*fd;
+    const double liddes=y-iddes_shield*std::max(0.0,y-c.des_Cdes*delta);
     expect_close(turbulence_nu_t(k,eps,S,y,c,volume,1.0,0.0,0.0,rd,0.25),
-                 0.17*0.17*lddes*lddes*S);
+                 0.17*0.17*liddes*liddes*S);
+
+    const double dynamic_Ck=0.13;
+    const double dynamic_expected=dynamic_Ck*delta*std::sqrt(0.25);
+    expect_close(dynamic_one_equation_eddy_viscosity(0.25,delta,dynamic_Ck),dynamic_expected);
+    expect_close(dynamic_les_coefficient(0.5,0.2,2.0),0.15);
 
     std::cout << "turbulence qualification equation references: PASS\n";
     return 0;
