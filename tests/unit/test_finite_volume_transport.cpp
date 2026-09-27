@@ -165,8 +165,6 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        // Unbounded zero-gradient convection must retain the positive
-        // outflow contribution without manufacturing an artificial sink.
         const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
         EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
     });
@@ -185,8 +183,6 @@ int main()
         std::vector<double> extra_diagonal{10.0};
         const auto eq = assemble_scalar_equation(
             m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal);
-        // The positive diagonal is supplied independently. A bounded
-        // zero-gradient convective flux must not add an artificial sink.
         EXPECT_NEAR(eq.diagonal[0],10.0,1e-12);
     });
 
@@ -208,7 +204,6 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
-
     run_case("tvd_linear_reconstruction_is_second_order_bounded", [] {
         const Mesh m = make_1d_chain(3);
         const FvGeometry g = build_fv_geometry(m);
@@ -223,10 +218,19 @@ int main()
         // for this linear field. The Darwish-Moukalled successive-slope ratio
         // is therefore r=1 and MINMOD retains the centred face value 0.625.
         // The deferred correction is F*(phi_f-phi_P)=0.125.
-        // Isolate the internal deferred correction from boundary convection.
-        // The independent positive diagonals keep the three-cell algebra
-        // nonsingular without introducing a boundary contribution.
-        flux(21) = 1.0;
+        // Identify the internal face by topology rather than by a fragile
+        // hard-coded face number.
+        bool found_target_face = false;
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            const auto owner = m.ownership().owner(f);
+            const auto neighbour = m.ownership().neighbour(f);
+            if (owner == 1 && neighbour == 2) {
+                flux(f) = 1.0;
+                found_target_face = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found_target_face);
         std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
@@ -247,7 +251,7 @@ int main()
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
-        Field<double,Location::CELL> su(m.n_cells(),"su","1/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
         Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
         flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
         ScalarBoundaryConditions bc;
