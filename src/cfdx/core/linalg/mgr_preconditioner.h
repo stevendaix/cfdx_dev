@@ -153,17 +153,24 @@ public:
         for (std::size_t i = 0; i < coarse_.size(); ++i)
             correction(coarse_[i]) += coarse_correction(i);
 
+        Vector back_substitution_rhs(fine_.size(), 0.0);
         for (std::size_t i = 0; i < fine_.size(); ++i) {
             double coupling = 0.0;
             for (const auto& [j, aij] : fine_to_coarse_[i])
                 coupling += aij * coarse_correction(j);
-            if (fine_relaxation_ == FineRelaxation::ILU0) {
-                fine_correction(i) -= coupling;
-            } else {
-                fine_correction(i) -= fine_inv_diag_[i] * coupling;
-            }
-            correction(fine_[i]) = fine_correction(i);
+            back_substitution_rhs(i) = fine_rhs(i) - coupling;
         }
+        if (fine_relaxation_ == FineRelaxation::ILU0) {
+            if (!fine_ilu_ || !fine_ilu_->apply(
+                    back_substitution_rhs, fine_correction))
+                return false;
+        } else {
+            for (std::size_t i = 0; i < fine_.size(); ++i)
+                fine_correction(i) =
+                    fine_inv_diag_[i] * back_substitution_rhs(i);
+        }
+        for (std::size_t i = 0; i < fine_.size(); ++i)
+            correction(fine_[i]) = fine_correction(i);
 
         return correction.is_valid();
     }
