@@ -3,18 +3,266 @@
   "purpose": "Issue #461 N17 turbulence-model qualification traceability",
   "authority": "#118",
   "models": [
-    {"key":"KEPSILON","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"RNG_KEPSILON","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"REALIZABLE_KEPSILON","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"KOMEGA","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"SST","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":true,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"SPALART_ALLMARAS","family":"RANS","status":"SOLVER_READY","equation_level":"implemented","wall_distance":true,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":true,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":true,"documentation":true}},
-    {"key":"SMAGORINSKY","family":"LES","status":"KERNEL_ONLY","equation_level":"kernel","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}},
-    {"key":"WALE","family":"LES","status":"KERNEL_ONLY","equation_level":"kernel","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}},
-    {"key":"DYNAMIC_KEQN","family":"LES","status":"PLANNED","equation_level":"planned","wall_distance":false,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":false,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}},
-    {"key":"DES","family":"HYBRID","status":"KERNEL_ONLY","equation_level":"kernel","wall_distance":true,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}},
-    {"key":"DDES","family":"HYBRID","status":"KERNEL_ONLY","equation_level":"kernel","wall_distance":true,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}},
-    {"key":"IDDES","family":"HYBRID","status":"KERNEL_ONLY","equation_level":"kernel","wall_distance":true,"stages":{"equations":true,"constants":true,"implementation_audit":true,"term_tests":true,"invariants":true,"analytical_mms":true,"solver_verification":false,"physical_validation":false,"mesh_yplus":false,"conservation_convergence":false,"documentation":true}}
+    {
+      "key": "LAMINAR",
+      "family": "LAMINAR",
+      "status": "SOLVER_READY",
+      "equation_level": "no_closure",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": true,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "KEPSILON",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "RNG_KEPSILON",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "REALIZABLE_KEPSILON",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "KOMEGA",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "SST",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": true,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "SPALART_ALLMARAS",
+      "family": "RANS",
+      "status": "SOLVER_READY",
+      "equation_level": "implemented",
+      "wall_distance": true,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": true,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": true,
+        "documentation": true
+      }
+    },
+    {
+      "key": "SMAGORINSKY",
+      "family": "LES",
+      "status": "KERNEL_ONLY",
+      "equation_level": "kernel",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    },
+    {
+      "key": "WALE",
+      "family": "LES",
+      "status": "KERNEL_ONLY",
+      "equation_level": "kernel",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    },
+    {
+      "key": "DYNAMIC_KEQN",
+      "family": "LES",
+      "status": "PLANNED",
+      "equation_level": "planned",
+      "wall_distance": false,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": false,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    },
+    {
+      "key": "DES",
+      "family": "HYBRID",
+      "status": "KERNEL_ONLY",
+      "equation_level": "kernel",
+      "wall_distance": true,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    },
+    {
+      "key": "DDES",
+      "family": "HYBRID",
+      "status": "KERNEL_ONLY",
+      "equation_level": "kernel",
+      "wall_distance": true,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    },
+    {
+      "key": "IDDES",
+      "family": "HYBRID",
+      "status": "KERNEL_ONLY",
+      "equation_level": "kernel",
+      "wall_distance": true,
+      "stages": {
+        "equations": true,
+        "constants": true,
+        "implementation_audit": true,
+        "term_tests": true,
+        "invariants": true,
+        "analytical_mms": true,
+        "solver_verification": false,
+        "physical_validation": false,
+        "mesh_yplus": false,
+        "conservation_convergence": false,
+        "documentation": true
+      }
+    }
   ],
   "promotion_rules": {
     "implementation_is_not_verification": true,
