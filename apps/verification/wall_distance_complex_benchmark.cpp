@@ -93,7 +93,7 @@ int main(int argc,char** argv) {
     std::cout << "surface_vertices=" << surface.points.size()
               << " surface_triangles=" << surface.triangles.size()
               << " samples=" << grid.points.size() << " h=" << h << "\n";
-    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,time_ms\n";
 
     for(const auto method:methods) {
         const auto t0=std::chrono::steady_clock::now();
@@ -101,19 +101,22 @@ int main(int argc,char** argv) {
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,0,ms});
+        std::size_t invalid=0;
+        for(std::size_t i=0;i<grid.points.size();++i)
+            if(!grid.solid[i] && (!result.valid[i] || !std::isfinite(result.distance[i]))) ++invalid;
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,invalid,ms});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","
-                  << ms << "\n";
+                  << invalid << "," << ms << "\n";
     }
 
     std::ofstream csv(output);
     if(!csv) throw std::runtime_error("cannot open benchmark output: "+output);
-    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,time_ms\n";
     for(const auto& r:rows)
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
-            << r.violations << "," << r.ms << "\n";
+            << r.violations << "," << r.invalid << "," << r.ms << "\n";
     csv.close();
 
     // The exact method must be an exact self-reference. This is a regression
