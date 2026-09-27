@@ -131,10 +131,10 @@
       "id": "EXT-NACA0012",
       "domain": "External flow",
       "case": "NACA0012",
-      "status": "PLANNED",
+      "status": "READY",
       "reference": "Ladson (1988) experimental NACA 0012 data; angles of attack and Reynolds/Mach explicitly frozen per case",
       "parameters": "Chord=1; Re and Mach fixed per subcase; alpha sweep",
-      "mesh": "C-grid/O-grid; boundary-distance and y+ documented; 3+ refinements",
+      "mesh": "Pure-Python structured C-grid/O-grid; no Gmsh; boundary-distance and y+ documented; 3+ refinements",
       "boundary_conditions": "Freestream pressure/velocity; farfield; no-slip airfoil",
       "numerical_schemes": "Pressure-velocity coupling + convection/gradient scheme explicitly recorded",
       "solver_settings": "Steady RANS baseline once turbulence model is qualified; laminar subcase first",
@@ -145,7 +145,7 @@
       "error": "Relative force error and Cp norm",
       "observed_order": "Grid convergence of forces",
       "runtime": "Per mesh/alpha",
-      "regression_status": "Future quantitative validation; no PASS from capability existence"
+      "regression_status": "Mesh generator added in PR #443; solver/force campaign remains to be completed"
     },
     {
       "id": "INT-CHANNEL",
@@ -171,10 +171,10 @@
       "id": "SEP-BFS",
       "domain": "Separation",
       "case": "Backward-facing step",
-      "status": "PLANNED",
+      "status": "READY",
       "reference": "Armaly et al. (1983), JFM 127, 473–496",
       "parameters": "Canonical 2-D geometry; selected Re from the experimental range; primary target Re fixed before PASS",
-      "mesh": "Body-fitted/quality-controlled; wall and shear-layer refinement; 3 meshes",
+      "mesh": "Pure-Python conformal structured blocks; no Gmsh; wall and shear-layer refinement; 3 meshes",
       "boundary_conditions": "Inlet velocity profile; no-slip walls; outlet pressure/convective condition",
       "numerical_schemes": "Bounded convection baseline; higher-order comparison after baseline",
       "solver_settings": "Steady or unsteady as required by selected Re; convergence monitored",
@@ -185,7 +185,7 @@
       "error": "Relative reattachment-length and profile errors",
       "observed_order": "Mesh sensitivity of reattachment length",
       "runtime": "Per mesh",
-      "regression_status": "Planned; no PASS without experimental comparison"
+      "regression_status": "Geometry/mesh generator added in PR #443; solver, wall-shear and reattachment campaign remains"
     },
     {
       "id": "TUR-FLATPLATE",
