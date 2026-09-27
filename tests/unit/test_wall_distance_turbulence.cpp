@@ -1,0 +1,13 @@
+#include "cfdx/physics/wall_distance_turbulence.h"
+#include "common/test_harness.h"
+#include <cmath>
+#include <limits>
+#include <vector>
+using namespace cfdx::physics; using namespace cfdx::testing;
+int main(){
+ run_case("distance_field_and_yplus_contract",[]{std::vector<double>d{1e-3,2e-3,5e-3,1e-2},u{.5,.5,.5,.5};validate_wall_distance_field(d);auto y=wall_distance_y_plus(d,u,1e-5);EXPECT_NEAR(y[0],50,1e-12);EXPECT_NEAR(y[3],500,1e-12);EXPECT_THROW(validate_wall_distance_field({0.0,1.0}),std::invalid_argument);EXPECT_THROW(validate_wall_distance_field({1.0,std::numeric_limits<double>::quiet_NaN()}),std::invalid_argument);});
+ run_case("sst_wall_distance_sensitivity",[]{auto n=compute_sst_blending(.5,10,1e-3,1.5e-5,.09);auto f=compute_sst_blending(.5,10,.1,1.5e-5,.09);EXPECT_TRUE(n.first>f.first);EXPECT_TRUE(n.second>f.second);});
+ run_case("sa_wall_distance_sensitivity",[]{SpalartAllmarasModel sa;double nu=1.5e-5,wt=1e-4;auto n=sa_modified_vorticity(1,wt,wt/nu,1e-3,sa);auto f=sa_modified_vorticity(1,wt,wt/nu,.1,sa);EXPECT_TRUE(std::isfinite(n)&&std::isfinite(f));EXPECT_TRUE(std::abs(n-f)>1e-14);EXPECT_THROW(sa.wall_r(wt,0,1),std::invalid_argument);});
+ run_case("des_ddes_iddes_wall_distance_contract",[]{EXPECT_NEAR(des_wall_transition_ratio(.13,.1,.65),2,1e-12);EXPECT_NEAR(des_length_scale(.13,.1,.65),.065,1e-12);double n=ddes_shielding_from_wall_distance(1e-4,1,1e-3,1.5e-5),f=ddes_shielding_from_wall_distance(1e-4,1,.1,1.5e-5);EXPECT_TRUE(n>=0&&n<=1&&f>=0&&f<=1);EXPECT_TRUE(std::abs(n-f)>1e-14);EXPECT_NEAR(ddes_length_scale_from_rd(.001,.1,.65,0),.065,1e-12);EXPECT_NEAR(ddes_length_scale_from_rd(.1,.1,.65,0),.065,1e-12);double il=iddes_length_scale_from_rd(.1,.1,.65,1,.5);EXPECT_TRUE(il>0&&il<=.1);});
+ run_case("complex_geometry_exact_distance_is_valid_turbulence_input",[]{WallSurface s;s.points={{0,0,0},{1,0,0},{1,1,0},{0,1,0},{0,0,1},{1,0,1},{1,1,1},{0,1,1}};const std::array<std::array<std::size_t,4>,6>q={{{{0,3,2,1}},{{4,5,6,7}},{{0,1,5,4}},{{1,2,6,5}},{{2,3,7,6}},{{3,0,4,7}}}}};for(auto f:q){s.triangles.push_back({{f[0],f[1],f[2]}});s.triangles.push_back({{f[0],f[2],f[3]}});}auto g=make_wall_distance_grid(9,9,9,{-1,-1,-1},{.25,.25,.25},[](const WallDistanceVec3&p){return p.x>0&&p.x<1&&p.y>0&&p.y<1&&p.z>0&&p.z<1;});auto ref=exact_reference(s,g);auto r=compute_wall_distance(WallDistanceMethod::EXACT_GEOMETRIC,s,g);require_wall_distance_resolves_surface(g,r.distance);auto m=compare_wall_distance(g,ref,r.distance,.25);EXPECT_TRUE(m.samples>0);EXPECT_NEAR(m.l2_relative,0,1e-14);EXPECT_NEAR(m.linf_relative,0,1e-14);EXPECT_NEAR(m.near_wall_l2_relative,0,1e-14);});
+ return run_all();}
