@@ -122,6 +122,7 @@ inline double corrected_turbulence_production(double production,
     double p=production;
     if(c.rotation_curvature) p*=rotation_curvature_factor(x,c);
     if(c.compressibility) p*=compressibility_factor(x,c,speed_of_sound);
+    if(c.roughness) p*=roughness_factor(c.roughness_height,x.wall_distance,c);
     if(c.kato_launder) p+=kato_launder_production_factor(x,c);
     if(c.production_limiter) p=std::min(p,c.production_limit);
     return std::max(0.0,p);
