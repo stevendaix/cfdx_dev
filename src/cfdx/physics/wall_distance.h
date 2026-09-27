@@ -335,16 +335,16 @@ inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid
                                                           const std::vector<double>& ref,
                                                           const std::vector<double>& value,
                                                           double near_wall) {
-    double sum2=0.0, ref2=0.0, maxe=0.0, near_sum2=0.0, near_ref2=0.0;
+    double sum2=0.0, ref2=0.0, maxe=0.0, max_ref=0.0, near_sum2=0.0, near_ref2=0.0;
     std::size_t n=0, near_n=0, violations=0;
     for(std::size_t i=0;i<ref.size();++i) {
         if(g.solid[i] || !std::isfinite(ref[i]) || !std::isfinite(value[i])) continue;
-        const double e=std::abs(value[i]-ref[i]); sum2+=e*e; ref2+=ref[i]*ref[i]; maxe=std::max(maxe,e); ++n;
+        const double e=std::abs(value[i]-ref[i]); sum2+=e*e; ref2+=ref[i]*ref[i]; maxe=std::max(maxe,e); max_ref=std::max(max_ref,ref[i]); ++n;
         if(ref[i]<=near_wall) { near_sum2+=e*e; near_ref2+=ref[i]*ref[i]; ++near_n; }
         for(auto nb:g.neighbours[i]) if(!g.solid[nb] && ref[nb]>ref[i] && value[nb]+1e-12<value[i]) ++violations;
     }
     return {std::sqrt(sum2/std::max(1e-30,ref2)),
-            maxe/std::max(1e-30,*std::max_element(ref.begin(),ref.end())),
+            maxe/std::max(1e-30,max_ref),
             std::sqrt(near_sum2/std::max(1e-30,near_ref2)),
             static_cast<double>(violations),n};
 }
