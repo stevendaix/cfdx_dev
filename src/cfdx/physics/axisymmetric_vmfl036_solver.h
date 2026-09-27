@@ -197,7 +197,7 @@ public:
                          <<" momentum="<<mom<<" pcorr="<<pcorr<<"\n";
             if(continuity<c.continuity_tolerance && mom<c.momentum_tolerance && pcorr<c.pressure_tolerance){
                 gradients(ux_,gux_x,gux_r,true,1.0); gradients(ur_,gur_x,gur_r,true,0.0);
-                const auto d=drag(gux_x,gux_r,gur_x,gur_r);
+                require_finite_field("ux",ux_); require_finite_field("ur",ur_); require_finite_field("p",p_);\n        require_finite_field("grad_ux_x",gux_x); require_finite_field("grad_ux_r",gux_r);\n        require_finite_field("grad_ur_x",gur_x); require_finite_field("grad_ur_r",gur_r);\n        require_finite_field("ux",ux_); require_finite_field("ur",ur_); require_finite_field("p",p_);\n        require_finite_field("grad_ux_x",gux_x); require_finite_field("grad_ux_r",gux_r);\n        require_finite_field("grad_ur_x",gur_x); require_finite_field("grad_ur_r",gur_r);\n        const auto d=drag(gux_x,gux_r,gur_x,gur_r);
                 return {true,it,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
             }
         }
@@ -207,6 +207,14 @@ public:
     }
 
 private:
+    static void require_finite_field(const char* name, const std::vector<double>& a)
+    {
+        for(std::size_t i=0;i<a.size();++i)
+            if(!std::isfinite(a[i]))
+                throw std::runtime_error(std::string("VMFL036 non-finite ")+name+
+                    " at cell "+std::to_string(i)+" value="+std::to_string(a[i]));
+    }
+
     const AxisymMesh& m_;
     double rho_,mu_;
     std::size_t n_;
