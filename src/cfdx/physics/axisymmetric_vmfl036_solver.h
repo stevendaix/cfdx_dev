@@ -452,6 +452,7 @@ private:
                     std::to_string(cell)+" value="+std::to_string(rhs[cell]));
         }
         // pressure correction gradient; boundary p'=0.
+        for(std::size_t cell=0;cell<n_;++cell){
             double gx=0.0,gr=0.0;
             for(const auto fid:m_.cells[cell].faces){
                 const auto& f=m_.faces[fid];
