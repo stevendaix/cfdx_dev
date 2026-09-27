@@ -621,9 +621,10 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
 inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
                                              std::size_t max_iter,double smooth) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(s,g,1.6*h);
+    const WallDistanceBvh bvh(s);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     const std::size_t n=g.points.size();
-    std::vector<double> phi(n,0.0), next(n,0.0);
+    std::vector<double> phi(n,0.0);
     std::vector<unsigned char> fixed(n,0);
     for(auto id:seeds) fixed[id]=1;
     // Solve ∇²phi = -1 with phi=0 on the wall seed band. Missing outer
@@ -695,7 +696,7 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d=eikonal_fast_sweep(s,g,std::max<std::size_t>(8,max_iter/2));
-    for(auto id:seeds) { d[id]=exact_point_distance(s,g.points[id]); fixed[id]=1; }
+    for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
         for(std::size_t id=0;id<d.size();++id) {
@@ -747,7 +748,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     // This is a solver hybridization, not an algebraic blend of distance fields
     // and does not introduce an arbitrary Poisson/Eikonal weighting.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(s,g,1.6*h);
+    const WallDistanceBvh bvh(s);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     for(auto id:seeds) fixed[id]=1;
 
