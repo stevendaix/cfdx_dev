@@ -101,7 +101,7 @@ inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
                 for (const std::size_t face : patch.face_ids) {
                     if (face >= mesh.n_faces())
                         throw std::out_of_range("boundary patch contains an invalid face id");
-                    resolved.conditions[face] = {
+                    resolved.conditions[face] = ScalarBoundaryFaceCondition{
                         ScalarBoundaryFaceCondition::Type::FIXED_VALUE,
                         evaluate_boundary_provider(condition.value, face_centres[face], face, time)};
                     resolved.specified[face] = 1;
@@ -110,24 +110,24 @@ inline ScalarBoundaryFaceConditions resolve_scalar_boundary_constraints(
                 for (const std::size_t face : patch.face_ids) {
                     if (face >= mesh.n_faces())
                         throw std::out_of_range("boundary patch contains an invalid face id");
-                    resolved.conditions[face] = {
+                    resolved.conditions[face] = ScalarBoundaryFaceCondition{
                         ScalarBoundaryFaceCondition::Type::FIXED_GRADIENT,
-                        evaluate_boundary_provider(condition.gradient, geometry.face_centres[face], face, time)};
+                        evaluate_boundary_provider(condition.gradient, face_centres[face], face, time)};
                     resolved.specified[face] = 1;
                 }
             } else if constexpr (std::is_same_v<T, cfdx::core::Robin>) {
                 throw std::invalid_argument(
                     "Robin mathematical condition is not yet supported by direct scalar FVM assembly");
-            } else if constexpr (std::is_same_v<T, cfdx::Flux>) {
+            } else if constexpr (std::is_same_v<T, cfdx::core::Flux>) {
                 throw std::invalid_argument(
                     "Flux mathematical condition is deferred until flux-dependent assembly is implemented");
-            } else if constexpr (std::is_same_v<T, cfdx::Mixed>) {
+            } else if constexpr (std::is_same_v<T, cfdx::core::Mixed>) {
                 throw std::invalid_argument(
                     "Mixed mathematical condition is deferred until mixed assembly is implemented");
-            } else if constexpr (std::is_same_v<T, cfdx::Coupled>) {
+            } else if constexpr (std::is_same_v<T, cfdx::core::Coupled>) {
                 throw std::invalid_argument(
                     "Coupled mathematical condition is not valid for scalar local FVM assembly");
-            } else if constexpr (std::is_same_v<T, cfdx::Periodic>) {
+            } else if constexpr (std::is_same_v<T, cfdx::core::Periodic>) {
                 throw std::invalid_argument(
                     "Periodic mathematical condition requires paired-face assembly");
             }
