@@ -122,5 +122,5 @@ int main(int argc,char**argv)
         std::cout<<"NACA0012 Cd mesh differences="<<d01<<","<<d12<<" literature Re=1000 alpha=0 Cd~0.12\n";
         if(!(d12<=d01)) throw std::runtime_error("NACA0012 drag is not stabilizing under refinement");
     }
-    std::cout<<"NACA0012_QUALIFICATION: PASS solver_converged forces_conservation_symmetry\n";
+    std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending\n";
 }
