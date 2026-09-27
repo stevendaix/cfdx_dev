@@ -6,6 +6,77 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
 
+static Mesh make_1d_chain(std::size_t n)
+{
+    if (n == 0) throw std::invalid_argument("make_1d_chain: n must be positive");
+    Mesh m;
+    m.points().resize(8 * n);
+    const double dx = 1.0 / static_cast<double>(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x0 = dx * static_cast<double>(i);
+        const double x1 = dx * static_cast<double>(i + 1);
+        const std::size_t b = 8 * i;
+        const double p[8][3] = {
+            {x0,0,0}, {x1,0,0}, {x1,1,0}, {x0,1,0},
+            {x0,0,1}, {x1,0,1}, {x1,1,1}, {x0,1,1}
+        };
+        for (std::size_t q = 0; q < 8; ++q)
+            m.points().set(b + q, p[q][0], p[q][1], p[q][2]);
+    }
+    std::vector<std::size_t> left, right, y0, y1, z0, z1, internal;
+    auto add_face = [&](std::initializer_list<std::size_t> v) {
+        const std::size_t id = m.faces().n_faces();
+        m.faces().push_face(std::vector<FaceIndex>(v.begin(), v.end()));
+        return id;
+    };
+    left.push_back(add_face({0,4,7,3}));
+    right.push_back(add_face({8*(n-1)+1,8*(n-1)+2,8*(n-1)+6,8*(n-1)+5}));
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::size_t b = 8 * i;
+        y0.push_back(add_face({b,b+1,b+5,b+4}));
+        y1.push_back(add_face({b+3,b+7,b+6,b+2}));
+        z0.push_back(add_face({b,b+3,b+2,b+1}));
+        z1.push_back(add_face({b+4,b+5,b+6,b+7}));
+    }
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        const std::size_t b = 8 * i;
+        internal.push_back(add_face({b+1,b+2,b+6,b+5}));
+    }
+    m.ownership().resize(m.n_faces());
+    m.ownership().set_owner(left[0], 0);
+    m.ownership().set_neighbour(left[0], FaceOwnership::BOUNDARY);
+    m.ownership().set_owner(right[0], n - 1);
+    m.ownership().set_neighbour(right[0], FaceOwnership::BOUNDARY);
+    for (std::size_t i = 0; i < n; ++i) {
+        for (const auto f : {y0[i], y1[i], z0[i], z1[i]}) {
+            m.ownership().set_owner(f, i);
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        }
+    }
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        m.ownership().set_owner(internal[i], i);
+        m.ownership().set_neighbour(internal[i], static_cast<std::int64_t>(i + 1));
+    }
+    for (std::size_t i = 0; i < n; ++i)
+        m.cells().push_cell({i == 0 ? left[0] : internal[i-1],
+                             i + 1 == n ? right[0] : internal[i],
+                             y0[i], y1[i], z0[i], z1[i]});
+
+    Patch inlet; inlet.name = "inlet"; inlet.type = PatchType::WALL;
+    inlet.face_ids = left;
+    Patch outlet; outlet.name = "outlet"; outlet.type = PatchType::WALL;
+    outlet.face_ids = right;
+    Patch wall; wall.name = "wall"; wall.type = PatchType::WALL;
+    for (const auto f : y0) wall.face_ids.push_back(f);
+    for (const auto f : y1) wall.face_ids.push_back(f);
+    for (const auto f : z0) wall.face_ids.push_back(f);
+    for (const auto f : z1) wall.face_ids.push_back(f);
+    m.boundary().add_patch(inlet);
+    m.boundary().add_patch(outlet);
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 static Mesh make_unit_cube()
 {
     Mesh m;
@@ -94,8 +165,6 @@ int main()
         flux(1) = -1.0;
         ScalarBoundaryConditions bc;
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
-        // Unbounded zero-gradient convection must retain the positive
-        // outflow contribution without manufacturing an artificial sink.
         const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
         EXPECT_NEAR(eq.diagonal[0],1.0,1e-12);
     });
@@ -114,8 +183,6 @@ int main()
         std::vector<double> extra_diagonal{10.0};
         const auto eq = assemble_scalar_equation(
             m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal);
-        // The positive diagonal is supplied independently. A bounded
-        // zero-gradient convective flux must not add an artificial sink.
         EXPECT_NEAR(eq.diagonal[0],10.0,1e-12);
     });
 
@@ -137,11 +204,54 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
+    run_case("tvd_linear_reconstruction_is_second_order_bounded", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.25; phi(1)=0.50; phi(2)=0.75;
+        // Positive x-directed advection crosses the internal face from cell 1
+        // to cell 2. Cell 1 is an interior cell, so the Gauss gradient is exact
+        // for this linear field. The Darwish-Moukalled successive-slope ratio
+        // is therefore r=1 and MINMOD retains the centred face value 0.625.
+        // The deferred correction is F*(phi_f-phi_P)=0.125.
+        // Identify the internal face by topology rather than by a fragile
+        // hard-coded face number.
+        bool found_target_face = false;
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            const auto owner = m.ownership().owner(f);
+            const auto neighbour = m.ownership().neighbour(f);
+            if (owner == 1 && neighbour == 2) {
+                flux(f) = 1.0;
+                found_target_face = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found_target_face);
+        std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const auto upwind = assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
+            ConvectionScheme::UPWIND,&phi);
+        const auto tvd = assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
+            ConvectionScheme::TVD,&phi);
+        EXPECT_NEAR(tvd.rhs(1)-upwind.rhs(1),-0.125,1e-12);
+        EXPECT_NEAR(tvd.rhs(2)-upwind.rhs(2), 0.125,1e-12);
+        EXPECT_NEAR(tvd.rhs(1)+tvd.rhs(2),upwind.rhs(1)+upwind.rhs(2),1e-12);
+    });
+
     run_case("tvd_requires_convected_field", [] {
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
-        Field<double,Location::CELL> su(m.n_cells(),"su","1/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
         Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
         flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
         ScalarBoundaryConditions bc;

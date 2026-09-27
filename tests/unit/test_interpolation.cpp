@@ -163,11 +163,13 @@ int main() {
         EXPECT_THROW(interpolate_cell_to_face(f, m, InterpScheme::LIMITED), std::runtime_error);
     });
 
-    run_case("apply_limiter_bounds_local_extrema", []() {
-        EXPECT_NEAR(apply_limiter_tvd(0.0, 100.0, 150.0, LimiterType::NONE), 100.0, 1e-12);
-        EXPECT_NEAR(apply_limiter_tvd(100.0, 0.0, -50.0, LimiterType::NONE), 0.0, 1e-12);
-        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::MINMOD) >= 0.0);
-        EXPECT_TRUE(apply_limiter_tvd(0.0, 100.0, 50.0, LimiterType::VANLEER) <= 100.0);
+    run_case("tvd_limiter_exact_ratio_contract", []() {
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::MINMOD), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(0.5, LimiterType::MINMOD), 0.5, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(-1.0, LimiterType::MINMOD), 0.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::VANLEER), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::SUPERBEE), 1.0, 1e-12);
+        EXPECT_NEAR(apply_limiter_tvd(1.0, LimiterType::VAN_ALBADA), 1.0, 1e-12);
     });
 
     run_case("apply_limiter_all_tvd_schemes_are_bounded", []() {
@@ -178,10 +180,13 @@ int main() {
             LimiterType::VAN_ALBADA
         };
         for (const auto limiter : limiters) {
-            const double bounded = apply_limiter_tvd(0.0, 1.0, 2.0, limiter);
+            const double bounded = apply_limiter_tvd(2.0, limiter);
             EXPECT_TRUE(std::isfinite(bounded));
             EXPECT_TRUE(bounded >= 0.0);
-            EXPECT_TRUE(bounded <= 1.0);
+            const double max_psi =
+                (limiter == LimiterType::MINMOD) ? 1.0 :
+                (limiter == LimiterType::VAN_ALBADA) ? 1.2 : 2.0;
+            EXPECT_TRUE(bounded <= max_psi + 1e-12);
         }
     });
 
@@ -193,10 +198,29 @@ int main() {
             LimiterType::VAN_ALBADA
         };
         for (const auto limiter : limiters) {
-            const double bounded = apply_limiter_tvd(10.0, 20.0, 0.0, limiter);
+            const double bounded = apply_limiter_tvd(-2.0, limiter);
             EXPECT_TRUE(std::isfinite(bounded));
-            EXPECT_TRUE(bounded >= 10.0);
-            EXPECT_TRUE(bounded <= 20.0);
+            const double expected =
+                limiter == LimiterType::VAN_ALBADA ? 0.4 : 0.0;
+            EXPECT_NEAR(bounded, expected, 1e-12);
+        }
+    });
+
+    run_case("interpolate_limited_preserves_linear_field", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "phi", "1", 1);
+        f(0) = 10.0;
+        f(1) = 30.0;
+        auto U = make_constant_velocity(m);
+        auto phi = compute_flux(U, m);
+        Field<double, Location::CELL> grad(2, "grad", "1/m", 3);
+        grad.set(0, 20.0, 0.0, 0.0);
+        grad.set(1, 20.0, 0.0, 0.0);
+        for (const auto limiter : {LimiterType::MINMOD, LimiterType::VANLEER,
+                                   LimiterType::SUPERBEE, LimiterType::VAN_ALBADA}) {
+            auto face_field = interpolate_cell_to_face(
+                f, m, InterpScheme::LIMITED, &phi, limiter, &grad);
+            EXPECT_NEAR(face_field(5), 20.0, 1e-12);
         }
     });
 
