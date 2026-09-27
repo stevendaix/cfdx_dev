@@ -12,7 +12,7 @@
 
 namespace cfdx::physics {
 
-enum class TurbulenceModel { LAMINAR, KEPSILON, RNG_KEPSILON, REALIZABLE_KEPSILON, KOMEGA, SST, SPALART_ALLMARAS, SMAGORINSKY, DES };
+using TurbulenceModel = AdvancedTurbulenceModel;
 
 struct TurbulenceTransportControls {
     TurbulenceModel model = TurbulenceModel::LAMINAR;
