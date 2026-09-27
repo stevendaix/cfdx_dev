@@ -93,7 +93,13 @@ int main() {
             TurbulenceModel::DDES, TurbulenceModel::IDDES}) {
             c.model = model;
             validate_turbulence_controls(c);
-            const double nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
+            double nut = 0.0;
+            if (model == TurbulenceModel::WALE) {
+                nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0,
+                                      1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 0.5);
+            } else {
+                nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
+            }
             if (!std::isfinite(nut) || nut < 0.0)
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
