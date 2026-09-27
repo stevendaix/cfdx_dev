@@ -21,7 +21,7 @@ gui = [
 cfdx-gui = "cfdx.gui:launch"
 
 [tool.setuptools]
-package-dir = {"" = "python"}
+package-dir = {"" = "src/cfdx/python"}
 
 [tool.setuptools.packages.find]
-where = ["python"]
+where = ["src/cfdx/python"]
