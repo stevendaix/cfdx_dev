@@ -192,11 +192,15 @@ def bfs(n: int):
     lo = block(0.0, L_down, 0.0, 1.0, nx_down, n)
     hi = block(0.0, L_down, 1.0, H_out, nx_down, n)
     inlet = [(up[j+1][0], up[j][0]) for j in range(n)]
-    outlet = [(hi[j+1][-1], hi[j][-1]) for j in range(n)]
+    # The outlet spans both downstream blocks.
+    outlet = ([(lo[j][-1], lo[j+1][-1]) for j in range(n)] +
+              [(hi[j+1][-1], hi[j][-1]) for j in range(n)])
     wall = []
     wall += [(up[0][i], up[0][i+1]) for i in range(nx_up)]
     wall += [(lo[0][i+1], lo[0][i]) for i in range(nx_down)]
     wall += [(hi[-1][i], hi[-1][i+1]) for i in range(nx_down)]
+    # The upper wall of the upstream duct is physical wall.
+    wall += [(up[-1][i], up[-1][i+1]) for i in range(nx_up)]
     wall += [(lo[j][0], lo[j+1][0]) for j in range(n)]
     return extrude_2d(nodes, cells, {'inlet': inlet, 'outlet': outlet, 'wall': wall, '_front_cells': cells})
 
