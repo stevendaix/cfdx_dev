@@ -67,6 +67,7 @@ struct Reference {
     double rho_inf{1.0};
     double u_inf{1.0};
     double area{1.0};
+    double length{1.0};
     double pressure_ref{0.0};
     Vec3 drag_direction{1.0,0.0,0.0};
     Vec3 lift_direction{0.0,1.0,0.0};
@@ -106,8 +107,9 @@ struct Result {
 
 inline void validate_reference(const Reference& r) {
     if (!std::isfinite(r.rho_inf) || !std::isfinite(r.u_inf) || !std::isfinite(r.area) ||
-        !(r.rho_inf>0.0) || !(r.u_inf>0.0) || !(r.area>0.0))
-        throw std::invalid_argument("forces: invalid reference density, velocity or area");
+        !std::isfinite(r.length) ||
+        !(r.rho_inf>0.0) || !(r.u_inf>0.0) || !(r.area>0.0) || !(r.length>0.0))
+        throw std::invalid_argument("forces: invalid reference density, velocity, area or length");
     if (!std::isfinite(r.pressure_ref))
         throw std::invalid_argument("forces: non-finite reference pressure");
     (void)normalized(r.drag_direction);
@@ -167,8 +169,7 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
     out.cs_pressure=out.side_pressure/qA;
     out.cs_viscous=out.side_viscous/qA;
     out.cs=out.side/qA;
-    const double L=std::sqrt(ref.area);
-    const double qAL=q*ref.area*L;
+    const double qAL=q*ref.area*ref.length;
     out.cmx=dot(out.total_moment,{1.0,0.0,0.0})/qAL;
     out.cmy=dot(out.total_moment,{0.0,1.0,0.0})/qAL;
     out.cmz=dot(out.total_moment,{0.0,0.0,1.0})/qAL;
