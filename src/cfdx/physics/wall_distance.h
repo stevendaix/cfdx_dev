@@ -490,11 +490,44 @@ inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& 
                            std::size_t id) {
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
     double l=0.0;
-    auto add=[&](std::size_t nb,double h){ if(std::isfinite(f[nb])) l+=(f[nb]-f[id])/(h*h); };
+    auto add=[&](std::size_t nb,double h) {
+        if(std::isfinite(f[nb])) l+=(f[nb]-f[id])/(h*h);
+    };
+    // Missing grid neighbours are zero-normal-gradient boundaries. Solid
+    // neighbours are omitted because the wall Dirichlet condition is imposed
+    // on the fixed seed band.
     if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
     if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
     if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
     return l;
+}
+
+inline double godunov_gradient_at(const std::vector<double>& d,const WallDistanceGrid& g,
+                                  std::size_t id) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    auto component=[&](int axis)->double {
+        double dm=0.0, dp=0.0;
+        if(axis==0) {
+            if(i>0 && std::isfinite(d[g.index(i-1,j,k)]))
+                dm=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
+            if(i+1<g.nx && std::isfinite(d[g.index(i+1,j,k)]))
+                dp=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
+        } else if(axis==1) {
+            if(j>0 && std::isfinite(d[g.index(i,j-1,k)]))
+                dm=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
+            if(j+1<g.ny && std::isfinite(d[g.index(i,j+1,k)]))
+                dp=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
+        } else {
+            if(k>0 && std::isfinite(d[g.index(i,j,k-1)]))
+                dm=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
+            if(k+1<g.nz && std::isfinite(d[g.index(i,j,k+1)]))
+                dp=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
+        }
+        return std::sqrt(std::pow(std::max(dm,0.0),2.0)
+                       + std::pow(std::min(dp,0.0),2.0));
+    };
+    const double gx=component(0), gy=component(1), gz=component(2);
+    return std::sqrt(gx*gx+gy*gy+gz*gz);
 }
 
 inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const WallDistanceGrid& g,
@@ -523,23 +556,26 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                     if(i>0 && std::isfinite(d[g.index(i-1,j,k)]))
                         backward=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
                     if(i+1<g.nx && std::isfinite(d[g.index(i+1,j,k)]))
-                        forward=(d[id]-d[g.index(i+1,j,k)])/g.spacing.x;
+                        forward=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
                 } else if(axis==1) {
                     if(j>0 && std::isfinite(d[g.index(i,j-1,k)]))
                         backward=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
                     if(j+1<g.ny && std::isfinite(d[g.index(i,j+1,k)]))
-                        forward=(d[id]-d[g.index(i,j+1,k)])/g.spacing.y;
+                        forward=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
                 } else {
                     if(k>0 && std::isfinite(d[g.index(i,j,k-1)]))
                         backward=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
                     if(k+1<g.nz && std::isfinite(d[g.index(i,j,k+1)]))
-                        forward=(d[id]-d[g.index(i,j,k+1)])/g.spacing.z;
+                        forward=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
                 }
-                return std::max({backward,forward,0.0});
+                // Godunov Hamiltonian for |grad d| with the positive
+                // propagation direction selected independently on each axis:
+                // max(D^- d,0)^2 + min(D^+ d,0)^2.
+                return std::sqrt(std::pow(std::max(backward,0.0),2.0)
+                               + std::pow(std::min(forward,0.0),2.0));
             };
 
-            const double gx=one_sided(0), gy=one_sided(1), gz=one_sided(2);
-            const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
+            const double grad=godunov_gradient_at(d,g,id);
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(d,g,id);
             const double residual=grad-1.0-gamma*lap;
@@ -562,6 +598,24 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         if(max_change<1e-10*h) break;
     }
     return d;
+}
+
+inline double poisson_residual_inf(const std::vector<double>& phi,
+                                      const WallDistanceGrid& g) {
+    double rmax=0.0;
+    for(std::size_t id=0;id<phi.size();++id) {
+        if(g.solid[id] || !std::isfinite(phi[id])) continue;
+        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+        double lap=0.0, diag=0.0;
+        auto add=[&](std::size_t nb,double h) {
+            if(std::isfinite(phi[nb])) { const double w=1.0/(h*h); lap+=(phi[nb]-phi[id])*w; diag+=w; }
+        };
+        if(i>0) add(g.index(i-1,j,k),g.spacing.x); if(i+1<g.nx) add(g.index(i+1,j,k),g.spacing.x);
+        if(j>0) add(g.index(i,j-1,k),g.spacing.y); if(j+1<g.ny) add(g.index(i,j+1,k),g.spacing.y);
+        if(k>0) add(g.index(i,j,k-1),g.spacing.z); if(k+1<g.nz) add(g.index(i,j,k+1),g.spacing.z);
+        if(diag>0.0) rmax=std::max(rmax,std::abs(lap+1.0));
+    }
+    return rmax;
 }
 
 inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
@@ -590,7 +644,9 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
             max_change=std::max(max_change,std::abs(next[id]-phi[id]));
         }
         phi.swap(next);
-        if(max_change<1e-10*h*h) break;
+        // max_change is only an iteration/stagnation indicator. The PDE
+        // convergence gate is the discrete Poisson residual itself.
+        if(poisson_residual_inf(phi,g)<1e-10 && max_change<1e-10*h*h) break;
     }
     std::vector<double> d(n,std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<n;++id) if(!g.solid[id] && !fixed[id]) {
@@ -644,17 +700,25 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
             const double gx=one(0),gy=one(1),gz=one(2),gn=std::sqrt(gx*gx+gy*gy+gz*gz);
             const double ux=gn>1e-14?gx/gn:0.0, uy=gn>1e-14?gy/gn:0.0, uz=gn>1e-14?gz/gn:0.0;
             double diag=0.0,rhs=1.0;
-            auto add_axis=[&](std::size_t m,std::size_t p,double hh,double u) {
+            auto add_axis=[&](std::size_t m,bool has_m,std::size_t p,bool has_p,
+                                   double hh,double u) {
                 const double w=gamma/(hh*hh);
-                if(m<d.size() && std::isfinite(d[m])) { diag+=w; rhs+=w*d[m]; }
-                if(p<d.size() && std::isfinite(d[p])) { diag+=w; rhs+=w*d[p]; }
-                if(u>0.0 && m<d.size() && std::isfinite(d[m])) { const double a=u/hh; diag+=a; rhs+=a*d[m]; }
-                if(u<0.0 && p<d.size() && std::isfinite(d[p])) { const double a=-u/hh; diag+=a; rhs+=a*d[p]; }
+                if(has_m && std::isfinite(d[m])) { diag+=w; rhs+=w*d[m]; }
+                if(has_p && std::isfinite(d[p])) { diag+=w; rhs+=w*d[p]; }
+                // U>0: U(d_P-d_W)/h; U<0: U(d_E-d_P)/h.
+                if(u>0.0 && has_m && std::isfinite(d[m])) {
+                    const double a=u/hh; diag+=a; rhs+=a*d[m];
+                }
+                if(u<0.0 && has_p && std::isfinite(d[p])) {
+                    const double a=-u/hh; diag+=a; rhs+=a*d[p];
+                }
             };
-            const std::size_t xm=i>0?g.index(i-1,j,k):id, xp=i+1<g.nx?g.index(i+1,j,k):id;
-            const std::size_t ym=j>0?g.index(i,j-1,k):id, yp=j+1<g.ny?g.index(i,j+1,k):id;
-            const std::size_t zm=k>0?g.index(i,j,k-1):id, zp=k+1<g.nz?g.index(i,j,k+1):id;
-            add_axis(xm,xp,g.spacing.x,ux); add_axis(ym,yp,g.spacing.y,uy); add_axis(zm,zp,g.spacing.z,uz);
+            const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+            const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+            const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x,ux);
+            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y,uy);
+            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z,uz);
             if(diag>0.0) { const double nd=rhs/diag; max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd; }
         }
         for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
