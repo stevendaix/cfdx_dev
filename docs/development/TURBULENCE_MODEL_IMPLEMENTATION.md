@@ -56,7 +56,16 @@ The existing transport implementation retains explicit SA constants and the modi
 
 ## LES / hybrid models
 
-Smagorinsky, WALE and the algebraic DES/DDES/IDDES length-scale helpers are model kernels. They are not claimed to be complete LES/DES solver implementations merely because the algebraic helpers exist.
+The model-selection layer now dispatches all registered LES/hybrid identities
+(Smagorinsky, WALE, dynamic one-equation LES, DES, DDES and IDDES) through a
+single canonical transport API. Smagorinsky, WALE and DES-family closures have
+deterministic algebraic kernels, cell-scale requirements, and explicit
+shielding/length-scale branches. Dynamic LES exposes its dynamic coefficient
+contract with bounded coefficient evaluation.
+
+DES/DDES/IDDES remain dependent on a transient 3-D scale-resolving driver and
+base-RANS coupling for production use; the selector therefore does not falsely
+promote these kernels to solver-ready status.
 
 ## Wall treatment
 
@@ -71,16 +80,30 @@ This classification is diagnostic/model infrastructure. The checked classifier r
 
 Quantitative channel, flat-plate, cavity, DNS/experimental comparisons, grid convergence, observed order, and VMFL PASS promotion remain under the validation workstream (#118). This PR only adds equation-level model kernels and deterministic regression tests.
 
-## Remaining model gaps
+## Corrections and model extensions
 
-Comparison with the current SU2 and OpenFOAM model families leaves these major
-items deliberately unadvertised as complete transport models:
+The canonical selection schema now exposes composable correction families rather
+than creating a new model ID for every combination:
 
-- SA-negative and the SA rotation/compressibility/QCR variants;
-- transition transport such as Langtry-Menter gamma-Re-theta;
-- Reynolds-stress transport and non-linear eddy-viscosity RANS models;
-- transported LES and hybrid DES/DDES/IDDES models with shielding and wall treatment;
-- complete turbulence wall functions coupled to boundary production terms.
+- rotation / streamline-curvature;
+- compressibility;
+- wall roughness;
+- production limiting;
+- Kato-Launder rotation-aware production;
+- SA QCR.
+
+The C++ layer validates the correction controls and provides deterministic
+invariant-based kernels. This follows the separation used by mature CFD
+interfaces: SU2, for example, exposes base turbulence models separately from
+their corrections, while Fluent documents curvature/rotation corrections for
+SA and multiple two-equation families. citeturn0search16turn0search18
+
+The remaining implementation work is solver-level rather than selector-level:
+SA-negative/Edwards and exact literature-specific SA/SST correction variants,
+complete wall-function boundary production, full dynamic LES transport/filter
+operations, and complete DES/DDES/IDDES transient coupling. These must not be
+declared validated until the dedicated V&V campaign is prepared.
+
 
 The existing WALE, DES, DDES and IDDES functions remain algebraic closures or
 length-scale kernels until their transport, boundary conditions and validation
