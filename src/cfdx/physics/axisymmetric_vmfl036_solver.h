@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <array>
+#include <iostream>
 #include <cmath>
 #include <cstddef>
 #include <fstream>
@@ -182,7 +184,7 @@ public:
 
         for(std::size_t it=1;it<=c.max_outer_iterations;++it){
             compute_fluxes();
-            gradients(p_,gp_x,gp_r);
+            gradients(p_,gp_x,gp_r,false,0.0);
             assemble_momentum(ux_,ur_,gp_x,gp_r,apx_,apr_,c);
             mom=momentum_residual(ux_,ur_,gp_x,gp_r,apx_,apr_);
             compute_fluxes();
@@ -196,7 +198,7 @@ public:
                 return {true,it,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
             }
         }
-        gradients(ux_,gux_x,gux_r); gradients(ur_,gur_x,gur_r);
+        gradients(ux_,gux_x,gux_r,true,1.0); gradients(ur_,gur_x,gur_r,true,0.0);
         const auto d=drag(gux_x,gux_r,gur_x,gur_r);
         return {false,c.max_outer_iterations,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
     }
@@ -232,7 +234,7 @@ private:
         }
     }
 
-    void gradients(const std::vector<double>& q,std::vector<double>& gx,std::vector<double>& gr) const{
+    void gradients(const std::vector<double>& q,std::vector<double>& gx,std::vector<double>& gr,bool velocity,double outer_value) const{
         gx.assign(n_,0.0); gr.assign(n_,0.0);
         for(std::size_t c=0;c<n_;++c){
             for(const auto fid:m_.cells[c].faces){
@@ -240,7 +242,12 @@ private:
                 double qf=q[c];
                 if(f.neighbour!=static_cast<std::size_t>(-1))
                     qf=0.5*(q[c]+q[f.neighbour]);
-                // Fixed velocity walls and farfield are used only for velocity gradients.
+                else if(velocity){
+                    if(f.sphere) qf=0.0;
+                    else if(f.outer) qf=outer_value;
+                    else if(f.axis) qf=(outer_value==0.0?0.0:q[c]);
+                }
+                // For pressure, zero normal gradient is represented by q_face=q_cell.
                 gx[c]+=qf*f.nx*f.area;
                 gr[c]+=qf*f.nr*f.area;
             }
@@ -420,18 +427,18 @@ private:
     std::array<double,6> drag(const std::vector<double>& gx,const std::vector<double>& gr,
                               const std::vector<double>& rx,const std::vector<double>& rr) const{
         double fp=0.0,fv=0.0;
-        for(const auto fid:m_.cells[0].faces){
-            const auto& f=m_.faces[fid]; if(!f.sphere) continue;
-            const auto& c=m_.cells[f.owner];
-            const double dS=f.area;
-            // f normal points from fluid owner into the solid, so reverse it for
-            // the body outward normal n=(cos(theta),sin(theta)).
-            const double nx=-f.nx,nr=-f.nr;
-            const double tau_xx=2.0*mu_*gx[c];
-            const double tau_xr=mu_*(gr[c]+rx[c]);
-            const double p=p_[c];
-            fp += -p*nx*dS;
-            fv += (tau_xx*nx+tau_xr*nr)*dS;
+        for(std::size_t c=0;c<n_;++c){
+            if(m_.cells[c].i!=0) continue;
+            for(const auto fid:m_.cells[c].faces){
+                const auto& f=m_.faces[fid]; if(!f.sphere) continue;
+                const double dS=f.area;
+                const double nx=-f.nx,nr=-f.nr;
+                const double tau_xx=2.0*mu_*gx[c];
+                const double tau_xr=mu_*(gr[c]+rx[c]);
+                const double p=p_[c];
+                fp += -p*nx*dS;
+                fv += (tau_xx*nx+tau_xr*nr)*dS;
+            }
         }
         const double denom=0.5*rho_*1.0*1.0*(AxisymMesh::pi());
         return {fp,fv,fp+fv,fp/denom,fv/denom,(fp+fv)/denom};
