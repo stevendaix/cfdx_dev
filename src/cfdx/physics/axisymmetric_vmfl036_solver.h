@@ -95,9 +95,11 @@ struct AxisymMesh {
             // CCW cell boundary: right-hand normal is outward.
             f.nx=dr/f.ds; f.nr=-dx/f.ds;
             f.area=2.0*pi()*std::max(0.0,f.cr)*f.ds;
-            f.sphere=boundary && m.cells[c].i==0;
-            f.outer=boundary && m.cells[c].i+1==m.nr;
             f.axis=boundary && std::abs(p.r)<1e-14 && std::abs(q.r)<1e-14;
+            // Axis endpoints at the sphere/farfield corners belong only to the
+            // zero-radius axis patch, never simultaneously to sphere/outer.
+            f.sphere=boundary && m.cells[c].i==0 && !f.axis;
+            f.outer=boundary && m.cells[c].i+1==m.nr && !f.axis;
             const std::size_t id=m.faces.size(); m.faces.push_back(f); m.cells[c].faces.push_back(id);
             return id;
         };
