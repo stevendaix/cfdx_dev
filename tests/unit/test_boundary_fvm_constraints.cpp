@@ -65,17 +65,23 @@ int main() {
     });
 
     run_case("flux_dependent_uses_inflow_provider_on_backflow", [] {
-        auto mesh = make_test_mesh();
-        const auto centres = make_face_centres(mesh);
+        Mesh mesh;
+        mesh.faces().push_face({0, 1});
+        Patch p; p.name = "outlet"; p.type = PatchType::OUTLET; p.face_ids = {0};
+        mesh.boundary().add_patch(p);
+        std::vector<Vec3> centres{{0.0, 0.0, 0.0}};
         BoundaryConstraintMap constraints;
         auto inflow = std::make_shared<ConstantValueProvider>(7.0);
         auto outflow = std::make_shared<ConstantValueProvider>(0.0);
-        constraints["outlet"] = {{"T", FluxDependent{inflow, outflow}}};
-        Field<double, Location::FACE> flux(mesh.n_faces(), 1.0);
-        flux.component(0, 0) = -2.0;
+        constraints["outlet"].emplace_back("T", FluxDependent{inflow, outflow});
+        Field<double, Location::FACE> flux(mesh.n_faces());
+        flux(0) = -2.0;
         const auto resolved = resolve_scalar_boundary_constraints(
             mesh, centres, constraints, "T", 0.0, &flux);
         EXPECT_TRUE(resolved.has(0));
+        EXPECT_TRUE(resolved.conditions[0].type ==
+                    ScalarBoundaryFaceCondition::Type::FIXED_VALUE);
+        EXPECT_TRUE(std::abs(resolved.conditions[0].value - 7.0) < 1e-14);
     });
 
     return run_all();
