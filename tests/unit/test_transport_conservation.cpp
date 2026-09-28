@@ -1,4 +1,5 @@
 #include "cfdx/physics/conservation_boundedness.h"
+#include "cfdx/physics/energy_solver.h"
 #include "common/test_harness.h"
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -83,6 +84,26 @@ int main() {
         const auto audit=audit_face_flux_conservation(m,reconstructed);
         EXPECT_NEAR(audit.global_boundary_flux,3.0,1e-15);
         EXPECT_NEAR(audit.global_cell_balance,3.0,1e-15);
+    });
+
+
+    run_case("independent_energy_balance_is_zero_for_closed_constant_state", [] {
+        Mesh m = one_cell_mesh();
+        auto g = build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> T(m.n_cells(),"T","K",1);
+        Field<double,Location::CELL> Told(m.n_cells(),"Told","K",1);
+        Field<double,Location::CELL> source(m.n_cells(),"source","W/m3",1);
+        phi.fill(0.0); T(0)=300.0; Told(0)=300.0; source.fill(0.0);
+        EnergySolverControls controls;
+        controls.density=1.0; controls.cp=1000.0; controls.conductivity=1.0; controls.dt=0.0;
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,300.0,0.0};
+        const auto r=reconstruct_energy_balance(m,g,phi,T,Told,source,controls,bc);
+        EXPECT_NEAR(r.residual,0.0,1e-15);
+        EXPECT_NEAR(r.normalized_residual,0.0,1e-15);
+        EXPECT_TRUE(r.nonfinite_faces==0);
+        EXPECT_TRUE(r.nonfinite_cells==0);
     });
 
     return run_all();
