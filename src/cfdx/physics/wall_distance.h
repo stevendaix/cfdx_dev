@@ -632,6 +632,11 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     return d;
 }
 
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id);
+
 inline double poisson_residual_inf(const WallDistanceBvh& bvh,
                                       const std::vector<double>& phi,
                                       const WallDistanceGrid& g,
