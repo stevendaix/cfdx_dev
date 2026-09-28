@@ -131,7 +131,7 @@ void run_analytic_validation()
         std::cout << "analytic,half_space," << row.n << ","
                   << row.l2 << "," << row.linf << ","
                   << row.residual << "," << row.iterations << ","
-                  << (row.converged?"true":"false") << "\\n";
+                  << (row.converged?"true":"false") << "\n";
         if(!row.converged)
             throw std::runtime_error("half-space Poisson linear solve did not converge");
     }
@@ -172,7 +172,7 @@ void run_analytic_validation()
         std::cout << "analytic,channel," << n << ","
                   << l2 << "," << linf << ","
                   << residual << "," << iterations << ","
-                  << (std::isfinite(residual)&&residual<1e-10?"true":"false") << "\\n";
+                  << (std::isfinite(residual)&&residual<1e-10?"true":"false") << "\n";
         if(!(std::isfinite(residual)&&residual<1e-10))
             throw std::runtime_error("channel Poisson linear solve did not converge");
     }
@@ -191,9 +191,9 @@ void run_analytic_validation()
         channel_linf_min=std::min(channel_linf_min,order(channel_linf[i-1],channel_linf[i]));
     }
     std::cout << "analytic_order,half_space,l2=" << half_l2_min
-              << ",linf=" << half_linf_min << "\\n";
+              << ",linf=" << half_linf_min << "\n";
     std::cout << "analytic_order,channel,l2=" << channel_l2_min
-              << ",linf=" << channel_linf_min << "\\n";
+              << ",linf=" << channel_linf_min << "\n";
 
     // The solve itself is second-order in the interior; the current
     // wall-gradient reconstruction is first-order at the first fluid node.
