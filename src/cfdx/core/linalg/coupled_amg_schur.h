@@ -426,6 +426,8 @@ private:
     static bool same_pattern(const SparseMatrix& a, const SparseMatrix& b) {
         if (a.n_rows()!=b.n_rows() || a.n_cols()!=b.n_cols() || a.nnz()!=b.nnz())
             return false;
+        const auto* ar=a.row_offsets_data(); const auto* br=b.row_offsets_data();
+        for (std::size_t i=0;i<=a.n_rows();++i) if (ar[i]!=br[i]) return false;
         const auto* ac=a.columns_data(); const auto* bc=b.columns_data();
         for (std::size_t i=0;i<a.nnz();++i) if (ac[i]!=bc[i]) return false;
         return true;
