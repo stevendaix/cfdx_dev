@@ -254,6 +254,7 @@ int main(int argc,char** argv)
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
             << r.phi_l2 << ',' << r.phi_linf << ','
+            << r.grad_phi_l2 << ',' << r.grad_phi_linf << ','
             << r.distance_formula_l2 << ',' << r.distance_impl_l2 << ','
             << r.distance_formula_linf << ',' << r.distance_impl_linf << ','
             << r.residual << ',' << r.iterations << ','
