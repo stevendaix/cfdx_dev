@@ -256,6 +256,51 @@ inline SolverResult solve_cg_impl(
             return result;
         }
 
+        // The recursive CG residual can drift away from b-Ax in finite
+        // precision, especially once an effective AMG preconditioner has
+        // reduced the true residual by many orders of magnitude. Continuing
+        // with the stale recurrence can eventually destroy conjugacy and make
+        // p^T A p appear non-positive even though A is SPD. Replacing the
+        // recursive residual when the gap becomes material is a standard
+        // residual-replacement safeguard; the true residual is already
+        // available here, so this adds no extra fine-grid matvec.
+        if (preconditioner) {
+            double recursive_r2 = 0.0;
+            for (std::size_t i = 0; i < n; ++i)
+                recursive_r2 += r[i] * r[i];
+            const double recursive_res = std::sqrt(recursive_r2);
+            const double gap = std::abs(res - recursive_res);
+            const double scale = std::max(res, recursive_res);
+            constexpr double residual_gap_fraction = 0.25;
+            if (std::isfinite(recursive_res) && scale > 0.0 &&
+                gap > residual_gap_fraction * scale) {
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
+                if (!apply_preconditioner()) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                // Restart the search direction after replacement. This avoids
+                // carrying a direction built from a residual that no longer
+                // represents b-Ax while retaining the current iterate.
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
+        }
+
         // beta = rsnew / rsold
         const double beta = rsnew / rsold;
 
