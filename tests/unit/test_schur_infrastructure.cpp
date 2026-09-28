@@ -89,7 +89,9 @@ int main() {
         SparseMatrix C(1, 1);
         Auu.finalize(); G.finalize(); D.finalize(); C.finalize();
 
-        G.push_back; // unreachable: compile-time guard against accidental API assumptions
+        EXPECT_TRUE(blocks.is_valid());
+        // Deliberately use independent G and D storage. The BlockOperator
+        // contract does not require G = -D^T.
     });
 
     return run_all();
