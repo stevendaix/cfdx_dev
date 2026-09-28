@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/mgr_preconditioner.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -1123,10 +1124,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // with diagonal momentum solves and an explicit sparse algebraic Schur
     // complement. The Rhie-Chow Schur diagnostic is kept separate from this
     // algebraic preconditioner quantity.
-    CoupledBlockSchurPreconditioner coupled_preconditioner(nc);
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
-    coupled_preconditioner.set_pressure_schur_diagonal(
-        coupled_pressure_schur_diagonal);
+    std::unique_ptr<Preconditioner> coupled_preconditioner;
+    if (solver_request.preconditioner == PreconditionerModel::MGR) {
+        std::vector<std::size_t> fine_variables(nv);
+        std::vector<std::size_t> coarse_variables(np);
+        std::iota(fine_variables.begin(), fine_variables.end(), 0);
+        std::iota(coarse_variables.begin(), coarse_variables.end(), nv);
+        coupled_preconditioner =
+            std::make_unique<NativeMGRPreconditioner>(
+                std::move(fine_variables), std::move(coarse_variables));
+    } else {
+        auto schur = std::make_unique<CoupledBlockSchurPreconditioner>(nc);
+        schur->set_pressure_schur_diagonal(coupled_pressure_schur_diagonal);
+        coupled_preconditioner = std::move(schur);
+    }
     // The production Couette system is only 512 unknowns. A restart of
     // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
     // the assembled system is nonsingular. Use one full Krylov space for
@@ -1137,9 +1149,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (solver_plan.krylov != KrylovModel::GMRES &&
         solver_plan.krylov != KrylovModel::FGMRES)
         throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
-    if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur)
+    if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
+        solver_plan.preconditioner != PreconditionerModel::MGR)
         throw std::invalid_argument(
-            "coupled solver currently requires the coupled_block_schur model");
+            "coupled solver requires coupled_block_schur or mgr");
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     const int gmres_restart = automatic_coupled
@@ -1155,13 +1168,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     coupled_gmres_controls.restart_max = gmres_restart;
     coupled_gmres_controls.adaptive_restart = false;
     if (diagnostics.coupled_matrix_summary) {
-        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner.name()
+        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner->name()
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
     }
     auto result = solve_gmres(
         A, b, x, gmres_restart, max_iterations, tolerance,
-        &coupled_preconditioner, coupled_gmres_controls);
+        coupled_preconditioner.get(), coupled_gmres_controls);
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
     // setup by identity-preconditioned GMRES: that would hide the defect in
@@ -1195,6 +1208,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result.status = SolverStatus::DIVERGED;
         result.residual = std::numeric_limits<double>::infinity();
         result.residual_relative = std::numeric_limits<double>::infinity();
+        return result;
+    }
+    // The independently recomputed residual is the authoritative algebraic
+    // gate. Never accept a Krylov-reported convergence if b-Ax is still above
+    // the requested coupled linear tolerance.
+    result.residual = coupled_matrix_residual;
+    result.residual_relative = coupled_matrix_relative;
+    if (coupled_matrix_relative > tolerance) {
+        result.status = SolverStatus::DIVERGED;
         return result;
     }
     if (diagnostics.coupled_matrix_summary) {

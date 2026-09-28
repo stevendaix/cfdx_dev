@@ -84,7 +84,7 @@ inline const std::array<SolverModelDescriptor, 14>& preconditioner_model_catalog
         {"native_fieldsplit", ModelAvailability::Available, false, false},
         {"coupled_block_schur", ModelAvailability::Available, false, false},
         {"lsc", ModelAvailability::Planned, false, false},
-        {"mgr", ModelAvailability::Planned, false, false}
+        {"mgr", ModelAvailability::Available, false, false}
     }};
     return models;
 }
@@ -227,9 +227,11 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (plan.preconditioner == PreconditionerModel::NativeFieldSplit &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("native FieldSplit requires a coupled pressure-velocity profile");
-    if (plan.preconditioner == PreconditionerModel::CoupledBlockSchur &&
+    if ((plan.preconditioner == PreconditionerModel::CoupledBlockSchur ||
+         plan.preconditioner == PreconditionerModel::MGR) &&
         problem != LinearProblemKind::CoupledPressureVelocity)
-        throw std::invalid_argument("coupled block Schur requires a pressure-velocity profile");
+        throw std::invalid_argument(
+            "coupled block Schur and MGR require a pressure-velocity profile");
     if (plan.null_space == NullSpaceModel::Constant && !cg_problem)
         throw std::invalid_argument(
             "constant null space is currently qualified only for pressure/diffusion problems");

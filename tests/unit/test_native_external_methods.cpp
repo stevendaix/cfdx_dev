@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/native_fieldsplit.h"
+#include "cfdx/core/linalg/mgr_preconditioner.h"
 #include "common/test_harness.h"
 
 #include <algorithm>
@@ -265,6 +266,18 @@ int main() {
         EXPECT_TRUE(coupled.krylov == KrylovModel::FGMRES);
         EXPECT_TRUE(coupled.preconditioner ==
                     PreconditionerModel::CoupledBlockSchur);
+
+        LinearSolverRequest mgr_request;
+        mgr_request.krylov = KrylovModel::FGMRES;
+        mgr_request.preconditioner = PreconditionerModel::MGR;
+        const auto mgr_plan = select_linear_solver(
+            LinearProblemKind::CoupledPressureVelocity, 512, mgr_request);
+        EXPECT_TRUE(mgr_plan.krylov == KrylovModel::FGMRES);
+        EXPECT_TRUE(mgr_plan.preconditioner == PreconditionerModel::MGR);
+
+        mgr_request.preconditioner = PreconditionerModel::MGR;
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::Momentum, 96, mgr_request), std::invalid_argument);
 
         LinearSolverRequest request;
         request.krylov = KrylovModel::FGMRES;

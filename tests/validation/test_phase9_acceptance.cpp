@@ -138,7 +138,8 @@ RunResult run_couette_channel(
     ConvectionScheme scheme,
     bool bounded,
     std::size_t nx = 8,
-    std::size_t ny = 16)
+    std::size_t ny = 16,
+    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -196,6 +197,11 @@ RunResult run_couette_channel(
     c.diagnostics.coupled_matrix_summary = true;
     c.diagnostics.freeze_state_probe = true;
     c.diagnostics.debug_cell = 33;
+    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
+        coupled_preconditioner != PreconditionerModel::Auto) {
+        c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
+        c.coupled_linear_solver.preconditioner = coupled_preconditioner;
+    }
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
@@ -341,6 +347,7 @@ int main(int argc, char** argv)
             PressureVelocityAlgorithm algorithm;
             ConvectionScheme scheme;
             bool bounded;
+            PreconditionerModel coupled_preconditioner;
         };
 
         // The smoke set spans segregated, multi-corrector and monolithic
@@ -348,20 +355,22 @@ int main(int argc, char** argv)
         // Physical gates remain identical in both modes.
         std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
-             ConvectionScheme::UPWIND, true},
+             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true},
-            {"COUPLED/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true},
+             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+            {"COUPLED/BlockSchur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+             ConvectionScheme::UPWIND, true, PreconditionerModel::CoupledBlockSchur},
+            {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+             ConvectionScheme::UPWIND, true, PreconditionerModel::MGR},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
                 {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
-                 ConvectionScheme::UPWIND, true},
+                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
                 {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
-                 ConvectionScheme::UPWIND, true},
+                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
                 {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
-                 ConvectionScheme::UPWIND, true},
+                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
             });
         }
 
@@ -432,6 +441,7 @@ int main(int argc, char** argv)
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
+                      << " preconditioner=" << static_cast<int>(test.coupled_preconditioner)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -442,7 +452,8 @@ int main(int argc, char** argv)
 
             try {
                 auto result = run_couette_channel(
-                    test.algorithm, test.scheme, test.bounded, 8, 16);
+                    test.algorithm, test.scheme, test.bounded, 8, 16,
+                    test.coupled_preconditioner);
 
                 print_history(test.name, result);
 
