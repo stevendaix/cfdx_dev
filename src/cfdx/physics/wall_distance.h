@@ -944,7 +944,6 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
         const double gx=deriv(0),gy=deriv(1),gz=deriv(2),grad=std::sqrt(gx*gx+gy*gy+gz*gz);
         d[id]=std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2*phi[id]))-grad);
     }
-    for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
     return d;
 }
 
