@@ -381,14 +381,29 @@ private:
             }
         }
 
-        // Every F point needs a direct C interpolatory neighbor. Promote any
-        // exceptional isolated point instead of manufacturing a hidden fallback.
+        // Direct interpolation is only useful when an F point has a
+        // meaningful set of nearby C points. The previous implementation
+        // accepted a single C neighbour after the greedy MIS pass. On a
+        // 1-D Poisson chain this produced C/F/C spacing of roughly 3:1 and
+        // therefore piecewise-constant interpolation for one of the F points.
+        // That destroys the linear near-null-space mode and explains the
+        // N=4096 convergence collapse seen in qualification.
+        //
+        // Perform a deterministic second pass: whenever an F point has two
+        // or more strong neighbours but fewer than two strong C neighbours,
+        // promote it to C. This is the minimal RS-style completion needed by
+        // the direct distance-one interpolation used below; it does not alter
+        // the matrix or introduce a fallback preconditioner.
         for (std::size_t i = 0; i < n; ++i) {
             if (point[i] != Point::Fine) continue;
-            const bool has_coarse = std::any_of(
-                neighborhood[i].begin(), neighborhood[i].end(),
-                [&](std::size_t j) { return point[j] == Point::Coarse; });
-            if (!has_coarse) point[i] = Point::Coarse;
+            std::size_t coarse_neighbors = 0;
+            for (const std::size_t j : neighborhood[i]) {
+                if (point[j] == Point::Coarse) ++coarse_neighbors;
+            }
+            if (coarse_neighbors == 0 ||
+                (neighborhood[i].size() >= 2 && coarse_neighbors < 2)) {
+                point[i] = Point::Coarse;
+            }
         }
 
         std::vector<std::size_t> coarse_index(n, n);
