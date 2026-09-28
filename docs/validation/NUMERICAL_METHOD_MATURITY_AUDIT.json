@@ -1,0 +1,297 @@
+{
+  "schema_version": "1.0",
+  "issue": 461,
+  "generated_for": "audit/461-numerical-method-maturity",
+  "status_semantics": {
+    "planned": "Architecture/future work only.",
+    "missing": "No sufficient repository evidence.",
+    "partial": "Some evidence exists but acceptance is incomplete.",
+    "implemented": "Code path exists; verification/validation is not implied.",
+    "verified": "Executable verification evidence exists.",
+    "validated": "Quantitative physical/reference validation exists.",
+    "qualified": "All applicable implementation, verification and validation gates are satisfied."
+  },
+  "packages": [
+    {
+      "id": "N1",
+      "name": "Numerical-method architecture and contracts",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_contract.h",
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
+      ],
+      "gaps": [
+        "case/report traceability",
+        "explicit selection audit",
+        "complete conservation/boundedness contract integration"
+      ]
+    },
+    {
+      "id": "N2",
+      "name": "Gradient and reconstruction framework",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/fvm/least_squares_gradient.h",
+        "src/cfdx/core/numerics/interpolation.h"
+      ],
+      "gaps": [
+        "weighted/vertex GG qualification",
+        "boundary reconstruction matrix",
+        "gradient limiter integration",
+        "complete skew/polyhedral observed-order campaign"
+      ]
+    },
+    {
+      "id": "N3",
+      "name": "Diffusion and non-orthogonal correction",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h",
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+      ],
+      "gaps": [
+        "over-relaxed policy",
+        "explicit skew correction contract",
+        "high-nonorthogonality quantitative campaign"
+      ]
+    },
+    {
+      "id": "N4",
+      "name": "Convection scheme library",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/convection.h",
+        "src/cfdx/core/numerics/convection_assembly.h",
+        "src/cfdx/core/numerics/interpolation.h"
+      ],
+      "gaps": [
+        "complete central/blended family",
+        "MUSCL/QUICK-equivalent integration",
+        "multidimensional limiter policy",
+        "scheme-level V&V for every limiter"
+      ]
+    },
+    {
+      "id": "N5",
+      "name": "Temporal discretisation",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/temporal.h",
+        "src/cfdx/physics/temporal.h",
+        "tests/unit/test_temporal.cpp",
+        "tests/validation/test_discretization_verification.cpp"
+      ],
+      "gaps": [
+        "explicit history lifecycle",
+        "restart-history evidence",
+        "variable-step consistency",
+        "RK2/RK3 decision/implementation",
+        "measured temporal order matrix"
+      ]
+    },
+    {
+      "id": "N6",
+      "name": "Time-step, CFL and pseudo-time",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/solver_control.h"
+      ],
+      "gaps": [
+        "complete CFL characteristic-length contract",
+        "stagnant-cell handling evidence",
+        "rollback",
+        "auditable controller reason logging"
+      ]
+    },
+    {
+      "id": "N7",
+      "name": "Nonlinear solver and convergence",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/cfdx/core/utils/convergence_monitor.h",
+        "src/cfdx/physics/solver_control.h"
+      ],
+      "gaps": [
+        "unified QoI/conservation gates",
+        "adaptive URF qualification",
+        "continuation qualification",
+        "deterministic final convergence report"
+      ]
+    },
+    {
+      "id": "N8",
+      "name": "Linear solver and preconditioner ecosystem",
+      "status": "partial",
+      "evidence": [
+        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md",
+        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+      ],
+      "gaps": [
+        "exact Schur oracle",
+        "SIMPLEC/LSC/BFBt/PCD algebraic approximations",
+        "null-space policy matrix",
+        "scaling and memory campaign"
+      ]
+    },
+    {
+      "id": "N9",
+      "name": "Pressure-velocity coupling",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/validation/test_couette.cpp"
+      ],
+      "gaps": [
+        "common algorithm matrix",
+        "external-flow case",
+        "skew-mesh case for each algorithm",
+        "consistent QoI/conservation evidence"
+      ]
+    },
+    {
+      "id": "N10",
+      "name": "Difficult-mesh robustness",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+      ],
+      "gaps": [
+        "controlled quality ladder",
+        "polyhedral quantitative accuracy",
+        "solver robustness versus quality",
+        "integration with #423 fixture manifest"
+      ]
+    },
+    {
+      "id": "N11",
+      "name": "Conservation and boundedness",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h",
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md",
+        "tests/unit/test_conservation_boundedness.cpp"
+      ],
+      "gaps": [
+        "complete Couette/Poiseuille/scalar-MMS/energy/skew/MPI campaign",
+        "full independent flux reconstruction qualification"
+      ]
+    },
+    {
+      "id": "N12",
+      "name": "Manufactured-solution laboratory",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_mms_scalar_diffusion.cpp",
+        "tests/validation/test_discretization_verification.cpp",
+        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md"
+      ],
+      "gaps": [
+        "momentum MMS",
+        "pressure/continuity MMS",
+        "transient/energy/turbulence reusable matrix",
+        "automated observed-order reporting across all families"
+      ]
+    },
+    {
+      "id": "N13",
+      "name": "Cross-backend numerical equivalence",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_mpi_deterministic.cpp",
+        "tests/unit/test_matrix_free_fv_operator.cpp",
+        "src/cfdx/runtime/gpu/gpu_execution.h",
+        "tests/unit/test_restart_mapping.cpp"
+      ],
+      "gaps": [
+        "serial/MPI solution equivalence",
+        "assembled/matrix-free quantitative equivalence",
+        "CPU/CUDA numerical equivalence",
+        "N-to-M restart evidence"
+      ]
+    },
+    {
+      "id": "N14",
+      "name": "Reference-code comparison",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/FLUENT_VMFL_MATRIX.md",
+        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md",
+        "src/cfdx/io/cfdx_io/mapping_rules.cpp"
+      ],
+      "gaps": [
+        "method-level formulation matrix",
+        "evidence per method",
+        "same/similar/different classification"
+      ]
+    },
+    {
+      "id": "N15",
+      "name": "Performance and scalability",
+      "status": "missing",
+      "evidence": [
+        "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
+      ],
+      "gaps": [
+        "reproducible setup/solve/memory matrix",
+        "MPI strong/weak scaling",
+        "GPU speedup",
+        "AMG/matrix-free/mixed-precision breakdown"
+      ]
+    },
+    {
+      "id": "N16",
+      "name": "Advanced numerical methods",
+      "status": "planned",
+      "evidence": [
+        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+      ],
+      "gaps": [
+        "intentionally deferred until core FVM maturity"
+      ]
+    },
+    {
+      "id": "N17",
+      "name": "Turbulence model architecture and qualification",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json",
+        "tests/unit/test_turbulence_qualification_equations.cpp",
+        "docs/development/TURBULENCE_MODEL_IMPLEMENTATION.md"
+      ],
+      "gaps": [
+        "physical validation for solver-ready models",
+        "LES/hybrid solver qualification",
+        "wall-treatment/y+ sensitivity",
+        "13-model complete qualification matrix"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "R001",
+      "rule": "Implementation registry entries do not imply validation."
+    },
+    {
+      "id": "R002",
+      "rule": "Limiter coefficient tests do not by themselves qualify convection schemes."
+    },
+    {
+      "id": "R003",
+      "rule": "Approximate Schur is not exact Schur."
+    },
+    {
+      "id": "R004",
+      "rule": "Residual convergence does not replace conservation, boundedness or QoI evidence."
+    },
+    {
+      "id": "R005",
+      "rule": "Backend support does not imply numerical equivalence."
+    }
+  ]
+}
