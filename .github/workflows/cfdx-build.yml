@@ -1,12 +1,9 @@
 name: CFDX MPI and parallel HDF5 integration
 
 on:
+  # Run the CI for every pushed commit, including feature branches and PR branches.
+  # PRs therefore get the same build/test result without a duplicate pull_request run.
   push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
   workflow_dispatch:
 
 concurrency:
@@ -25,6 +22,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show revision
+        run: |
+          echo "Commit: ${{ github.sha }}"
+          git rev-parse HEAD
 
       - name: Install build dependencies
         run: |
