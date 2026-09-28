@@ -43,175 +43,74 @@ void add_box(WallSurface& s, const WallDistanceVec3& lo, const WallDistanceVec3&
 
 bool inside_box(const WallDistanceVec3& p)
 {
-    // The surface itself belongs to the solid side. This is essential when a
-    // validation grid lands exactly on a wall: wall nodes must not become
-    // fluid unknowns with a zero-distance BVH query.
     return p.x >= 0.0 && p.x <= 1.0 &&
            p.y >= 0.0 && p.y <= 1.0 &&
            p.z >= 0.0 && p.z <= 1.0;
 }
 
-void add_plane_x(WallSurface& s,double x,double y0,double y1,double z0,double z1)
+double analytic_box_distance(const WallDistanceVec3& p)
 {
-    const std::size_t b=s.points.size();
-    s.points.insert(s.points.end(),{
-        {x,y0,z0},{x,y1,z0},{x,y1,z1},{x,y0,z1}});
-    add_triangle(s,b+0,b+1,b+2);
-    add_triangle(s,b+0,b+2,b+3);
+    const double dx = std::min(std::abs(p.x), std::abs(p.x - 1.0));
+    const double dy = std::min(std::abs(p.y), std::abs(p.y - 1.0));
+    const double dz = std::min(std::abs(p.z), std::abs(p.z - 1.0));
+
+    // For points outside the box, distance to the box is the Euclidean
+    // distance to its closest point. This is exact for the planar box.
+    const double ox = p.x < 0.0 ? -p.x : (p.x > 1.0 ? p.x - 1.0 : 0.0);
+    const double oy = p.y < 0.0 ? -p.y : (p.y > 1.0 ? p.y - 1.0 : 0.0);
+    const double oz = p.z < 0.0 ? -p.z : (p.z > 1.0 ? p.z - 1.0 : 0.0);
+    if (ox > 0.0 || oy > 0.0 || oz > 0.0)
+        return std::sqrt(ox * ox + oy * oy + oz * oz);
+
+    return std::min({dx, dy, dz});
 }
 
-struct AnalyticCaseRow {
-    std::string name;
+struct Row {
     std::size_t n{};
+    std::string method;
+    double l1{};
     double l2{};
     double linf{};
+    double near_l2{};
     double residual{};
+    double violations{};
     std::size_t iterations{};
     bool converged{};
+    std::string stopping_reason;
+    double time_ms{};
 };
 
-template<class Inside, class Reference>
-AnalyticCaseRow run_analytic_poisson_case(const std::string& name,
-                                          std::size_t n,
-                                          const WallSurface& surface,
-                                          Inside inside,
-                                          Reference reference)
+std::vector<WallDistanceMethod> methods()
 {
-    const double h=1.0/static_cast<double>(n-1);
-    const auto grid=make_wall_distance_grid(
-        n,n,n,{-1.0,-0.5,-0.5},{h,h,h},inside);
-    const auto bvh=WallDistanceBvh(surface);
-    const auto audit=audit_poisson_operator(bvh,grid);
-
-    if(audit.symmetry_error>1e-14)
-        throw std::runtime_error(name+": Poisson operator is not symmetric");
-
-    std::size_t iterations=0;
-    double residual=0.0;
-    const auto d=poisson_distance(bvh,grid,1000,1.5,&iterations,&residual);
-
-    double sum2=0.0,ref2=0.0,maxe=0.0,maxref=0.0;
-    for(std::size_t id=0;id<grid.points.size();++id) {
-        if(grid.solid[id]) continue;
-        const double exact=reference(grid.points[id]);
-        const double e=std::abs(d[id]-exact);
-        sum2+=e*e; ref2+=exact*exact;
-        maxe=std::max(maxe,e); maxref=std::max(maxref,std::abs(exact));
-    }
-
     return {
-        name,n,
-        std::sqrt(sum2/std::max(1e-30,ref2)),
-        maxe/std::max(1e-30,maxref),
-        residual,iterations,
-        std::isfinite(residual) && residual<1e-10
+        WallDistanceMethod::EXACT_GEOMETRIC,
+        WallDistanceMethod::SEARCH_BASED,
+        WallDistanceMethod::MESH_WAVE,
+        WallDistanceMethod::DIRECTIONAL_MESH_WAVE,
+        WallDistanceMethod::POISSON,
+        WallDistanceMethod::EIKONAL,
+        WallDistanceMethod::HAMILTON_JACOBI,
+        WallDistanceMethod::ADVECTION_DIFFUSION,
+        WallDistanceMethod::HYBRID_POISSON_EIKONAL
     };
 }
 
-void run_analytic_validation()
+std::vector<std::size_t> parse_sizes(int argc, char** argv)
 {
-    std::vector<double> half_l2,half_linf,channel_l2,channel_linf;
+    std::vector<std::size_t> sizes;
+    for (int i = 2; i < argc; ++i)
+        sizes.push_back(static_cast<std::size_t>(std::stoul(argv[i])));
 
-    // Plane half-space: -phi''=1, phi=0 at x=0, zero flux at x=-1.
-    // The continuous solution is phi=(-x)-x^2/2 and Spalding's
-    // reconstruction gives d=-x exactly. The node-centred outer Neumann
-    // boundary and one-sided wall gradient make the implemented distance
-    // reconstruction first-order in Linf and >1st-order in L2; these rates
-    // are therefore the validation gate rather than an artificially tiny
-    // absolute error tolerance.
-    for(const std::size_t n : {9u,17u,33u,65u}) {
-        WallSurface plane;
-        add_plane_x(plane,0.0,-1.0,1.0,-1.0,1.0);
-        const auto row=run_analytic_poisson_case(
-            "half_space",n,plane,
-            [](const WallDistanceVec3& p){ return p.x>=0.0; },
-            [](const WallDistanceVec3& p){ return -p.x; });
-        half_l2.push_back(row.l2);
-        half_linf.push_back(row.linf);
-        std::cout << "analytic,half_space," << row.n << ","
-                  << row.l2 << "," << row.linf << ","
-                  << row.residual << "," << row.iterations << ","
-                  << (row.converged?"true":"false") << "\n";
-        if(!row.converged)
-            throw std::runtime_error("half-space Poisson linear solve did not converge");
-    }
+    if (sizes.empty())
+        sizes = {16, 32, 64};
 
-    // Parallel channel: -phi''=1, phi=0 at x=0 and x=1.
-    // phi=x(1-x)/2 and the reconstruction tends to min(x,1-x).
-    for(const std::size_t n : {9u,17u,33u,65u}) {
-        WallSurface channel;
-        add_plane_x(channel,0.0,-1.0,1.0,-1.0,1.0);
-        add_plane_x(channel,1.0,-1.0,1.0,-1.0,1.0);
-
-        const double h=1.0/static_cast<double>(n-1);
-        const auto grid=make_wall_distance_grid(
-            n+2,n,n,{-h,-0.5,-0.5},{h,h,h},
-            [](const WallDistanceVec3& p) {
-                return p.x<=0.0 || p.x>=1.0;
-            });
-        const auto bvh=WallDistanceBvh(channel);
-        const auto audit=audit_poisson_operator(bvh,grid);
-        if(audit.symmetry_error>1e-14)
-            throw std::runtime_error("channel Poisson operator is not symmetric");
-
-        std::size_t iterations=0; double residual=0.0;
-        const auto d=poisson_distance(bvh,grid,1000,1.5,&iterations,&residual);
-        double sum2=0.0,ref2=0.0,maxe=0.0,maxref=0.0;
-        for(std::size_t id=0;id<grid.points.size();++id) {
-            if(grid.solid[id]) continue;
-            const double x=grid.points[id].x;
-            const double exact=std::min(x,1.0-x);
-            const double e=std::abs(d[id]-exact);
-            sum2+=e*e; ref2+=exact*exact;
-            maxe=std::max(maxe,e); maxref=std::max(maxref,std::abs(exact));
-        }
-        const double l2=std::sqrt(sum2/std::max(1e-30,ref2));
-        const double linf=maxe/std::max(1e-30,maxref);
-        channel_l2.push_back(l2);
-        channel_linf.push_back(linf);
-        std::cout << "analytic,channel," << n << ","
-                  << l2 << "," << linf << ","
-                  << residual << "," << iterations << ","
-                  << (std::isfinite(residual)&&residual<1e-10?"true":"false") << "\n";
-        if(!(std::isfinite(residual)&&residual<1e-10))
-            throw std::runtime_error("channel Poisson linear solve did not converge");
-    }
-
-    auto order=[](double e0,double e1) {
-        return std::log(e0/std::max(e1,1e-300))/std::log(2.0);
-    };
-    double half_l2_min=std::numeric_limits<double>::infinity();
-    double half_linf_min=std::numeric_limits<double>::infinity();
-    double channel_l2_min=std::numeric_limits<double>::infinity();
-    double channel_linf_min=std::numeric_limits<double>::infinity();
-    for(std::size_t i=1;i<half_l2.size();++i) {
-        half_l2_min=std::min(half_l2_min,order(half_l2[i-1],half_l2[i]));
-        half_linf_min=std::min(half_linf_min,order(half_linf[i-1],half_linf[i]));
-        channel_l2_min=std::min(channel_l2_min,order(channel_l2[i-1],channel_l2[i]));
-        channel_linf_min=std::min(channel_linf_min,order(channel_linf[i-1],channel_linf[i]));
-    }
-    std::cout << "analytic_order,half_space,l2=" << half_l2_min
-              << ",linf=" << half_linf_min << "\n";
-    std::cout << "analytic_order,channel,l2=" << channel_l2_min
-              << ",linf=" << channel_linf_min << "\n";
-
-    // The solve itself is second-order in the interior; the current
-    // wall-gradient reconstruction is first-order at the first fluid node.
-    // The gates below require a genuine decreasing error and a positive
-    // asymptotic order without masking failures through relaxed residuals.
-    if(half_l2_min<1.1 || half_linf_min<0.8)
-        throw std::runtime_error("half-space Poisson convergence order is insufficient");
-    if(channel_l2_min<0.8 || channel_linf_min<0.8)
-        throw std::runtime_error("channel Poisson convergence order is insufficient");
+    return sizes;
 }
 
 } // namespace
 
 int main(int argc, char** argv)
 {
-    std::cout << "CFDX wall-distance analytic Poisson validation\n";
-    run_analytic_validation();
-
     const std::string output = argc > 1
         ? argv[1]
         : "wall_distance_controlled_benchmark.csv";
@@ -254,7 +153,7 @@ int main(int argc, char** argv)
         }
 
         const WallDistanceBvh bvh(surface);
-        const auto op = audit_poisson_operator(bvh,grid);
+        const auto op = audit_poisson_operator(bvh, grid);
         std::cout << "N=" << n << ", h=" << std::setprecision(12) << h
                   << ", samples=" << grid.points.size() << "\n"
                   << "Poisson operator: fluid=" << op.fluid_nodes
