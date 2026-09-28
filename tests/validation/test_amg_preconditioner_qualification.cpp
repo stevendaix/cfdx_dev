@@ -144,6 +144,34 @@ int main() {
                  return solve_cg(A, b, x, amg, 5000, 1e-10);
              });
 
+    // Scaling ladder: exercise native AMG on materially larger elliptic
+    // systems. Acceptance is based on convergence and an independently
+    // recomputed true residual; timing remains diagnostic evidence.
+    for (const std::size_t n : {256u, 1024u, 4096u, 16384u}) {
+        const auto A = make_poisson(n);
+        const auto b = make_rhs(n);
+        Vector x(n, 0.0);
+        NativeBoomerAMGPreconditioner amg;
+        const auto t0 = std::chrono::steady_clock::now();
+        const auto result = solve_cg(A, b, x, amg, 20000, 1e-10);
+        const auto t1 = std::chrono::steady_clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        const double true_r = relative_true_residual(A, x, b);
+        std::cout << "amg_scaling n=" << n
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations
+                  << " reported_residual=" << result.residual
+                  << " true_residual=" << true_r
+                  << " hierarchy_builds=" << amg.hierarchy_builds()
+                  << " numeric_updates=" << amg.numeric_updates()
+                  << " coarse_size=" << amg.coarse_size()
+                  << " ms=" << ms << '\\n';
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(std::isfinite(true_r));
+        EXPECT_TRUE(true_r < 1e-9);
+        EXPECT_TRUE(amg.hierarchy_builds() == 1);
+    }
+
     run_case("ilu0_transport", make_rhs_matrix(256), make_rhs(256),
              [](Vector& x) {
                  const auto A = make_rhs_matrix(256);
