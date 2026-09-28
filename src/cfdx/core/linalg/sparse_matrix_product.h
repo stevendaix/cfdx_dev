@@ -56,4 +56,29 @@ inline SparseMatrix sparse_matmul(const SparseMatrix& A,
     return C;
 }
 
+// Compare only the symbolic CSR graph (dimensions, row offsets and column
+// indices), deliberately ignoring numerical values.  Schur/AMG update paths
+// can use this predicate to distinguish a value refresh from a symbolic
+// rebuild.
+inline bool same_sparse_pattern(const SparseMatrix& A,
+                                const SparseMatrix& B) noexcept {
+    if (A.n_rows() != B.n_rows() ||
+        A.n_cols() != B.n_cols() ||
+        A.nnz() != B.nnz())
+        return false;
+
+    const auto* a_rows = A.row_offsets_data();
+    const auto* b_rows = B.row_offsets_data();
+    for (std::size_t i = 0; i <= A.n_rows(); ++i) {
+        if (a_rows[i] != b_rows[i]) return false;
+    }
+
+    const auto* a_cols = A.columns_data();
+    const auto* b_cols = B.columns_data();
+    for (std::size_t k = 0; k < A.nnz(); ++k) {
+        if (a_cols[k] != b_cols[k]) return false;
+    }
+    return true;
+}
+
 } // namespace cfdx::core
