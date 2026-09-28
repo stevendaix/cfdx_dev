@@ -72,6 +72,32 @@ int main(){
    EXPECT_TRUE(relres(A,x,b)<1e-9);
    EXPECT_TRUE((x-exact).norm_inf()<1e-8);
  });
+ // Schur scaling ladder: verify that the 4N block construction remains
+ // convergent as the pressure/velocity system grows beyond the small exact
+ // algebraic contract above.
+ for (const std::size_t n : {8u, 16u, 32u, 64u}) {
+   const auto A=make_coupled(n);
+   CoupledBlockSchurAMGPreconditioner pc(n);
+   EXPECT_TRUE(pc.setup(A));
+   EXPECT_TRUE(pc.is_ready());
+   EXPECT_TRUE(pc.pressure_hierarchy_builds()==1);
+   Vector exact(4*n);
+   for(std::size_t i=0;i<4*n;++i) exact(i)=std::cos(0.031*(i+1));
+   const auto b=matvec(A,exact); Vector x(4*n,0.0);
+   const auto r=solve_gmres(A,b,x,20,400,1e-10,&pc);
+   const double rr=relres(A,x,b);
+   std::cout << "schur_scaling n_cells=" << n
+             << " unknowns=" << 4*n
+             << " status=" << static_cast<int>(r.status)
+             << " iterations=" << r.iterations
+             << " true_residual=" << rr
+             << " pressure_hierarchy_builds=" << pc.pressure_hierarchy_builds()
+             << " pressure_numeric_updates=" << pc.pressure_numeric_updates() << '\\n';
+   EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
+   EXPECT_TRUE(std::isfinite(rr));
+   EXPECT_TRUE(rr<1e-9);
+ }
+
  run_case("coupled_4n_petsc_style_schur_factorizations",[] {
    const auto A=make_coupled(16); Vector exact(64);
    for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.11*(i+1));
