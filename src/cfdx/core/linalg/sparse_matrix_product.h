@@ -3,6 +3,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
