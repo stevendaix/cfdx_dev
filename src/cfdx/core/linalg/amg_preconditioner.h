@@ -341,38 +341,60 @@ private:
     {
         const std::size_t n = level.A.n_rows();
         const auto strong = build_strength_graph(level, strength_threshold);
-        std::vector<std::vector<std::size_t>> neighborhood = strong;
+
+        // Ruge--Stüben uses both the strong-dependence graph S and its
+        // transpose S^T.  The first pass selects high-influence points as C
+        // points and marks their strongly connected neighbours F.  Measures
+        // are recomputed after every selection rather than using a stale
+        // degree: this keeps the implementation deterministic and makes the
+        // influence update explicit.
+        std::vector<std::vector<std::size_t>> transpose(n);
         for (std::size_t i = 0; i < n; ++i) {
-            for (const std::size_t j : strong[i]) neighborhood[j].push_back(i);
-        }
-        for (auto& neighbors : neighborhood) {
-            std::sort(neighbors.begin(), neighbors.end());
-            neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
-                            neighbors.end());
+            for (const std::size_t j : strong[i]) {
+                if (j < n) transpose[j].push_back(i);
+            }
         }
 
-        // Deterministic serial maximal-independent-set splitting. This is the
-        // local analogue of the independent-set completion used by HMIS: pick
-        // the most connected undecided point as C and mark its graph neighbors F.
+        std::vector<std::vector<std::size_t>> neighborhood(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            neighborhood[i] = strong[i];
+            neighborhood[i].insert(neighborhood[i].end(),
+                                    transpose[i].begin(), transpose[i].end());
+            std::sort(neighborhood[i].begin(), neighborhood[i].end());
+            neighborhood[i].erase(
+                std::unique(neighborhood[i].begin(), neighborhood[i].end()),
+                neighborhood[i].end());
+        }
+
         enum class Point : unsigned char { Undecided, Fine, Coarse };
         std::vector<Point> point(n, Point::Undecided);
         std::size_t undecided = n;
+
         while (undecided > 0) {
             std::size_t best = n;
             std::size_t best_measure = 0;
             for (std::size_t i = 0; i < n; ++i) {
                 if (point[i] != Point::Undecided) continue;
+
                 std::size_t measure = 0;
-                for (const std::size_t j : neighborhood[i])
+                for (const std::size_t j : strong[i])
                     if (point[j] == Point::Undecided) ++measure;
+                for (const std::size_t j : transpose[i])
+                    if (point[j] == Point::Undecided) ++measure;
+
                 if (best == n || measure > best_measure ||
                     (measure == best_measure && i < best)) {
                     best = i;
                     best_measure = measure;
                 }
             }
+
             point[best] = Point::Coarse;
             --undecided;
+
+            // All points that strongly depend on or strongly influence the
+            // new C point are made F points. This is the RS first-pass
+            // independence condition.
             for (const std::size_t j : neighborhood[best]) {
                 if (point[j] == Point::Undecided) {
                     point[j] = Point::Fine;
@@ -381,25 +403,87 @@ private:
             }
         }
 
-        // Use classical Ruge-Stuben-style interpolation on the C/F
-        // splitting above. The greedy MIS guarantees that every F point has
-        // at least one strong C neighbour; direct distance-one interpolation
-        // is nevertheless insufficient on a 1-D Poisson chain when an F point
-        // has only one C neighbour. In that case the linear near-null-space
-        // mode must be represented through neighbouring F points.
-        //
-        // For an F point i, use the classical strong-connection formula
-        //
-        //   w_ij = -( a_ij + sum_{k in F_i} a_ik a_kj /
-        //                         sum_{m in C_k} a_km ) / a_ii
-        //
-        // for j in C_i. This preserves the local linear mode without
-        // promoting F points to C and therefore avoids destroying the
-        // coarsening ratio.
+        auto has_common_coarse = [&](std::size_t i, std::size_t j) {
+            for (const std::size_t ci : strong[i]) {
+                if (point[ci] != Point::Coarse) continue;
+                for (const std::size_t cj : strong[j]) {
+                    if (ci == cj && point[cj] == Point::Coarse) return true;
+                }
+            }
+            return false;
+        };
+
+        // RS second pass: every strong F-F connection must be representable
+        // through a common C neighbour.  If the first pass leaves a violation,
+        // augment the C set only with a point that is not strongly adjacent to
+        // an existing C point.  On the 1-D Poisson model this pass is inactive
+        // for the normal alternating C/F splitting; it is nevertheless needed
+        // for general strength graphs.
+        bool changed = true;
+        std::size_t guard = 0;
+        while (changed && guard++ <= 2 * n + 1) {
+            changed = false;
+            for (std::size_t i = 0; i < n && !changed; ++i) {
+                if (point[i] != Point::Fine) continue;
+                for (const std::size_t j : strong[i]) {
+                    if (point[j] != Point::Fine) continue;
+                    if (has_common_coarse(i, j)) continue;
+
+                    std::size_t candidate = n;
+                    auto independent_from_C = [&](std::size_t p) {
+                        for (const std::size_t c : neighborhood[p])
+                            if (point[c] == Point::Coarse) return false;
+                        return true;
+                    };
+
+                    if (independent_from_C(i)) {
+                        candidate = i;
+                    } else if (independent_from_C(j)) {
+                        candidate = j;
+                    }
+
+                    if (candidate != n) {
+                        point[candidate] = Point::Coarse;
+                        changed = true;
+                        for (const std::size_t q : neighborhood[candidate]) {
+                            if (point[q] == Point::Undecided) point[q] = Point::Fine;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // A valid classical interpolation requires every F point to have at
+        // least one strong C neighbour in its own dependence set.  If a
+        // directed strength graph leaves such a point without one, promote the
+        // point itself when that does not violate C independence.
+        for (std::size_t i = 0; i < n; ++i) {
+            if (point[i] != Point::Fine) continue;
+            bool has_strong_C = false;
+            for (const std::size_t j : strong[i]) {
+                if (point[j] == Point::Coarse) {
+                    has_strong_C = true;
+                    break;
+                }
+            }
+            if (!has_strong_C) {
+                bool independent = true;
+                for (const std::size_t c : neighborhood[i]) {
+                    if (point[c] == Point::Coarse) {
+                        independent = false;
+                        break;
+                    }
+                }
+                if (independent) point[i] = Point::Coarse;
+            }
+        }
+
         std::vector<std::size_t> coarse_index(n, n);
         coarse_n = 0;
-        for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t i = 0; i < n; ++i) {
             if (point[i] == Point::Coarse) coarse_index[i] = coarse_n++;
+        }
 
         const auto* row = level.A.row_offsets_data();
         const auto* col = level.A.columns_data();
@@ -415,6 +499,7 @@ private:
 
         prolongation.assign(n, {});
         aggregate.assign(n, 0);
+
         for (std::size_t i = 0; i < n; ++i) {
             if (point[i] == Point::Coarse) {
                 prolongation[i].push_back({coarse_index[i], 1.0});
@@ -423,69 +508,98 @@ private:
             }
 
             const double diagonal = 1.0 / level.inv_diag[i];
-            std::map<std::size_t, double> raw;
-            double raw_sum = 0.0;
-
-            // Direct strong C neighbours.
-            for (const std::size_t j : neighborhood[i]) {
-                if (point[j] != Point::Coarse) continue;
-                const double contribution =
-                    -matrix_value(i, j) / diagonal;
-                raw[coarse_index[j]] += contribution;
-                raw_sum += contribution;
+            std::vector<std::size_t> c_neighbors;
+            c_neighbors.reserve(strong[i].size());
+            for (const std::size_t j : strong[i]) {
+                if (point[j] == Point::Coarse)
+                    c_neighbors.push_back(j);
             }
 
-            // Classical distance-two contribution through strong F neighbours.
-            for (const std::size_t k : neighborhood[i]) {
+            // The second-pass criterion above should make this non-empty. Do
+            // not invent an interpolation row if it is not: return a
+            // deterministic singleton promotion instead.
+            if (c_neighbors.empty()) {
+                prolongation[i].push_back({coarse_index[i], 1.0});
+                aggregate[i] = coarse_index[i];
+                continue;
+            }
+
+            // Classical Ruge--Stüben interpolation:
+            //
+            // w_ij = -(a_ij + sum_{k in F_i^s}
+            //                  a_ik a_kj / sum_{m in C_k^s} a_km)
+            //             / (a_ii + sum_{k in N_i^w} a_ik).
+            //
+            // This is the standard signed formula. There is deliberately no
+            // arbitrary post-normalization: constant preservation follows from
+            // the algebraic formula for Laplacian/M-matrix rows, and a failure
+            // to obtain finite weights is a setup failure rather than a hidden
+            // fallback.
+            double weak_sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                if (j == i) continue;
+                if (!std::binary_search(strong[i].begin(), strong[i].end(), j))
+                    weak_sum += val[k];
+            }
+
+            const double denominator = diagonal + weak_sum;
+            if (!std::isfinite(denominator) || std::abs(denominator) <= 1e-30) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return;
+            }
+
+            std::map<std::size_t, double> weights;
+            for (const std::size_t j : c_neighbors) {
+                weights[coarse_index[j]] += matrix_value(i, j);
+            }
+
+            for (const std::size_t k : strong[i]) {
                 if (point[k] != Point::Fine) continue;
 
-                double c_row_sum = 0.0;
-                for (const std::size_t j : neighborhood[k]) {
-                    if (point[j] == Point::Coarse)
-                        c_row_sum += matrix_value(k, j);
+                double c_sum = 0.0;
+                for (const std::size_t m : strong[k]) {
+                    if (point[m] == Point::Coarse)
+                        c_sum += matrix_value(k, m);
                 }
-                if (!std::isfinite(c_row_sum) ||
-                    std::abs(c_row_sum) <= 1e-30) {
-                    continue;
+                if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return;
                 }
 
                 const double aik = matrix_value(i, k);
-                for (const std::size_t j : neighborhood[k]) {
-                    if (point[j] != Point::Coarse) continue;
-                    const double contribution =
-                        -(aik * matrix_value(k, j) / c_row_sum) / diagonal;
-                    raw[coarse_index[j]] += contribution;
-                    raw_sum += contribution;
+                for (const std::size_t j : c_neighbors) {
+                    const double akj = matrix_value(k, j);
+                    weights[coarse_index[j]] += aik * akj / c_sum;
                 }
             }
 
-            if (raw.empty()) continue;
-
-            // Preserve the constant near-null-space mode. In particular, do
-            // not replace signed interpolation weights by absolute values:
-            // that changes the interpolation operator and can compromise the
-            // SPD/Galerkin structure required by CG.
-            if (!std::isfinite(raw_sum) || std::abs(raw_sum) <= 1e-30) {
-                const double uniform =
-                    1.0 / static_cast<double>(raw.size());
-                for (const auto& [coarse, weight] : raw) {
-                    (void)weight;
-                    prolongation[i].push_back({coarse, uniform});
+            double largest = -1.0;
+            for (const auto& [coarse, numerator] : weights) {
+                const double weight = -numerator / denominator;
+                if (!std::isfinite(weight)) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return;
                 }
-            } else {
-                double largest = -1.0;
-                for (const auto& [coarse, weight] : raw) {
-                    const double normalized = weight / raw_sum;
-                    if (!std::isfinite(normalized)) continue;
-                    prolongation[i].push_back({coarse, normalized});
-                    if (std::abs(normalized) >= largest) {
-                        largest = std::abs(normalized);
-                        aggregate[i] = coarse;
-                    }
+                prolongation[i].push_back({coarse, weight});
+                if (std::abs(weight) > largest) {
+                    largest = std::abs(weight);
+                    aggregate[i] = coarse;
                 }
             }
-            if (aggregate[i] == 0 && !prolongation[i].empty())
-                aggregate[i] = prolongation[i].front().first;
+
+            if (prolongation[i].empty()) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return;
+            }
         }
     }
 
