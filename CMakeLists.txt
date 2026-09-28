@@ -432,6 +432,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
     add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
     add_cfdx_test(test_schur_preconditioner tests/unit/test_schur_preconditioner.cpp)
+    add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
 
     # Numerical tests - Geometry
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
