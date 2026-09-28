@@ -80,8 +80,11 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
     }
 
     double omega = 0.7;
-    std::size_t pre_sweeps = 4;
-    std::size_t post_sweeps = 4;
+    // Balanced native AMG is the qualification/default path. Use enough
+    // Jacobi smoothing to make the V-cycle robust at the 4096/16384 scaling
+    // points; the Fast policy remains explicit below.
+    std::size_t pre_sweeps = 6;
+    std::size_t post_sweeps = 6;
     if (impl_->policy == AMGMemoryPolicy::Low) {
         omega = 0.65;
         pre_sweeps = 2;
