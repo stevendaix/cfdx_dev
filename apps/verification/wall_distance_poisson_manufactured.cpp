@@ -207,7 +207,7 @@ int main(int argc,char** argv)
             phi_ref[i]=0.5*y*(1.0-y);
             d_ref[i]=std::min(y,1.0-y);
         }
-        const auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
+        auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
         // The helper above assumes one wall for the gradient.  For the channel,
         // evaluate the exact signed gradient magnitude directly.
         for(std::size_t i=0;i<d_formula.size();++i) if(!grid.solid[i]) {
@@ -250,7 +250,7 @@ int main(int argc,char** argv)
     if(!csv) return 3;
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
            "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
-           "distance_impl_linf_relative,residual_inf,iterations,converged\\n";
+           "distance_impl_linf_relative,residual_inf,iterations,converged\n";
     for(const auto& r:rows) {
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
