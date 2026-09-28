@@ -1,0 +1,903 @@
+{
+  "schema_version": "1.0",
+  "issue": 461,
+  "semantics": "Status describes repository evidence, not the wording of the parent issue checkbox.",
+  "requirements": [
+    {
+      "package_id": "N1",
+      "requirement": "common spatial scheme abstraction",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_contract.h",
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N1",
+      "requirement": "explicit reconstruction/interpolation/flux contracts",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_contract.h",
+        "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
+      ]
+    },
+    {
+      "package_id": "N1",
+      "requirement": "explicit case/numerics scheme selection",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N1",
+      "requirement": "boundedness and conservation contracts",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_contract.h",
+        "src/cfdx/core/numerics/conservation.h"
+      ]
+    },
+    {
+      "package_id": "N1",
+      "requirement": "machine-readable capability metadata",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "Green-Gauss cell gradient",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/gradient.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "least-squares gradient",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/fvm/least_squares_gradient.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "weighted least-squares qualification",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/fvm/least_squares_gradient.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "rank/conditioning detection",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/fvm/least_squares_gradient.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "boundary-neighbour reconstruction policy",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "independent face reconstruction",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "gradient limiting infrastructure",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "complete skew/non-orthogonal/high-aspect-ratio/polyhedral V&V",
+      "status": "missing",
+      "evidence": [
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+      ]
+    },
+    {
+      "package_id": "N3",
+      "requirement": "orthogonal diffusion",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h"
+      ]
+    },
+    {
+      "package_id": "N3",
+      "requirement": "corrected non-orthogonal diffusion",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h"
+      ]
+    },
+    {
+      "package_id": "N3",
+      "requirement": "limited non-orthogonal diffusion",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h"
+      ]
+    },
+    {
+      "package_id": "N3",
+      "requirement": "over-relaxed diffusion formulation",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N3",
+      "requirement": "skewness correction contract",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h"
+      ]
+    },
+    {
+      "package_id": "N3",
+      "requirement": "quantitative high-non-orthogonality campaign",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "first-order upwind",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/convection.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "second-order upwind",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/convection.h",
+        "src/cfdx/core/numerics/convection_assembly.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "central convection",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/convection.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "bounded central/blending",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N4",
+      "requirement": "MinMod integrated limiter",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/core/numerics/convection.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "Van Leer integrated limiter",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "Van Albada integrated limiter",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "Superbee integrated limiter",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "MC integrated limiter",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "multidimensional limiter policy",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N4",
+      "requirement": "gradient-based limiter policy",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h"
+      ]
+    },
+    {
+      "package_id": "N4",
+      "requirement": "MUSCL reconstruction",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N4",
+      "requirement": "QUICK or equivalent quadratic scheme",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N4",
+      "requirement": "scheme-level boundedness/conservation/order V&V",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_discretization_verification.cpp",
+        "tests/validation/test_benchmark_matrix.cpp"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "explicit Euler",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/temporal.h"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "implicit Euler",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/temporal.h"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "Crank-Nicolson",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/temporal.h"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "BDF2",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/temporal.h"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "BDF2 history lifecycle",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/temporal.h",
+        "tests/unit/test_temporal.cpp"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "restart history semantics",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_restart_mapping.cpp"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "variable-time-step consistency",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/temporal.h"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "measured temporal order matrix",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_discretization_verification.cpp"
+      ]
+    },
+    {
+      "package_id": "N5",
+      "requirement": "RK2/RK3",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N6",
+      "requirement": "adaptive CFL controller",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/solver_control.h"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "pseudo-transient CFL",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/solver_control.h"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "robust anisotropic/skew characteristic length",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/solver_control.h"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "stagnant-cell safe local pseudo-time",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/solver_control.h"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "rollback on nonlinear failure",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N6",
+      "requirement": "auditable timestep/CFL reason logging",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/solver_control.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "unified convergence monitor",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/cfdx/core/utils/convergence_monitor.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "physical residual normalization",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "continuity/mass imbalance gate",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h",
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "QoI convergence gate",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "stagnation/divergence detection",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "adaptive under-relaxation qualification",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/advanced_convergence.h"
+      ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "continuation/homotopy qualification",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N7",
+      "requirement": "deterministic convergence report",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/VALIDATION_REPORT.md"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "native AMG",
+      "status": "implemented",
+      "evidence": [
+        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "native FieldSplit",
+      "status": "implemented",
+      "evidence": [
+        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "coupled Schur-AMG",
+      "status": "implemented",
+      "evidence": [
+        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "exact algebraic Schur oracle",
+      "status": "partial",
+      "evidence": [
+        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "SIMPLEC algebraic Schur",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N8",
+      "requirement": "LSC/BFBt/PCD Schur approximations",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N8",
+      "requirement": "pressure null-space policy",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_phase9_acceptance.cpp"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "AMG anisotropy/scaling benchmark",
+      "status": "partial",
+      "evidence": [
+        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "SIMPLE",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "SIMPLEC",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "PISO",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "PIMPLE",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "fractional-step",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "fully coupled U-p",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Rhie-Chow/pressure consistency",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PHASE9_ACCEPTANCE.md"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "common Couette/Poiseuille/cavity/external/skew matrix",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_phase9_acceptance.cpp"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "mesh quality ladder",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "orthogonal/skew/non-orthogonal controlled cases",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "high aspect ratio",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "polyhedral numerical validation",
+      "status": "partial",
+      "evidence": [
+        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "invalid/degenerate rejection",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "global mass conservation",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h",
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "cell-local conservation",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "momentum/scalar/energy balances",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "face antisymmetry",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "independent post-solve flux reconstruction",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/conservation.h"
+      ]
+    },
+    {
+      "package_id": "N11",
+      "requirement": "complete benchmark campaign",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+      ]
+    },
+    {
+      "package_id": "N12",
+      "requirement": "scalar diffusion MMS",
+      "status": "verified",
+      "evidence": [
+        "tests/validation/test_mms_scalar_diffusion.cpp"
+      ]
+    },
+    {
+      "package_id": "N12",
+      "requirement": "convection-diffusion MMS",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_discretization_verification.cpp"
+      ]
+    },
+    {
+      "package_id": "N12",
+      "requirement": "momentum MMS",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N12",
+      "requirement": "pressure/continuity MMS",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N12",
+      "requirement": "transient MMS",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_discretization_verification.cpp"
+      ]
+    },
+    {
+      "package_id": "N12",
+      "requirement": "energy MMS",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PHASE13_VALIDATION_PLAN.md"
+      ]
+    },
+    {
+      "package_id": "N12",
+      "requirement": "turbulence transport MMS",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N13",
+      "requirement": "MPI deterministic tests",
+      "status": "verified",
+      "evidence": [
+        "tests/unit/test_mpi_deterministic.cpp"
+      ]
+    },
+    {
+      "package_id": "N13",
+      "requirement": "MPI numerical equivalence campaign",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_mpi_deterministic.cpp",
+        "tests/unit/test_mpi_partition.cpp"
+      ]
+    },
+    {
+      "package_id": "N13",
+      "requirement": "assembled/matrix-free equivalence",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_matrix_free_fv_operator.cpp"
+      ]
+    },
+    {
+      "package_id": "N13",
+      "requirement": "CPU/CUDA numerical equivalence",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/runtime/gpu/gpu_execution.h"
+      ]
+    },
+    {
+      "package_id": "N13",
+      "requirement": "restart equivalence",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_restart_mapping.cpp"
+      ]
+    },
+    {
+      "package_id": "N13",
+      "requirement": "N-to-M MPI restart",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_phase5_restart_reader.cpp"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "Fluent/VMFL matrix",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/FLUENT_VMFL_MATRIX.md"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "method-level formulation comparison",
+      "status": "partial",
+      "evidence": [
+        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "same/similar/different classification",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "reproducible solver benchmark schema",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
+      ]
+    },
+    {
+      "package_id": "N15",
+      "requirement": "MPI strong scaling",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "MPI weak scaling",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "GPU speedup benchmark",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "AMG setup/solve breakdown",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "matrix-free vs assembled benchmark",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N15",
+      "requirement": "mixed-precision benchmark",
+      "status": "missing",
+      "evidence": []
+    },
+    {
+      "package_id": "N16",
+      "requirement": "advanced high-order/WENO",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "package_id": "N16",
+      "requirement": "dual-time/multirate",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "package_id": "N16",
+      "requirement": "advanced AMG/communication-avoiding Krylov",
+      "status": "planned",
+      "evidence": []
+    },
+    {
+      "package_id": "N17",
+      "requirement": "13-model canonical registry",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "equation-level qualification matrix",
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_turbulence_qualification_equations.cpp"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "solver-ready RANS physical validation",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "LES solver qualification",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "DES/DDES/IDDES physical qualification",
+      "status": "partial",
+      "evidence": [
+        "docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "wall-treatment/y+ sensitivity",
+      "status": "partial",
+      "evidence": [
+        "docs/development/TURBULENCE_MODEL_IMPLEMENTATION.md"
+      ]
+    },
+    {
+      "package_id": "N17",
+      "requirement": "external turbulence reference matrix",
+      "status": "partial",
+      "evidence": [
+        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
+      ]
+    }
+  ]
+}
