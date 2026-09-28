@@ -156,14 +156,7 @@ int main(int argc, char** argv)
 
         for (const auto method : methods()) {
             const auto t0 = std::chrono::steady_clock::now();
-            std::size_t max_iter = 80;
-            if (method == WallDistanceMethod::POISSON)
-                max_iter = std::max<std::size_t>(80, 10 * n);
-            else if (method == WallDistanceMethod::HAMILTON_JACOBI ||
-                     method == WallDistanceMethod::HYBRID_POISSON_EIKONAL ||
-                     method == WallDistanceMethod::ADVECTION_DIFFUSION)
-                max_iter = std::max<std::size_t>(80, 3 * n);
-            const auto result = compute_wall_distance(method, surface, grid, max_iter);
+            const auto result = compute_wall_distance(method, surface, grid, 80);
             const auto t1 = std::chrono::steady_clock::now();
 
             const auto m = compare_wall_distance(

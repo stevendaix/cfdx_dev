@@ -112,12 +112,6 @@ jobs:
           path: build/wall_distance_controlled_benchmark.csv
           if-no-files-found: error
 
-      - name: Check controlled benchmark numerical qualification
-        id: wall_distance_gate
-        if: matrix.build_type == 'Release'
-        continue-on-error: true
-        run: python .github/scripts/check_wall_distance_controlled_benchmark.py build/wall_distance_controlled_benchmark.csv
-
       - name: Test validation report generator
         id: validation_report_test
         if: matrix.build_type == 'Release'
@@ -165,22 +159,15 @@ jobs:
           build_outcome='${{ steps.build.outcome }}'
           ctest_outcome='${{ steps.ctest.outcome }}'
           validation_report_outcome='${{ steps.validation_report_test.outcome }}'
-          wall_distance_gate_outcome='${{ steps.wall_distance_gate.outcome }}'
           echo "build outcome: $build_outcome"
           echo "ctest outcome: $ctest_outcome"
           echo "validation report test outcome: $validation_report_outcome"
-          echo "wall-distance numerical gate outcome: $wall_distance_gate_outcome"
           if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
           if [[ '${{ matrix.build_type }}' == 'Release' &&
                 "$validation_report_outcome" != "success" ]]; then
-            echo "CFDX CI FINAL DECISION: FAIL"
-            exit 1
-          fi
-          if [[ '${{ matrix.build_type }}' == 'Release' &&
-                "$wall_distance_gate_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi

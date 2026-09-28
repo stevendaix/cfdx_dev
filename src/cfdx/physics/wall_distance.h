@@ -464,8 +464,6 @@ inline std::vector<double> eikonal_fast_sweep(const WallDistanceBvh& bvh,const W
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     const std::array<int,2> signs={-1,1};
     std::size_t it_used=max_iter;
-    std::size_t used=max_iter;
-    double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
         for(int sx:signs) for(int sy:signs) for(int sz:signs)
@@ -801,6 +799,8 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter/2));
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
+    std::size_t used=max_iter;
+    double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
         for(std::size_t id=0;id<d.size();++id) {
