@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -247,9 +248,9 @@ int main(int argc,char** argv)
 
     std::ofstream csv(output);
     if(!csv) return 3;
-    csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,distance_formula_l2_relative,
-           "distance_impl_l2_relative,distance_formula_linf_relative,distance_impl_linf_relative,"
-           "residual_inf,iterations,converged\n";
+    csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
+           "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
+           "distance_impl_linf_relative,residual_inf,iterations,converged\\n";
     for(const auto& r:rows) {
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
