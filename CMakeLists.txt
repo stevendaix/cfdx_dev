@@ -259,7 +259,6 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/steady_incompressible_solver.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
-    src/cfdx/physics/wall_distance_turbulence.h
     src/cfdx/physics/sst_solver.h
     src/cfdx/physics/energy_solver.h
     src/cfdx/physics/cht_solver.h
@@ -283,6 +282,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
+    src/cfdx/core/linalg/coupled_amg_schur.h
     src/cfdx/core/linalg/native_fieldsplit.h
     src/cfdx/core/linalg/mixed_precision.h
     src/cfdx/core/linalg/chebyshev_smoother.h
@@ -422,6 +422,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
+    add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
 
     # Unit tests - Numerical
@@ -432,7 +433,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_scalar_diffusion tests/unit/test_scalar_diffusion.cpp)
     add_cfdx_test(test_advanced_preconditioners tests/unit/test_advanced_preconditioners.cpp)
     add_cfdx_test(test_schur_preconditioner tests/unit/test_schur_preconditioner.cpp)
-    add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
 
     # Numerical tests - Geometry
     add_cfdx_test(test_face_geometry tests/numerical/test_face_geometry.cpp)
@@ -635,8 +635,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_steady_incompressible_solver test_matrix_free_fv_operator
         test_temporal_physics test_core_temporal
         PROPERTIES LABELS "phase13;validation")
+    add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
+    add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
+    add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
@@ -726,7 +729,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
-    add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
