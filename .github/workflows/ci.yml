@@ -133,6 +133,21 @@ jobs:
           path: build/wall_distance_controlled_benchmark.csv
           if-no-files-found: error
 
+      - name: Run wall-distance Poisson manufactured benchmark
+        if: matrix.build_type == 'Release'
+        run: |
+          ./build/cfdx_wall_distance_poisson_manufactured build/wall_distance_poisson_manufactured.csv
+          echo "=== Wall-distance Poisson manufactured benchmark ==="
+          cat build/wall_distance_poisson_manufactured.csv
+
+      - name: Upload wall-distance Poisson manufactured benchmark
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-distance-poisson-manufactured
+          path: build/wall_distance_poisson_manufactured.csv
+          if-no-files-found: error
+
       - name: Test validation report generator
         id: validation_report_test
         if: matrix.build_type == 'Release'
