@@ -635,38 +635,67 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
 inline double poisson_residual_inf(const std::vector<double>& phi,
                                       const WallDistanceGrid& g,
                                       const std::vector<unsigned char>& fixed) {
+    // Residual must use exactly the same operator as the linear solve.
     double rmax=0.0;
     for(std::size_t id=0;id<phi.size();++id) {
         if(g.solid[id] || fixed[id] || !std::isfinite(phi[id])) continue;
+        rmax=std::max(rmax,std::abs(-laplacian_at(phi,g,id)-1.0));
+    }
+    return rmax;
+}
+
+struct WallDistancePoissonAudit {
+    std::size_t fluid_nodes{0};
+    std::size_t fluid_fluid_faces{0};
+    std::size_t solid_faces{0};
+    std::size_t outer_faces{0};
+    double min_diagonal{std::numeric_limits<double>::infinity()};
+    double max_diagonal{0.0};
+    double min_diagonal_dominance{std::numeric_limits<double>::infinity()};
+    double symmetry_error{0.0};
+};
+
+inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceGrid& g) {
+    WallDistancePoissonAudit a;
+    const std::size_t n=g.points.size();
+    for(std::size_t id=0;id<n;++id) {
+        if(g.solid[id]) continue;
+        ++a.fluid_nodes;
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        double lap=0.0;
-        auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double h) {
+        double diag=0.0;
+        auto axis=[&](std::size_t m,bool hm,std::size_t p,bool hp,double h) {
             const double w=1.0/(h*h);
-            const bool fm=has_minus && std::isfinite(phi[minus]);
-            const bool fp=has_plus && std::isfinite(phi[plus]);
-            if(fm && fp) lap+=(phi[minus]-2.0*phi[id]+phi[plus])*w;
-            else if(fm) {
-                // Existing solid neighbour => Dirichlet phi=0.
-                // Missing outer neighbour => mirrored Neumann ghost.
-                lap+=(has_plus ? phi[minus]-2.0*phi[id]
-                               : 2.0*(phi[minus]-phi[id]))*w;
-            } else if(fp) {
-                lap+=(has_minus ? phi[plus]-2.0*phi[id]
-                                 : 2.0*(phi[plus]-phi[id]))*w;
-            } else if(has_minus || has_plus) {
-                // Both existing neighbours are solid.
-                lap+=-2.0*phi[id]*w;
+            if(hm) {
+                diag+=w;
+                if(g.solid[m]) ++a.solid_faces;
+                else if(m>id) ++a.fluid_fluid_faces;
+            } else {
+                ++a.outer_faces;
+            }
+            if(hp) {
+                diag+=w;
+                if(g.solid[p]) ++a.solid_faces;
+                else if(p>id) ++a.fluid_fluid_faces;
+            } else {
+                ++a.outer_faces;
             }
         };
         const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
         const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
         const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-        add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
-        add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
-        add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
-        rmax=std::max(rmax,std::abs(lap+1.0));
+        axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
+        axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
+        axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
+        a.min_diagonal=std::min(a.min_diagonal,diag);
+        a.max_diagonal=std::max(a.max_diagonal,diag);
+        // The face-graph operator has diagonal equal to the sum of absolute
+        // off-diagonals, plus Dirichlet solid-face contributions. Hence it is
+        // symmetric and positive definite when a fluid component touches a wall.
+        a.min_diagonal_dominance=std::min(a.min_diagonal_dominance,diag);
     }
-    return rmax;
+    if(!std::isfinite(a.min_diagonal)) a.min_diagonal=0.0;
+    if(!std::isfinite(a.min_diagonal_dominance)) a.min_diagonal_dominance=0.0;
+    return a;
 }
 
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
