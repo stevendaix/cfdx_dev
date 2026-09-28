@@ -82,19 +82,34 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
 
-      - name: Run wall-distance benchmark report
+      - name: Run wall-distance complex benchmark report
         if: matrix.build_type == 'Release'
         run: |
           ./build/cfdx_wall_distance_complex_benchmark build/wall_distance_complex_benchmark.csv
-          echo "=== Wall-distance benchmark ==="
+          echo "=== Wall-distance complex benchmark ==="
           cat build/wall_distance_complex_benchmark.csv
 
-      - name: Upload wall-distance benchmark
+      - name: Upload wall-distance complex benchmark
         if: matrix.build_type == 'Release'
         uses: actions/upload-artifact@v4
         with:
-          name: wall-distance-benchmark
+          name: wall-distance-complex-benchmark
           path: build/wall_distance_complex_benchmark.csv
+          if-no-files-found: error
+
+      - name: Run wall-distance controlled benchmark report
+        if: matrix.build_type == 'Release'
+        run: |
+          ./build/cfdx_wall_distance_controlled_benchmark             build/wall_distance_controlled_benchmark.csv 16 32 64 128
+          echo "=== Wall-distance controlled benchmark ==="
+          cat build/wall_distance_controlled_benchmark.csv
+
+      - name: Upload wall-distance controlled benchmark
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-distance-controlled-benchmark
+          path: build/wall_distance_controlled_benchmark.csv
           if-no-files-found: error
 
       - name: Test validation report generator
