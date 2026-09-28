@@ -221,11 +221,12 @@ int main(int argc,char** argv)
     // separately from the complex wall geometry benchmark.
     for(const auto& r:rows) {
         if(!r.converged) return 4;
-        if(!(r.phi_l2<0.05 && r.distance_l2<0.05)) {
+        if(!(r.phi_l2<0.05 && r.distance_formula_l2<0.05 && r.distance_impl_l2<0.05)) {
             std::cerr << "FAIL manufactured Poisson qualification at N=" << r.n
                       << " case=" << r.case_name
                       << " phi_l2=" << r.phi_l2
-                      << " distance_l2=" << r.distance_l2 << "\n";
+                      << " formula_distance_l2=" << r.distance_formula_l2
+                      << " implementation_distance_l2=" << r.distance_impl_l2 << "\n";
             return 5;
         }
     }
