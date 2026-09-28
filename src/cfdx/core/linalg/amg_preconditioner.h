@@ -470,27 +470,20 @@ private:
                     if (point[j] != Point::Fine) continue;
                     if (has_common_coarse(i, j)) continue;
 
-                    std::size_t candidate = n;
-                    auto independent_from_C = [&](std::size_t p) {
-                        for (const std::size_t c : neighborhood[p])
-                            if (point[c] == Point::Coarse) return false;
-                        return true;
-                    };
+                    // Second-pass augmentation is allowed to add a C point
+                    // adjacent to an existing C point.  The first pass enforces
+                    // maximal C/F independence; the second pass exists precisely
+                    // to repair F-F connections that have no common C neighbour.
+                    // Rejecting both endpoints here can leave an F-F edge with no
+                    // admissible classical interpolation stencil.
+                    const std::size_t candidate = i;
 
-                    if (independent_from_C(i)) {
-                        candidate = i;
-                    } else if (independent_from_C(j)) {
-                        candidate = j;
+                    point[candidate] = Point::Coarse;
+                    changed = true;
+                    for (const std::size_t q : neighborhood[candidate]) {
+                        if (point[q] == Point::Undecided) point[q] = Point::Fine;
                     }
-
-                    if (candidate != n) {
-                        point[candidate] = Point::Coarse;
-                        changed = true;
-                        for (const std::size_t q : neighborhood[candidate]) {
-                            if (point[q] == Point::Undecided) point[q] = Point::Fine;
-                        }
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -509,14 +502,10 @@ private:
                 }
             }
             if (!has_strong_C) {
-                bool independent = true;
-                for (const std::size_t c : neighborhood[i]) {
-                    if (point[c] == Point::Coarse) {
-                        independent = false;
-                        break;
-                    }
-                }
-                if (independent) point[i] = Point::Coarse;
+                // At this stage there is no valid interpolation stencil for
+                // this F point. Promote it rather than manufacturing a
+                // singleton/fallback interpolation row.
+                point[i] = Point::Coarse;
             }
         }
 
