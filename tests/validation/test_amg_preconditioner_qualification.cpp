@@ -176,6 +176,14 @@ int main() {
         EXPECT_TRUE(std::isfinite(true_r));
         EXPECT_TRUE(true_r < 1e-9);
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
+        EXPECT_TRUE(amg.coarse_size() > n / 3);
+        EXPECT_TRUE(amg.coarse_size() < (2 * n) / 3 + 2);
+        EXPECT_TRUE(std::abs(amg.prolongation_row_sum_min() - 1.0) < 1e-12);
+        EXPECT_TRUE(std::abs(amg.prolongation_row_sum_max() - 1.0) < 1e-12);
+        const auto levels = amg.hierarchy_level_sizes();
+        EXPECT_TRUE(levels.size() >= 2);
+        for (std::size_t level = 1; level < levels.size(); ++level)
+            EXPECT_TRUE(levels[level] < levels[level - 1]);
     }
 
     run_case("ilu0_transport", make_rhs_matrix(256), make_rhs(256),
