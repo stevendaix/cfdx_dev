@@ -75,6 +75,8 @@ struct Row {
     double residual{};
     double violations{};
     std::size_t iterations{};
+    bool converged{};
+    std::string stopping_reason;
     double time_ms{};
 };
 
@@ -184,6 +186,8 @@ int main(int argc, char** argv)
                 result.residual_inf,
                 m.monotonicity_violations,
                 result.iterations,
+                result.converged,
+                result.stopping_reason,
                 ms
             });
 
@@ -207,7 +211,7 @@ int main(int argc, char** argv)
 
     csv << "N,h,method,l1_relative,l2_relative,linf_relative,"
            "near_wall_l2_relative,residual_inf,monotonicity_violations,"
-           "iterations,time_ms\n";
+           "iterations,converged,stopping_reason,time_ms\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -215,7 +219,9 @@ int main(int argc, char** argv)
             << std::setprecision(16)
             << r.l1 << ',' << r.l2 << ',' << r.linf << ','
             << r.near_l2 << ',' << r.residual << ','
-            << r.violations << ',' << r.iterations << ',' << r.time_ms
+            << r.violations << ',' << r.iterations << ','
+            << (r.converged ? "true" : "false") << ',' << r.stopping_reason << ','
+            << r.time_ms
             << '\n';
     }
 
