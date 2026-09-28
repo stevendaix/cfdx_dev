@@ -66,5 +66,24 @@ int main() {
         omega(0)=0.0;
         EXPECT_TRUE(!audit_positive_scalar(omega,1e-10).bounded());
     });
+
+    run_case("independent_scalar_flux_reconstruction_is_face_conservative", [] {
+        Mesh m = one_cell_mesh();
+        auto g = build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> q(m.n_cells(),"q","1",1);
+        phi.fill(0.0); q(0)=2.0;
+        phi(0)=3.0;
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        const auto reconstructed =
+            reconstruct_scalar_transport_flux(
+                m,g,phi,q,0.0,bc,true,ConvectionScheme::UPWIND);
+        EXPECT_NEAR(reconstructed(0),3.0,1e-15);
+        const auto audit=audit_face_flux_conservation(m,reconstructed);
+        EXPECT_NEAR(audit.global_boundary_flux,3.0,1e-15);
+        EXPECT_NEAR(audit.global_cell_balance,3.0,1e-15);
+    });
+
     return run_all();
 }
