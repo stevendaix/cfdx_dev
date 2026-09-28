@@ -30,6 +30,8 @@ struct Row {
     std::string case_name;
     double phi_l2{};
     double phi_linf{};
+    double grad_phi_l2{};
+    double grad_phi_linf{};
     double distance_formula_l2{};
     double distance_impl_l2{};
     double distance_formula_linf{};
@@ -67,6 +69,43 @@ double rel_linf(const std::vector<double>& a, const std::vector<double>& b,
 double reconstruct_distance(double phi, double grad)
 {
     return std::max(0.0, std::sqrt(std::max(0.0,grad*grad+2.0*phi))-grad);
+}
+
+double rel_grad_l2_1d(const std::vector<double>& phi,
+                    const WallDistanceGrid& g,
+                    const std::function<double(double)>& exact_grad)
+{
+    double e2=0.0,b2=0.0;
+    for(std::size_t k=0;k<g.nz;++k) for(std::size_t j=1;j+1<g.ny;++j) for(std::size_t i=0;i<g.nx;++i) {
+        const auto id=g.index(i,j,k);
+        if(g.solid[id]) continue;
+        const auto im=g.index(i,j-1,k), ip=g.index(i,j+1,k);
+        if(g.solid[im] || g.solid[ip] || !std::isfinite(phi[im]) || !std::isfinite(phi[ip])) continue;
+        const double y=g.points[id].y;
+        const double numerical=(phi[ip]-phi[im])/(2.0*g.spacing.y);
+        const double reference=exact_grad(y);
+        const double e=numerical-reference;
+        e2+=e*e; b2+=reference*reference;
+    }
+    return std::sqrt(e2/std::max(1e-30,b2));
+}
+
+double rel_grad_linf_1d(const std::vector<double>& phi,
+                      const WallDistanceGrid& g,
+                      const std::function<double(double)>& exact_grad)
+{
+    double emax=0.0,bmax=0.0;
+    for(std::size_t k=0;k<g.nz;++k) for(std::size_t j=1;j+1<g.ny;++j) for(std::size_t i=0;i<g.nx;++i) {
+        const auto id=g.index(i,j,k);
+        if(g.solid[id]) continue;
+        const auto im=g.index(i,j-1,k), ip=g.index(i,j+1,k);
+        if(g.solid[im] || g.solid[ip] || !std::isfinite(phi[im]) || !std::isfinite(phi[ip])) continue;
+        const double reference=exact_grad(g.points[id].y);
+        const double numerical=(phi[ip]-phi[im])/(2.0*g.spacing.y);
+        emax=std::max(emax,std::abs(numerical-reference));
+        bmax=std::max(bmax,std::abs(reference));
+    }
+    return emax/std::max(1e-30,bmax);
 }
 
 std::vector<double> reconstruct_planar_distance(const std::vector<double>& phi,
@@ -133,6 +172,8 @@ int main(int argc,char** argv)
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         rows.push_back({n,"single_wall",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
+                        rel_grad_l2_1d(phi,grid,[&](double y){ return L-y; }),
+                        rel_grad_linf_1d(phi,grid,[&](double y){ return L-y; }),
                         rel_l2(d_formula,d_ref,grid.solid),
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
@@ -176,6 +217,8 @@ int main(int argc,char** argv)
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         rows.push_back({n,"parallel_channel",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
+                        rel_grad_l2_1d(phi,grid,[&](double y){ return 0.5-y; }),
+                        rel_grad_linf_1d(phi,grid,[&](double y){ return 0.5-y; }),
                         rel_l2(d_formula,d_ref,grid.solid),
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
@@ -204,7 +247,7 @@ int main(int argc,char** argv)
 
     std::ofstream csv(output);
     if(!csv) return 3;
-    csv << "N,case,phi_l2_relative,phi_linf_relative,distance_formula_l2_relative,"
+    csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,distance_formula_l2_relative,
            "distance_impl_l2_relative,distance_formula_linf_relative,distance_impl_linf_relative,"
            "residual_inf,iterations,converged\n";
     for(const auto& r:rows) {
