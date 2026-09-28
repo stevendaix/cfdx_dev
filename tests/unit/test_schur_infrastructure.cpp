@@ -125,6 +125,37 @@ static void expect_dense_near(const Dense& A, const Dense& B, double tol) {
             EXPECT_NEAR(A[i][j], B[i][j], tol);
 }
 
+static double dense_norm_one(const Dense& A) {
+    double best = 0.0;
+    for (std::size_t j = 0; j < A[0].size(); ++j) {
+        double sum = 0.0;
+        for (std::size_t i = 0; i < A.size(); ++i) sum += std::abs(A[i][j]);
+        best = std::max(best, sum);
+    }
+    return best;
+}
+
+static double dense_norm_inf(const Dense& A) {
+    double best = 0.0;
+    for (const auto& row : A) {
+        double sum = 0.0;
+        for (double value : row) sum += std::abs(value);
+        best = std::max(best, sum);
+    }
+    return best;
+}
+
+static double dense_spectral_norm(const Dense& A) {
+    if (A.size() != 2 || A[0].size() != 2)
+        throw std::invalid_argument("dense_spectral_norm: only 2x2 matrices are supported");
+    const double a = A[0][0], b = A[0][1];
+    const double c = A[1][0], d = A[1][1];
+    const double trace = a * a + b * b + c * c + d * d;
+    const double det = (a * d - b * c) * (a * d - b * c);
+    const double lambda_max = 0.5 * (trace + std::sqrt(std::max(0.0, trace * trace - 4.0 * det)));
+    return std::sqrt(std::max(0.0, lambda_max));
+}
+
 int main() {
     run_case("sparse_matmul_matches_dense_algebra", [] {
         const auto A = make_sparse(2, 2, {
@@ -296,46 +327,118 @@ int main() {
         const Dense Sinv = dense_inverse(S);
         const Dense A = block_assemble(Md, Gd, Dd, Cd);
 
-        const Dense z00 = Minv;
-        const Dense z11 = Sinv;
+        Dense Dblock(4, std::vector<double>(4, 0.0));
+        Dense L(4, std::vector<double>(4, 0.0));
+        Dense U(4, std::vector<double>(4, 0.0));
+        Dense Linv(4, std::vector<double>(4, 0.0));
+        Dense Uinv(4, std::vector<double>(4, 0.0));
         Dense diagonal(4, std::vector<double>(4, 0.0));
+
         for (std::size_t i = 0; i < 2; ++i) {
+            L[i][i] = 1.0;
+            L[2 + i][2 + i] = 1.0;
+            U[i][i] = 1.0;
+            U[2 + i][2 + i] = 1.0;
+            Linv[i][i] = 1.0;
+            Linv[2 + i][2 + i] = 1.0;
+            Uinv[i][i] = 1.0;
+            Uinv[2 + i][2 + i] = 1.0;
+
             for (std::size_t j = 0; j < 2; ++j) {
-                diagonal[i][j] = z00[i][j];
-                diagonal[2 + i][2 + j] = z11[i][j];
+                Dblock[i][j] = Md[i][j];
+                Dblock[2 + i][2 + j] = S[i][j];
+                diagonal[i][j] = Minv[i][j];
+                diagonal[2 + i][2 + j] = Sinv[i][j];
             }
         }
 
         const Dense MinvG = dense_multiply(Minv, Gd);
         const Dense DMinv = dense_multiply(Dd, Minv);
-        const Dense SinvDMinv = dense_multiply(Sinv, DMinv);
-        const Dense MinvGSinv = dense_multiply(MinvG, Sinv);
 
-        Dense lower = diagonal;
-        Dense upper = diagonal;
         for (std::size_t i = 0; i < 2; ++i) {
             for (std::size_t j = 0; j < 2; ++j) {
-                lower[2 + i][j] = -SinvDMinv[i][j];
-                upper[i][2 + j] = -MinvGSinv[i][j];
+                L[2 + i][j] = DMinv[i][j];
+                Linv[2 + i][j] = -DMinv[i][j];
+                U[i][2 + j] = MinvG[i][j];
+                Uinv[i][2 + j] = -MinvG[i][j];
             }
         }
 
-        const Dense full = dense_multiply(upper, lower);
-        const Dense identity = dense_multiply(full, A);
+        // Standard block-LDU contract:
+        //   A = L D U,
+        //   A^-1 = U^-1 D^-1 L^-1,
+        //   S = C - D M^-1 G.
+        const Dense reconstructed_A =
+            dense_multiply(dense_multiply(L, Dblock), U);
+        const Dense lower = dense_multiply(diagonal, Linv);
+        const Dense upper = dense_multiply(Uinv, diagonal);
+        const Dense full =
+            dense_multiply(dense_multiply(Uinv, diagonal), Linv);
 
-        // These are the four standard block factorization actions:
-        // diagonal = diag(M^-1,S^-1)
-        // lower    = diag^-1 L^-1
-        // upper    = U^-1 diag^-1
-        // full     = U^-1 diag^-1 L^-1 = A^-1.
-        expect_dense_near(identity, dense_identity(4), 1e-12);
+        expect_dense_near(reconstructed_A, A, 1e-12);
+        expect_dense_near(dense_multiply(Dblock, diagonal),
+                          dense_identity(4), 1e-12);
+        expect_dense_near(dense_multiply(lower, L),
+                          diagonal, 1e-12);
+        expect_dense_near(dense_multiply(U, upper),
+                          diagonal, 1e-12);
+        expect_dense_near(dense_multiply(full, A),
+                          dense_identity(4), 1e-12);
 
-        // The Schur sign is the literal CFDX convention S=C-DM^-1G.
-        // No implicit PETSc-style sign flip is introduced here.
         EXPECT_NEAR(S[0][0], 1.7, 1e-14);
         EXPECT_NEAR(S[0][1], 0.05, 1e-14);
         EXPECT_NEAR(S[1][0], -0.925, 1e-14);
         EXPECT_NEAR(S[1][1], 2.3875, 1e-14);
+    });
+
+    run_case("exact_schur_differs_from_block_local_schur", [] {
+        // Auu contains cross-cell couplings. The exact oracle uses the full
+        // Auu inverse, whereas #482's Schur approximation uses a block-local
+        // velocity inverse. This verifies the distinction without qualifying
+        // the approximation as good or bad.
+        const Dense Auu = {
+            {4.0, 1.0, 0.4, 0.1},
+            {2.0, 3.0, 0.2, -0.3},
+            {0.5, -0.2, 3.0, 0.7},
+            {0.1, 0.3, 1.5, 2.5}
+        };
+        const Dense G = {
+            {1.0, 0.5},
+            {2.0, 1.0},
+            {0.2, 0.8},
+            {1.2, -0.4}
+        };
+        const Dense D = {
+            {-3.0, 1.0, 0.2, 0.1},
+            {0.25, 2.0, 0.4, -0.3}
+        };
+        const Dense C = {
+            {2.0, 0.2},
+            {0.3, 3.0}
+        };
+
+        Dense M_block(4, std::vector<double>(4, 0.0));
+        for (std::size_t i = 0; i < 2; ++i)
+            for (std::size_t j = 0; j < 2; ++j) {
+                M_block[i][j] = Auu[i][j];
+                M_block[2 + i][2 + j] = Auu[2 + i][2 + j];
+            }
+
+        const Dense exact = dense_subtract(
+            C, dense_multiply(dense_multiply(D, dense_inverse(Auu)), G));
+        const Dense block_local = dense_subtract(
+            C, dense_multiply(dense_multiply(D, dense_inverse(M_block)), G));
+        const Dense delta = dense_subtract(exact, block_local);
+
+        const double n1 = dense_norm_one(delta);
+        const double n2 = dense_spectral_norm(delta);
+        const double ninf = dense_norm_inf(delta);
+
+        EXPECT_TRUE(n1 > 1e-8);
+        EXPECT_TRUE(n2 > 1e-8);
+        EXPECT_TRUE(ninf > 1e-8);
+        EXPECT_NEAR(exact[0][0], 1.53131983, 1e-8);
+        EXPECT_NEAR(block_local[0][0], 1.65937984, 1e-8);
     });
 
     return run_all();
