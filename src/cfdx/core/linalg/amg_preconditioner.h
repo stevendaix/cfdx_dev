@@ -155,6 +155,43 @@ public:
         return first_aggregate_[fine_cell];
     }
 
+    std::vector<std::size_t> hierarchy_level_sizes() const
+    {
+        std::vector<std::size_t> sizes;
+        sizes.reserve(levels_.size());
+        for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
+        return sizes;
+    }
+
+    double prolongation_row_sum_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("prolongation_row_sum_min: hierarchy unavailable");
+        double value = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < levels_.front().prolongation.size(); ++i)
+            value = std::min(value, prolongation_row_sum(i));
+        return value;
+    }
+
+    double prolongation_row_sum_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("prolongation_row_sum_max: hierarchy unavailable");
+        double value = -std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < levels_.front().prolongation.size(); ++i)
+            value = std::max(value, prolongation_row_sum(i));
+        return value;
+    }
+
+    std::size_t first_prolongation_nnz() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_prolongation_nnz: hierarchy unavailable");
+        std::size_t nnz = 0;
+        for (const auto& row : levels_.front().prolongation) nnz += row.size();
+        return nnz;
+    }
+
     double prolongation_row_sum(std::size_t fine_cell) const
     {
         if (levels_.size() < 2 ||
@@ -560,8 +597,8 @@ private:
                 if (point[k] != Point::Fine) continue;
 
                 double c_sum = 0.0;
-                for (const std::size_t m : strong[k]) {
-                    if (point[m] == Point::Coarse)
+                for (const std::size_t m : c_neighbors) {
+                    if (std::binary_search(strong[k].begin(), strong[k].end(), m))
                         c_sum += matrix_value(k, m);
                 }
                 if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
