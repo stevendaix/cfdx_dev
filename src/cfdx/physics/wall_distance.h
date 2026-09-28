@@ -645,6 +645,18 @@ inline double poisson_residual_inf(const WallDistanceBvh& bvh,
     return rmax;
 }
 
+inline double poisson_wall_offset(const WallDistanceBvh& bvh,
+                                      const WallDistanceVec3& p,
+                                      const WallDistanceVec3& q,
+                                      double h);
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id);
+inline double poisson_diagonal(const WallDistanceBvh& bvh,
+                               const WallDistanceGrid& g,
+                               std::size_t id);
+
 struct WallDistancePoissonAudit {
     std::size_t fluid_nodes{0};
     std::size_t fluid_fluid_faces{0};
