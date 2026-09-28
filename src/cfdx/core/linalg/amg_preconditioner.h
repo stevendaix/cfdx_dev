@@ -68,7 +68,13 @@ public:
 
         // Build a genuine multilevel hierarchy until the coarse problem is
         // small. Keep the first aggregation public for diagnostics/tests.
-        while (levels_.back().A.n_rows() > 2 && levels_.size() < max_levels_) {
+        // Keep a small but non-trivial dense coarse problem. Recursing to
+        // 2 unknowns adds levels without improving the coarse solve materially;
+        // a direct solve of <=16 unknowns is negligible and gives a cleaner
+        // multilevel correction.
+        constexpr std::size_t coarse_direct_limit = 16;
+        while (levels_.back().A.n_rows() > coarse_direct_limit &&
+               levels_.size() < max_levels_) {
             std::vector<TransferRow> prolongation;
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
