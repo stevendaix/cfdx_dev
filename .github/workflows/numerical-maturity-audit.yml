@@ -1,0 +1,24 @@
+name: Numerical maturity audit
+
+on:
+  push:
+    paths:
+      - "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json"
+      - "scripts/validate_numerical_maturity_audit.py"
+      - ".github/workflows/numerical-maturity-audit.yml"
+  pull_request:
+    paths:
+      - "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json"
+      - "scripts/validate_numerical_maturity_audit.py"
+      - ".github/workflows/numerical-maturity-audit.yml"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate #461 maturity audit
+        run: python scripts/validate_numerical_maturity_audit.py docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json
