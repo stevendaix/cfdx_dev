@@ -1174,7 +1174,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     }
     auto result = solve_gmres(
         A, b, x, gmres_restart, max_iterations, tolerance,
-        &coupled_preconditioner, coupled_gmres_controls);
+        coupled_preconditioner.get(), coupled_gmres_controls);
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
     // setup by identity-preconditioned GMRES: that would hide the defect in
