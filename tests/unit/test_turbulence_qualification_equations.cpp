@@ -9,7 +9,7 @@
 #include <stdexcept>
 
 namespace {
-void expect_close(const char* label,double a,double b,double tol=1e-12) {,    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {,        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b,                  << " abs_error=" << std::abs(a-b) << "\n";
+void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b << " abs_error=" << std::abs(a-b) << "\n";
         throw std::runtime_error("turbulence equation reference mismatch");
     }
 }
@@ -34,7 +34,7 @@ int main() {
         const double nut=Cmu*k*k/eps, P=rho*nut*S*S, eta=S*k/eps;
         const double C1star=C1-eta*(1.0-eta/eta0)/(1.0+beta*eta*eta*eta);
         const auto q=rng_kepsilon_cell_sources(k,eps,S,c);
-        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);,        EXPECT_CLOSE(q.spk,-rho*eps/k);,        EXPECT_CLOSE(q.se,C1star*P*eps/k);,        EXPECT_CLOSE(q.spe,-rho*C2*eps/k);,        EXPECT_CLOSE(q.gamma_k,rho*(nu+nut/sigk));,        EXPECT_CLOSE(q.gamma_epsilon,rho*(nu+nut/sige));
+        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-rho*eps/k);        EXPECT_CLOSE(q.se,C1star*P*eps/k);        EXPECT_CLOSE(q.spe,-rho*C2*eps/k);        EXPECT_CLOSE(q.gamma_k,rho*(nu+nut/sigk));        EXPECT_CLOSE(q.gamma_epsilon,rho*(nu+nut/sige));
     }
 
     c.model=TurbulenceModel::REALIZABLE_KEPSILON;
@@ -48,7 +48,7 @@ int main() {
         const double cmu=1.0/(c.realizable_A0+As*Ustar*k/eps);
         const double nut=cmu*k*k/eps, P=c.density*nut*S*S;
         const double c1=std::max(0.43,(S*k/eps)/((S*k/eps)+5.0));
-        EXPECT_CLOSE(q.cmu,cmu); EXPECT_CLOSE(q.nut,nut);,        EXPECT_CLOSE(q.sk,P); EXPECT_CLOSE(q.spk,-c.density*eps/k);,        EXPECT_CLOSE(q.se,c1*c.density*S*eps);,        EXPECT_CLOSE(q.spe,-c.density*c.realizable_C2*eps/(k+std::sqrt(c.molecular_viscosity*eps)));,        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+nut/c.realizable_sigma_k));,        EXPECT_CLOSE(q.gamma_epsilon,c.density*(c.molecular_viscosity+nut/c.realizable_sigma_epsilon));
+        EXPECT_CLOSE(q.cmu,cmu); EXPECT_CLOSE(q.nut,nut);        EXPECT_CLOSE(q.sk,P); EXPECT_CLOSE(q.spk,-c.density*eps/k);        EXPECT_CLOSE(q.se,c1*c.density*S*eps);        EXPECT_CLOSE(q.spe,-c.density*c.realizable_C2*eps/(k+std::sqrt(c.molecular_viscosity*eps)));        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+nut/c.realizable_sigma_k));        EXPECT_CLOSE(q.gamma_epsilon,c.density*(c.molecular_viscosity+nut/c.realizable_sigma_epsilon));
     }
 
     c.model=TurbulenceModel::KOMEGA;
@@ -56,7 +56,7 @@ int main() {
         const double grad_cross=-0.7;
         const auto q=komega2006_cell_sources(k,omega,S,grad_cross,c);
         const double nut=k/omega, P=c.density*nut*S*S;
-        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);,        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);,        EXPECT_CLOSE(q.sw,c.komega_alpha*(omega/k)*P);,        EXPECT_CLOSE(q.spw,-c.density*c.komega_beta0*omega);,        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+c.komega_sigma_k*nut));,        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+c.komega_sigma_w*nut));
+        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);        EXPECT_CLOSE(q.sw,c.komega_alpha*(omega/k)*P);        EXPECT_CLOSE(q.spw,-c.density*c.komega_beta0*omega);        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+c.komega_sigma_k*nut));        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+c.komega_sigma_w*nut));
         const auto qp=komega2006_cell_sources(k,omega,S,0.7,c);
         EXPECT_CLOSE(qp.sw,c.komega_alpha*(omega/k)*P+c.density*c.komega_sigma_d0/omega*0.7);
     }
@@ -72,12 +72,12 @@ int main() {
         const double arg2=std::max(2.0*std::sqrt(k)/(c.beta_star*omega*y),visc);
         const auto blend_ref=compute_sst_blending(k,omega,y,c.molecular_viscosity,c.beta_star,
                                                    cross,c.density,c.sst_sigma_w2);
-        EXPECT_CLOSE(blend_ref.first,std::tanh(std::pow(arg1,4.0)));,        EXPECT_CLOSE(blend_ref.second,std::tanh(arg2*arg2));
+        EXPECT_CLOSE(blend_ref.first,std::tanh(std::pow(arg1,4.0)));        EXPECT_CLOSE(blend_ref.second,std::tanh(arg2*arg2));
         const auto blend=[F1](double a,double b){return F1*a+(1.0-F1)*b;};
         const double nut=c.a1*k/std::max(c.a1*omega,S*F2);
         const double P=std::min(c.density*nut*S*S,c.sst_production_limiter*c.beta_star*c.density*k*omega);
         const double cross_term=2.0*(1.0-F1)*c.density*c.sst_sigma_w2/omega*cross;
-        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);,        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);,        EXPECT_CLOSE(q.sw,blend(c.gamma1,c.gamma2)*c.density*S*S+std::max(cross_term,0.0));,        EXPECT_CLOSE(q.spw,-c.density*blend(c.beta1,c.beta2)*omega+std::min(cross_term,0.0)/omega);,        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+blend(c.sst_sigma_k1,c.sst_sigma_k2)*nut));,        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+blend(c.sst_sigma_w1,c.sst_sigma_w2)*nut));
+        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);        EXPECT_CLOSE(q.sw,blend(c.gamma1,c.gamma2)*c.density*S*S+std::max(cross_term,0.0));        EXPECT_CLOSE(q.spw,-c.density*blend(c.beta1,c.beta2)*omega+std::min(cross_term,0.0)/omega);        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+blend(c.sst_sigma_k1,c.sst_sigma_k2)*nut));        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+blend(c.sst_sigma_w1,c.sst_sigma_w2)*nut));
     }
 
     c.model=TurbulenceModel::SPALART_ALLMARAS;
@@ -103,7 +103,7 @@ int main() {
         expect_close(__func__,turbulence_nu_t(0.0,wt,S,d,c),expected_nut,1e-10);
         const double grad2=0.13;
         const auto src=sa_cell_sources(wt,vort,d,grad2,c,sa);
-        EXPECT_CLOSE(src.production,prod*wt);,        EXPECT_CLOSE(src.destruction,destr);,        EXPECT_CLOSE(src.gradient_source,sa.cb2/sa.sigma*grad2);,        EXPECT_CLOSE(src.gamma,rho*(nu+wt)/sa.sigma);
+        EXPECT_CLOSE(src.production,prod*wt);        EXPECT_CLOSE(src.destruction,destr);        EXPECT_CLOSE(src.gradient_source,sa.cb2/sa.sigma*grad2);        EXPECT_CLOSE(src.gamma,rho*(nu+wt)/sa.sigma);
     }
 
     c.model=TurbulenceModel::SMAGORINSKY;
@@ -135,9 +135,9 @@ int main() {
 
     const double dynamic_Ck=0.13;
     const double dynamic_expected=dynamic_Ck*delta*std::sqrt(0.25);
-    EXPECT_CLOSE(dynamic_one_equation_eddy_viscosity(0.25,delta,dynamic_Ck),dynamic_expected);,    EXPECT_CLOSE(dynamic_les_coefficient(0.5,0.2,2.0),0.15);
+    EXPECT_CLOSE(dynamic_one_equation_eddy_viscosity(0.25,delta,dynamic_Ck),dynamic_expected);    EXPECT_CLOSE(dynamic_les_coefficient(0.5,0.2,2.0),0.15);
 
-    EXPECT_CLOSE(ddes_shielding(0.0),1.0);,    EXPECT_CLOSE(ddes_shielding(1.0),1.0-std::tanh(std::pow(8.0,3.0)));,    EXPECT_CLOSE(iddes_shielding(0.0,0.0),1.0);,    EXPECT_CLOSE(iddes_shielding(0.0,1.0),1.0);,    EXPECT_CLOSE(iddes_shielding(1.0,1.0),ddes_shielding(1.0));,    EXPECT_CLOSE(dynamic_les_coefficient(2.0,1.0,2.0),0.23);,    EXPECT_CLOSE(dynamic_les_coefficient(0.0,2.0,2.0),0.0);,    EXPECT_CLOSE(dynamic_les_coefficient(3.0,0.0,2.0,0.0,0.23),0.23);
+    EXPECT_CLOSE(ddes_shielding(0.0),1.0);    EXPECT_CLOSE(ddes_shielding(1.0),1.0-std::tanh(std::pow(8.0,3.0)));    EXPECT_CLOSE(iddes_shielding(0.0,0.0),1.0);    EXPECT_CLOSE(iddes_shielding(0.0,1.0),1.0);    EXPECT_CLOSE(iddes_shielding(1.0,1.0),ddes_shielding(1.0));    EXPECT_CLOSE(dynamic_les_coefficient(2.0,1.0,2.0),0.23);    EXPECT_CLOSE(dynamic_les_coefficient(0.0,2.0,2.0),0.0);    EXPECT_CLOSE(dynamic_les_coefficient(3.0,0.0,2.0,0.0,0.23),0.23);
 
     bool rejected=false;
     try { (void)dynamic_les_coefficient(1.0,0.0,0.0); } catch(const std::invalid_argument&) { rejected=true; }
