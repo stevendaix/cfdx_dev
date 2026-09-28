@@ -121,7 +121,7 @@ std::vector<double> reconstruct_planar_distance(const std::vector<double>& phi,
         // gradient is therefore obtained from the analytical derivative of
         // the manufactured phi, not from a second, potentially biased,
         // discrete gradient reconstruction.
-        const double grad = std::abs(wall_y-y);
+        const double grad = std::abs(1.0-y);
         d[id]=reconstruct_distance(phi[id],grad);
     }
     return d;
