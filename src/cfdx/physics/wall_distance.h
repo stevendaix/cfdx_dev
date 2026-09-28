@@ -40,6 +40,8 @@ struct WallDistanceResult {
     std::string method;
     std::size_t iterations{0};
     double residual_inf{0.0};
+    bool converged{false};
+    std::string stopping_reason{"not_reported"};
 };
 
 enum class WallDistanceMethod {
@@ -1008,22 +1010,50 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
     r.method=wall_distance_method_name(method);
     r.valid.assign(g.points.size(),1);
     switch(method) {
-        case WallDistanceMethod::EXACT_GEOMETRIC: r.distance=exact_reference(s,g); break;
-        case WallDistanceMethod::SEARCH_BASED: r.distance=search_based_reference(s,g,4.0*std::min({g.spacing.x,g.spacing.y,g.spacing.z})); break;
+        case WallDistanceMethod::EXACT_GEOMETRIC:
+            r.distance=exact_reference(s,g);
+            r.converged=true;
+            r.stopping_reason="direct";
+            break;
+        case WallDistanceMethod::SEARCH_BASED:
+            r.distance=search_based_reference(s,g,4.0*std::min({g.spacing.x,g.spacing.y,g.spacing.z}));
+            r.converged=true;
+            r.stopping_reason="direct";
+            break;
         case WallDistanceMethod::MESH_WAVE:
-            r=graph_wave(s,g,false); break;
+            r=graph_wave(s,g,false);
+            r.converged=true;
+            r.stopping_reason="graph_complete";
+            break;
         case WallDistanceMethod::DIRECTIONAL_MESH_WAVE:
-            r=graph_wave(s,g,true); break;
+            r=graph_wave(s,g,true);
+            r.converged=true;
+            r.stopping_reason="graph_complete";
+            break;
         case WallDistanceMethod::POISSON:
-            r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf); break;
+            r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf);
+            r.converged = r.iterations < iterations;
+            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            break;
         case WallDistanceMethod::EIKONAL:
-            r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations); break;
+            r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations);
+            r.converged = r.iterations < iterations;
+            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            break;
         case WallDistanceMethod::HAMILTON_JACOBI:
-            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf); break;
+            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
+            r.converged = r.iterations < iterations;
+            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            break;
         case WallDistanceMethod::ADVECTION_DIFFUSION:
-            r.distance=advection_diffusion_distance(s,g,iterations,0.05); break;
+            r.distance=advection_diffusion_distance(s,g,iterations,0.05);
+            r.converged=false;
+            r.stopping_reason="convergence_not_reported";
+            break;
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
             r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,&r.iterations,&r.residual_inf);
+            r.converged = r.iterations < iterations;
+            r.stopping_reason = r.converged ? "converged" : "max_iter";
             break;
     }
     for(std::size_t i=0;i<r.distance.size();++i)
