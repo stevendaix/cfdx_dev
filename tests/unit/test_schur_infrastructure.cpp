@@ -92,6 +92,7 @@ int main() {
         SparseMatrix C(1, 1);
         Auu.finalize(); G.finalize(); D.finalize(); C.finalize();
 
+        const BlockOperator blocks(Auu, G, D, C);
         EXPECT_TRUE(blocks.is_valid());
         // Deliberately use independent G and D storage. The BlockOperator
         // contract does not require G = -D^T.
