@@ -725,13 +725,11 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
 
     // b = 1 in every fluid degree of freedom.
     apply(phi,Ap);
-    double residual2=0.0;
     double residual_inf=0.0;
     std::size_t fluid_count=0;
     for(std::size_t id=0;id<n;++id) {
         if(!is_fluid(g,id)) continue;
         r[id]=1.0-Ap[id];
-        residual2 += r[id]*r[id];
         residual_inf=std::max(residual_inf,std::abs(r[id]));
         ++fluid_count;
     }
@@ -753,7 +751,6 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     for(std::size_t id=0;id<n;++id)
         if(is_fluid(g,id)) rz_old += r[id]*z[id];
 
-    const double initial_residual_inf=residual_inf;
     std::size_t used=0;
     constexpr double abs_tol=1e-10;
     constexpr double breakdown_tol=1e-30;
@@ -819,8 +816,6 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=residual_inf;
 
-    (void)initial_residual_inf;
-    (void)residual2;
     return phi;
 }
 
@@ -1129,7 +1124,7 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
 
 inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const WallSurface& s,
                                                  const WallDistanceGrid& g,
-                                                 std::size_t iterations=80) {
+                                                 std::size_t iterations=500) {
     WallDistanceResult r;
     r.method=wall_distance_method_name(method);
     r.valid.assign(g.points.size(),1);
