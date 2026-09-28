@@ -556,13 +556,15 @@ private:
                     c_neighbors.push_back(j);
             }
 
-            // The second-pass criterion above should make this non-empty. Do
-            // not invent an interpolation row if it is not: return a
-            // deterministic singleton promotion instead.
+            // The second-pass criterion above should make this non-empty.
+            // If it is not, the splitting is not valid for classical
+            // interpolation; reject the hierarchy rather than inventing a
+            // non-Galerkin fallback.
             if (c_neighbors.empty()) {
-                prolongation[i].push_back({coarse_index[i], 1.0});
-                aggregate[i] = coarse_index[i];
-                continue;
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
             }
 
             // Classical Ruge--Stüben interpolation:
@@ -589,7 +591,7 @@ private:
                 prolongation.clear();
                 aggregate.clear();
                 coarse_n = 0;
-                return;
+                return false;
             }
 
             std::map<std::size_t, double> weights;
