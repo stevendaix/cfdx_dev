@@ -262,10 +262,16 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
 
     // Rebuild the energy face flux from the final temperature and the
     // authoritative mass flux. This does not use the assembled matrix.
-    auto flux = reconstruct_scalar_transport_flux(
-        mesh, geometry, enthalpy_face_flux(mass_flux, controls.cp),
-        temperature, controls.conductivity, bcs, true,
+    // The scalar reconstruction is performed in temperature units first:
+    // F*T - (k/cp)*grad(T). Multiplication by cp then recovers the
+    // physical energy flux F*cp*T - k*grad(T), including boundary terms.
+    auto temperature_flux = reconstruct_scalar_transport_flux(
+        mesh, geometry, mass_flux, temperature,
+        controls.conductivity / controls.cp, bcs, true,
         ConvectionScheme::UPWIND, nullptr, nullptr, face_values);
+    for (std::size_t f = 0; f < temperature_flux.size(); ++f)
+        temperature_flux(f) *= controls.cp;
+    const auto& flux = temperature_flux;
 
     IndependentEnergyBalance r;
     const auto& own=mesh.ownership();
