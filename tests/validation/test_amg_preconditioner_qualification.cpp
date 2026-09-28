@@ -1,6 +1,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
+#include "cfdx/core/linalg/amg_preconditioner.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/advanced_preconditioners.h"
 #include "common/test_harness.h"
