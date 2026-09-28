@@ -409,6 +409,10 @@ private:
 
         enum class Point : unsigned char { Undecided, Fine, Coarse };
         std::vector<Point> point(n, Point::Undecided);
+        std::vector<std::size_t> influence(n, 0);
+        for (std::size_t i = 0; i < n; ++i)
+            influence[i] = transpose[i].size();
+
         std::size_t undecided = n;
 
         while (undecided > 0) {
@@ -416,30 +420,30 @@ private:
             std::size_t best_measure = 0;
             for (std::size_t i = 0; i < n; ++i) {
                 if (point[i] != Point::Undecided) continue;
-
-                std::size_t measure = 0;
-                for (const std::size_t j : strong[i])
-                    if (point[j] == Point::Undecided) ++measure;
-                for (const std::size_t j : transpose[i])
-                    if (point[j] == Point::Undecided) ++measure;
-
-                if (best == n || measure > best_measure ||
-                    (measure == best_measure && i < best)) {
+                if (best == n || influence[i] > best_measure ||
+                    (influence[i] == best_measure && i < best)) {
                     best = i;
-                    best_measure = measure;
+                    best_measure = influence[i];
                 }
             }
 
             point[best] = Point::Coarse;
             --undecided;
 
-            // All points that strongly depend on or strongly influence the
-            // new C point are made F points. This is the RS first-pass
-            // independence condition.
-            for (const std::size_t j : neighborhood[best]) {
+            // Points that strongly depend on the new C point become F.
+            // Every newly-created F point then increases the influence
+            // measure of its strong influencers. This is the dynamic
+            // Ruge--Stuben first-pass update; recomputing only the number of
+            // undecided neighbours is not equivalent and over-coarsens paths
+            // into a ~1/3 C-set.
+            for (const std::size_t j : transpose[best]) {
                 if (point[j] == Point::Undecided) {
                     point[j] = Point::Fine;
                     --undecided;
+                    for (const std::size_t k : strong[j]) {
+                        if (point[k] == Point::Undecided)
+                            ++influence[k];
+                    }
                 }
             }
         }
