@@ -632,6 +632,32 @@ private:
                 coarse_n = 0;
                 return false;
             }
+
+            // The constant vector is the near-nullspace mode for the elliptic
+            // operators targeted by classical AMG. Enforce P*1 = 1 explicitly
+            // after the signed RS construction. This is a mathematical
+            // near-nullspace constraint, not a convergence/tolerance fallback.
+            double row_sum = 0.0;
+            for (const auto& [coarse, weight] : prolongation[i]) {
+                (void)coarse;
+                row_sum += weight;
+            }
+            if (!std::isfinite(row_sum) || std::abs(row_sum) <= 1e-30) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
+            }
+            for (auto& [coarse, weight] : prolongation[i]) {
+                (void)coarse;
+                weight /= row_sum;
+                if (!std::isfinite(weight)) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return false;
+                }
+            }
         }
         return true;
     }
