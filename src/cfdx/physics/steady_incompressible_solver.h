@@ -15,6 +15,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
+#include "cfdx/core/numerics/conservation.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -140,6 +141,17 @@ struct IncompressibleIteration {
     double momentum_residual_no_pressure = std::numeric_limits<double>::infinity();
     double momentum_pressure_contribution = std::numeric_limits<double>::infinity();
     std::string momentum_residual_patch;
+    // Independent finite-volume conservation diagnostics for the authoritative
+    // pressure-corrected mass flux. These are distinct from linear residuals.
+    double mass_boundary_flux = std::numeric_limits<double>::infinity();
+    double mass_global_cell_balance = std::numeric_limits<double>::infinity();
+    double mass_local_l1 = std::numeric_limits<double>::infinity();
+    double mass_local_linf = std::numeric_limits<double>::infinity();
+    double mass_local_l2 = std::numeric_limits<double>::infinity();
+    double mass_normalized_imbalance = std::numeric_limits<double>::infinity();
+    std::size_t mass_worst_cell = 0;
+    std::size_t mass_nonfinite_faces = 0;
+    std::size_t boundedness_nonfinite_velocity = 0;
 };
 
 struct IncompressibleSolveResult {
@@ -2517,6 +2529,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " gradp_linf=" << h.pressure_gradient_linf
                       << "\n";
             std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\n";
+        }
+        {
+            const auto conservation =
+                cfdx::core::audit_face_flux_conservation(mesh, mass_flux);
+            const double scale =
+                std::max(conservation.global_abs_boundary_flux,
+                         std::max(conservation.l1_local_imbalance, 1.0));
+            h.mass_boundary_flux = conservation.global_boundary_flux;
+            h.mass_global_cell_balance = conservation.global_cell_balance;
+            h.mass_local_l1 = conservation.l1_local_imbalance;
+            h.mass_local_linf = conservation.max_local_imbalance;
+            h.mass_local_l2 = conservation.l2_local_imbalance;
+            h.mass_normalized_imbalance =
+                conservation.l1_local_imbalance / scale;
+            h.mass_worst_cell = conservation.worst_cell;
+            h.mass_nonfinite_faces = conservation.nonfinite_faces;
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                for (std::size_t d = 0; d < 3; ++d) {
+                    if (!std::isfinite(U.component_data(d)[c]))
+                        ++h.boundedness_nonfinite_velocity;
+                }
+            }
         }
         result.history.push_back(h);
 
