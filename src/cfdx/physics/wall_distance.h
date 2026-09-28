@@ -166,6 +166,43 @@ public:
         return found ? std::sqrt(best2) : std::numeric_limits<double>::infinity();
     }
 
+    // Distance from p to the first wall intersection along a grid-face ray.
+    // This is the correct geometric quantity for a cut Dirichlet face:
+    // the boundary lies on the segment joining the fluid node to the solid
+    // neighbour.  nearest_distance()/nearest_normal() are not sufficient
+    // near edges/corners because the closest surface point need not lie on
+    // that face-normal ray.
+    double ray_distance(const WallDistanceVec3& p,
+                        const WallDistanceVec3& direction,
+                        double max_distance) const {
+        const double dn=wd_norm(direction);
+        if(!(dn>1e-30) || !(max_distance>0.0)) return std::numeric_limits<double>::infinity();
+        const WallDistanceVec3 d=direction*(1.0/dn);
+        double best=std::numeric_limits<double>::infinity();
+        const double eps=1e-12*std::max(1.0,max_distance);
+
+        for(const auto& tri:surface_.triangles) {
+            const auto& v0=surface_.points[tri.v[0]];
+            const auto& v1=surface_.points[tri.v[1]];
+            const auto& v2=surface_.points[tri.v[2]];
+            const auto e1=v1-v0;
+            const auto e2=v2-v0;
+            const auto h=wd_cross(d,e2);
+            const double a=wd_dot(e1,h);
+            if(std::abs(a)<1e-14) continue;
+            const double inv_a=1.0/a;
+            const auto s=p-v0;
+            const double u=inv_a*wd_dot(s,h);
+            if(u < -1e-12 || u > 1.0+1e-12) continue;
+            const auto q=wd_cross(s,e1);
+            const double v=inv_a*wd_dot(d,q);
+            if(v < -1e-12 || u+v > 1.0+1e-12) continue;
+            const double t=inv_a*wd_dot(e2,q);
+            if(t>=-eps && t<=max_distance+eps) best=std::min(best,std::max(0.0,t));
+        }
+        return best;
+    }
+
     std::size_t triangle_count() const { return surface_.triangles.size(); }
     std::size_t node_count() const { return nodes_.size(); }
 
@@ -742,9 +779,20 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
                                       const WallDistanceVec3& p,
                                       const WallDistanceVec3& q,
                                       double h) {
+    // q is a solid neighbour, so the physical Dirichlet boundary must cross
+    // the p->q segment. Use the actual segment/surface intersection rather
+    // than projecting the nearest surface distance onto the grid direction.
+    // The latter is wrong near edges/corners and can bias the Poisson solution
+    // systematically while leaving the linear residual essentially zero.
+    const auto segment=q-p;
+    const double ray= bvh.ray_distance(p,segment,wd_norm(segment));
+    if(std::isfinite(ray) && ray>1e-12)
+        return std::clamp(ray,1e-12,h);
+
+    // Conservative fallback for pathological/touching geometry.
     const double d=bvh.nearest_distance(p);
     if(!std::isfinite(d) || d<=0.0) return std::max(1e-12,h);
-    const auto dir=(q-p)*(1.0/std::max(wd_norm(q-p),1e-30));
+    const auto dir=segment*(1.0/std::max(wd_norm(segment),1e-30));
     const auto n=bvh.nearest_normal(p);
     const double align=std::abs(wd_dot(n,dir));
     if(align<0.25) return std::min(d,h);
