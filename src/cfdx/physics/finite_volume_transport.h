@@ -484,6 +484,134 @@ inline ScalarEquation assemble_scalar_equation(
     return eq;
 }
 
+
+// Reconstruct the conservative scalar transport flux directly from the final
+// field and authoritative face mass flux. This is intentionally separate from
+// the matrix assembly path: it is suitable for post-solve conservation audits.
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+reconstruct_scalar_transport_flux(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& face_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    double diffusion_coefficient,
+    const ScalarBoundaryConditions& boundary_conditions = {},
+    bool bounded_convection = true,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
+    const std::vector<double>* cell_diffusion = nullptr)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
+    if (face_flux.size() != nf || face_flux.dimension() != 1 ||
+        field.size() != nc || field.dimension() != 1 ||
+        geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf ||
+        geometry.cell_centres.size() != nc ||
+        geometry.cell_volumes.size() != nc ||
+        geometry.face_patch.size() != nf)
+        throw std::invalid_argument("reconstruct_scalar_transport_flux: dimensions do not match mesh");
+    if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
+        throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid diffusion coefficient");
+    if (cell_diffusion && cell_diffusion->size() != nc)
+        throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
+
+    Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
+    Field<double, Location::CELL> grad;
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+        convection_scheme == ConvectionScheme::TVD)
+        grad = compute_gradient_gauss(field, mesh);
+
+    const auto& own = mesh.ownership();
+    for (std::size_t f = 0; f < nf; ++f) {
+        const double F = face_flux(f);
+        if (!std::isfinite(F))
+            throw std::runtime_error("reconstruct_scalar_transport_flux: non-finite mass flux");
+        const std::size_t o = own.owner(f);
+        if (o >= nc) throw std::runtime_error("reconstruct_scalar_transport_flux: invalid owner");
+
+        double gamma = diffusion_coefficient;
+        double psi_face = field(o);
+        const auto nraw = own.neighbour(f);
+        if (nraw >= 0) {
+            const std::size_t n = static_cast<std::size_t>(nraw);
+            if (n >= nc) throw std::runtime_error("reconstruct_scalar_transport_flux: invalid neighbour");
+            const double area = geometry.face_area_vectors[f].mag();
+            const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
+            if (!(area > 0.0) || !(d > 0.0))
+                throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate internal face");
+            if (cell_diffusion) {
+                const double go=(*cell_diffusion)[o], gn=(*cell_diffusion)[n];
+                if (!(go >= 0.0) || !(gn >= 0.0) || !std::isfinite(go) || !std::isfinite(gn))
+                    throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
+                gamma = (go > 0.0 && gn > 0.0) ? 2.0*go*gn/(go+gn) : 0.0;
+            }
+            const double up = F >= 0.0 ? field(o) : field(n);
+            psi_face = up;
+            if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                convection_scheme == ConvectionScheme::TVD) {
+                const std::size_t u = F >= 0.0 ? o : n;
+                const std::size_t dcell = F >= 0.0 ? n : o;
+                const double gx=grad.component_data(0)[u];
+                const double gy=grad.component_data(1)[u];
+                const double gz=grad.component_data(2)[u];
+                const auto& Cu=geometry.cell_centres[u];
+                const auto& Cf=geometry.face_centres[f];
+                const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
+                double high=field(u)+increment;
+                if (convection_scheme == ConvectionScheme::TVD) {
+                    const auto& Cd=geometry.cell_centres[dcell];
+                    const double delta=field(dcell)-field(u);
+                    const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
+                    const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
+                    high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
+                }
+                psi_face=bounded_convection
+                    ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
+                    : high;
+            }
+            result(f)=F*psi_face - gamma*area/d*(field(n)-field(o));
+        } else {
+            const std::size_t patch=geometry.face_patch[f];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY) {
+                result(f)=0.0;
+                continue;
+            }
+            ScalarBoundaryCondition bc;
+            if (face_conditions && face_conditions->has(f)) {
+                const auto& r=face_conditions->conditions[f];
+                bc.type = r.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE
+                    ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::FIXED_GRADIENT;
+                bc.value = r.value;
+                bc.gradient = r.value;
+            } else if (patch < mesh.boundary().n_patches()) {
+                const auto it=boundary_conditions.find(mesh.boundary().patch(patch).name);
+                if (it != boundary_conditions.end()) bc=it->second;
+            }
+            const double area=geometry.face_area_vectors[f].mag();
+            const double d=boundary_normal_distance(geometry,f,o);
+            if (!(area > 0.0) || !(d > 0.0))
+                throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate boundary face");
+            gamma = cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient;
+            if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                psi_face=bc.value;
+                result(f)=F*psi_face - gamma*area/d*(psi_face-field(o));
+            } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                psi_face=field(o)+bc.gradient*d;
+                result(f)=F*psi_face - gamma*area*bc.gradient;
+            } else {
+                // Zero-gradient: no diffusive boundary flux and psi_f=psi_P.
+                psi_face=field(o);
+                result(f)=F*psi_face;
+            }
+        }
+    }
+    return result;
+}
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
