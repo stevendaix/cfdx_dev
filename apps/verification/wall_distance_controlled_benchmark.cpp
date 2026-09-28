@@ -156,7 +156,7 @@ int main(int argc, char** argv)
 
         for (const auto method : methods()) {
             const auto t0 = std::chrono::steady_clock::now();
-            const auto result = compute_wall_distance(method, surface, grid, 80);
+            const auto result = compute_wall_distance(method, surface, grid, 500);
             const auto t1 = std::chrono::steady_clock::now();
 
             const auto m = compare_wall_distance(
@@ -175,6 +175,14 @@ int main(int argc, char** argv)
 
             const double ms =
                 std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+            if (method == WallDistanceMethod::POISSON && !result.converged) {
+                std::cerr << "FAIL Poisson did not converge at N=" << n
+                          << ": residual_inf=" << result.residual_inf
+                          << ", iterations=" << result.iterations
+                          << ", stopping_reason=" << result.stopping_reason << "\n";
+                return 4;
+            }
 
             rows.push_back({
                 n,
