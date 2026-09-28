@@ -117,6 +117,7 @@ int main(int argc, char** argv)
     const auto sizes = parse_sizes(argc, argv);
 
     std::vector<Row> rows;
+    bool poisson_failure = false;
 
     for (const auto n : sizes) {
         const double lo = -0.5;
@@ -151,8 +152,15 @@ int main(int argc, char** argv)
             return 2;
         }
 
+        const auto op = audit_poisson_operator(grid);
         std::cout << "N=" << n << ", h=" << std::setprecision(12) << h
-                  << ", samples=" << grid.points.size() << "\n";
+                  << ", samples=" << grid.points.size() << "\n"
+                  << "Poisson operator: fluid=" << op.fluid_nodes
+                  << ", fluid_fluid_faces=" << op.fluid_fluid_faces
+                  << ", solid_faces=" << op.solid_faces
+                  << ", outer_faces=" << op.outer_faces
+                  << ", diag=[" << op.min_diagonal << "," << op.max_diagonal << "]"
+                  << ", symmetry_error=" << op.symmetry_error << "\n";
 
         for (const auto method : methods()) {
             const auto t0 = std::chrono::steady_clock::now();
@@ -177,11 +185,11 @@ int main(int argc, char** argv)
                 std::chrono::duration<double, std::milli>(t1 - t0).count();
 
             if (method == WallDistanceMethod::POISSON && !result.converged) {
+                poisson_failure = true;
                 std::cerr << "FAIL Poisson did not converge at N=" << n
                           << ": residual_inf=" << result.residual_inf
                           << ", iterations=" << result.iterations
                           << ", stopping_reason=" << result.stopping_reason << "\n";
-                return 4;
             }
 
             rows.push_back({
@@ -235,5 +243,5 @@ int main(int argc, char** argv)
             << '\n';
     }
 
-    return 0;
+    return poisson_failure ? 4 : 0;
 }
