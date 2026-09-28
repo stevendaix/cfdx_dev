@@ -73,7 +73,11 @@ public:
     }
 
     bool update_values(const SparseMatrix& A) override {
-        if (!ready_) return setup(A);
+        if (!ready_) {
+            last_error_ =
+                "MGR numeric update requires an existing hierarchy; call setup() first";
+            return false;
+        }
         if (!validate_partition(A)) {
             last_error_ = "invalid MGR fine/coarse partition";
             return false;
@@ -373,8 +377,6 @@ private:
 
     void clear() {
         clear_state_only();
-        setup_count_ = 0;
-        numeric_updates_ = 0;
     }
 
     std::vector<std::size_t> fine_;
