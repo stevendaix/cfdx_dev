@@ -128,7 +128,7 @@ int main(int argc,char** argv)
             phi_ref[i]=L*y-0.5*y*y;
             d_ref[i]=y;
         }
-        const auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
+        auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
         std::size_t impl_it=0; double impl_residual=0.0;
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         rows.push_back({n,"single_wall",rel_l2(phi,phi_ref,grid.solid),
