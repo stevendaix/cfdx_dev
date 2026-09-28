@@ -178,6 +178,13 @@ public:
         const double dn=wd_norm(direction);
         if(!(dn>1e-30) || !(max_distance>0.0)) return std::numeric_limits<double>::infinity();
         const WallDistanceVec3 d=direction*(1.0/dn);
+        const auto cross=[](const WallDistanceVec3& a,const WallDistanceVec3& b) {
+            return WallDistanceVec3{
+                a.y*b.z-a.z*b.y,
+                a.z*b.x-a.x*b.z,
+                a.x*b.y-a.y*b.x
+            };
+        };
         double best=std::numeric_limits<double>::infinity();
         const double eps=1e-12*std::max(1.0,max_distance);
 
@@ -187,14 +194,14 @@ public:
             const auto& v2=surface_.points[tri.v[2]];
             const auto e1=v1-v0;
             const auto e2=v2-v0;
-            const auto h=wd_cross(d,e2);
+            const auto h=cross(d,e2);
             const double a=wd_dot(e1,h);
             if(std::abs(a)<1e-14) continue;
             const double inv_a=1.0/a;
             const auto s=p-v0;
             const double u=inv_a*wd_dot(s,h);
             if(u < -1e-12 || u > 1.0+1e-12) continue;
-            const auto q=wd_cross(s,e1);
+            const auto q=cross(s,e1);
             const double v=inv_a*wd_dot(d,q);
             if(v < -1e-12 || u+v > 1.0+1e-12) continue;
             const double t=inv_a*wd_dot(e2,q);
