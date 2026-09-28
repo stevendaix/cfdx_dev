@@ -1125,7 +1125,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     const WallSurface& s,const WallDistanceGrid& g,std::size_t max_iter,
     double epsilon=0.25,double relaxation=0.9,
     std::size_t* used_iter=nullptr,double* residual_out=nullptr,
-    double poisson_weight=1.0) {
+    double poisson_weight=1.0,
+    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr) {
     // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
     // (effectively a wall normal); H-J then propagates distance with that
     // direction, optionally blended with the evolving Eikonal direction.
@@ -1136,8 +1137,11 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     for(auto id:seeds) fixed[id]=1;
 
     std::size_t poisson_iter=0; double poisson_residual=0.0;
-    const auto phi=poisson_potential(bvh,g,std::max<std::size_t>(40,max_iter),1.5,
+    const std::size_t poisson_max_iter=std::max<std::size_t>(200,4*max_iter);
+    const auto phi=poisson_potential(bvh,g,poisson_max_iter,1.5,
                                      &poisson_iter,&poisson_residual);
+    if(poisson_iter_out) *poisson_iter_out=poisson_iter;
+    if(poisson_residual_out) *poisson_residual_out=poisson_residual;
 
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     auto grad_comp=[&](const std::vector<double>& f,std::size_t id,int a)->double {
