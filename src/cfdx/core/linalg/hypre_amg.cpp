@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/linear_operator.h"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -188,6 +189,25 @@ AMGMemoryPolicy NativeAMGPreconditioner::memory_policy() const noexcept {
 
 std::size_t NativeAMGPreconditioner::coarse_size() const noexcept {
     return impl_->amg ? impl_->amg->coarse_size() : 0;
+}
+
+std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_sizes() const {
+    return impl_->amg ? impl_->amg->hierarchy_level_sizes()
+                      : std::vector<std::size_t>{};
+}
+
+auto NativeAMGPreconditioner::first_prolongation_nnz() const -> std::size_t {
+    return impl_->amg ? impl_->amg->first_prolongation_nnz() : 0;
+}
+
+double NativeAMGPreconditioner::prolongation_row_sum_min() const {
+    if (!impl_->amg) return std::numeric_limits<double>::quiet_NaN();
+    return impl_->amg->prolongation_row_sum_min();
+}
+
+double NativeAMGPreconditioner::prolongation_row_sum_max() const {
+    if (!impl_->amg) return std::numeric_limits<double>::quiet_NaN();
+    return impl_->amg->prolongation_row_sum_max();
 }
 
 std::size_t NativeAMGPreconditioner::hierarchy_builds() const noexcept {
