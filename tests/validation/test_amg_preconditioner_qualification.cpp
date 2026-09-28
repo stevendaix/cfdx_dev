@@ -165,6 +165,12 @@ int main() {
                   << " hierarchy_builds=" << amg.hierarchy_builds()
                   << " numeric_updates=" << amg.numeric_updates()
                   << " coarse_size=" << amg.coarse_size()
+                  << " levels=";
+        for (const auto level_n : amg.hierarchy_level_sizes())
+            std::cout << level_n << ",";
+        std::cout << " prolongation_nnz=" << amg.first_prolongation_nnz()
+                  << " P_row_sum=[" << amg.prolongation_row_sum_min()
+                  << "," << amg.prolongation_row_sum_max() << "]"
                   << " ms=" << ms << '\\n';
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(std::isfinite(true_r));
