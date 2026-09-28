@@ -49,6 +49,8 @@ struct WallDistanceResult {
     std::string method;
     std::size_t iterations{0};
     double residual_inf{0.0};
+    std::size_t auxiliary_iterations{0};
+    double auxiliary_residual_inf{0.0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -1382,14 +1384,19 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
-        case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,&r.iterations,&r.residual_inf);
+        case WallDistanceMethod::HYBRID_POISSON_EIKONAL: {
+            std::size_t poisson_iter=0; double poisson_residual=0.0;
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,
+                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual);
+            r.auxiliary_iterations=poisson_iter;
+            r.auxiliary_residual_inf=poisson_residual;
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
+        }
     }
     for(std::size_t i=0;i<r.distance.size();++i)
         if(g.solid[i] || !std::isfinite(r.distance[i]) || r.distance[i]<0.0) r.valid[i]=0;
