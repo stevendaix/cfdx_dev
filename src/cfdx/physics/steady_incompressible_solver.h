@@ -2574,7 +2574,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 cfdx::core::Field<double, cfdx::core::Location::CELL> source(
                     mesh.n_cells(), "momentum_source_reconstructed", "N/m3", 1);
                 ScalarBoundaryConditions scalar_bcs;
-                const char field_name[] = {'U', '.', static_cast<char>('x' + d), '\0'};
                 for (const auto& [name, bc] : velocity_bcs) {
                     if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                         scalar_bcs[name] = {ScalarBoundaryType::FIXED_VALUE, bc.value.x, 0.0};
@@ -2587,9 +2586,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
                     component(cell) = U.component_data(d)[cell];
-                    source(cell) =
-                        controls.body_force.component_data(d) -
-                        final_grad_p.component_data(d)[cell];
+                    const double body_component = d == 0 ? controls.body_force.x
+                        : (d == 1 ? controls.body_force.y : controls.body_force.z);
+                    source(cell) = body_component - final_grad_p.component_data(d)[cell];
                 }
                 const auto flux = reconstruct_scalar_transport_flux(
                     mesh, geometry, mass_flux, component, mu_eff, scalar_bcs,
