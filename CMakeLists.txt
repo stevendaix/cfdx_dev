@@ -283,6 +283,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
+    src/cfdx/core/linalg/coupled_amg_schur.h
     src/cfdx/core/linalg/native_fieldsplit.h
     src/cfdx/core/linalg/mixed_precision.h
     src/cfdx/core/linalg/chebyshev_smoother.h
@@ -422,6 +423,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
+    add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
 
     # Unit tests - Numerical
@@ -637,6 +639,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
+    add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
