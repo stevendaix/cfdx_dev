@@ -698,6 +698,62 @@ inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceGrid& g
     return a;
 }
 
+inline double poisson_wall_offset(const WallDistanceBvh& bvh,
+                                      const WallDistanceVec3& p,
+                                      const WallDistanceVec3& q,
+                                      double h) {
+    const double d=bvh.nearest_distance(p);
+    if(!std::isfinite(d) || d<=0.0) return std::max(1e-12,h);
+    const auto dir=(q-p)*(1.0/std::max(wd_norm(q-p),1e-30));
+    const auto n=bvh.nearest_normal(p);
+    const double align=std::abs(wd_dot(n,dir));
+    if(align<0.25) return std::min(d,h);
+    return std::clamp(d/align,1e-12,h);
+}
+
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    double l=0.0;
+    auto add_face=[&](std::size_t q,bool exists,double h) {
+        if(!exists) return;
+        if(g.solid[q]) {
+            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            l-=f[id]/(h*delta);
+        } else if(std::isfinite(f[q])) {
+            l+=(f[q]-f[id])/(h*h);
+        }
+    };
+    const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
+    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
+    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
+    return l;
+}
+
+inline double poisson_diagonal(const WallDistanceBvh& bvh,
+                               const WallDistanceGrid& g,
+                               std::size_t id) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    double d=0.0;
+    auto add_face=[&](std::size_t q,bool exists,double h) {
+        if(!exists) return;
+        d += g.solid[q] ? 1.0/(h*poisson_wall_offset(bvh,g.points[id],g.points[q],h))
+                        : 1.0/(h*h);
+    };
+    const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
+    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
+    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
+    return d;
+}
+
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                               std::size_t max_iter,double,
                                               std::size_t* used_iter=nullptr,
@@ -730,15 +786,7 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     };
 
     auto diagonal=[&](std::size_t id) {
-        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        double d=0.0;
-        if(i>0) d += 1.0/(g.spacing.x*g.spacing.x);
-        if(i+1<g.nx) d += 1.0/(g.spacing.x*g.spacing.x);
-        if(j>0) d += 1.0/(g.spacing.y*g.spacing.y);
-        if(j+1<g.ny) d += 1.0/(g.spacing.y*g.spacing.y);
-        if(k>0) d += 1.0/(g.spacing.z*g.spacing.z);
-        if(k+1<g.nz) d += 1.0/(g.spacing.z*g.spacing.z);
-        return d;
+        return poisson_diagonal(bvh,g,id);
     };
 
     auto apply=[&](const std::vector<double>& x,std::vector<double>& y) {
@@ -747,7 +795,7 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
             if(!is_fluid(g,id)) continue;
             // A = -L, with the same solid Dirichlet and outer Neumann
             // treatment used by poisson_residual_inf()/laplacian_at().
-            y[id] = -laplacian_at(x,g,id);
+            y[id] = -poisson_laplacian_at(bvh,x,g,id);
         }
     };
 
@@ -860,36 +908,36 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
                 if(i>0&&i+1<g.nx&&!g.solid[g.index(i-1,j,k)]&&!g.solid[g.index(i+1,j,k)]) return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
                 if(i+1<g.nx) {
                     const auto q=g.index(i+1,j,k);
-                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.x;
+                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x);
                     return (phi[q]-phi[id])/g.spacing.x;
                 }
                 if(i>0) {
                     const auto q=g.index(i-1,j,k);
-                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.x;
+                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x);
                     return (phi[id]-phi[q])/g.spacing.x;
                 }
             } else if(axis==1) {
                 if(j>0&&j+1<g.ny&&!g.solid[g.index(i,j-1,k)]&&!g.solid[g.index(i,j+1,k)]) return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
                 if(j+1<g.ny) {
                     const auto q=g.index(i,j+1,k);
-                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.y;
+                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y);
                     return (phi[q]-phi[id])/g.spacing.y;
                 }
                 if(j>0) {
                     const auto q=g.index(i,j-1,k);
-                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.y;
+                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y);
                     return (phi[id]-phi[q])/g.spacing.y;
                 }
             } else {
                 if(k>0&&k+1<g.nz&&!g.solid[g.index(i,j,k-1)]&&!g.solid[g.index(i,j,k+1)]) return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
                 if(k+1<g.nz) {
                     const auto q=g.index(i,j,k+1);
-                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.z;
+                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z);
                     return (phi[q]-phi[id])/g.spacing.z;
                 }
                 if(k>0) {
                     const auto q=g.index(i,j,k-1);
-                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.z;
+                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z);
                     return (phi[id]-phi[q])/g.spacing.z;
                 }
             }
