@@ -199,6 +199,8 @@ int main(int argc, char** argv)
                       << ", residual=" << result.residual_inf
                       << ", violations=" << m.monotonicity_violations
                       << ", iterations=" << result.iterations
+                      << ", converged=" << (result.converged ? "true" : "false")
+                      << ", stopping_reason=" << result.stopping_reason
                       << ", ms=" << ms << "\n";
         }
     }
