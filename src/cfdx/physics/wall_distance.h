@@ -34,6 +34,15 @@ struct WallSurface {
     std::vector<WallTriangle> triangles;
 };
 
+enum class WallDistanceConvergenceStatus {
+    DIRECT,
+    CONVERGED,
+    MAX_ITER,
+    RESIDUAL_TOO_HIGH,
+    RESIDUAL_STAGNATION,
+    NOT_REPORTED
+};
+
 struct WallDistanceResult {
     std::vector<double> distance;
     std::vector<unsigned char> valid;
@@ -42,6 +51,7 @@ struct WallDistanceResult {
     double residual_inf{0.0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
+    WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
 };
 
 enum class WallDistanceMethod {
@@ -454,6 +464,8 @@ inline std::vector<double> eikonal_fast_sweep(const WallDistanceBvh& bvh,const W
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     const std::array<int,2> signs={-1,1};
     std::size_t it_used=max_iter;
+    std::size_t used=max_iter;
+    double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
         for(int sx:signs) for(int sy:signs) for(int sz:signs)
@@ -771,8 +783,15 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
     return poisson_distance(bvh,g,max_iter,smooth,used_iter,residual_out);
 }
 
+inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
+                                                        const std::vector<double>& d,
+                                                        const WallDistanceGrid& g,
+                                                        const std::vector<unsigned char>* fixed=nullptr);
+
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
-                                                        std::size_t max_iter,double gamma=0.05) {
+                                                        std::size_t max_iter,double gamma=0.05,
+                                                        std::size_t* used_iter=nullptr,
+                                                        double* residual_out=nullptr) {
     // NASA/Tucker transport form: U·∇d = 1 + Gamma ∇²d, with U derived
     // from the current distance field. Advection is first-order upwind and
     // diffusion is second-order central, matching the published formulation.
@@ -819,8 +838,17 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
             if(diag>0.0) { const double nd=rhs/diag; max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd; }
         }
         for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
-        if(max_change<1e-10*h) break;
+        if((it&3u)==3u || max_change<1e-10*h) {
+            final_residual=wall_distance_pde_residual_inf(
+                WallDistanceMethod::ADVECTION_DIFFUSION,d,g,&fixed);
+            if(final_residual<1e-6 && max_change<1e-8*h) {
+                used=it+1;
+                break;
+            }
+        }
     }
+    if(used_iter) *used_iter=used;
+    if(residual_out) *residual_out=final_residual;
     return d;
 }
 
@@ -962,10 +990,11 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
 inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const std::vector<double>& d,
-                                                        const WallDistanceGrid& g) {
+                                                        const WallDistanceGrid& g,
+                                                        const std::vector<unsigned char>* fixed) {
     double rmax=0.0;
     for(std::size_t id=0;id<d.size();++id) {
-        if(g.solid[id] || !std::isfinite(d[id])) continue;
+        if(g.solid[id] || !std::isfinite(d[id]) || (fixed && (*fixed)[id])) continue;
         if(method==WallDistanceMethod::EIKONAL) {
             rmax=std::max(rmax,std::abs(godunov_gradient_at(d,g,id)-1.0));
         } else if(method==WallDistanceMethod::HAMILTON_JACOBI ||
@@ -989,10 +1018,21 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                     }
                     return 0.0;
                 };
-                double gx=0.0,gy=0.0,gz=0.0;
-                if(i>0 && i+1<g.nx) gx=(d[g.index(i+1,j,k)]-d[g.index(i-1,j,k)])/(2*g.spacing.x);
-                if(j>0 && j+1<g.ny) gy=(d[g.index(i,j+1,k)]-d[g.index(i,j-1,k)])/(2*g.spacing.y);
-                if(k>0 && k+1<g.nz) gz=(d[g.index(i,j,k+1)]-d[g.index(i,j,k-1)])/(2*g.spacing.z);
+                auto one=[&](int axis)->double {
+                    double gm=0.0,gp=0.0;
+                    if(axis==0) {
+                        if(i>0 && !g.solid[g.index(i-1,j,k)]) gm=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
+                        if(i+1<g.nx && !g.solid[g.index(i+1,j,k)]) gp=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
+                    } else if(axis==1) {
+                        if(j>0 && !g.solid[g.index(i,j-1,k)]) gm=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
+                        if(j+1<g.ny && !g.solid[g.index(i,j+1,k)]) gp=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
+                    } else {
+                        if(k>0 && !g.solid[g.index(i,j,k-1)]) gm=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
+                        if(k+1<g.nz && !g.solid[g.index(i,j,k+1)]) gp=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
+                    }
+                    return std::max(gm,0.0)+std::min(gp,0.0);
+                };
+                const double gx=one(0),gy=one(1),gz=one(2);
                 const double inv=1.0/std::max(std::sqrt(gx*gx+gy*gy+gz*gz),1e-14);
                 const double ux=gx*inv,uy=gy*inv,uz=gz*inv;
                 const double transport=upwind(0,g.spacing.x,ux)+upwind(1,g.spacing.y,uy)+upwind(2,g.spacing.z,uz);
@@ -1014,6 +1054,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.distance=exact_reference(s,g);
             r.converged=true;
             r.stopping_reason="direct";
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
             break;
         case WallDistanceMethod::SEARCH_BASED:
             r.distance=search_based_reference(s,g,4.0*std::min({g.spacing.x,g.spacing.y,g.spacing.z}));
@@ -1024,6 +1065,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r=graph_wave(s,g,false);
             r.converged=true;
             r.stopping_reason="graph_complete";
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
             break;
         case WallDistanceMethod::DIRECTIONAL_MESH_WAVE:
             r=graph_wave(s,g,true);
@@ -1032,34 +1074,51 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         case WallDistanceMethod::POISSON:
             r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf);
-            r.converged = r.iterations < iterations;
-            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
+                                   (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason = r.converged ? "converged" :
+                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         case WallDistanceMethod::EIKONAL:
             r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations);
-            r.converged = r.iterations < iterations;
-            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            const WallDistanceBvh bvh(s);
+            std::vector<unsigned char> fixed(g.points.size(),0);
+            for(const auto id:wall_seed_nodes(bvh,g,1.6*std::min({g.spacing.x,g.spacing.y,g.spacing.z}))) fixed[id]=1;
+            r.residual_inf=wall_distance_pde_residual_inf(WallDistanceMethod::EIKONAL,r.distance,g,&fixed);
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
+                                   (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason = r.converged ? "converged" :
+                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         case WallDistanceMethod::HAMILTON_JACOBI:
             r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
-            r.converged = r.iterations < iterations;
-            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
+                                   (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason = r.converged ? "converged" :
+                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         case WallDistanceMethod::ADVECTION_DIFFUSION:
-            r.distance=advection_diffusion_distance(s,g,iterations,0.05);
-            r.converged=false;
-            r.stopping_reason="convergence_not_reported";
+            r.distance=advection_diffusion_distance(s,g,iterations,0.05,&r.iterations,&r.residual_inf);
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
+                                   (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason = r.converged ? "converged" :
+                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
             r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,&r.iterations,&r.residual_inf);
-            r.converged = r.iterations < iterations;
-            r.stopping_reason = r.converged ? "converged" : "max_iter";
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
+                                   (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason = r.converged ? "converged" :
+                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
     }
     for(std::size_t i=0;i<r.distance.size();++i)
         if(g.solid[i] || !std::isfinite(r.distance[i]) || r.distance[i]<0.0) r.valid[i]=0;
-    if(r.residual_inf==0.0 && (method==WallDistanceMethod::EIKONAL || method==WallDistanceMethod::ADVECTION_DIFFUSION || method==WallDistanceMethod::HYBRID_POISSON_EIKONAL))
-        r.residual_inf=wall_distance_pde_residual_inf(method,r.distance,g);
     return r;
 }
 
