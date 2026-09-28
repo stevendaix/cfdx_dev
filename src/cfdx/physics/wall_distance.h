@@ -674,69 +674,153 @@ inline double poisson_residual_inf(const std::vector<double>& phi,
 }
 
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
-                                              std::size_t max_iter,double smooth,
+                                              std::size_t max_iter,double,
                                               std::size_t* used_iter=nullptr,
                                               double* residual_out=nullptr) {
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    // Solve the actual elliptic boundary-value problem
+    //
+    //     -laplacian(phi) = 1,    phi = 0 on the wall,
+    //
+    // with homogeneous Neumann treatment at the outer computational boundary.
+    //
+    // Solid neighbours are Dirichlet values phi_b=0 in the discrete operator;
+    // they are NOT removed from the stencil and no artificial zero-valued
+    // seed band is imposed. This keeps the PDE boundary at the represented
+    // wall instead of moving it by an arbitrary multiple of h.
+    //
+    // The operator is symmetric positive definite for a domain connected to
+    // at least one Dirichlet wall. Use preconditioned conjugate gradients,
+    // as OpenFOAM does for its Poisson wall-distance solve (PCG/DIC or GAMG).
+    (void)bvh;
+
     const std::size_t n=g.points.size();
     std::vector<double> phi(n,0.0);
-    std::vector<unsigned char> fixed(n,0);
-    for(auto id:seeds) fixed[id]=1;
-    // Solve ∇²phi = -1 with phi=0 on the wall seed band. Missing outer
-    // neighbours are omitted, which is the discrete zero-normal-gradient BC.
-    const double omega=std::clamp(smooth,0.05,1.95);
-    std::size_t used=max_iter;
-    double final_residual=std::numeric_limits<double>::infinity();
-    for(std::size_t it=0;it<max_iter;++it) {
-        double max_change=0.0;
+    std::vector<double> r(n,0.0);
+    std::vector<double> z(n,0.0);
+    std::vector<double> p(n,0.0);
+    std::vector<double> Ap(n,0.0);
+
+    auto is_fluid=[](const WallDistanceGrid& grid,std::size_t id) {
+        return !grid.solid[id];
+    };
+
+    auto diagonal=[&](std::size_t id) {
+        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+        double d=0.0;
+        if(i>0 || i+1<g.nx) d += 2.0/(g.spacing.x*g.spacing.x);
+        if(j>0 || j+1<g.ny) d += 2.0/(g.spacing.y*g.spacing.y);
+        if(k>0 || k+1<g.nz) d += 2.0/(g.spacing.z*g.spacing.z);
+        return d;
+    };
+
+    auto apply=[&](const std::vector<double>& x,std::vector<double>& y) {
+        std::fill(y.begin(),y.end(),0.0);
         for(std::size_t id=0;id<n;++id) {
-            if(g.solid[id] || fixed[id]) { phi[id]=0.0; continue; }
-            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-            double sum=0.0, diag=0.0;
-            auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double hh) {
-                const double w=1.0/(hh*hh);
-                const bool fm=has_minus && !g.solid[minus];
-                const bool fp=has_plus && !g.solid[plus];
-                // Nodal finite-difference treatment:
-                //   fluid-fluid : standard central stencil;
-                //   fluid-solid : solid node is the Dirichlet phi=0 value;
-                //   outer boundary : homogeneous Neumann is imposed by a
-                //                     mirrored ghost node, hence 2*(fluid-phi).
-                if(fm && fp) {
-                    sum+=w*(phi[minus]+phi[plus]);
-                    diag+=2.0*w;
-                } else if(fm) {
-                    if(has_plus) { sum+=w*phi[minus]; diag+=2.0*w; }
-                    else { sum+=2.0*w*phi[minus]; diag+=2.0*w; }
-                } else if(fp) {
-                    if(has_minus) { sum+=w*phi[plus]; diag+=2.0*w; }
-                    else { sum+=2.0*w*phi[plus]; diag+=2.0*w; }
-                } else if(has_minus || has_plus) {
-                    // Both existing neighbours are solid: phi=0 on both sides.
-                    diag+=2.0*w;
-                }
-            };
-            const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
-            const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
-            const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
-            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
-            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
-            if(diag==0.0) continue;
-            const double target=(sum+1.0)/diag;
-            const double old=phi[id];
-            phi[id]=(1.0-omega)*old+omega*target;
-            max_change=std::max(max_change,std::abs(phi[id]-old));
+            if(!is_fluid(g,id)) continue;
+            // A = -L, with the same solid Dirichlet and outer Neumann
+            // treatment used by poisson_residual_inf()/laplacian_at().
+            y[id] = -laplacian_at(x,g,id);
         }
-        if((it&3u)==3u || max_change<1e-10*h*h) {
-            final_residual=poisson_residual_inf(phi,g,fixed);
-            if(final_residual<1e-9 && max_change<1e-10*h*h) { used=it+1; break; }
+    };
+
+    // b = 1 in every fluid degree of freedom.
+    apply(phi,Ap);
+    double residual2=0.0;
+    double residual_inf=0.0;
+    std::size_t fluid_count=0;
+    for(std::size_t id=0;id<n;++id) {
+        if(!is_fluid(g,id)) continue;
+        r[id]=1.0-Ap[id];
+        residual2 += r[id]*r[id];
+        residual_inf=std::max(residual_inf,std::abs(r[id]));
+        ++fluid_count;
+    }
+
+    if(fluid_count==0) {
+        if(used_iter) *used_iter=0;
+        if(residual_out) *residual_out=0.0;
+        return phi;
+    }
+
+    for(std::size_t id=0;id<n;++id) {
+        if(is_fluid(g,id)) {
+            z[id]=r[id]/diagonal(id);
+            p[id]=z[id];
         }
     }
 
+    double rz_old=0.0;
+    for(std::size_t id=0;id<n;++id)
+        if(is_fluid(g,id)) rz_old += r[id]*z[id];
+
+    const double initial_residual_inf=residual_inf;
+    std::size_t used=0;
+    constexpr double abs_tol=1e-10;
+    constexpr double breakdown_tol=1e-30;
+
+    if(residual_inf<=abs_tol) {
+        if(used_iter) *used_iter=0;
+        if(residual_out) *residual_out=residual_inf;
+        return phi;
+    }
+
+    for(std::size_t it=0;it<max_iter;++it) {
+        apply(p,Ap);
+
+        double pAp=0.0;
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) pAp += p[id]*Ap[id];
+
+        if(!(pAp>breakdown_tol) || !std::isfinite(pAp)) {
+            used=it;
+            break;
+        }
+
+        const double alpha=rz_old/pAp;
+        if(!std::isfinite(alpha)) {
+            used=it;
+            break;
+        }
+
+        double max_change=0.0;
+        for(std::size_t id=0;id<n;++id) {
+            if(!is_fluid(g,id)) continue;
+            const double old=phi[id];
+            phi[id] += alpha*p[id];
+            r[id] -= alpha*Ap[id];
+            max_change=std::max(max_change,std::abs(phi[id]-old));
+        }
+
+        residual_inf=0.0;
+        double rz_new=0.0;
+        for(std::size_t id=0;id<n;++id) {
+            if(!is_fluid(g,id)) continue;
+            residual_inf=std::max(residual_inf,std::abs(r[id]));
+            z[id]=r[id]/diagonal(id);
+            rz_new += r[id]*z[id];
+        }
+
+        used=it+1;
+        if(residual_inf<=abs_tol) break;
+
+        if(!(std::isfinite(rz_new)) || rz_old<=breakdown_tol) break;
+
+        const double beta=rz_new/rz_old;
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) p[id]=z[id]+beta*p[id];
+
+        rz_old=rz_new;
+
+        // A stagnating Krylov iteration is a numerical failure, not
+        // convergence. Keep the residual visible to the caller.
+        if(max_change==0.0 && residual_inf>abs_tol) break;
+    }
+
     if(used_iter) *used_iter=used;
-    if(residual_out) *residual_out=final_residual;
+    if(residual_out) *residual_out=residual_inf;
+
+    (void)initial_residual_inf;
+    (void)residual2;
     return phi;
 }
 
