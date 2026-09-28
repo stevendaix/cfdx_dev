@@ -499,7 +499,8 @@ reconstruct_scalar_transport_flux(
     bool bounded_convection = true,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const ScalarBoundaryFaceConditions* face_conditions = nullptr,
-    const std::vector<double>* cell_diffusion = nullptr)
+    const std::vector<double>* cell_diffusion = nullptr,
+    const ScalarBoundaryFaceValues* face_values = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
@@ -588,6 +589,14 @@ reconstruct_scalar_transport_flux(
             } else if (patch < mesh.boundary().n_patches()) {
                 const auto it=boundary_conditions.find(mesh.boundary().patch(patch).name);
                 if (it != boundary_conditions.end()) bc=it->second;
+                if (face_values) {
+                    const auto fv=face_values->values.find(mesh.boundary().patch(patch).name);
+                    if (fv != face_values->values.end() && f < fv->second.size() &&
+                        std::isfinite(fv->second[f])) {
+                        bc.type=ScalarBoundaryType::FIXED_VALUE;
+                        bc.value=fv->second[f];
+                    }
+                }
             }
             const double area=geometry.face_area_vectors[f].mag();
             const double d=boundary_normal_distance(geometry,f,o);
