@@ -381,31 +381,21 @@ private:
             }
         }
 
-        // Direct interpolation is only useful when an F point has a
-        // meaningful set of nearby C points. The previous implementation
-        // accepted a single C neighbour after the greedy MIS pass. On a
-        // 1-D Poisson chain this produced C/F/C spacing of roughly 3:1 and
-        // therefore piecewise-constant interpolation for one of the F points.
-        // That destroys the linear near-null-space mode and explains the
-        // N=4096 convergence collapse seen in qualification.
+        // Use classical Ruge-Stuben-style interpolation on the C/F
+        // splitting above. The greedy MIS guarantees that every F point has
+        // at least one strong C neighbour; direct distance-one interpolation
+        // is nevertheless insufficient on a 1-D Poisson chain when an F point
+        // has only one C neighbour. In that case the linear near-null-space
+        // mode must be represented through neighbouring F points.
         //
-        // Perform a deterministic second pass: whenever an F point has two
-        // or more strong neighbours but fewer than two strong C neighbours,
-        // promote it to C. This is the minimal RS-style completion needed by
-        // the direct distance-one interpolation used below; it does not alter
-        // the matrix or introduce a fallback preconditioner.
-        for (std::size_t i = 0; i < n; ++i) {
-            if (point[i] != Point::Fine) continue;
-            std::size_t coarse_neighbors = 0;
-            for (const std::size_t j : neighborhood[i]) {
-                if (point[j] == Point::Coarse) ++coarse_neighbors;
-            }
-            if (coarse_neighbors == 0 ||
-                (neighborhood[i].size() >= 2 && coarse_neighbors < 2)) {
-                point[i] = Point::Coarse;
-            }
-        }
-
+        // For an F point i, use the classical strong-connection formula
+        //
+        //   w_ij = -( a_ij + sum_{k in F_i} a_ik a_kj /
+        //                         sum_{m in C_k} a_km ) / a_ii
+        //
+        // for j in C_i. This preserves the local linear mode without
+        // promoting F points to C and therefore avoids destroying the
+        // coarsening ratio.
         std::vector<std::size_t> coarse_index(n, n);
         coarse_n = 0;
         for (std::size_t i = 0; i < n; ++i)
@@ -414,6 +404,15 @@ private:
         const auto* row = level.A.row_offsets_data();
         const auto* col = level.A.columns_data();
         const auto* val = level.A.values_data();
+
+        auto matrix_value = [&](std::size_t i, std::size_t j) {
+            double value = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == j) value += val[k];
+            }
+            return value;
+        };
+
         prolongation.assign(n, {});
         aggregate.assign(n, 0);
         for (std::size_t i = 0; i < n; ++i) {
@@ -423,40 +422,70 @@ private:
                 continue;
             }
 
-            std::vector<std::pair<std::size_t, double>> raw;
-            double raw_sum = 0.0;
-            double magnitude_sum = 0.0;
             const double diagonal = 1.0 / level.inv_diag[i];
+            std::map<std::size_t, double> raw;
+            double raw_sum = 0.0;
+
+            // Direct strong C neighbours.
             for (const std::size_t j : neighborhood[i]) {
                 if (point[j] != Point::Coarse) continue;
-                double aij = 0.0;
-                for (std::size_t k = row[i]; k < row[i + 1]; ++k)
-                    if (col[k] == j) aij += val[k];
-                const double weight = -aij / diagonal;
-                raw.push_back({coarse_index[j], weight});
-                raw_sum += weight;
-                magnitude_sum += std::abs(weight);
+                const double contribution =
+                    -matrix_value(i, j) / diagonal;
+                raw[coarse_index[j]] += contribution;
+                raw_sum += contribution;
             }
 
-            if (std::abs(raw_sum) <= 1e-30 || !std::isfinite(raw_sum)) {
-                raw_sum = magnitude_sum;
-                for (auto& entry : raw) entry.second = std::abs(entry.second);
-            }
-            if (!(std::abs(raw_sum) > 1e-30) || !std::isfinite(raw_sum)) {
-                const double uniform = 1.0 / static_cast<double>(raw.size());
-                for (auto& entry : raw) entry.second = uniform;
-            } else {
-                for (auto& entry : raw) entry.second /= raw_sum;
-            }
+            // Classical distance-two contribution through strong F neighbours.
+            for (const std::size_t k : neighborhood[i]) {
+                if (point[k] != Point::Fine) continue;
 
-            double largest = -1.0;
-            for (const auto& entry : raw) {
-                prolongation[i].push_back(entry);
-                if (std::abs(entry.second) >= largest) {
-                    largest = std::abs(entry.second);
-                    aggregate[i] = entry.first;
+                double c_row_sum = 0.0;
+                for (const std::size_t j : neighborhood[k]) {
+                    if (point[j] == Point::Coarse)
+                        c_row_sum += matrix_value(k, j);
+                }
+                if (!std::isfinite(c_row_sum) ||
+                    std::abs(c_row_sum) <= 1e-30) {
+                    continue;
+                }
+
+                const double aik = matrix_value(i, k);
+                for (const std::size_t j : neighborhood[k]) {
+                    if (point[j] != Point::Coarse) continue;
+                    const double contribution =
+                        -(aik * matrix_value(k, j) / c_row_sum) / diagonal;
+                    raw[coarse_index[j]] += contribution;
+                    raw_sum += contribution;
                 }
             }
+
+            if (raw.empty()) continue;
+
+            // Preserve the constant near-null-space mode. In particular, do
+            // not replace signed interpolation weights by absolute values:
+            // that changes the interpolation operator and can compromise the
+            // SPD/Galerkin structure required by CG.
+            if (!std::isfinite(raw_sum) || std::abs(raw_sum) <= 1e-30) {
+                const double uniform =
+                    1.0 / static_cast<double>(raw.size());
+                for (const auto& [coarse, weight] : raw) {
+                    (void)weight;
+                    prolongation[i].push_back({coarse, uniform});
+                }
+            } else {
+                double largest = -1.0;
+                for (const auto& [coarse, weight] : raw) {
+                    const double normalized = weight / raw_sum;
+                    if (!std::isfinite(normalized)) continue;
+                    prolongation[i].push_back({coarse, normalized});
+                    if (std::abs(normalized) >= largest) {
+                        largest = std::abs(normalized);
+                        aggregate[i] = coarse;
+                    }
+                }
+            }
+            if (aggregate[i] == 0 && !prolongation[i].empty())
+                aggregate[i] = prolongation[i].front().first;
         }
     }
 
