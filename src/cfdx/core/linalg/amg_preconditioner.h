@@ -77,8 +77,12 @@ public:
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n);
             } else {
-                build_cf_interpolation(levels_.back(), strength_threshold_,
-                                       prolongation, aggregate, coarse_n);
+                if (!build_cf_interpolation(levels_.back(), strength_threshold_,
+                                            prolongation, aggregate, coarse_n)) {
+                    levels_.clear();
+                    first_aggregate_.clear();
+                    return false;
+                }
             }
             if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
                 break;
@@ -370,7 +374,7 @@ private:
         return strong;
     }
 
-    static void build_cf_interpolation(const Level& level,
+    static bool build_cf_interpolation(const Level& level,
                                        double strength_threshold,
                                        std::vector<TransferRow>& prolongation,
                                        std::vector<std::size_t>& aggregate,
@@ -622,7 +626,7 @@ private:
                     prolongation.clear();
                     aggregate.clear();
                     coarse_n = 0;
-                    return;
+                    return false;
                 }
                 prolongation[i].push_back({coarse, weight});
                 if (std::abs(weight) > largest) {
@@ -635,9 +639,10 @@ private:
                 prolongation.clear();
                 aggregate.clear();
                 coarse_n = 0;
-                return;
+                return false;
             }
         }
+        return true;
     }
 
     static void build_smoothed_aggregation_interpolation(
