@@ -1080,7 +1080,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
-        case WallDistanceMethod::EIKONAL:
+        case WallDistanceMethod::EIKONAL: {
             r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations);
             const WallDistanceBvh bvh(s);
             std::vector<unsigned char> fixed(g.points.size(),0);
@@ -1092,6 +1092,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
+        }
         case WallDistanceMethod::HAMILTON_JACOBI:
             r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
