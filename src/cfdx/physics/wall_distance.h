@@ -501,33 +501,29 @@ inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDis
 
 inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& g,
                            std::size_t id) {
+    // Finite-volume-compatible seven-point operator on the active fluid graph.
+    //
+    // Every fluid-fluid or fluid-solid face contributes exactly once with
+    // weight 1/h^2.  A missing outer neighbour is a zero-flux Neumann face and
+    // therefore contributes nothing.  This is deliberately different from
+    // the old mirrored-ghost stencil (2*(f_nb-f_i)): that stencil makes the
+    // matrix non-symmetric at an outer boundary (boundary row -2/h^2 versus
+    // interior row -1/h^2), so it is not a valid Euclidean-inner-product PCG
+    // operator.
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
     double l=0.0;
-    auto add_axis=[&](std::size_t minus,bool has_minus,std::size_t plus,bool has_plus,double h) {
+    auto add_face=[&](std::size_t q,bool exists,double h) {
+        if(!exists) return; // homogeneous Neumann: zero flux
         const double w=1.0/(h*h);
-        auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : f[q]; };
-        if(has_minus && has_plus) {
-            const double fm=value(minus), fp=value(plus);
-            if(std::isfinite(fm) && std::isfinite(fp))
-                l+=(fm-2.0*f[id]+fp)*w;
-        } else if(has_minus) {
-            const double fm=value(minus);
-            if(std::isfinite(fm))
-                // Missing outer neighbour: homogeneous Neumann ghost mirrors
-                // the existing neighbour, giving 2*(fm-f_i).
-                l+=2.0*(fm-f[id])*w;
-        } else if(has_plus) {
-            const double fp=value(plus);
-            if(std::isfinite(fp))
-                l+=2.0*(fp-f[id])*w;
-        }
+        const double fq=g.solid[q] ? 0.0 : f[q];
+        if(std::isfinite(fq)) l+=(fq-f[id])*w;
     };
     const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
     const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
     const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-    add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
-    add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
-    add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
+    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
+    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
+    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
     return l;
 }
 
@@ -619,7 +615,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
-        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+        // Pure Poisson mode deliberately does not overwrite the PDE solution with BVH seeds.
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=0.0;
             for(std::size_t id=0;id<d.size();++id) {
@@ -683,10 +679,10 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     //
     // with homogeneous Neumann treatment at the outer computational boundary.
     //
-    // Solid neighbours are Dirichlet values phi_b=0 in the discrete operator;
-    // they are NOT removed from the stencil and no artificial zero-valued
-    // seed band is imposed. This keeps the PDE boundary at the represented
-    // wall instead of moving it by an arbitrary multiple of h.
+    // Solid neighbours are Dirichlet values phi_b=0 in the discrete operator.
+    // Outer boundaries are homogeneous Neumann zero-flux faces.  The stencil
+    // is assembled as a symmetric face graph so PCG is mathematically valid.
+    // No artificial zero-valued seed band is imposed on the Poisson solution.
     //
     // The operator is symmetric positive definite for a domain connected to
     // at least one Dirichlet wall. Use preconditioned conjugate gradients,
@@ -707,9 +703,12 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     auto diagonal=[&](std::size_t id) {
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
         double d=0.0;
-        if(i>0 || i+1<g.nx) d += 2.0/(g.spacing.x*g.spacing.x);
-        if(j>0 || j+1<g.ny) d += 2.0/(g.spacing.y*g.spacing.y);
-        if(k>0 || k+1<g.nz) d += 2.0/(g.spacing.z*g.spacing.z);
+        if(i>0) d += 1.0/(g.spacing.x*g.spacing.x);
+        if(i+1<g.nx) d += 1.0/(g.spacing.x*g.spacing.x);
+        if(j>0) d += 1.0/(g.spacing.y*g.spacing.y);
+        if(j+1<g.ny) d += 1.0/(g.spacing.y*g.spacing.y);
+        if(k>0) d += 1.0/(g.spacing.z*g.spacing.z);
+        if(k+1<g.nz) d += 1.0/(g.spacing.z*g.spacing.z);
         return d;
     };
 
@@ -823,8 +822,6 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
                                              std::size_t max_iter,double smooth,
                                              std::size_t* used_iter=nullptr,
                                              double* residual_out=nullptr) {
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<double> phi=poisson_potential(bvh,g,max_iter,smooth,used_iter,residual_out);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<g.points.size();++id) if(!g.solid[id]) {
@@ -832,16 +829,40 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
         auto deriv=[&](int axis)->double {
             if(axis==0) {
                 if(i>0&&i+1<g.nx&&!g.solid[g.index(i-1,j,k)]&&!g.solid[g.index(i+1,j,k)]) return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
-                if(i+1<g.nx&&!g.solid[g.index(i+1,j,k)]) return (phi[g.index(i+1,j,k)]-phi[id])/g.spacing.x;
-                if(i>0&&!g.solid[g.index(i-1,j,k)]) return (phi[id]-phi[g.index(i-1,j,k)])/g.spacing.x;
+                if(i+1<g.nx) {
+                    const auto q=g.index(i+1,j,k);
+                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.x;
+                    return (phi[q]-phi[id])/g.spacing.x;
+                }
+                if(i>0) {
+                    const auto q=g.index(i-1,j,k);
+                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.x;
+                    return (phi[id]-phi[q])/g.spacing.x;
+                }
             } else if(axis==1) {
                 if(j>0&&j+1<g.ny&&!g.solid[g.index(i,j-1,k)]&&!g.solid[g.index(i,j+1,k)]) return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
-                if(j+1<g.ny&&!g.solid[g.index(i,j+1,k)]) return (phi[g.index(i,j+1,k)]-phi[id])/g.spacing.y;
-                if(j>0&&!g.solid[g.index(i,j-1,k)]) return (phi[id]-phi[g.index(i,j-1,k)])/g.spacing.y;
+                if(j+1<g.ny) {
+                    const auto q=g.index(i,j+1,k);
+                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.y;
+                    return (phi[q]-phi[id])/g.spacing.y;
+                }
+                if(j>0) {
+                    const auto q=g.index(i,j-1,k);
+                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.y;
+                    return (phi[id]-phi[q])/g.spacing.y;
+                }
             } else {
                 if(k>0&&k+1<g.nz&&!g.solid[g.index(i,j,k-1)]&&!g.solid[g.index(i,j,k+1)]) return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
-                if(k+1<g.nz&&!g.solid[g.index(i,j,k+1)]) return (phi[g.index(i,j,k+1)]-phi[id])/g.spacing.z;
-                if(k>0&&!g.solid[g.index(i,j,k-1)]) return (phi[id]-phi[g.index(i,j,k-1)])/g.spacing.z;
+                if(k+1<g.nz) {
+                    const auto q=g.index(i,j,k+1);
+                    if(g.solid[q]) return (0.0-phi[id])/g.spacing.z;
+                    return (phi[q]-phi[id])/g.spacing.z;
+                }
+                if(k>0) {
+                    const auto q=g.index(i,j,k-1);
+                    if(g.solid[q]) return (phi[id]-0.0)/g.spacing.z;
+                    return (phi[id]-phi[q])/g.spacing.z;
+                }
             }
             return 0.0;
         };
