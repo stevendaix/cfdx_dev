@@ -632,14 +632,15 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     return d;
 }
 
-inline double poisson_residual_inf(const std::vector<double>& phi,
+inline double poisson_residual_inf(const WallDistanceBvh& bvh,
+                                      const std::vector<double>& phi,
                                       const WallDistanceGrid& g,
                                       const std::vector<unsigned char>& fixed) {
-    // Residual must use exactly the same operator as the linear solve.
+    // Public diagnostic: use exactly the same cut-face operator as PCG.
     double rmax=0.0;
     for(std::size_t id=0;id<phi.size();++id) {
         if(g.solid[id] || fixed[id] || !std::isfinite(phi[id])) continue;
-        rmax=std::max(rmax,std::abs(-laplacian_at(phi,g,id)-1.0));
+        rmax=std::max(rmax,std::abs(-poisson_laplacian_at(bvh,phi,g,id)-1.0));
     }
     return rmax;
 }
@@ -655,44 +656,66 @@ struct WallDistancePoissonAudit {
     double symmetry_error{0.0};
 };
 
-inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceGrid& g) {
+inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceBvh& bvh,
+                                                   const WallDistanceGrid& g) {
     WallDistancePoissonAudit a;
     const std::size_t n=g.points.size();
+
+    auto offdiag=[&](std::size_t row,std::size_t col)->double {
+        if(g.solid[row] || g.solid[col]) return 0.0;
+        const std::size_t rk=row/(g.nx*g.ny), rr=row%(g.nx*g.ny), rj=rr/g.nx, ri=rr%g.nx;
+        const std::size_t ck=col/(g.nx*g.ny), cr=col%(g.nx*g.ny), cj=cr/g.nx, ci=cr%g.nx;
+        if(rj==cj && rk==ck && (ri+1==ci || ci+1==ri))
+            return -1.0/(g.spacing.x*g.spacing.x);
+        if(ri==ci && rk==ck && (rj+1==cj || cj+1==rj))
+            return -1.0/(g.spacing.y*g.spacing.y);
+        if(ri==ci && rj==cj && (rk+1==ck || ck+1==rk))
+            return -1.0/(g.spacing.z*g.spacing.z);
+        return 0.0;
+    };
+
     for(std::size_t id=0;id<n;++id) {
         if(g.solid[id]) continue;
         ++a.fluid_nodes;
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        double diag=0.0;
-        auto axis=[&](std::size_t m,bool hm,std::size_t p,bool hp,double h) {
-            const double w=1.0/(h*h);
-            if(hm) {
-                diag+=w;
-                if(g.solid[m]) ++a.solid_faces;
-                else if(m>id) ++a.fluid_fluid_faces;
-            } else {
-                ++a.outer_faces;
-            }
-            if(hp) {
-                diag+=w;
-                if(g.solid[p]) ++a.solid_faces;
-                else if(p>id) ++a.fluid_fluid_faces;
-            } else {
-                ++a.outer_faces;
-            }
-        };
-        const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
-        const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
-        const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-        axis(xm,i>0,xp,i+1<g.nx,g.spacing.x);
-        axis(ym,j>0,yp,j+1<g.ny,g.spacing.y);
-        axis(zm,k>0,zp,k+1<g.nz,g.spacing.z);
+        const double diag=poisson_diagonal(bvh,g,id);
         a.min_diagonal=std::min(a.min_diagonal,diag);
         a.max_diagonal=std::max(a.max_diagonal,diag);
-        // The face-graph operator has diagonal equal to the sum of absolute
-        // off-diagonals, plus Dirichlet solid-face contributions. Hence it is
-        // symmetric and positive definite when a fluid component touches a wall.
-        a.min_diagonal_dominance=std::min(a.min_diagonal_dominance,diag);
+
+        double abs_offdiag_sum=0.0;
+        auto inspect=[&](std::size_t q,bool exists) {
+            if(!exists) {
+                ++a.outer_faces;
+                return;
+            }
+            if(g.solid[q]) {
+                ++a.solid_faces;
+                return;
+            }
+            if(q>id) ++a.fluid_fluid_faces;
+            abs_offdiag_sum += std::abs(offdiag(id,q));
+            a.symmetry_error=std::max(
+                a.symmetry_error,
+                std::abs(offdiag(id,q)-offdiag(q,id)));
+        };
+
+        inspect(i>0?g.index(i-1,j,k):0,i>0);
+        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx);
+        inspect(j>0?g.index(i,j-1,k):0,j>0);
+        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny);
+        inspect(k>0?g.index(i,j,k-1):0,k>0);
+        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz);
+
+        // For the actual operator A=-L:
+        //   A_ii = sum(fluid-face weights) + sum(solid-face weights)
+        //   A_ij = -fluid-face weight.
+        // Therefore the diagonal dominance margin is exactly the total
+        // Dirichlet contribution. This uses poisson_diagonal(), including
+        // the BVH-based cut-face/wall-offset coefficient actually used by PCG.
+        a.min_diagonal_dominance=std::min(
+            a.min_diagonal_dominance, diag-abs_offdiag_sum);
     }
+
     if(!std::isfinite(a.min_diagonal)) a.min_diagonal=0.0;
     if(!std::isfinite(a.min_diagonal_dominance)) a.min_diagonal_dominance=0.0;
     return a;
