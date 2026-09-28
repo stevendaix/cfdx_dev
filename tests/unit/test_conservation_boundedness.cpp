@@ -136,5 +136,31 @@ int main()
         EXPECT_TRUE(nan.nonfinite == 1);
     });
 
+
+    run_case("integrated_balance_is_independent_of_linear_residual", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::FACE> flux(m.n_faces(),"flux","u",1);
+        Field<double,Location::CELL> source(m.n_cells(),"source","u/V",1);
+        flux.fill(0.0); source.fill(0.0);
+        flux(0) = 2.0;
+        source(0) = -2.0; // source is represented on the RHS convention.
+        const std::vector<double> volumes{1.0};
+        const auto r = audit_integrated_balance(m, flux, source, volumes);
+        EXPECT_NEAR(r.residual, 0.0, 1e-15);
+        EXPECT_NEAR(r.normalized_residual, 0.0, 1e-15);
+        EXPECT_TRUE(r.worst_cell == 0);
+    });
+
+    run_case("boundedness_reports_worst_cell_without_clipping", [] {
+        Field<double,Location::CELL> phi(4,"phi","1",1);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=1.25; phi(3)=-0.2;
+        const auto r = audit_boundedness(phi,0.0,1.0);
+        EXPECT_TRUE(!r.bounded());
+        EXPECT_TRUE(r.above_upper == 1);
+        EXPECT_TRUE(r.below_lower == 1);
+        EXPECT_TRUE(r.worst_cell == 2 || r.worst_cell == 3);
+        EXPECT_TRUE(r.worst_violation > 0.0);
+    });
+
     return run_all();
 }
