@@ -611,7 +611,7 @@ private:
                     prolongation.clear();
                     aggregate.clear();
                     coarse_n = 0;
-                    return;
+                    return false;
                 }
 
                 const double aik = matrix_value(i, k);
