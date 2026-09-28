@@ -265,7 +265,7 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
     auto flux = reconstruct_scalar_transport_flux(
         mesh, geometry, enthalpy_face_flux(mass_flux, controls.cp),
         temperature, controls.conductivity, bcs, true,
-        ConvectionScheme::UPWIND, nullptr, nullptr);
+        ConvectionScheme::UPWIND, nullptr, nullptr, face_values);
 
     IndependentEnergyBalance r;
     const auto& own=mesh.ownership();
