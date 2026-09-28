@@ -772,8 +772,6 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     // The operator is symmetric positive definite for a domain connected to
     // at least one Dirichlet wall. Use preconditioned conjugate gradients,
     // as OpenFOAM does for its Poisson wall-distance solve (PCG/DIC or GAMG).
-    (void)bvh;
-
     const std::size_t n=g.points.size();
     std::vector<double> phi(n,0.0);
     std::vector<double> r(n,0.0);
@@ -794,7 +792,7 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         for(std::size_t id=0;id<n;++id) {
             if(!is_fluid(g,id)) continue;
             // A = -L, with the same solid Dirichlet and outer Neumann
-            // treatment used by poisson_residual_inf()/laplacian_at().
+            // treatment used by poisson_laplacian_at().
             y[id] = -poisson_laplacian_at(bvh,x,g,id);
         }
     };
