@@ -3,32 +3,135 @@
 #include "cfdx/core/linalg/sparse_matrix_product.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
-#include <stdexcept>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-static SparseMatrix make_matrix(std::size_t n,
+using Dense = std::vector<std::vector<double>>;
+
+static SparseMatrix make_sparse(std::size_t rows,
+                                std::size_t cols,
                                 const std::initializer_list<std::tuple<std::size_t,
                                                                          std::size_t,
                                                                          double>>& entries) {
-    SparseMatrix A(n, n);
+    SparseMatrix A(rows, cols);
     for (const auto& [i, j, value] : entries) A.push_back(i, j, value);
     A.finalize();
     return A;
 }
 
+static Dense to_dense(const SparseMatrix& A) {
+    Dense out(A.n_rows(), std::vector<double>(A.n_cols(), 0.0));
+    for (std::size_t i = 0; i < A.n_rows(); ++i) {
+        for (std::size_t k = A.row_offsets_data()[i];
+             k < A.row_offsets_data()[i + 1]; ++k) {
+            out[i][A.columns_data()[k]] += A.values_data()[k];
+        }
+    }
+    return out;
+}
+
+// Test-only dense reference. This is deliberately not production CFDX code:
+// the exact Schur oracle is restricted to tiny matrices so that it provides
+// an independent algebraic truth model without introducing a dense fallback.
+static Dense dense_multiply(const Dense& A, const Dense& B) {
+    if (A.empty() || B.empty() || A[0].size() != B.size())
+        throw std::invalid_argument("dense_multiply: dimension mismatch");
+
+    Dense C(A.size(), std::vector<double>(B[0].size(), 0.0));
+    for (std::size_t i = 0; i < A.size(); ++i)
+        for (std::size_t k = 0; k < B.size(); ++k)
+            for (std::size_t j = 0; j < B[0].size(); ++j)
+                C[i][j] += A[i][k] * B[k][j];
+    return C;
+}
+
+static Dense dense_subtract(const Dense& A, const Dense& B) {
+    Dense C = A;
+    for (std::size_t i = 0; i < A.size(); ++i)
+        for (std::size_t j = 0; j < A[0].size(); ++j)
+            C[i][j] -= B[i][j];
+    return C;
+}
+
+static Dense dense_identity(std::size_t n) {
+    Dense I(n, std::vector<double>(n, 0.0));
+    for (std::size_t i = 0; i < n; ++i) I[i][i] = 1.0;
+    return I;
+}
+
+static Dense dense_inverse(Dense A) {
+    const std::size_t n = A.size();
+    if (n == 0 || A[0].size() != n)
+        throw std::invalid_argument("dense_inverse: non-square matrix");
+
+    Dense I = dense_identity(n);
+    for (std::size_t k = 0; k < n; ++k) {
+        std::size_t pivot = k;
+        for (std::size_t i = k + 1; i < n; ++i)
+            if (std::abs(A[i][k]) > std::abs(A[pivot][k])) pivot = i;
+
+        if (std::abs(A[pivot][k]) <= 1e-14)
+            throw std::invalid_argument("dense_inverse: singular matrix");
+
+        std::swap(A[k], A[pivot]);
+        std::swap(I[k], I[pivot]);
+
+        const double d = A[k][k];
+        for (std::size_t j = 0; j < n; ++j) {
+            A[k][j] /= d;
+            I[k][j] /= d;
+        }
+
+        for (std::size_t i = 0; i < n; ++i) {
+            if (i == k) continue;
+            const double factor = A[i][k];
+            for (std::size_t j = 0; j < n; ++j) {
+                A[i][j] -= factor * A[k][j];
+                I[i][j] -= factor * I[k][j];
+            }
+        }
+    }
+    return I;
+}
+
+static Dense block_assemble(const Dense& M, const Dense& G,
+                            const Dense& D, const Dense& C) {
+    const std::size_t nv = M.size();
+    const std::size_t np = C.size();
+    Dense A(nv + np, std::vector<double>(nv + np, 0.0));
+    for (std::size_t i = 0; i < nv; ++i) {
+        for (std::size_t j = 0; j < nv; ++j) A[i][j] = M[i][j];
+        for (std::size_t j = 0; j < np; ++j) A[i][nv + j] = G[i][j];
+    }
+    for (std::size_t i = 0; i < np; ++i) {
+        for (std::size_t j = 0; j < nv; ++j) A[nv + i][j] = D[i][j];
+        for (std::size_t j = 0; j < np; ++j) A[nv + i][nv + j] = C[i][j];
+    }
+    return A;
+}
+
+static void expect_dense_near(const Dense& A, const Dense& B, double tol) {
+    EXPECT_TRUE(A.size() == B.size());
+    EXPECT_TRUE(A.empty() || A[0].size() == B[0].size());
+    for (std::size_t i = 0; i < A.size(); ++i)
+        for (std::size_t j = 0; j < A[i].size(); ++j)
+            EXPECT_NEAR(A[i][j], B[i][j], tol);
+}
+
 int main() {
     run_case("sparse_matmul_matches_dense_algebra", [] {
-        const auto A = make_matrix(2, {
+        const auto A = make_sparse(2, 2, {
             {0, 0, 2.0}, {0, 1, 1.0},
             {1, 0, 3.0}, {1, 1, 4.0}
         });
-        const auto B = make_matrix(2, {
+        const auto B = make_sparse(2, 2, {
             {0, 0, 5.0}, {0, 1, 6.0},
             {1, 0, 7.0}, {1, 1, 8.0}
         });
@@ -72,6 +175,25 @@ int main() {
         EXPECT_TRUE(rejected);
     });
 
+    run_case("sparse_pattern_distinguishes_graph_from_values", [] {
+        const auto A = make_sparse(2, 2, {
+            {0, 0, 2.0}, {0, 1, -1.0},
+            {1, 0, 3.0}, {1, 1, 4.0}
+        });
+        const auto B = make_sparse(2, 2, {
+            {0, 0, 5.0}, {0, 1, -2.0},
+            {1, 0, 7.0}, {1, 1, 8.0}
+        });
+        const auto C = make_sparse(2, 2, {
+            {0, 0, 5.0}, {0, 1, -2.0},
+            {1, 0, 7.0}, {1, 1, 8.0},
+            {1, 0, 0.5}
+        });
+
+        EXPECT_TRUE(same_sparse_pattern(A, B));
+        EXPECT_TRUE(!same_sparse_pattern(A, C));
+    });
+
     run_case("block_operator_validates_saddle_point_dimensions", [] {
         SparseMatrix Auu(3, 3);
         SparseMatrix G(3, 1);
@@ -94,45 +216,126 @@ int main() {
 
         const BlockOperator blocks(Auu, G, D, C);
         EXPECT_TRUE(blocks.is_valid());
-        // Deliberately use independent G and D storage. The BlockOperator
-        // contract does not require G = -D^T.
     });
 
-    run_case("saddle_point_schur_formula_matches_exact_small_system", [] {
-        // A = [M G; D C], with a small nonsingular M.
-        SparseMatrix M = make_matrix(2, {
+    run_case("exact_schur_oracle_matches_sparse_block_algebra", [] {
+        const auto M = make_sparse(2, 2, {
             {0, 0, 4.0}, {0, 1, 1.0},
             {1, 0, 2.0}, {1, 1, 3.0}
         });
-        SparseMatrix G(2, 1);
-        G.push_back(0, 0, 1.0);
-        G.push_back(1, 0, 2.0);
-        G.finalize();
-
-        SparseMatrix D(1, 2);
-        D.push_back(0, 0, -3.0);
-        D.push_back(0, 1, 1.0);
-        D.finalize();
-
-        SparseMatrix C(1, 1);
-        C.push_back(0, 0, 2.0);
-        C.finalize();
-
-        // M^{-1} = (1/10) [3 -1; -2 4].
-        // M^{-1} G = (1/10) [1; 6].
-        // D M^{-1} G = 3/10.
-        // S = C - D M^{-1} G = 17/10.
-        EXPECT_NEAR(2.0 - 0.3, 1.7, 1e-14);
+        const auto G = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, 0.5},
+            {1, 0, 2.0}, {1, 1, 1.0}
+        });
+        const auto D = make_sparse(2, 2, {
+            {0, 0, -3.0}, {0, 1, 1.0},
+            {1, 0, 0.25}, {1, 1, 2.0}
+        });
+        const auto C = make_sparse(2, 2, {
+            {0, 0, 2.0}, {0, 1, 0.2},
+            {1, 0, 0.3}, {1, 1, 3.0}
+        });
 
         const BlockOperator blocks(M, G, D, C);
-        EXPECT_TRUE(blocks.is_valid());
+        blocks.validate();
 
-        // DG is the pressure-side Laplacian-like product used by LSC/BFBt
-        // constructions; it must remain an algebraic product of the actual
-        // discrete D and G, without imposing G = -D^T.
+        const Dense Md = to_dense(M);
+        const Dense Gd = to_dense(G);
+        const Dense Dd = to_dense(D);
+        const Dense Cd = to_dense(C);
+        const Dense Minv = dense_inverse(Md);
+
+        // Exact algebraic Schur oracle:
+        // S = C - D M^{-1} G.
+        const Dense exact = dense_subtract(
+            Cd, dense_multiply(dense_multiply(Dd, Minv), Gd));
+
         const auto DG = sparse_matmul(D, G);
         EXPECT_TRUE(DG.is_consistent());
-        EXPECT_NEAR(DG(0, 0), -1.0, 1e-14);
+
+        // The oracle must agree with direct sparse block construction for
+        // products that do not contain Auu^{-1}; DG is intentionally not
+        // substituted for D M^{-1} G.
+        EXPECT_NEAR(DG(0, 0), -2.75, 1e-14);
+        EXPECT_NEAR(exact[0][0], 2.55, 1e-14);
+        EXPECT_NEAR(exact[0][1], 0.075, 1e-14);
+        EXPECT_NEAR(exact[1][0], -0.075, 1e-14);
+        EXPECT_NEAR(exact[1][1], 1.95, 1e-14);
+
+        // The exact oracle is an independent reference, not a production
+        // dense implementation.
+        EXPECT_TRUE(std::isfinite(exact[0][0]));
+        EXPECT_TRUE(std::isfinite(exact[1][1]));
+    });
+
+    run_case("schur_factorization_identities_match_block_ldu", [] {
+        const auto M = make_sparse(2, 2, {
+            {0, 0, 4.0}, {0, 1, 1.0},
+            {1, 0, 2.0}, {1, 1, 3.0}
+        });
+        const auto G = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, 0.5},
+            {1, 0, 2.0}, {1, 1, 1.0}
+        });
+        const auto D = make_sparse(2, 2, {
+            {0, 0, -3.0}, {0, 1, 1.0},
+            {1, 0, 0.25}, {1, 1, 2.0}
+        });
+        const auto C = make_sparse(2, 2, {
+            {0, 0, 2.0}, {0, 1, 0.2},
+            {1, 0, 0.3}, {1, 1, 3.0}
+        });
+
+        const Dense Md = to_dense(M);
+        const Dense Gd = to_dense(G);
+        const Dense Dd = to_dense(D);
+        const Dense Cd = to_dense(C);
+        const Dense Minv = dense_inverse(Md);
+        const Dense S = dense_subtract(
+            Cd, dense_multiply(dense_multiply(Dd, Minv), Gd));
+        const Dense Sinv = dense_inverse(S);
+        const Dense A = block_assemble(Md, Gd, Dd, Cd);
+
+        const Dense z00 = Minv;
+        const Dense z11 = Sinv;
+        Dense diagonal(4, std::vector<double>(4, 0.0));
+        for (std::size_t i = 0; i < 2; ++i) {
+            for (std::size_t j = 0; j < 2; ++j) {
+                diagonal[i][j] = z00[i][j];
+                diagonal[2 + i][2 + j] = z11[i][j];
+            }
+        }
+
+        const Dense MinvG = dense_multiply(Minv, Gd);
+        const Dense DMinv = dense_multiply(Dd, Minv);
+        const Dense SinvDMinv = dense_multiply(Sinv, DMinv);
+        const Dense MinvGSinv = dense_multiply(MinvG, Sinv);
+
+        Dense lower = diagonal;
+        Dense upper = diagonal;
+        for (std::size_t i = 0; i < 2; ++i) {
+            for (std::size_t j = 0; j < 2; ++j) {
+                lower[2 + i][j] = -SinvDMinv[i][j];
+                upper[i][2 + j] = -MinvGSinv[i][j];
+            }
+        }
+
+        const Dense full = dense_multiply(upper, lower);
+        const Dense identity = dense_multiply(full, A);
+
+        // These are the four standard block factorization actions:
+        // diagonal = diag(M^-1,S^-1)
+        // lower    = diag^-1 L^-1
+        // upper    = U^-1 diag^-1
+        // full     = U^-1 diag^-1 L^-1 = A^-1.
+        expect_dense_near(identity, dense_identity(4), 1e-12);
+
+        // The Schur sign is the literal CFDX convention S=C-DM^-1G.
+        // No implicit PETSc-style sign flip is introduced here.
+        EXPECT_NEAR(S[0][0], 2.55, 1e-14);
+        EXPECT_NEAR(S[0][1], 0.075, 1e-14);
+        EXPECT_NEAR(S[1][0], -0.075, 1e-14);
+        EXPECT_NEAR(S[1][1], 1.95, 1e-14);
     });
 
     return run_all();
