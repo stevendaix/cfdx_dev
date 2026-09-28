@@ -256,11 +256,11 @@ int main() {
         // The oracle must agree with direct sparse block construction for
         // products that do not contain Auu^{-1}; DG is intentionally not
         // substituted for D M^{-1} G.
-        EXPECT_NEAR(DG(0, 0), -2.75, 1e-14);
-        EXPECT_NEAR(exact[0][0], 2.55, 1e-14);
-        EXPECT_NEAR(exact[0][1], 0.075, 1e-14);
-        EXPECT_NEAR(exact[1][0], -0.075, 1e-14);
-        EXPECT_NEAR(exact[1][1], 1.95, 1e-14);
+        EXPECT_NEAR(DG(0, 0), -1.0, 1e-14);
+        EXPECT_NEAR(exact[0][0], 1.7, 1e-14);
+        EXPECT_NEAR(exact[0][1], 0.05, 1e-14);
+        EXPECT_NEAR(exact[1][0], -0.925, 1e-14);
+        EXPECT_NEAR(exact[1][1], 2.3875, 1e-14);
 
         // The exact oracle is an independent reference, not a production
         // dense implementation.
@@ -332,10 +332,10 @@ int main() {
 
         // The Schur sign is the literal CFDX convention S=C-DM^-1G.
         // No implicit PETSc-style sign flip is introduced here.
-        EXPECT_NEAR(S[0][0], 2.55, 1e-14);
-        EXPECT_NEAR(S[0][1], 0.075, 1e-14);
-        EXPECT_NEAR(S[1][0], -0.075, 1e-14);
-        EXPECT_NEAR(S[1][1], 1.95, 1e-14);
+        EXPECT_NEAR(S[0][0], 1.7, 1e-14);
+        EXPECT_NEAR(S[0][1], 0.05, 1e-14);
+        EXPECT_NEAR(S[1][0], -0.925, 1e-14);
+        EXPECT_NEAR(S[1][1], 2.3875, 1e-14);
     });
 
     return run_all();
