@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 using namespace cfdx::physics;
@@ -29,8 +30,10 @@ struct Row {
     std::string case_name;
     double phi_l2{};
     double phi_linf{};
-    double distance_l2{};
-    double distance_linf{};
+    double distance_formula_l2{};
+    double distance_impl_l2{};
+    double distance_formula_linf{};
+    double distance_impl_linf{};
     double residual{};
     std::size_t iterations{};
     bool converged{};
@@ -125,10 +128,15 @@ int main(int argc,char** argv)
             phi_ref[i]=L*y-0.5*y*y;
             d_ref[i]=y;
         }
-        const auto d=reconstruct_planar_distance(phi,grid,0.0);
+        const auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
+        std::size_t impl_it=0; double impl_residual=0.0;
+        const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         rows.push_back({n,"single_wall",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
-                        rel_l2(d,d_ref,grid.solid),rel_linf(d,d_ref,grid.solid),
+                        rel_l2(d_formula,d_ref,grid.solid),
+                        rel_l2(d_impl,d_ref,grid.solid),
+                        rel_linf(d_formula,d_ref,grid.solid),
+                        rel_linf(d_impl,d_ref,grid.solid),
                         residual,it,residual<1e-8});
     }
 
@@ -157,16 +165,21 @@ int main(int argc,char** argv)
             phi_ref[i]=0.5*y*(1.0-y);
             d_ref[i]=std::min(y,1.0-y);
         }
-        const auto d=reconstruct_planar_distance(phi,grid,0.0);
+        const auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
         // The helper above assumes one wall for the gradient.  For the channel,
         // evaluate the exact signed gradient magnitude directly.
-        for(std::size_t i=0;i<d.size();++i) if(!grid.solid[i]) {
+        for(std::size_t i=0;i<d_formula.size();++i) if(!grid.solid[i]) {
             const double y=grid.points[i].y;
-            d[i]=reconstruct_distance(phi[i],std::abs(0.5-y));
+            d_formula[i]=reconstruct_distance(phi[i],std::abs(0.5-y));
         }
+        std::size_t impl_it=0; double impl_residual=0.0;
+        const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         rows.push_back({n,"parallel_channel",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
-                        rel_l2(d,d_ref,grid.solid),rel_linf(d,d_ref,grid.solid),
+                        rel_l2(d_formula,d_ref,grid.solid),
+                        rel_l2(d_impl,d_ref,grid.solid),
+                        rel_linf(d_formula,d_ref,grid.solid),
+                        rel_linf(d_impl,d_ref,grid.solid),
                         residual,it,residual<1e-8});
     }
 
@@ -197,7 +210,8 @@ int main(int argc,char** argv)
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
             << r.phi_l2 << ',' << r.phi_linf << ','
-            << r.distance_l2 << ',' << r.distance_linf << ','
+            << r.distance_formula_l2 << ',' << r.distance_impl_l2 << ','
+            << r.distance_formula_linf << ',' << r.distance_impl_linf << ','
             << r.residual << ',' << r.iterations << ','
             << (r.converged ? "true" : "false") << '\n';
     }
