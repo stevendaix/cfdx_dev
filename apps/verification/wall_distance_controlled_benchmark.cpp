@@ -269,6 +269,15 @@ int main(int argc, char** argv)
 
             double poisson_exact_gradient_l2=0.0;
             double poisson_exact_gradient_linf=0.0;
+            double poisson_exact_phi_exact_gradient_l2_error=0.0;
+            double poisson_numerical_phi_exact_gradient_l2_error=0.0;
+            double poisson_exact_phi_numerical_gradient_l2_error=0.0;
+            double poisson_full_reconstruction_l2_error=0.0;
+            double poisson_exact_phi_exact_gradient_linf_error=0.0;
+            double poisson_numerical_phi_exact_gradient_linf_error=0.0;
+            double poisson_exact_phi_numerical_gradient_linf_error=0.0;
+            double poisson_full_reconstruction_linf_error=0.0;
+            std::size_t poisson_gradient_nondifferentiable_cells=0;
             if(method==WallDistanceMethod::POISSON) {
                 // Re-run only the elliptic solve and replace the reconstructed
                 // gradient by the exact geometric gradient of the box.  This
@@ -285,14 +294,19 @@ int main(int argc, char** argv)
                 double full_e2=0.0, full_em=0.0;
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
-                    const auto exact_grad=analytic_box_distance_gradient(grid.points[id]);
+                    bool exact_grad_defined = false;
+                    const auto exact_grad=analytic_box_distance_gradient(grid.points[id], &exact_grad_defined);
+                    if (!exact_grad_defined) {
+                        ++poisson_gradient_nondifferentiable_cells;
+                        continue;
+                    }
                     const double d=analytic[id];
                     // Exact reconstruction input for the Tucker relation:
                     // d = sqrt(|grad d|^2 + 2 phi) - |grad d|.
                     // This is an input manufactured from the geometric
                     // distance; it is not claimed to solve the Poisson PDE
                     // exactly in edge/corner regions.
-                    const double exact_phi=d-0.5*d*d;
+                    const double exact_phi=d+0.5*d*d;
                     const double d_exact_exact=reconstruct_from_gradient(exact_phi,exact_grad);
                     const double d_num_exact=reconstruct_from_gradient(diagnostic_phi[id],exact_grad);
                     const double gx=poisson_reconstruction_gradient_component(bvh,diagnostic_phi,grid,id,0);
@@ -389,7 +403,8 @@ int main(int argc, char** argv)
                 poisson_exact_phi_exact_gradient_linf_error,
                 poisson_numerical_phi_exact_gradient_linf_error,
                 poisson_exact_phi_numerical_gradient_linf_error,
-                poisson_full_reconstruction_linf_error
+                poisson_full_reconstruction_linf_error,
+                poisson_gradient_nondifferentiable_cells
             });
 
             std::cout << result.method << ", "
@@ -435,7 +450,8 @@ int main(int argc, char** argv)
            "poisson_exact_phi_exact_gradient_l2_error,poisson_numerical_phi_exact_gradient_l2_error,"
            "poisson_exact_phi_numerical_gradient_l2_error,poisson_full_reconstruction_l2_error,"
            "poisson_exact_phi_exact_gradient_linf_error,poisson_numerical_phi_exact_gradient_linf_error,"
-           "poisson_exact_phi_numerical_gradient_linf_error,poisson_full_reconstruction_linf_error\n";
+           "poisson_exact_phi_numerical_gradient_linf_error,poisson_full_reconstruction_linf_error,"
+           "poisson_gradient_nondifferentiable_cells\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -461,7 +477,8 @@ int main(int argc, char** argv)
             << r.poisson_exact_phi_exact_gradient_linf_error << ','
             << r.poisson_numerical_phi_exact_gradient_linf_error << ','
             << r.poisson_exact_phi_numerical_gradient_linf_error << ','
-            << r.poisson_full_reconstruction_linf_error
+            << r.poisson_full_reconstruction_linf_error << ','
+            << r.poisson_gradient_nondifferentiable_cells
             << '\n';
     }
 
