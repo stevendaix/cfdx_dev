@@ -142,36 +142,51 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
               << " levels=" << levels.size()
               << " coarse=" << amg.coarse_size()
               << " P_nnz=" << amg.first_prolongation_nnz()
+              << " P_row_nnz_min=" << amg.first_prolongation_row_nnz_min()
+              << " P_row_nnz_max=" << amg.first_prolongation_row_nnz_max()
               << " P_row_sum_min=" << amg.prolongation_row_sum_min()
               << " P_row_sum_max=" << amg.prolongation_row_sum_max()
               << " P_linear_relerr=" << amg.first_prolongation_linear_mode_relative_error()
+              << " P_mode1_relerr=" << amg.first_prolongation_mode_relative_error(1)
+              << " P_mode2_relerr=" << amg.first_prolongation_mode_relative_error(2)
+              << " P_mode3_relerr=" << amg.first_prolongation_mode_relative_error(3)
               << " Ac_sym_relerr=" << amg.first_coarse_symmetry_relative_error()
               << "\n";
     std::cerr << "AMG_LEVELS";
     for (const auto size : levels) std::cerr << " " << size;
     std::cerr << "\n";
 
-    Vector exact(n);
-    Vector rhs(n);
-    for (std::size_t i = 0; i < n; ++i)
-        exact(i) = std::sin(3.14159265358979323846 * static_cast<double>(i + 1) /
-                            static_cast<double>(n + 1));
-    const auto Ax = A.matvec(exact);
-    for (std::size_t i = 0; i < n; ++i) rhs(i) = Ax[i];
+    // Apply one complete V-cycle to the first three discrete Poisson modes.
+    // This separates coarse-space representation quality from CG convergence:
+    // the reported factor is ||b-A M^{-1}b||/||b|| for one AMG application.
+    for (std::size_t mode = 1; mode <= 3; ++mode) {
+        Vector exact(n);
+        Vector rhs(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(3.14159265358979323846 *
+                                static_cast<double>(mode * (i + 1)) /
+                                static_cast<double>(n + 1));
+        }
+        const auto Ax = A.matvec(exact);
+        for (std::size_t i = 0; i < n; ++i) rhs(i) = Ax[i];
 
-    Vector correction;
-    if (!amg.apply(rhs, correction))
-        throw std::runtime_error("AMG low-mode diagnostic apply failed");
-    double err2 = 0.0;
-    double exact2 = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        const double e = correction(i) - exact(i);
-        err2 += e * e;
-        exact2 += exact(i) * exact(i);
+        Vector correction;
+        if (!amg.apply(rhs, correction))
+            throw std::runtime_error("AMG mode diagnostic apply failed");
+        const auto Az = A.matvec(correction);
+        double before2 = 0.0;
+        double after2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            before2 += rhs(i) * rhs(i);
+            const double residual = rhs(i) - Az[i];
+            after2 += residual * residual;
+        }
+        std::cerr << "AMG_MODE N=" << n
+                  << " k=" << mode
+                  << " vcycle_residual_ratio="
+                  << std::sqrt(after2 / std::max(before2, 1e-300))
+                  << "\n";
     }
-    std::cerr << "AMG_LOW_MODE N=" << n
-              << " sine_rel_error=" << std::sqrt(err2 / exact2)
-              << "\n";
 }
 
 int main() {
