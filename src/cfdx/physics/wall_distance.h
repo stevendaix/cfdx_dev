@@ -653,7 +653,11 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             // Use the full explicit CFL limits of the upwind advection and
             // central diffusion terms. The previous 0.25 safety factor was
             // unnecessarily restrictive and made H-J convergence ~4x slower.
-            const double dt_adv=0.9*h;
+            // 3-D CFL: dt*h^{-1} must account for all active
+            // upwind directions.  0.9*h is only a 1-D bound and can violate
+            // the monotone explicit stability limit when several components
+            // of the Godunov gradient are active.
+            const double dt_adv=0.9/(1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z);
             const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
@@ -1241,7 +1245,13 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double gamma=epsilon*std::max(d[id],0.0);
             const double residual=adv-1.0-gamma*laplacian_at(d,g,id);
             const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
-            const double dt_adv=0.9*h;
+            // The hybrid transport step is also a 3-D explicit upwind
+            // update. Use its actual velocity components for the CFL bound.
+            const double cfl_rate=std::abs(ux)/g.spacing.x+
+                                  std::abs(uy)/g.spacing.y+
+                                  std::abs(uz)/g.spacing.z;
+            const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
+                                                std::numeric_limits<double>::infinity();
             const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
             const double nd=std::max(0.0,d[id]-dt*residual);
