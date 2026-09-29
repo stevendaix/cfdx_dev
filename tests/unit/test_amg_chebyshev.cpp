@@ -150,6 +150,28 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
     std::cerr << "AMG_LEVELS";
     for (const auto size : levels) std::cerr << " " << size;
     std::cerr << "\n";
+
+    Vector exact(n);
+    Vector rhs(n);
+    for (std::size_t i = 0; i < n; ++i)
+        exact(i) = std::sin(3.14159265358979323846 * static_cast<double>(i + 1) /
+                            static_cast<double>(n + 1));
+    const auto Ax = A.matvec(exact);
+    for (std::size_t i = 0; i < n; ++i) rhs(i) = Ax[i];
+
+    Vector correction;
+    if (!amg.apply(rhs, correction))
+        throw std::runtime_error("AMG low-mode diagnostic apply failed");
+    double err2 = 0.0;
+    double exact2 = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double e = correction(i) - exact(i);
+        err2 += e * e;
+        exact2 += exact(i) * exact(i);
+    }
+    std::cerr << "AMG_LOW_MODE N=" << n
+              << " sine_rel_error=" << std::sqrt(err2 / exact2)
+              << "\n";
 }
 
 int main() {
