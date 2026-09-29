@@ -303,8 +303,8 @@ int main(int argc, char** argv)
                 result.poisson_grad_max,
                 result.poisson_distance_l2_error,
                 result.poisson_distance_linf_error,
-                0.0,
-                0.0
+                poisson_exact_gradient_l2,
+                poisson_exact_gradient_linf
             });
 
             std::cout << result.method << ", "
@@ -345,7 +345,8 @@ int main(int argc, char** argv)
            "poisson_wall_ray_hits,poisson_wall_ray_misses,poisson_wall_fallbacks,"
            "poisson_wall_bad_alignment,poisson_wall_min_alignment,poisson_phi_min,"
            "poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,"
-           "poisson_distance_linf_error\n";
+           "poisson_distance_linf_error,poisson_exact_gradient_l2_error,"
+           "poisson_exact_gradient_linf_error\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
