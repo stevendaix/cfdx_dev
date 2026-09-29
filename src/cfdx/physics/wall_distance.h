@@ -1296,51 +1296,9 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
                                              WallDistancePoissonReconstructionAudit* audit_out=nullptr) {
     std::vector<double> phi=poisson_potential(bvh,g,max_iter,smooth,used_iter,residual_out);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
-    for(std::size_t id=0;id<g.points.size();++id) if(!g.solid[id]) {
-        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        auto deriv=[&](int axis)->double {
-            if(axis==0) {
-                if(i>0&&i+1<g.nx&&!g.solid[g.index(i-1,j,k)]&&!g.solid[g.index(i+1,j,k)]) return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
-                if(i+1<g.nx) {
-                    const auto q=g.index(i+1,j,k);
-                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x);
-                    return (phi[q]-phi[id])/g.spacing.x;
-                }
-                if(i>0) {
-                    const auto q=g.index(i-1,j,k);
-                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x);
-                    return (phi[id]-phi[q])/g.spacing.x;
-                }
-            } else if(axis==1) {
-                if(j>0&&j+1<g.ny&&!g.solid[g.index(i,j-1,k)]&&!g.solid[g.index(i,j+1,k)]) return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
-                if(j+1<g.ny) {
-                    const auto q=g.index(i,j+1,k);
-                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y);
-                    return (phi[q]-phi[id])/g.spacing.y;
-                }
-                if(j>0) {
-                    const auto q=g.index(i,j-1,k);
-                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y);
-                    return (phi[id]-phi[q])/g.spacing.y;
-                }
-            } else {
-                if(k>0&&k+1<g.nz&&!g.solid[g.index(i,j,k-1)]&&!g.solid[g.index(i,j,k+1)]) return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
-                if(k+1<g.nz) {
-                    const auto q=g.index(i,j,k+1);
-                    if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z);
-                    return (phi[q]-phi[id])/g.spacing.z;
-                }
-                if(k>0) {
-                    const auto q=g.index(i,j,k-1);
-                    if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z);
-                    return (phi[id]-phi[q])/g.spacing.z;
-                }
-            }
-            return 0.0;
-        };
-        const double gx=deriv(0),gy=deriv(1),gz=deriv(2),grad=std::sqrt(gx*gx+gy*gy+gz*gz);
-        d[id]=std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2*phi[id]))-grad);
-    }
+    for(std::size_t id=0;id<g.points.size();++id) if(!g.solid[id])
+        d[id]=poisson_reconstructed_distance(bvh,g,phi,id);
+
     if(audit_out) {
         WallDistancePoissonReconstructionAudit a;
         double e2=0.0, ref2=0.0, emax=0.0, refmax=0.0;
