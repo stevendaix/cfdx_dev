@@ -685,6 +685,70 @@ public:
         return res.norm2() / std::max(before, 1e-300);
     }
 
+    double sine_mode_coarse_correction_residual_ratio(std::size_t level, std::size_t mode) const
+    {
+        if (level + 1 >= levels_.size() || mode == 0)
+            throw std::out_of_range("sine_mode_coarse_correction_residual_ratio: invalid level or mode");
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector error(n, 0.0), residual(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i)
+            error(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) / static_cast<double>(n + 1));
+        if (!apply_operator(level, error, residual)) return std::numeric_limits<double>::infinity();
+        const double before = residual.norm2();
+        if (!(before > 0.0) || !std::isfinite(before)) return 0.0;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector rc(nc, 0.0), ec(nc, 0.0);
+        for (std::size_t i = 0; i < n; ++i)
+            for (const auto& [coarse, weight] : levels_[level].prolongation[i])
+                rc(coarse) += weight * residual(i);
+        if (!solve_coarse_system(level + 1, rc, ec)) return std::numeric_limits<double>::infinity();
+        Vector corrected_error(n, 0.0), Ac(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            double correction = 0.0;
+            for (const auto& [coarse, weight] : levels_[level].prolongation[i])
+                correction += weight * ec(coarse);
+            corrected_error(i) = error(i) - correction;
+        }
+        if (!apply_operator(level, corrected_error, Ac)) return std::numeric_limits<double>::infinity();
+        return Ac.norm2() / std::max(before, 1e-300);
+    }
+
+    double sine_mode_coarse_correction_energy_ratio(std::size_t level, std::size_t mode) const
+    {
+        if (level + 1 >= levels_.size() || mode == 0)
+            throw std::out_of_range("sine_mode_coarse_correction_energy_ratio: invalid level or mode");
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector error(n, 0.0), residual(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i)
+            error(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) / static_cast<double>(n + 1));
+        if (!apply_operator(level, error, residual)) return std::numeric_limits<double>::infinity();
+        const double energy_before = dot(error, residual);
+        if (!(energy_before > 0.0) || !std::isfinite(energy_before)) return std::numeric_limits<double>::infinity();
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector rc(nc, 0.0), ec(nc, 0.0);
+        for (std::size_t i = 0; i < n; ++i)
+            for (const auto& [coarse, weight] : levels_[level].prolongation[i])
+                rc(coarse) += weight * residual(i);
+        if (!solve_coarse_system(level + 1, rc, ec)) return std::numeric_limits<double>::infinity();
+        Vector corrected_error(n, 0.0), Ac(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            double correction = 0.0;
+            for (const auto& [coarse, weight] : levels_[level].prolongation[i]) {
+                double value = weight * ec(coarse);
+                corrected_error(i) = corrected_error(i) - value;
+            }
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            constexpr double pi2 = 3.14159265358979323846;
+            corrected_error(i) += std::sin(pi2 * static_cast<double>(mode * (i + 1)) / static_cast<double>(n + 1));
+        }
+        if (!apply_operator(level, corrected_error, Ac)) return std::numeric_limits<double>::infinity();
+        const double energy_after = dot(corrected_error, Ac);
+        return energy_after / std::max(energy_before, 1e-300);
+    }
+
     double two_grid_sine_mode_residual_ratio(std::size_t level, std::size_t mode) const
     {
         if (level + 1 >= levels_.size() || mode == 0) {
