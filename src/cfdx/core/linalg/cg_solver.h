@@ -63,6 +63,12 @@ struct SolverResult {
     // from preconditioner/coarse-space limitations.
     std::size_t residual_replacements = 0;
     double max_true_recursive_gap = 0.0;
+    double min_true_recursive_ratio = std::numeric_limits<double>::infinity();
+    double max_true_recursive_ratio = 0.0;
+    double max_true_residual = 0.0;
+    double min_true_residual = std::numeric_limits<double>::infinity();
+    std::size_t first_residual_replacement = 0;
+    std::size_t last_residual_replacement = 0;
 };
 
 // Résout A x = b par la méthode du gradient conjugué (CG).
@@ -307,10 +313,24 @@ inline SolverResult solve_cg_impl(
             const double scale = std::max(res, recursive_res);
             result.max_true_recursive_gap =
                 std::max(result.max_true_recursive_gap, gap);
+            if (recursive_res > 0.0 && std::isfinite(recursive_res)) {
+                const double ratio = res / recursive_res;
+                if (std::isfinite(ratio)) {
+                    result.min_true_recursive_ratio =
+                        std::min(result.min_true_recursive_ratio, ratio);
+                    result.max_true_recursive_ratio =
+                        std::max(result.max_true_recursive_ratio, ratio);
+                }
+            }
+            result.max_true_residual = std::max(result.max_true_residual, res);
+            result.min_true_residual = std::min(result.min_true_residual, res);
             constexpr double residual_gap_fraction = 0.25;
             if (std::isfinite(recursive_res) && scale > 0.0 &&
                 gap > residual_gap_fraction * scale) {
                 ++result.residual_replacements;
+                if (result.first_residual_replacement == 0)
+                    result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
                 for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
                 if (null_space) null_space->remove(r);
                 if (!apply_preconditioner()) {
