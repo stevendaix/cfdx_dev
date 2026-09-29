@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include "cfdx/core/linalg/linear_operator.h"
 
