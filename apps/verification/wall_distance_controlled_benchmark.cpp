@@ -156,6 +156,12 @@ int main(int argc, char** argv)
         const WallDistanceBvh bvh(surface);
         const auto op = audit_poisson_operator(bvh, grid);
         const auto offsets = audit_poisson_wall_offsets(bvh, grid);
+        const std::size_t max_id=offsets.max_wall_coefficient_cell;
+        const std::size_t max_k=max_id/(grid.nx*grid.ny);
+        const std::size_t max_rem=max_id%(grid.nx*grid.ny);
+        const std::size_t max_j=max_rem/grid.nx;
+        const std::size_t max_i=max_rem%grid.nx;
+        const auto max_p=grid.points[max_id];
         std::cout << "N=" << n << ", h=" << std::setprecision(12) << h
                   << ", samples=" << grid.points.size() << "\n"
                   << "Poisson operator: fluid=" << op.fluid_nodes
