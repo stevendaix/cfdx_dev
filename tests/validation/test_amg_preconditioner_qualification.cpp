@@ -271,7 +271,7 @@ int main() {
             CGResidualReplacementPolicy::Periodic, 16);
         print_cg_diagnostics("amg_cg_periodic16", result);
         std::cout << "amg_cg_periodic16 true_residual="
-                  << relative_true_residual(A_diag, x, b_diag) << '\\n';
+                  << relative_true_residual(A_diag, x, b_diag) << '\n';
     }
 
     // 4) Existing adaptive replacement policy on the same matrix/RHS. This is
@@ -353,6 +353,62 @@ int main() {
     }
 
 
+    // Full V-cycle stage microscope on the production configuration. This is
+    // diagnostic-only: it does not alter qualification gates.
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner vcycle(op, 0.7, 6, 6, 0.25, 25,
+                                              AMGInterpolationPolicy::DirectCF);
+        EXPECT_TRUE(vcycle.setup(A_diag));
+        Vector z(n_diag, 0.0);
+        std::vector<MatrixFreeVcyclePreconditioner::VcycleDiagnostic> diagnostics;
+        EXPECT_TRUE(vcycle.apply_with_diagnostics(b_diag, z, diagnostics));
+        std::cout << "amg_vcycle_microscope DirectCF stages=" << diagnostics.size() << "\n";
+        for (const auto& d : diagnostics) {
+            std::cout << "  level=" << d.level
+                      << " n=" << d.size
+                      << " rhs_norm=" << d.rhs_norm
+                      << " residual_before=" << d.residual_before
+                      << " after_pre=" << d.residual_after_pre
+                      << " coarse_rhs=" << d.coarse_rhs_norm
+                      << " coarse_x=" << d.coarse_solution_norm
+                      << " correction=" << d.correction_norm
+                      << " after_correction=" << d.residual_after_correction
+                      << " after_post=" << d.residual_after_post
+                      << " coarse_before=" << d.coarse_residual_before
+                      << " coarse_after=" << d.coarse_residual_after
+                      << "\n";
+        }
+    }
+
+    // Same microscope with smoothed aggregation. Comparing the two stage
+    // signatures identifies whether the defect follows interpolation or the
+    // common smoother/restriction/coarse-solve path.
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner vcycle(op, 0.7, 6, 6, 0.25, 25,
+                                              AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(vcycle.setup(A_diag));
+        Vector z(n_diag, 0.0);
+        std::vector<MatrixFreeVcyclePreconditioner::VcycleDiagnostic> diagnostics;
+        EXPECT_TRUE(vcycle.apply_with_diagnostics(b_diag, z, diagnostics));
+        std::cout << "amg_vcycle_microscope SA stages=" << diagnostics.size() << "\n";
+        for (const auto& d : diagnostics) {
+            std::cout << "  level=" << d.level
+                      << " n=" << d.size
+                      << " residual_before=" << d.residual_before
+                      << " after_pre=" << d.residual_after_pre
+                      << " coarse_rhs=" << d.coarse_rhs_norm
+                      << " coarse_x=" << d.coarse_solution_norm
+                      << " correction=" << d.correction_norm
+                      << " after_correction=" << d.residual_after_correction
+                      << " after_post=" << d.residual_after_post
+                      << " coarse_before=" << d.coarse_residual_before
+                      << " coarse_after=" << d.coarse_residual_after
+                      << "\n";
+        }
+    }
+
     // Apply both interpolation strategies on the small multilevel case;
     // structural P checks alone are insufficient to qualify a V-cycle.
     {
@@ -370,7 +426,7 @@ int main() {
         EXPECT_TRUE(sa.apply(b, zsa));
         std::cout << "amg_small_multilevel_apply DirectCF_residual_ratio="
                   << relative_true_residual(A, zcf, b)
-                  << " SA_residual_ratio=" << relative_true_residual(A, zsa, b) << '\\n';
+                  << " SA_residual_ratio=" << relative_true_residual(A, zsa, b) << '\n';
     }
 
     run_case("ilu0_transport", make_rhs_matrix(256), make_rhs(256),
