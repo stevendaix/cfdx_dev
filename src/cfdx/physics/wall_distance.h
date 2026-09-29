@@ -1183,6 +1183,11 @@ struct WallDistancePoissonReconstructionAudit {
 };
 
 
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id);
+
 // P0/P1 numerical-audit contract: the gradient used by the Poisson
 // reconstruction is kept in one place and uses the same wall offset as the
 // Poisson face flux.  This does NOT make the Poisson-to-distance model exact;
