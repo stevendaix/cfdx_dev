@@ -1249,11 +1249,33 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
         }
         for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
         if((it&3u)==3u||max_change<1e-10*h) {
+            // Evaluate exactly the same upwind transport operator used by the
+            // pseudo-time update. The previous diagnostic used a central
+            // gradient here, so the reported residual could disagree with
+            // the nonlinear operator actually being iterated.
             final_residual=0.0;
             for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]&&!fixed[id]&&std::isfinite(d[id])) {
                 double ux,uy,uz; velocity(id,ux,uy,uz);
-                const double adv=ux*grad_comp(d,id,0)+uy*grad_comp(d,id,1)+uz*grad_comp(d,id,2);
-                final_residual=std::max(final_residual,std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(d,g,id)));
+                const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
+                auto upwind=[&](double u,int axis)->double {
+                    auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
+                    if(axis==0) {
+                        if(u>=0.0) { if(i==0) return 0.0; return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x; }
+                        if(i+1==g.nx) return 0.0;
+                        return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                    }
+                    if(axis==1) {
+                        if(u>=0.0) { if(j==0) return 0.0; return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y; }
+                        if(j+1==g.ny) return 0.0;
+                        return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                    }
+                    if(u>=0.0) { if(k==0) return 0.0; return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z; }
+                    if(k+1==g.nz) return 0.0;
+                    return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                };
+                const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
+                final_residual=std::max(final_residual,
+                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(d,g,id)));
             }
             if(final_residual<1e-8&&max_change<1e-9*h){used=it+1;break;}
         }
