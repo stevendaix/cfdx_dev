@@ -1182,6 +1182,108 @@ struct WallDistancePoissonReconstructionAudit {
     double distance_linf_error{0.0};
 };
 
+
+// P0/P1 numerical-audit contract: the gradient used by the Poisson
+// reconstruction is kept in one place and uses the same wall offset as the
+// Poisson face flux.  This does NOT make the Poisson-to-distance model exact;
+// it only removes an implementation inconsistency between the elliptic solve
+// and the post-processing operator.
+inline double poisson_reconstruction_gradient_component(
+    const WallDistanceBvh& bvh,const std::vector<double>& phi,
+    const WallDistanceGrid& g,std::size_t id,int axis) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    auto one_side=[&](std::size_t q,double h,double sign)->double {
+        if(g.solid[q]) {
+            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            // sign is +1 for the +axis neighbour and -1 for the -axis
+            // neighbour.  phi_b=0, hence dphi/dn=(phi_b-phi_i)/delta.
+            return sign * (-phi[id]/delta);
+        }
+        return sign * (phi[q]-phi[id])/h;
+    };
+    if(axis==0) {
+        const bool hm=i>0, hp=i+1<g.nx;
+        const auto im=hm?g.index(i-1,j,k):0, ip=hp?g.index(i+1,j,k):0;
+        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
+        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.x);
+        if(fp) return one_side(ip,g.spacing.x,+1.0);
+        if(fm) return one_side(im,g.spacing.x,-1.0);
+    } else if(axis==1) {
+        const bool hm=j>0, hp=j+1<g.ny;
+        const auto im=hm?g.index(i,j-1,k):0, ip=hp?g.index(i,j+1,k):0;
+        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
+        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.y);
+        if(fp) return one_side(ip,g.spacing.y,+1.0);
+        if(fm) return one_side(im,g.spacing.y,-1.0);
+    } else {
+        const bool hm=k>0, hp=k+1<g.nz;
+        const auto im=hm?g.index(i,j,k-1):0, ip=hp?g.index(i,j,k+1):0;
+        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
+        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.z);
+        if(fp) return one_side(ip,g.spacing.z,+1.0);
+        if(fm) return one_side(im,g.spacing.z,-1.0);
+    }
+    return 0.0;
+}
+
+inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
+                                              const WallDistanceGrid& g,
+                                              const std::vector<double>& phi,
+                                              std::size_t id) {
+    const double gx=poisson_reconstruction_gradient_component(bvh,phi,g,id,0);
+    const double gy=poisson_reconstruction_gradient_component(bvh,phi,g,id,1);
+    const double gz=poisson_reconstruction_gradient_component(bvh,phi,g,id,2);
+    const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
+    return std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2.0*phi[id]))-grad);
+}
+
+struct WallDistancePoissonManufacturedAudit {
+    double operator_residual_inf{0.0};
+    double gradient_error_inf{0.0};
+    double reconstruction_l2_relative{0.0};
+    double reconstruction_linf_relative{0.0};
+    double eikonal_residual_inf{0.0};
+    std::size_t samples{0};
+};
+
+// This audit deliberately separates three error sources:
+//   (1) A_h(phi_exact)-b: consistency of the discrete Poisson operator;
+//   (2) grad_h(phi_exact)-grad(phi_exact): reconstruction-gradient error;
+//   (3) reconstructed d_h-d_exact: the Poisson-to-distance model itself.
+// A small linear-solver residual alone cannot distinguish these effects.
+inline WallDistancePoissonManufacturedAudit audit_poisson_manufactured(
+    const WallDistanceBvh& bvh,const WallDistanceGrid& g,
+    const std::vector<double>& phi_exact,
+    const std::function<double(const WallDistanceVec3&)>& exact_distance,
+    const std::function<WallDistanceVec3(const WallDistanceVec3&)>& exact_gradient) {
+    if(phi_exact.size()!=g.points.size())
+        throw std::invalid_argument("manufactured Poisson field size mismatch");
+    WallDistancePoissonManufacturedAudit a;
+    double e2=0.0, ref2=0.0, emax=0.0, refmax=0.0;
+    for(std::size_t id=0;id<g.points.size();++id) {
+        if(g.solid[id] || !std::isfinite(phi_exact[id])) continue;
+        const auto x=g.points[id];
+        const auto ge=exact_gradient(x);
+        const double gx=poisson_reconstruction_gradient_component(bvh,phi_exact,g,id,0);
+        const double gy=poisson_reconstruction_gradient_component(bvh,phi_exact,g,id,1);
+        const double gz=poisson_reconstruction_gradient_component(bvh,phi_exact,g,id,2);
+        const double ge_err=std::max({std::abs(gx-ge.x),std::abs(gy-ge.y),std::abs(gz-ge.z)});
+        a.gradient_error_inf=std::max(a.gradient_error_inf,ge_err);
+        const double op=std::abs(-poisson_laplacian_at(bvh,phi_exact,g,id)-1.0);
+        a.operator_residual_inf=std::max(a.operator_residual_inf,op);
+        const double d=poisson_reconstructed_distance(bvh,g,phi_exact,id);
+        const double de=exact_distance(x);
+        const double e=std::abs(d-de);
+        e2+=e*e; ref2+=de*de; emax=std::max(emax,e); refmax=std::max(refmax,std::abs(de));
+        a.eikonal_residual_inf=std::max(a.eikonal_residual_inf,std::abs(
+            std::sqrt(gx*gx+gy*gy+gz*gz)-1.0));
+        ++a.samples;
+    }
+    a.reconstruction_l2_relative=std::sqrt(e2/std::max(1e-30,ref2));
+    a.reconstruction_linf_relative=emax/std::max(1e-30,refmax);
+    return a;
+}
+
 inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                              std::size_t max_iter,double smooth,
                                              std::size_t* used_iter=nullptr,
