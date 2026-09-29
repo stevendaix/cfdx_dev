@@ -585,9 +585,18 @@ public:
 
     double two_grid_residual_ratio(std::size_t level, const Vector& rhs) const
     {
-        if (level + 1 >= levels_.size() ||
-            rhs.size() != levels_[level].A.n_rows()) {
-            throw std::out_of_range("two_grid_residual_ratio: invalid level");
+        if (level + 1 >= levels_.size()) {
+            throw std::out_of_range(
+                "two_grid_residual_ratio: invalid level=" +
+                std::to_string(level) +
+                " hierarchy_levels=" + std::to_string(levels_.size()));
+        }
+        if (rhs.size() != levels_[level].A.n_rows()) {
+            throw std::out_of_range(
+                "two_grid_residual_ratio: rhs size mismatch at level=" +
+                std::to_string(level) +
+                " fine_size=" + std::to_string(levels_[level].A.n_rows()) +
+                " rhs_size=" + std::to_string(rhs.size()));
         }
 
         Vector x(rhs.size(), 0.0), Ax(rhs.size()), res(rhs.size());
