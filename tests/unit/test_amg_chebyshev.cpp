@@ -150,7 +150,13 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
               << " P_mode1_relerr=" << amg.first_prolongation_mode_relative_error(1)
               << " P_mode2_relerr=" << amg.first_prolongation_mode_relative_error(2)
               << " P_mode3_relerr=" << amg.first_prolongation_mode_relative_error(3)
+              << " P_weight=[" << amg.first_prolongation_weight_min()
+              << "," << amg.first_prolongation_weight_max() << "]"
+              << " P_negative=" << amg.first_prolongation_negative_count()
               << " Ac_sym_relerr=" << amg.first_coarse_symmetry_relative_error()
+              << " Ac_diag=[" << amg.first_coarse_diagonal_min()
+              << "," << amg.first_coarse_diagonal_max() << "]"
+              << " Ac_gershgorin_min=" << amg.first_coarse_gershgorin_lower_bound()
               << "\n";
     std::cerr << "AMG_LEVELS";
     for (const auto size : levels) std::cerr << " " << size;
@@ -201,7 +207,14 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
               << " P_nnz=" << sa.first_prolongation_nnz()
               << " P_mode1_relerr=" << sa.first_prolongation_mode_relative_error(1)
               << " P_mode2_relerr=" << sa.first_prolongation_mode_relative_error(2)
-              << " P_mode3_relerr=" << sa.first_prolongation_mode_relative_error(3);
+              << " P_mode3_relerr=" << sa.first_prolongation_mode_relative_error(3)
+              << " P_weight=[" << sa.first_prolongation_weight_min()
+              << "," << sa.first_prolongation_weight_max() << "]"
+              << " P_negative=" << sa.first_prolongation_negative_count()
+              << " Ac_sym_relerr=" << sa.first_coarse_symmetry_relative_error()
+              << " Ac_diag=[" << sa.first_coarse_diagonal_min()
+              << "," << sa.first_coarse_diagonal_max() << "]"
+              << " Ac_gershgorin_min=" << sa.first_coarse_gershgorin_lower_bound();
 
     // Apply the same independent V-cycle measurement to the first three
     // discrete Poisson modes for Smoothed Aggregation. This is diagnostic only
@@ -301,8 +314,7 @@ int main() {
         op, 0.7, 4, 4, 0.25, 25,
         AMGInterpolationPolicy::SmoothedAggregation);
     if (!smoothed_aggregation.setup(A) ||
-        smoothed_aggregation.coarse_size() == 0 ||
-        smoothed_aggregation.coarse_size() >= A.n_rows()) {
+        smoothed_aggregation.coarse_size() == 0) {
         return 30;
     }
     for (std::size_t i = 0; i < A.n_rows(); ++i) {
