@@ -1364,8 +1364,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const std::vector<double>& d,
                                                         const WallDistanceGrid& g,
-                                                        const std::vector<unsigned char>* fixed=nullptr,
-                                                        double advection_diffusion_gamma=0.05) {
+                                                        const std::vector<unsigned char>* fixed,
+                                                        double advection_diffusion_gamma) {
     double rmax=0.0;
     for(std::size_t id=0;id<d.size();++id) {
         if(g.solid[id] || !std::isfinite(d[id]) || (fixed && (*fixed)[id])) continue;
