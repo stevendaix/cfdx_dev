@@ -192,9 +192,17 @@ int main() {
                       << " weight=[" << d.weight_min << "," << d.weight_max << "]"
                       << " negatives=" << d.negative_weights
                       << " col_norm=[" << d.column_norm_min << "," << d.column_norm_max << "]"
+                      << " constant_mode_error=" << d.constant_mode_error
                       << " linear_mode_error=" << d.linear_mode_error
+                      << " sine1_mode_error=" << d.sine1_mode_error
+                      << " sine2_mode_error=" << d.sine2_mode_error
                       << " galerkin_rel_error=" << d.galerkin_relative_error
-                      << " two_grid_ratio=" << vcycle.two_grid_residual_ratio(d.level, b_diag)
+                      << " coarse_symmetry_error=" << d.coarse_symmetry_relative_error
+                      << " coarse_diag=[" << d.coarse_diagonal_min
+                      << "," << d.coarse_diagonal_max << "]"
+                      << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
+                      << " two_grid_ratio="
+                      << vcycle.two_grid_residual_ratio(d.level, b_diag)
                       << '\n';
         }
     }
@@ -218,9 +226,17 @@ int main() {
                       << " weight=[" << d.weight_min << "," << d.weight_max << "]"
                       << " negatives=" << d.negative_weights
                       << " col_norm=[" << d.column_norm_min << "," << d.column_norm_max << "]"
+                      << " constant_mode_error=" << d.constant_mode_error
                       << " linear_mode_error=" << d.linear_mode_error
+                      << " sine1_mode_error=" << d.sine1_mode_error
+                      << " sine2_mode_error=" << d.sine2_mode_error
                       << " galerkin_rel_error=" << d.galerkin_relative_error
-                      << " two_grid_ratio=" << sa.two_grid_residual_ratio(d.level, b_diag)
+                      << " coarse_symmetry_error=" << d.coarse_symmetry_relative_error
+                      << " coarse_diag=[" << d.coarse_diagonal_min
+                      << "," << d.coarse_diagonal_max << "]"
+                      << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
+                      << " two_grid_ratio="
+                      << sa.two_grid_residual_ratio(d.level, b_diag)
                       << '\n';
         }
     }
