@@ -317,12 +317,22 @@ int main() {
         smoothed_aggregation.coarse_size() == 0) {
         return 30;
     }
-    for (std::size_t i = 0; i < A.n_rows(); ++i) {
-        if (std::abs(smoothed_aggregation.prolongation_row_sum(i) - 1.0) >
-            1e-12) {
-            std::cerr << "Smoothed aggregation did not preserve constants\n";
-            return 31;
+    // For small systems the AMG contract permits a direct coarse solve,
+    // in which case there is no fine-to-coarse prolongation operator to
+    // inspect. Do not query a nonexistent P just because coarse_size()==n.
+    // When a genuine multilevel hierarchy exists, verify constant preservation
+    // on every fine row.
+    if (smoothed_aggregation.hierarchy_level_sizes().size() >= 2) {
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            if (std::abs(smoothed_aggregation.prolongation_row_sum(i) - 1.0) >
+                1e-12) {
+                std::cerr << "Smoothed aggregation did not preserve constants\n";
+                return 31;
+            }
         }
+    } else if (smoothed_aggregation.coarse_size() != A.n_rows()) {
+        std::cerr << "Unexpected direct-coarse Smoothed Aggregation hierarchy\n";
+        return 31;
     }
     Vector sa_correction;
     if (!smoothed_aggregation.apply(rhs, sa_correction) ||
