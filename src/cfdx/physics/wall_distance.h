@@ -51,6 +51,17 @@ struct WallDistanceResult {
     double residual_inf{0.0};
     std::size_t auxiliary_iterations{0};
     double auxiliary_residual_inf{0.0};
+    std::size_t poisson_wall_ray_hits{0};
+    std::size_t poisson_wall_ray_misses{0};
+    std::size_t poisson_wall_fallbacks{0};
+    std::size_t poisson_wall_bad_alignment{0};
+    double poisson_wall_min_alignment{1.0};
+    double poisson_phi_min{0.0};
+    double poisson_phi_max{0.0};
+    double poisson_grad_min{0.0};
+    double poisson_grad_max{0.0};
+    double poisson_distance_l2_error{0.0};
+    double poisson_distance_linf_error{0.0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -583,6 +594,65 @@ inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& 
     return l;
 }
 
+inline double laplacian_at(const WallDistanceBvh& bvh,
+                           const std::vector<double>& f,
+                           const WallDistanceGrid& g,
+                           std::size_t id) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    double l=0.0;
+    auto add_face=[&](std::size_t q,bool exists,double hh) {
+        if(!exists) return;
+        if(g.solid[q]) {
+            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],hh);
+            if(delta>0.0 && std::isfinite(delta)) l-=f[id]/(hh*delta);
+        } else if(std::isfinite(f[q])) {
+            l+=(f[q]-f[id])/(hh*hh);
+        }
+    };
+    const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
+    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
+    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
+    return l;
+}
+
+inline double godunov_gradient_at(const WallDistanceBvh& bvh,
+                                  const std::vector<double>& d,const WallDistanceGrid& g,
+                                  std::size_t id) {
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    auto component=[&](int axis)->double {
+        double dm=0.0, dp=0.0;
+        auto face=[&](std::size_t q,bool minus_side,double hh) {
+            if(g.solid[q]) {
+                const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],hh);
+                if(delta>0.0 && std::isfinite(delta)) {
+                    if(minus_side) dm=d[id]/delta;
+                    else dp=-d[id]/delta;
+                }
+            } else if(std::isfinite(d[q])) {
+                if(minus_side) dm=(d[id]-d[q])/hh;
+                else dp=(d[q]-d[id])/hh;
+            }
+        };
+        if(axis==0) {
+            if(i>0) face(g.index(i-1,j,k),true,g.spacing.x);
+            if(i+1<g.nx) face(g.index(i+1,j,k),false,g.spacing.x);
+        } else if(axis==1) {
+            if(j>0) face(g.index(i,j-1,k),true,g.spacing.y);
+            if(j+1<g.ny) face(g.index(i,j+1,k),false,g.spacing.y);
+        } else {
+            if(k>0) face(g.index(i,j,k-1),true,g.spacing.z);
+            if(k+1<g.nz) face(g.index(i,j,k+1),false,g.spacing.z);
+        }
+        return std::sqrt(std::max(dm,0.0)*std::max(dm,0.0)
+                       + std::min(dp,0.0)*std::min(dp,0.0));
+    };
+    const double gx=component(0), gy=component(1), gz=component(2);
+    return std::sqrt(gx*gx+gy*gy+gz*gz);
+}
+
 inline double godunov_gradient_at(const std::vector<double>& d,const WallDistanceGrid& g,
                                   std::size_t id) {
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
@@ -656,9 +726,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         double max_change=0.0;
         for(std::size_t id=0;id<d.size();++id) {
             if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
-            const double grad=godunov_gradient_at(d,g,id);
+            const double grad=godunov_gradient_at(bvh,d,g,id);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double lap=laplacian_at(d,g,id);
+            const double lap=laplacian_at(bvh,d,g,id);
             const double residual=grad-1.0-gamma*lap;
             // Use the full explicit CFL limits of the upwind advection and
             // central diffusion terms. The previous 0.25 safety factor was
@@ -745,7 +815,24 @@ struct WallDistancePoissonOffsetAudit {
     WallDistanceVec3 max_wall_coefficient_point{};
     std::size_t degenerate_count{0};
     std::size_t solid_face_count{0};
+    std::size_t ray_hit_count{0};
+    std::size_t ray_miss_count{0};
+    std::size_t fallback_count{0};
+    std::size_t bad_alignment_count{0};
+    double min_alignment{1.0};
 };
+
+struct WallDistancePoissonWallOffsetDiagnostic {
+    double delta{0.0};
+    bool ray_hit{false};
+    bool fallback{false};
+    bool bad_alignment{false};
+    double alignment{1.0};
+};
+
+inline WallDistancePoissonWallOffsetDiagnostic poisson_wall_offset_diagnostic(
+    const WallDistanceBvh& bvh,const WallDistanceVec3& p,
+    const WallDistanceVec3& q,double h);
 
 inline WallDistancePoissonOffsetAudit audit_poisson_wall_offsets(
     const WallDistanceBvh& bvh, const WallDistanceGrid& g) {
@@ -756,7 +843,13 @@ inline WallDistancePoissonOffsetAudit audit_poisson_wall_offsets(
         auto inspect=[&](std::size_t q, bool exists, double h) {
             if(!exists || !g.solid[q]) return;
             ++a.solid_face_count;
-            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            const auto wd=poisson_wall_offset_diagnostic(bvh,g.points[id],g.points[q],h);
+            const double delta=wd.delta;
+            if(wd.ray_hit) ++a.ray_hit_count;
+            else ++a.ray_miss_count;
+            if(wd.fallback) ++a.fallback_count;
+            if(wd.bad_alignment) ++a.bad_alignment_count;
+            a.min_alignment=std::min(a.min_alignment,wd.alignment);
             if(!(std::isfinite(delta) && delta>0.0)) {
                 ++a.degenerate_count;
                 return;
@@ -852,28 +945,45 @@ inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceBvh& bv
     return a;
 }
 
+inline WallDistancePoissonWallOffsetDiagnostic poisson_wall_offset_diagnostic(
+    const WallDistanceBvh& bvh,const WallDistanceVec3& p,
+    const WallDistanceVec3& q,double h) {
+    WallDistancePoissonWallOffsetDiagnostic out;
+    const auto segment=q-p;
+    const double length=wd_norm(segment);
+    const double ray=bvh.ray_distance(p,segment,length);
+    if(std::isfinite(ray) && ray>1e-12) {
+        out.delta=std::clamp(ray,1e-12,h);
+        out.ray_hit=true;
+        return out;
+    }
+
+    out.fallback=true;
+    const double d=bvh.nearest_distance(p);
+    if(!std::isfinite(d) || d<=0.0) {
+        out.delta=std::max(1e-12,h);
+        out.bad_alignment=true;
+        out.alignment=0.0;
+        return out;
+    }
+
+    const auto dir=segment*(1.0/std::max(length,1e-30));
+    const auto n=bvh.nearest_normal(p);
+    out.alignment=std::abs(wd_dot(n,dir));
+    if(out.alignment<0.25) {
+        out.bad_alignment=true;
+        out.delta=std::min(d,h);
+    } else {
+        out.delta=std::clamp(d/out.alignment,1e-12,h);
+    }
+    return out;
+}
+
 inline double poisson_wall_offset(const WallDistanceBvh& bvh,
                                       const WallDistanceVec3& p,
                                       const WallDistanceVec3& q,
                                       double h) {
-    // q is a solid neighbour, so the physical Dirichlet boundary must cross
-    // the p->q segment. Use the actual segment/surface intersection rather
-    // than projecting the nearest surface distance onto the grid direction.
-    // The latter is wrong near edges/corners and can bias the Poisson solution
-    // systematically while leaving the linear residual essentially zero.
-    const auto segment=q-p;
-    const double ray= bvh.ray_distance(p,segment,wd_norm(segment));
-    if(std::isfinite(ray) && ray>1e-12)
-        return std::clamp(ray,1e-12,h);
-
-    // Conservative fallback for pathological/touching geometry.
-    const double d=bvh.nearest_distance(p);
-    if(!std::isfinite(d) || d<=0.0) return std::max(1e-12,h);
-    const auto dir=segment*(1.0/std::max(wd_norm(segment),1e-30));
-    const auto n=bvh.nearest_normal(p);
-    const double align=std::abs(wd_dot(n,dir));
-    if(align<0.25) return std::min(d,h);
-    return std::clamp(d/align,1e-12,h);
+    return poisson_wall_offset_diagnostic(bvh,p,q,h).delta;
 }
 
 inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
@@ -1058,10 +1168,20 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     return phi;
 }
 
+struct WallDistancePoissonReconstructionAudit {
+    double phi_min{std::numeric_limits<double>::infinity()};
+    double phi_max{-std::numeric_limits<double>::infinity()};
+    double grad_min{std::numeric_limits<double>::infinity()};
+    double grad_max{0.0};
+    double distance_l2_error{0.0};
+    double distance_linf_error{0.0};
+};
+
 inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                              std::size_t max_iter,double smooth,
                                              std::size_t* used_iter=nullptr,
-                                             double* residual_out=nullptr) {
+                                             double* residual_out=nullptr,
+                                             WallDistancePoissonReconstructionAudit* audit_out=nullptr) {
     std::vector<double> phi=poisson_potential(bvh,g,max_iter,smooth,used_iter,residual_out);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<g.points.size();++id) if(!g.solid[id]) {
@@ -1109,15 +1229,52 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
         const double gx=deriv(0),gy=deriv(1),gz=deriv(2),grad=std::sqrt(gx*gx+gy*gy+gz*gz);
         d[id]=std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2*phi[id]))-grad);
     }
+    if(audit_out) {
+        WallDistancePoissonReconstructionAudit a;
+        double e2=0.0, ref2=0.0, emax=0.0, refmax=0.0;
+        for(std::size_t id=0;id<g.points.size();++id) {
+            if(g.solid[id] || !std::isfinite(phi[id]) || !std::isfinite(d[id])) continue;
+            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+            auto deriv_local=[&](int axis)->double {
+                if(axis==0) {
+                    if(i>0&&i+1<g.nx&&!g.solid[g.index(i-1,j,k)]&&!g.solid[g.index(i+1,j,k)])
+                        return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
+                    if(i+1<g.nx) { const auto q=g.index(i+1,j,k); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x); return (phi[q]-phi[id])/g.spacing.x; }
+                    if(i>0) { const auto q=g.index(i-1,j,k); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x); return (phi[id]-phi[q])/g.spacing.x; }
+                } else if(axis==1) {
+                    if(j>0&&j+1<g.ny&&!g.solid[g.index(i,j-1,k)]&&!g.solid[g.index(i,j+1,k)])
+                        return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
+                    if(j+1<g.ny) { const auto q=g.index(i,j+1,k); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y); return (phi[q]-phi[id])/g.spacing.y; }
+                    if(j>0) { const auto q=g.index(i,j-1,k); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y); return (phi[id]-phi[q])/g.spacing.y; }
+                } else {
+                    if(k>0&&k+1<g.nz&&!g.solid[g.index(i,j,k-1)]&&!g.solid[g.index(i,j,k+1)])
+                        return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
+                    if(k+1<g.nz) { const auto q=g.index(i,j,k+1); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z); return (phi[q]-phi[id])/g.spacing.z; }
+                    if(k>0) { const auto q=g.index(i,j,k-1); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z); return (phi[id]-phi[q])/g.spacing.z; }
+                }
+                return 0.0;
+            };
+            const double gx=deriv_local(0), gy=deriv_local(1), gz=deriv_local(2);
+            const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
+            a.phi_min=std::min(a.phi_min,phi[id]); a.phi_max=std::max(a.phi_max,phi[id]);
+            a.grad_min=std::min(a.grad_min,grad); a.grad_max=std::max(a.grad_max,grad);
+            const double ref=bvh.nearest_distance(g.points[id]), e=d[id]-ref;
+            e2+=e*e; ref2+=ref*ref; emax=std::max(emax,std::abs(e)); refmax=std::max(refmax,ref);
+        }
+        a.distance_l2_error=std::sqrt(e2/std::max(1e-30,ref2));
+        a.distance_linf_error=emax/std::max(1e-30,refmax);
+        *audit_out=a;
+    }
     return d;
 }
 
 inline std::vector<double> poisson_distance(const WallSurface& s,const WallDistanceGrid& g,
                                              std::size_t max_iter,double smooth,
                                              std::size_t* used_iter=nullptr,
-                                             double* residual_out=nullptr) {
+                                             double* residual_out=nullptr,
+                                             WallDistancePoissonReconstructionAudit* audit_out=nullptr) {
     const WallDistanceBvh bvh(s);
-    return poisson_distance(bvh,g,max_iter,smooth,used_iter,residual_out);
+    return poisson_distance(bvh,g,max_iter,smooth,used_iter,residual_out,audit_out);
 }
 
 inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
@@ -1451,8 +1608,22 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.converged=true;
             r.stopping_reason="graph_complete";
             break;
-        case WallDistanceMethod::POISSON:
-            r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf);
+        case WallDistanceMethod::POISSON: {
+            WallDistancePoissonReconstructionAudit pa;
+            r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf,&pa);
+            const WallDistanceBvh pbvh(s);
+            const auto wa=audit_poisson_wall_offsets(pbvh,g);
+            r.poisson_wall_ray_hits=wa.ray_hit_count;
+            r.poisson_wall_ray_misses=wa.ray_miss_count;
+            r.poisson_wall_fallbacks=wa.fallback_count;
+            r.poisson_wall_bad_alignment=wa.bad_alignment_count;
+            r.poisson_wall_min_alignment=wa.min_alignment;
+            r.poisson_phi_min=pa.phi_min;
+            r.poisson_phi_max=pa.phi_max;
+            r.poisson_grad_min=pa.grad_min;
+            r.poisson_grad_max=pa.grad_max;
+            r.poisson_distance_l2_error=pa.distance_l2_error;
+            r.poisson_distance_linf_error=pa.distance_linf_error;
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
