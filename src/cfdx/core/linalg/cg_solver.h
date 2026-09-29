@@ -364,6 +364,18 @@ inline SolverResult solve_cg_impl(
                     result.iterations = iter;
                     return result;
                 }
+                // The replacement recomputes b-Ax after the normal convergence
+                // check. Re-test the true residual here so a converged iterate
+                // produced exactly at a replacement is not reported as
+                // MAX_ITER_REACHED merely because the replacement was the last
+                // operation of the iteration.
+                if (res <= tol_abs) {
+                    result.status = SolverStatus::CONVERGED;
+                    result.iterations = iter;
+                    result.residual = res;
+                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    return result;
+                }
                 // Restart the search direction after replacement. This avoids
                 // carrying a direction built from a residual that no longer
                 // represents b-Ax while retaining the current iterate.
