@@ -187,7 +187,40 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
                   << std::sqrt(after2 / std::max(before2, 1e-300))
                   << "\n";
     }
-}
+
+    // Compare the alternative smoothed-aggregation coarse space on the same
+    // Poisson operators. This is diagnostic only: no pass/fail threshold is
+    // changed by this comparison.
+    MatrixFreeVcyclePreconditioner sa(
+        op, 0.7, 4, 4, 0.25, 25,
+        cfdx::core::AMGInterpolationPolicy::SmoothedAggregation);
+    if (!sa.setup(A))
+        throw std::runtime_error("AMG smoothed-aggregation diagnostic setup failed");
+    Vector mode1(n);
+    for (std::size_t i = 0; i < n; ++i)
+        mode1(i) = std::sin(3.14159265358979323846 * static_cast<double>(i + 1) /
+                            static_cast<double>(n + 1));
+    const auto mode1_rhs = A.matvec(mode1);
+    Vector sa_correction;
+    Vector sa_rhs(n);\n    for (std::size_t i = 0; i < n; ++i) sa_rhs(i) = mode1_rhs[i];\n    if (!sa.apply(sa_rhs, sa_correction)) {
+        // Vector does not provide a lambda constructor; this branch is replaced below.
+        throw std::runtime_error("AMG smoothed-aggregation diagnostic apply failed");
+    }
+    const auto sa_Az = A.matvec(sa_correction);
+    double sa_before2 = 0.0;
+    double sa_after2 = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        sa_before2 += mode1_rhs[i] * mode1_rhs[i];
+        const double residual = mode1_rhs[i] - sa_Az[i];
+        sa_after2 += residual * residual;
+    }
+    std::cerr << "AMG_SA N=" << n
+              << " coarse=" << sa.coarse_size()
+              << " P_nnz=" << sa.first_prolongation_nnz()
+              << " P_mode1_relerr=" << sa.first_prolongation_mode_relative_error(1)
+              << " vcycle_mode1_ratio=" << std::sqrt(sa_after2 / std::max(sa_before2, 1e-300))
+              << "\n";
+
 
 int main() {
     using namespace cfdx::core;
