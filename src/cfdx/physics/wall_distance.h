@@ -1665,10 +1665,10 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
+        }
         case WallDistanceMethod::EIKONAL: {
             const WallDistanceBvh bvh(s);
             r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations);
-            const WallDistanceBvh bvh(s);
             std::vector<unsigned char> fixed(g.points.size(),0);
             for(const auto id:wall_seed_nodes(bvh,g,1.6*std::min({g.spacing.x,g.spacing.y,g.spacing.z}))) fixed[id]=1;
             r.residual_inf=wall_distance_pde_residual_inf(WallDistanceMethod::EIKONAL,r.distance,g,&fixed,0.05,&bvh);
@@ -1680,7 +1680,6 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::HAMILTON_JACOBI: {
-            const WallDistanceBvh bvh(s);
             r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
@@ -1690,7 +1689,6 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::ADVECTION_DIFFUSION: {
-            const WallDistanceBvh bvh(s);
             r.distance=advection_diffusion_distance(s,g,iterations,0.05,&r.iterations,&r.residual_inf);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
