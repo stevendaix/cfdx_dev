@@ -685,6 +685,25 @@ public:
         return res.norm2() / std::max(before, 1e-300);
     }
 
+    double two_grid_sine_mode_residual_ratio(std::size_t level, std::size_t mode) const
+    {
+        if (level + 1 >= levels_.size() || mode == 0) {
+            throw std::out_of_range("two_grid_sine_mode_residual_ratio: invalid level or mode");
+        }
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        }
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        return two_grid_residual_ratio(level, rhs);
+    }
+
     std::size_t first_prolongation_nnz() const
     {
         if (levels_.size() < 2)
