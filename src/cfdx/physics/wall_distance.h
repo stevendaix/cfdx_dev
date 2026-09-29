@@ -1304,33 +1304,20 @@ inline std::vector<double> poisson_distance(const WallDistanceBvh& bvh,const Wal
         double e2=0.0, ref2=0.0, emax=0.0, refmax=0.0;
         for(std::size_t id=0;id<g.points.size();++id) {
             if(g.solid[id] || !std::isfinite(phi[id]) || !std::isfinite(d[id])) continue;
-            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-            auto deriv_local=[&](int axis)->double {
-                if(axis==0) {
-                    if(i>0&&i+1<g.nx&&!g.solid[g.index(i-1,j,k)]&&!g.solid[g.index(i+1,j,k)])
-                        return (phi[g.index(i+1,j,k)]-phi[g.index(i-1,j,k)])/(2*g.spacing.x);
-                    if(i+1<g.nx) { const auto q=g.index(i+1,j,k); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x); return (phi[q]-phi[id])/g.spacing.x; }
-                    if(i>0) { const auto q=g.index(i-1,j,k); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.x); return (phi[id]-phi[q])/g.spacing.x; }
-                } else if(axis==1) {
-                    if(j>0&&j+1<g.ny&&!g.solid[g.index(i,j-1,k)]&&!g.solid[g.index(i,j+1,k)])
-                        return (phi[g.index(i,j+1,k)]-phi[g.index(i,j-1,k)])/(2*g.spacing.y);
-                    if(j+1<g.ny) { const auto q=g.index(i,j+1,k); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y); return (phi[q]-phi[id])/g.spacing.y; }
-                    if(j>0) { const auto q=g.index(i,j-1,k); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.y); return (phi[id]-phi[q])/g.spacing.y; }
-                } else {
-                    if(k>0&&k+1<g.nz&&!g.solid[g.index(i,j,k-1)]&&!g.solid[g.index(i,j,k+1)])
-                        return (phi[g.index(i,j,k+1)]-phi[g.index(i,j,k-1)])/(2*g.spacing.z);
-                    if(k+1<g.nz) { const auto q=g.index(i,j,k+1); if(g.solid[q]) return -phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z); return (phi[q]-phi[id])/g.spacing.z; }
-                    if(k>0) { const auto q=g.index(i,j,k-1); if(g.solid[q]) return phi[id]/poisson_wall_offset(bvh,g.points[id],g.points[q],g.spacing.z); return (phi[id]-phi[q])/g.spacing.z; }
-                }
-                return 0.0;
-            };
-            const double gx=deriv_local(0), gy=deriv_local(1), gz=deriv_local(2);
+            const double gx=poisson_reconstruction_gradient_component(bvh,phi,g,id,0);
+            const double gy=poisson_reconstruction_gradient_component(bvh,phi,g,id,1);
+            const double gz=poisson_reconstruction_gradient_component(bvh,phi,g,id,2);
             const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
-            a.phi_min=std::min(a.phi_min,phi[id]); a.phi_max=std::max(a.phi_max,phi[id]);
-            a.grad_min=std::min(a.grad_min,grad); a.grad_max=std::max(a.grad_max,grad);
+            a.phi_min=std::min(a.phi_min,phi[id]);
+            a.phi_max=std::max(a.phi_max,phi[id]);
+            a.grad_min=std::min(a.grad_min,grad);
+            a.grad_max=std::max(a.grad_max,grad);
             const double ref=bvh.nearest_distance(g.points[id]), e=d[id]-ref;
-            e2+=e*e; ref2+=ref*ref; emax=std::max(emax,std::abs(e)); refmax=std::max(refmax,ref);
+            e2+=e*e; ref2+=ref*ref;
+            emax=std::max(emax,std::abs(e)); refmax=std::max(refmax,ref);
         }
+        if(!std::isfinite(a.phi_min)) a.phi_min=0.0;
+        if(!std::isfinite(a.grad_min)) a.grad_min=0.0;
         a.distance_l2_error=std::sqrt(e2/std::max(1e-30,ref2));
         a.distance_linf_error=emax/std::max(1e-30,refmax);
         *audit_out=a;
