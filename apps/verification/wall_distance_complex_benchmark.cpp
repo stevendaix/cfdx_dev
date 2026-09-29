@@ -131,7 +131,7 @@ int main(int argc,char** argv) {
               << ",max_wall_coefficient_h=" << poisson_offset_audit.max_wall_coefficient_h
               << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
     constexpr std::size_t benchmark_iterations=500;
-    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance\n";
+    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error\n";
 
     for(const auto method:methods) {
         double init_ms=0.0, poisson_ms=0.0;
@@ -180,7 +180,7 @@ int main(int argc,char** argv) {
 
     std::ofstream csv(output);
     if(!csv) throw std::runtime_error("cannot open benchmark output: "+output);
-    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance\n";
+    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error\n";
     for(const auto& r:rows)
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
             << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
