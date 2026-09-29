@@ -166,7 +166,7 @@ int main(int argc,char** argv) {
 
     std::ofstream csv(output);
     if(!csv) throw std::runtime_error("cannot open benchmark output: "+output);
-    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged\n";
+    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance\n";
     for(const auto& r:rows)
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
             << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
