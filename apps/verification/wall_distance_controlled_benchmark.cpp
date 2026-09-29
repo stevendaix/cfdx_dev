@@ -109,6 +109,14 @@ struct Row {
     double poisson_distance_linf_error{};
     double poisson_exact_gradient_l2_error{};
     double poisson_exact_gradient_linf_error{};
+    double poisson_exact_phi_exact_gradient_l2_error{};
+    double poisson_numerical_phi_exact_gradient_l2_error{};
+    double poisson_exact_phi_numerical_gradient_l2_error{};
+    double poisson_full_reconstruction_l2_error{};
+    double poisson_exact_phi_exact_gradient_linf_error{};
+    double poisson_numerical_phi_exact_gradient_linf_error{};
+    double poisson_exact_phi_numerical_gradient_linf_error{};
+    double poisson_full_reconstruction_linf_error{};
 };
 
 std::vector<WallDistanceMethod> methods()
@@ -247,19 +255,64 @@ int main(int argc, char** argv)
                 const auto diagnostic_phi=poisson_potential(
                     bvh,grid,500,1.5,&diagnostic_iterations,&diagnostic_residual);
                 double e2=0.0,r2=0.0,em=0.0,rm=0.0;
+                double exact_phi_exact_grad_e2=0.0, exact_phi_exact_grad_em=0.0;
+                double num_phi_exact_grad_e2=0.0, num_phi_exact_grad_em=0.0;
+                double exact_phi_num_grad_e2=0.0, exact_phi_num_grad_em=0.0;
+                double full_e2=0.0, full_em=0.0;
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
                     const auto exact_grad=analytic_box_distance_gradient(grid.points[id]);
-                    const double d_diag=reconstruct_from_gradient(diagnostic_phi[id],exact_grad);
-                    const double e=std::abs(d_diag-analytic[id]);
-                    e2+=e*e; r2+=analytic[id]*analytic[id];
-                    em=std::max(em,e); rm=std::max(rm,std::abs(analytic[id]));
+                    const double d=analytic[id];
+                    // Exact reconstruction input for the Tucker relation:
+                    // d = sqrt(|grad d|^2 + 2 phi) - |grad d|.
+                    // This is an input manufactured from the geometric
+                    // distance; it is not claimed to solve the Poisson PDE
+                    // exactly in edge/corner regions.
+                    const double exact_phi=d-0.5*d*d;
+                    const double d_exact_exact=reconstruct_from_gradient(exact_phi,exact_grad);
+                    const double d_num_exact=reconstruct_from_gradient(diagnostic_phi[id],exact_grad);
+                    const double gx=poisson_reconstruction_gradient_component(bvh,diagnostic_phi,grid,id,0);
+                    const double gy=poisson_reconstruction_gradient_component(bvh,diagnostic_phi,grid,id,1);
+                    const double gz=poisson_reconstruction_gradient_component(bvh,diagnostic_phi,grid,id,2);
+                    const WallDistanceVec3 numerical_grad{gx,gy,gz};
+                    const double d_exact_num=reconstruct_from_gradient(exact_phi,numerical_grad);
+                    const double d_full=reconstruct_from_gradient(diagnostic_phi[id],numerical_grad);
+                    const double e0=std::abs(d_exact_exact-d);
+                    const double e1=std::abs(d_num_exact-d);
+                    const double e2n=std::abs(d_exact_num-d);
+                    const double e3=std::abs(d_full-d);
+                    exact_phi_exact_grad_e2+=e0*e0;
+                    exact_phi_exact_grad_em=std::max(exact_phi_exact_grad_em,e0);
+                    num_phi_exact_grad_e2+=e1*e1;
+                    num_phi_exact_grad_em=std::max(num_phi_exact_grad_em,e1);
+                    exact_phi_num_grad_e2+=e2n*e2n;
+                    exact_phi_num_grad_em=std::max(exact_phi_num_grad_em,e2n);
+                    full_e2+=e3*e3;
+                    full_em=std::max(full_em,e3);
+                    r2+=d*d;
+                    rm=std::max(rm,std::abs(d));
+                    e2+=e1*e1;
+                    em=std::max(em,e1);
                 }
                 poisson_exact_gradient_l2=std::sqrt(e2/std::max(1e-30,r2));
                 poisson_exact_gradient_linf=em/std::max(1e-30,rm);
-                std::cout << "Poisson gradient-isolation: exact geometric gradient with numerical phi"
-                          << ", L2=" << poisson_exact_gradient_l2
-                          << ", Linf=" << poisson_exact_gradient_linf
+                poisson_exact_phi_exact_gradient_l2_error=std::sqrt(exact_phi_exact_grad_e2/std::max(1e-30,r2));
+                poisson_numerical_phi_exact_gradient_l2_error=std::sqrt(num_phi_exact_grad_e2/std::max(1e-30,r2));
+                poisson_exact_phi_numerical_gradient_l2_error=std::sqrt(exact_phi_num_grad_e2/std::max(1e-30,r2));
+                poisson_full_reconstruction_l2_error=std::sqrt(full_e2/std::max(1e-30,r2));
+                poisson_exact_phi_exact_gradient_linf_error=exact_phi_exact_grad_em/std::max(1e-30,rm);
+                poisson_numerical_phi_exact_gradient_linf_error=num_phi_exact_grad_em/std::max(1e-30,rm);
+                poisson_exact_phi_numerical_gradient_linf_error=exact_phi_num_grad_em/std::max(1e-30,rm);
+                poisson_full_reconstruction_linf_error=full_em/std::max(1e-30,rm);
+                std::cout << "Poisson reconstruction decomposition"
+                          << ", exact_phi_exact_grad_L2=" << poisson_exact_phi_exact_gradient_l2_error
+                          << ", numerical_phi_exact_grad_L2=" << poisson_numerical_phi_exact_gradient_l2_error
+                          << ", exact_phi_numerical_grad_L2=" << poisson_exact_phi_numerical_gradient_l2_error
+                          << ", full_L2=" << poisson_full_reconstruction_l2_error
+                          << ", exact_phi_exact_grad_Linf=" << poisson_exact_phi_exact_gradient_linf_error
+                          << ", numerical_phi_exact_grad_Linf=" << poisson_numerical_phi_exact_gradient_linf_error
+                          << ", exact_phi_numerical_grad_Linf=" << poisson_exact_phi_numerical_gradient_linf_error
+                          << ", full_Linf=" << poisson_full_reconstruction_linf_error
                           << ", diagnostic_residual=" << diagnostic_residual
                           << ", diagnostic_iterations=" << diagnostic_iterations << "\n";
             }
@@ -304,7 +357,15 @@ int main(int argc, char** argv)
                 result.poisson_distance_l2_error,
                 result.poisson_distance_linf_error,
                 poisson_exact_gradient_l2,
-                poisson_exact_gradient_linf
+                poisson_exact_gradient_linf,
+                poisson_exact_phi_exact_gradient_l2_error,
+                poisson_numerical_phi_exact_gradient_l2_error,
+                poisson_exact_phi_numerical_gradient_l2_error,
+                poisson_full_reconstruction_l2_error,
+                poisson_exact_phi_exact_gradient_linf_error,
+                poisson_numerical_phi_exact_gradient_linf_error,
+                poisson_exact_phi_numerical_gradient_linf_error,
+                poisson_full_reconstruction_linf_error
             });
 
             std::cout << result.method << ", "
@@ -346,7 +407,11 @@ int main(int argc, char** argv)
            "poisson_wall_bad_alignment,poisson_wall_min_alignment,poisson_phi_min,"
            "poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,"
            "poisson_distance_linf_error,poisson_exact_gradient_l2_error,"
-           "poisson_exact_gradient_linf_error\n";
+           "poisson_exact_gradient_linf_error,"
+           "poisson_exact_phi_exact_gradient_l2_error,poisson_numerical_phi_exact_gradient_l2_error,"
+           "poisson_exact_phi_numerical_gradient_l2_error,poisson_full_reconstruction_l2_error,"
+           "poisson_exact_phi_exact_gradient_linf_error,poisson_numerical_phi_exact_gradient_linf_error,"
+           "poisson_exact_phi_numerical_gradient_linf_error,poisson_full_reconstruction_linf_error\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -364,7 +429,15 @@ int main(int argc, char** argv)
             << r.poisson_grad_max << ',' << r.poisson_distance_l2_error << ','
             << r.poisson_distance_linf_error << ','
             << r.poisson_exact_gradient_l2_error << ','
-            << r.poisson_exact_gradient_linf_error
+            << r.poisson_exact_gradient_linf_error << ','
+            << r.poisson_exact_phi_exact_gradient_l2_error << ','
+            << r.poisson_numerical_phi_exact_gradient_l2_error << ','
+            << r.poisson_exact_phi_numerical_gradient_l2_error << ','
+            << r.poisson_full_reconstruction_l2_error << ','
+            << r.poisson_exact_phi_exact_gradient_linf_error << ','
+            << r.poisson_numerical_phi_exact_gradient_linf_error << ','
+            << r.poisson_exact_phi_numerical_gradient_linf_error << ','
+            << r.poisson_full_reconstruction_linf_error
             << '\n';
     }
 
