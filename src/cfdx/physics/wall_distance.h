@@ -487,8 +487,18 @@ inline double eikonal_update(const std::array<double,3>& a,
     std::size_t n=0;
     for(std::size_t q=0;q<3;++q) if(std::isfinite(a[q]) && h[q]>0.0) v[n++]={a[q],h[q]};
     if(n==0) return std::numeric_limits<double>::infinity();
-    std::sort(v.begin(),v.begin()+static_cast<std::ptrdiff_t>(n),
-              [](const auto& x,const auto& y){ return x.first<y.first; });
+    // n<=3 by construction.  Use a bounded insertion sort instead of
+    // std::sort on a fixed-size array; GCC otherwise emits a spurious
+    // -Warray-bounds warning after aggressive inlining of the 3-element case.
+    for(std::size_t q=1;q<n;++q) {
+        auto key=v[q];
+        std::size_t j=q;
+        while(j>0 && key.first<v[j-1].first) {
+            v[j]=v[j-1];
+            --j;
+        }
+        v[j]=key;
+    }
     double A=0.0,B=0.0,C=-rhs*rhs;
     double x=v[0].first+v[0].second*rhs;
     for(std::size_t m=0;m<n;++m) {
