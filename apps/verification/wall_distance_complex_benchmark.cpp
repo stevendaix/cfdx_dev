@@ -68,7 +68,15 @@ bool inside_complex(const WallDistanceVec3& p) {
     return false;
 }
 
-struct Row { std::string method; double l2,linf,near_l2,violations,residual; std::size_t invalid,iterations; double ms,init_ms,poisson_ms; std::size_t poisson_iterations; double poisson_residual; bool converged; double min_distance,max_distance; };
+struct Row {
+    std::string method; double l2,linf,near_l2,violations,residual;
+    std::size_t invalid,iterations; double ms,init_ms,poisson_ms;
+    std::size_t poisson_iterations; double poisson_residual; bool converged;
+    double min_distance,max_distance;
+    std::size_t wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment;
+    double wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max;
+    double poisson_distance_l2_error,poisson_distance_linf_error;
+};
 
 } // namespace
 
@@ -155,7 +163,13 @@ int main(int argc,char** argv) {
             max_distance=std::max(max_distance,result.distance[i]);
         }
         if(!std::isfinite(min_distance)) min_distance=0.0;
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms,result.auxiliary_iterations,result.auxiliary_residual_inf,result.converged,min_distance,max_distance});
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,
+            result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms,result.auxiliary_iterations,
+            result.auxiliary_residual_inf,result.converged,min_distance,max_distance,
+            result.poisson_wall_ray_hits,result.poisson_wall_ray_misses,result.poisson_wall_fallbacks,
+            result.poisson_wall_bad_alignment,result.poisson_wall_min_alignment,result.poisson_phi_min,
+            result.poisson_phi_max,result.poisson_grad_min,result.poisson_grad_max,
+            result.poisson_distance_l2_error,result.poisson_distance_linf_error});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","
@@ -171,7 +185,11 @@ int main(int argc,char** argv) {
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
             << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
             << "," << r.init_ms << "," << r.poisson_ms << "," << r.poisson_iterations
-            << "," << r.poisson_residual << "," << (r.converged ? "true" : "false") << "," << r.min_distance << "," << r.max_distance << "\n";
+            << "," << r.poisson_residual << "," << (r.converged ? "true" : "false") << "," << r.min_distance << "," << r.max_distance
+            << "," << r.wall_ray_hits << "," << r.wall_ray_misses << "," << r.wall_fallbacks << ","
+            << r.wall_bad_alignment << "," << r.wall_min_alignment << "," << r.poisson_phi_min << ","
+            << r.poisson_phi_max << "," << r.poisson_grad_min << "," << r.poisson_grad_max << ","
+            << r.poisson_distance_l2_error << "," << r.poisson_distance_linf_error << "\n";
     csv.close();
 
     // The exact method must be an exact self-reference. This is a regression
