@@ -209,6 +209,33 @@ int main() {
         }
     };
 
+    // Diagnostic extension: compare the standalone V-cycle with the exact
+    // production AMG configuration used by NativeBoomerAMGPreconditioner.
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner production(op, 0.7, 6, 6, 0.25, 25,
+                                                   AMGInterpolationPolicy::DirectCF);
+        EXPECT_TRUE(production.setup(A_diag));
+        Vector z(n_diag, 0.0);
+        EXPECT_TRUE(production.apply(b_diag, z));
+        std::cout << "amg_vcycle_production DirectCF residual_ratio="
+                  << relative_true_residual(A_diag, z, b_diag) << " levels=";
+        for (const auto n : production.hierarchy_level_sizes()) std::cout << n << ",";
+        std::cout << " P_nnz=" << production.first_prolongation_nnz() << "\n";
+    }
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner sa(op, 0.7, 6, 6, 0.25, 25,
+                                          AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(sa.setup(A_diag));
+        Vector z(n_diag, 0.0);
+        EXPECT_TRUE(sa.apply(b_diag, z));
+        std::cout << "amg_vcycle_production SA residual_ratio="
+                  << relative_true_residual(A_diag, z, b_diag) << " levels=";
+        for (const auto n : sa.hierarchy_level_sizes()) std::cout << n << ",";
+        std::cout << " P_nnz=" << sa.first_prolongation_nnz() << "\n";
+    }
+
     // 2) CG + AMG with residual replacement completely disabled. This isolates
     // recurrence drift from the replacement/restart safeguard.
     {
@@ -233,6 +260,18 @@ int main() {
         print_cg_diagnostics("amg_cg_periodic100", result);
         std::cout << "amg_cg_periodic100 true_residual="
                   << relative_true_residual(A_diag, x, b_diag) << '\n';
+    }
+
+    // Short periodic diagnostic: force a replacement before the observed
+    // no-replacement breakdown at iteration 97.
+    {
+        NativeBoomerAMGPreconditioner amg;
+        Vector x(n_diag, 0.0);
+        const auto result = solve_cg_controlled(A_diag, b_diag, x, amg, 5000, 1e-10,
+            CGResidualReplacementPolicy::Periodic, 16);
+        print_cg_diagnostics("amg_cg_periodic16", result);
+        std::cout << "amg_cg_periodic16 true_residual="
+                  << relative_true_residual(A_diag, x, b_diag) << '\\n';
     }
 
     // 4) Existing adaptive replacement policy on the same matrix/RHS. This is
@@ -313,6 +352,26 @@ int main() {
                   << '\n';
     }
 
+
+    // Apply both interpolation strategies on the small multilevel case;
+    // structural P checks alone are insufficient to qualify a V-cycle.
+    {
+        const auto A = make_poisson(17);
+        const auto b = make_rhs(17);
+        TestSparseOperator op_cf(A), op_sa(A);
+        MatrixFreeVcyclePreconditioner cf(op_cf, 0.7, 4, 4, 0.25, 25,
+                                          AMGInterpolationPolicy::DirectCF);
+        MatrixFreeVcyclePreconditioner sa(op_sa, 0.7, 4, 4, 0.25, 25,
+                                          AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(cf.setup(A));
+        EXPECT_TRUE(sa.setup(A));
+        Vector zcf(17, 0.0), zsa(17, 0.0);
+        EXPECT_TRUE(cf.apply(b, zcf));
+        EXPECT_TRUE(sa.apply(b, zsa));
+        std::cout << "amg_small_multilevel_apply DirectCF_residual_ratio="
+                  << relative_true_residual(A, zcf, b)
+                  << " SA_residual_ratio=" << relative_true_residual(A, zsa, b) << '\\n';
+    }
 
     run_case("ilu0_transport", make_rhs_matrix(256), make_rhs(256),
              [](Vector& x) {
