@@ -78,6 +78,17 @@ struct Row {
     bool converged{};
     std::string stopping_reason;
     double time_ms{};
+    std::size_t poisson_wall_ray_hits{};
+    std::size_t poisson_wall_ray_misses{};
+    std::size_t poisson_wall_fallbacks{};
+    std::size_t poisson_wall_bad_alignment{};
+    double poisson_wall_min_alignment{};
+    double poisson_phi_min{};
+    double poisson_phi_max{};
+    double poisson_grad_min{};
+    double poisson_grad_max{};
+    double poisson_distance_l2_error{};
+    double poisson_distance_linf_error{};
 };
 
 std::vector<WallDistanceMethod> methods()
@@ -231,7 +242,18 @@ int main(int argc, char** argv)
                 result.iterations,
                 result.converged,
                 result.stopping_reason,
-                ms
+                ms,
+                result.poisson_wall_ray_hits,
+                result.poisson_wall_ray_misses,
+                result.poisson_wall_fallbacks,
+                result.poisson_wall_bad_alignment,
+                result.poisson_wall_min_alignment,
+                result.poisson_phi_min,
+                result.poisson_phi_max,
+                result.poisson_grad_min,
+                result.poisson_grad_max,
+                result.poisson_distance_l2_error,
+                result.poisson_distance_linf_error
             });
 
             std::cout << result.method << ", "
@@ -244,7 +266,19 @@ int main(int argc, char** argv)
                       << ", iterations=" << result.iterations
                       << ", converged=" << (result.converged ? "true" : "false")
                       << ", stopping_reason=" << result.stopping_reason
-                      << ", ms=" << ms << "\n";
+                      << ", ms=" << ms;
+            if(method==WallDistanceMethod::POISSON) {
+                std::cout << ", wall_ray_hits=" << result.poisson_wall_ray_hits
+                          << ", wall_ray_misses=" << result.poisson_wall_ray_misses
+                          << ", wall_fallbacks=" << result.poisson_wall_fallbacks
+                          << ", wall_bad_alignment=" << result.poisson_wall_bad_alignment
+                          << ", wall_min_alignment=" << result.poisson_wall_min_alignment
+                          << ", phi=[" << result.poisson_phi_min << "," << result.poisson_phi_max << "]"
+                          << ", grad_phi=[" << result.poisson_grad_min << "," << result.poisson_grad_max << "]"
+                          << ", poisson_distance_L2=" << result.poisson_distance_l2_error
+                          << ", poisson_distance_Linf=" << result.poisson_distance_linf_error;
+            }
+            std::cout << "\n";
         }
     }
 
@@ -256,7 +290,11 @@ int main(int argc, char** argv)
 
     csv << "N,h,method,l1_relative,l2_relative,linf_relative,"
            "near_wall_l2_relative,residual_inf,monotonicity_violations,"
-           "iterations,converged,stopping_reason,time_ms\n";
+           "iterations,converged,stopping_reason,time_ms,"
+           "poisson_wall_ray_hits,poisson_wall_ray_misses,poisson_wall_fallbacks,"
+           "poisson_wall_bad_alignment,poisson_wall_min_alignment,poisson_phi_min,"
+           "poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,"
+           "poisson_distance_linf_error\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -266,7 +304,13 @@ int main(int argc, char** argv)
             << r.near_l2 << ',' << r.residual << ','
             << r.violations << ',' << r.iterations << ','
             << (r.converged ? "true" : "false") << ',' << r.stopping_reason << ','
-            << r.time_ms
+            << r.time_ms << ','
+            << r.poisson_wall_ray_hits << ',' << r.poisson_wall_ray_misses << ','
+            << r.poisson_wall_fallbacks << ',' << r.poisson_wall_bad_alignment << ','
+            << r.poisson_wall_min_alignment << ',' << r.poisson_phi_min << ','
+            << r.poisson_phi_max << ',' << r.poisson_grad_min << ','
+            << r.poisson_grad_max << ',' << r.poisson_distance_l2_error << ','
+            << r.poisson_distance_linf_error
             << '\n';
     }
 
