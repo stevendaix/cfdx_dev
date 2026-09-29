@@ -447,8 +447,7 @@ public:
                 const double xi = static_cast<double>(i);
                 const double q = pi * static_cast<double>(i + 1) /
                                  static_cast<double>(n + 1);
-                const double mode1 = std::sin(q);
-                const double mode2 = std::sin(2.0 * q);
+                const double mode1 = std::sin(q);                const double mode2 = std::sin(2.0 * q);
                 double sum = 0.0;
                 for (const auto& [coarse, weight] : P[i]) {
                     if (coarse >= nc || !std::isfinite(weight)) continue;
@@ -735,6 +734,8 @@ public:
         double coarse_rhs_norm = 0.0;
         double coarse_solution_norm = 0.0;
         double correction_norm = 0.0;
+        double correction_operator_norm = 0.0;
+        double coarse_equation_relative_residual = 0.0;
         double residual_after_correction = 0.0;
         double residual_after_post = 0.0;
         double coarse_residual_before = 0.0;
@@ -897,8 +898,7 @@ private:
                 strong[i].push_back(j);
             }
             std::sort(strong[i].begin(), strong[i].end());
-            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),
-                            strong[i].end());
+            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),                            strong[i].end());
         }
         return strong;
     }
@@ -1347,8 +1347,7 @@ private:
     {
         const auto& current = levels_[level];
         if (level + 1 == levels_.size()) {
-            return smooth_coarsest(level, r, x);
-        }
+            return smooth_coarsest(level, r, x);        }
 
         if (!smooth(level, r, x, pre_)) return false;
 
@@ -1424,6 +1423,18 @@ private:
         if (!vcycle_diagnostic(level + 1, coarse_r, coarse_x, diagnostics)) return false;
         diagnostics[index].coarse_solution_norm = coarse_x.norm2();
 
+        Vector coarse_Ax(nc, 0.0);
+        if (!apply_operator(level + 1, coarse_x, coarse_Ax)) return false;
+        double coarse_eq_r2 = 0.0;
+        double coarse_rhs2 = 0.0;
+        for (std::size_t i = 0; i < nc; ++i) {
+            const double e = coarse_r(i) - coarse_Ax(i);
+            coarse_eq_r2 += e * e;
+            coarse_rhs2 += coarse_r(i) * coarse_r(i);
+        }
+        diagnostics[index].coarse_equation_relative_residual =
+            std::sqrt(coarse_eq_r2 / std::max(coarse_rhs2, 1e-300));
+
         Vector correction(x.size(), 0.0);
         for (std::size_t i = 0; i < r.size(); ++i) {
             for (const auto& [coarse, weight] : prolongation[i])
@@ -1432,6 +1443,9 @@ private:
             if (!std::isfinite(x(i))) return false;
         }
         diagnostics[index].correction_norm = correction.norm2();
+        Vector A_correction(x.size(), 0.0);
+        if (!apply_operator(level, correction, A_correction)) return false;
+        diagnostics[index].correction_operator_norm = A_correction.norm2();
         if (constant_null_space_) remove_constant(x);
         if (!apply_operator(level, x, Ax)) return false;
         for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
