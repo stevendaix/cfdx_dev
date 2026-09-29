@@ -1,5 +1,6 @@
 #include "cfdx/physics/wall_distance.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -48,16 +49,38 @@ bool inside_box(const WallDistanceVec3& p)
            p.z >= 0.0 && p.z <= 1.0;
 }
 
-WallDistanceVec3 analytic_box_distance_gradient(const WallDistanceVec3& p)
+WallDistanceVec3 analytic_box_distance_gradient(const WallDistanceVec3& p, bool* differentiable = nullptr)
 {
     const WallDistanceVec3 q{
         std::clamp(p.x,0.0,1.0),
         std::clamp(p.y,0.0,1.0),
         std::clamp(p.z,0.0,1.0)};
     const WallDistanceVec3 v=p-q;
-    const double d=wd_norm(v);
-    if(!(d>1e-14)) return {0.0,0.0,0.0};
-    return v*(1.0/d);
+    const double outside_distance=wd_norm(v);
+    if (outside_distance > 1e-14) {
+        if (differentiable) *differentiable = true;
+        return v*(1.0/outside_distance);
+    }
+
+    const double distances[6] = {p.x, 1.0-p.x, p.y, 1.0-p.y, p.z, 1.0-p.z};
+    std::size_t best = 0;
+    for (std::size_t i=1; i<6; ++i)
+        if (distances[i] < distances[best]) best = i;
+    double second = std::numeric_limits<double>::infinity();
+    for (std::size_t i=0; i<6; ++i)
+        if (i != best) second = std::min(second, distances[i]);
+    const double scale = std::max(1.0, std::abs(distances[best]));
+    const bool unique = (second - distances[best]) > 1e-12 * scale;
+    if (differentiable) *differentiable = unique;
+    if (!unique) return {0.0,0.0,0.0};
+    switch (best) {
+        case 0: return {1.0,0.0,0.0};
+        case 1: return {-1.0,0.0,0.0};
+        case 2: return {0.0,1.0,0.0};
+        case 3: return {0.0,-1.0,0.0};
+        case 4: return {0.0,0.0,1.0};
+        default: return {0.0,0.0,-1.0};
+    }
 }
 
 double reconstruct_from_gradient(double phi,const WallDistanceVec3& grad)
@@ -117,6 +140,7 @@ struct Row {
     double poisson_numerical_phi_exact_gradient_linf_error{};
     double poisson_exact_phi_numerical_gradient_linf_error{};
     double poisson_full_reconstruction_linf_error{};
+    std::size_t poisson_gradient_nondifferentiable_cells{};
 };
 
 std::vector<WallDistanceMethod> methods()
