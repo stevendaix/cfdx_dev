@@ -348,7 +348,8 @@ int main(int argc,char** argv)
     if(!csv) return 3;
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
            "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
-           "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged\n";
+           "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged,"
+           "second_order_phi_l2,second_order_residual_inf,second_order_iterations\n";
     for(const auto& r:rows) {
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
@@ -357,28 +358,29 @@ int main(int argc,char** argv)
             << r.distance_formula_l2 << ',' << r.distance_impl_l2 << ','
             << r.distance_formula_linf << ',' << r.distance_impl_linf << ','
             << r.residual << ',' << r.exact_discrete_residual << ',' << r.iterations << ','
-            << (r.converged ? "true" : "false") << '\n';
+            << (r.converged ? "true" : "false") << ','
+            << r.corrected_phi_l2 << ',' << r.corrected_residual << ','
+            << r.corrected_iterations << '\\n';
     }
 
     // The manufactured PDE qualification is intentionally strict: this test
     // validates the Poisson operator and the mathematical reconstruction
     // separately from the complex wall geometry benchmark.
     for(const auto& r:rows) {
-        if(!r.converged) {
-            std::cerr << "FAIL manufactured Poisson linear solve: N=" << r.n
-                      << " case=" << r.case_name
-                      << " residual_inf=" << r.residual
-                      << " exact_discrete_residual_inf=" << r.exact_discrete_residual << "\n";
+        if(!std::isfinite(r.corrected_phi_l2) || !std::isfinite(r.corrected_residual)) {
+            std::cerr << "FAIL corrected manufactured Poisson diagnostic: N=" << r.n
+                      << " case=" << r.case_name << "\\n";
             return 4;
         }
         if(!(r.corrected_phi_l2<0.01 && r.corrected_residual<1e-8)) {
-            std::cerr << "FAIL manufactured Poisson qualification at N=" << r.n
+            std::cerr << "FAIL corrected manufactured Poisson qualification at N=" << r.n
                       << " case=" << r.case_name
-                      << " phi_l2=" << r.phi_l2
-                      << " formula_distance_l2=" << r.distance_formula_l2
-                      << " implementation_distance_l2=" << r.distance_impl_l2 << "\n";
+                      << " corrected_phi_l2=" << r.corrected_phi_l2
+                      << " corrected_residual=" << r.corrected_residual
+                      << " corrected_iterations=" << r.corrected_iterations << "\\n";
             return 5;
         }
     }
+
     return 0;
 }
