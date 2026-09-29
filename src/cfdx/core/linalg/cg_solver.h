@@ -279,7 +279,7 @@ inline SolverResult solve_cg_impl(
             ? mixed_precision_true_residual(A, b, x, rv)
             : std::sqrt(std::abs(rsnew));
         if (preconditioner &&
-            (iter == 1 || iter % 1000 == 0 || iter == max_iter)) {
+            (iter == 1 || iter % 100 == 0 || iter == max_iter)) {
             const double recursive_residual =
                 std::sqrt(std::max(0.0, krylov_dot(r_vector, r_vector,
                                                    SolverPrecision::FP64,
