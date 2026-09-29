@@ -1120,6 +1120,12 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
     return poisson_distance(bvh,g,max_iter,smooth,used_iter,residual_out);
 }
 
+inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
+                                                        const std::vector<double>& d,
+                                                        const WallDistanceGrid& g,
+                                                        const std::vector<unsigned char>* fixed=nullptr,
+                                                        double advection_diffusion_gamma=0.05);
+
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                         std::size_t max_iter,double gamma=0.05,
                                                         std::size_t* used_iter=nullptr,
