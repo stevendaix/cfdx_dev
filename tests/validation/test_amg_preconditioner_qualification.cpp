@@ -126,6 +126,45 @@ private:
     SparseMatrix A_;
 };
 
+double safe_two_grid_ratio(const MatrixFreeVcyclePreconditioner& amg,
+                            std::size_t level,
+                            const Vector& rhs,
+                            const char* label,
+                            bool& diagnostics_ok) {
+    const auto sizes = amg.hierarchy_level_sizes();
+    if (level >= sizes.size() || level + 1 >= sizes.size()) {
+        std::cerr << "AMG_DIAGNOSTIC_ERROR label=" << label
+                  << " kind=invalid_transfer_level"
+                  << " level=" << level
+                  << " hierarchy_levels=" << sizes.size()
+                  << " rhs_size=" << rhs.size() << '\n';
+        diagnostics_ok = false;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (rhs.size() != sizes[level]) {
+        std::cerr << "AMG_DIAGNOSTIC_ERROR label=" << label
+                  << " kind=rhs_size_mismatch"
+                  << " level=" << level
+                  << " fine_size=" << sizes[level]
+                  << " rhs_size=" << rhs.size() << '\n';
+        diagnostics_ok = false;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    try {
+        return amg.two_grid_residual_ratio(level, rhs);
+    } catch (const std::exception& e) {
+        std::cerr << "AMG_DIAGNOSTIC_ERROR label=" << label
+                  << " kind=two_grid_exception"
+                  << " level=" << level
+                  << " fine_size=" << sizes[level]
+                  << " coarse_size=" << sizes[level + 1]
+                  << " rhs_size=" << rhs.size()
+                  << " message=" << e.what() << '\n';
+        diagnostics_ok = false;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+}
+
 } // namespace
 
 int main() {
@@ -149,6 +188,7 @@ int main() {
     // intentionally separated so a failure in one mechanism does not hide
     // evidence from the others.
     bool qualification_ok = true;
+    bool diagnostic_ok = true;
     const std::size_t n_diag = 4096;
     const auto A_diag = make_poisson(n_diag);
     const auto b_diag = make_rhs(n_diag);
@@ -203,7 +243,7 @@ int main() {
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
                       << ((d.level + 1 < vcycle.hierarchy_level_sizes().size())
-                              ? vcycle.two_grid_residual_ratio(d.level, b_diag)
+                              ? safe_two_grid_ratio(vcycle, d.level, b_diag, "DirectCF", diagnostic_ok)
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
@@ -239,7 +279,7 @@ int main() {
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
                       << ((d.level + 1 < sa.hierarchy_level_sizes().size())
-                              ? sa.two_grid_residual_ratio(d.level, b_diag)
+                              ? safe_two_grid_ratio(sa, d.level, b_diag, "SA", diagnostic_ok)
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
@@ -611,6 +651,7 @@ int main() {
         EXPECT_TRUE(ra.iterations < rj.iterations);
     }
 
+    qualification_ok = qualification_ok && diagnostic_ok;
     EXPECT_TRUE(qualification_ok);
     std::cout << "AMG/preconditioner qualification: "
               << (qualification_ok ? "PASS" : "FAIL") << "\n";
