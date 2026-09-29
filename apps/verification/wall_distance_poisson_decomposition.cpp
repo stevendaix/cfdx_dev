@@ -21,11 +21,11 @@ struct Metrics {
     double grad_exact_l2{};
     double grad_exact_linf{};
     double recon_exact_l2{};
-    double recon_phi_exact_grad_l2{};
+    double recon_phi_exact_grad_num_l2{};
     double recon_phi_num_grad_exact_l2{};
     double recon_full_l2{};
     double recon_exact_linf{};
-    double recon_phi_exact_grad_linf{};
+    double recon_phi_exact_grad_num_linf{};
     double recon_phi_num_grad_exact_linf{};
     double recon_full_linf{};
     std::size_t iterations{};
@@ -124,18 +124,18 @@ int main(int argc,char** argv) {
             d_exact_inputs[id]=reconstruct(phi_exact[id],exact_gx,exact_gy,exact_gz);
 
             const double gx_phi=poisson_reconstruction_gradient_component(
-                bvh,phi,g,id,0);
+                bvh,phi,grid,id,0);
             const double gy_phi=poisson_reconstruction_gradient_component(
-                bvh,phi,g,id,1);
+                bvh,phi,grid,id,1);
             const double gz_phi=poisson_reconstruction_gradient_component(
-                bvh,phi,g,id,2);
+                bvh,phi,grid,id,2);
 
             const double gx_exact=poisson_reconstruction_gradient_component(
-                bvh,phi_exact,g,id,0);
+                bvh,phi_exact,grid,id,0);
             const double gy_exact=poisson_reconstruction_gradient_component(
-                bvh,phi_exact,g,id,1);
+                bvh,phi_exact,grid,id,1);
             const double gz_exact=poisson_reconstruction_gradient_component(
-                bvh,phi_exact,g,id,2);
+                bvh,phi_exact,grid,id,2);
 
             d_num_phi_exact_grad[id]=reconstruct(phi[id],exact_gx,exact_gy,exact_gz);
             d_exact_phi_num_grad[id]=reconstruct(phi_exact[id],gx_phi,gy_phi,gz_phi);
