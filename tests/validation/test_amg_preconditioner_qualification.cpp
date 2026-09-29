@@ -202,7 +202,9 @@ int main() {
                       << "," << d.coarse_diagonal_max << "]"
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
-                      << vcycle.two_grid_residual_ratio(d.level, b_diag)
+                      << ((d.level + 1 < vcycle.hierarchy_level_sizes().size())
+                              ? vcycle.two_grid_residual_ratio(d.level, b_diag)
+                              : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
     }
@@ -236,7 +238,9 @@ int main() {
                       << "," << d.coarse_diagonal_max << "]"
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
-                      << sa.two_grid_residual_ratio(d.level, b_diag)
+                      << ((d.level + 1 < sa.hierarchy_level_sizes().size())
+                              ? sa.two_grid_residual_ratio(d.level, b_diag)
+                              : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
     }
