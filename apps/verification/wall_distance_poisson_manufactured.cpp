@@ -115,8 +115,7 @@ double rel_grad_linf_1d(const std::vector<double>& phi,
 }
 
 std::vector<double> reconstruct_planar_distance(const std::vector<double>& phi,
-                                                const WallDistanceGrid& g,
-                                                double wall_y)
+                                                const WallDistanceGrid& g)
 {
     std::vector<double> d(phi.size(),std::numeric_limits<double>::infinity());
     for(std::size_t id=0;id<phi.size();++id) {
@@ -172,30 +171,37 @@ double poisson_potential_planar_second_order(const WallDistanceBvh& bvh,
                                              std::size_t max_iter,
                                              std::size_t& used_iter)
 {
-    // Diagnostic/qualification closure for the analytically planar, constant-source
-    // manufactured cases in this executable.  Keep the SPD matrix unchanged and
-    // apply the quadratic normal Taylor correction to the RHS:
+    // Second-order boundary-flux closure for the analytically planar,
+    // constant-source manufactured cases. For a wall-normal distance delta,
     //
-    //   phi_g = -phi_P - (h^2/4) f,   f=1, phi_wall=0
+    //   phi_P = phi_b + delta * dphi/dn - 0.5*f*delta^2,
     //
-    // which is exact through O(h^2) for a flat wall.  The correction is deliberately
-    // restricted to this manufactured geometry; curved-wall production use requires
-    // the corresponding normal-curvature term.
+    // hence the face gradient is dphi/dn = phi_P/delta + 0.5*f*delta.
+    // The second term is therefore a boundary-flux contribution, not an
+    // arbitrary RHS correction. It is applied per solid face using the actual
+    // cut-face delta. This closure is intentionally qualified only for planar
+    // constant-source MMS; curved walls require the corresponding normal
+    // Hessian/curvature term.
     const std::size_t n=g.points.size();
     phi.assign(n,0.0);
     std::vector<double> r(n,0.0),z(n,0.0),p(n,0.0),Ap(n,0.0);
     auto fluid=[&](std::size_t id){ return !g.solid[id]; };
     auto rhs=[&](std::size_t id) {
         const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-        std::size_t solid_faces=0;
-        auto inspect=[&](std::size_t q,bool exists){ if(exists && g.solid[q]) ++solid_faces; };
-        inspect(i>0?g.index(i-1,j,k):0,i>0);
-        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx);
-        inspect(j>0?g.index(i,j-1,k):0,j>0);
-        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny);
-        inspect(k>0?g.index(i,j,k-1):0,k>0);
-        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz);
-        return 1.0-0.25*static_cast<double>(solid_faces);
+        double boundary_correction=0.0;
+        auto inspect=[&](std::size_t q,bool exists,double h){
+            if(exists && g.solid[q]) {
+                const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+                boundary_correction += 0.5*delta/h;
+            }
+        };
+        inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+        inspect(j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+        inspect(j+1<g.nx?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+        inspect(k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+        return 1.0-boundary_correction;
     };
     auto diag=[&](std::size_t id){ return poisson_diagonal(bvh,g,id); };
     auto apply=[&](const std::vector<double>& x,std::vector<double>& y) {
@@ -279,7 +285,7 @@ int main(int argc,char** argv)
             phi_ref[i]=L*y-0.5*y*y;
             d_ref[i]=y;
         }
-        auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
+        auto d_formula=reconstruct_planar_distance(phi,grid);
         std::size_t impl_it=0; double impl_residual=0.0;
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
         const double exact_discrete_residual=poisson_residual_inf(bvh,phi_ref,grid,grid.solid);
@@ -388,7 +394,7 @@ int main(int argc,char** argv)
             << r.residual << ',' << r.exact_discrete_residual << ',' << r.iterations << ','
             << (r.converged ? "true" : "false") << ','
             << r.corrected_phi_l2 << ',' << r.corrected_residual << ','
-            << r.corrected_iterations << ',' << r.boundary_flux_error << '\\n';
+            << r.corrected_iterations << ',' << r.boundary_flux_error << '\n';
     }
 
     std::cout << "boundary_flux_error_order (expected 1 for the legacy two-point Dirichlet closure):\n";
