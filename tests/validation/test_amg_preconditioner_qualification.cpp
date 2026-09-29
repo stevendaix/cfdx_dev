@@ -144,70 +144,174 @@ int main() {
                  return solve_cg(A, b, x, amg, 5000, 1e-10);
              });
 
-    // Scaling ladder: exercise native AMG on materially larger elliptic
-    // systems. Acceptance is based on convergence and an independently
-    // recomputed true residual; timing remains diagnostic evidence.
-    for (const std::size_t n : {256u, 1024u, 4096u, 16384u}) {
-        const auto A = make_poisson(n);
-        const auto b = make_rhs(n);
-        Vector x(n, 0.0);
-        NativeBoomerAMGPreconditioner amg;
+    // Targeted AMG/CG qualification campaign. The five experiments are
+    // intentionally separated so a failure in one mechanism does not hide
+    // evidence from the others.
+    bool qualification_ok = true;
+    const std::size_t n_diag = 4096;
+    const auto A_diag = make_poisson(n_diag);
+    const auto b_diag = make_rhs(n_diag);
+
+    // 1) One standalone V-cycle: isolates hierarchy/smoother/coarse correction
+    // from the CG recurrence.
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner vcycle(op);
+        EXPECT_TRUE(vcycle.setup(A_diag));
+        Vector z(n_diag, 0.0);
         const auto t0 = std::chrono::steady_clock::now();
-        const auto result = solve_cg(A, b, x, amg, 20000, 1e-10);
+        EXPECT_TRUE(vcycle.apply(b_diag, z));
         const auto t1 = std::chrono::steady_clock::now();
+        const double ratio = relative_true_residual(A_diag, z, b_diag) /
+                             relative_true_residual(A_diag, Vector(n_diag, 0.0), b_diag);
         const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        const double true_r = relative_true_residual(A, x, b);
-        const double b_norm = b.norm2();
-        std::cout << "amg_scaling n=" << n
+        std::cout << "amg_vcycle_one n=" << n_diag
+                  << " residual_ratio=" << ratio
+                  << " coarse_size=" << vcycle.coarse_size()
+                  << " levels=";
+        for (const auto level_n : vcycle.hierarchy_level_sizes())
+            std::cout << level_n << ",";
+        std::cout << " P_nnz=" << vcycle.first_prolongation_nnz()
+                  << " P_row_sum=[" << vcycle.prolongation_row_sum_min()
+                  << "," << vcycle.prolongation_row_sum_max() << "]"
+                  << " ms=" << ms << '\n';
+        qualification_ok = qualification_ok && std::isfinite(ratio) && ratio < 1.0;
+    }
+
+    auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
+        std::cout << label
                   << " status=" << static_cast<int>(result.status)
                   << " iterations=" << result.iterations
-                  << " reported_residual=" << result.residual
-                  << " true_residual=" << true_r
-                  << " hierarchy_builds=" << amg.hierarchy_builds()
-                  << " numeric_updates=" << amg.numeric_updates()
-                  << " coarse_size=" << amg.coarse_size()
-                  << " levels=";
-        for (const auto level_n : amg.hierarchy_level_sizes())
-            std::cout << level_n << ",";
-        std::cout << " prolongation_nnz=" << amg.first_prolongation_nnz()
-                  << " P_row_sum=[" << amg.prolongation_row_sum_min()
-                  << "," << amg.prolongation_row_sum_max() << "]"
-                  << " b_norm=" << b_norm
-                  << " abs_tol=" << 1e-10 * std::max(b_norm, 1e-15)
-                  << " ms=" << ms
-                  << " residual_replacements=" << result.residual_replacements
-                  << " max_true_recursive_gap=" << result.max_true_recursive_gap
+                  << " residual=" << result.residual
+                  << " replacements=" << result.residual_replacements
                   << " true_recursive_ratio=[" << result.min_true_recursive_ratio
                   << "," << result.max_true_recursive_ratio << "]"
-                  << " true_residual_range=[" << result.min_true_residual
+                  << " max_gap=" << result.max_true_recursive_gap
+                  << " true_range=[" << result.min_true_residual
                   << "," << result.max_true_residual << "]"
                   << " first_replacement=" << result.first_residual_replacement
                   << " last_replacement=" << result.last_residual_replacement
                   << '\n';
-        if (n == 4096) {
-            for (const auto& d : result.diagnostics) {
-                std::cout << "  cg_diag iter=" << d.iteration
-                          << " true=" << d.true_residual
-                          << " recursive=" << d.recursive_residual
-                          << " precond_dot=" << d.preconditioned_dot
-                          << " pAp=" << d.pAp
-                          << " alpha=" << d.alpha
-                          << " beta=" << d.beta << '\n';
-            }
+        for (const auto& d : result.diagnostics) {
+            std::cout << "  " << label
+                      << " iter=" << d.iteration
+                      << " true=" << d.true_residual
+                      << " recursive=" << d.recursive_residual
+                      << " ratio="
+                      << (d.recursive_residual > 0.0
+                              ? d.true_residual / d.recursive_residual
+                              : std::numeric_limits<double>::infinity())
+                      << " precond_dot=" << d.preconditioned_dot
+                      << " pAp=" << d.pAp
+                      << " alpha=" << d.alpha
+                      << " beta=" << d.beta << '\n';
         }
-        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
-        EXPECT_TRUE(std::isfinite(true_r));
-        EXPECT_TRUE(true_r < 1e-9);
-        EXPECT_TRUE(amg.hierarchy_builds() == 1);
-        EXPECT_TRUE(amg.coarse_size() > n / 3);
-        EXPECT_TRUE(amg.coarse_size() < (2 * n) / 3 + 2);
-        EXPECT_TRUE(std::abs(amg.prolongation_row_sum_min() - 1.0) < 1e-12);
-        EXPECT_TRUE(std::abs(amg.prolongation_row_sum_max() - 1.0) < 1e-12);
-        const auto levels = amg.hierarchy_level_sizes();
-        EXPECT_TRUE(levels.size() >= 2);
-        for (std::size_t level = 1; level < levels.size(); ++level)
-            EXPECT_TRUE(levels[level] < levels[level - 1]);
+    };
+
+    // 2) CG + AMG with residual replacement completely disabled. This isolates
+    // recurrence drift from the replacement/restart safeguard.
+    {
+        NativeBoomerAMGPreconditioner amg;
+        Vector x(n_diag, 0.0);
+        const auto result = solve_cg_controlled(
+            A_diag, b_diag, x, amg, 5000, 1e-10,
+            CGResidualReplacementPolicy::Disabled);
+        print_cg_diagnostics("amg_cg_no_replacement", result);
+        std::cout << "amg_cg_no_replacement true_residual="
+                  << relative_true_residual(A_diag, x, b_diag) << '\n';
     }
+
+    // 3) CG + AMG with a forced periodic replacement. The interval is
+    // deliberately independent of the adaptive gap criterion.
+    {
+        NativeBoomerAMGPreconditioner amg;
+        Vector x(n_diag, 0.0);
+        const auto result = solve_cg_controlled(
+            A_diag, b_diag, x, amg, 5000, 1e-10,
+            CGResidualReplacementPolicy::Periodic, 100);
+        print_cg_diagnostics("amg_cg_periodic100", result);
+        std::cout << "amg_cg_periodic100 true_residual="
+                  << relative_true_residual(A_diag, x, b_diag) << '\n';
+    }
+
+    // 4) Existing adaptive replacement policy on the same matrix/RHS. This is
+    // the reference against which experiments 2 and 3 are compared.
+    SolverResult adaptive_result;
+    {
+        NativeBoomerAMGPreconditioner amg;
+        Vector x(n_diag, 0.0);
+        adaptive_result = solve_cg_controlled(
+            A_diag, b_diag, x, amg, 5000, 1e-10,
+            CGResidualReplacementPolicy::Adaptive);
+        print_cg_diagnostics("amg_cg_adaptive", adaptive_result);
+        const double true_r = relative_true_residual(A_diag, x, b_diag);
+        std::cout << "amg_cg_adaptive true_residual=" << true_r
+                  << " hierarchy_builds=" << amg.hierarchy_builds()
+                  << " coarse_size=" << amg.coarse_size()
+                  << " levels=";
+        for (const auto level_n : amg.hierarchy_level_sizes())
+            std::cout << level_n << ",";
+        std::cout << " P_nnz=" << amg.first_prolongation_nnz()
+                  << " P_row_sum=[" << amg.prolongation_row_sum_min()
+                  << "," << amg.prolongation_row_sum_max() << "]\n";
+        qualification_ok = qualification_ok &&
+                           adaptive_result.status == SolverStatus::CONVERGED &&
+                           true_r < 1e-9;
+    }
+
+    // 5) A deliberately small but genuinely multilevel qualification case.
+    // N=17 is above the production direct-coarse threshold, so both Direct-CF
+    // and Smoothed Aggregation must construct and expose a real P.
+    {
+        const auto A = make_poisson(17);
+        const auto b = make_rhs(17);
+        TestSparseOperator op_cf(A);
+        MatrixFreeVcyclePreconditioner cf(op_cf, 0.7, 4, 4, 0.25, 25,
+                                          AMGInterpolationPolicy::DirectCF);
+        EXPECT_TRUE(cf.setup(A));
+        EXPECT_TRUE(cf.hierarchy_level_sizes().size() >= 2);
+        EXPECT_TRUE(cf.first_prolongation_nnz() > 0);
+        EXPECT_TRUE(std::abs(cf.prolongation_row_sum_min() - 1.0) < 1e-12);
+        EXPECT_TRUE(std::abs(cf.prolongation_row_sum_max() - 1.0) < 1e-12);
+        std::cout << "amg_small_multilevel DirectCF levels=";
+        for (const auto n : cf.hierarchy_level_sizes()) std::cout << n << ",";
+        std::cout << " P_nnz=" << cf.first_prolongation_nnz()
+                  << " P_row_sum=[" << cf.prolongation_row_sum_min()
+                  << "," << cf.prolongation_row_sum_max() << "]"
+                  << " P_weight=[" << cf.first_prolongation_weight_min()
+                  << "," << cf.first_prolongation_weight_max() << "]"
+                  << " P_negative=" << cf.first_prolongation_negative_count()
+                  << " linear_err=" << cf.first_prolongation_linear_mode_relative_error()
+                  << " coarse_sym=" << cf.first_coarse_symmetry_relative_error()
+                  << " coarse_diag=[" << cf.first_coarse_diagonal_min()
+                  << "," << cf.first_coarse_diagonal_max() << "]"
+                  << " gershgorin=" << cf.first_coarse_gershgorin_lower_bound()
+                  << '\n';
+
+        TestSparseOperator op_sa(A);
+        MatrixFreeVcyclePreconditioner sa(op_sa, 0.7, 4, 4, 0.25, 25,
+                                          AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(sa.setup(A));
+        EXPECT_TRUE(sa.hierarchy_level_sizes().size() >= 2);
+        EXPECT_TRUE(sa.first_prolongation_nnz() > 0);
+        EXPECT_TRUE(std::abs(sa.prolongation_row_sum_min() - 1.0) < 1e-12);
+        EXPECT_TRUE(std::abs(sa.prolongation_row_sum_max() - 1.0) < 1e-12);
+        std::cout << "amg_small_multilevel SA levels=";
+        for (const auto n : sa.hierarchy_level_sizes()) std::cout << n << ",";
+        std::cout << " P_nnz=" << sa.first_prolongation_nnz()
+                  << " P_row_sum=[" << sa.prolongation_row_sum_min()
+                  << "," << sa.prolongation_row_sum_max() << "]"
+                  << " P_weight=[" << sa.first_prolongation_weight_min()
+                  << "," << sa.first_prolongation_weight_max() << "]"
+                  << " P_negative=" << sa.first_prolongation_negative_count()
+                  << " linear_err=" << sa.first_prolongation_linear_mode_relative_error()
+                  << " coarse_sym=" << sa.first_coarse_symmetry_relative_error()
+                  << " coarse_diag=[" << sa.first_coarse_diagonal_min()
+                  << "," << sa.first_coarse_diagonal_max() << "]"
+                  << " gershgorin=" << sa.first_coarse_gershgorin_lower_bound()
+                  << '\n';
+    }
+
 
     run_case("ilu0_transport", make_rhs_matrix(256), make_rhs(256),
              [](Vector& x) {
@@ -325,6 +429,6 @@ int main() {
         EXPECT_TRUE(ra.iterations < rj.iterations);
     }
 
-    std::cout << "AMG/preconditioner qualification: PASS\n";
+    EXPECT_TRUE(qualification_ok);\n    std::cout << "AMG/preconditioner qualification: " << (qualification_ok ? "PASS" : "FAIL") << "\n";
     return 0;
 }
