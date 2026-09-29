@@ -157,6 +157,7 @@ int main() {
         const auto t1 = std::chrono::steady_clock::now();
         const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
         const double true_r = relative_true_residual(A, x, b);
+        const double b_norm = b.norm2();
         std::cout << "amg_scaling n=" << n
                   << " status=" << static_cast<int>(result.status)
                   << " iterations=" << result.iterations
@@ -171,7 +172,20 @@ int main() {
         std::cout << " prolongation_nnz=" << amg.first_prolongation_nnz()
                   << " P_row_sum=[" << amg.prolongation_row_sum_min()
                   << "," << amg.prolongation_row_sum_max() << "]"
+                  << " b_norm=" << b_norm
+                  << " abs_tol=" << 1e-10 * std::max(b_norm, 1e-15)
                   << " ms=" << ms << '\\n';
+        if (n == 4096) {
+            for (const auto& d : result.diagnostics) {
+                std::cout << "  cg_diag iter=" << d.iteration
+                          << " true=" << d.true_residual
+                          << " recursive=" << d.recursive_residual
+                          << " precond_dot=" << d.preconditioned_dot
+                          << " pAp=" << d.pAp
+                          << " alpha=" << d.alpha
+                          << " beta=" << d.beta << '\\n';
+            }
+        }
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(std::isfinite(true_r));
         EXPECT_TRUE(true_r < 1e-9);
