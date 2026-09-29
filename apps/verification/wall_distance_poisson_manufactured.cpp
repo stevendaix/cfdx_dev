@@ -378,6 +378,26 @@ int main(int argc,char** argv)
                   << " exact=" << exact << "\n";
     }
 
+    auto write_results = [&]() {
+    std::ofstream csv(output);
+    if(!csv) return 3;
+    csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
+           "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
+           "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged,"
+           "second_order_phi_l2,second_order_residual_inf,second_order_iterations,boundary_flux_error_inf\n";
+    for(const auto& r:rows) {
+        csv << r.n << ',' << r.case_name << ','
+            << std::setprecision(16)
+            << r.phi_l2 << ',' << r.phi_linf << ','
+            << r.grad_phi_l2 << ',' << r.grad_phi_linf << ','
+            << r.distance_formula_l2 << ',' << r.distance_impl_l2 << ','
+            << r.distance_formula_linf << ',' << r.distance_impl_linf << ','
+            << r.residual << ',' << r.exact_discrete_residual << ',' << r.iterations << ','
+            << (r.converged ? "true" : "false") << ','
+            << r.corrected_phi_l2 << ',' << r.corrected_residual << ','
+            << r.corrected_iterations << ',' << r.boundary_flux_error << '\n';
+    }
+
     // Qualification gates: distinguish a small algebraic residual from a
     // meaningful manufactured-solution result. The legacy wall closure must
     // retain its observed first-order wall-flux behaviour, while the
@@ -389,6 +409,7 @@ int main(int argc,char** argv)
                       << rows[i].case_name << " N=" << rows[i].n
                       << " residual=" << rows[i].residual
                       << " iterations=" << rows[i].iterations << "\n";
+            write_results();
             return 4;
         }
         if(rows[i].corrected_residual>1e-9 || rows[i].corrected_phi_l2>1e-10) {
@@ -396,6 +417,7 @@ int main(int argc,char** argv)
                       << rows[i].case_name << " N=" << rows[i].n
                       << " corrected_phi_l2=" << rows[i].corrected_phi_l2
                       << " corrected_residual=" << rows[i].corrected_residual << "\n";
+            write_results();
             return 5;
         }
     }
@@ -408,6 +430,7 @@ int main(int argc,char** argv)
             std::cerr << "FAIL legacy boundary-flux order: case=" << rows[i].case_name
                       << " N=" << rows[i-1].n << "->" << rows[i].n
                       << " order=" << flux_order << "\n";
+            write_results();
             return 6;
         }
     }
