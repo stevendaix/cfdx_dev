@@ -733,11 +733,6 @@ struct WallDistancePoissonAudit {
     double symmetry_error{0.0};
 };
 
-inline double poisson_wall_offset(const WallDistanceBvh& bvh,
-                                      const WallDistanceVec3& p,
-                                      const WallDistanceVec3& q,
-                                      double h);
-
 struct WallDistancePoissonOffsetAudit {
     double min_delta{std::numeric_limits<double>::infinity()};
     double max_delta{0.0};
