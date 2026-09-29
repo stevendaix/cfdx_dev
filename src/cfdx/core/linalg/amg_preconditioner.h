@@ -724,7 +724,7 @@ public:
         for (std::size_t i = 0; i < n; ++i)
             error(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) / static_cast<double>(n + 1));
         if (!apply_operator(level, error, residual)) return std::numeric_limits<double>::infinity();
-        const double energy_before = dot(error, residual);
+        double energy_before = 0.0;\n        for (std::size_t i = 0; i < n; ++i) energy_before += error(i) * residual(i);
         if (!(energy_before > 0.0) || !std::isfinite(energy_before)) return std::numeric_limits<double>::infinity();
         const std::size_t nc = levels_[level + 1].A.n_rows();
         Vector rc(nc, 0.0), ec(nc, 0.0);
@@ -745,7 +745,7 @@ public:
             corrected_error(i) += std::sin(pi2 * static_cast<double>(mode * (i + 1)) / static_cast<double>(n + 1));
         }
         if (!apply_operator(level, corrected_error, Ac)) return std::numeric_limits<double>::infinity();
-        const double energy_after = dot(corrected_error, Ac);
+        double energy_after = 0.0;\n        for (std::size_t i = 0; i < n; ++i) energy_after += corrected_error(i) * Ac(i);
         return energy_after / std::max(energy_before, 1e-300);
     }
 
