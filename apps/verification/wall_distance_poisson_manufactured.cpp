@@ -150,12 +150,16 @@ int main(int argc,char** argv)
     //    The reconstruction is exactly d=y in the continuous problem.
     for(const auto n : sizes) {
         const double L=1.0;
-        const double lo=-2.0/(static_cast<double>(n)-1.0);
-        const double h=(L-lo)/(static_cast<double>(n)-1.0);
+        // Cell-centred FV geometry: the wall is at y=0, the first fluid
+        // centre is at h/2, and the outer Neumann boundary is a half-cell
+        // beyond the last fluid centre.  Keep an explicit solid layer below
+        // the wall so poisson_wall_offset() sees the physical Dirichlet face.
+        const double h=L/static_cast<double>(n);
         WallSurface surface;
         add_rect_plane(surface,0.0,-2.0,2.0,-2.0,2.0);
         const auto grid=make_wall_distance_grid(
-            n,n,n,{lo,lo,lo},{h,h,h},
+            n,n+1,n,{-2.0,-0.5*h,-2.0},
+            {4.0/static_cast<double>(n-1),h,4.0/static_cast<double>(n-1)},
             [](const WallDistanceVec3& p){ return p.y<=0.0; });
 
         const WallDistanceBvh bvh(surface);
@@ -187,14 +191,15 @@ int main(int argc,char** argv)
     //       phi=y*(1-y)/2.
     //    Reconstruction gives min(y,1-y) exactly in the continuous problem.
     for(const auto n : sizes) {
-        const double lo=-2.0/(static_cast<double>(n)-1.0);
-        const double hi=1.0-lo;
-        const double h=(hi-lo)/(static_cast<double>(n)-1.0);
+        // Two cell-centred Dirichlet walls.  There is one explicit solid
+        // layer on each side; the n fluid centres lie at h/2,...,1-h/2.
+        const double h=1.0/static_cast<double>(n);
         WallSurface surface;
         add_rect_plane(surface,0.0,-2.0,2.0,-2.0,2.0);
         add_rect_plane(surface,1.0,-2.0,2.0,-2.0,2.0);
         const auto grid=make_wall_distance_grid(
-            n,n,n,{lo,lo,lo},{h,h,h},
+            n,n+2,n,{-2.0,-0.5*h,-2.0},
+            {4.0/static_cast<double>(n-1),h,4.0/static_cast<double>(n-1)},
             [](const WallDistanceVec3& p){ return p.y<=0.0 || p.y>=1.0; });
 
         const WallDistanceBvh bvh(surface);
