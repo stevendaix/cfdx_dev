@@ -300,6 +300,102 @@ public:
         return value;
     }
 
+    double first_prolongation_weight_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_weight_min: hierarchy unavailable");
+        double value = std::numeric_limits<double>::infinity();
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                value = std::min(value, weight);
+            }
+        return value;
+    }
+
+    double first_prolongation_weight_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_weight_max: hierarchy unavailable");
+        double value = -std::numeric_limits<double>::infinity();
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                value = std::max(value, weight);
+            }
+        return value;
+    }
+
+    std::size_t first_prolongation_negative_count() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_negative_count: hierarchy unavailable");
+        std::size_t count = 0;
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                if (weight < 0.0) ++count;
+            }
+        return count;
+    }
+
+    double first_coarse_diagonal_min() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_diagonal_min: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            value = std::min(value, diag);
+        }
+        return value;
+    }
+
+    double first_coarse_diagonal_max() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_diagonal_max: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = -std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            value = std::max(value, diag);
+        }
+        return value;
+    }
+
+    double first_coarse_gershgorin_lower_bound() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_gershgorin_lower_bound: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            double offdiag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i) diag += val[k];
+                else offdiag += std::abs(val[k]);
+            }
+            value = std::min(value, diag - offdiag);
+        }
+        return value;
+    }
+
     std::size_t first_prolongation_nnz() const
     {
         if (levels_.size() < 2)
