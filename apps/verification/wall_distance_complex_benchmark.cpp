@@ -82,6 +82,12 @@ int main(int argc,char** argv) {
     const WallDistanceBvh poisson_bvh(surface);
     const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
     const auto poisson_offset_audit=audit_poisson_wall_offsets(poisson_bvh,grid);
+    const std::size_t max_id=poisson_offset_audit.max_wall_coefficient_cell;
+    const std::size_t max_k=max_id/(grid.nx*grid.ny);
+    const std::size_t max_rem=max_id%(grid.nx*grid.ny);
+    const std::size_t max_j=max_rem/grid.nx;
+    const std::size_t max_i=max_rem%grid.nx;
+    const auto max_p=grid.points[max_id];
 
     const std::array<WallDistanceMethod,9> methods={{
         WallDistanceMethod::EXACT_GEOMETRIC,
@@ -111,6 +117,10 @@ int main(int argc,char** argv) {
               << ",max_delta_over_h=" << poisson_offset_audit.max_delta_over_h
               << ",max_wall_coefficient=" << poisson_offset_audit.max_wall_coefficient
               << ",max_wall_coefficient_cell=" << poisson_offset_audit.max_wall_coefficient_cell
+              << ",max_wall_coefficient_ijk=" << max_i << ":" << max_j << ":" << max_k
+              << ",max_wall_coefficient_point=" << max_p.x << ":" << max_p.y << ":" << max_p.z
+              << ",max_wall_coefficient_delta=" << poisson_offset_audit.max_wall_coefficient_delta
+              << ",max_wall_coefficient_h=" << poisson_offset_audit.max_wall_coefficient_h
               << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
     constexpr std::size_t benchmark_iterations=500;
     std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged\n";
