@@ -44,6 +44,7 @@ struct Row {
     double corrected_phi_l2{};
     double corrected_residual{};
     std::size_t corrected_iterations{};
+    double boundary_flux_error{};
 };
 
 double rel_l2(const std::vector<double>& a, const std::vector<double>& b,
@@ -138,6 +139,31 @@ void require_close(const std::string& label,double value,double reference,double
                   << " reference=" << reference << "\n";
         throw std::runtime_error(label);
     }
+}
+
+double boundary_flux_error_inf(const WallDistanceBvh& bvh,
+                              const std::vector<double>& phi_ref,
+                              const WallDistanceGrid& g,
+                              double exact_wall_gradient)
+{
+    double emax=0.0;
+    for(std::size_t id=0;id<phi_ref.size();++id) {
+        if(g.solid[id]) continue;
+        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+        auto inspect=[&](std::size_t q,bool exists,double h) {
+            if(!exists || !g.solid[q]) return;
+            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            const double discrete=std::abs(phi_ref[id]/delta);
+            emax=std::max(emax,std::abs(discrete-exact_wall_gradient));
+        };
+        inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+        inspect(j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+        inspect(k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+    }
+    return emax;
 }
 
 double poisson_potential_planar_second_order(const WallDistanceBvh& bvh,
@@ -262,6 +288,7 @@ int main(int argc,char** argv)
         const double second_order_residual =
             poisson_potential_planar_second_order(bvh,grid,phi_second_order,2000,second_order_it);
         const double second_order_phi_l2=rel_l2(phi_second_order,phi_ref,grid.solid);
+        const double boundary_flux_error=boundary_flux_error_inf(bvh,phi_ref,grid,1.0);
         rows.push_back({n,"single_wall",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
                         rel_grad_l2_1d(phi,grid,[&](double y){ return L-y; }),
@@ -270,7 +297,7 @@ int main(int argc,char** argv)
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
                         rel_linf(d_impl,d_ref,grid.solid),
-                        residual,exact_discrete_residual,it,residual<1e-8,second_order_phi_l2,second_order_residual,second_order_it});
+                        residual,exact_discrete_residual,it,residual<1e-8,second_order_phi_l2,second_order_residual,second_order_it,boundary_flux_error});
     }
 
     // 2) Parallel channel with two Dirichlet walls.
@@ -314,6 +341,7 @@ int main(int argc,char** argv)
         const double second_order_residual =
             poisson_potential_planar_second_order(bvh,grid,phi_second_order,2000,second_order_it);
         const double second_order_phi_l2=rel_l2(phi_second_order,phi_ref,grid.solid);
+        const double boundary_flux_error=boundary_flux_error_inf(bvh,phi_ref,grid,0.5);
         rows.push_back({n,"parallel_channel",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
                         rel_grad_l2_1d(phi,grid,[&](double y){ return 0.5-y; }),
@@ -349,7 +377,7 @@ int main(int argc,char** argv)
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
            "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
            "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged,"
-           "second_order_phi_l2,second_order_residual_inf,second_order_iterations\n";
+           "second_order_phi_l2,second_order_residual_inf,second_order_iterations,boundary_flux_error_inf\n";
     for(const auto& r:rows) {
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
@@ -360,7 +388,19 @@ int main(int argc,char** argv)
             << r.residual << ',' << r.exact_discrete_residual << ',' << r.iterations << ','
             << (r.converged ? "true" : "false") << ','
             << r.corrected_phi_l2 << ',' << r.corrected_residual << ','
-            << r.corrected_iterations << '\\n';
+            << r.corrected_iterations << ',' << r.boundary_flux_error << '\\n';
+    }
+
+    std::cout << "boundary_flux_error_order (expected 1 for the legacy two-point Dirichlet closure):\n";
+    for(std::size_t i=1;i<rows.size();++i) {
+        if(rows[i].case_name!=rows[i-1].case_name || rows[i].boundary_flux_error<=0.0 ||
+           rows[i-1].boundary_flux_error<=0.0) continue;
+        const double h_prev=1.0/static_cast<double>(rows[i-1].n);
+        const double h_curr=1.0/static_cast<double>(rows[i].n);
+        const double order=std::log(rows[i-1].boundary_flux_error/rows[i].boundary_flux_error) /
+                           std::log(h_prev/h_curr);
+        std::cout << rows[i].case_name << " N=" << rows[i-1].n << "->" << rows[i].n
+                  << " order=" << order << "\n";
     }
 
     // The manufactured PDE qualification is intentionally strict: this test
