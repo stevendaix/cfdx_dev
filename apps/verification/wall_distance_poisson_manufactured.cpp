@@ -380,7 +380,7 @@ int main(int argc,char** argv)
 
     auto write_results = [&]() {
     std::ofstream csv(output);
-    if(!csv) return 3;
+    if(!csv) return;
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
            "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
            "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged,"
