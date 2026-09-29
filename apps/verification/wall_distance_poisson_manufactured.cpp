@@ -277,7 +277,7 @@ int main(int argc,char** argv)
 
         const WallDistanceBvh bvh(surface);
         std::size_t it=0; double residual=0.0;
-        const auto phi=poisson_potential(bvh,grid,500,1.0,&it,&residual);
+        const auto phi=poisson_potential(bvh,grid,5000,1.0,&it,&residual);
         std::vector<double> phi_ref(phi.size(),std::numeric_limits<double>::infinity());
         std::vector<double> d_ref(phi.size(),std::numeric_limits<double>::infinity());
         for(std::size_t i=0;i<phi.size();++i) if(!grid.solid[i]) {
@@ -324,7 +324,7 @@ int main(int argc,char** argv)
 
         const WallDistanceBvh bvh(surface);
         std::size_t it=0; double residual=0.0;
-        const auto phi=poisson_potential(bvh,grid,500,1.0,&it,&residual);
+        const auto phi=poisson_potential(bvh,grid,5000,1.0,&it,&residual);
         std::vector<double> phi_ref(phi.size(),std::numeric_limits<double>::infinity());
         std::vector<double> d_ref(phi.size(),std::numeric_limits<double>::infinity());
         for(std::size_t i=0;i<phi.size();++i) if(!grid.solid[i]) {
