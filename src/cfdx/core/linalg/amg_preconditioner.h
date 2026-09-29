@@ -193,6 +193,60 @@ public:
         return value;
     }
 
+    double first_prolongation_linear_mode_relative_error() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_linear_mode_relative_error: hierarchy unavailable");
+        const auto& P = levels_.front().prolongation;
+        const std::size_t n = P.size();
+        std::vector<double> coarse_coordinate(
+            levels_[1].A.n_rows(), std::numeric_limits<double>::quiet_NaN());
+        for (std::size_t i = 0; i < n; ++i) {
+            if (P[i].size() == 1 && std::abs(P[i][0].second - 1.0) <= 1e-12) {
+                const std::size_t c = P[i][0].first;
+                if (c < coarse_coordinate.size()) coarse_coordinate[c] = static_cast<double>(i);
+            }
+        }
+        for (double value : coarse_coordinate)
+            if (!std::isfinite(value)) return std::numeric_limits<double>::infinity();
+
+        double error2 = 0.0;
+        double norm2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double interpolated = 0.0;
+            for (const auto& [c, weight] : P[i])
+                interpolated += weight * coarse_coordinate[c];
+            const double error = interpolated - static_cast<double>(i);
+            error2 += error * error;
+            norm2 += static_cast<double>(i) * static_cast<double>(i);
+        }
+        return std::sqrt(error2 / std::max(norm2, 1.0));
+    }
+
+    double first_coarse_symmetry_relative_error() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_symmetry_relative_error: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        double defect2 = 0.0;
+        double scale2 = 0.0;
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                double transpose = 0.0;
+                for (std::size_t q = row[j]; q < row[j + 1]; ++q)
+                    if (col[q] == i) transpose += val[q];
+                const double defect = val[k] - transpose;
+                defect2 += defect * defect;
+                scale2 += val[k] * val[k];
+            }
+        }
+        return std::sqrt(defect2 / std::max(scale2, 1.0));
+    }
+
     std::size_t first_prolongation_nnz() const
     {
         if (levels_.size() < 2)
