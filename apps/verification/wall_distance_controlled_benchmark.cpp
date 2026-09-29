@@ -48,6 +48,24 @@ bool inside_box(const WallDistanceVec3& p)
            p.z >= 0.0 && p.z <= 1.0;
 }
 
+WallDistanceVec3 analytic_box_distance_gradient(const WallDistanceVec3& p)
+{
+    const WallDistanceVec3 q{
+        std::clamp(p.x,0.0,1.0),
+        std::clamp(p.y,0.0,1.0),
+        std::clamp(p.z,0.0,1.0)};
+    const WallDistanceVec3 v=p-q;
+    const double d=wd_norm(v);
+    if(!(d>1e-14)) return {0.0,0.0,0.0};
+    return v*(1.0/d);
+}
+
+double reconstruct_from_gradient(double phi,const WallDistanceVec3& grad)
+{
+    const double gn=wd_norm(grad);
+    return std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2.0*phi))-gn);
+}
+
 double analytic_box_distance(const WallDistanceVec3& p)
 {
     const double dx = std::min(std::abs(p.x), std::abs(p.x - 1.0));
@@ -89,6 +107,8 @@ struct Row {
     double poisson_grad_max{};
     double poisson_distance_l2_error{};
     double poisson_distance_linf_error{};
+    double poisson_exact_gradient_l2_error{};
+    double poisson_exact_gradient_linf_error{};
 };
 
 std::vector<WallDistanceMethod> methods()
@@ -215,6 +235,35 @@ int main(int argc, char** argv)
             const double ms =
                 std::chrono::duration<double, std::milli>(t1 - t0).count();
 
+            double poisson_exact_gradient_l2=0.0;
+            double poisson_exact_gradient_linf=0.0;
+            if(method==WallDistanceMethod::POISSON) {
+                // Re-run only the elliptic solve and replace the reconstructed
+                // gradient by the exact geometric gradient of the box.  This
+                // is a controlled error-budget diagnostic: it does not claim
+                // that the Poisson phi has an exact analytical solution.
+                std::size_t diagnostic_iterations=0;
+                double diagnostic_residual=0.0;
+                const auto diagnostic_phi=poisson_potential(
+                    bvh,grid,500,1.5,&diagnostic_iterations,&diagnostic_residual);
+                double e2=0.0,r2=0.0,em=0.0,rm=0.0;
+                for(std::size_t id=0;id<grid.points.size();++id) {
+                    if(grid.solid[id]) continue;
+                    const auto exact_grad=analytic_box_distance_gradient(grid.points[id]);
+                    const double d_diag=reconstruct_from_gradient(diagnostic_phi[id],exact_grad);
+                    const double e=std::abs(d_diag-analytic[id]);
+                    e2+=e*e; r2+=analytic[id]*analytic[id];
+                    em=std::max(em,e); rm=std::max(rm,std::abs(analytic[id]));
+                }
+                poisson_exact_gradient_l2=std::sqrt(e2/std::max(1e-30,r2));
+                poisson_exact_gradient_linf=em/std::max(1e-30,rm);
+                std::cout << "Poisson gradient-isolation: exact geometric gradient with numerical phi"
+                          << ", L2=" << poisson_exact_gradient_l2
+                          << ", Linf=" << poisson_exact_gradient_linf
+                          << ", diagnostic_residual=" << diagnostic_residual
+                          << ", diagnostic_iterations=" << diagnostic_iterations << "\n";
+            }
+
             if (method == WallDistanceMethod::POISSON && !result.converged) {
                 poisson_failure = true;
                 std::cerr << "FAIL Poisson did not converge at N=" << n
@@ -253,7 +302,9 @@ int main(int argc, char** argv)
                 result.poisson_grad_min,
                 result.poisson_grad_max,
                 result.poisson_distance_l2_error,
-                result.poisson_distance_linf_error
+                result.poisson_distance_linf_error,
+                0.0,
+                0.0
             });
 
             std::cout << result.method << ", "
@@ -310,7 +361,9 @@ int main(int argc, char** argv)
             << r.poisson_wall_min_alignment << ',' << r.poisson_phi_min << ','
             << r.poisson_phi_max << ',' << r.poisson_grad_min << ','
             << r.poisson_grad_max << ',' << r.poisson_distance_l2_error << ','
-            << r.poisson_distance_linf_error
+            << r.poisson_distance_linf_error << ','
+            << r.poisson_exact_gradient_l2_error << ','
+            << r.poisson_exact_gradient_linf_error
             << '\n';
     }
 
