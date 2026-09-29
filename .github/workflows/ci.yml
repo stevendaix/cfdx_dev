@@ -114,7 +114,7 @@ jobs:
 
       - name: Validate wall-distance complex CSV schema
         id: wall_complex_schema
-        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
+        if: ${{ matrix.build_type == 'Release' && steps.wall_complex.outcome == 'success' && !cancelled() }}
         shell: bash
         run: |
           python3 - <<'PY'
