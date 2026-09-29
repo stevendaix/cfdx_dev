@@ -123,6 +123,35 @@ static SparseMatrix make_fvm_diffusion_2d(std::size_t nx, std::size_t ny,
     return A;
 }
 
+static void print_amg_spectral_diagnostics(std::size_t n) {
+    const SparseMatrix A = make_poisson_1d(n);
+    FunctionalLinearOperator op(
+        A.n_rows(),
+        [&A](const Vector& x, Vector& y) {
+            const auto result = A.matvec(x);
+            for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
+        });
+    MatrixFreeVcyclePreconditioner amg(
+        op, 0.7, 4, 4, 0.25, 25,
+        cfdx::core::AMGInterpolationPolicy::DirectCF);
+    if (!amg.setup(A))
+        throw std::runtime_error("AMG spectral diagnostic setup failed");
+
+    const auto levels = amg.hierarchy_level_sizes();
+    std::cerr << "AMG_DIAGNOSTIC N=" << n
+              << " levels=" << levels.size()
+              << " coarse=" << amg.coarse_size()
+              << " P_nnz=" << amg.first_prolongation_nnz()
+              << " P_row_sum_min=" << amg.prolongation_row_sum_min()
+              << " P_row_sum_max=" << amg.prolongation_row_sum_max()
+              << " P_linear_relerr=" << amg.first_prolongation_linear_mode_relative_error()
+              << " Ac_sym_relerr=" << amg.first_coarse_symmetry_relative_error()
+              << "\n";
+    std::cerr << "AMG_LEVELS";
+    for (const auto size : levels) std::cerr << " " << size;
+    std::cerr << "\n";
+}
+
 int main() {
     using namespace cfdx::core;
 
@@ -313,6 +342,10 @@ int main() {
         std::cerr << "Duplicate-diagonal AMG regression failed\\n";
         return 11;
     }
+
+    print_amg_spectral_diagnostics(256);
+    print_amg_spectral_diagnostics(1024);
+    print_amg_spectral_diagnostics(4096);
 
     ChebyshevSmoother::Controls controls;
     controls.lambda_max = 0.0;
