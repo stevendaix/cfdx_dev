@@ -246,6 +246,17 @@ int main() {
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
+
+        // Isolate the coarse-space approximation from the arbitrary benchmark RHS.
+        // The manufactured discrete sine modes are exact low-frequency modes of
+        // the 1-D Dirichlet Poisson operator, so these ratios directly probe
+        // whether the transfer operators capture the smooth error space.
+        for (std::size_t mode = 1; mode <= 4; ++mode) {
+            const double ratio = vcycle.two_grid_sine_mode_residual_ratio(0, mode);
+            std::cout << "amg_sine_mode DirectCF mode=" << mode
+                      << " two_grid_residual_ratio=" << ratio << '\\n';
+            if (!std::isfinite(ratio)) diagnostic_ok = false;
+        }
     }
 
     // Repeat the same transfer/two-grid audit for SA so that common
@@ -281,6 +292,13 @@ int main() {
                               ? safe_two_grid_ratio(sa, d.level, make_rhs(d.fine_size), "SA", diagnostic_ok)
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
+        }
+
+        for (std::size_t mode = 1; mode <= 4; ++mode) {
+            const double ratio = sa.two_grid_sine_mode_residual_ratio(0, mode);
+            std::cout << "amg_sine_mode SA mode=" << mode
+                      << " two_grid_residual_ratio=" << ratio << '\\n';
+            if (!std::isfinite(ratio)) diagnostic_ok = false;
         }
     }
 
