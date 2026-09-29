@@ -81,6 +81,7 @@ int main(int argc,char** argv) {
     const double h=std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
     const WallDistanceBvh poisson_bvh(surface);
     const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
+    const auto poisson_offset_audit=audit_poisson_wall_offsets(poisson_bvh,grid);
 
     const std::array<WallDistanceMethod,9> methods={{
         WallDistanceMethod::EXACT_GEOMETRIC,
@@ -105,7 +106,12 @@ int main(int argc,char** argv) {
               << ",min_diagonal=" << poisson_operator_audit.min_diagonal
               << ",max_diagonal=" << poisson_operator_audit.max_diagonal
               << ",min_diagonal_dominance=" << poisson_operator_audit.min_diagonal_dominance
-              << ",symmetry_error=" << poisson_operator_audit.symmetry_error << "\n";
+              << ",symmetry_error=" << poisson_operator_audit.symmetry_error
+              << ",min_delta_over_h=" << poisson_offset_audit.min_delta_over_h
+              << ",max_delta_over_h=" << poisson_offset_audit.max_delta_over_h
+              << ",max_wall_coefficient=" << poisson_offset_audit.max_wall_coefficient
+              << ",max_wall_coefficient_cell=" << poisson_offset_audit.max_wall_coefficient_cell
+              << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
     constexpr std::size_t benchmark_iterations=500;
     std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged\n";
 
