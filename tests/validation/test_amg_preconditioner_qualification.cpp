@@ -197,8 +197,7 @@ int main() {
     // from the CG recurrence.
     {
         TestSparseOperator op(A_diag);
-        MatrixFreeVcyclePreconditioner vcycle(op);
-        EXPECT_TRUE(vcycle.setup(A_diag));
+        MatrixFreeVcyclePreconditioner vcycle(op);        EXPECT_TRUE(vcycle.setup(A_diag));
         Vector z(n_diag, 0.0);
         const auto t0 = std::chrono::steady_clock::now();
         EXPECT_TRUE(vcycle.apply(b_diag, z));
@@ -243,7 +242,7 @@ int main() {
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
                       << ((d.level + 1 < vcycle.hierarchy_level_sizes().size())
-                              ? safe_two_grid_ratio(vcycle, d.level, b_diag, "DirectCF", diagnostic_ok)
+                              ? safe_two_grid_ratio(vcycle, d.level, make_rhs(d.fine_size), "DirectCF", diagnostic_ok)
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
@@ -279,7 +278,7 @@ int main() {
                       << " gershgorin_lower=" << d.coarse_gershgorin_lower_bound
                       << " two_grid_ratio="
                       << ((d.level + 1 < sa.hierarchy_level_sizes().size())
-                              ? safe_two_grid_ratio(sa, d.level, b_diag, "SA", diagnostic_ok)
+                              ? safe_two_grid_ratio(sa, d.level, make_rhs(d.fine_size), "SA", diagnostic_ok)
                               : std::numeric_limits<double>::quiet_NaN())
                       << '\n';
         }
@@ -397,8 +396,7 @@ int main() {
                   << " levels=";
         for (const auto level_n : amg.hierarchy_level_sizes())
             std::cout << level_n << ",";
-        std::cout << " P_nnz=" << amg.first_prolongation_nnz()
-                  << " P_row_sum=[" << amg.prolongation_row_sum_min()
+        std::cout << " P_nnz=" << amg.first_prolongation_nnz()                  << " P_row_sum=[" << amg.prolongation_row_sum_min()
                   << "," << amg.prolongation_row_sum_max() << "]\n";
         qualification_ok = qualification_ok &&
                            adaptive_result.status == SolverStatus::CONVERGED &&
@@ -479,6 +477,8 @@ int main() {
                       << " coarse_rhs=" << d.coarse_rhs_norm
                       << " coarse_x=" << d.coarse_solution_norm
                       << " correction=" << d.correction_norm
+                      << " A_correction=" << d.correction_operator_norm
+                      << " coarse_eq_rel=" << d.coarse_equation_relative_residual
                       << " after_correction=" << d.residual_after_correction
                       << " after_post=" << d.residual_after_post
                       << " coarse_before=" << d.coarse_residual_before
@@ -507,6 +507,8 @@ int main() {
                       << " coarse_rhs=" << d.coarse_rhs_norm
                       << " coarse_x=" << d.coarse_solution_norm
                       << " correction=" << d.correction_norm
+                      << " A_correction=" << d.correction_operator_norm
+                      << " coarse_eq_rel=" << d.coarse_equation_relative_residual
                       << " after_correction=" << d.residual_after_correction
                       << " after_post=" << d.residual_after_post
                       << " coarse_before=" << d.coarse_residual_before
@@ -597,8 +599,7 @@ int main() {
         NativeBoomerAMGPreconditioner amg;
         EXPECT_TRUE(amg.setup(A));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
-        EXPECT_TRUE(amg.numeric_updates() == 0);
-        EXPECT_TRUE(amg.update_values(A2));
+        EXPECT_TRUE(amg.numeric_updates() == 0);        EXPECT_TRUE(amg.update_values(A2));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
         EXPECT_TRUE(amg.numeric_updates() == 1);
 
