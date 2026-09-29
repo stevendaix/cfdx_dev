@@ -253,10 +253,13 @@ int main() {
         return 1;
     }
 
-    if (amg.coarse_size() != 2 ||
-        amg.aggregate_of(0) != amg.aggregate_of(1) ||
-        amg.aggregate_of(2) != amg.aggregate_of(3) ||
-        amg.aggregate_of(0) == amg.aggregate_of(2)) {
+    // The AMG hierarchy now uses a direct coarse solve for systems with
+    // <= 16 unknowns. This is an intentional hierarchy contract: the 4x4
+    // smoke test therefore remains a single coarse level rather than forcing
+    // an obsolete 4 -> 2 aggregation just for the unit test.
+    if (amg.coarse_size() != 4 ||
+        amg.hierarchy_level_sizes().size() != 1) {
+        std::cerr << "Unexpected direct-coarse hierarchy for 4x4 test\n";
         return 2;
     }
 
