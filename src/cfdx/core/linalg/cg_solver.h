@@ -58,6 +58,11 @@ struct SolverResult {
     // Diagnostic evidence sampled during the iteration. This is intentionally
     // observational: it does not alter stopping criteria or Krylov updates.
     std::vector<SolverDiagnosticSample> diagnostics;
+    // Residual-replacement evidence is observational and does not alter
+    // convergence criteria. It is used to distinguish Krylov recurrence drift
+    // from preconditioner/coarse-space limitations.
+    std::size_t residual_replacements = 0;
+    double max_true_recursive_gap = 0.0;
 };
 
 // Résout A x = b par la méthode du gradient conjugué (CG).
@@ -300,9 +305,12 @@ inline SolverResult solve_cg_impl(
             const double recursive_res = std::sqrt(recursive_r2);
             const double gap = std::abs(res - recursive_res);
             const double scale = std::max(res, recursive_res);
+            result.max_true_recursive_gap =
+                std::max(result.max_true_recursive_gap, gap);
             constexpr double residual_gap_fraction = 0.25;
             if (std::isfinite(recursive_res) && scale > 0.0 &&
                 gap > residual_gap_fraction * scale) {
+                ++result.residual_replacements;
                 for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
                 if (null_space) null_space->remove(r);
                 if (!apply_preconditioner()) {
