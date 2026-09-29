@@ -378,6 +378,40 @@ int main(int argc,char** argv)
                   << " exact=" << exact << "\n";
     }
 
+    // Qualification gates: distinguish a small algebraic residual from a
+    // meaningful manufactured-solution result. The legacy wall closure must
+    // retain its observed first-order wall-flux behaviour, while the
+    // source-consistent planar closure must solve the corrected discrete
+    // problem to tight residual and recover the quadratic MMS.
+    for(std::size_t i=0;i<rows.size();++i) {
+        if(!rows[i].converged || rows[i].residual>1e-8) {
+            std::cerr << "FAIL Poisson manufactured solve did not converge: case="
+                      << rows[i].case_name << " N=" << rows[i].n
+                      << " residual=" << rows[i].residual
+                      << " iterations=" << rows[i].iterations << "\n";
+            return 4;
+        }
+        if(rows[i].corrected_residual>1e-9 || rows[i].corrected_phi_l2>1e-10) {
+            std::cerr << "FAIL second-order planar closure: case="
+                      << rows[i].case_name << " N=" << rows[i].n
+                      << " corrected_phi_l2=" << rows[i].corrected_phi_l2
+                      << " corrected_residual=" << rows[i].corrected_residual << "\n";
+            return 5;
+        }
+    }
+    for(std::size_t i=1;i<rows.size();++i) {
+        if(rows[i].case_name!=rows[i-1].case_name) continue;
+        if(rows[i].boundary_flux_error<=0.0 || rows[i-1].boundary_flux_error<=0.0) continue;
+        const double flux_order=std::log(rows[i-1].boundary_flux_error/rows[i].boundary_flux_error) /
+                                std::log(static_cast<double>(rows[i].n)/rows[i-1].n);
+        if(flux_order<0.8 || flux_order>1.2) {
+            std::cerr << "FAIL legacy boundary-flux order: case=" << rows[i].case_name
+                      << " N=" << rows[i-1].n << "->" << rows[i].n
+                      << " order=" << flux_order << "\n";
+            return 6;
+        }
+    }
+
     std::ofstream csv(output);
     if(!csv) return 3;
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
