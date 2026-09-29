@@ -490,6 +490,11 @@ inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid
             directional?"directional_mesh_wave":"mesh_wave",0};
 }
 
+inline double poisson_wall_offset(const WallDistanceBvh& bvh,
+                                  const WallDistanceVec3& p,
+                                  const WallDistanceVec3& q,
+                                  double h);
+
 inline double eikonal_update(const std::array<double,3>& a,
                                   const std::array<double,3>& h,
                                   double rhs) {
