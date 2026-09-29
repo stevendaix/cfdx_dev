@@ -397,6 +397,7 @@ int main(int argc,char** argv)
             << r.corrected_phi_l2 << ',' << r.corrected_residual << ','
             << r.corrected_iterations << ',' << r.boundary_flux_error << '\n';
     }
+    };
 
     // Qualification gates: distinguish a small algebraic residual from a
     // meaningful manufactured-solution result. The legacy wall closure must
