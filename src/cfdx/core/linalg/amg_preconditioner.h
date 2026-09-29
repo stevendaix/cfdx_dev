@@ -704,6 +704,40 @@ public:
         return two_grid_residual_ratio(level, rhs);
     }
 
+    double sine_mode_smoother_residual_ratio(std::size_t level,
+                                             std::size_t mode,
+                                             std::size_t sweeps) const
+    {
+        if (level >= levels_.size() || mode == 0) {
+            throw std::out_of_range("sine_mode_smoother_residual_ratio: invalid level or mode");
+        }
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        }
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        const double before = rhs.norm2();
+        if (!(before > 0.0) || !std::isfinite(before)) return 0.0;
+        Vector x(n, 0.0);
+        if (!smooth(level, rhs, x, sweeps)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        Vector Ax(n, 0.0);
+        if (!apply_operator(level, x, Ax)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        Vector residual(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) residual(i) = rhs(i) - Ax(i);
+        return residual.norm2() / std::max(before, 1e-300);
+    }
+
+
     std::size_t first_prolongation_nnz() const
     {
         if (levels_.size() < 2)
