@@ -332,7 +332,7 @@ int main(int argc,char** argv)
             phi_ref[i]=0.5*y*(1.0-y);
             d_ref[i]=std::min(y,1.0-y);
         }
-        auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
+        auto d_formula=reconstruct_planar_distance(phi,grid);
         // The helper above assumes one wall for the gradient.  For the channel,
         // evaluate the exact signed gradient magnitude directly.
         for(std::size_t i=0;i<d_formula.size();++i) if(!grid.solid[i]) {
