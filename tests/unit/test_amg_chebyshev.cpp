@@ -202,8 +202,9 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
                             static_cast<double>(n + 1));
     const auto mode1_rhs = A.matvec(mode1);
     Vector sa_correction;
-    Vector sa_rhs(n);\n    for (std::size_t i = 0; i < n; ++i) sa_rhs(i) = mode1_rhs[i];\n    if (!sa.apply(sa_rhs, sa_correction)) {
-        // Vector does not provide a lambda constructor; this branch is replaced below.
+    Vector sa_rhs(n);
+    for (std::size_t i = 0; i < n; ++i) sa_rhs(i) = mode1_rhs[i];
+    if (!sa.apply(sa_rhs, sa_correction)) {
         throw std::runtime_error("AMG smoothed-aggregation diagnostic apply failed");
     }
     const auto sa_Az = A.matvec(sa_correction);
@@ -220,7 +221,7 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
               << " P_mode1_relerr=" << sa.first_prolongation_mode_relative_error(1)
               << " vcycle_mode1_ratio=" << std::sqrt(sa_after2 / std::max(sa_before2, 1e-300))
               << "\n";
-
+}
 
 int main() {
     using namespace cfdx::core;
