@@ -266,15 +266,25 @@ int main() {
             EXPECT_TRUE(coarse_only.setup(A_diag));
             for (std::size_t mode = 1; mode <= 4; ++mode) {
                 const double coarse_ratio =
-                    coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
+                    coarse_only.sine_mode_coarse_correction_residual_ratio(0, mode);
+                const double coarse_energy_ratio =
+                    coarse_only.sine_mode_coarse_correction_energy_ratio(0, mode);
                 const double smooth_ratio =
                     vcycle.sine_mode_smoother_residual_ratio(0, mode, 4);
+                const double full_ratio =
+                    vcycle.two_grid_sine_mode_residual_ratio(0, mode);
                 std::cout << "amg_sine_stage DirectCF mode=" << mode
                           << " coarse_only_ratio=" << coarse_ratio
-                          << " smoother_4_ratio=" << smooth_ratio << '\n';
-                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio))
+                          << " coarse_only_A_energy_ratio=" << coarse_energy_ratio
+                          << " smoother_4_ratio=" << smooth_ratio
+                          << " full_two_grid_ratio=" << full_ratio << '\\n';
+                if (!std::isfinite(coarse_ratio) || !std::isfinite(coarse_energy_ratio) ||
+                    !std::isfinite(smooth_ratio) || !std::isfinite(full_ratio))
                     diagnostic_ok = false;
             }
+        }
+    }
+
         }
     }
 
@@ -328,15 +338,25 @@ int main() {
             EXPECT_TRUE(coarse_only.setup(A_diag));
             for (std::size_t mode = 1; mode <= 4; ++mode) {
                 const double coarse_ratio =
-                    coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
+                    coarse_only.sine_mode_coarse_correction_residual_ratio(0, mode);
+                const double coarse_energy_ratio =
+                    coarse_only.sine_mode_coarse_correction_energy_ratio(0, mode);
                 const double smooth_ratio =
                     sa.sine_mode_smoother_residual_ratio(0, mode, 4);
+                const double full_ratio =
+                    sa.two_grid_sine_mode_residual_ratio(0, mode);
                 std::cout << "amg_sine_stage SA mode=" << mode
                           << " coarse_only_ratio=" << coarse_ratio
-                          << " smoother_4_ratio=" << smooth_ratio << '\n';
-                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio))
+                          << " coarse_only_A_energy_ratio=" << coarse_energy_ratio
+                          << " smoother_4_ratio=" << smooth_ratio
+                          << " full_two_grid_ratio=" << full_ratio << '\\n';
+                if (!std::isfinite(coarse_ratio) || !std::isfinite(coarse_energy_ratio) ||
+                    !std::isfinite(smooth_ratio) || !std::isfinite(full_ratio))
                     diagnostic_ok = false;
             }
+        }
+    }
+
         }
     }
 
