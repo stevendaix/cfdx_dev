@@ -176,6 +176,10 @@ int main(int argc, char** argv)
                   << ", delta_over_h=[" << offsets.min_delta_over_h << "," << offsets.max_delta_over_h << "]"
                   << ", max_wall_coefficient=" << offsets.max_wall_coefficient
                   << ", max_wall_coefficient_cell=" << offsets.max_wall_coefficient_cell
+                  << ", max_wall_coefficient_ijk=" << max_i << ":" << max_j << ":" << max_k
+                  << ", max_wall_coefficient_point=" << max_p.x << ":" << max_p.y << ":" << max_p.z
+                  << ", max_wall_coefficient_delta=" << offsets.max_wall_coefficient_delta
+                  << ", max_wall_coefficient_h=" << offsets.max_wall_coefficient_h
                   << ", degenerate=" << offsets.degenerate_count << "\n";
 
         for (const auto method : methods()) {
