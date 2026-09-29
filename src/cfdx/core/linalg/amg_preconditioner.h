@@ -8,6 +8,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -394,6 +395,128 @@ public:
             value = std::min(value, diag - offdiag);
         }
         return value;
+    }
+
+    struct TransferDiagnostic {
+        std::size_t level = 0;
+        std::size_t fine_size = 0;
+        std::size_t coarse_size = 0;
+        std::size_t nnz = 0;
+        std::size_t negative_weights = 0;
+        double row_sum_min = 0.0;
+        double row_sum_max = 0.0;
+        double weight_min = 0.0;
+        double weight_max = 0.0;
+        double column_norm_min = 0.0;
+        double column_norm_max = 0.0;
+        double linear_mode_error = 0.0;
+        double galerkin_relative_error = 0.0;
+    };
+
+    std::vector<TransferDiagnostic> transfer_diagnostics() const
+    {
+        std::vector<TransferDiagnostic> out;
+        if (levels_.size() < 2) return out;
+        out.reserve(levels_.size() - 1);
+        for (std::size_t l = 0; l + 1 < levels_.size(); ++l) {
+            const auto& P = levels_[l].prolongation;
+            TransferDiagnostic d;
+            d.level=l; d.fine_size=levels_[l].A.n_rows();
+            d.coarse_size=levels_[l+1].A.n_rows();
+            d.row_sum_min=std::numeric_limits<double>::infinity();
+            d.row_sum_max=-std::numeric_limits<double>::infinity();
+            d.weight_min=std::numeric_limits<double>::infinity();
+            d.weight_max=-std::numeric_limits<double>::infinity();
+            std::vector<double> cnorm(d.coarse_size,0.0);
+            std::vector<double> xc(d.coarse_size,std::numeric_limits<double>::quiet_NaN());
+            for (std::size_t i=0;i<P.size();++i) {
+                double sum=0.0;
+                for (const auto& [c,w]:P[i]) {
+                    if (c>=d.coarse_size || !std::isfinite(w)) continue;
+                    ++d.nnz; sum+=w;
+                    d.weight_min=std::min(d.weight_min,w);
+                    d.weight_max=std::max(d.weight_max,w);
+                    if(w<0.0) ++d.negative_weights;
+                    cnorm[c]+=w*w;
+                    if(P[i].size()==1 && std::abs(w-1.0)<1e-12) xc[c]=static_cast<double>(i);
+                }
+                d.row_sum_min=std::min(d.row_sum_min,sum);
+                d.row_sum_max=std::max(d.row_sum_max,sum);
+            }
+            for(double& v:cnorm) v=std::sqrt(v);
+            if(!cnorm.empty()) {
+                d.column_norm_min=*std::min_element(cnorm.begin(),cnorm.end());
+                d.column_norm_max=*std::max_element(cnorm.begin(),cnorm.end());
+            }
+            bool ok=true; for(double v:xc) if(!std::isfinite(v)) ok=false;
+            if(ok) {
+                double e2=0.0,n2=0.0;
+                for(std::size_t i=0;i<P.size();++i) {
+                    double y=0.0;
+                    for(const auto& [c,w]:P[i]) y+=w*xc[c];
+                    const double e=y-static_cast<double>(i);
+                    e2+=e*e; n2+=static_cast<double>(i)*static_cast<double>(i);
+                }
+                d.linear_mode_error=std::sqrt(e2/std::max(n2,1.0));
+            } else d.linear_mode_error=std::numeric_limits<double>::infinity();
+            d.galerkin_relative_error=galerkin_relative_error(l);
+            out.push_back(d);
+        }
+        return out;
+    }
+
+    double galerkin_relative_error(std::size_t level) const
+    {
+        if(level+1>=levels_.size()) throw std::out_of_range("galerkin_relative_error: invalid level");
+        const auto& A=levels_[level].A; const auto& P=levels_[level].prolongation;
+        const auto& Ac=levels_[level+1].A; const std::size_t nc=Ac.n_rows();
+        std::vector<std::map<std::size_t,double>> ref(nc);
+        const auto* ar=A.row_offsets_data(); const auto* ac=A.columns_data(); const auto* av=A.values_data();
+        for(std::size_t i=0;i<A.n_rows();++i)
+            for(std::size_t k=ar[i];k<ar[i+1];++k)
+                for(const auto& [ci,wi]:P[i])
+                    for(const auto& [cj,wj]:P[ac[k]])
+                        ref[ci][cj]+=wi*av[k]*wj;
+        const auto* rr=Ac.row_offsets_data(); const auto* cc=Ac.columns_data(); const auto* vv=Ac.values_data();
+        double e2=0.0,r2=0.0;
+        for(std::size_t i=0;i<nc;++i) {
+            std::map<std::size_t,double> stored;
+            for(std::size_t k=rr[i];k<rr[i+1];++k) stored[cc[k]]+=vv[k];
+            std::set<std::size_t> cols;
+            for(const auto& [j,v]:ref[i]) { (void)v; cols.insert(j); }
+            for(const auto& [j,v]:stored) { (void)v; cols.insert(j); }
+            for(const auto j:cols) {
+                const double rv=ref[i].count(j)?ref[i].at(j):0.0;
+                const double sv=stored.count(j)?stored.at(j):0.0;
+                const double e=sv-rv; e2+=e*e; r2+=rv*rv;
+            }
+        }
+        return std::sqrt(e2/std::max(r2,1e-300));
+    }
+
+    double two_grid_residual_ratio(std::size_t level, const Vector& rhs) const
+    {
+        if(level+1>=levels_.size() || rhs.size()!=levels_[level].A.n_rows())
+            throw std::out_of_range("two_grid_residual_ratio: invalid level");
+        Vector x(rhs.size(),0.0),Ax(rhs.size()),res(rhs.size());
+        if(!smooth(level,rhs,x,pre_) || !apply_operator(level,x,Ax))
+            return std::numeric_limits<double>::infinity();
+        for(std::size_t i=0;i<rhs.size();++i) res(i)=rhs(i)-Ax(i);
+        const double before=res.norm2();
+        Vector rc(levels_[level+1].A.n_rows(),0.0);
+        for(std::size_t i=0;i<rhs.size();++i)
+            for(const auto& [c,w]:levels_[level].prolongation[i]) rc(c)+=w*res(i);
+        Vector ec(rc.size(),0.0);
+        if(!dense_solve(levels_[level+1].A,rc,ec)) return std::numeric_limits<double>::infinity();
+        for(std::size_t i=0;i<x.size();++i) {
+            double corr=0.0;
+            for(const auto& [c,w]:levels_[level].prolongation[i]) corr+=w*ec(c);
+            x(i)+=corr;
+        }
+        if(!smooth(level,rhs,x,post_) || !apply_operator(level,x,Ax))
+            return std::numeric_limits<double>::infinity();
+        for(std::size_t i=0;i<rhs.size();++i) res(i)=rhs(i)-Ax(i);
+        return res.norm2()/std::max(before,1e-300);
     }
 
     std::size_t first_prolongation_nnz() const
@@ -834,9 +957,12 @@ private:
             for (const std::size_t k : strong[i]) {
                 if (point[k] != Point::Fine) continue;
 
+                // Classical RS uses the strong C-neighbour set of k
+                // itself. Using C_i^s ∩ C_k^s truncates the denominator and
+                // becomes wrong on recursively generated Galerkin operators.
                 double c_sum = 0.0;
-                for (const std::size_t m : c_neighbors) {
-                    if (std::binary_search(strong[k].begin(), strong[k].end(), m))
+                for (const std::size_t m : strong[k]) {
+                    if (point[m] == Point::Coarse)
                         c_sum += matrix_value(k, m);
                 }
                 if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
@@ -1151,6 +1277,43 @@ private:
         return x.is_valid();
     }
 
+
+    static bool dense_solve(const SparseMatrix& A, const Vector& b, Vector& x)
+    {
+        const std::size_t n=A.n_rows();
+        if(n==0 || b.size()!=n) return false;
+        std::vector<double> m(n*n,0.0),rhs(b.size(),0.0);
+        const auto* row=A.row_offsets_data(); const auto* col=A.columns_data(); const auto* val=A.values_data();
+        for(std::size_t i=0;i<n;++i) {
+            rhs[i]=b(i);
+            for(std::size_t k=row[i];k<row[i+1];++k) m[i*n+col[k]]+=val[k];
+        }
+        for(std::size_t k=0;k<n;++k) {
+            std::size_t p=k; double pa=std::abs(m[k*n+k]);
+            for(std::size_t i=k+1;i<n;++i) if(std::abs(m[i*n+k])>pa) {pa=std::abs(m[i*n+k]);p=i;}
+            if(!std::isfinite(pa) || pa<=128.0*std::numeric_limits<double>::epsilon()*std::max(1.0,pa)) return false;
+            if(p!=k) {
+                for(std::size_t j=k;j<n;++j) std::swap(m[k*n+j],m[p*n+j]);
+                std::swap(rhs[k],rhs[p]);
+            }
+            for(std::size_t i=k+1;i<n;++i) {
+                const double f=m[i*n+k]/m[k*n+k];
+                if(!std::isfinite(f)) return false;
+                m[i*n+k]=0.0;
+                for(std::size_t j=k+1;j<n;++j) m[i*n+j]-=f*m[k*n+j];
+                rhs[i]-=f*rhs[k];
+            }
+        }
+        x.resize(n);
+        for(std::size_t ii=n;ii-- > 0;) {
+            double sum=rhs[ii];
+            for(std::size_t j=ii+1;j<n;++j) sum-=m[ii*n+j]*x(j);
+            if(!std::isfinite(m[ii*n+ii]) || std::abs(m[ii*n+ii])<=1e-30) return false;
+            x(ii)=sum/m[ii*n+ii];
+            if(!std::isfinite(x(ii))) return false;
+        }
+        return true;
+    }
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
     {
