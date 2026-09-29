@@ -247,6 +247,59 @@ public:
         return std::sqrt(defect2 / std::max(scale2, 1.0));
     }
 
+    double first_prolongation_mode_relative_error(std::size_t mode) const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty() || mode == 0)
+            throw std::out_of_range("first_prolongation_mode_relative_error: hierarchy unavailable");
+        const auto& P = levels_.front().prolongation;
+        const std::size_t n = P.size();
+        std::vector<double> coarse_mode(levels_[1].A.n_rows(), 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (P[i].size() == 1 && std::abs(P[i][0].second - 1.0) <= 1e-12) {
+                const std::size_t c = P[i][0].first;
+                if (c < coarse_mode.size()) {
+                    coarse_mode[c] = std::sin(
+                        3.14159265358979323846 * static_cast<double>(mode * (i + 1)) /
+                        static_cast<double>(n + 1));
+                }
+            }
+        }
+        double error2 = 0.0;
+        double norm2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double interpolated = 0.0;
+            for (const auto& [coarse, weight] : P[i])
+                interpolated += weight * coarse_mode[coarse];
+            const double exact = std::sin(
+                3.14159265358979323846 * static_cast<double>(mode * (i + 1)) /
+                static_cast<double>(n + 1));
+            const double error = interpolated - exact;
+            error2 += error * error;
+            norm2 += exact * exact;
+        }
+        return std::sqrt(error2 / std::max(norm2, 1.0));
+    }
+
+    std::size_t first_prolongation_row_nnz_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_row_nnz_min: hierarchy unavailable");
+        std::size_t value = std::numeric_limits<std::size_t>::max();
+        for (const auto& row : levels_.front().prolongation)
+            value = std::min(value, row.size());
+        return value;
+    }
+
+    std::size_t first_prolongation_row_nnz_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_row_nnz_max: hierarchy unavailable");
+        std::size_t value = 0;
+        for (const auto& row : levels_.front().prolongation)
+            value = std::max(value, row.size());
+        return value;
+    }
+
     std::size_t first_prolongation_nnz() const
     {
         if (levels_.size() < 2)
