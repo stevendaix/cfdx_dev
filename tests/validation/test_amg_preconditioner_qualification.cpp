@@ -430,6 +430,8 @@ int main() {
         EXPECT_TRUE(ra.iterations < rj.iterations);
     }
 
-    EXPECT_TRUE(qualification_ok);\n    std::cout << "AMG/preconditioner qualification: " << (qualification_ok ? "PASS" : "FAIL") << "\n";
+    EXPECT_TRUE(qualification_ok);
+    std::cout << "AMG/preconditioner qualification: "
+              << (qualification_ok ? "PASS" : "FAIL") << "\n";
     return 0;
 }
