@@ -123,7 +123,7 @@ int main(int argc,char** argv) {
               << ",max_wall_coefficient_h=" << poisson_offset_audit.max_wall_coefficient_h
               << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
     constexpr std::size_t benchmark_iterations=500;
-    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged\n";
+    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance\n";
 
     for(const auto method:methods) {
         double init_ms=0.0, poisson_ms=0.0;
@@ -145,8 +145,17 @@ int main(int argc,char** argv) {
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
-        std::size_t invalid=0; for(std::size_t i=0;i<result.distance.size();++i) if(!result.valid[i]) ++invalid;
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms,result.auxiliary_iterations,result.auxiliary_residual_inf,result.converged});
+        std::size_t invalid=0;
+        double min_distance=std::numeric_limits<double>::infinity();
+        double max_distance=0.0;
+        for(std::size_t i=0;i<result.distance.size();++i) {
+            if(grid.solid[i]) continue;
+            if(!result.valid[i] || !std::isfinite(result.distance[i])) { ++invalid; continue; }
+            min_distance=std::min(min_distance,result.distance[i]);
+            max_distance=std::max(max_distance,result.distance[i]);
+        }
+        if(!std::isfinite(min_distance)) min_distance=0.0;
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms,result.auxiliary_iterations,result.auxiliary_residual_inf,result.converged,min_distance,max_distance});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","
@@ -162,7 +171,7 @@ int main(int argc,char** argv) {
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
             << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
             << "," << r.init_ms << "," << r.poisson_ms << "," << r.poisson_iterations
-            << "," << r.poisson_residual << "," << (r.converged ? "true" : "false") << "\n";
+            << "," << r.poisson_residual << "," << (r.converged ? "true" : "false") << "," << r.min_distance << "," << r.max_distance << "\n";
     csv.close();
 
     // The exact method must be an exact self-reference. This is a regression
