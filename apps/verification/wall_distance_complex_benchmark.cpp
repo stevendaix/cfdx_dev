@@ -55,9 +55,12 @@ WallSurface make_complex_wing_body_tail() {
 }
 
 bool inside_complex(const WallDistanceVec3& p) {
-    const double dx=(p.x-4.5)/4.5;
-    const double cyl=dx*dx+(p.y/0.72)*(p.y/0.72)+(p.z/0.72)*(p.z/0.72);
-    if(cyl<=1.0) return true;
+    // Keep the computational solid exactly consistent with add_cylinder_x():
+    // the surface is a finite cylinder x in [0,9] with circular radius 0.72.
+    // The previous ellipsoidal test silently changed the solid topology near
+    // both cylinder end caps, invalidating the complex-geometry benchmark.
+    if(p.x>=0.0 && p.x<=9.0 &&
+       p.y*p.y+p.z*p.z<=0.72*0.72) return true;
     if(p.x>=3.0 && p.x<=6.4 && std::abs(p.y)<=3.8 && std::abs(p.z)<=0.10) return true;
     if(p.x>=7.0 && p.x<=8.7 && std::abs(p.y)<=1.9 && std::abs(p.z)<=0.08) return true;
     if(p.x>=7.2 && p.x<=8.8 && std::abs(p.y)<=0.12 && p.z>=0.0 && p.z<=1.45) return true;
@@ -76,6 +79,8 @@ int main(int argc,char** argv) {
         40,30,22,{-1.5,-5.0,-2.2},{0.30,0.34,0.21},inside_complex);
     const auto reference=exact_reference(surface,grid);
     const double h=std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
+    const WallDistanceBvh poisson_bvh(surface);
+    const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
 
     const std::array<WallDistanceMethod,9> methods={{
         WallDistanceMethod::EXACT_GEOMETRIC,
@@ -93,6 +98,14 @@ int main(int argc,char** argv) {
     std::cout << "surface_vertices=" << surface.points.size()
               << " surface_triangles=" << surface.triangles.size()
               << " samples=" << grid.points.size() << " h=" << h << "\n";
+    std::cout << "poisson_operator,fluid_nodes=" << poisson_operator_audit.fluid_nodes
+              << ",fluid_fluid_faces=" << poisson_operator_audit.fluid_fluid_faces
+              << ",solid_faces=" << poisson_operator_audit.solid_faces
+              << ",outer_faces=" << poisson_operator_audit.outer_faces
+              << ",min_diagonal=" << poisson_operator_audit.min_diagonal
+              << ",max_diagonal=" << poisson_operator_audit.max_diagonal
+              << ",min_diagonal_dominance=" << poisson_operator_audit.min_diagonal_dominance
+              << ",symmetry_error=" << poisson_operator_audit.symmetry_error << "\n";
     constexpr std::size_t benchmark_iterations=500;
     std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged\n";
 
