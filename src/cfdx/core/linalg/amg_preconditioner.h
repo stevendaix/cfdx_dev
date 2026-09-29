@@ -409,8 +409,15 @@ public:
         double weight_max = 0.0;
         double column_norm_min = 0.0;
         double column_norm_max = 0.0;
+        double constant_mode_error = 0.0;
         double linear_mode_error = 0.0;
+        double sine1_mode_error = 0.0;
+        double sine2_mode_error = 0.0;
         double galerkin_relative_error = 0.0;
+        double coarse_symmetry_relative_error = 0.0;
+        double coarse_diagonal_min = 0.0;
+        double coarse_diagonal_max = 0.0;
+        double coarse_gershgorin_lower_bound = 0.0;
     };
 
     std::vector<TransferDiagnostic> transfer_diagnostics() const
@@ -418,48 +425,130 @@ public:
         std::vector<TransferDiagnostic> out;
         if (levels_.size() < 2) return out;
         out.reserve(levels_.size() - 1);
+
+        constexpr double pi = 3.14159265358979323846;
         for (std::size_t l = 0; l + 1 < levels_.size(); ++l) {
             const auto& P = levels_[l].prolongation;
+            const std::size_t n = levels_[l].A.n_rows();
+            const std::size_t nc = levels_[l + 1].A.n_rows();
             TransferDiagnostic d;
-            d.level=l; d.fine_size=levels_[l].A.n_rows();
-            d.coarse_size=levels_[l+1].A.n_rows();
-            d.row_sum_min=std::numeric_limits<double>::infinity();
-            d.row_sum_max=-std::numeric_limits<double>::infinity();
-            d.weight_min=std::numeric_limits<double>::infinity();
-            d.weight_max=-std::numeric_limits<double>::infinity();
-            std::vector<double> cnorm(d.coarse_size,0.0);
-            std::vector<double> xc(d.coarse_size,std::numeric_limits<double>::quiet_NaN());
-            for (std::size_t i=0;i<P.size();++i) {
-                double sum=0.0;
-                for (const auto& [c,w]:P[i]) {
-                    if (c>=d.coarse_size || !std::isfinite(w)) continue;
-                    ++d.nnz; sum+=w;
-                    d.weight_min=std::min(d.weight_min,w);
-                    d.weight_max=std::max(d.weight_max,w);
-                    if(w<0.0) ++d.negative_weights;
-                    cnorm[c]+=w*w;
-                    if(P[i].size()==1 && std::abs(w-1.0)<1e-12) xc[c]=static_cast<double>(i);
+            d.level = l;
+            d.fine_size = n;
+            d.coarse_size = nc;
+            d.row_sum_min = std::numeric_limits<double>::infinity();
+            d.row_sum_max = -std::numeric_limits<double>::infinity();
+            d.weight_min = std::numeric_limits<double>::infinity();
+            d.weight_max = -std::numeric_limits<double>::infinity();
+
+            std::vector<double> cnorm(nc, 0.0);
+            std::vector<double> denom(nc, 0.0);
+            std::vector<double> x1(nc, 0.0), s1(nc, 0.0), s2(nc, 0.0);
+            for (std::size_t i = 0; i < P.size(); ++i) {
+                const double xi = static_cast<double>(i);
+                const double q = pi * static_cast<double>(i + 1) /
+                                 static_cast<double>(n + 1);
+                const double mode1 = std::sin(q);
+                const double mode2 = std::sin(2.0 * q);
+                double sum = 0.0;
+                for (const auto& [coarse, weight] : P[i]) {
+                    if (coarse >= nc || !std::isfinite(weight)) continue;
+                    ++d.nnz;
+                    sum += weight;
+                    d.weight_min = std::min(d.weight_min, weight);
+                    d.weight_max = std::max(d.weight_max, weight);
+                    if (weight < 0.0) ++d.negative_weights;
+                    cnorm[coarse] += weight * weight;
+                    denom[coarse] += weight * weight;
+                    x1[coarse] += weight * weight * xi;
+                    s1[coarse] += weight * weight * mode1;
+                    s2[coarse] += weight * weight * mode2;
                 }
-                d.row_sum_min=std::min(d.row_sum_min,sum);
-                d.row_sum_max=std::max(d.row_sum_max,sum);
+                d.row_sum_min = std::min(d.row_sum_min, sum);
+                d.row_sum_max = std::max(d.row_sum_max, sum);
             }
-            for(double& v:cnorm) v=std::sqrt(v);
-            if(!cnorm.empty()) {
-                d.column_norm_min=*std::min_element(cnorm.begin(),cnorm.end());
-                d.column_norm_max=*std::max_element(cnorm.begin(),cnorm.end());
-            }
-            bool ok=true; for(double v:xc) if(!std::isfinite(v)) ok=false;
-            if(ok) {
-                double e2=0.0,n2=0.0;
-                for(std::size_t i=0;i<P.size();++i) {
-                    double y=0.0;
-                    for(const auto& [c,w]:P[i]) y+=w*xc[c];
-                    const double e=y-static_cast<double>(i);
-                    e2+=e*e; n2+=static_cast<double>(i)*static_cast<double>(i);
+
+            for (std::size_t c = 0; c < nc; ++c) {
+                if (denom[c] > 0.0) {
+                    x1[c] /= denom[c];
+                    s1[c] /= denom[c];
+                    s2[c] /= denom[c];
                 }
-                d.linear_mode_error=std::sqrt(e2/std::max(n2,1.0));
-            } else d.linear_mode_error=std::numeric_limits<double>::infinity();
-            d.galerkin_relative_error=galerkin_relative_error(l);
+            }
+
+            for (double& v : cnorm) v = std::sqrt(v);
+            if (!cnorm.empty()) {
+                d.column_norm_min = *std::min_element(cnorm.begin(), cnorm.end());
+                d.column_norm_max = *std::max_element(cnorm.begin(), cnorm.end());
+            }
+
+            auto mode_error = [&](auto coarse_mode, auto fine_mode) {
+                double e2 = 0.0;
+                double n2 = 0.0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    double interpolated = 0.0;
+                    for (const auto& [coarse, weight] : P[i])
+                        if (coarse < nc) interpolated += weight * coarse_mode(coarse);
+                    const double exact = fine_mode(i);
+                    const double e = interpolated - exact;
+                    e2 += e * e;
+                    n2 += exact * exact;
+                }
+                return std::sqrt(e2 / std::max(n2, 1e-300));
+            };
+
+            d.constant_mode_error = std::max(
+                std::abs(d.row_sum_min - 1.0),
+                std::abs(d.row_sum_max - 1.0));
+            d.linear_mode_error = mode_error(
+                [&](std::size_t c) { return x1[c]; },
+                [&](std::size_t i) { return static_cast<double>(i); });
+            d.sine1_mode_error = mode_error(
+                [&](std::size_t c) { return s1[c]; },
+                [&](std::size_t i) {
+                    return std::sin(pi * static_cast<double>(i + 1) /
+                                     static_cast<double>(n + 1));
+                });
+            d.sine2_mode_error = mode_error(
+                [&](std::size_t c) { return s2[c]; },
+                [&](std::size_t i) {
+                    return std::sin(2.0 * pi * static_cast<double>(i + 1) /
+                                     static_cast<double>(n + 1));
+                });
+
+            d.galerkin_relative_error = galerkin_relative_error(l);
+
+            const auto& Ac = levels_[l + 1].A;
+            const auto* row = Ac.row_offsets_data();
+            const auto* col = Ac.columns_data();
+            const auto* val = Ac.values_data();
+            double sym_e2 = 0.0;
+            double sym_n2 = 0.0;
+            d.coarse_diagonal_min = std::numeric_limits<double>::infinity();
+            d.coarse_diagonal_max = -std::numeric_limits<double>::infinity();
+            d.coarse_gershgorin_lower_bound = std::numeric_limits<double>::infinity();
+            for (std::size_t i = 0; i < nc; ++i) {
+                double diag = 0.0;
+                double offdiag = 0.0;
+                for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                    const std::size_t j = col[k];
+                    if (j == i) diag += val[k];
+                    else offdiag += std::abs(val[k]);
+                    double transpose = 0.0;
+                    if (j < nc) {
+                        for (std::size_t q = row[j]; q < row[j + 1]; ++q)
+                            if (col[q] == i) transpose += val[q];
+                    }
+                    const double e = val[k] - transpose;
+                    sym_e2 += e * e;
+                    sym_n2 += val[k] * val[k];
+                }
+                d.coarse_diagonal_min = std::min(d.coarse_diagonal_min, diag);
+                d.coarse_diagonal_max = std::max(d.coarse_diagonal_max, diag);
+                d.coarse_gershgorin_lower_bound =
+                    std::min(d.coarse_gershgorin_lower_bound, diag - offdiag);
+            }
+            d.coarse_symmetry_relative_error =
+                std::sqrt(sym_e2 / std::max(sym_n2, 1e-300));
             out.push_back(d);
         }
         return out;
@@ -496,27 +585,96 @@ public:
 
     double two_grid_residual_ratio(std::size_t level, const Vector& rhs) const
     {
-        if(level+1>=levels_.size() || rhs.size()!=levels_[level].A.n_rows())
+        if (level + 1 >= levels_.size() ||
+            rhs.size() != levels_[level].A.n_rows()) {
             throw std::out_of_range("two_grid_residual_ratio: invalid level");
-        Vector x(rhs.size(),0.0),Ax(rhs.size()),res(rhs.size());
-        if(!smooth(level,rhs,x,pre_) || !apply_operator(level,x,Ax))
-            return std::numeric_limits<double>::infinity();
-        for(std::size_t i=0;i<rhs.size();++i) res(i)=rhs(i)-Ax(i);
-        const double before=res.norm2();
-        Vector rc(levels_[level+1].A.n_rows(),0.0);
-        for(std::size_t i=0;i<rhs.size();++i)
-            for(const auto& [c,w]:levels_[level].prolongation[i]) rc(c)+=w*res(i);
-        Vector ec(rc.size(),0.0);
-        if(!dense_solve(levels_[level+1].A,rc,ec)) return std::numeric_limits<double>::infinity();
-        for(std::size_t i=0;i<x.size();++i) {
-            double corr=0.0;
-            for(const auto& [c,w]:levels_[level].prolongation[i]) corr+=w*ec(c);
-            x(i)+=corr;
         }
-        if(!smooth(level,rhs,x,post_) || !apply_operator(level,x,Ax))
+
+        Vector x(rhs.size(), 0.0), Ax(rhs.size()), res(rhs.size());
+        if (!smooth(level, rhs, x, pre_) || !apply_operator(level, x, Ax))
             return std::numeric_limits<double>::infinity();
-        for(std::size_t i=0;i<rhs.size();++i) res(i)=rhs(i)-Ax(i);
-        return res.norm2()/std::max(before,1e-300);
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            res(i) = rhs(i) - Ax(i);
+        const double before = res.norm2();
+        if (!(before > 0.0) || !std::isfinite(before)) return 0.0;
+
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector rc(nc, 0.0);
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            for (const auto& [c, w] : levels_[level].prolongation[i])
+                rc(c) += w * res(i);
+
+        // Exact dense coarse solves are retained only for tiny systems. For
+        // intermediate levels use PCG with Jacobi scaling; this keeps the
+        // two-grid diagnostic mathematically representative while avoiding
+        // O(n_c^3) work at the 2048-unknown first coarse level.
+        Vector ec(nc, 0.0);
+        const auto& Ac = levels_[level + 1].A;
+        const auto* row = Ac.row_offsets_data();
+        const auto* col = Ac.columns_data();
+        const auto* val = Ac.values_data();
+        Vector r = rc, z(nc, 0.0), p(nc, 0.0), Ap(nc, 0.0);
+        double rz = 0.0;
+        double rhs_norm2 = 0.0;
+        for (std::size_t i = 0; i < nc; ++i) {
+            rhs_norm2 += rc(i) * rc(i);
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            if (!std::isfinite(diag) || diag <= 0.0) return std::numeric_limits<double>::infinity();
+            z(i) = r(i) / diag;
+            p(i) = z(i);
+            rz += r(i) * z(i);
+        }
+
+        const double rhs_norm = std::sqrt(rhs_norm2);
+        if (rhs_norm > 0.0) {
+            const std::size_t max_iter = std::max<std::size_t>(100, 4 * nc);
+            const double target = 1e-12 * rhs_norm;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                const auto values = Ac.matvec(p);
+                for (std::size_t i = 0; i < nc; ++i) Ap(i) = values[i];
+                double pAp = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) pAp += p(i) * Ap(i);
+                if (!std::isfinite(pAp) || pAp <= 0.0) return std::numeric_limits<double>::infinity();
+                const double alpha = rz / pAp;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    ec(i) += alpha * p(i);
+                    r(i) -= alpha * Ap(i);
+                }
+                double rr = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) rr += r(i) * r(i);
+                if (std::sqrt(rr) <= target) {
+                    converged = true;
+                    break;
+                }
+                double rz_new = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    double diag = 0.0;
+                    for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                        if (col[k] == i) diag += val[k];
+                    z(i) = r(i) / diag;
+                    rz_new += r(i) * z(i);
+                }
+                const double beta = rz_new / rz;
+                for (std::size_t i = 0; i < nc; ++i) p(i) = z(i) + beta * p(i);
+                rz = rz_new;
+            }
+            if (!converged) return std::numeric_limits<double>::infinity();
+        }
+
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            double corr = 0.0;
+            for (const auto& [c, w] : levels_[level].prolongation[i])
+                corr += w * ec(c);
+            x(i) += corr;
+        }
+        if (!smooth(level, rhs, x, post_) || !apply_operator(level, x, Ax))
+            return std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            res(i) = rhs(i) - Ax(i);
+        return res.norm2() / std::max(before, 1e-300);
     }
 
     std::size_t first_prolongation_nnz() const
