@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <cmath>
+#include <vector>
 
 namespace cfdx {
 namespace core {
@@ -39,11 +40,24 @@ inline const char* to_string(SolverStatus s) {
     }
 }
 
+struct SolverDiagnosticSample {
+    std::size_t iteration = 0;
+    double true_residual = 0.0;
+    double recursive_residual = 0.0;
+    double preconditioned_dot = 0.0;
+    double pAp = 0.0;
+    double alpha = 0.0;
+    double beta = 0.0;
+};
+
 struct SolverResult {
     SolverStatus status = SolverStatus::NOT_APPLICABLE;
     std::size_t iterations = 0;
     double residual = 0.0;
     double residual_relative = 0.0;
+    // Diagnostic evidence sampled during the iteration. This is intentionally
+    // observational: it does not alter stopping criteria or Krylov updates.
+    std::vector<SolverDiagnosticSample> diagnostics;
 };
 
 // Résout A x = b par la méthode du gradient conjugué (CG).
@@ -175,6 +189,11 @@ inline SolverResult solve_cg_impl(
 
     const double initial_true_residual =
         krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
+    if (preconditioner) {
+        result.diagnostics.push_back(
+            {0, initial_true_residual, initial_true_residual,
+             rsold, 0.0, 0.0, 0.0});
+    }
     if ((preconditioner && initial_true_residual <= tol_abs) ||
         (!preconditioner && rsold < tol_abs * tol_abs)) {
         result.status = SolverStatus::CONVERGED;
@@ -248,6 +267,16 @@ inline SolverResult solve_cg_impl(
         const double res = preconditioner
             ? mixed_precision_true_residual(A, b, x, rv)
             : std::sqrt(std::abs(rsnew));
+        if (preconditioner &&
+            (iter == 1 || iter % 1000 == 0 || iter == max_iter)) {
+            const double recursive_residual =
+                std::sqrt(std::max(0.0, krylov_dot(r_vector, r_vector,
+                                                   SolverPrecision::FP64,
+                                                   reduction)));
+            result.diagnostics.push_back(
+                {iter, res, recursive_residual, rsnew, pAp, alpha,
+                 rsold != 0.0 ? rsnew / rsold : 0.0});
+        }
         if (res < tol_abs) {
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
