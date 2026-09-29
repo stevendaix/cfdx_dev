@@ -350,7 +350,7 @@ int main(int argc,char** argv)
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
                         rel_linf(d_impl,d_ref,grid.solid),
-                        residual,exact_discrete_residual,it,residual<1e-8,second_order_phi_l2,second_order_residual,second_order_it});
+                        residual,exact_discrete_residual,it,residual<1e-8,second_order_phi_l2,second_order_residual,second_order_it,boundary_flux_error});
     }
 
     // 3) Pure formulation witness: for a sphere, the exact Poisson solution
