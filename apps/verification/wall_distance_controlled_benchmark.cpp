@@ -118,6 +118,7 @@ int main(int argc, char** argv)
 
     std::vector<Row> rows;
     bool poisson_failure = false;
+    bool advection_diffusion_failure = false;
 
     for (const auto n : sizes) {
         const double lo = -0.5;
@@ -154,6 +155,7 @@ int main(int argc, char** argv)
 
         const WallDistanceBvh bvh(surface);
         const auto op = audit_poisson_operator(bvh, grid);
+        const auto offsets = audit_poisson_wall_offsets(bvh, grid);
         std::cout << "N=" << n << ", h=" << std::setprecision(12) << h
                   << ", samples=" << grid.points.size() << "\n"
                   << "Poisson operator: fluid=" << op.fluid_nodes
@@ -162,7 +164,13 @@ int main(int argc, char** argv)
                   << ", outer_faces=" << op.outer_faces
                   << ", diag=[" << op.min_diagonal << "," << op.max_diagonal << "]"
                   << ", min_diagonal_dominance=" << op.min_diagonal_dominance
-                  << ", symmetry_error=" << op.symmetry_error << "\n";
+                  << ", symmetry_error=" << op.symmetry_error << "\n"
+                  << "Poisson wall offsets: faces=" << offsets.solid_face_count
+                  << ", delta=[" << offsets.min_delta << "," << offsets.max_delta << "]"
+                  << ", delta_over_h=[" << offsets.min_delta_over_h << "," << offsets.max_delta_over_h << "]"
+                  << ", max_wall_coefficient=" << offsets.max_wall_coefficient
+                  << ", max_wall_coefficient_cell=" << offsets.max_wall_coefficient_cell
+                  << ", degenerate=" << offsets.degenerate_count << "\n";
 
         for (const auto method : methods()) {
             const auto t0 = std::chrono::steady_clock::now();
@@ -189,6 +197,13 @@ int main(int argc, char** argv)
             if (method == WallDistanceMethod::POISSON && !result.converged) {
                 poisson_failure = true;
                 std::cerr << "FAIL Poisson did not converge at N=" << n
+                          << ": residual_inf=" << result.residual_inf
+                          << ", iterations=" << result.iterations
+                          << ", stopping_reason=" << result.stopping_reason << "\n";
+            }
+            if (method == WallDistanceMethod::ADVECTION_DIFFUSION && !result.converged) {
+                advection_diffusion_failure = true;
+                std::cerr << "FAIL Advection-diffusion did not converge at N=" << n
                           << ": residual_inf=" << result.residual_inf
                           << ", iterations=" << result.iterations
                           << ", stopping_reason=" << result.stopping_reason << "\n";
@@ -245,5 +260,7 @@ int main(int argc, char** argv)
             << '\n';
     }
 
-    return poisson_failure ? 4 : 0;
+    if(poisson_failure) return 4;
+    if(advection_diffusion_failure) return 5;
+    return 0;
 }
