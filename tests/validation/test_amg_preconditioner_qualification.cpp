@@ -177,6 +177,50 @@ int main() {
                   << "," << vcycle.prolongation_row_sum_max() << "]"
                   << " ms=" << ms << '\n';
         qualification_ok = qualification_ok && std::isfinite(ratio) && ratio < 1.0;
+
+        // Full multilevel transfer audit: every level must expose the actual
+        // coarse-space properties, not only the first P. These are evidence
+        // diagnostics; the existing contraction gate remains unchanged.
+        for (const auto& d : vcycle.transfer_diagnostics()) {
+            std::cout << "amg_transfer"
+                      << " level=" << d.level
+                      << " fine=" << d.fine_size
+                      << " coarse=" << d.coarse_size
+                      << " nnz=" << d.nnz
+                      << " row_sum=[" << d.row_sum_min << "," << d.row_sum_max << "]"
+                      << " weight=[" << d.weight_min << "," << d.weight_max << "]"
+                      << " negatives=" << d.negative_weights
+                      << " col_norm=[" << d.column_norm_min << "," << d.column_norm_max << "]"
+                      << " linear_mode_error=" << d.linear_mode_error
+                      << " galerkin_rel_error=" << d.galerkin_relative_error
+                      << " two_grid_ratio=" << vcycle.two_grid_residual_ratio(d.level, b_diag)
+                      << '\n';
+        }
+    }
+
+    // Repeat the same transfer/two-grid audit for SA so that common
+    // multilevel/Galerkin defects are separated from Direct-CF construction.
+    {
+        TestSparseOperator op(A_diag);
+        MatrixFreeVcyclePreconditioner sa(
+            op, 0.7, 4, 4, 0.25, 25,
+            AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(sa.setup(A_diag));
+        for (const auto& d : sa.transfer_diagnostics()) {
+            std::cout << "amg_sa_transfer"
+                      << " level=" << d.level
+                      << " fine=" << d.fine_size
+                      << " coarse=" << d.coarse_size
+                      << " nnz=" << d.nnz
+                      << " row_sum=[" << d.row_sum_min << "," << d.row_sum_max << "]"
+                      << " weight=[" << d.weight_min << "," << d.weight_max << "]"
+                      << " negatives=" << d.negative_weights
+                      << " col_norm=[" << d.column_norm_min << "," << d.column_norm_max << "]"
+                      << " linear_mode_error=" << d.linear_mode_error
+                      << " galerkin_rel_error=" << d.galerkin_relative_error
+                      << " two_grid_ratio=" << sa.two_grid_residual_ratio(d.level, b_diag)
+                      << '\n';
+        }
     }
 
     auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
