@@ -193,6 +193,7 @@ int main() {
         const auto x=og.points[id];
         const double d=(x.x+x.y)*inv_sqrt2;
         if(d<=0.375 || d>=1.75 || std::abs(x.z)>1.0 || std::abs(x.x-x.y)>0.75) continue;
+        ++oblique_samples;
         const double op=std::abs(-poisson_laplacian_at(obvh,oblique_phi,og,id)-1.0);
         const double gx=poisson_reconstruction_gradient_component(obvh,oblique_phi,og,id,0);
         const double gy=poisson_reconstruction_gradient_component(obvh,oblique_phi,og,id,1);
