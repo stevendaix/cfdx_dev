@@ -435,6 +435,36 @@ public:
         return z.is_valid();
     }
 
+    struct VcycleDiagnostic {
+        std::size_t level = 0;
+        std::size_t size = 0;
+        double rhs_norm = 0.0;
+        double x_initial_norm = 0.0;
+        double residual_before = 0.0;
+        double residual_after_pre = 0.0;
+        double coarse_rhs_norm = 0.0;
+        double coarse_solution_norm = 0.0;
+        double correction_norm = 0.0;
+        double residual_after_correction = 0.0;
+        double residual_after_post = 0.0;
+        double coarse_residual_before = 0.0;
+        double coarse_residual_after = 0.0;
+    };
+
+    bool apply_with_diagnostics(const Vector& r, Vector& z,
+                                std::vector<VcycleDiagnostic>& diagnostics) const
+    {
+        diagnostics.clear();
+        if (levels_.empty() || r.size() != op_.rows() || !r.is_valid()) return false;
+        Vector compatible_r = r;
+        if (constant_null_space_) remove_constant(compatible_r);
+        if (z.size() != r.size()) z.resize(r.size());
+        z.fill(0.0);
+        if (!vcycle_diagnostic(0, compatible_r, z, diagnostics)) return false;
+        if (constant_null_space_) remove_constant(z);
+        return z.is_valid();
+    }
+
     const char* name() const override
     {
         return interpolation_ == AMGInterpolationPolicy::SmoothedAggregation
@@ -1054,6 +1084,73 @@ private:
 
         return smooth(level, r, x, post_);
     }
+    bool vcycle_diagnostic(std::size_t level, const Vector& r, Vector& x,
+                           std::vector<VcycleDiagnostic>& diagnostics) const
+    {
+        VcycleDiagnostic d;
+        d.level = level;
+        d.size = r.size();
+        d.rhs_norm = r.norm2();
+        d.x_initial_norm = x.norm2();
+        Vector Ax(r.size());
+        if (!apply_operator(level, x, Ax)) return false;
+        Vector residual(r.size());
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        d.residual_before = residual.norm2();
+
+        const std::size_t index = diagnostics.size();
+        diagnostics.push_back(d);
+        if (level + 1 == levels_.size()) {
+            const double coarse_before = residual.norm2();
+            if (!smooth_coarsest(level, r, x)) return false;
+            if (!apply_operator(level, x, Ax)) return false;
+            for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+            diagnostics[index].coarse_residual_before = coarse_before;
+            diagnostics[index].coarse_residual_after = residual.norm2();
+            diagnostics[index].residual_after_pre = diagnostics[index].coarse_residual_after;
+            diagnostics[index].residual_after_post = diagnostics[index].coarse_residual_after;
+            diagnostics[index].coarse_solution_norm = x.norm2();
+            return x.is_valid();
+        }
+
+        if (!smooth(level, r, x, pre_)) return false;
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_pre = residual.norm2();
+
+        const auto& prolongation = levels_[level].prolongation;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector coarse_r(nc, 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i)
+            for (const auto& [coarse, weight] : prolongation[i])
+                coarse_r(coarse) += weight * residual(i);
+        if (constant_null_space_) remove_constant(coarse_r);
+        diagnostics[index].coarse_rhs_norm = coarse_r.norm2();
+
+        Vector coarse_x(nc, 0.0);
+        if (!vcycle_diagnostic(level + 1, coarse_r, coarse_x, diagnostics)) return false;
+        diagnostics[index].coarse_solution_norm = coarse_x.norm2();
+
+        Vector correction(x.size(), 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i) {
+            for (const auto& [coarse, weight] : prolongation[i])
+                correction(i) += weight * coarse_x(coarse);
+            x(i) += correction(i);
+            if (!std::isfinite(x(i))) return false;
+        }
+        diagnostics[index].correction_norm = correction.norm2();
+        if (constant_null_space_) remove_constant(x);
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_correction = residual.norm2();
+
+        if (!smooth(level, r, x, post_)) return false;
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_post = residual.norm2();
+        return x.is_valid();
+    }
+
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
     {
