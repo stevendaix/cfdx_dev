@@ -172,35 +172,6 @@ int main() {
     double oblique_gradient_res=0.0;
     double oblique_reconstruction_res=0.0;
     std::size_t oblique_samples=0;
-    for(std::size_t id=0;id<og.points.size();++id) {
-        if(og.solid[id]) continue;
-        const auto x=og.points[id];
-        const double d_exact=(x.x+x.y)*inv_sqrt2;
-        // Stay away from the wall and the artificial outer box so that the
-        // audit tests the interior Cartesian operator, not an unrelated BC.
-        if(d_exact<=0.375 || d_exact>=1.75 || std::abs(x.z)>1.0 ||
-           std::abs(x.x-x.y)>0.75) continue;
-        const double phi_exact=L_oblique*d_exact-0.5*d_exact*d_exact;
-        std::vector<double> local_phi(og.points.size(),0.0);
-        local_phi[id]=phi_exact;
-        const auto exact_grad=[&](const WallDistanceVec3&) {
-            const double a=L_oblique-d_exact;
-            return WallDistanceVec3{a*inv_sqrt2,a*inv_sqrt2,0.0};
-        };
-        const double gx=poisson_reconstruction_gradient_component(obvh,
-            [&]()->const std::vector<double>& {
-                static thread_local std::vector<double> dummy;
-                return dummy;
-            }(),og,id,0);
-        (void)gx;
-        // Use a full manufactured field; only the current sample is needed
-        // for the local operator, but the vector keeps the production API
-        // identical to the actual Poisson solve.
-        static_cast<void>(local_phi);
-        ++oblique_samples;
-    }
-    require(oblique_samples>0,"oblique manufactured audit selected no samples");
-
     std::vector<double> oblique_phi(og.points.size(),0.0);
     for(std::size_t id=0;id<og.points.size();++id) if(!og.solid[id]) {
         const auto x=og.points[id];
