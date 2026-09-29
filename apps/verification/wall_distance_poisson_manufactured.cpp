@@ -38,6 +38,7 @@ struct Row {
     double distance_formula_linf{};
     double distance_impl_linf{};
     double residual{};
+    double exact_discrete_residual{};
     std::size_t iterations{};
     bool converged{};
 };
@@ -175,6 +176,7 @@ int main(int argc,char** argv)
         auto d_formula=reconstruct_planar_distance(phi,grid,0.0);
         std::size_t impl_it=0; double impl_residual=0.0;
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
+        const double exact_discrete_residual=poisson_residual_inf(bvh,phi_ref,grid,grid.solid);
         rows.push_back({n,"single_wall",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
                         rel_grad_l2_1d(phi,grid,[&](double y){ return L-y; }),
@@ -183,7 +185,7 @@ int main(int argc,char** argv)
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
                         rel_linf(d_impl,d_ref,grid.solid),
-                        residual,it,residual<1e-8});
+                        residual,exact_discrete_residual,it,residual<1e-8});
     }
 
     // 2) Parallel channel with two Dirichlet walls.
@@ -221,6 +223,7 @@ int main(int argc,char** argv)
         }
         std::size_t impl_it=0; double impl_residual=0.0;
         const auto d_impl=poisson_distance(bvh,grid,500,1.0,&impl_it,&impl_residual);
+        const double exact_discrete_residual=poisson_residual_inf(bvh,phi_ref,grid,grid.solid);
         rows.push_back({n,"parallel_channel",rel_l2(phi,phi_ref,grid.solid),
                         rel_linf(phi,phi_ref,grid.solid),
                         rel_grad_l2_1d(phi,grid,[&](double y){ return 0.5-y; }),
@@ -229,7 +232,7 @@ int main(int argc,char** argv)
                         rel_l2(d_impl,d_ref,grid.solid),
                         rel_linf(d_formula,d_ref,grid.solid),
                         rel_linf(d_impl,d_ref,grid.solid),
-                        residual,it,residual<1e-8});
+                        residual,exact_discrete_residual,it,residual<1e-8});
     }
 
     // 3) Pure formulation witness: for a sphere, the exact Poisson solution
@@ -255,7 +258,7 @@ int main(int argc,char** argv)
     if(!csv) return 3;
     csv << "N,case,phi_l2_relative,phi_linf_relative,grad_phi_l2_relative,grad_phi_linf_relative,"
            "distance_formula_l2_relative,distance_impl_l2_relative,distance_formula_linf_relative,"
-           "distance_impl_linf_relative,residual_inf,iterations,converged\n";
+           "distance_impl_linf_relative,residual_inf,exact_discrete_residual_inf,iterations,converged\n";
     for(const auto& r:rows) {
         csv << r.n << ',' << r.case_name << ','
             << std::setprecision(16)
@@ -263,7 +266,7 @@ int main(int argc,char** argv)
             << r.grad_phi_l2 << ',' << r.grad_phi_linf << ','
             << r.distance_formula_l2 << ',' << r.distance_impl_l2 << ','
             << r.distance_formula_linf << ',' << r.distance_impl_linf << ','
-            << r.residual << ',' << r.iterations << ','
+            << r.residual << ',' << r.exact_discrete_residual << ',' << r.iterations << ','
             << (r.converged ? "true" : "false") << '\n';
     }
 
@@ -271,7 +274,13 @@ int main(int argc,char** argv)
     // validates the Poisson operator and the mathematical reconstruction
     // separately from the complex wall geometry benchmark.
     for(const auto& r:rows) {
-        if(!r.converged) return 4;
+        if(!r.converged) {
+            std::cerr << "FAIL manufactured Poisson linear solve: N=" << r.n
+                      << " case=" << r.case_name
+                      << " residual_inf=" << r.residual
+                      << " exact_discrete_residual_inf=" << r.exact_discrete_residual << "\n";
+            return 4;
+        }
         if(!(r.phi_l2<0.05 && r.distance_formula_l2<0.05 && r.distance_impl_l2<0.05)) {
             std::cerr << "FAIL manufactured Poisson qualification at N=" << r.n
                       << " case=" << r.case_name
