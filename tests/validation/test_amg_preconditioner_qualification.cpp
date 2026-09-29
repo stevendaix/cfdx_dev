@@ -177,6 +177,12 @@ int main() {
                   << " ms=" << ms
                   << " residual_replacements=" << result.residual_replacements
                   << " max_true_recursive_gap=" << result.max_true_recursive_gap
+                  << " true_recursive_ratio=[" << result.min_true_recursive_ratio
+                  << "," << result.max_true_recursive_ratio << "]"
+                  << " true_residual_range=[" << result.min_true_residual
+                  << "," << result.max_true_residual << "]"
+                  << " first_replacement=" << result.first_residual_replacement
+                  << " last_replacement=" << result.last_residual_replacement
                   << '\n';
         if (n == 4096) {
             for (const auto& d : result.diagnostics) {
