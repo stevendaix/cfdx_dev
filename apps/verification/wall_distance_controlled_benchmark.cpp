@@ -161,6 +161,7 @@ int main(int argc, char** argv)
                   << ", solid_faces=" << op.solid_faces
                   << ", outer_faces=" << op.outer_faces
                   << ", diag=[" << op.min_diagonal << "," << op.max_diagonal << "]"
+                  << ", min_diagonal_dominance=" << op.min_diagonal_dominance
                   << ", symmetry_error=" << op.symmetry_error << "\n";
 
         for (const auto method : methods()) {
