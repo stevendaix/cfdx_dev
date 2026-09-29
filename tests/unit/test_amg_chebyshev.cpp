@@ -196,31 +196,43 @@ static void print_amg_spectral_diagnostics(std::size_t n) {
         cfdx::core::AMGInterpolationPolicy::SmoothedAggregation);
     if (!sa.setup(A))
         throw std::runtime_error("AMG smoothed-aggregation diagnostic setup failed");
-    Vector mode1(n);
-    for (std::size_t i = 0; i < n; ++i)
-        mode1(i) = std::sin(3.14159265358979323846 * static_cast<double>(i + 1) /
-                            static_cast<double>(n + 1));
-    const auto mode1_rhs = A.matvec(mode1);
-    Vector sa_correction;
-    Vector sa_rhs(n);
-    for (std::size_t i = 0; i < n; ++i) sa_rhs(i) = mode1_rhs[i];
-    if (!sa.apply(sa_rhs, sa_correction)) {
-        throw std::runtime_error("AMG smoothed-aggregation diagnostic apply failed");
-    }
-    const auto sa_Az = A.matvec(sa_correction);
-    double sa_before2 = 0.0;
-    double sa_after2 = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        sa_before2 += mode1_rhs[i] * mode1_rhs[i];
-        const double residual = mode1_rhs[i] - sa_Az[i];
-        sa_after2 += residual * residual;
-    }
     std::cerr << "AMG_SA N=" << n
               << " coarse=" << sa.coarse_size()
               << " P_nnz=" << sa.first_prolongation_nnz()
               << " P_mode1_relerr=" << sa.first_prolongation_mode_relative_error(1)
-              << " vcycle_mode1_ratio=" << std::sqrt(sa_after2 / std::max(sa_before2, 1e-300))
-              << "\n";
+              << " P_mode2_relerr=" << sa.first_prolongation_mode_relative_error(2)
+              << " P_mode3_relerr=" << sa.first_prolongation_mode_relative_error(3);
+
+    // Apply the same independent V-cycle measurement to the first three
+    // discrete Poisson modes for Smoothed Aggregation. This is diagnostic only
+    // and uses exactly the same RHS construction as Direct-CF.
+    for (std::size_t mode = 1; mode <= 3; ++mode) {
+        Vector exact(n);
+        Vector rhs_mode(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(3.14159265358979323846 *
+                                static_cast<double>(mode * (i + 1)) /
+                                static_cast<double>(n + 1));
+        }
+        const auto rhs_mode_raw = A.matvec(exact);
+        for (std::size_t i = 0; i < n; ++i) rhs_mode(i) = rhs_mode_raw[i];
+
+        Vector correction;
+        if (!sa.apply(rhs_mode, correction))
+            throw std::runtime_error("AMG smoothed-aggregation mode apply failed");
+
+        const auto Az = A.matvec(correction);
+        double before2 = 0.0;
+        double after2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            before2 += rhs_mode(i) * rhs_mode(i);
+            const double residual = rhs_mode(i) - Az[i];
+            after2 += residual * residual;
+        }
+        std::cerr << " vcycle_mode" << mode << "_ratio="
+                  << std::sqrt(after2 / std::max(before2, 1e-300));
+    }
+    std::cerr << "\n";
 }
 
 int main() {
