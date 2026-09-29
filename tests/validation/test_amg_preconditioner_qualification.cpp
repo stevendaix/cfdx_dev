@@ -174,7 +174,10 @@ int main() {
                   << "," << amg.prolongation_row_sum_max() << "]"
                   << " b_norm=" << b_norm
                   << " abs_tol=" << 1e-10 * std::max(b_norm, 1e-15)
-                  << " ms=" << ms << '\\n';
+                  << " ms=" << ms
+                  << " residual_replacements=" << result.residual_replacements
+                  << " max_true_recursive_gap=" << result.max_true_recursive_gap
+                  << '\n';
         if (n == 4096) {
             for (const auto& d : result.diagnostics) {
                 std::cout << "  cg_diag iter=" << d.iteration
@@ -183,7 +186,7 @@ int main() {
                           << " precond_dot=" << d.preconditioned_dot
                           << " pAp=" << d.pAp
                           << " alpha=" << d.alpha
-                          << " beta=" << d.beta << '\\n';
+                          << " beta=" << d.beta << '\n';
             }
         }
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
