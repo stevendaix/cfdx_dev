@@ -745,6 +745,9 @@ struct WallDistancePoissonOffsetAudit {
     double max_delta_over_h{0.0};
     double max_wall_coefficient{0.0};
     std::size_t max_wall_coefficient_cell{0};
+    double max_wall_coefficient_delta{0.0};
+    double max_wall_coefficient_h{0.0};
+    WallDistanceVec3 max_wall_coefficient_point{};
     std::size_t degenerate_count{0};
     std::size_t solid_face_count{0};
 };
@@ -772,6 +775,9 @@ inline WallDistancePoissonOffsetAudit audit_poisson_wall_offsets(
             if(coeff>a.max_wall_coefficient) {
                 a.max_wall_coefficient=coeff;
                 a.max_wall_coefficient_cell=id;
+                a.max_wall_coefficient_delta=delta;
+                a.max_wall_coefficient_h=h;
+                a.max_wall_coefficient_point=g.points[id];
             }
         };
         inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
