@@ -257,6 +257,25 @@ int main() {
                       << " two_grid_residual_ratio=" << ratio << '\\n';
             if (!std::isfinite(ratio)) diagnostic_ok = false;
         }
+
+        {
+            TestSparseOperator coarse_op(A_diag);
+            MatrixFreeVcyclePreconditioner coarse_only(
+                coarse_op, 0.7, 0, 0, 0.25, 25,
+                AMGInterpolationPolicy::DirectCF);
+            EXPECT_TRUE(coarse_only.setup(A_diag));
+            for (std::size_t mode = 1; mode <= 4; ++mode) {
+                const double coarse_ratio =
+                    coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
+                const double smooth_ratio =
+                    vcycle.sine_mode_smoother_residual_ratio(0, mode, 4);
+                std::cout << "amg_sine_stage DirectCF mode=" << mode
+                          << " coarse_only_ratio=" << coarse_ratio
+                          << " smoother_4_ratio=" << smooth_ratio << '\n';
+                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio))
+                    diagnostic_ok = false;
+            }
+        }
     }
 
     // Repeat the same transfer/two-grid audit for SA so that common
@@ -299,6 +318,25 @@ int main() {
             std::cout << "amg_sine_mode SA mode=" << mode
                       << " two_grid_residual_ratio=" << ratio << '\\n';
             if (!std::isfinite(ratio)) diagnostic_ok = false;
+        }
+
+        {
+            TestSparseOperator coarse_op(A_diag);
+            MatrixFreeVcyclePreconditioner coarse_only(
+                coarse_op, 0.7, 0, 0, 0.25, 25,
+                AMGInterpolationPolicy::SmoothedAggregation);
+            EXPECT_TRUE(coarse_only.setup(A_diag));
+            for (std::size_t mode = 1; mode <= 4; ++mode) {
+                const double coarse_ratio =
+                    coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
+                const double smooth_ratio =
+                    sa.sine_mode_smoother_residual_ratio(0, mode, 4);
+                std::cout << "amg_sine_stage SA mode=" << mode
+                          << " coarse_only_ratio=" << coarse_ratio
+                          << " smoother_4_ratio=" << smooth_ratio << '\n';
+                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio))
+                    diagnostic_ok = false;
+            }
         }
     }
 
