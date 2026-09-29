@@ -733,6 +733,54 @@ struct WallDistancePoissonAudit {
     double symmetry_error{0.0};
 };
 
+struct WallDistancePoissonOffsetAudit {
+    double min_delta{std::numeric_limits<double>::infinity()};
+    double max_delta{0.0};
+    double min_delta_over_h{std::numeric_limits<double>::infinity()};
+    double max_delta_over_h{0.0};
+    double max_wall_coefficient{0.0};
+    std::size_t max_wall_coefficient_cell{0};
+    std::size_t degenerate_count{0};
+    std::size_t solid_face_count{0};
+};
+
+inline WallDistancePoissonOffsetAudit audit_poisson_wall_offsets(
+    const WallDistanceBvh& bvh, const WallDistanceGrid& g) {
+    WallDistancePoissonOffsetAudit a;
+    for(std::size_t id=0; id<g.points.size(); ++id) {
+        if(g.solid[id]) continue;
+        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+        auto inspect=[&](std::size_t q, bool exists, double h) {
+            if(!exists || !g.solid[q]) return;
+            ++a.solid_face_count;
+            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            if(!(std::isfinite(delta) && delta>0.0)) {
+                ++a.degenerate_count;
+                return;
+            }
+            const double ratio=delta/h;
+            const double coeff=1.0/(h*delta);
+            a.min_delta=std::min(a.min_delta,delta);
+            a.max_delta=std::max(a.max_delta,delta);
+            a.min_delta_over_h=std::min(a.min_delta_over_h,ratio);
+            a.max_delta_over_h=std::max(a.max_delta_over_h,ratio);
+            if(coeff>a.max_wall_coefficient) {
+                a.max_wall_coefficient=coeff;
+                a.max_wall_coefficient_cell=id;
+            }
+        };
+        inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+        inspect(j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+        inspect(k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+    }
+    if(!std::isfinite(a.min_delta)) a.min_delta=0.0;
+    if(!std::isfinite(a.min_delta_over_h)) a.min_delta_over_h=0.0;
+    return a;
+}
+
 inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceBvh& bvh,
                                                    const WallDistanceGrid& g) {
     WallDistancePoissonAudit a;
@@ -1069,292 +1117,59 @@ inline std::vector<double> poisson_distance(const WallSurface& s,const WallDista
 inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const std::vector<double>& d,
                                                         const WallDistanceGrid& g,
-                                                        const std::vector<unsigned char>* fixed=nullptr);
-
-inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
-                                                        std::size_t max_iter,double gamma=0.05,
-                                                        std::size_t* used_iter=nullptr,
-                                                        double* residual_out=nullptr) {
-    // NASA/Tucker transport form: U·∇d = 1 + Gamma ∇²d, with U derived
-    // from the current distance field. Advection is first-order upwind and
-    // diffusion is second-order central, matching the published formulation.
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const WallDistanceBvh bvh(s);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
-    std::vector<unsigned char> fixed(g.points.size(),0);
-    std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter/2));
-    for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
-    std::size_t used=max_iter;
-    double final_residual=std::numeric_limits<double>::infinity();
-    for(std::size_t it=0;it<max_iter;++it) {
-        double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
-            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-            const auto one=[&](int axis)->double {
-                double gm=0.0,gp=0.0;
-                if(axis==0) { if(i>0) gm=(d[g.index(i,j,k)]-d[g.index(i-1,j,k)])/g.spacing.x; if(i+1<g.nx) gp=(d[g.index(i+1,j,k)]-d[g.index(i,j,k)])/g.spacing.x; }
-                if(axis==1) { if(j>0) gm=(d[g.index(i,j,k)]-d[g.index(i,j-1,k)])/g.spacing.y; if(j+1<g.ny) gp=(d[g.index(i,j+1,k)]-d[g.index(i,j,k)])/g.spacing.y; }
-                if(axis==2) { if(k>0) gm=(d[g.index(i,j,k)]-d[g.index(i,j,k-1)])/g.spacing.z; if(k+1<g.nz) gp=(d[g.index(i,j,k+1)]-d[g.index(i,j,k)])/g.spacing.z; }
-                return std::max(gm,0.0)+std::min(gp,0.0);
-            };
-            const double gx=one(0),gy=one(1),gz=one(2),gn=std::sqrt(gx*gx+gy*gy+gz*gz);
-            const double ux=gn>1e-14?gx/gn:0.0, uy=gn>1e-14?gy/gn:0.0, uz=gn>1e-14?gz/gn:0.0;
-            double diag=0.0,rhs=1.0;
-            auto add_axis=[&](std::size_t m,bool has_m,std::size_t p,bool has_p,
-                                   double hh,double u) {
-                const double w=gamma/(hh*hh);
-                if(has_m && std::isfinite(d[m])) { diag+=w; rhs+=w*d[m]; }
-                if(has_p && std::isfinite(d[p])) { diag+=w; rhs+=w*d[p]; }
-                // U>0: U(d_P-d_W)/h; U<0: U(d_E-d_P)/h.
-                if(u>0.0 && has_m && std::isfinite(d[m])) {
-                    const double a=u/hh; diag+=a; rhs+=a*d[m];
-                }
-                if(u<0.0 && has_p && std::isfinite(d[p])) {
-                    const double a=-u/hh; diag+=a; rhs+=a*d[p];
-                }
-            };
-            const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
-            const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
-            const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x,ux);
-            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y,uy);
-            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z,uz);
-            if(diag>0.0) { const double nd=rhs/diag; max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd; }
-        }
-        for(auto id:seeds) d[id]=exact_point_distance(s,g.points[id]);
-        if((it&3u)==3u || max_change<1e-10*h) {
-            final_residual=wall_distance_pde_residual_inf(
-                WallDistanceMethod::ADVECTION_DIFFUSION,d,g,&fixed);
-            if(final_residual<1e-6 && max_change<1e-8*h) {
-                used=it+1;
-                break;
-            }
-        }
-    }
-    if(used_iter) *used_iter=used;
-    if(residual_out) *residual_out=final_residual;
-    return d;
-}
-
-inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
-    const WallSurface& s,const WallDistanceGrid& g,std::size_t max_iter,
-    double epsilon=0.25,double relaxation=0.9,
-    std::size_t* used_iter=nullptr,double* residual_out=nullptr,
-    double poisson_weight=1.0,
-    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr) {
-    // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
-    // (effectively a wall normal); H-J then propagates distance with that
-    // direction, optionally blended with the evolving Eikonal direction.
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const WallDistanceBvh bvh(s);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
-    std::vector<unsigned char> fixed(g.points.size(),0);
-    for(auto id:seeds) fixed[id]=1;
-
-    std::size_t poisson_iter=0; double poisson_residual=0.0;
-    const std::size_t poisson_max_iter=std::max<std::size_t>(200,4*max_iter);
-    const auto phi=poisson_potential(bvh,g,poisson_max_iter,1.5,
-                                     &poisson_iter,&poisson_residual);
-    if(poisson_iter_out) *poisson_iter_out=poisson_iter;
-    if(poisson_residual_out) *poisson_residual_out=poisson_residual;
-
-    std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
-    auto grad_comp=[&](const std::vector<double>& f,std::size_t id,int a)->double {
-        const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-        if(a==0) {
-            const bool hm=i>0, hp=i+1<g.nx;
-            const auto im=hm?g.index(i-1,j,k):0, ip=hp?g.index(i+1,j,k):0;
-            const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-            if(fm&&fp) return (f[ip]-f[im])/(2*g.spacing.x);
-            if(fp) return (f[ip]-f[id])/g.spacing.x;
-            if(fm) return (f[id]-f[im])/g.spacing.x;
-        } else if(a==1) {
-            const bool hm=j>0, hp=j+1<g.ny;
-            const auto im=hm?g.index(i,j-1,k):0, ip=hp?g.index(i,j+1,k):0;
-            const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-            if(fm&&fp) return (f[ip]-f[im])/(2*g.spacing.y);
-            if(fp) return (f[ip]-f[id])/g.spacing.y;
-            if(fm) return (f[id]-f[im])/g.spacing.y;
-        } else {
-            const bool hm=k>0, hp=k+1<g.nz;
-            const auto im=hm?g.index(i,j,k-1):0, ip=hp?g.index(i,j,k+1):0;
-            const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-            if(fm&&fp) return (f[ip]-f[im])/(2*g.spacing.z);
-            if(fp) return (f[ip]-f[id])/g.spacing.z;
-            if(fm) return (f[id]-f[im])/g.spacing.z;
-        }
-        return 0.0;
-    };
-    for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]) {
-        const double gx=grad_comp(phi,id,0),gy=grad_comp(phi,id,1),gz=grad_comp(phi,id,2);
-        const double gn=std::sqrt(gx*gx+gy*gy+gz*gz);
-        d[id]=gn>1e-14 ? std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2*phi[id]))-gn) : 0.0;
-    }
-    for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
-
-    const double alpha=std::clamp(poisson_weight,0.0,1.0);
-    const std::size_t steps=std::max<std::size_t>(20,max_iter);
-    std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
-
-    auto velocity=[&](std::size_t id,double& ux,double& uy,double& uz) {
-        const double px=grad_comp(phi,id,0),py=grad_comp(phi,id,1),pz=grad_comp(phi,id,2);
-        const double pn=std::sqrt(px*px+py*py+pz*pz);
-        ux=pn>1e-14?px/pn:0.0; uy=pn>1e-14?py/pn:0.0; uz=pn>1e-14?pz/pn:0.0;
-        if(alpha<1.0) {
-            const double dx=grad_comp(d,id,0),dy=grad_comp(d,id,1),dz=grad_comp(d,id,2);
-            const double dn=std::sqrt(dx*dx+dy*dy+dz*dz);
-            if(dn>1e-14) {
-                ux=alpha*ux+(1-alpha)*dx/dn; uy=alpha*uy+(1-alpha)*dy/dn; uz=alpha*uz+(1-alpha)*dz/dn;
-                const double n=std::sqrt(ux*ux+uy*uy+uz*uz);
-                if(n>1e-14){ux/=n;uy/=n;uz/=n;}
-            }
-        }
-    };
-
-    for(std::size_t it=0;it<steps;++it) {
-        double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
-            const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-            double ux,uy,uz; velocity(id,ux,uy,uz);
-            const auto up=[&](double u,int a)->double {
-                auto value=[&](std::size_t q)->double {
-                    return g.solid[q] ? 0.0 : d[q];
-                };
-                if(a==0) {
-                    if(u>=0) {
-                        if(i==0) return 0.0;
-                        const auto q=g.index(i-1,j,k);
-                        return u*(d[id]-value(q))/g.spacing.x;
-                    }
-                    if(i+1==g.nx) return 0.0;
-                    const auto q=g.index(i+1,j,k);
-                    return u*(value(q)-d[id])/g.spacing.x;
-                }
-                if(a==1) {
-                    if(u>=0) {
-                        if(j==0) return 0.0;
-                        const auto q=g.index(i,j-1,k);
-                        return u*(d[id]-value(q))/g.spacing.y;
-                    }
-                    if(j+1==g.ny) return 0.0;
-                    const auto q=g.index(i,j+1,k);
-                    return u*(value(q)-d[id])/g.spacing.y;
-                }
-                if(u>=0) {
-                    if(k==0) return 0.0;
-                    const auto q=g.index(i,j,k-1);
-                    return u*(d[id]-value(q))/g.spacing.z;
-                }
-                if(k+1==g.nz) return 0.0;
-                const auto q=g.index(i,j,k+1);
-                return u*(value(q)-d[id])/g.spacing.z;
-            };
-            const double adv=up(ux,0)+up(uy,1)+up(uz,2);
-            const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv-1.0-gamma*laplacian_at(d,g,id);
-            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
-            // The hybrid transport step is also a 3-D explicit upwind
-            // update. Use its actual velocity components for the CFL bound.
-            const double cfl_rate=std::abs(ux)/g.spacing.x+
-                                  std::abs(uy)/g.spacing.y+
-                                  std::abs(uz)/g.spacing.z;
-            const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
-                                                std::numeric_limits<double>::infinity();
-            const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
-            const double nd=std::max(0.0,d[id]-dt*residual);
-            max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
-        }
-        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
-        if((it&3u)==3u||max_change<1e-10*h) {
-            // Evaluate exactly the same upwind transport operator used by the
-            // pseudo-time update. The previous diagnostic used a central
-            // gradient here, so the reported residual could disagree with
-            // the nonlinear operator actually being iterated.
-            final_residual=0.0;
-            for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]&&!fixed[id]&&std::isfinite(d[id])) {
-                double ux,uy,uz; velocity(id,ux,uy,uz);
-                const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-                auto upwind=[&](double u,int axis)->double {
-                    auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
-                    if(axis==0) {
-                        if(u>=0.0) { if(i==0) return 0.0; return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x; }
-                        if(i+1==g.nx) return 0.0;
-                        return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
-                    }
-                    if(axis==1) {
-                        if(u>=0.0) { if(j==0) return 0.0; return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y; }
-                        if(j+1==g.ny) return 0.0;
-                        return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
-                    }
-                    if(u>=0.0) { if(k==0) return 0.0; return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z; }
-                    if(k+1==g.nz) return 0.0;
-                    return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
-                };
-                const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
-                final_residual=std::max(final_residual,
-                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(d,g,id)));
-            }
-            if(final_residual<1e-8&&max_change<1e-9*h){used=it+1;break;}
-        }
-    }
-    if(used_iter) *used_iter=used;
-    if(residual_out) *residual_out=final_residual;
-    return d;
-}
-
-inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
-                                                        const std::vector<double>& d,
-                                                        const WallDistanceGrid& g,
-                                                        const std::vector<unsigned char>* fixed) {
+                                                        const std::vector<unsigned char>* fixed=nullptr,
+                                                        double advection_diffusion_gamma=0.05) {
     double rmax=0.0;
     for(std::size_t id=0;id<d.size();++id) {
         if(g.solid[id] || !std::isfinite(d[id]) || (fixed && (*fixed)[id])) continue;
         if(method==WallDistanceMethod::EIKONAL) {
             rmax=std::max(rmax,std::abs(godunov_gradient_at(d,g,id)-1.0));
-        } else if(method==WallDistanceMethod::HAMILTON_JACOBI ||
-                  method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+            continue;
+        }
+        if(method==WallDistanceMethod::HAMILTON_JACOBI ||
+           method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
             const double gamma=0.25*std::max(d[id],0.0);
-            rmax=std::max(rmax,std::abs(godunov_gradient_at(d,g,id)-1.0-gamma*laplacian_at(d,g,id)));
-        } else if(method==WallDistanceMethod::ADVECTION_DIFFUSION) {
-            // The transport form uses U=grad(d)/|grad(d)| in this implementation.
-            // Reconstruct the same discrete directional operator used by the solver.
-            const double gn=godunov_gradient_at(d,g,id);
-            if(gn>1e-14) {
-                const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-                auto upwind=[&](int axis,double h,double u) {
-                    if(u>0.0 && ((axis==0&&i>0)||(axis==1&&j>0)||(axis==2&&k>0))) {
-                        const auto m=axis==0?g.index(i-1,j,k):axis==1?g.index(i,j-1,k):g.index(i,j,k-1);
-                        return u*(d[id]-d[m])/h;
-                    }
-                    if(u<0.0 && ((axis==0&&i+1<g.nx)||(axis==1&&j+1<g.ny)||(axis==2&&k+1<g.nz))) {
-                        const auto q=axis==0?g.index(i+1,j,k):axis==1?g.index(i,j+1,k):g.index(i,j,k+1);
-                        return u*(d[q]-d[id])/h;
-                    }
-                    return 0.0;
-                };
-                auto one=[&](int axis)->double {
-                    double gm=0.0,gp=0.0;
-                    if(axis==0) {
-                        if(i>0 && !g.solid[g.index(i-1,j,k)]) gm=(d[id]-d[g.index(i-1,j,k)])/g.spacing.x;
-                        if(i+1<g.nx && !g.solid[g.index(i+1,j,k)]) gp=(d[g.index(i+1,j,k)]-d[id])/g.spacing.x;
-                    } else if(axis==1) {
-                        if(j>0 && !g.solid[g.index(i,j-1,k)]) gm=(d[id]-d[g.index(i,j-1,k)])/g.spacing.y;
-                        if(j+1<g.ny && !g.solid[g.index(i,j+1,k)]) gp=(d[g.index(i,j+1,k)]-d[id])/g.spacing.y;
-                    } else {
-                        if(k>0 && !g.solid[g.index(i,j,k-1)]) gm=(d[id]-d[g.index(i,j,k-1)])/g.spacing.z;
-                        if(k+1<g.nz && !g.solid[g.index(i,j,k+1)]) gp=(d[g.index(i,j,k+1)]-d[id])/g.spacing.z;
-                    }
-                    return std::max(gm,0.0)+std::min(gp,0.0);
-                };
-                const double gx=one(0),gy=one(1),gz=one(2);
-                const double inv=1.0/std::max(std::sqrt(gx*gx+gy*gy+gz*gz),1e-14);
-                const double ux=gx*inv,uy=gy*inv,uz=gz*inv;
-                const double transport=upwind(0,g.spacing.x,ux)+upwind(1,g.spacing.y,uy)+upwind(2,g.spacing.z,uz);
-                rmax=std::max(rmax,std::abs(transport-1.0-0.05*laplacian_at(d,g,id)));
-            }
+            rmax=std::max(rmax,std::abs(
+                godunov_gradient_at(d,g,id)-1.0-gamma*laplacian_at(d,g,id)));
+            continue;
+        }
+        if(method==WallDistanceMethod::ADVECTION_DIFFUSION) {
+            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+            auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
+            auto one=[&](int axis)->double {
+                double gm=0.0,gp=0.0;
+                if(axis==0) {
+                    if(i>0) gm=(d[id]-value(g.index(i-1,j,k)))/g.spacing.x;
+                    if(i+1<g.nx) gp=(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                } else if(axis==1) {
+                    if(j>0) gm=(d[id]-value(g.index(i,j-1,k)))/g.spacing.y;
+                    if(j+1<g.ny) gp=(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                } else {
+                    if(k>0) gm=(d[id]-value(g.index(i,j,k-1)))/g.spacing.z;
+                    if(k+1<g.nz) gp=(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                }
+                return std::max(gm,0.0)+std::min(gp,0.0);
+            };
+            const double gx=one(0), gy=one(1), gz=one(2);
+            const double gn=std::sqrt(gx*gx+gy*gy+gz*gz);
+            if(!(gn>1e-14)) continue;
+            const double ux=gx/gn, uy=gy/gn, uz=gz/gn;
+            auto upwind=[&](double u,int axis)->double {
+                if(axis==0) {
+                    if(u>0.0 && i>0) return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x;
+                    if(u<0.0 && i+1<g.nx) return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                } else if(axis==1) {
+                    if(u>0.0 && j>0) return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y;
+                    if(u<0.0 && j+1<g.ny) return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                } else {
+                    if(u>0.0 && k>0) return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z;
+                    if(u<0.0 && k+1<g.nz) return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                }
+                return 0.0;
+            };
+            const double transport=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
+            rmax=std::max(rmax,std::abs(
+                transport-1.0-advection_diffusion_gamma*laplacian_at(d,g,id)));
         }
     }
     return rmax;
