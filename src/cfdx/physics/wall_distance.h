@@ -1453,34 +1453,46 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                     if(u>=0) {
                         if(i==0) return 0.0;
                         const auto q=g.index(i-1,j,k);
-                        return u*(d[id]-value(q))/g.spacing.x;
+                        const double hh=g.spacing.x;
+                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        return u*(d[id]-value(q))/delta;
                     }
                     if(i+1==g.nx) return 0.0;
                     const auto q=g.index(i+1,j,k);
-                    return u*(value(q)-d[id])/g.spacing.x;
+                    const double hh=g.spacing.x;
+                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    return u*(value(q)-d[id])/delta;
                 }
                 if(a==1) {
                     if(u>=0) {
                         if(j==0) return 0.0;
                         const auto q=g.index(i,j-1,k);
-                        return u*(d[id]-value(q))/g.spacing.y;
+                        const double hh=g.spacing.y;
+                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        return u*(d[id]-value(q))/delta;
                     }
                     if(j+1==g.ny) return 0.0;
                     const auto q=g.index(i,j+1,k);
-                    return u*(value(q)-d[id])/g.spacing.y;
+                    const double hh=g.spacing.y;
+                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    return u*(value(q)-d[id])/delta;
                 }
                 if(u>=0) {
                     if(k==0) return 0.0;
                     const auto q=g.index(i,j,k-1);
-                    return u*(d[id]-value(q))/g.spacing.z;
+                    const double hh=g.spacing.z;
+                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    return u*(d[id]-value(q))/delta;
                 }
                 if(k+1==g.nz) return 0.0;
                 const auto q=g.index(i,j,k+1);
-                return u*(value(q)-d[id])/g.spacing.z;
+                const double hh=g.spacing.z;
+                const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                return u*(value(q)-d[id])/delta;
             };
             const double adv=up(ux,0)+up(uy,1)+up(uz,2);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv-1.0-gamma*laplacian_at(d,g,id);
+            const double residual=adv-1.0-gamma*laplacian_at(bvh,d,g,id);
             const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
             // The hybrid transport step is also a 3-D explicit upwind
             // update. Use its actual velocity components for the CFL bound.
@@ -1522,7 +1534,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                 };
                 const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
                 final_residual=std::max(final_residual,
-                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(d,g,id)));
+                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id)));
             }
             if(final_residual<1e-8&&max_change<1e-9*h){used=it+1;break;}
         }
@@ -1536,7 +1548,8 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const std::vector<double>& d,
                                                         const WallDistanceGrid& g,
                                                         const std::vector<unsigned char>* fixed,
-                                                        double advection_diffusion_gamma) {
+                                                        double advection_diffusion_gamma,
+                                                        const WallDistanceBvh* bvh) {
     double rmax=0.0;
     for(std::size_t id=0;id<d.size();++id) {
         if(g.solid[id] || !std::isfinite(d[id]) || (fixed && (*fixed)[id])) continue;
