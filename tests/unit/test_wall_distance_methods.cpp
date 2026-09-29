@@ -180,7 +180,7 @@ int main() {
     }
     const auto ob_audit=audit_poisson_manufactured(
         obvh,og,oblique_phi,
-        [](const WallDistanceVec3& x){ return (x.x+x.y)*inv_sqrt2; },
+        [inv_sqrt2](const WallDistanceVec3& x){ return (x.x+x.y)*inv_sqrt2; },
         [inv_sqrt2,L_oblique](const WallDistanceVec3& x) {
             const double d=(x.x+x.y)*inv_sqrt2;
             const double a=L_oblique-d;
