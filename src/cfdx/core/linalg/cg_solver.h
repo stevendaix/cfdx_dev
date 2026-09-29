@@ -23,6 +23,12 @@
 namespace cfdx {
 namespace core {
 
+enum class CGResidualReplacementPolicy : std::uint8_t {
+    Adaptive,
+    Disabled,
+    Periodic
+};
+
 enum class SolverStatus : std::uint8_t {
     CONVERGED = 0,
     MAX_ITER_REACHED,
@@ -92,7 +98,9 @@ inline SolverResult solve_cg_impl(
     KrylovReductionPolicy reduction,
     Preconditioner* preconditioner,
     const NullSpaceProjector* null_space,
-    bool setup_preconditioner)
+    bool setup_preconditioner,
+    CGResidualReplacementPolicy residual_policy = CGResidualReplacementPolicy::Adaptive,
+    std::size_t periodic_replacement_interval = 0)
 {
     SolverResult result;
 
@@ -325,8 +333,15 @@ inline SolverResult solve_cg_impl(
             result.max_true_residual = std::max(result.max_true_residual, res);
             result.min_true_residual = std::min(result.min_true_residual, res);
             constexpr double residual_gap_fraction = 0.25;
-            if (std::isfinite(recursive_res) && scale > 0.0 &&
-                gap > residual_gap_fraction * scale) {
+            const bool adaptive_replacement =
+                residual_policy == CGResidualReplacementPolicy::Adaptive &&
+                std::isfinite(recursive_res) && scale > 0.0 &&
+                gap > residual_gap_fraction * scale;
+            const bool periodic_replacement =
+                residual_policy == CGResidualReplacementPolicy::Periodic &&
+                periodic_replacement_interval > 0 &&
+                (iter % periodic_replacement_interval == 0);
+            if (adaptive_replacement || periodic_replacement) {
                 ++result.residual_replacements;
                 if (result.first_residual_replacement == 0)
                     result.first_residual_replacement = iter;
@@ -377,6 +392,25 @@ inline SolverResult solve_cg_impl(
     return result;
 }
 } // namespace detail
+
+// Diagnostic/qualification entry point: keeps the production solve_cg API
+// unchanged while allowing V&V campaigns to isolate residual-replacement
+// behavior without changing the stopping criterion.
+inline SolverResult solve_cg_controlled(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter,
+    double tolerance,
+    CGResidualReplacementPolicy residual_policy,
+    std::size_t periodic_replacement_interval = 0)
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, {}, {},
+        &preconditioner, nullptr, true,
+        residual_policy, periodic_replacement_interval);
+}
 
 inline SolverResult solve_cg(
     const SparseMatrix& A,
