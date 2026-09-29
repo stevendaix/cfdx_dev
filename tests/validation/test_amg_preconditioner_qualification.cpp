@@ -181,7 +181,8 @@ int main() {
         // Full multilevel transfer audit: every level must expose the actual
         // coarse-space properties, not only the first P. These are evidence
         // diagnostics; the existing contraction gate remains unchanged.
-        for (const auto& d : vcycle.transfer_diagnostics()) {
+        const auto transfer = vcycle.transfer_diagnostics();
+        for (const auto& d : transfer) {
             std::cout << "amg_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
@@ -206,7 +207,8 @@ int main() {
             op, 0.7, 4, 4, 0.25, 25,
             AMGInterpolationPolicy::SmoothedAggregation);
         EXPECT_TRUE(sa.setup(A_diag));
-        for (const auto& d : sa.transfer_diagnostics()) {
+        const auto transfer = sa.transfer_diagnostics();
+        for (const auto& d : transfer) {
             std::cout << "amg_sa_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
