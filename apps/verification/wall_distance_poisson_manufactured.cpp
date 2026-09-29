@@ -198,7 +198,7 @@ double poisson_potential_planar_second_order(const WallDistanceBvh& bvh,
         inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
         inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
         inspect(j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
-        inspect(j+1<g.nx?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
         inspect(k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
         inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
         return 1.0-boundary_correction;
