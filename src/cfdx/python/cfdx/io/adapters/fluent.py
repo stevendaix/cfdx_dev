@@ -527,17 +527,23 @@ class FluentAdapter(SolverAdapter):
         #
         # Import surface vertices (shared nodes) and per-surface face
         # connectivity only; fabricate no volume cells.
-        seen: set[tuple[float, float, float]] = set()
+        dim = reader.num_dimensions()
+        seen: set[tuple[float, ...]] = set()
         for sid in surface_ids:
             v = mesh.get_vertices(int(sid))
             if len(v) == 0:
                 continue
-            pts = np.asarray(v, dtype=np.float64).reshape(-1, 3)
+            pts = np.asarray(v, dtype=np.float64).reshape(-1, dim)
             for p in pts:
-                key = (float(p[0]), float(p[1]), float(p[2]))
+                if dim == 2:
+                    pt_3d = [float(p[0]), float(p[1]), 0.0]
+                    key = (float(p[0]), float(p[1]))
+                else:
+                    pt_3d = [float(p[0]), float(p[1]), float(p[2])]
+                    key = (float(p[0]), float(p[1]), float(p[2]))
                 if key not in seen:
                     seen.add(key)
-                    self._points.append([float(p[0]), float(p[1]), float(p[2])])
+                    self._points.append(pt_3d)
 
         if not self._points:
             return False
@@ -607,7 +613,7 @@ class FluentAdapter(SolverAdapter):
         self.setup.mesh_info.n_vertices = len(self._points)
         self.setup.mesh_info.n_cells = len(self._cell_nodes)
         self.setup.mesh_info.n_faces = sum(z.get("n_elements", 0) for z in self._zones)
-        self.setup.mesh_info.dimension = 3
+        self.setup.mesh_info.dimension = dim
 
         return True
 
