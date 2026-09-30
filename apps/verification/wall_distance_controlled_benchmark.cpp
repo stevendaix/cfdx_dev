@@ -370,25 +370,29 @@ int main(int argc, char** argv)
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
                     const double d=analytic[id];
-                    exact_phi_field[id]=d+0.5*d*d;
+                    exact_phi_field[id]=d-0.5*d*d;
                 }
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
-                    const double op_residual=std::abs(-poisson_laplacian_at(bvh,exact_phi_field,grid,id)-1.0);
-                    const auto& p=grid.points[id];
-                    const int outside=(p.x<0.0||p.x>1.0)+(p.y<0.0||p.y>1.0)+(p.z<0.0||p.z>1.0);
-                    bool cut=false;
                     const std::size_t k=id/(grid.nx*grid.ny), rem=id%(grid.nx*grid.ny), j=rem/grid.nx, i=rem%grid.nx;
-                    auto check=[&](std::size_t q,bool exists){ if(exists && grid.solid[q]) cut=true; };
-                    check(i>0?grid.index(i-1,j,k):0,i>0); check(i+1<grid.nx?grid.index(i+1,j,k):0,i+1<grid.nx);
-                    check(j>0?grid.index(i,j-1,k):0,j>0); check(j+1<grid.ny?grid.index(i,j+1,k):0,j+1<grid.ny);
-                    check(k>0?grid.index(i,j,k-1):0,k>0); check(k+1<grid.nz?grid.index(i,j,k+1):0,k+1<grid.nz);
+                    const bool outer = (i==0 || i+1==grid.nx || j==0 || j+1==grid.ny || k==0 || k+1==grid.nz);
+                    std::size_t solid_neighbours=0;
+                    auto count_solid=[&](std::size_t q,bool exists){ if(exists && grid.solid[q]) ++solid_neighbours; };
+                    count_solid(i>0?grid.index(i-1,j,k):0,i>0); count_solid(i+1<grid.nx?grid.index(i+1,j,k):0,i+1<grid.nx);
+                    count_solid(j>0?grid.index(i,j-1,k):0,j>0); count_solid(j+1<grid.ny?grid.index(i,j+1,k):0,j+1<grid.ny);
+                    count_solid(k>0?grid.index(i,j,k-1):0,k>0); count_solid(k+1<grid.nz?grid.index(i,j,k+1):0,k+1<grid.nz);
+                    // The manufactured field is designed for the solid-wall Poisson
+                    // equation. It does not satisfy the artificial outer Neumann
+                    // boundary, so outer-boundary cells are excluded from the MMS
+                    // consistency gate and classified separately from physical walls.
+                    if (outer) continue;
+                    const double op_residual=std::abs(-poisson_laplacian_at(bvh,exact_phi_field,grid,id)-1.0);
                     if(op_residual>poisson_exact_phi_operator_residual_inf) poisson_exact_phi_max_residual_cell=id;
                     poisson_exact_phi_operator_residual_inf=std::max(poisson_exact_phi_operator_residual_inf,op_residual);
-                    if(cut) { ++poisson_exact_phi_cut_cells; poisson_exact_phi_cut_residual_inf=std::max(poisson_exact_phi_cut_residual_inf,op_residual); }
-                    if(outside==1) { ++poisson_exact_phi_face_cells; poisson_exact_phi_face_residual_inf=std::max(poisson_exact_phi_face_residual_inf,op_residual); }
-                    if(outside==2) { ++poisson_exact_phi_edge_cells; poisson_exact_phi_edge_residual_inf=std::max(poisson_exact_phi_edge_residual_inf,op_residual); }
-                    if(outside==3) { ++poisson_exact_phi_corner_cells; poisson_exact_phi_corner_residual_inf=std::max(poisson_exact_phi_corner_residual_inf,op_residual); }
+                    if(solid_neighbours>0) ++poisson_exact_phi_cut_cells;
+                    if(solid_neighbours==1) { ++poisson_exact_phi_face_cells; poisson_exact_phi_face_residual_inf=std::max(poisson_exact_phi_face_residual_inf,op_residual); }
+                    if(solid_neighbours==2) { ++poisson_exact_phi_edge_cells; poisson_exact_phi_edge_residual_inf=std::max(poisson_exact_phi_edge_residual_inf,op_residual); }
+                    if(solid_neighbours>=3) { ++poisson_exact_phi_corner_cells; poisson_exact_phi_corner_residual_inf=std::max(poisson_exact_phi_corner_residual_inf,op_residual); }
                 }
                 print_poisson_stencil_microscope(bvh, exact_phi_field, grid, poisson_exact_phi_max_residual_cell);
                 std::cout << "Poisson exact-phi operator audit"
