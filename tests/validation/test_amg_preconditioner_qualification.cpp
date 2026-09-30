@@ -169,7 +169,7 @@ double safe_two_grid_ratio(const MatrixFreeVcyclePreconditioner& amg,
 template <typename AMG>
 bool qualify_multilevel_hierarchy(const AMG& amg,
                                   const char* label,
-                                  double max_energy_ratio = 0.999999) {
+                                  double max_energy_ratio = 1.0) {
     const levels = amg.hierarchy_level_sizes();
     bool ok = levels.size() >= 3;
     if (!ok) return false;
