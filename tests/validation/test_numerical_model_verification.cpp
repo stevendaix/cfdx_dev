@@ -7,6 +7,7 @@
 #include "cfdx/core/numerics/interpolation.h"
 #include "cfdx/core/numerics/numerical_method_contract.h"
 #include "cfdx/core/numerics/numerical_method_registry.h"
+#include "cfdx/core/numerics/numerical_method_selection.h"
 #include "cfdx/physics/adaptive_cfl.h"
 #include "cfdx/physics/boussinesq.h"
 #include "cfdx/physics/compressible_flux.h"
@@ -295,6 +296,45 @@ int main() {
             ok(has_id("preconditioner.native_amg"), "native AMG registry entry");
             ok(has_id("preconditioner.coupled_block_schur"), "coupled Schur registry entry");
             ok(has_id("time_step.adaptive_cfl"), "adaptive CFL registry entry");
+        }
+        // Issue #461 (N1): explicit scheme selection is auditable and total.
+        // A case must resolve its scheme from an explicit configuration key;
+        // there is no hidden default and every registry entry is selectable.
+        {
+            const auto selection = make_scheme_selection(
+                NumericalMethodFamily::Convection, "numerics.convection.tvd.minmod");
+            ok(selection.resolved, "scheme selection resolved flag");
+            ok(selection.method_id == "convection.tvd.minmod", "scheme selection method id");
+            ok(selection.status == VerificationStatus::Implemented, "scheme selection status");
+            const std::string report = format_scheme_selection(selection);
+            ok(report.find("convection.tvd.minmod") != std::string::npos,
+               "scheme selection report carries method id");
+            ok(report.find("numerics.convection.tvd.minmod") != std::string::npos,
+               "scheme selection report carries configuration key");
+            ok(report.find("implemented") != std::string::npos,
+               "scheme selection report carries verification status");
+
+            // Every registered method must be resolvable by its own key.
+            for (const auto& method : numerical_method_registry()) {
+                const auto resolved = select_numerical_method(method.family, method.configuration_key);
+                ok(resolved.id == method.id,
+                   "configuration key must round-trip to its registered method");
+            }
+
+            const auto throws = [](auto&& fn) {
+                try { fn(); } catch (const std::invalid_argument&) { return true; }
+                return false;
+            };
+            ok(throws([] { select_numerical_method(NumericalMethodFamily::Convection, ""); }),
+               "empty configuration key must not fall back to a default scheme");
+            ok(throws([] { select_numerical_method(NumericalMethodFamily::Convection, "numerics.convection.nope"); }),
+               "unknown configuration key must be rejected");
+            ok(throws([] { select_numerical_method(NumericalMethodFamily::Diffusion, "numerics.convection.tvd.minmod"); }),
+               "configuration key from another family must be rejected");
+
+            const auto keys = configuration_keys_for_family(NumericalMethodFamily::Diffusion);
+            ok(std::find(keys.begin(), keys.end(), "numerics.diffusion.corrected") != keys.end(),
+               "diffusion family exposes its configuration keys");
         }
         // N025: numerical model inventory marker. The report consumes these records.
         std::cout<<"NUMERICAL_MODEL_VERIFICATION: PASS\n";

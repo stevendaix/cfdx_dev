@@ -39,6 +39,21 @@ Verified requires executable quantitative evidence appropriate to the method, in
 
 Validated requires an additional application or physical/reference comparison. A unit test of a limiter coefficient, for example, is not sufficient to promote a convection scheme to verified.
 
+## Selection resolution
+
+`core/numerics/numerical_method_selection.h` turns the registry `configuration key` from
+metadata into an enforced selection path. A case resolves a scheme with
+`select_numerical_method(family, configuration_key)`:
+
+- the key must be non-empty — an empty key throws instead of applying a hidden default;
+- the key must name exactly one registered method — unknown or ambiguous keys throw;
+- the key must belong to the requested family — cross-family keys throw;
+- the resolved `NumericalSchemeSelection` carries the method id and verification status, and
+  `format_scheme_selection` renders a deterministic report line.
+
+The resolver is total over the registry: every registered method round-trips from its own key.
+This is the machine-checkable form of the rule "configuration must expose the selected method".
+
 ## Initial migration targets
 
 The next implementation waves should register the existing numerical families without changing their algorithms first:
