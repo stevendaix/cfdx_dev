@@ -140,11 +140,12 @@ double smooth_laplacian(const Vec3& p) {
 }
 
 Field<double, Location::CELL> laplacian_of(const Grid& grid, const std::vector<double>& phi,
-                                           LaplacianScheme scheme)
+                                           LaplacianScheme scheme,
+                                           GradientScheme gs = GradientScheme::GAUSS_TWO_POINT)
 {
     Field<double, Location::CELL> f(grid.mesh.n_cells(), "phi", "1", 1);
     for (std::size_t c = 0; c < grid.mesh.n_cells(); ++c) f(c) = phi[c];
-    return compute_laplacian(f, grid.mesh, grid.geometry, scheme, 0.5);
+    return compute_laplacian(f, grid.mesh, grid.geometry, scheme, 0.5, gs);
 }
 
 ErrorMetrics interior_error(const Grid& grid, const Field<double, Location::CELL>& lap,
@@ -224,12 +225,38 @@ void check_smooth()
     }
 }
 
+// Operator consistency: with a linear-consistent cell gradient (least
+// squares / quadratic least squares) the corrected non-orthogonal operator
+// annihilates a linear field on interior tetrahedra. The two-point Gauss
+// gradient is NOT linear-consistent on tets, so the corrected operator is not
+// even consistent there by default — this is the measured root of the N3
+// polyhedral diffusion non-convergence. (The point-linear GG is excluded:
+// its vertex-based values are only linear-exact at interior cells, while the
+// face correction also reads boundary-adjacent cell gradients.)
+void check_operator_consistency(std::size_t n)
+{
+    const Grid grid = make_tet_grid(n);
+    const std::vector<double> zero(grid.mesh.n_cells(), 0.0);
+    const auto linear = sample(grid, linear_value);
+    for (const auto gs : {GradientScheme::LEAST_SQUARES,
+                          GradientScheme::LEAST_SQUARES_QUADRATIC}) {
+        const auto e = interior_error(grid,
+            laplacian_of(grid, linear, LaplacianScheme::CORRECTED, gs), zero);
+        std::cout << "POLY_LAP_CONSISTENT gradient=" << to_string(gs)
+                  << " corrected linear Linf=" << e.linf << "\n";
+        require(e.linf <= 1e-9,
+                std::string(to_string(gs)) +
+                ": corrected Laplacian must be linear-exact on interior tets");
+    }
+}
+
 } // namespace
 
 int main()
 {
     try {
         std::cout << std::setprecision(12);
+        check_operator_consistency(6);
         check_constant_and_linear(4);
         check_smooth();
         std::cout << "POLYHEDRAL_LAPLACIAN_CAMPAIGN: PASS\n";

@@ -149,6 +149,7 @@
       "requirement": "corrected non-orthogonal diffusion",
       "status": "implemented",
       "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h"
       ]
     },
@@ -165,6 +166,7 @@
       "requirement": "over-relaxed diffusion formulation",
       "status": "implemented",
       "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp"
       ]
