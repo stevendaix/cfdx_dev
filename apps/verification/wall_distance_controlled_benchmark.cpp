@@ -84,6 +84,59 @@ WallDistanceVec3 analytic_box_distance_gradient(const WallDistanceVec3& p, bool*
     }
 }
 
+void print_poisson_stencil_microscope(const WallDistanceBvh& bvh,
+                                     const std::vector<double>& phi,
+                                     const WallDistanceGrid& g,
+                                     std::size_t id)
+{
+    if (id >= g.points.size() || g.solid[id]) return;
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    const auto p=g.points[id];
+    double aP=0.0, lhs=0.0;
+    std::cout << "POISSON_STENCIL_MICROSCOPE cell=" << id
+              << " ijk=" << i << ":" << j << ":" << k
+              << " point=" << p.x << ":" << p.y << ":" << p.z
+              << " phi=" << phi[id] << " target_b=1\\n";
+    auto face=[&](const char* name,std::size_t q,bool exists,double h) {
+        if(!exists) {
+            std::cout << "  face=" << name << " type=outer coefficient=0 contribution=0\\n";
+            return;
+        }
+        if(g.solid[q]) {
+            const auto wd=poisson_wall_offset_diagnostic(bvh,g.points[id],g.points[q],h);
+            const double coeff=(wd.delta>0.0 && std::isfinite(wd.delta)) ? 1.0/(h*wd.delta) : 0.0;
+            const double contribution=coeff*phi[id];
+            aP+=coeff;
+            lhs+=contribution;
+            std::cout << "  face=" << name << " type=solid_cut neighbour=" << q
+                      << " delta=" << wd.delta << " delta_over_h=" << wd.delta/h
+                      << " coefficient=" << coeff
+                      << " contribution=" << contribution
+                      << " ray_hit=" << wd.ray_hit
+                      << " fallback=" << wd.fallback
+                      << " alignment=" << wd.alignment << "\\n";
+        } else {
+            const double coeff=1.0/(h*h);
+            const double contribution=coeff*(phi[id]-phi[q]);
+            aP+=coeff;
+            lhs+=contribution;
+            std::cout << "  face=" << name << " type=fluid neighbour=" << q
+                      << " coefficient=" << coeff
+                      << " contribution=" << contribution
+                      << " phi_neighbour=" << phi[q] << "\\n";
+        }
+    };
+    face("xm",i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+    face("xp",i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+    face("ym",j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+    face("yp",j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+    face("zm",k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+    face("zp",k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+    std::cout << "  stencil_summary aP=" << aP
+              << " A_h_phi=" << lhs
+              << " operator_residual=" << std::abs(lhs-1.0) << "\\n";
+}
+
 double reconstruct_from_gradient(double phi,const WallDistanceVec3& grad)
 {
     const double gn=wd_norm(grad);
@@ -337,6 +390,7 @@ int main(int argc, char** argv)
                     if(outside==2) { ++poisson_exact_phi_edge_cells; poisson_exact_phi_edge_residual_inf=std::max(poisson_exact_phi_edge_residual_inf,op_residual); }
                     if(outside==3) { ++poisson_exact_phi_corner_cells; poisson_exact_phi_corner_residual_inf=std::max(poisson_exact_phi_corner_residual_inf,op_residual); }
                 }
+                print_poisson_stencil_microscope(bvh, exact_phi_field, grid, poisson_exact_phi_max_residual_cell);
                 std::cout << "Poisson exact-phi operator audit"
                           << ", max_abs_Aphi_minus_b=" << poisson_exact_phi_operator_residual_inf
                           << ", max_cut_cell=" << poisson_exact_phi_cut_residual_inf
