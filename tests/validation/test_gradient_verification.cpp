@@ -309,11 +309,13 @@ void check_order(const std::string& family, double shear, double stretch, const 
     }
 }
 
-// Green-Gauss is exact for a quadratic field on an affine (uniform-lattice)
-// mesh: the second-order face-interpolation offsets cancel between opposite
-// faces. This is a stronger property than first-order exactness and is part of
-// the reconstruction contract. Least-squares is not exact for quadratic; its
-// error is reported and required to be finite.
+// Green-Gauss and least-squares are both exact for a quadratic field on an
+// affine (uniform-lattice) mesh. For Green-Gauss the second-order
+// face-interpolation offsets cancel between opposite faces. For least-squares
+// the |Delta|^2 term in Delta(phi) is even in Delta and cancels over a
+// centrally-symmetric +/- stencil, so the normal equations return the exact
+// gradient. This is a stronger property than first-order exactness and is part
+// of the reconstruction contract.
 void check_quadratic(const std::string& family, double shear, double stretch)
 {
     const Grid grid = make_affine_cube(8, shear, stretch);
@@ -328,8 +330,8 @@ void check_quadratic(const std::string& family, double shear, double stretch)
     const auto ls = compute_gradient_least_squares(field, grid.mesh);
     const auto ls_err = gradient_error(grid, ls, kQuadratic, true);
     report(family, "least_squares", kQuadratic, ls_err);
-    require(std::isfinite(ls_err.l1) && std::isfinite(ls_err.l2) && std::isfinite(ls_err.linf),
-            family + ": least-squares quadratic error must be finite");
+    require(ls_err.linf <= 1e-9,
+            family + ": least-squares must be quadratic-exact on an affine mesh");
 }
 
 } // namespace
