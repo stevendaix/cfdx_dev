@@ -108,11 +108,19 @@ int main(int argc,char** argv) {
         WallDistanceMethod::ADVECTION_DIFFUSION,
         WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
 
+    // Iteration budget must scale with resolution: the pseudo-time methods
+    // need O(n^2) steps and Poisson needs O(n). A single fixed budget across
+    // resolutions silently turns a convergence gate into a resolution gate.
+    // Use the longest grid axis as the effective n because it bounds the
+    // wave-propagation distance across the domain.
+    const std::size_t n_effective=std::max({grid.nx,grid.ny,grid.nz});
+
     std::vector<Row> rows;
     std::cout << "CFDX wall-distance complex-geometry benchmark\n";
     std::cout << "surface_vertices=" << surface.points.size()
               << " surface_triangles=" << surface.triangles.size()
-              << " samples=" << grid.points.size() << " h=" << h << "\n";
+              << " samples=" << grid.points.size() << " h=" << h
+              << " n_effective=" << n_effective << "\n";
     std::cout << "poisson_operator,fluid_nodes=" << poisson_operator_audit.fluid_nodes
               << ",fluid_fluid_faces=" << poisson_operator_audit.fluid_fluid_faces
               << ",solid_faces=" << poisson_operator_audit.solid_faces
@@ -130,26 +138,26 @@ int main(int argc,char** argv) {
               << ",max_wall_coefficient_delta=" << poisson_offset_audit.max_wall_coefficient_delta
               << ",max_wall_coefficient_h=" << poisson_offset_audit.max_wall_coefficient_h
               << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
-    constexpr std::size_t benchmark_iterations=500;
     std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error\n";
 
     for(const auto method:methods) {
+        const std::size_t budget=wall_distance_iteration_budget(method,n_effective);
         double init_ms=0.0, poisson_ms=0.0;
         if(method==WallDistanceMethod::HAMILTON_JACOBI) {
             const auto p0=std::chrono::steady_clock::now();
             std::size_t init_iter=0;
-            (void)eikonal_fast_sweep(surface,grid,benchmark_iterations,&init_iter);
+            (void)eikonal_fast_sweep(surface,grid,budget,&init_iter);
             const auto p1=std::chrono::steady_clock::now();
             init_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
         } else if(method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
             const auto p0=std::chrono::steady_clock::now();
             std::size_t poisson_iter=0; double poisson_residual=0.0;
-            (void)poisson_distance(surface,grid,benchmark_iterations,1.5,&poisson_iter,&poisson_residual);
+            (void)poisson_distance(surface,grid,budget,1.5,&poisson_iter,&poisson_residual);
             const auto p1=std::chrono::steady_clock::now();
             poisson_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
         }
         const auto t0=std::chrono::steady_clock::now();
-        const auto result=compute_wall_distance(method,surface,grid,benchmark_iterations);
+        const auto result=compute_wall_distance(method,surface,grid,budget);
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
