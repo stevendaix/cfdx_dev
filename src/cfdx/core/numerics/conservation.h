@@ -33,6 +33,8 @@ struct BoundednessDiagnostics {
     std::size_t nonfinite = 0;
     double minimum_violation = 0.0;
     double maximum_violation = 0.0;
+    std::size_t worst_cell = 0;
+    double worst_violation = 0.0;
 
     bool finite() const noexcept { return nonfinite == 0; }
     bool bounded() const noexcept {
@@ -218,7 +220,8 @@ inline BoundednessDiagnostics audit_boundedness(
     BoundednessDiagnostics out;
     const double lo = lower - tolerance;
     const double hi = upper + tolerance;
-    for (double v : values) {
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const double v = values[i];
         if (!std::isfinite(v)) {
             ++out.nonfinite;
             continue;
@@ -227,11 +230,15 @@ inline BoundednessDiagnostics audit_boundedness(
         out.maximum = std::max(out.maximum, v);
         if (v < lo) {
             ++out.below_lower;
-            out.minimum_violation = std::max(out.minimum_violation, lo - v);
+            const double violation = lo - v;
+            out.minimum_violation = std::max(out.minimum_violation, violation);
+            if (violation > out.worst_violation) { out.worst_violation = violation; out.worst_cell = i; }
         }
         if (std::isfinite(hi) && v > hi) {
             ++out.above_upper;
-            out.maximum_violation = std::max(out.maximum_violation, v - hi);
+            const double violation = v - hi;
+            out.maximum_violation = std::max(out.maximum_violation, violation);
+            if (violation > out.worst_violation) { out.worst_violation = violation; out.worst_cell = i; }
         }
     }
     return out;
@@ -270,11 +277,15 @@ inline BoundednessDiagnostics audit_boundedness(
         out.maximum = std::max(out.maximum, v);
         if (v < effective_lower) {
             ++out.below_lower;
-            out.minimum_violation = std::max(out.minimum_violation, effective_lower - v);
+            const double violation = effective_lower - v;
+            out.minimum_violation = std::max(out.minimum_violation, violation);
+            if (violation > out.worst_violation) { out.worst_violation = violation; out.worst_cell = i; }
         }
         if (std::isfinite(effective_upper) && v > effective_upper) {
             ++out.above_upper;
-            out.maximum_violation = std::max(out.maximum_violation, v - effective_upper);
+            const double violation = v - effective_upper;
+            out.maximum_violation = std::max(out.maximum_violation, violation);
+            if (violation > out.worst_violation) { out.worst_violation = violation; out.worst_cell = i; }
         }
     }
     return out;
@@ -286,6 +297,106 @@ inline BoundednessDiagnostics audit_positive_field(
 {
     return audit_boundedness(field, 0.0,
                              std::numeric_limits<double>::infinity(), tolerance);
+}
+
+
+struct IntegratedBalanceDiagnostics {
+    double boundary_flux = 0.0;
+    double volume_source = 0.0;
+    double accumulation = 0.0;
+    double residual = 0.0;
+    double normalized_residual = 0.0;
+    double max_cell_residual = 0.0;
+    double l1_cell_residual = 0.0;
+    double l2_cell_residual = 0.0;
+    std::size_t worst_cell = 0;
+    std::size_t nonfinite_faces = 0;
+    std::size_t nonfinite_source = 0;
+    std::size_t nonfinite_accumulation = 0;
+
+    bool finite() const noexcept {
+        return nonfinite_faces == 0 && nonfinite_source == 0 &&
+               nonfinite_accumulation == 0 &&
+               std::isfinite(boundary_flux) &&
+               std::isfinite(volume_source) &&
+               std::isfinite(accumulation) &&
+               std::isfinite(residual);
+    }
+    bool closed(double tolerance = 0.0) const noexcept {
+        return finite() && std::abs(residual) <= tolerance;
+    }
+};
+
+// Independent integral balance reconstruction:
+//   sum(boundary face flux) + sum(volume source) - sum(accumulation).
+// Internal faces are accounted for only once and cancel pairwise. This API
+// deliberately consumes final fields/fluxes, not a matrix residual.
+inline IntegratedBalanceDiagnostics audit_integrated_balance(
+    const Mesh& mesh,
+    const Field<double, Location::FACE>& face_flux,
+    const Field<double, Location::CELL>& volume_source,
+    const std::vector<double>& cell_volumes,
+    const Field<double, Location::CELL>* accumulation = nullptr)
+{
+    const std::size_t nf = mesh.n_faces();
+    const std::size_t nc = mesh.n_cells();
+    if (face_flux.size() != nf || face_flux.dimension() != 1 ||
+        volume_source.size() != nc || volume_source.dimension() != 1 ||
+        cell_volumes.size() != nc)
+        throw std::invalid_argument("audit_integrated_balance: dimensions do not match mesh");
+    if (accumulation && (accumulation->size() != nc || accumulation->dimension() != 1))
+        throw std::invalid_argument("audit_integrated_balance: invalid accumulation field");
+
+    IntegratedBalanceDiagnostics out;
+    const auto& own = mesh.ownership();
+    std::vector<double> cell(nc, 0.0);
+    for (std::size_t f = 0; f < nf; ++f) {
+        const double flux = face_flux(f);
+        if (!std::isfinite(flux)) { ++out.nonfinite_faces; continue; }
+        const std::size_t o = own.owner(f);
+        if (o >= nc) throw std::runtime_error("audit_integrated_balance: invalid owner");
+        cell[o] += flux;
+        const auto n = own.neighbour(f);
+        if (n >= 0) {
+            const std::size_t ni = static_cast<std::size_t>(n);
+            if (ni >= nc) throw std::runtime_error("audit_integrated_balance: invalid neighbour");
+            cell[ni] -= flux;
+        } else {
+            out.boundary_flux += flux;
+        }
+    }
+
+    double sum_sq = 0.0;
+    for (std::size_t c = 0; c < nc; ++c) {
+        const double source = volume_source(c);
+        if (!std::isfinite(source) || !std::isfinite(cell_volumes[c])) {
+            ++out.nonfinite_source;
+            continue;
+        }
+        const double source_integral = source * cell_volumes[c];
+        out.volume_source += source_integral;
+        double acc = 0.0;
+        if (accumulation) {
+            acc = (*accumulation)(c);
+            if (!std::isfinite(acc)) { ++out.nonfinite_accumulation; continue; }
+        }
+        out.accumulation += acc;
+        const double rc = cell[c] + source_integral - acc;
+        out.residual += rc;
+        const double a = std::abs(rc);
+        out.l1_cell_residual += a;
+        sum_sq += rc * rc;
+        if (a > out.max_cell_residual) {
+            out.max_cell_residual = a;
+            out.worst_cell = c;
+        }
+    }
+    out.l2_cell_residual = std::sqrt(sum_sq);
+    const double scale = std::max({1.0, std::abs(out.boundary_flux),
+                                   std::abs(out.volume_source),
+                                   std::abs(out.accumulation)});
+    out.normalized_residual = std::abs(out.residual) / scale;
+    return out;
 }
 
 } // namespace cfdx::core

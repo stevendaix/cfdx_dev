@@ -152,6 +152,15 @@ struct IncompressibleIteration {
     std::size_t mass_worst_cell = 0;
     std::size_t mass_nonfinite_faces = 0;
     std::size_t boundedness_nonfinite_velocity = 0;
+    std::array<double, 3> momentum_conservation_residual{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<double, 3> momentum_conservation_normalized{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<std::size_t, 3> momentum_conservation_worst_cell{0,0,0};
 };
 
 struct IncompressibleSolveResult {
@@ -2550,6 +2559,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (!std::isfinite(U.component_data(d)[c]))
                         ++h.boundedness_nonfinite_velocity;
                 }
+            }
+
+            // Independent post-solve momentum conservation reconstruction.
+            // The flux is rebuilt from the accepted final field, independently
+            // of the assembled matrix residual. Internal faces therefore have
+            // one owner-oriented flux and are audited separately for balance.
+            const double mu_eff =
+                controls.density * (controls.kinematic_viscosity +
+                                    controls.turbulent_viscosity);
+            for (std::size_t d = 0; d < 3; ++d) {
+                cfdx::core::Field<double, cfdx::core::Location::CELL> component(
+                    mesh.n_cells(), "U_reconstructed", "m/s", 1);
+                cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+                    mesh.n_cells(), "momentum_source_reconstructed", "N/m3", 1);
+                ScalarBoundaryConditions scalar_bcs;
+                for (const auto& [name, bc] : velocity_bcs) {
+                    if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name] = {ScalarBoundaryType::FIXED_VALUE, bc.value.x, 0.0};
+                    else
+                        scalar_bcs[name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                    if (d == 1 && bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name].value = bc.value.y;
+                    if (d == 2 && bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name].value = bc.value.z;
+                }
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                    component(cell) = U.component_data(d)[cell];
+                    const double body_component = d == 0 ? controls.body_force.x
+                        : (d == 1 ? controls.body_force.y : controls.body_force.z);
+                    source(cell) = body_component - final_grad_p.component_data(d)[cell];
+                }
+                const auto flux = reconstruct_scalar_transport_flux(
+                    mesh, geometry, mass_flux, component, mu_eff, scalar_bcs,
+                    controls.use_bounded_convection, controls.convection_scheme);
+                const auto balance = cfdx::core::audit_integrated_balance(
+                    mesh, flux, source, geometry.cell_volumes);
+                h.momentum_conservation_residual[d] = balance.residual;
+                h.momentum_conservation_normalized[d] = balance.normalized_residual;
+                h.momentum_conservation_worst_cell[d] = balance.worst_cell;
             }
         }
         result.history.push_back(h);

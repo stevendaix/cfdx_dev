@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/core/numerics/conservation.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -33,6 +34,12 @@ struct EnergyIteration {
     double residual = 0.0;
     double backward_error = 0.0;
     double energy_imbalance = 0.0;
+    double independent_conservation_residual = 0.0;
+    double independent_conservation_normalized = 0.0;
+    std::size_t independent_conservation_worst_cell = 0;
+    double minimum_temperature = std::numeric_limits<double>::infinity();
+    double maximum_temperature = -std::numeric_limits<double>::infinity();
+    std::size_t nonfinite_temperature = 0;
 };
 
 struct EnergySolveResult {
@@ -225,6 +232,85 @@ inline double energy_balance_relative(
     return std::abs(imbalance)/scale;
 }
 
+
+struct IndependentEnergyBalance {
+    double residual = 0.0;
+    double normalized_residual = 0.0;
+    double max_cell_residual = 0.0;
+    std::size_t worst_cell = 0;
+    double boundary_flux = 0.0;
+    double source_integral = 0.0;
+    double accumulation = 0.0;
+    std::size_t nonfinite_faces = 0;
+    std::size_t nonfinite_cells = 0;
+};
+
+inline IndependentEnergyBalance reconstruct_energy_balance(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_temperature,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
+    const EnergySolverControls& controls,
+    const ScalarBoundaryConditions& bcs = {},
+    const ScalarBoundaryFaceValues* face_values = nullptr)
+{
+    if (temperature.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells() ||
+        source.size()!=mesh.n_cells())
+        throw std::invalid_argument("reconstruct_energy_balance: field size mismatch");
+
+    // Rebuild the energy face flux from the final temperature and the
+    // authoritative mass flux. This does not use the assembled matrix.
+    // The scalar reconstruction is performed in temperature units first:
+    // F*T - (k/cp)*grad(T). Multiplication by cp then recovers the
+    // physical energy flux F*cp*T - k*grad(T), including boundary terms.
+    auto temperature_flux = reconstruct_scalar_transport_flux(
+        mesh, geometry, mass_flux, temperature,
+        controls.conductivity / controls.cp, bcs, true,
+        ConvectionScheme::UPWIND, nullptr, nullptr, face_values);
+    for (std::size_t f = 0; f < temperature_flux.size(); ++f)
+        temperature_flux(f) *= controls.cp;
+    const auto& flux = temperature_flux;
+
+    IndependentEnergyBalance r;
+    const auto& own=mesh.ownership();
+    std::vector<double> cell(mesh.n_cells(),0.0);
+    for(std::size_t f=0; f<mesh.n_faces(); ++f) {
+        const double q=flux(f);
+        if(!std::isfinite(q)) { ++r.nonfinite_faces; continue; }
+        const std::size_t o=own.owner(f);
+        cell[o]+=q;
+        const auto n=own.neighbour(f);
+        if(n>=0) cell[static_cast<std::size_t>(n)]-=q;
+        else r.boundary_flux+=q;
+    }
+
+    double sum2=0.0;
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        const double s=source(c);
+        const double accumulation=controls.dt>0.0
+            ? controls.density*controls.cp*geometry.cell_volumes[c]*
+              (temperature(c)-old_temperature(c))/controls.dt : 0.0;
+        if(!std::isfinite(s) || !std::isfinite(accumulation)) {
+            ++r.nonfinite_cells; continue;
+        }
+        r.source_integral += s*geometry.cell_volumes[c];
+        r.accumulation += accumulation;
+        // Sign follows the assembled equation:
+        // div(q) + d(rho cp T)/dt = source.
+        const double rc=cell[c]+accumulation-s*geometry.cell_volumes[c];
+        r.residual+=rc;
+        r.max_cell_residual=std::max(r.max_cell_residual,std::abs(rc));
+        if(std::abs(rc) >= r.max_cell_residual) r.worst_cell=c;
+        sum2+=rc*rc;
+    }
+    const double scale=std::max({1.0,std::abs(r.boundary_flux),
+                                 std::abs(r.source_integral),std::abs(r.accumulation)});
+    r.normalized_residual=std::abs(r.residual)/scale;
+    return r;
+}
+
 inline EnergySolveResult solve_energy(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -343,7 +429,28 @@ inline EnergySolveResult solve_energy(
         const bool accepted_state_converged =
             controls.relaxation >= 1.0 - 10.0*std::numeric_limits<double>::epsilon() ||
             relative_temperature_change <= temperature_tolerance;
-        result.history.push_back({iter,res,linear_backward_error,imbalance});
+        const auto independent_energy = reconstruct_energy_balance(
+            mesh, geometry, mass_flux, temperature, T_previous_time,
+            source, controls, bcs, face_values);
+        EnergyIteration iteration_report;
+        iteration_report.iteration = iter;
+        iteration_report.residual = res;
+        iteration_report.backward_error = linear_backward_error;
+        iteration_report.energy_imbalance = imbalance;
+        iteration_report.independent_conservation_residual = independent_energy.residual;
+        iteration_report.independent_conservation_normalized = independent_energy.normalized_residual;
+        iteration_report.independent_conservation_worst_cell = independent_energy.worst_cell;
+        for (std::size_t i=0; i<temperature.size(); ++i) {
+            const double t=temperature(i);
+            if (!std::isfinite(t)) ++iteration_report.nonfinite_temperature;
+            else {
+                iteration_report.minimum_temperature =
+                    std::min(iteration_report.minimum_temperature,t);
+                iteration_report.maximum_temperature =
+                    std::max(iteration_report.maximum_temperature,t);
+            }
+        }
+        result.history.push_back(iteration_report);
         if (mesh.n_cells() <= 64) {
             std::cerr << "THERMAL_RESIDUAL: iteration=" << iter
                       << " linear_status=" << static_cast<int>(linear.status)
