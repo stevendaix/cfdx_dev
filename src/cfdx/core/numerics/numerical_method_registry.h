@@ -21,6 +21,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "face value = signed-area average of inverse-distance vertex values and the centre-line face-point value","numerics.gradient.gauss_point",{"linear_exactness","skewed","polyhedral","refinement"}},
         {"gradient.least_squares","Weighted least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,true,1,0,
          "argmin_g sum_N w_N(phi_N-phi_P-g.dx)^2","numerics.gradient.least_squares",{"constant","linear","rank_detection","skewed"}},
+        {"gradient.least_squares_quadratic","Quadratic-basis least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,false,2,0,
+         "linear + Hessian fit over two rings of face neighbours; best polyhedral accuracy","numerics.gradient.least_squares_quadratic",{"constant","linear","skewed","polyhedral","refinement"}},
         {"interpolation.linear","Cell-to-face linear interpolation",F::Interpolation,S::Implemented,C::LocalFaceConservative,false,false,true,2,0,
          "phi_f=(1-w)phi_P+w phi_N","numerics.interpolation.linear",{"linear_exactness","conservation"}},
         {"interpolation.upwind","First-order upwind interpolation",F::Interpolation,S::Implemented,C::LocalFaceConservative,true,true,false,1,0,

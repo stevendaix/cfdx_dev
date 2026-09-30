@@ -184,7 +184,7 @@ inline const FieldCase kConstant{"constant", constant_value, constant_gradient};
 inline const FieldCase kLinear{"linear", linear_value, linear_gradient};
 inline const FieldCase kSmooth{"smooth", smooth_value, smooth_gradient};
 
-enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares };
+enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares, LeastSquares2, LeastSquaresQuad };
 std::string scheme_name(GradScheme s)
 {
     switch (s) {
@@ -192,6 +192,8 @@ std::string scheme_name(GradScheme s)
         case GradScheme::GaussVertex: return "green_gauss_vertex";
         case GradScheme::GaussPoint:  return "green_gauss_point";
         case GradScheme::LeastSquares: return "least_squares";
+        case GradScheme::LeastSquares2: return "least_squares_2ring";
+        case GradScheme::LeastSquaresQuad: return "least_squares_quadratic";
     }
     return "unknown";
 }
@@ -209,6 +211,10 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
             return compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
         case GradScheme::LeastSquares:
             return compute_gradient_least_squares(phi, grid.mesh);
+        case GradScheme::LeastSquares2:
+            return compute_gradient_least_squares_extended(phi, grid.mesh);
+        case GradScheme::LeastSquaresQuad:
+            return compute_gradient_least_squares_quadratic(phi, grid.mesh);
     }
     return Field<double, Location::CELL>();
 }
@@ -254,7 +260,8 @@ void check_exactness(std::size_t n)
 {
     const Grid grid = make_tet_grid(n);
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares, GradScheme::LeastSquares2,
+                                    GradScheme::LeastSquaresQuad}) {
         const std::string name = scheme_name(scheme);
 
         const auto cf = sample_field(grid, kConstant);
@@ -281,7 +288,8 @@ void check_exactness(std::size_t n)
 void check_order()
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares, GradScheme::LeastSquares2,
+                                    GradScheme::LeastSquaresQuad}) {
         std::vector<double> errors;
         for (const std::size_t n : {4u, 6u, 8u}) {
             const Grid grid = make_tet_grid(n);

@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -308,6 +309,204 @@ inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
 {
     const GeometryCache geometry = make_geometry_cache(mesh);
     return compute_gradient_gauss_vertex(cell_field, mesh, geometry);
+}
+
+// Extended-stencil least-squares gradient (two rings of face neighbours).
+//
+// The base least-squares gradient uses only the face-neighbour cells (4 for a
+// tetrahedron), which is linear-exact but leaves a first-order curvature error
+// on smooth fields (measured ~0.4 order on the Kuhn tetrahedral grid). Fit the
+// SAME linear basis over two rings of neighbours: the richer, more balanced
+// stencil cancels the even (curvature) contributions in the normal equations,
+// restoring near-second-order smooth-field behaviour on unstructured meshes.
+inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_least_squares_extended: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_least_squares_extended: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    // One-ring neighbour lists.
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        auto& ring = ring1[c];
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) { if (nraw >= 0) nb = static_cast<std::size_t>(nraw); }
+            else { nb = owner; }
+            if (nb < n_cells && nb != c) ring.push_back(nb);
+        }
+    }
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_ls2", cell_field.metadata().unit + "/m", 3);
+    std::vector<char> seen(n_cells, 0);
+    std::vector<Vec3> centres;
+    std::vector<double> neighbours_values;
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        centres.clear();
+        neighbours_values.clear();
+        const auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1;
+            centres.push_back(geometry.cell_centres[nb]);
+            neighbours_values.push_back(values[nb]);
+        };
+        for (const std::size_t nb : ring1[c]) add(nb);
+        for (const std::size_t nb : ring1[c]) {
+            for (const std::size_t nb2 : ring1[nb]) add(nb2);
+        }
+        for (const std::size_t nb : ring1[c]) seen[nb] = 0;
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) seen[nb2] = 0;
+
+        const Vec3 g = least_squares_gradient(
+            geometry.cell_centres[c], values[c], centres, neighbours_values);
+        grad(c, 0) = g.x;
+        grad(c, 1) = g.y;
+        grad(c, 2) = g.z;
+    }
+    return grad;
+}
+
+// Quadratic-basis least-squares gradient (gradient + Hessian fit).
+//
+// A linear least-squares fit is linear-exact but carries a first-order
+// curvature error on smooth unstructured meshes (even with extended
+// stencils). Fit instead the second-order expansion
+//   phi_N ~ phi_P + g.d + m3 dx^2 + m4 dy^2 + m5 dz^2 + m6 dx dy
+//                          + m7 dx dz + m8 dy dz
+// over two rings of neighbours (>= 9 independent points). The gradient is the
+// first three components of the 9-vector. This restores ~second order on
+// smooth fields at the cost of one 9x9 solve per cell.
+inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_least_squares_quadratic: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_least_squares_quadratic: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        auto& ring = ring1[c];
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) { if (nraw >= 0) nb = static_cast<std::size_t>(nraw); }
+            else { nb = owner; }
+            if (nb < n_cells && nb != c) ring.push_back(nb);
+        }
+    }
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_lsq", cell_field.metadata().unit + "/m", 3);
+    std::vector<char> seen(n_cells, 0);
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const Vec3 P = geometry.cell_centres[c];
+        const double phi_c = values[c];
+
+        double a[9][9] = {};
+        double b[9] = {};
+        int npts = 0;
+        const auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1;
+            const Vec3 d = geometry.cell_centres[nb] - P;
+            const double r2 = d.mag2();
+            if (!(r2 > 0.0) || !std::isfinite(r2)) return;
+            const double w = 1.0 / r2;
+            const double basis[9] = {d.x, d.y, d.z,
+                                     d.x*d.x, d.y*d.y, d.z*d.z,
+                                     d.x*d.y, d.x*d.z, d.y*d.z};
+            const double dv = values[nb] - phi_c;
+            for (int i = 0; i < 9; ++i) {
+                b[i] += w * basis[i] * dv;
+                for (int j = 0; j < 9; ++j)
+                    a[i][j] += w * basis[i] * basis[j];
+            }
+            ++npts;
+        };
+        for (const std::size_t nb : ring1[c]) add(nb);
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) add(nb2);
+        for (const std::size_t nb : ring1[c]) seen[nb] = 0;
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) seen[nb2] = 0;
+
+        Vec3 g;
+        if (npts >= 9) {
+            // Solve the 9x9 normal equations with partial pivoting.
+            double m[9][10] = {};
+            for (int i = 0; i < 9; ++i) {
+                for (int j = 0; j < 9; ++j) m[i][j] = a[i][j];
+                m[i][9] = b[i];
+            }
+            double scale = 0.0;
+            for (int i = 0; i < 9; ++i)
+                scale = std::max(scale, std::abs(m[i][i]));
+            const double rank_tol = 128.0 * std::numeric_limits<double>::epsilon() * scale;
+            bool pivoted[9] = {};
+            for (int col = 0; col < 9; ++col) {
+                int pivot = col;
+                double pivot_abs = std::abs(m[col][col]);
+                for (int row = col + 1; row < 9; ++row) {
+                    const double cnd = std::abs(m[row][col]);
+                    if (cnd > pivot_abs) { pivot_abs = cnd; pivot = row; }
+                }
+                if (!(pivot_abs > rank_tol)) continue;
+                if (pivot != col)
+                    for (int j = col; j < 10; ++j) std::swap(m[col][j], m[pivot][j]);
+                pivoted[col] = true;
+                for (int row = col + 1; row < 9; ++row) {
+                    const double factor = m[row][col] / m[col][col];
+                    if (factor == 0.0) continue;
+                    for (int j = col; j < 10; ++j) m[row][j] -= factor * m[col][j];
+                }
+            }
+            double x[9] = {};
+            for (int i = 8; i >= 0; --i) {
+                if (!pivoted[i]) continue;
+                double rhs = m[i][9];
+                for (int j = i + 1; j < 9; ++j) rhs -= m[i][j] * x[j];
+                if (std::abs(m[i][i]) > rank_tol) x[i] = rhs / m[i][i];
+            }
+            g = {x[0], x[1], x[2]};
+        } else {
+            g = least_squares_gradient(P, phi_c,
+                std::vector<Vec3>{}, std::vector<double>{});
+        }
+        if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: non-finite gradient");
+        grad(c, 0) = g.x;
+        grad(c, 1) = g.y;
+        grad(c, 2) = g.z;
+    }
+    return grad;
 }
 
 // Point-linear (skew-corrected) Green-Gauss gradient.

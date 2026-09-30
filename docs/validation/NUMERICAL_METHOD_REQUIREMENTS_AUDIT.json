@@ -131,6 +131,7 @@
       "requirement": "polyhedral gradient scheme accuracy",
       "status": "partial",
       "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
