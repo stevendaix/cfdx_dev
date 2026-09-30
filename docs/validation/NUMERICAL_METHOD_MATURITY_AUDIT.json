@@ -54,12 +54,12 @@
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "tests/validation/test_polyhedral_laplacian_campaign.cpp"
       ],
       "gaps": [
-        "explicit skew correction contract",
-        "non-affine / extremely non-orthogonal and polyhedral diffusion",
-        "quantitative skew campaign registered but promotion to verified is pending execution of the full validation job on the final SHA"
+        "non-affine / extremely non-orthogonal meshes",
+        "polyhedral diffusion accuracy: operators are O(1)/non-convergent on tetrahedra (blocked by the gradient polyhedral accuracy gap); constant-exact and correction benefits are verified"
       ]
     },
     {
