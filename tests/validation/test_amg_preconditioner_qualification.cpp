@@ -199,7 +199,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
                   << " min_column_nnz=" << coverage.min_nnz
                   << " symmetry=" << d.coarse_symmetry_relative_error
                   << " gershgorin=" << d.coarse_gershgorin_lower_bound
-                  << " structural=" << (structural ? "PASS" : "FAIL") << '\\n';
+                  << " structural=" << (structural ? "PASS" : "FAIL") << '\n';
         ok = ok && structural;
 
         if (d.fine_size >= 8) {
@@ -221,7 +221,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
             std::cout << "amg_n82_energy_gate label=" << label
                       << " level=" << d.level << " mode=1 energy=" << energy
                       << " threshold=" << max_energy_ratio
-                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\\n';
+                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\n';
             std::cout << "amg_n82_stage_gate label=" << label
                       << " level=" << d.level
                       << " smoother_mode=" << smoother_mode
@@ -230,7 +230,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
                       << " two_grid_energy=" << two_grid_energy
                       << " two_grid_energy_status="
                       << (two_grid_energy_ok ? "PASS" : "FAIL")
-                      << " two_grid_l2_residual_diagnostic=" << two_grid_l2 << '\\n';
+                      << " two_grid_l2_residual_diagnostic=" << two_grid_l2 << '\n';
             ok = ok && energy_ok && smoother_ok && two_grid_energy_ok;
         }
     }
