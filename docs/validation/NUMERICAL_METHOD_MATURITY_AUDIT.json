@@ -42,7 +42,7 @@
         "least-squares weight-variant qualification",
         "gradient limiter integration",
         "boundary reconstruction matrix",
-        "polyhedral gradient scheme accuracy: quadratic least-squares (gradient.least_squares_quadratic) is the most accurate (nested L2 ~0.02 at n=16) and linear-exact but only ~0.8-1.2 order on tets; clean second order remains research-grade",
+        "two-point Gauss still not linear-consistent on tetrahedra",
         "vertex-based Green-Gauss on non-affine/polyhedral meshes"
       ]
     },

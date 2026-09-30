@@ -193,7 +193,7 @@ void check_constant_and_linear(std::size_t n)
 
 void check_smooth()
 {
-    const std::vector<std::size_t> ns = {4u, 6u, 8u};
+    const std::vector<std::size_t> ns = {4u, 8u, 16u};
 
     std::vector<double> uncorrected(ns.size(), 0.0);
     for (std::size_t idx = 0; idx < ns.size(); ++idx) {
