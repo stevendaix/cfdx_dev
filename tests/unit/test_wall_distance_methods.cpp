@@ -151,21 +151,37 @@ int main() {
             "discrete Poisson operator is not exact for the analytical planar solution");
 
 
-    // P2: oblique planar manufactured solution.
+    // P2: diagonal planar manufactured solution.
     //
-    // The legacy cut-face Dirichlet closure is not second-order at an
-    // oblique wall: phi_P/(h*delta) is a two-point approximation of the
-    // wall-normal flux and has a first-order truncation term when the wall
-    // cuts a Cartesian face at an arbitrary distance.  The aligned MMS
-    // already demonstrated this behaviour.  Therefore the oblique test must
-    // qualify the actual closure order rather than impose an impossible
-    // second-order pointwise gate.
+    // This case is NOT a fractional-cut test, despite the name it used to
+    // carry.  The wall is the plane x+y=0 and the grid is uniform in x and y
+    // with the same spacing h=4/(n-1) and origin -2, so a node satisfies
+    // x+y = -4 + (i+j)*h, which is *exactly* zero on the diagonal i+j = n-1 at
+    // every refinement (h=0.25/0.125/0.0625 all divide 4 exactly).  Those nodes
+    // are marked solid by the x+y<=0 predicate, and phi = L*d - d^2/2 vanishes
+    // there because d=0 on the wall, so the stored value 0 is the exact
+    // solution.  poisson_wall_offset() then returns delta = h, and the closure
+    // -phi_P/(h*delta) collapses to the ordinary 3-point term (0-phi_P)/h^2.
+    // The stencil is therefore the standard Cartesian Laplacian evaluated on
+    // exact data, which is exact for a quadratic.
     //
-    // We use three refinements and normalize the unscaled operator defect by
-    // h^2.  A first-order wall-flux defect gives O(h) for this normalized
-    // quantity.  Interior fluid-fluid cells must still be exact to roundoff.
-    double previous_normalized_oblique_residual=0.0;
-    bool have_previous_oblique=false;
+    // Consequence: this geometry cannot qualify the oblique closure order, and
+    // the first-order trend previously asserted here does not exist.  Measured
+    // cut-face defect is at the roundoff floor (4.3e-14 / 8.5e-14 / 4.7e-13 for
+    // n=17/33/65), and its h^2-normalized value does not decrease monotonically
+    // (2.7e-15 / 1.3e-15 / 1.8e-15) because it is noise, not truncation.  The
+    // gate below therefore asserts what is actually true: on a grid-aligned
+    // wall the Poisson operator is exact on cut cells as well as interior ones.
+    //
+    // A genuine fractional cut (delta != h) is a separate and much stronger
+    // test, because the closure is not merely low-order there but inconsistent:
+    // -phi_P/(h*delta) + (phi_E-phi_P)/h^2 tends to phi''*(1+delta/h)/2 instead
+    // of phi'', a relative error of (1-delta/h)/2 that does not vanish with h.
+    // A consistent non-uniform stencil needs the prefactor 2/(delta+h), which
+    // couples opposite faces and so cannot be expressed as an independent
+    // per-face contribution the way poisson_laplacian_at() currently is.
+    // Qualifying and fixing that is tracked separately; it is deliberately not
+    // smuggled into this rebase.
     for(const std::size_t n : {17u,33u,65u}) {
         const double h=4.0/static_cast<double>(n-1);
         const double inv_sqrt2=1.0/std::sqrt(2.0);
@@ -190,12 +206,17 @@ int main() {
 
         double interior_operator_res=0.0;
         double cut_operator_res=0.0;
-        double normalized_cut_residual=0.0;
         std::size_t cut_samples=0;
         std::size_t interior_samples=0;
         std::size_t outer_samples=0;
+        std::size_t wall_nodes=0;
         std::size_t worst_cut_id=0;
         for(std::size_t id=0;id<og.points.size();++id) {
+            // The gate below is only meaningful because the wall falls exactly
+            // on grid nodes.  Count them so that a future change of origin or
+            // spacing that breaks the alignment fails loudly here instead of
+            // silently turning this into a much weaker test.
+            if(!(std::abs(og.points[id].x+og.points[id].y)>0.0)) ++wall_nodes;
             if(og.solid[id]) continue;
             const auto x=og.points[id];
             const double d=(x.x+x.y)*inv_sqrt2;
@@ -242,15 +263,24 @@ int main() {
 
         require(interior_samples>0,"oblique audit has no interior samples");
         require(cut_samples>0,"oblique audit has no cut-face samples");
+        // h = 4/(n-1) is a power of two for n = 17/33/65, so i*h and -2+i*h are
+        // exact and the plane x+y=0 is hit exactly by the n nodes of each of the
+        // og.nz planes that satisfy i+j = n-1.
+        require(wall_nodes==n*og.nz,
+                "the diagonal wall no longer falls exactly on grid nodes, so the "
+                "exactness gate below no longer describes this geometry");
         // The operator scales as 1/h^2, so its roundoff floor does too.  Gate
         // the h^2-normalized defect to keep a single mesh-independent
         // tolerance instead of one that silently tightens under refinement.
         require(interior_operator_res*h*h<1e-13,
                 "oblique interior Poisson operator is not exact");
-        require(std::isfinite(cut_operator_res) && cut_operator_res>0.0,
-                "oblique cut-face operator defect was not detected");
+        // Same normalization and same tolerance as the interior gate: because
+        // delta == h on this diagonal wall, cut nodes are held to exactly the
+        // interior standard.  Measured margin is about 50x.
+        require(std::isfinite(cut_operator_res) && cut_operator_res*h*h<1e-13,
+                "grid-aligned cut-face Poisson operator is not exact");
 
-        normalized_cut_residual=cut_operator_res*h*h;
+        const double normalized_cut_residual=cut_operator_res*h*h;
         std::cerr << "oblique P2 N=" << n
                   << " h=" << h
                   << " interior_operator_inf=" << interior_operator_res
@@ -259,17 +289,8 @@ int main() {
                   << " interior_samples=" << interior_samples
                   << " cut_samples=" << cut_samples
                   << " outer_samples=" << outer_samples
+                  << " wall_nodes=" << wall_nodes
                   << " worst_cut_id=" << worst_cut_id << "\n";
-
-        if(have_previous_oblique) {
-            const double order=std::log(previous_normalized_oblique_residual/
-                                        normalized_cut_residual)/std::log(2.0);
-            require(std::isfinite(order) && order>0.5 && order<1.5,
-                    "oblique cut-face closure does not show the expected first-order trend");
-            std::cerr << "oblique P2 observed order=" << order << "\n";
-        }
-        previous_normalized_oblique_residual=normalized_cut_residual;
-        have_previous_oblique=true;
     }
 
     // The hybrid method must be a genuine PDE solve, not an algebraic
