@@ -312,19 +312,6 @@ int main(int argc, char** argv)
                 double num_phi_exact_grad_e2=0.0, num_phi_exact_grad_em=0.0;
                 double exact_phi_num_grad_e2=0.0, exact_phi_num_grad_em=0.0;
                 double full_e2=0.0, full_em=0.0;
-                double exact_phi_operator_residual_max=0.0;
-                auto update_operator_audit = [&](std::size_t id, double exact_phi) {
-                    const auto& p = grid.points[id];
-                    const double op_residual = std::abs(-poisson_laplacian_at(bvh, [&]() {
-                        // This lambda is intentionally replaced below by the full
-                        // manufactured field; kept unreachable to avoid a second
-                        // operator implementation in the benchmark.
-                        return std::vector<double>{exact_phi};
-                    }(), grid, id) - 1.0);
-                    (void)op_residual;
-                    (void)p;
-                };
-                (void)update_operator_audit;
                 std::vector<double> exact_phi_field(grid.points.size(), 0.0);
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
