@@ -679,5 +679,54 @@ inline Field<double, Location::CELL> compute_gradient_gauss_point(
     return compute_gradient_gauss_point(cell_field, mesh, geometry);
 }
 
+// Shared cell-gradient selection used by derived operators (e.g. the
+// non-orthogonal correction of compute_laplacian). GAUSS_TWO_POINT is the
+// affine-optimal default (second order on affine meshes); the alternatives are
+// the skew-corrected point-linear GG and the (extended/quadratic) least
+// squares, which are the linear-consistent options on polyhedral meshes.
+enum class GradientScheme : std::uint8_t {
+    GAUSS_TWO_POINT = 0,
+    GAUSS_POINT,
+    LEAST_SQUARES,
+    LEAST_SQUARES_QUADRATIC
+};
+
+inline const char* to_string(GradientScheme s) {
+    switch (s) {
+        case GradientScheme::GAUSS_TWO_POINT:      return "gauss_two_point";
+        case GradientScheme::GAUSS_POINT:          return "gauss_point";
+        case GradientScheme::LEAST_SQUARES:        return "least_squares";
+        case GradientScheme::LEAST_SQUARES_QUADRATIC: return "least_squares_quadratic";
+        default:                                   return "unknown";
+    }
+}
+
+inline GradientScheme gradient_scheme_from_string(const std::string& s) {
+    if (s == "gauss_two_point")          return GradientScheme::GAUSS_TWO_POINT;
+    if (s == "gauss_point")              return GradientScheme::GAUSS_POINT;
+    if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;
+    if (s == "least_squares_quadratic")  return GradientScheme::LEAST_SQUARES_QUADRATIC;
+    throw std::runtime_error("gradient_scheme_from_string: unknown scheme '" + s + "'");
+}
+
+inline Field<double, Location::CELL> cell_gradient(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    const GeometryCache& geometry,
+    GradientScheme scheme)
+{
+    switch (scheme) {
+        case GradientScheme::GAUSS_TWO_POINT:
+            return compute_gradient_gauss(cell_field, mesh, geometry);
+        case GradientScheme::GAUSS_POINT:
+            return compute_gradient_gauss_point(cell_field, mesh, geometry);
+        case GradientScheme::LEAST_SQUARES:
+            return compute_gradient_least_squares(cell_field, mesh);
+        case GradientScheme::LEAST_SQUARES_QUADRATIC:
+            return compute_gradient_least_squares_quadratic(cell_field, mesh);
+    }
+    return Field<double, Location::CELL>();
+}
+
 }  // namespace core
 }  // namespace cfdx

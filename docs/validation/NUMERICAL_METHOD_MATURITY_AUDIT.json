@@ -53,13 +53,13 @@
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
-        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
         "tests/validation/test_polyhedral_laplacian_campaign.cpp"
       ],
       "gaps": [
         "non-affine / extremely non-orthogonal meshes",
-        "polyhedral diffusion accuracy: operators are O(1)/non-convergent on tetrahedra (blocked by the gradient polyhedral accuracy gap); constant-exact and correction benefits are verified"
+        "polyhedral diffusion accuracy: smooth-field Laplacians stay O(1)/non-convergent on tetrahedra even with linear-consistent (LS-family) gradients \u2014 a discretisation gap, not a gradient swap; the corrected operator IS linear-exact on tets with LS-family gradients (measured Linf ~5e-13)"
       ]
     },
     {

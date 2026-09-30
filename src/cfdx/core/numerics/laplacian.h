@@ -85,7 +85,8 @@ inline Field<double, Location::CELL> compute_laplacian(
     const Mesh& mesh,
     const GeometryCache& geometry,
     LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL,
-    double non_orthogonal_limit = 0.5)
+    double non_orthogonal_limit = 0.5,
+    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (!is_valid(geometry, mesh))
@@ -110,8 +111,14 @@ inline Field<double, Location::CELL> compute_laplacian(
     Field<double, Location::CELL> gradients;
     if (scheme == LaplacianScheme::CORRECTED ||
         scheme == LaplacianScheme::LIMITED ||
-        scheme == LaplacianScheme::OVER_RELAXED)
-        gradients = compute_gradient_gauss(cell_field, mesh, geometry);
+        scheme == LaplacianScheme::OVER_RELAXED) {
+        // The non-orthogonal correction uses the cell gradient. The default
+        // two-point Gauss gradient is second order on affine meshes; for
+        // polyhedral-heavy meshes the skew-corrected point-linear GG or the
+        // (extended / quadratic) least-squares gradients are linear-consistent
+        // options.
+        gradients = cell_gradient(cell_field, mesh, geometry, gradient_scheme);
+    }
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         double sum = 0.0;
@@ -207,11 +214,12 @@ inline Field<double, Location::CELL> compute_laplacian(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL,
-    double non_orthogonal_limit = 0.5)
+    double non_orthogonal_limit = 0.5,
+    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT)
 {
     const GeometryCache geometry = make_geometry_cache(mesh);
     return compute_laplacian(
-        cell_field, mesh, geometry, scheme, non_orthogonal_limit);
+        cell_field, mesh, geometry, scheme, non_orthogonal_limit, gradient_scheme);
 }
 
 }  // namespace core
