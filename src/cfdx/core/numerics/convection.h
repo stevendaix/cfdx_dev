@@ -4,6 +4,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/numerics/flux.h"
 #include "cfdx/core/numerics/interpolation.h"
+#include "cfdx/core/numerics/gradient.h"
 #include <cstddef>
 #include <stdexcept>
 
@@ -13,7 +14,9 @@ inline Field<double, Location::CELL> compute_convection(
     const Field<double, Location::CELL>& scalar,
     const Field<double, Location::FACE>& face_flux,
     const Mesh& mesh,
-    InterpScheme scheme = InterpScheme::UPWIND)
+    InterpScheme scheme = InterpScheme::UPWIND,
+    LimiterType limiter_type = LimiterType::NONE,
+    const GeometryCache* geometry_in = nullptr)
 {
     if (scalar.dimension() != 1) {
         throw std::runtime_error("compute_convection: scalar field required");
@@ -25,7 +28,19 @@ inline Field<double, Location::CELL> compute_convection(
         throw std::runtime_error("compute_convection: field size != n_cells");
     }
 
-    const auto face_value = interpolate_cell_to_face(scalar, mesh, scheme, &face_flux);
+    // LIMITED (TVD/MUSCL) reconstruction needs the cell gradients and the
+    // geometry cache. A caller-supplied cache is reused when provided.
+    Field<double, Location::FACE> face_value;
+    if (scheme == InterpScheme::LIMITED) {
+        const GeometryCache geometry = geometry_in ? *geometry_in : make_geometry_cache(mesh);
+        const auto grad = compute_gradient_gauss(scalar, mesh, geometry);
+        face_value = interpolate_cell_to_face(
+            scalar, mesh, geometry, scheme, &face_flux, limiter_type, &grad);
+    } else {
+        face_value = interpolate_cell_to_face(
+            scalar, mesh, InterpScheme(scheme), &face_flux, limiter_type, nullptr);
+    }
+
     const auto& ownership = mesh.ownership();
     const auto& cells = mesh.cells();
     const auto* cell_faces = cells.faces_data();
