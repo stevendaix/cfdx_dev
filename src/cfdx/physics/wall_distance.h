@@ -79,6 +79,34 @@ enum class WallDistanceMethod {
     HYBRID_POISSON_EIKONAL
 };
 
+// Recommended default wall-distance method.
+//
+// EIKONAL (fast sweeping of |grad d| = 1) is the accuracy/cost sweet spot
+// documented in the literature (Zhao, Math. Comp. 2005; Sethian 1996) and
+// verified by our own complex-geometry benchmark:
+//
+//   * exact_geometric / search_based : 0 % L2 error, but O(N_cell * N_face)
+//     for exact and requires a global BVH sweep for search.
+//   * eikonal                        : ~7 % L2 error in 3 fast-sweep passes.
+//   * hamilton_jacobi                : ~13 % L2 error, ~1000+ iterations
+//     (O(n^2) pseudo-time). Its H-J correction only helps on smooth
+//     single-body shapes; on multi-body wing-body-tail it slightly worsens
+//     accuracy compared to plain eikonal because the Poisson-integrated
+//     "seed" front is contaminated by contributions from every wall.
+//   * advection_diffusion / hybrid   : 10-33 % L2 error, thousand+
+//     iterations. Same multi-body limitation as HJ; the hybrid variant
+//     compounds it because it starts from a Poisson-reconstructed field
+//     and the reconstruction is intrinsically 15-30 % accurate in the
+//     literature (Tucker 2003, Fares-Schroder 2002) for this geometry
+//     class.
+//
+// The Poisson family is retained because it produces a smooth d(x) with
+// analytic dphi/dn, which is what Spalart-Allmaras and k-omega SST source
+// terms actually need -- OpenFOAM's PoissonPatchDist has the same
+// rationale. Do not use it when the value of d itself matters.
+inline constexpr WallDistanceMethod default_wall_distance_method =
+    WallDistanceMethod::EIKONAL;
+
 inline const char* wall_distance_method_name(WallDistanceMethod m) {
     switch(m) {
         case WallDistanceMethod::EXACT_GEOMETRIC: return "exact_geometric";
@@ -604,6 +632,44 @@ inline double axis_diagonal(const AxisNeighbour& m,
     if (m.present && p.present) return 2.0 / (m.distance * p.distance);
     if (m.present) return 1.0 / (h * m.distance);
     if (p.present) return 1.0 / (h * p.distance);
+    return 0.0;
+}
+
+// 2nd-order gradient at f_P for asymmetric neighbour distances.
+//
+// Derived by eliminating f''(P) from a two-point Taylor expansion at
+// distances h_- and h_+ (each either the grid spacing h for a fluid
+// neighbour or the wall offset delta for a solid neighbour):
+//
+//   f'(P) = [(h_+^2 - h_-^2)*f_P - h_+^2*f_- + h_-^2*f_+]
+//         / [h_- * h_+ * (h_- + h_+)]
+//
+// Reduces to the standard centred difference (f_+ - f_-)/(2h) when
+// h_- = h_+ = h, and to the correct O(h^2) one-sided cut-face formula
+// when one side is a wall at distance delta. This is the gradient
+// analogue of axis_laplacian above and must be used in the distance
+// reconstruction d = sqrt(|grad phi|^2 + 2 phi) - |grad phi|, because
+// that formula amplifies gradient error 1:1 into the reconstructed
+// distance near the wall.
+//
+// The previous per-face gradient used -f_P/delta one-sided at cut
+// cells, which is O(1) accurate as delta shrinks and produced ~713%
+// near-wall error on the complex wing-body benchmark. Tracked in #466.
+inline double axis_gradient(const AxisNeighbour& m,
+                            const AxisNeighbour& p,
+                            double h, double f_id) {
+    if (m.present && p.present) {
+        const double hm = m.distance;
+        const double hp = p.distance;
+        const double sum = hm + hp;
+        return ((hp*hp - hm*hm) * f_id
+                - hp*hp * m.value
+                + hm*hm * p.value)
+             / (hm * hp * sum);
+    }
+    if (m.present) return (f_id - m.value) / m.distance;
+    if (p.present) return (p.value - f_id) / p.distance;
+    (void)h;
     return 0.0;
 }
 
@@ -1377,39 +1443,26 @@ inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
 inline double poisson_reconstruction_gradient_component(
     const WallDistanceBvh& bvh,const std::vector<double>& phi,
     const WallDistanceGrid& g,std::size_t id,int axis) {
+    using poisson_stencil_detail::classify_neighbour;
+    using poisson_stencil_detail::axis_gradient;
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    auto one_side=[&](std::size_t q,double h,double sign)->double {
-        if(g.solid[q]) {
-            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
-            // sign is +1 for the +axis neighbour and -1 for the -axis
-            // neighbour.  phi_b=0, hence dphi/dn=(phi_b-phi_i)/delta.
-            return sign * (-phi[id]/delta);
-        }
-        return sign * (phi[q]-phi[id])/h;
-    };
+    const auto& p=g.points[id];
     if(axis==0) {
-        const bool hm=i>0, hp=i+1<g.nx;
-        const auto im=hm?g.index(i-1,j,k):0, ip=hp?g.index(i+1,j,k):0;
-        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.x);
-        if(fp) return one_side(ip,g.spacing.x,+1.0);
-        if(fm) return one_side(im,g.spacing.x,-1.0);
-    } else if(axis==1) {
-        const bool hm=j>0, hp=j+1<g.ny;
-        const auto im=hm?g.index(i,j-1,k):0, ip=hp?g.index(i,j+1,k):0;
-        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.y);
-        if(fp) return one_side(ip,g.spacing.y,+1.0);
-        if(fm) return one_side(im,g.spacing.y,-1.0);
-    } else {
-        const bool hm=k>0, hp=k+1<g.nz;
-        const auto im=hm?g.index(i,j,k-1):0, ip=hp?g.index(i,j,k+1):0;
-        const bool fm=hm && !g.solid[im], fp=hp && !g.solid[ip];
-        if(fm&&fp) return (phi[ip]-phi[im])/(2*g.spacing.z);
-        if(fp) return one_side(ip,g.spacing.z,+1.0);
-        if(fm) return one_side(im,g.spacing.z,-1.0);
+        const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+        return axis_gradient(classify_neighbour(bvh,phi,g,p,xm,i>0,g.spacing.x),
+                             classify_neighbour(bvh,phi,g,p,xp,i+1<g.nx,g.spacing.x),
+                             g.spacing.x,phi[id]);
     }
-    return 0.0;
+    if(axis==1) {
+        const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+        return axis_gradient(classify_neighbour(bvh,phi,g,p,ym,j>0,g.spacing.y),
+                             classify_neighbour(bvh,phi,g,p,yp,j+1<g.ny,g.spacing.y),
+                             g.spacing.y,phi[id]);
+    }
+    const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    return axis_gradient(classify_neighbour(bvh,phi,g,p,zm,k>0,g.spacing.z),
+                         classify_neighbour(bvh,phi,g,p,zp,k+1<g.nz,g.spacing.z),
+                         g.spacing.z,phi[id]);
 }
 
 inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
@@ -1852,6 +1905,10 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
     return rmax;
 }
 
+// Default arguments deliberately not applied: callers must state the method
+// they want. The overload below (compute_wall_distance(surface, grid, iter))
+// exposes the recommended default at the call site so the choice remains
+// visible in reviews.
 inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const WallSurface& s,
                                                  const WallDistanceGrid& g,
                                                  std::size_t iterations=500) {
@@ -1952,6 +2009,16 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
     for(std::size_t i=0;i<r.distance.size();++i)
         if(g.solid[i] || !std::isfinite(r.distance[i]) || r.distance[i]<0.0) r.valid[i]=0;
     return r;
+}
+
+// Convenience overload using the recommended default method (eikonal).
+// Prefer this at the top-level call site unless the caller has an explicit
+// reason to pick another method (e.g. requiring the smooth derivative of
+// Poisson for SA/SST source terms).
+inline WallDistanceResult compute_wall_distance(const WallSurface& s,
+                                                 const WallDistanceGrid& g,
+                                                 std::size_t iterations=500) {
+    return compute_wall_distance(default_wall_distance_method, s, g, iterations);
 }
 
 struct WallDistanceBenchmarkMetrics {
