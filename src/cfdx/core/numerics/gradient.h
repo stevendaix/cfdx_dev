@@ -382,16 +382,13 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
     return grad;
 }
 
-// Quadratic-basis least-squares gradient (gradient + Hessian fit).
-//
-// A linear least-squares fit is linear-exact but carries a first-order
-// curvature error on smooth unstructured meshes (even with extended
-// stencils). Fit instead the second-order expansion
-//   phi_N ~ phi_P + g.d + m3 dx^2 + m4 dy^2 + m5 dz^2 + m6 dx dy
-//                          + m7 dx dz + m8 dy dz
-// over two rings of neighbours (>= 9 independent points). The gradient is the
-// first three components of the 9-vector. This restores ~second order on
-// smooth fields at the cost of one 9x9 solve per cell.
+// Quadratic-basis least-squares gradient with a scaled polynomial fit.
+// A linear fit is first-order on general tetrahedral stencils because curvature
+// remains in the truncation error. A quadratic local reconstruction removes
+// that term. Coordinates are scaled by a representative stencil length before
+// forming the normal equations, avoiding the h/h^2 conditioning problem of the
+// raw polynomial basis. Three face-neighbour rings provide redundancy on
+// directional tetrahedral stencils.
 inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
@@ -420,91 +417,81 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
             else { nb = owner; }
             if (nb < n_cells && nb != c) ring.push_back(nb);
         }
+        std::sort(ring.begin(), ring.end());
+        ring.erase(std::unique(ring.begin(), ring.end()), ring.end());
     }
 
     Field<double, Location::CELL> grad(
-        n_cells, cell_field.name() + "_grad_lsq", cell_field.metadata().unit + "/m", 3);
-    std::vector<char> seen(n_cells, 0);
+        n_cells, cell_field.name() + "_grad_lsq_quadratic", cell_field.metadata().unit + "/m", 3);
+    std::vector<unsigned char> seen(n_cells, 0);
+    std::vector<std::size_t> touched;
+    touched.reserve(128);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Vec3 P = geometry.cell_centres[c];
         const double phi_c = values[c];
-
-        double a[9][9] = {};
-        double b[9] = {};
-        int npts = 0;
-        const auto add = [&](std::size_t nb) {
+        std::vector<std::size_t> frontier = ring1[c];
+        std::vector<std::size_t> stencil;
+        touched.clear();
+        auto add = [&](std::size_t nb) {
             if (nb == c || seen[nb]) return;
-            seen[nb] = 1;
-            const Vec3 d = geometry.cell_centres[nb] - P;
-            const double r2 = d.mag2();
-            if (!(r2 > 0.0) || !std::isfinite(r2)) return;
+            seen[nb] = 1; touched.push_back(nb); stencil.push_back(nb);
+        };
+        for (const std::size_t nb : frontier) add(nb);
+        for (int depth = 0; depth < 2; ++depth) {
+            std::vector<std::size_t> next;
+            for (const std::size_t nb : frontier)
+                for (const std::size_t nb2 : ring1[nb]) {
+                    if (nb2 != c && !seen[nb2]) { add(nb2); next.push_back(nb2); }
+                }
+            frontier.swap(next);
+            if (frontier.empty()) break;
+        }
+
+        double h = 0.0;
+        for (const std::size_t nb : stencil) h += (geometry.cell_centres[nb] - P).mag();
+        h /= static_cast<double>(stencil.size());
+        if (!(h > 0.0) || !std::isfinite(h))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: invalid stencil scale");
+
+        double A[9][9] = {};
+        double b[9] = {};
+        for (const std::size_t nb : stencil) {
+            const Vec3 q = (geometry.cell_centres[nb] - P) * (1.0 / h);
+            const double r2 = q.mag2();
+            if (!(r2 > 0.0) || !std::isfinite(r2)) continue;
             const double w = 1.0 / r2;
-            const double basis[9] = {d.x, d.y, d.z,
-                                     d.x*d.x, d.y*d.y, d.z*d.z,
-                                     d.x*d.y, d.x*d.z, d.y*d.z};
+            const double basis[9] = {q.x,q.y,q.z,q.x*q.x,q.y*q.y,q.z*q.z,q.x*q.y,q.x*q.z,q.y*q.z};
             const double dv = values[nb] - phi_c;
             for (int i = 0; i < 9; ++i) {
-                b[i] += w * basis[i] * dv;
-                for (int j = 0; j < 9; ++j)
-                    a[i][j] += w * basis[i] * basis[j];
+                b[i] += w*basis[i]*dv;
+                for (int j = 0; j < 9; ++j) A[i][j] += w*basis[i]*basis[j];
             }
-            ++npts;
-        };
-        for (const std::size_t nb : ring1[c]) add(nb);
-        for (const std::size_t nb : ring1[c])
-            for (const std::size_t nb2 : ring1[nb]) add(nb2);
-        for (const std::size_t nb : ring1[c]) seen[nb] = 0;
-        for (const std::size_t nb : ring1[c])
-            for (const std::size_t nb2 : ring1[nb]) seen[nb2] = 0;
-
-        Vec3 g;
-        if (npts >= 9) {
-            // Solve the 9x9 normal equations with partial pivoting.
-            double m[9][10] = {};
-            for (int i = 0; i < 9; ++i) {
-                for (int j = 0; j < 9; ++j) m[i][j] = a[i][j];
-                m[i][9] = b[i];
-            }
-            double scale = 0.0;
-            for (int i = 0; i < 9; ++i)
-                scale = std::max(scale, std::abs(m[i][i]));
-            const double rank_tol = 128.0 * std::numeric_limits<double>::epsilon() * scale;
-            bool pivoted[9] = {};
-            for (int col = 0; col < 9; ++col) {
-                int pivot = col;
-                double pivot_abs = std::abs(m[col][col]);
-                for (int row = col + 1; row < 9; ++row) {
-                    const double cnd = std::abs(m[row][col]);
-                    if (cnd > pivot_abs) { pivot_abs = cnd; pivot = row; }
-                }
-                if (!(pivot_abs > rank_tol)) continue;
-                if (pivot != col)
-                    for (int j = col; j < 10; ++j) std::swap(m[col][j], m[pivot][j]);
-                pivoted[col] = true;
-                for (int row = col + 1; row < 9; ++row) {
-                    const double factor = m[row][col] / m[col][col];
-                    if (factor == 0.0) continue;
-                    for (int j = col; j < 10; ++j) m[row][j] -= factor * m[col][j];
-                }
-            }
-            double x[9] = {};
-            for (int i = 8; i >= 0; --i) {
-                if (!pivoted[i]) continue;
-                double rhs = m[i][9];
-                for (int j = i + 1; j < 9; ++j) rhs -= m[i][j] * x[j];
-                if (std::abs(m[i][i]) > rank_tol) x[i] = rhs / m[i][i];
-            }
-            g = {x[0], x[1], x[2]};
-        } else {
-            g = least_squares_gradient(P, phi_c,
-                std::vector<Vec3>{}, std::vector<double>{});
         }
-        if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z))
+
+        double M[9][10] = {};
+        double scale = 0.0;
+        for (int i = 0; i < 9; ++i) {
+            for (int j = 0; j < 9; ++j) { M[i][j]=A[i][j]; scale=std::max(scale,std::abs(A[i][j])); }
+            M[i][9]=b[i];
+        }
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
+        const double tol=4096.0*std::numeric_limits<double>::epsilon()*scale;
+        for (int col=0; col<9; ++col) {
+            int pivot=col; double best=std::abs(M[col][col]);
+            for (int row=col+1; row<9; ++row) if (std::abs(M[row][col])>best) { best=std::abs(M[row][col]); pivot=row; }
+            if (!(best>tol)) throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
+            if (pivot!=col) for (int j=col;j<10;++j) std::swap(M[col][j],M[pivot][j]);
+            for (int row=col+1;row<9;++row) { const double factor=M[row][col]/M[col][col]; for(int j=col;j<10;++j) M[row][j]-=factor*M[col][j]; }
+        }
+        double x[9]={};
+        for (int i=8;i>=0;--i) { double rhs=M[i][9]; for(int j=i+1;j<9;++j) rhs-=M[i][j]*x[j]; x[i]=rhs/M[i][i]; }
+        const Vec3 g{x[0]/h,x[1]/h,x[2]/h};
+        if (!std::isfinite(g.x)||!std::isfinite(g.y)||!std::isfinite(g.z))
             throw std::runtime_error("compute_gradient_least_squares_quadratic: non-finite gradient");
-        grad(c, 0) = g.x;
-        grad(c, 1) = g.y;
-        grad(c, 2) = g.z;
+        grad(c,0)=g.x; grad(c,1)=g.y; grad(c,2)=g.z;
+        for (const std::size_t nb:touched) seen[nb]=0;
     }
     return grad;
 }
