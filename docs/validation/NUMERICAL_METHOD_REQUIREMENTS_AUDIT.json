@@ -122,7 +122,16 @@
       "status": "partial",
       "evidence": [
         "tests/validation/test_gradient_verification.cpp",
-        "tests/unit/test_gradient.cpp"
+        "tests/unit/test_gradient.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
+      ]
+    },
+    {
+      "package_id": "N2",
+      "requirement": "polyhedral gradient scheme accuracy",
+      "status": "partial",
+      "evidence": [
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
     },
     {
