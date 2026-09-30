@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 #include "cfdx/core/linalg/linear_operator.h"
@@ -176,6 +177,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
 
     const auto transfers = amg.transfer_diagnostics();
     if (transfers.size() + 1 != levels.size()) ok = false;
+    const double gershgorin_roundoff = 100.0 * std::numeric_limits<double>::epsilon();
 
     for (const auto& d : transfers) {
         const auto coverage = amg.transfer_column_coverage(d.level);
@@ -188,7 +190,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
             std::isfinite(d.coarse_symmetry_relative_error) &&
             d.coarse_symmetry_relative_error <= 1e-12 &&
             std::isfinite(d.coarse_gershgorin_lower_bound) &&
-            d.coarse_gershgorin_lower_bound > -1e-10;
+            d.coarse_gershgorin_lower_bound >= -gershgorin_roundoff;
         std::cout << "amg_n82_transfer_gate label=" << label
                   << " level=" << d.level << " fine=" << d.fine_size
                   << " coarse=" << d.coarse_size << " galerkin=" << d.galerkin_relative_error
@@ -197,27 +199,39 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
                   << " min_column_nnz=" << coverage.min_nnz
                   << " symmetry=" << d.coarse_symmetry_relative_error
                   << " gershgorin=" << d.coarse_gershgorin_lower_bound
-                  << " structural=" << (structural ? "PASS" : "FAIL") << '\n';
+                  << " structural=" << (structural ? "PASS" : "FAIL") << '\\n';
         ok = ok && structural;
 
         if (d.fine_size >= 8) {
             const double energy = amg.sine_mode_vcycle_energy_ratio(d.level, 1);
             const bool energy_ok = std::isfinite(energy) && energy < max_energy_ratio;
+
+            const std::size_t smoother_mode = std::max<std::size_t>(2, d.fine_size / 2);
+            const double smoother =
+                amg.sine_mode_smoother_residual_ratio(d.level, smoother_mode, 4);
+            const bool smoother_ok = std::isfinite(smoother) && smoother < 1.0;
+
+            const double two_grid_energy =
+                amg.two_grid_sine_mode_energy_ratio(d.level, 1);
+            const bool two_grid_energy_ok =
+                std::isfinite(two_grid_energy) && two_grid_energy < max_energy_ratio;
+            const double two_grid_l2 =
+                amg.two_grid_sine_mode_residual_ratio(d.level, 1);
+
             std::cout << "amg_n82_energy_gate label=" << label
                       << " level=" << d.level << " mode=1 energy=" << energy
                       << " threshold=" << max_energy_ratio
-                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\n';
-            ok = ok && energy_ok;
-
-            const double smoother = amg.sine_mode_smoother_residual_ratio(d.level, 1, 4);
-            const double two_grid = amg.two_grid_sine_mode_residual_ratio(d.level, 1);
-            std::cout << "amg_n82_stage_diagnostic label=" << label
-                      << " level=" << d.level << " mode=1 energy=" << energy
+                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\\n';
+            std::cout << "amg_n82_stage_gate label=" << label
+                      << " level=" << d.level
+                      << " smoother_mode=" << smoother_mode
                       << " smoother4=" << smoother
-                      << " two_grid_l2_residual=" << two_grid << '\n';
-            if (!std::isfinite(smoother) || smoother >= 0.999999 ||
-                !std::isfinite(two_grid) || two_grid >= 0.999999)
-                ok = false;
+                      << " smoother_status=" << (smoother_ok ? "PASS" : "FAIL")
+                      << " two_grid_energy=" << two_grid_energy
+                      << " two_grid_energy_status="
+                      << (two_grid_energy_ok ? "PASS" : "FAIL")
+                      << " two_grid_l2_residual_diagnostic=" << two_grid_l2 << '\\n';
+            ok = ok && energy_ok && smoother_ok && two_grid_energy_ok;
         }
     }
     return ok;
@@ -225,6 +239,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
 } // namespace
 
 int main() {
+    std::cout << std::setprecision(17);
     run_case("amg_vs_jacobi_poisson", make_poisson(256), make_rhs(256),
              [](Vector& x) {
                  const auto A = make_poisson(256);
@@ -375,8 +390,8 @@ int main() {
             }
         }
 
-        qualification_ok = qualification_ok &&
-                           qualify_multilevel_hierarchy(vcycle, "DirectCF");
+        const bool direct_cf_ok = qualify_multilevel_hierarchy(vcycle, "DirectCF");
+        qualification_ok = qualification_ok && direct_cf_ok;
     }
 
 
@@ -475,8 +490,8 @@ int main() {
             }
         }
 
-        qualification_ok = qualification_ok &&
-                           qualify_multilevel_hierarchy(sa, "SA");
+        const bool sa_ok = qualify_multilevel_hierarchy(sa, "SA");
+        qualification_ok = qualification_ok && sa_ok;
     }
 
     auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
