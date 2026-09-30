@@ -69,13 +69,14 @@
       "evidence": [
         "src/cfdx/core/numerics/convection.h",
         "src/cfdx/core/numerics/convection_assembly.h",
-        "src/cfdx/core/numerics/interpolation.h"
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_scheme_verification.cpp"
       ],
       "gaps": [
         "complete central/blended family",
-        "MUSCL/QUICK-equivalent integration",
+        "QUICK-equivalent quadratic scheme",
         "multidimensional limiter policy",
-        "scheme-level V&V for every limiter"
+        "production transport wiring + multidimensional scheme-level V&V"
       ]
     },
     {
