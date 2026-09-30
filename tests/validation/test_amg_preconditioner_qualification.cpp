@@ -236,6 +236,14 @@ int main() {
 
         const auto transfer = vcycle.transfer_diagnostics();
         for (const auto& d : transfer) {
+            const auto coverage = vcycle.transfer_column_coverage(d.level);
+            std::cout << "amg_transfer_columns"
+                      << " policy=DirectCF"
+                      << " level=" << d.level
+                      << " zero_columns=" << coverage.zero_columns
+                      << " column_nnz=[" << coverage.min_nnz << "," << coverage.max_nnz << "]"
+                      << " anchored_columns=" << coverage.anchored_columns
+                      << " coarse_size=" << d.coarse_size << '\\n';
             std::cout << "amg_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
@@ -311,6 +319,14 @@ int main() {
 
         const auto transfer = sa.transfer_diagnostics();
         for (const auto& d : transfer) {
+            const auto coverage = sa.transfer_column_coverage(d.level);
+            std::cout << "amg_transfer_columns"
+                      << " policy=SA"
+                      << " level=" << d.level
+                      << " zero_columns=" << coverage.zero_columns
+                      << " column_nnz=[" << coverage.min_nnz << "," << coverage.max_nnz << "]"
+                      << " anchored_columns=" << coverage.anchored_columns
+                      << " coarse_size=" << d.coarse_size << '\\n';
             std::cout << "amg_sa_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
