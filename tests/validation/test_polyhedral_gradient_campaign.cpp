@@ -168,6 +168,9 @@ Vec3 constant_gradient(const Vec3&) { return Vec3{0.0, 0.0, 0.0}; }
 double linear_value(const Vec3& p) { return 2.0 * p.x - 3.0 * p.y + 0.5 * p.z; }
 Vec3 linear_gradient(const Vec3&) { return Vec3{2.0, -3.0, 0.5}; }
 
+double quadratic_value(const Vec3& p) { return p.x*p.x + 2.0*p.x*p.y + 0.5*p.y*p.y + 0.75*p.z*p.z; }
+Vec3 quadratic_gradient(const Vec3& p) { return Vec3{2.0*p.x + 2.0*p.y, 2.0*p.x + p.y, 1.5*p.z}; }
+
 double smooth_value(const Vec3& p) {
     const double pi = std::acos(-1.0);
     return std::sin(pi * p.x) * std::cos(pi * p.y) * std::sin(pi * p.z);
@@ -182,6 +185,7 @@ Vec3 smooth_gradient(const Vec3& p) {
 
 inline const FieldCase kConstant{"constant", constant_value, constant_gradient};
 inline const FieldCase kLinear{"linear", linear_value, linear_gradient};
+inline const FieldCase kQuadratic{"quadratic", quadratic_value, quadratic_gradient};
 inline const FieldCase kSmooth{"smooth", smooth_value, smooth_gradient};
 
 enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares, LeastSquares2, LeastSquaresQuad };
@@ -285,6 +289,20 @@ void check_exactness(std::size_t n)
     }
 }
 
+void check_quadratic_reconstruction()
+{
+    for (const std::size_t n : {4u, 6u, 8u}) {
+        const Grid grid = make_tet_grid(n);
+        const auto phi = sample_field(grid, kQuadratic);
+        const auto g = compute_scheme(grid, phi, GradScheme::LeastSquaresQuad);
+        const auto e = gradient_error(grid, g, kQuadratic, true);
+        std::cout << "POLY_GRAD scheme=least_squares_quadratic field=quadratic n=" << n
+                  << " L2=" << e.l2 << " Linf=" << e.linf << "\n";
+        require(e.linf <= 1e-8,
+                "least_squares_quadratic: quadratic field must be exact on interior tetrahedra");
+    }
+}
+
 void check_order()
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
@@ -304,15 +322,14 @@ void check_order()
         }
         require(std::isfinite(errors.back()),
                 scheme_name(scheme) + ": tet gradient errors must be finite");
-        if (scheme == GradScheme::GaussCell) {
+        if (scheme == GradScheme::LeastSquaresQuad) {
+            const double o1 = observed_order(errors[0], errors[1]);
+            const double o2 = observed_order(errors[1], errors[2]);
+            require(o1 >= 1.8 && o2 >= 1.8,
+                    "least_squares_quadratic: tetrahedral smooth-field order must be >= 1.8");
+        } else if (scheme == GradScheme::GaussCell) {
             // Two-point Gauss is the documented skew-inconsistent scheme.
         } else {
-            // Least-squares, vertex GG and point-linear GG are all linear-exact
-            // (consistent) on interior tetrahedra, so refinement must reduce the
-            // error. Their measured smooth-field order at these resolutions is
-            // ~0.4-0.9 (reported, no floor asserted): the skew-corrected
-            // point-linear scheme has the best constants but reaching second
-            // order on tetrahedra still requires higher-order reconstruction.
             require(errors.back() < errors.front(),
                     scheme_name(scheme) + ": tet refinement must reduce the error");
         }
@@ -333,6 +350,7 @@ int main()
     try {
         std::cout << std::setprecision(12);
         check_exactness(3);
+        check_quadratic_reconstruction();
         check_order();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
         return 0;
