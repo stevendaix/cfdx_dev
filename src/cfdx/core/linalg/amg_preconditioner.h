@@ -8,6 +8,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -68,7 +69,13 @@ public:
 
         // Build a genuine multilevel hierarchy until the coarse problem is
         // small. Keep the first aggregation public for diagnostics/tests.
-        while (levels_.back().A.n_rows() > 2 && levels_.size() < max_levels_) {
+        // Keep a small but non-trivial dense coarse problem. Recursing to
+        // 2 unknowns adds levels without improving the coarse solve materially;
+        // a direct solve of <=16 unknowns is negligible and gives a cleaner
+        // multilevel correction.
+        constexpr std::size_t coarse_direct_limit = 16;
+        while (levels_.back().A.n_rows() > coarse_direct_limit &&
+               levels_.size() < max_levels_) {
             std::vector<TransferRow> prolongation;
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
@@ -77,8 +84,12 @@ public:
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n);
             } else {
-                build_cf_interpolation(levels_.back(), strength_threshold_,
-                                       prolongation, aggregate, coarse_n);
+                if (!build_cf_interpolation(levels_.back(), strength_threshold_,
+                                            prolongation, aggregate, coarse_n)) {
+                    levels_.clear();
+                    first_aggregate_.clear();
+                    return false;
+                }
             }
             if (coarse_n >= levels_.back().A.n_rows() || coarse_n == 0) {
                 break;
@@ -155,6 +166,677 @@ public:
         return first_aggregate_[fine_cell];
     }
 
+    std::vector<std::size_t> hierarchy_level_sizes() const
+    {
+        std::vector<std::size_t> sizes;
+        sizes.reserve(levels_.size());
+        for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
+        return sizes;
+    }
+
+    double prolongation_row_sum_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("prolongation_row_sum_min: hierarchy unavailable");
+        double value = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < levels_.front().prolongation.size(); ++i)
+            value = std::min(value, prolongation_row_sum(i));
+        return value;
+    }
+
+    double prolongation_row_sum_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("prolongation_row_sum_max: hierarchy unavailable");
+        double value = -std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < levels_.front().prolongation.size(); ++i)
+            value = std::max(value, prolongation_row_sum(i));
+        return value;
+    }
+
+    double first_prolongation_linear_mode_relative_error() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_linear_mode_relative_error: hierarchy unavailable");
+        const auto& P = levels_.front().prolongation;
+        const std::size_t n = P.size();
+        std::vector<double> coarse_coordinate(
+            levels_[1].A.n_rows(), std::numeric_limits<double>::quiet_NaN());
+        for (std::size_t i = 0; i < n; ++i) {
+            if (P[i].size() == 1 && std::abs(P[i][0].second - 1.0) <= 1e-12) {
+                const std::size_t c = P[i][0].first;
+                if (c < coarse_coordinate.size()) coarse_coordinate[c] = static_cast<double>(i);
+            }
+        }
+        for (double value : coarse_coordinate)
+            if (!std::isfinite(value)) return std::numeric_limits<double>::infinity();
+
+        double error2 = 0.0;
+        double norm2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double interpolated = 0.0;
+            for (const auto& [c, weight] : P[i])
+                interpolated += weight * coarse_coordinate[c];
+            const double error = interpolated - static_cast<double>(i);
+            error2 += error * error;
+            norm2 += static_cast<double>(i) * static_cast<double>(i);
+        }
+        return std::sqrt(error2 / std::max(norm2, 1.0));
+    }
+
+    double first_coarse_symmetry_relative_error() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_symmetry_relative_error: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        double defect2 = 0.0;
+        double scale2 = 0.0;
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                double transpose = 0.0;
+                for (std::size_t q = row[j]; q < row[j + 1]; ++q)
+                    if (col[q] == i) transpose += val[q];
+                const double defect = val[k] - transpose;
+                defect2 += defect * defect;
+                scale2 += val[k] * val[k];
+            }
+        }
+        return std::sqrt(defect2 / std::max(scale2, 1.0));
+    }
+
+    double first_prolongation_mode_relative_error(std::size_t mode) const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty() || mode == 0)
+            throw std::out_of_range("first_prolongation_mode_relative_error: hierarchy unavailable");
+        const auto& P = levels_.front().prolongation;
+        const std::size_t n = P.size();
+        std::vector<double> coarse_mode(levels_[1].A.n_rows(), 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (P[i].size() == 1 && std::abs(P[i][0].second - 1.0) <= 1e-12) {
+                const std::size_t c = P[i][0].first;
+                if (c < coarse_mode.size()) {
+                    coarse_mode[c] = std::sin(
+                        3.14159265358979323846 * static_cast<double>(mode * (i + 1)) /
+                        static_cast<double>(n + 1));
+                }
+            }
+        }
+        double error2 = 0.0;
+        double norm2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double interpolated = 0.0;
+            for (const auto& [coarse, weight] : P[i])
+                interpolated += weight * coarse_mode[coarse];
+            const double exact = std::sin(
+                3.14159265358979323846 * static_cast<double>(mode * (i + 1)) /
+                static_cast<double>(n + 1));
+            const double error = interpolated - exact;
+            error2 += error * error;
+            norm2 += exact * exact;
+        }
+        return std::sqrt(error2 / std::max(norm2, 1.0));
+    }
+
+    std::size_t first_prolongation_row_nnz_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_row_nnz_min: hierarchy unavailable");
+        std::size_t value = std::numeric_limits<std::size_t>::max();
+        for (const auto& row : levels_.front().prolongation)
+            value = std::min(value, row.size());
+        return value;
+    }
+
+    std::size_t first_prolongation_row_nnz_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_row_nnz_max: hierarchy unavailable");
+        std::size_t value = 0;
+        for (const auto& row : levels_.front().prolongation)
+            value = std::max(value, row.size());
+        return value;
+    }
+
+    double first_prolongation_weight_min() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_weight_min: hierarchy unavailable");
+        double value = std::numeric_limits<double>::infinity();
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                value = std::min(value, weight);
+            }
+        return value;
+    }
+
+    double first_prolongation_weight_max() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_weight_max: hierarchy unavailable");
+        double value = -std::numeric_limits<double>::infinity();
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                value = std::max(value, weight);
+            }
+        return value;
+    }
+
+    std::size_t first_prolongation_negative_count() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_negative_count: hierarchy unavailable");
+        std::size_t count = 0;
+        for (const auto& row : levels_.front().prolongation)
+            for (const auto& [coarse, weight] : row) {
+                (void)coarse;
+                if (weight < 0.0) ++count;
+            }
+        return count;
+    }
+
+    double first_coarse_diagonal_min() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_diagonal_min: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            value = std::min(value, diag);
+        }
+        return value;
+    }
+
+    double first_coarse_diagonal_max() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_diagonal_max: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = -std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            value = std::max(value, diag);
+        }
+        return value;
+    }
+
+    double first_coarse_gershgorin_lower_bound() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_coarse_gershgorin_lower_bound: hierarchy unavailable");
+        const auto& A = levels_[1].A;
+        double value = std::numeric_limits<double>::infinity();
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double diag = 0.0;
+            double offdiag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i) diag += val[k];
+                else offdiag += std::abs(val[k]);
+            }
+            value = std::min(value, diag - offdiag);
+        }
+        return value;
+    }
+
+    struct ProlongationRowDiagnostic {
+        std::size_t fine_index = 0;
+        std::vector<std::pair<std::size_t, double>> entries;
+    };
+
+    // Diagnostic-only access to the first/last interpolation rows. This exposes
+    // the actual stored P weights without changing the hierarchy construction.
+    std::vector<ProlongationRowDiagnostic> prolongation_boundary_rows(
+        std::size_t level, std::size_t count) const
+    {
+        std::vector<ProlongationRowDiagnostic> out;
+        if (level + 1 >= levels_.size() || count == 0) return out;
+        const auto& P = levels_[level].prolongation;
+        const std::size_t n = P.size();
+        const std::size_t take = std::min(count, n);
+        out.reserve(2 * take);
+        for (std::size_t i = 0; i < take; ++i)
+            out.push_back({i, P[i]});
+        const std::size_t begin = n - take;
+        for (std::size_t i = begin; i < n; ++i)
+            if (i >= take)
+                out.push_back({i, P[i]});
+        return out;
+    }
+
+    struct TransferDiagnostic {
+        std::size_t level = 0;
+        std::size_t fine_size = 0;
+        std::size_t coarse_size = 0;
+        std::size_t nnz = 0;
+        std::size_t negative_weights = 0;
+        double row_sum_min = 0.0;
+        double row_sum_max = 0.0;
+        double weight_min = 0.0;
+        double weight_max = 0.0;
+        double column_norm_min = 0.0;
+        double column_norm_max = 0.0;
+        double constant_mode_error = 0.0;
+        double linear_mode_error = 0.0;
+        double sine1_mode_error = 0.0;
+        double sine2_mode_error = 0.0;
+        double galerkin_relative_error = 0.0;
+        double coarse_symmetry_relative_error = 0.0;
+        double coarse_diagonal_min = 0.0;
+        double coarse_diagonal_max = 0.0;
+        double coarse_gershgorin_lower_bound = 0.0;
+    };
+
+    struct TransferColumnCoverage {
+        std::size_t zero_columns = 0;
+        std::size_t min_nnz = 0;
+        std::size_t max_nnz = 0;
+        std::size_t anchored_columns = 0;
+    };
+
+    TransferColumnCoverage transfer_column_coverage(std::size_t level) const
+    {
+        if (level + 1 >= levels_.size())
+            throw std::out_of_range("transfer_column_coverage: invalid level");
+        const auto& P = levels_[level].prolongation;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        std::vector<std::size_t> nnz(nc, 0), anchors(nc, 0);
+        for (const auto& row : P) {
+            for (const auto& [c, w] : row) {
+                if (c >= nc) continue;
+                ++nnz[c];
+                if (row.size() == 1 && std::abs(w - 1.0) <= 1e-14) ++anchors[c];
+            }
+        }
+        TransferColumnCoverage out;
+        out.min_nnz = nnz.empty() ? 0 : *std::min_element(nnz.begin(), nnz.end());
+        out.max_nnz = nnz.empty() ? 0 : *std::max_element(nnz.begin(), nnz.end());
+        out.zero_columns = static_cast<std::size_t>(std::count(nnz.begin(), nnz.end(), 0));
+        out.anchored_columns = static_cast<std::size_t>(std::count_if(anchors.begin(), anchors.end(),
+            [](std::size_t n) { return n > 0; }));
+        return out;
+    }
+
+    std::vector<TransferDiagnostic> transfer_diagnostics() const
+    {
+        std::vector<TransferDiagnostic> out;
+        if (levels_.size() < 2) return out;
+        out.reserve(levels_.size() - 1);
+
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t l = 0; l + 1 < levels_.size(); ++l) {
+            const auto& P = levels_[l].prolongation;
+            const std::size_t n = levels_[l].A.n_rows();
+            const std::size_t nc = levels_[l + 1].A.n_rows();
+            TransferDiagnostic d;
+            d.level = l;
+            d.fine_size = n;
+            d.coarse_size = nc;
+            d.row_sum_min = std::numeric_limits<double>::infinity();
+            d.row_sum_max = -std::numeric_limits<double>::infinity();
+            d.weight_min = std::numeric_limits<double>::infinity();
+            d.weight_max = -std::numeric_limits<double>::infinity();
+
+            std::vector<double> cnorm(nc, 0.0);
+            std::vector<double> denom(nc, 0.0);
+            std::vector<double> x1(nc, 0.0), s1(nc, 0.0), s2(nc, 0.0);
+            for (std::size_t i = 0; i < P.size(); ++i) {
+                const double xi = static_cast<double>(i);
+                const double q = pi * static_cast<double>(i + 1) /
+                                 static_cast<double>(n + 1);
+                const double mode1 = std::sin(q);                const double mode2 = std::sin(2.0 * q);
+                double sum = 0.0;
+                for (const auto& [coarse, weight] : P[i]) {
+                    if (coarse >= nc || !std::isfinite(weight)) continue;
+                    ++d.nnz;
+                    sum += weight;
+                    d.weight_min = std::min(d.weight_min, weight);
+                    d.weight_max = std::max(d.weight_max, weight);
+                    if (weight < 0.0) ++d.negative_weights;
+                    cnorm[coarse] += weight * weight;
+                    denom[coarse] += weight * weight;
+                    x1[coarse] += weight * weight * xi;
+                    s1[coarse] += weight * weight * mode1;
+                    s2[coarse] += weight * weight * mode2;
+                }
+                d.row_sum_min = std::min(d.row_sum_min, sum);
+                d.row_sum_max = std::max(d.row_sum_max, sum);
+            }
+
+            for (std::size_t c = 0; c < nc; ++c) {
+                if (denom[c] > 0.0) {
+                    x1[c] /= denom[c];
+                    s1[c] /= denom[c];
+                    s2[c] /= denom[c];
+                }
+            }
+
+            for (double& v : cnorm) v = std::sqrt(v);
+            if (!cnorm.empty()) {
+                d.column_norm_min = *std::min_element(cnorm.begin(), cnorm.end());
+                d.column_norm_max = *std::max_element(cnorm.begin(), cnorm.end());
+            }
+
+            auto mode_error = [&](auto coarse_mode, auto fine_mode) {
+                double e2 = 0.0;
+                double n2 = 0.0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    double interpolated = 0.0;
+                    for (const auto& [coarse, weight] : P[i])
+                        if (coarse < nc) interpolated += weight * coarse_mode(coarse);
+                    const double exact = fine_mode(i);
+                    const double e = interpolated - exact;
+                    e2 += e * e;
+                    n2 += exact * exact;
+                }
+                return std::sqrt(e2 / std::max(n2, 1e-300));
+            };
+
+            d.constant_mode_error = std::max(
+                std::abs(d.row_sum_min - 1.0),
+                std::abs(d.row_sum_max - 1.0));
+            d.linear_mode_error = mode_error(
+                [&](std::size_t c) { return x1[c]; },
+                [&](std::size_t i) { return static_cast<double>(i); });
+            d.sine1_mode_error = mode_error(
+                [&](std::size_t c) { return s1[c]; },
+                [&](std::size_t i) {
+                    return std::sin(pi * static_cast<double>(i + 1) /
+                                     static_cast<double>(n + 1));
+                });
+            d.sine2_mode_error = mode_error(
+                [&](std::size_t c) { return s2[c]; },
+                [&](std::size_t i) {
+                    return std::sin(2.0 * pi * static_cast<double>(i + 1) /
+                                     static_cast<double>(n + 1));
+                });
+
+            d.galerkin_relative_error = galerkin_relative_error(l);
+
+            const auto& Ac = levels_[l + 1].A;
+            const auto* row = Ac.row_offsets_data();
+            const auto* col = Ac.columns_data();
+            const auto* val = Ac.values_data();
+            double sym_e2 = 0.0;
+            double sym_n2 = 0.0;
+            d.coarse_diagonal_min = std::numeric_limits<double>::infinity();
+            d.coarse_diagonal_max = -std::numeric_limits<double>::infinity();
+            d.coarse_gershgorin_lower_bound = std::numeric_limits<double>::infinity();
+            for (std::size_t i = 0; i < nc; ++i) {
+                double diag = 0.0;
+                double offdiag = 0.0;
+                for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                    const std::size_t j = col[k];
+                    if (j == i) diag += val[k];
+                    else offdiag += std::abs(val[k]);
+                    double transpose = 0.0;
+                    if (j < nc) {
+                        for (std::size_t q = row[j]; q < row[j + 1]; ++q)
+                            if (col[q] == i) transpose += val[q];
+                    }
+                    const double e = val[k] - transpose;
+                    sym_e2 += e * e;
+                    sym_n2 += val[k] * val[k];
+                }
+                d.coarse_diagonal_min = std::min(d.coarse_diagonal_min, diag);
+                d.coarse_diagonal_max = std::max(d.coarse_diagonal_max, diag);
+                d.coarse_gershgorin_lower_bound =
+                    std::min(d.coarse_gershgorin_lower_bound, diag - offdiag);
+            }
+            d.coarse_symmetry_relative_error =
+                std::sqrt(sym_e2 / std::max(sym_n2, 1e-300));
+            out.push_back(d);
+        }
+        return out;
+    }
+
+    double galerkin_relative_error(std::size_t level) const
+    {
+        if(level+1>=levels_.size()) throw std::out_of_range("galerkin_relative_error: invalid level");
+        const auto& A=levels_[level].A; const auto& P=levels_[level].prolongation;
+        const auto& Ac=levels_[level+1].A; const std::size_t nc=Ac.n_rows();
+        std::vector<std::map<std::size_t,double>> ref(nc);
+        const auto* ar=A.row_offsets_data(); const auto* ac=A.columns_data(); const auto* av=A.values_data();
+        for(std::size_t i=0;i<A.n_rows();++i)
+            for(std::size_t k=ar[i];k<ar[i+1];++k)
+                for(const auto& [ci,wi]:P[i])
+                    for(const auto& [cj,wj]:P[ac[k]])
+                        ref[ci][cj]+=wi*av[k]*wj;
+        const auto* rr=Ac.row_offsets_data(); const auto* cc=Ac.columns_data(); const auto* vv=Ac.values_data();
+        double e2=0.0,r2=0.0;
+        for(std::size_t i=0;i<nc;++i) {
+            std::map<std::size_t,double> stored;
+            for(std::size_t k=rr[i];k<rr[i+1];++k) stored[cc[k]]+=vv[k];
+            std::set<std::size_t> cols;
+            for(const auto& [j,v]:ref[i]) { (void)v; cols.insert(j); }
+            for(const auto& [j,v]:stored) { (void)v; cols.insert(j); }
+            for(const auto j:cols) {
+                const double rv=ref[i].count(j)?ref[i].at(j):0.0;
+                const double sv=stored.count(j)?stored.at(j):0.0;
+                const double e=sv-rv; e2+=e*e; r2+=rv*rv;
+            }
+        }
+        return std::sqrt(e2/std::max(r2,1e-300));
+    }
+
+    double two_grid_residual_ratio(std::size_t level, const Vector& rhs) const
+    {
+        if (level + 1 >= levels_.size()) {
+            throw std::out_of_range(
+                "two_grid_residual_ratio: invalid level=" +
+                std::to_string(level) +
+                " hierarchy_levels=" + std::to_string(levels_.size()));
+        }
+        if (rhs.size() != levels_[level].A.n_rows()) {
+            throw std::out_of_range(
+                "two_grid_residual_ratio: rhs size mismatch at level=" +
+                std::to_string(level) +
+                " fine_size=" + std::to_string(levels_[level].A.n_rows()) +
+                " rhs_size=" + std::to_string(rhs.size()));
+        }
+
+        Vector x(rhs.size(), 0.0), Ax(rhs.size()), res(rhs.size());
+        if (!smooth(level, rhs, x, pre_) || !apply_operator(level, x, Ax))
+            return std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            res(i) = rhs(i) - Ax(i);
+        const double before = res.norm2();
+        if (!(before > 0.0) || !std::isfinite(before)) return 0.0;
+
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector rc(nc, 0.0);
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            for (const auto& [c, w] : levels_[level].prolongation[i])
+                rc(c) += w * res(i);
+
+        // Exact dense coarse solves are retained only for tiny systems. For
+        // intermediate levels use PCG with Jacobi scaling; this keeps the
+        // two-grid diagnostic mathematically representative while avoiding
+        // O(n_c^3) work at the 2048-unknown first coarse level.
+        Vector ec(nc, 0.0);
+        const auto& Ac = levels_[level + 1].A;
+        const auto* row = Ac.row_offsets_data();
+        const auto* col = Ac.columns_data();
+        const auto* val = Ac.values_data();
+        Vector r = rc, z(nc, 0.0), p(nc, 0.0), Ap(nc, 0.0);
+        double rz = 0.0;
+        double rhs_norm2 = 0.0;
+        for (std::size_t i = 0; i < nc; ++i) {
+            rhs_norm2 += rc(i) * rc(i);
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            if (!std::isfinite(diag) || diag <= 0.0) return std::numeric_limits<double>::infinity();
+            z(i) = r(i) / diag;
+            p(i) = z(i);
+            rz += r(i) * z(i);
+        }
+
+        const double rhs_norm = std::sqrt(rhs_norm2);
+        if (rhs_norm > 0.0) {
+            const std::size_t max_iter = std::max<std::size_t>(100, 4 * nc);
+            const double target = 1e-12 * rhs_norm;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                const auto values = Ac.matvec(p);
+                for (std::size_t i = 0; i < nc; ++i) Ap(i) = values[i];
+                double pAp = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) pAp += p(i) * Ap(i);
+                if (!std::isfinite(pAp) || pAp <= 0.0) return std::numeric_limits<double>::infinity();
+                const double alpha = rz / pAp;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    ec(i) += alpha * p(i);
+                    r(i) -= alpha * Ap(i);
+                }
+                double rr = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) rr += r(i) * r(i);
+                if (std::sqrt(rr) <= target) {
+                    converged = true;
+                    break;
+                }
+                double rz_new = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    double diag = 0.0;
+                    for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                        if (col[k] == i) diag += val[k];
+                    z(i) = r(i) / diag;
+                    rz_new += r(i) * z(i);
+                }
+                const double beta = rz_new / rz;
+                for (std::size_t i = 0; i < nc; ++i) p(i) = z(i) + beta * p(i);
+                rz = rz_new;
+            }
+            if (!converged) return std::numeric_limits<double>::infinity();
+        }
+
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            double corr = 0.0;
+            for (const auto& [c, w] : levels_[level].prolongation[i])
+                corr += w * ec(c);
+            x(i) += corr;
+        }
+        if (!smooth(level, rhs, x, post_) || !apply_operator(level, x, Ax))
+            return std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            res(i) = rhs(i) - Ax(i);
+        return res.norm2() / std::max(before, 1e-300);
+    }
+
+    double two_grid_sine_mode_residual_ratio(std::size_t level, std::size_t mode) const
+    {
+        if (level + 1 >= levels_.size() || mode == 0) {
+            throw std::out_of_range("two_grid_sine_mode_residual_ratio: invalid level or mode");
+        }
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        }
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        return two_grid_residual_ratio(level, rhs);
+    }
+
+    double sine_mode_vcycle_energy_ratio(std::size_t level,
+                                            std::size_t mode) const
+    {
+        if (level >= levels_.size() || mode == 0)
+            throw std::out_of_range("sine_mode_vcycle_energy_ratio: invalid level or mode");
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i)
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs))
+            return std::numeric_limits<double>::infinity();
+        Vector x(n, 0.0);
+        if (!vcycle(level, rhs, x))
+            return std::numeric_limits<double>::infinity();
+
+        Vector error(n, 0.0), Aerror(n, 0.0), Aexact(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) error(i) = exact(i) - x(i);
+        if (!apply_operator(level, error, Aerror) ||
+            !apply_operator(level, exact, Aexact))
+            return std::numeric_limits<double>::infinity();
+
+        double eAe = 0.0;
+        double exactAe = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            eAe += error(i) * Aerror(i);
+            exactAe += exact(i) * Aexact(i);
+        }
+        if (!std::isfinite(eAe) || !std::isfinite(exactAe) || exactAe <= 0.0)
+            return std::numeric_limits<double>::infinity();
+        return std::sqrt(std::max(0.0, eAe) / exactAe);
+    }
+
+    double sine_mode_smoother_residual_ratio(std::size_t level,
+                                             std::size_t mode,
+                                             std::size_t sweeps) const
+    {
+        if (level >= levels_.size() || mode == 0) {
+            throw std::out_of_range("sine_mode_smoother_residual_ratio: invalid level or mode");
+        }
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        }
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        const double before = rhs.norm2();
+        if (!(before > 0.0) || !std::isfinite(before)) return 0.0;
+        Vector x(n, 0.0);
+        if (!smooth(level, rhs, x, sweeps)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        Vector Ax(n, 0.0);
+        if (!apply_operator(level, x, Ax)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        Vector residual(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) residual(i) = rhs(i) - Ax(i);
+        return residual.norm2() / std::max(before, 1e-300);
+    }
+
+
+    std::size_t first_prolongation_nnz() const
+    {
+        if (levels_.size() < 2)
+            throw std::out_of_range("first_prolongation_nnz: hierarchy unavailable");
+        std::size_t nnz = 0;
+        for (const auto& row : levels_.front().prolongation) nnz += row.size();
+        return nnz;
+    }
+
     double prolongation_row_sum(std::size_t fine_cell) const
     {
         if (levels_.size() < 2 ||
@@ -181,6 +863,38 @@ public:
         if (z.size() != r.size()) z.resize(r.size());
         z.fill(0.0);
         if (!vcycle(0, compatible_r, z)) return false;
+        if (constant_null_space_) remove_constant(z);
+        return z.is_valid();
+    }
+
+    struct VcycleDiagnostic {
+        std::size_t level = 0;
+        std::size_t size = 0;
+        double rhs_norm = 0.0;
+        double x_initial_norm = 0.0;
+        double residual_before = 0.0;
+        double residual_after_pre = 0.0;
+        double coarse_rhs_norm = 0.0;
+        double coarse_solution_norm = 0.0;
+        double correction_norm = 0.0;
+        double correction_operator_norm = 0.0;
+        double coarse_equation_relative_residual = 0.0;
+        double residual_after_correction = 0.0;
+        double residual_after_post = 0.0;
+        double coarse_residual_before = 0.0;
+        double coarse_residual_after = 0.0;
+    };
+
+    bool apply_with_diagnostics(const Vector& r, Vector& z,
+                                std::vector<VcycleDiagnostic>& diagnostics) const
+    {
+        diagnostics.clear();
+        if (levels_.empty() || r.size() != op_.rows() || !r.is_valid()) return false;
+        Vector compatible_r = r;
+        if (constant_null_space_) remove_constant(compatible_r);
+        if (z.size() != r.size()) z.resize(r.size());
+        z.fill(0.0);
+        if (!vcycle_diagnostic(0, compatible_r, z, diagnostics)) return false;
         if (constant_null_space_) remove_constant(z);
         return z.is_valid();
     }
@@ -327,13 +1041,12 @@ private:
                 strong[i].push_back(j);
             }
             std::sort(strong[i].begin(), strong[i].end());
-            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),
-                            strong[i].end());
+            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),                            strong[i].end());
         }
         return strong;
     }
 
-    static void build_cf_interpolation(const Level& level,
+    static bool build_cf_interpolation(const Level& level,
                                        double strength_threshold,
                                        std::vector<TransferRow>& prolongation,
                                        std::vector<std::size_t>& aggregate,
@@ -341,66 +1054,158 @@ private:
     {
         const std::size_t n = level.A.n_rows();
         const auto strong = build_strength_graph(level, strength_threshold);
-        std::vector<std::vector<std::size_t>> neighborhood = strong;
+
+        // Ruge--Stüben uses both the strong-dependence graph S and its
+        // transpose S^T.  The first pass selects high-influence points as C
+        // points and marks their strongly connected neighbours F.  Measures
+        // are recomputed after every selection rather than using a stale
+        // degree: this keeps the implementation deterministic and makes the
+        // influence update explicit.
+        std::vector<std::vector<std::size_t>> transpose(n);
         for (std::size_t i = 0; i < n; ++i) {
-            for (const std::size_t j : strong[i]) neighborhood[j].push_back(i);
-        }
-        for (auto& neighbors : neighborhood) {
-            std::sort(neighbors.begin(), neighbors.end());
-            neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
-                            neighbors.end());
+            for (const std::size_t j : strong[i]) {
+                if (j < n) transpose[j].push_back(i);
+            }
         }
 
-        // Deterministic serial maximal-independent-set splitting. This is the
-        // local analogue of the independent-set completion used by HMIS: pick
-        // the most connected undecided point as C and mark its graph neighbors F.
+        std::vector<std::vector<std::size_t>> neighborhood(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            neighborhood[i] = strong[i];
+            neighborhood[i].insert(neighborhood[i].end(),
+                                    transpose[i].begin(), transpose[i].end());
+            std::sort(neighborhood[i].begin(), neighborhood[i].end());
+            neighborhood[i].erase(
+                std::unique(neighborhood[i].begin(), neighborhood[i].end()),
+                neighborhood[i].end());
+        }
+
         enum class Point : unsigned char { Undecided, Fine, Coarse };
         std::vector<Point> point(n, Point::Undecided);
+        std::vector<std::size_t> influence(n, 0);
+        for (std::size_t i = 0; i < n; ++i)
+            influence[i] = transpose[i].size();
+
         std::size_t undecided = n;
+
         while (undecided > 0) {
             std::size_t best = n;
             std::size_t best_measure = 0;
             for (std::size_t i = 0; i < n; ++i) {
                 if (point[i] != Point::Undecided) continue;
-                std::size_t measure = 0;
-                for (const std::size_t j : neighborhood[i])
-                    if (point[j] == Point::Undecided) ++measure;
-                if (best == n || measure > best_measure ||
-                    (measure == best_measure && i < best)) {
+                if (best == n || influence[i] > best_measure ||
+                    (influence[i] == best_measure && i < best)) {
                     best = i;
-                    best_measure = measure;
+                    best_measure = influence[i];
                 }
             }
+
             point[best] = Point::Coarse;
             --undecided;
-            for (const std::size_t j : neighborhood[best]) {
+
+            // Points that strongly depend on the new C point become F.
+            // Every newly-created F point then increases the influence
+            // measure of its strong influencers. This is the dynamic
+            // Ruge--Stuben first-pass update; recomputing only the number of
+            // undecided neighbours is not equivalent and over-coarsens paths
+            // into a ~1/3 C-set.
+            for (const std::size_t j : transpose[best]) {
                 if (point[j] == Point::Undecided) {
                     point[j] = Point::Fine;
                     --undecided;
+                    for (const std::size_t k : strong[j]) {
+                        if (point[k] == Point::Undecided)
+                            ++influence[k];
+                    }
                 }
             }
         }
 
-        // Every F point needs a direct C interpolatory neighbor. Promote any
-        // exceptional isolated point instead of manufacturing a hidden fallback.
+        auto has_common_coarse = [&](std::size_t i, std::size_t j) {
+            for (const std::size_t ci : strong[i]) {
+                if (point[ci] != Point::Coarse) continue;
+                for (const std::size_t cj : strong[j]) {
+                    if (ci == cj && point[cj] == Point::Coarse) return true;
+                }
+            }
+            return false;
+        };
+
+        // RS second pass: every strong F-F connection must be representable
+        // through a common C neighbour.  If the first pass leaves a violation,
+        // augment the C set only with a point that is not strongly adjacent to
+        // an existing C point.  On the 1-D Poisson model this pass is inactive
+        // for the normal alternating C/F splitting; it is nevertheless needed
+        // for general strength graphs.
+        bool changed = true;
+        std::size_t guard = 0;
+        while (changed && guard++ <= 2 * n + 1) {
+            changed = false;
+            for (std::size_t i = 0; i < n && !changed; ++i) {
+                if (point[i] != Point::Fine) continue;
+                for (const std::size_t j : strong[i]) {
+                    if (point[j] != Point::Fine) continue;
+                    if (has_common_coarse(i, j)) continue;
+
+                    // Second-pass augmentation is allowed to add a C point
+                    // adjacent to an existing C point.  The first pass enforces
+                    // maximal C/F independence; the second pass exists precisely
+                    // to repair F-F connections that have no common C neighbour.
+                    // Rejecting both endpoints here can leave an F-F edge with no
+                    // admissible classical interpolation stencil.
+                    const std::size_t candidate = i;
+
+                    point[candidate] = Point::Coarse;
+                    changed = true;
+                    for (const std::size_t q : neighborhood[candidate]) {
+                        if (point[q] == Point::Undecided) point[q] = Point::Fine;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // A valid classical interpolation requires every F point to have at
+        // least one strong C neighbour in its own dependence set.  If a
+        // directed strength graph leaves such a point without one, promote the
+        // point itself when that does not violate C independence.
         for (std::size_t i = 0; i < n; ++i) {
             if (point[i] != Point::Fine) continue;
-            const bool has_coarse = std::any_of(
-                neighborhood[i].begin(), neighborhood[i].end(),
-                [&](std::size_t j) { return point[j] == Point::Coarse; });
-            if (!has_coarse) point[i] = Point::Coarse;
+            bool has_strong_C = false;
+            for (const std::size_t j : strong[i]) {
+                if (point[j] == Point::Coarse) {
+                    has_strong_C = true;
+                    break;
+                }
+            }
+            if (!has_strong_C) {
+                // At this stage there is no valid interpolation stencil for
+                // this F point. Promote it rather than manufacturing a
+                // singleton/fallback interpolation row.
+                point[i] = Point::Coarse;
+            }
         }
 
         std::vector<std::size_t> coarse_index(n, n);
         coarse_n = 0;
-        for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t i = 0; i < n; ++i) {
             if (point[i] == Point::Coarse) coarse_index[i] = coarse_n++;
+        }
 
         const auto* row = level.A.row_offsets_data();
         const auto* col = level.A.columns_data();
         const auto* val = level.A.values_data();
+
+        auto matrix_value = [&](std::size_t i, std::size_t j) {
+            double value = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == j) value += val[k];
+            }
+            return value;
+        };
+
         prolongation.assign(n, {});
         aggregate.assign(n, 0);
+
         for (std::size_t i = 0; i < n; ++i) {
             if (point[i] == Point::Coarse) {
                 prolongation[i].push_back({coarse_index[i], 1.0});
@@ -408,41 +1213,137 @@ private:
                 continue;
             }
 
-            std::vector<std::pair<std::size_t, double>> raw;
-            double raw_sum = 0.0;
-            double magnitude_sum = 0.0;
             const double diagonal = 1.0 / level.inv_diag[i];
-            for (const std::size_t j : neighborhood[i]) {
-                if (point[j] != Point::Coarse) continue;
-                double aij = 0.0;
-                for (std::size_t k = row[i]; k < row[i + 1]; ++k)
-                    if (col[k] == j) aij += val[k];
-                const double weight = -aij / diagonal;
-                raw.push_back({coarse_index[j], weight});
-                raw_sum += weight;
-                magnitude_sum += std::abs(weight);
+            std::vector<std::size_t> c_neighbors;
+            c_neighbors.reserve(strong[i].size());
+            for (const std::size_t j : strong[i]) {
+                if (point[j] == Point::Coarse)
+                    c_neighbors.push_back(j);
             }
 
-            if (std::abs(raw_sum) <= 1e-30 || !std::isfinite(raw_sum)) {
-                raw_sum = magnitude_sum;
-                for (auto& entry : raw) entry.second = std::abs(entry.second);
+            // The second-pass criterion above should make this non-empty.
+            // If it is not, the splitting is not valid for classical
+            // interpolation; reject the hierarchy rather than inventing a
+            // non-Galerkin fallback.
+            if (c_neighbors.empty()) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
             }
-            if (!(std::abs(raw_sum) > 1e-30) || !std::isfinite(raw_sum)) {
-                const double uniform = 1.0 / static_cast<double>(raw.size());
-                for (auto& entry : raw) entry.second = uniform;
-            } else {
-                for (auto& entry : raw) entry.second /= raw_sum;
+
+            // Classical Ruge--Stüben interpolation:
+            //
+            // w_ij = -(a_ij + sum_{k in F_i^s}
+            //                  a_ik a_kj / sum_{m in C_k^s} a_km)
+            //             / (a_ii + sum_{k in N_i^w} a_ik).
+            //
+            // This is the standard signed formula. There is deliberately no
+            // arbitrary post-normalization: constant preservation follows from
+            // the algebraic formula for Laplacian/M-matrix rows, and a failure
+            // to obtain finite weights is a setup failure rather than a hidden
+            // fallback.
+            double weak_sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                if (j == i) continue;
+                if (!std::binary_search(strong[i].begin(), strong[i].end(), j))
+                    weak_sum += val[k];
+            }
+
+            const double denominator = diagonal + weak_sum;
+            if (!std::isfinite(denominator) || std::abs(denominator) <= 1e-30) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
+            }
+
+            std::map<std::size_t, double> weights;
+            for (const std::size_t j : c_neighbors) {
+                weights[coarse_index[j]] += matrix_value(i, j);
+            }
+
+            for (const std::size_t k : strong[i]) {
+                if (point[k] != Point::Fine) continue;
+
+                // Classical RS interpolation uses the complete strong
+                // C-neighbour set of the intermediate F-point k. Restricting
+                // this contribution to C_i^s ∩ C_k^s is not the RS formula
+                // and can destroy the interpolation space on recursively
+                // generated Galerkin operators.
+                double c_sum = 0.0;
+                std::vector<std::size_t> k_c_neighbors;
+                for (const std::size_t m : strong[k]) {
+                    if (point[m] == Point::Coarse) {
+                        c_sum += matrix_value(k, m);
+                        k_c_neighbors.push_back(m);
+                    }
+                }
+                if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return false;
+                }
+
+                const double aik = matrix_value(i, k);
+                for (const std::size_t j : k_c_neighbors) {
+                    const double akj = matrix_value(k, j);
+                    weights[coarse_index[j]] += aik * akj / c_sum;
+                }
             }
 
             double largest = -1.0;
-            for (const auto& entry : raw) {
-                prolongation[i].push_back(entry);
-                if (std::abs(entry.second) >= largest) {
-                    largest = std::abs(entry.second);
-                    aggregate[i] = entry.first;
+            for (const auto& [coarse, numerator] : weights) {
+                const double weight = -numerator / denominator;
+                if (!std::isfinite(weight)) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return false;
+                }
+                prolongation[i].push_back({coarse, weight});
+                if (std::abs(weight) > largest) {
+                    largest = std::abs(weight);
+                    aggregate[i] = coarse;
+                }
+            }
+
+            if (prolongation[i].empty()) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
+            }
+
+            // The constant vector is the near-nullspace mode for the elliptic
+            // operators targeted by classical AMG. Enforce P*1 = 1 explicitly
+            // after the signed RS construction. This is a mathematical
+            // near-nullspace constraint, not a convergence/tolerance fallback.
+            double row_sum = 0.0;
+            for (const auto& [coarse, weight] : prolongation[i]) {
+                (void)coarse;
+                row_sum += weight;
+            }
+            if (!std::isfinite(row_sum) || std::abs(row_sum) <= 1e-30) {
+                prolongation.clear();
+                aggregate.clear();
+                coarse_n = 0;
+                return false;
+            }
+            for (auto& [coarse, weight] : prolongation[i]) {
+                (void)coarse;
+                weight /= row_sum;
+                if (!std::isfinite(weight)) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return false;
                 }
             }
         }
+        return true;
     }
 
     static void build_smoothed_aggregation_interpolation(
@@ -594,8 +1495,7 @@ private:
     {
         const auto& current = levels_[level];
         if (level + 1 == levels_.size()) {
-            return smooth_coarsest(level, r, x);
-        }
+            return smooth_coarsest(level, r, x);        }
 
         if (!smooth(level, r, x, pre_)) return false;
 
@@ -623,6 +1523,125 @@ private:
         if (constant_null_space_) remove_constant(x);
 
         return smooth(level, r, x, post_);
+    }
+    bool vcycle_diagnostic(std::size_t level, const Vector& r, Vector& x,
+                           std::vector<VcycleDiagnostic>& diagnostics) const
+    {
+        VcycleDiagnostic d;
+        d.level = level;
+        d.size = r.size();
+        d.rhs_norm = r.norm2();
+        d.x_initial_norm = x.norm2();
+        Vector Ax(r.size());
+        if (!apply_operator(level, x, Ax)) return false;
+        Vector residual(r.size());
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        d.residual_before = residual.norm2();
+
+        const std::size_t index = diagnostics.size();
+        diagnostics.push_back(d);
+        if (level + 1 == levels_.size()) {
+            const double coarse_before = residual.norm2();
+            if (!smooth_coarsest(level, r, x)) return false;
+            if (!apply_operator(level, x, Ax)) return false;
+            for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+            diagnostics[index].coarse_residual_before = coarse_before;
+            diagnostics[index].coarse_residual_after = residual.norm2();
+            diagnostics[index].residual_after_pre = diagnostics[index].coarse_residual_after;
+            diagnostics[index].residual_after_post = diagnostics[index].coarse_residual_after;
+            diagnostics[index].coarse_solution_norm = x.norm2();
+            return x.is_valid();
+        }
+
+        if (!smooth(level, r, x, pre_)) return false;
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_pre = residual.norm2();
+
+        const auto& prolongation = levels_[level].prolongation;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector coarse_r(nc, 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i)
+            for (const auto& [coarse, weight] : prolongation[i])
+                coarse_r(coarse) += weight * residual(i);
+        if (constant_null_space_) remove_constant(coarse_r);
+        diagnostics[index].coarse_rhs_norm = coarse_r.norm2();
+
+        Vector coarse_x(nc, 0.0);
+        if (!vcycle_diagnostic(level + 1, coarse_r, coarse_x, diagnostics)) return false;
+        diagnostics[index].coarse_solution_norm = coarse_x.norm2();
+
+        Vector coarse_Ax(nc, 0.0);
+        if (!apply_operator(level + 1, coarse_x, coarse_Ax)) return false;
+        double coarse_eq_r2 = 0.0;
+        double coarse_rhs2 = 0.0;
+        for (std::size_t i = 0; i < nc; ++i) {
+            const double e = coarse_r(i) - coarse_Ax(i);
+            coarse_eq_r2 += e * e;
+            coarse_rhs2 += coarse_r(i) * coarse_r(i);
+        }
+        diagnostics[index].coarse_equation_relative_residual =
+            std::sqrt(coarse_eq_r2 / std::max(coarse_rhs2, 1e-300));
+
+        Vector correction(x.size(), 0.0);
+        for (std::size_t i = 0; i < r.size(); ++i) {
+            for (const auto& [coarse, weight] : prolongation[i])
+                correction(i) += weight * coarse_x(coarse);
+            x(i) += correction(i);
+            if (!std::isfinite(x(i))) return false;
+        }
+        diagnostics[index].correction_norm = correction.norm2();
+        Vector A_correction(x.size(), 0.0);
+        if (!apply_operator(level, correction, A_correction)) return false;
+        diagnostics[index].correction_operator_norm = A_correction.norm2();
+        if (constant_null_space_) remove_constant(x);
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_correction = residual.norm2();
+
+        if (!smooth(level, r, x, post_)) return false;
+        if (!apply_operator(level, x, Ax)) return false;
+        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
+        diagnostics[index].residual_after_post = residual.norm2();
+        return x.is_valid();
+    }
+
+
+    static bool dense_solve(const SparseMatrix& A, const Vector& b, Vector& x)
+    {
+        const std::size_t n=A.n_rows();
+        if(n==0 || b.size()!=n) return false;
+        std::vector<double> m(n*n,0.0),rhs(b.size(),0.0);
+        const auto* row=A.row_offsets_data(); const auto* col=A.columns_data(); const auto* val=A.values_data();
+        for(std::size_t i=0;i<n;++i) {
+            rhs[i]=b(i);
+            for(std::size_t k=row[i];k<row[i+1];++k) m[i*n+col[k]]+=val[k];
+        }
+        for(std::size_t k=0;k<n;++k) {
+            std::size_t p=k; double pa=std::abs(m[k*n+k]);
+            for(std::size_t i=k+1;i<n;++i) if(std::abs(m[i*n+k])>pa) {pa=std::abs(m[i*n+k]);p=i;}
+            if(!std::isfinite(pa) || pa<=128.0*std::numeric_limits<double>::epsilon()*std::max(1.0,pa)) return false;
+            if(p!=k) {
+                for(std::size_t j=k;j<n;++j) std::swap(m[k*n+j],m[p*n+j]);
+                std::swap(rhs[k],rhs[p]);
+            }
+            for(std::size_t i=k+1;i<n;++i) {
+                const double f=m[i*n+k]/m[k*n+k];
+                if(!std::isfinite(f)) return false;
+                m[i*n+k]=0.0;
+                for(std::size_t j=k+1;j<n;++j) m[i*n+j]-=f*m[k*n+j];
+                rhs[i]-=f*rhs[k];
+            }
+        }
+        x.resize(n);
+        for(std::size_t ii=n;ii-- > 0;) {
+            double sum=rhs[ii];
+            for(std::size_t j=ii+1;j<n;++j) sum-=m[ii*n+j]*x(j);
+            if(!std::isfinite(m[ii*n+ii]) || std::abs(m[ii*n+ii])<=1e-30) return false;
+            x(ii)=sum/m[ii*n+ii];
+            if(!std::isfinite(x(ii))) return false;
+        }
+        return true;
     }
 
     bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const

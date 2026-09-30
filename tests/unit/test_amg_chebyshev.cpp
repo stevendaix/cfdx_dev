@@ -77,7 +77,7 @@ static bool check_amg(
     Vector correction;
     if (!amg.apply(rhs, correction) || !correction.is_valid()) return false;
     const double ratio = true_residual_ratio(A, rhs, correction);
-    std::cerr << "AMG residual ratio=" << ratio << " threshold=" << max_ratio << "\\n";
+    std::cerr << "AMG residual ratio=" << ratio << " threshold=" << max_ratio << "\n";
     return std::isfinite(ratio) && ratio < max_ratio;
 }
 
@@ -123,6 +123,131 @@ static SparseMatrix make_fvm_diffusion_2d(std::size_t nx, std::size_t ny,
     return A;
 }
 
+static void print_amg_spectral_diagnostics(std::size_t n) {
+    const SparseMatrix A = make_poisson_1d(n);
+    FunctionalLinearOperator op(
+        A.n_rows(),
+        [&A](const Vector& x, Vector& y) {
+            const auto result = A.matvec(x);
+            for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
+        });
+    MatrixFreeVcyclePreconditioner amg(
+        op, 0.7, 4, 4, 0.25, 25,
+        cfdx::core::AMGInterpolationPolicy::DirectCF);
+    if (!amg.setup(A))
+        throw std::runtime_error("AMG spectral diagnostic setup failed");
+
+    const auto levels = amg.hierarchy_level_sizes();
+    std::cerr << "AMG_DIAGNOSTIC N=" << n
+              << " levels=" << levels.size()
+              << " coarse=" << amg.coarse_size()
+              << " P_nnz=" << amg.first_prolongation_nnz()
+              << " P_row_nnz_min=" << amg.first_prolongation_row_nnz_min()
+              << " P_row_nnz_max=" << amg.first_prolongation_row_nnz_max()
+              << " P_row_sum_min=" << amg.prolongation_row_sum_min()
+              << " P_row_sum_max=" << amg.prolongation_row_sum_max()
+              << " P_linear_relerr=" << amg.first_prolongation_linear_mode_relative_error()
+              << " P_mode1_relerr=" << amg.first_prolongation_mode_relative_error(1)
+              << " P_mode2_relerr=" << amg.first_prolongation_mode_relative_error(2)
+              << " P_mode3_relerr=" << amg.first_prolongation_mode_relative_error(3)
+              << " P_weight=[" << amg.first_prolongation_weight_min()
+              << "," << amg.first_prolongation_weight_max() << "]"
+              << " P_negative=" << amg.first_prolongation_negative_count()
+              << " Ac_sym_relerr=" << amg.first_coarse_symmetry_relative_error()
+              << " Ac_diag=[" << amg.first_coarse_diagonal_min()
+              << "," << amg.first_coarse_diagonal_max() << "]"
+              << " Ac_gershgorin_min=" << amg.first_coarse_gershgorin_lower_bound()
+              << "\n";
+    std::cerr << "AMG_LEVELS";
+    for (const auto size : levels) std::cerr << " " << size;
+    std::cerr << "\n";
+
+    // Apply one complete V-cycle to the first three discrete Poisson modes.
+    // This separates coarse-space representation quality from CG convergence:
+    // the reported factor is ||b-A M^{-1}b||/||b|| for one AMG application.
+    for (std::size_t mode = 1; mode <= 3; ++mode) {
+        Vector exact(n);
+        Vector rhs(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(3.14159265358979323846 *
+                                static_cast<double>(mode * (i + 1)) /
+                                static_cast<double>(n + 1));
+        }
+        const auto Ax = A.matvec(exact);
+        for (std::size_t i = 0; i < n; ++i) rhs(i) = Ax[i];
+
+        Vector correction;
+        if (!amg.apply(rhs, correction))
+            throw std::runtime_error("AMG mode diagnostic apply failed");
+        const auto Az = A.matvec(correction);
+        double before2 = 0.0;
+        double after2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            before2 += rhs(i) * rhs(i);
+            const double residual = rhs(i) - Az[i];
+            after2 += residual * residual;
+        }
+        std::cerr << "AMG_MODE N=" << n
+                  << " k=" << mode
+                  << " vcycle_residual_ratio="
+                  << std::sqrt(after2 / std::max(before2, 1e-300))
+                  << "\n";
+    }
+
+    // Compare the alternative smoothed-aggregation coarse space on the same
+    // Poisson operators. This is diagnostic only: no pass/fail threshold is
+    // changed by this comparison.
+    MatrixFreeVcyclePreconditioner sa(
+        op, 0.7, 4, 4, 0.25, 25,
+        cfdx::core::AMGInterpolationPolicy::SmoothedAggregation);
+    if (!sa.setup(A))
+        throw std::runtime_error("AMG smoothed-aggregation diagnostic setup failed");
+    std::cerr << "AMG_SA N=" << n
+              << " coarse=" << sa.coarse_size()
+              << " P_nnz=" << sa.first_prolongation_nnz()
+              << " P_mode1_relerr=" << sa.first_prolongation_mode_relative_error(1)
+              << " P_mode2_relerr=" << sa.first_prolongation_mode_relative_error(2)
+              << " P_mode3_relerr=" << sa.first_prolongation_mode_relative_error(3)
+              << " P_weight=[" << sa.first_prolongation_weight_min()
+              << "," << sa.first_prolongation_weight_max() << "]"
+              << " P_negative=" << sa.first_prolongation_negative_count()
+              << " Ac_sym_relerr=" << sa.first_coarse_symmetry_relative_error()
+              << " Ac_diag=[" << sa.first_coarse_diagonal_min()
+              << "," << sa.first_coarse_diagonal_max() << "]"
+              << " Ac_gershgorin_min=" << sa.first_coarse_gershgorin_lower_bound();
+
+    // Apply the same independent V-cycle measurement to the first three
+    // discrete Poisson modes for Smoothed Aggregation. This is diagnostic only
+    // and uses exactly the same RHS construction as Direct-CF.
+    for (std::size_t mode = 1; mode <= 3; ++mode) {
+        Vector exact(n);
+        Vector rhs_mode(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            exact(i) = std::sin(3.14159265358979323846 *
+                                static_cast<double>(mode * (i + 1)) /
+                                static_cast<double>(n + 1));
+        }
+        const auto rhs_mode_raw = A.matvec(exact);
+        for (std::size_t i = 0; i < n; ++i) rhs_mode(i) = rhs_mode_raw[i];
+
+        Vector correction;
+        if (!sa.apply(rhs_mode, correction))
+            throw std::runtime_error("AMG smoothed-aggregation mode apply failed");
+
+        const auto Az = A.matvec(correction);
+        double before2 = 0.0;
+        double after2 = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            before2 += rhs_mode(i) * rhs_mode(i);
+            const double residual = rhs_mode(i) - Az[i];
+            after2 += residual * residual;
+        }
+        std::cerr << " vcycle_mode" << mode << "_ratio="
+                  << std::sqrt(after2 / std::max(before2, 1e-300));
+    }
+    std::cerr << "\n";
+}
+
 int main() {
     using namespace cfdx::core;
 
@@ -153,10 +278,13 @@ int main() {
         return 1;
     }
 
-    if (amg.coarse_size() != 2 ||
-        amg.aggregate_of(0) != amg.aggregate_of(1) ||
-        amg.aggregate_of(2) != amg.aggregate_of(3) ||
-        amg.aggregate_of(0) == amg.aggregate_of(2)) {
+    // The AMG hierarchy now uses a direct coarse solve for systems with
+    // <= 16 unknowns. This is an intentional hierarchy contract: the 4x4
+    // smoke test therefore remains a single coarse level rather than forcing
+    // an obsolete 4 -> 2 aggregation just for the unit test.
+    if (amg.coarse_size() != 4 ||
+        amg.hierarchy_level_sizes().size() != 1) {
+        std::cerr << "Unexpected direct-coarse hierarchy for 4x4 test\n";
         return 2;
     }
 
@@ -186,16 +314,25 @@ int main() {
         op, 0.7, 4, 4, 0.25, 25,
         AMGInterpolationPolicy::SmoothedAggregation);
     if (!smoothed_aggregation.setup(A) ||
-        smoothed_aggregation.coarse_size() == 0 ||
-        smoothed_aggregation.coarse_size() >= A.n_rows()) {
+        smoothed_aggregation.coarse_size() == 0) {
         return 30;
     }
-    for (std::size_t i = 0; i < A.n_rows(); ++i) {
-        if (std::abs(smoothed_aggregation.prolongation_row_sum(i) - 1.0) >
-            1e-12) {
-            std::cerr << "Smoothed aggregation did not preserve constants\n";
-            return 31;
+    // For small systems the AMG contract permits a direct coarse solve,
+    // in which case there is no fine-to-coarse prolongation operator to
+    // inspect. Do not query a nonexistent P just because coarse_size()==n.
+    // When a genuine multilevel hierarchy exists, verify constant preservation
+    // on every fine row.
+    if (smoothed_aggregation.hierarchy_level_sizes().size() >= 2) {
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            if (std::abs(smoothed_aggregation.prolongation_row_sum(i) - 1.0) >
+                1e-12) {
+                std::cerr << "Smoothed aggregation did not preserve constants\n";
+                return 31;
+            }
         }
+    } else if (smoothed_aggregation.coarse_size() != A.n_rows()) {
+        std::cerr << "Unexpected direct-coarse Smoothed Aggregation hierarchy\n";
+        return 31;
     }
     Vector sa_correction;
     if (!smoothed_aggregation.apply(rhs, sa_correction) ||
@@ -209,7 +346,7 @@ int main() {
     Vector rhs1d(4);
     for (std::size_t i = 0; i < rhs1d.size(); ++i) rhs1d(i) = (i % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson1d, rhs1d, 1.0)) {
-        std::cerr << "1D Poisson AMG residual reduction failed\\n";
+        std::cerr << "1D Poisson AMG residual reduction failed\n";
         return 9;
     }
 
@@ -217,7 +354,7 @@ int main() {
     Vector rhs2d(16);
     for (std::size_t i = 0; i < rhs2d.size(); ++i) rhs2d(i) = ((i % 4 + i / 4) % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson2d, rhs2d, 0.999)) {
-        std::cerr << "2D Poisson AMG residual reduction failed\\n";
+        std::cerr << "2D Poisson AMG residual reduction failed\n";
         return 10;
     }
     if (!check_amg(
@@ -230,7 +367,7 @@ int main() {
     const SparseMatrix anisotropic = make_anisotropic_diffusion_2d(16, 16, 1.0, 1000.0);
     Vector rhs_aniso(256, 1.0);
     if (!check_amg(anisotropic, rhs_aniso, 0.99)) {
-        std::cerr << "Strongly anisotropic AMG regression failed\\n";
+        std::cerr << "Strongly anisotropic AMG regression failed\n";
         return 12;
     }
     if (!check_amg(
@@ -289,7 +426,7 @@ int main() {
     const SparseMatrix fvm_diffusion = make_fvm_diffusion_2d(16, 16, 1.0, 20.0);
     Vector rhs_fvm(256, 1.0);
     if (!check_amg(fvm_diffusion, rhs_fvm, 0.95)) {
-        std::cerr << "FVM diffusion AMG regression failed\\n";
+        std::cerr << "FVM diffusion AMG regression failed\n";
         return 16;
     }
 
@@ -310,9 +447,13 @@ int main() {
     duplicate_diag.finalize();
     Vector rhs_dup(4, 1.0);
     if (!check_amg(duplicate_diag, rhs_dup, 0.95)) {
-        std::cerr << "Duplicate-diagonal AMG regression failed\\n";
+        std::cerr << "Duplicate-diagonal AMG regression failed\n";
         return 11;
     }
+
+    print_amg_spectral_diagnostics(256);
+    print_amg_spectral_diagnostics(1024);
+    print_amg_spectral_diagnostics(4096);
 
     ChebyshevSmoother::Controls controls;
     controls.lambda_max = 0.0;

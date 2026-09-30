@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace cfdx::core {
 
@@ -43,6 +44,10 @@ public:
     bool uses_constant_null_space() const noexcept;
     AMGMemoryPolicy memory_policy() const noexcept;
     std::size_t coarse_size() const noexcept;
+    std::vector<std::size_t> hierarchy_level_sizes() const;
+    std::size_t first_prolongation_nnz() const;
+    double prolongation_row_sum_min() const;
+    double prolongation_row_sum_max() const;
     std::size_t hierarchy_builds() const noexcept;
     std::size_t numeric_updates() const noexcept;
     const std::string& last_error() const noexcept;

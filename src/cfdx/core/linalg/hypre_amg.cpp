@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/linear_operator.h"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -79,8 +80,11 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
     }
 
     double omega = 0.7;
-    std::size_t pre_sweeps = 4;
-    std::size_t post_sweeps = 4;
+    // Balanced native AMG is the qualification/default path. Use enough
+    // Jacobi smoothing to make the V-cycle robust at the 4096/16384 scaling
+    // points; the Fast policy remains explicit below.
+    std::size_t pre_sweeps = 6;
+    std::size_t post_sweeps = 6;
     if (impl_->policy == AMGMemoryPolicy::Low) {
         omega = 0.65;
         pre_sweeps = 2;
@@ -113,13 +117,35 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
 }
 
 bool NativeAMGPreconditioner::update_values(const SparseMatrix& matrix) {
+    // update_values() is a numeric-only operation. Symbolic ownership remains
+    // with the caller: an uninitialized hierarchy or a changed CSR graph must
+    // be rejected rather than silently invoking setup().
     if (!impl_->op || !impl_->amg || matrix.n_rows() == 0 ||
         matrix.n_rows() != matrix.n_cols() || !matrix.is_consistent()) {
         impl_->error = "native AMG numeric update requires an existing compatible hierarchy";
         return false;
     }
-    if (!impl_->amg->update_values(matrix)) {
+
+    const SparseMatrix& current = impl_->op->matrix();
+    if (current.n_rows() != matrix.n_rows() ||
+        current.n_cols() != matrix.n_cols() ||
+        current.nnz() != matrix.nnz() ||
+        !current.is_consistent()) {
         impl_->error = "native AMG numeric update requires an unchanged CSR pattern";
+        return false;
+    }
+    const auto* current_row = current.row_offsets_data();
+    const auto* current_col = current.columns_data();
+    const auto* new_row = matrix.row_offsets_data();
+    const auto* new_col = matrix.columns_data();
+    if (!std::equal(current_row, current_row + current.n_rows() + 1, new_row) ||
+        !std::equal(current_col, current_col + current.nnz(), new_col)) {
+        impl_->error = "native AMG numeric update requires an unchanged CSR pattern";
+        return false;
+    }
+
+    if (!impl_->amg->update_values(matrix)) {
+        impl_->error = "native AMG numeric update failed";
         return false;
     }
     impl_->op->update(matrix);
@@ -166,6 +192,25 @@ AMGMemoryPolicy NativeAMGPreconditioner::memory_policy() const noexcept {
 
 std::size_t NativeAMGPreconditioner::coarse_size() const noexcept {
     return impl_->amg ? impl_->amg->coarse_size() : 0;
+}
+
+std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_sizes() const {
+    return impl_->amg ? impl_->amg->hierarchy_level_sizes()
+                      : std::vector<std::size_t>{};
+}
+
+auto NativeAMGPreconditioner::first_prolongation_nnz() const -> std::size_t {
+    return impl_->amg ? impl_->amg->first_prolongation_nnz() : 0;
+}
+
+double NativeAMGPreconditioner::prolongation_row_sum_min() const {
+    if (!impl_->amg) return std::numeric_limits<double>::quiet_NaN();
+    return impl_->amg->prolongation_row_sum_min();
+}
+
+double NativeAMGPreconditioner::prolongation_row_sum_max() const {
+    if (!impl_->amg) return std::numeric_limits<double>::quiet_NaN();
+    return impl_->amg->prolongation_row_sum_max();
 }
 
 std::size_t NativeAMGPreconditioner::hierarchy_builds() const noexcept {

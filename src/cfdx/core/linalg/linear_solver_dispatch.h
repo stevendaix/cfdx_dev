@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
@@ -64,9 +65,20 @@ inline LinearSolveReport solve_linear_system(
     double tolerance = 1e-12) {
     LinearSolveReport report;
     report.plan = select_linear_solver(problem, matrix.n_rows(), request);
-    auto preconditioner = make_scalar_preconditioner(
-        report.plan.preconditioner,
-        report.plan.null_space == NullSpaceModel::Constant);
+    std::unique_ptr<Preconditioner> preconditioner;
+    if (problem == LinearProblemKind::CoupledPressureVelocity) {
+        if (matrix.n_rows() % 4 != 0)
+            throw std::invalid_argument("coupled pressure-velocity system must have 4N unknowns");
+        if (report.plan.preconditioner == PreconditionerModel::CoupledBlockSchur)
+            preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+                matrix.n_rows() / 4);
+        else
+            throw std::invalid_argument("coupled dispatch requires an explicit coupled block preconditioner");
+    } else {
+        preconditioner = make_scalar_preconditioner(
+            report.plan.preconditioner,
+            report.plan.null_space == NullSpaceModel::Constant);
+    }
     Preconditioner* pc = preconditioner.get();
     std::unique_ptr<NullSpaceProjector> null_space;
     if (report.plan.null_space == NullSpaceModel::Constant)
