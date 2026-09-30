@@ -40,7 +40,7 @@ int main() {
         WallDistanceMethod::HYBRID_POISSON_EIKONAL}};
     for(const auto method:methods) {
         const auto r=compute_wall_distance(method,s,g,20);
-        std::cerr << "wall-distance method: " << wall_distance_method_name(method) << "\\n";
+        std::cerr << "wall-distance method: " << wall_distance_method_name(method) << "\n";
         require(r.distance.size()==g.points.size(),"distance size mismatch");
         for(std::size_t i=0;i<r.distance.size();++i)
             if(!g.solid[i]) require(r.valid[i] && std::isfinite(r.distance[i]) && r.distance[i]>=0.0,
@@ -193,6 +193,7 @@ int main() {
         double normalized_cut_residual=0.0;
         std::size_t cut_samples=0;
         std::size_t interior_samples=0;
+        std::size_t outer_samples=0;
         std::size_t worst_cut_id=0;
         for(std::size_t id=0;id<og.points.size();++id) {
             if(og.solid[id]) continue;
@@ -205,8 +206,10 @@ int main() {
             const std::size_t j=rem/og.nx;
             const std::size_t i=rem%og.nx;
             bool cut=false;
+            bool outer=false;
             auto inspect=[&](std::size_t q,bool exists) {
-                if(exists && og.solid[q]) cut=true;
+                if(!exists) { outer=true; return; }
+                if(og.solid[q]) cut=true;
             };
             inspect(i>0?og.index(i-1,j,k):0,i>0);
             inspect(i+1<og.nx?og.index(i+1,j,k):0,i+1<og.nx);
@@ -214,6 +217,15 @@ int main() {
             inspect(j+1<og.ny?og.index(i,j+1,k):0,j+1<og.ny);
             inspect(k>0?og.index(i,j,k-1):0,k>0);
             inspect(k+1<og.nz?og.index(i,j,k+1):0,k+1<og.nz);
+
+            // A missing face is an outer-domain face.  poisson_laplacian_at()
+            // realizes homogeneous Neumann there by omitting the flux entirely,
+            // so the manufactured quadratic field cannot satisfy -lap(phi)=1 on
+            // those nodes: the omitted flux alone is O(1/h).  Such nodes are
+            // neither fluid-fluid interior nodes nor wall-cut nodes and must
+            // enter neither gate, or the outer-boundary defect is misreported
+            // as an interior operator error.
+            if(outer) { ++outer_samples; continue; }
 
             const double op=std::abs(-poisson_laplacian_at(obvh,oblique_phi,og,id)-1.0);
             if(cut) {
@@ -230,7 +242,10 @@ int main() {
 
         require(interior_samples>0,"oblique audit has no interior samples");
         require(cut_samples>0,"oblique audit has no cut-face samples");
-        require(interior_operator_res<1e-12,
+        // The operator scales as 1/h^2, so its roundoff floor does too.  Gate
+        // the h^2-normalized defect to keep a single mesh-independent
+        // tolerance instead of one that silently tightens under refinement.
+        require(interior_operator_res*h*h<1e-13,
                 "oblique interior Poisson operator is not exact");
         require(std::isfinite(cut_operator_res) && cut_operator_res>0.0,
                 "oblique cut-face operator defect was not detected");
@@ -241,7 +256,9 @@ int main() {
                   << " interior_operator_inf=" << interior_operator_res
                   << " cut_operator_inf=" << cut_operator_res
                   << " normalized_cut_operator_inf=" << normalized_cut_residual
+                  << " interior_samples=" << interior_samples
                   << " cut_samples=" << cut_samples
+                  << " outer_samples=" << outer_samples
                   << " worst_cut_id=" << worst_cut_id << "\n";
 
         if(have_previous_oblique) {

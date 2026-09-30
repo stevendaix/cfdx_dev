@@ -473,7 +473,7 @@ int main(int argc,char** argv)
     for(const auto& r:rows) {
         if(!std::isfinite(r.corrected_phi_l2) || !std::isfinite(r.corrected_residual)) {
             std::cerr << "FAIL corrected manufactured Poisson diagnostic: N=" << r.n
-                      << " case=" << r.case_name << "\\n";
+                      << " case=" << r.case_name << "\n";
             return 4;
         }
         if(!(r.corrected_phi_l2<0.01 && r.corrected_residual<1e-8)) {
@@ -481,7 +481,7 @@ int main(int argc,char** argv)
                       << " case=" << r.case_name
                       << " corrected_phi_l2=" << r.corrected_phi_l2
                       << " corrected_residual=" << r.corrected_residual
-                      << " corrected_iterations=" << r.corrected_iterations << "\\n";
+                      << " corrected_iterations=" << r.corrected_iterations << "\n";
             return 5;
         }
     }

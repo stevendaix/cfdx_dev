@@ -96,10 +96,10 @@ void print_poisson_stencil_microscope(const WallDistanceBvh& bvh,
     std::cout << "POISSON_STENCIL_MICROSCOPE cell=" << id
               << " ijk=" << i << ":" << j << ":" << k
               << " point=" << p.x << ":" << p.y << ":" << p.z
-              << " phi=" << phi[id] << " target_b=1\\n";
+              << " phi=" << phi[id] << " target_b=1\n";
     auto face=[&](const char* name,std::size_t q,bool exists,double h) {
         if(!exists) {
-            std::cout << "  face=" << name << " type=outer coefficient=0 contribution=0\\n";
+            std::cout << "  face=" << name << " type=outer coefficient=0 contribution=0\n";
             return;
         }
         if(g.solid[q]) {
@@ -114,7 +114,7 @@ void print_poisson_stencil_microscope(const WallDistanceBvh& bvh,
                       << " contribution=" << contribution
                       << " ray_hit=" << wd.ray_hit
                       << " fallback=" << wd.fallback
-                      << " alignment=" << wd.alignment << "\\n";
+                      << " alignment=" << wd.alignment << "\n";
         } else {
             const double coeff=1.0/(h*h);
             const double contribution=coeff*(phi[id]-phi[q]);
@@ -123,7 +123,7 @@ void print_poisson_stencil_microscope(const WallDistanceBvh& bvh,
             std::cout << "  face=" << name << " type=fluid neighbour=" << q
                       << " coefficient=" << coeff
                       << " contribution=" << contribution
-                      << " phi_neighbour=" << phi[q] << "\\n";
+                      << " phi_neighbour=" << phi[q] << "\n";
         }
     };
     face("xm",i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
@@ -134,7 +134,7 @@ void print_poisson_stencil_microscope(const WallDistanceBvh& bvh,
     face("zp",k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
     std::cout << "  stencil_summary aP=" << aP
               << " A_h_phi=" << lhs
-              << " operator_residual=" << std::abs(lhs-1.0) << "\\n";
+              << " operator_residual=" << std::abs(lhs-1.0) << "\n";
 }
 
 double reconstruct_from_gradient(double phi,const WallDistanceVec3& grad)
