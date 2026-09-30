@@ -504,7 +504,7 @@
       "requirement": "AMG anisotropy/scaling benchmark",
       "status": "partial",
       "evidence": [
-        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+        "docs/validation/M1_M4_VERIFICATION_PLAN.md"
       ]
     },
     {
@@ -600,7 +600,7 @@
       "requirement": "polyhedral numerical validation",
       "status": "partial",
       "evidence": [
-        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+        "docs/validation/M1_M4_VERIFICATION_PLAN.md"
       ]
     },
     {

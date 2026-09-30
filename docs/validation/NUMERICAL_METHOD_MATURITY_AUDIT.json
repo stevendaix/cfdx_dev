@@ -128,13 +128,14 @@
       "status": "partial",
       "evidence": [
         "docs/development/HYPRE_PETSC_CFDX_AUDIT.md",
-        "docs/development/M1_M4_VERIFICATION_PLAN.md"
+        "docs/validation/M1_M4_VERIFICATION_PLAN.md"
       ],
       "gaps": [
         "exact Schur oracle",
         "SIMPLEC/LSC/BFBt/PCD algebraic approximations",
         "null-space policy matrix",
-        "scaling and memory campaign"
+        "scaling and memory campaign",
+        "attainable-accuracy floor recorded per benchmark point (see #481)"
       ]
     },
     {
@@ -143,14 +144,14 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_registry.h",
-        "tests/validation/test_phase9_acceptance.cpp",
-        "tests/validation/test_couette.cpp"
+        "tests/validation/test_phase9_acceptance.cpp"
       ],
       "gaps": [
         "common algorithm matrix",
         "external-flow case",
         "skew-mesh case for each algorithm",
-        "consistent QoI/conservation evidence"
+        "consistent QoI/conservation evidence",
+        "no coupled Couette/Poiseuille case: tests/validation/test_poiseuille_diagnostics.cpp states in its own header that it exercises the scalar finite-volume path, not pressure-velocity coupling"
       ]
     },
     {
