@@ -48,7 +48,8 @@ public:
     // consistent with the Auu block passed at setup().
     using AuuSolve = std::function<bool(const Vector& rhs, Vector& y)>;
 
-    ExactSchurApproximation(AuuSolve auu_solve, Controls controls = {})
+    explicit ExactSchurApproximation(AuuSolve auu_solve,
+                                     const Controls& controls = Controls())
         : auu_solve_(std::move(auu_solve)), controls_(controls) {}
 
     const char* name() const noexcept override { return "exact_schur"; }
