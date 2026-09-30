@@ -50,10 +50,10 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
+        "tests/unit/test_laplacian.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp"
       ],
       "gaps": [
-        "over-relaxed policy",
         "explicit skew correction contract",
         "high-nonorthogonality quantitative campaign"
       ]

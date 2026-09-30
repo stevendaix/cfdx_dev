@@ -142,8 +142,11 @@
     {
       "package_id": "N3",
       "requirement": "over-relaxed diffusion formulation",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h",
+        "tests/unit/test_laplacian.cpp"
+      ]
     },
     {
       "package_id": "N3",

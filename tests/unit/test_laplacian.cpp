@@ -243,7 +243,60 @@ int main() {
         EXPECT_TRUE(laplacian_scheme_from_string("corrected") == LaplacianScheme::CORRECTED);
         EXPECT_TRUE(laplacian_scheme_from_string("limited") == LaplacianScheme::LIMITED);
         EXPECT_TRUE(laplacian_scheme_from_string("uncorrected") == LaplacianScheme::UNCORRECTED);
+        EXPECT_TRUE(laplacian_scheme_from_string("over_relaxed") == LaplacianScheme::OVER_RELAXED);
         EXPECT_THROW(laplacian_scheme_from_string("bogus"), std::runtime_error);
+    });
+
+    run_case("laplacian_over_relaxed_matches_orthogonal_on_orthogonal_mesh", []() {
+        // On an orthogonal face, Sf is parallel to d, so the over-relaxed
+        // residual Sf - alpha*d vanishes and the scheme is identical to the
+        // two-point orthogonal operator.
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        const auto orth = compute_laplacian(f, m, LaplacianScheme::ORTHOGONAL);
+        const auto over = compute_laplacian(f, m, LaplacianScheme::OVER_RELAXED);
+        EXPECT_NEAR(over(0), orth(0), 1e-12);
+        EXPECT_NEAR(over(1), orth(1), 1e-12);
+    });
+
+    run_case("laplacian_over_relaxed_correction_is_conservative", []() {
+        // The over-relaxed residual is orthogonal to Sf and the correction is
+        // still assembled antisymmetrically, so the operator conserves.
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        GeometryCache geometry = make_geometry_cache(m);
+        geometry.face_Sf[5].y = 0.25;
+        geometry.face_Sf[2].y = 1.25;
+
+        const auto orth = compute_laplacian(
+            f, m, geometry, LaplacianScheme::ORTHOGONAL);
+        const auto over = compute_laplacian(
+            f, m, geometry, LaplacianScheme::OVER_RELAXED);
+
+        EXPECT_TRUE(std::isfinite(over(0)));
+        EXPECT_TRUE(std::isfinite(over(1)));
+        EXPECT_NEAR(over(0) + over(1), 0.0, 1e-12);
+        // The over-relaxed decomposition applies a non-zero correction here,
+        // so it must differ from the uncorrected orthogonal operator.
+        EXPECT_TRUE(std::abs(over(0) - orth(0)) > 1e-9);
+    });
+
+    run_case("laplacian_over_relaxed_singular_face_is_rejected", []() {
+        // Sf.d = 0 makes the over-relaxed coefficient |Sf|^2/(Sf.d) singular.
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "p", "Pa", 1);
+        f(0) = 0.5;
+        f(1) = 1.5;
+        GeometryCache geometry = make_geometry_cache(m);
+        // Shared face normal (x) made orthogonal to d (also x) -> Sf.d = 0.
+        geometry.face_Sf[5] = Vec3{0.0, 1.0, 0.0};
+        EXPECT_THROW(
+            compute_laplacian(f, m, geometry, LaplacianScheme::OVER_RELAXED),
+            std::runtime_error);
     });
 
     run_case("laplacian_linear_field_two_cells", []() {
