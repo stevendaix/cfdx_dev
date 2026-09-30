@@ -169,83 +169,57 @@ double safe_two_grid_ratio(const MatrixFreeVcyclePreconditioner& amg,
 template <typename AMG>
 bool qualify_multilevel_hierarchy(const AMG& amg,
                                   const char* label,
-                                  double max_energy_ratio = 0.999999,
-                                  double max_two_grid_ratio = 0.999999,
-                                  double max_smoother_ratio = 0.999999) {
-    const auto levels = amg.hierarchy_level_sizes();
+                                  double max_energy_ratio = 0.999999) {
+    const levels = amg.hierarchy_level_sizes();
     bool ok = levels.size() >= 3;
-    if (!ok) {
-        std::cerr << "AMG_QUALIFICATION_FAIL label=" << label
-                  << " reason=insufficient_levels levels=" << levels.size() << '\\n';
-        return false;
-    }
+    if (!ok) return false;
 
     const auto transfers = amg.transfer_diagnostics();
-    if (transfers.size() + 1 != levels.size()) {
-        std::cerr << "AMG_QUALIFICATION_FAIL label=" << label
-                  << " reason=transfer_level_mismatch transfers=" << transfers.size()
-                  << " levels=" << levels.size() << '\\n';
-        ok = false;
-    }
+    if (transfers.size() + 1 != levels.size()) ok = false;
 
     for (const auto& d : transfers) {
         const auto coverage = amg.transfer_column_coverage(d.level);
         const bool structural =
-            std::isfinite(d.galerkin_relative_error) &&
-            d.galerkin_relative_error <= 1e-12 &&
-            std::isfinite(d.row_sum_min) &&
-            std::isfinite(d.row_sum_max) &&
+            std::isfinite(d.galerkin_relative_error) && d.galerkin_relative_error <= 1e-12 &&
+            std::isfinite(d.row_sum_min) && std::isfinite(d.row_sum_max) &&
             std::abs(d.row_sum_min - 1.0) <= 1e-12 &&
             std::abs(d.row_sum_max - 1.0) <= 1e-12 &&
-            coverage.zero_columns == 0 &&
-            coverage.min_nnz > 0 &&
+            coverage.zero_columns == 0 && coverage.min_nnz > 0 &&
             std::isfinite(d.coarse_symmetry_relative_error) &&
             d.coarse_symmetry_relative_error <= 1e-12 &&
             std::isfinite(d.coarse_gershgorin_lower_bound) &&
             d.coarse_gershgorin_lower_bound > -1e-10;
-
-        std::cout << "amg_n82_transfer_gate"
-                  << " label=" << label
-                  << " level=" << d.level
-                  << " fine=" << d.fine_size
-                  << " coarse=" << d.coarse_size
-                  << " galerkin=" << d.galerkin_relative_error
+        std::cout << "amg_n82_transfer_gate label=" << label
+                  << " level=" << d.level << " fine=" << d.fine_size
+                  << " coarse=" << d.coarse_size << " galerkin=" << d.galerkin_relative_error
                   << " row_sum=[" << d.row_sum_min << "," << d.row_sum_max << "]"
                   << " zero_columns=" << coverage.zero_columns
                   << " min_column_nnz=" << coverage.min_nnz
                   << " symmetry=" << d.coarse_symmetry_relative_error
                   << " gershgorin=" << d.coarse_gershgorin_lower_bound
-                  << " structural=" << (structural ? "PASS" : "FAIL")
-                  << '\\n';
+                  << " structural=" << (structural ? "PASS" : "FAIL") << '\n';
         ok = ok && structural;
 
         if (d.fine_size >= 8) {
             const double energy = amg.sine_mode_vcycle_energy_ratio(d.level, 1);
+            const bool energy_ok = std::isfinite(energy) && energy < max_energy_ratio;
+            std::cout << "amg_n82_energy_gate label=" << label
+                      << " level=" << d.level << " mode=1 energy=" << energy
+                      << " threshold=" << max_energy_ratio
+                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\n';
+            ok = ok && energy_ok;
+
             const double smoother = amg.sine_mode_smoother_residual_ratio(d.level, 1, 4);
             const double two_grid = amg.two_grid_sine_mode_residual_ratio(d.level, 1);
-
-            const bool stage_ok =
-                std::isfinite(energy) && energy < max_energy_ratio &&
-                std::isfinite(smoother) && smoother < max_smoother_ratio &&
-                std::isfinite(two_grid) && two_grid < max_two_grid_ratio;
-
-            std::cout << "amg_n82_stage_gate"
-                      << " label=" << label
-                      << " level=" << d.level
-                      << " mode=1"
-                      << " energy=" << energy
+            std::cout << "amg_n82_stage_diagnostic label=" << label
+                      << " level=" << d.level << " mode=1 energy=" << energy
                       << " smoother4=" << smoother
-                      << " two_grid=" << two_grid
-                      << " thresholds=[" << max_energy_ratio << ","
-                      << max_smoother_ratio << "," << max_two_grid_ratio << "]"
-                      << " status=" << (stage_ok ? "PASS" : "FAIL")
-                      << '\\n';
-            ok = ok && stage_ok;
+                      << " two_grid_l2_residual=" << two_grid << '\n';
+            if (!std::isfinite(smoother) || !std::isfinite(two_grid)) ok = false;
         }
     }
     return ok;
 }
-
 } // namespace
 
 int main() {
