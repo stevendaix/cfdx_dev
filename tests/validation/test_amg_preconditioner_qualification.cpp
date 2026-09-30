@@ -217,11 +217,28 @@ int main() {
                   << " P_row_sum=[" << vcycle.prolongation_row_sum_min()
                   << "," << vcycle.prolongation_row_sum_max() << "]"
                   << " ms=" << ms << '\n';
-        qualification_ok = qualification_ok && std::isfinite(ratio) && ratio < 1.0;
+        // An exact Galerkin coarse correction is A-orthogonal: Euclidean
+        // residual norm contraction is therefore not a valid standalone
+        // acceptance criterion and may increase even while the error energy
+        // decreases. Keep the residual ratio as diagnostic evidence and gate
+        // the standalone V-cycle on manufactured low-frequency A-energy
+        // contraction instead.
+        double max_energy_ratio = 0.0;
+        for (std::size_t mode = 1; mode <= 4; ++mode) {
+            const double energy_ratio =
+                vcycle.sine_mode_vcycle_energy_ratio(0, mode);
+            std::cout << "amg_sine_mode_energy DirectCF mode=" << mode
+                      << " vcycle_energy_ratio=" << energy_ratio << '\\n';
+            if (!std::isfinite(energy_ratio) || energy_ratio >= 1.0)
+                qualification_ok = false;
+            max_energy_ratio = std::max(max_energy_ratio, energy_ratio);
+        }
+        std::cout << "amg_vcycle_energy_gate DirectCF max_ratio="
+                  << max_energy_ratio << '\\n';
 
         // Full multilevel transfer audit: every level must expose the actual
         // coarse-space properties, not only the first P. These are evidence
-        // diagnostics; the existing contraction gate remains unchanged.
+        // diagnostics; the existing energy-contraction gate remains unchanged.
         // Boundary-focused interpolation audit. For the 1-D Dirichlet
         // Poisson case, print the first/last three stored P rows so the
         // boundary treatment can be compared directly with a geometric
@@ -301,6 +318,19 @@ int main() {
             }
         }
     }
+
+        double sa_max_energy_ratio = 0.0;
+        for (std::size_t mode = 1; mode <= 4; ++mode) {
+            const double energy_ratio =
+                sa.sine_mode_vcycle_energy_ratio(0, mode);
+            std::cout << "amg_sine_mode_energy SA mode=" << mode
+                      << " vcycle_energy_ratio=" << energy_ratio << '\\n';
+            if (!std::isfinite(energy_ratio) || energy_ratio >= 1.0)
+                qualification_ok = false;
+            sa_max_energy_ratio = std::max(sa_max_energy_ratio, energy_ratio);
+        }
+        std::cout << "amg_vcycle_energy_gate SA max_ratio="
+                  << sa_max_energy_ratio << '\\n';
 
     // Repeat the same transfer/two-grid audit for SA so that common
     // multilevel/Galerkin defects are separated from Direct-CF construction.
