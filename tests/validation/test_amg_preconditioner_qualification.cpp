@@ -303,7 +303,7 @@ int main() {
         for (const auto& row : sa.prolongation_boundary_rows(0, 3)) {
             std::cout << "amg_boundary_P SA"
                       << " fine=" << row.fine_index
-                      << " aggregate=" << vcycle.aggregate_of(row.fine_index);
+                      << " aggregate=" << sa.aggregate_of(row.fine_index);
             for (const auto& [coarse, weight] : row.entries)
                 std::cout << " c" << coarse << "=" << weight;
             std::cout << '\n';
@@ -354,8 +354,6 @@ int main() {
                     coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
                 const double smooth_ratio =
                     sa.sine_mode_smoother_residual_ratio(0, mode, 4);
-                const double full_ratio =
-                    sa.two_grid_sine_mode_residual_ratio(0, mode);
                 std::cout << "amg_sine_stage SA mode=" << mode
                           << " coarse_only_ratio=" << coarse_ratio
                           << " smoother_4_ratio=" << smooth_ratio << '\n';
