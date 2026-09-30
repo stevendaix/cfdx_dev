@@ -752,7 +752,8 @@ inline const char* to_string(GradientScheme s) {
     switch (s) {
         case GradientScheme::GAUSS_TWO_POINT:      return "gauss_two_point";
         case GradientScheme::GAUSS_POINT:          return "gauss_point";
-        case GradientScheme::LEAST_SQUARES:        return "least_squares";\n        case GradientScheme::WEIGHTED_LEAST_SQUARES: return "weighted_least_squares";
+        case GradientScheme::LEAST_SQUARES:        return "least_squares";
+        case GradientScheme::WEIGHTED_LEAST_SQUARES: return "weighted_least_squares";
         case GradientScheme::LEAST_SQUARES_QUADRATIC: return "least_squares_quadratic";
         default:                                   return "unknown";
     }
@@ -761,7 +762,8 @@ inline const char* to_string(GradientScheme s) {
 inline GradientScheme gradient_scheme_from_string(const std::string& s) {
     if (s == "gauss_two_point")          return GradientScheme::GAUSS_TWO_POINT;
     if (s == "gauss_point")              return GradientScheme::GAUSS_POINT;
-    if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;\n    if (s == "weighted_least_squares")   return GradientScheme::WEIGHTED_LEAST_SQUARES;
+    if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;
+    if (s == "weighted_least_squares")   return GradientScheme::WEIGHTED_LEAST_SQUARES;
     if (s == "least_squares_quadratic")  return GradientScheme::LEAST_SQUARES_QUADRATIC;
     throw std::runtime_error("gradient_scheme_from_string: unknown scheme '" + s + "'");
 }
