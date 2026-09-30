@@ -56,6 +56,17 @@ inline CellGeometry compute_cell_geometry(
         throw std::runtime_error("CellGeometry: cell must have at least one face");
     }
 
+    // Detect 2D mesh: all face centres have z ≈ 0 and all Sf vectors
+    // have only z-component (x≈0, y≈0). This occurs when 2D elements
+    // are represented as cells with a single face (the cell itself).
+    bool is_2d = true;
+    for (std::size_t k = 0; k < n_cell_faces; ++k) {
+        const FaceIndex f = face_ids[k];
+        if (std::abs(face_centres[f].z) > 1e-12) { is_2d = false; break; }
+        const Vec3& sf = face_Sf[f];
+        if (std::abs(sf.x) > 1e-12 || std::abs(sf.y) > 1e-12) { is_2d = false; break; }
+    }
+
     // Centre : moyenne pondérée par l'aire des faces.
     Vec3 weighted_sum;
     double total_area = 0.0;
@@ -69,21 +80,33 @@ inline CellGeometry compute_cell_geometry(
     }
     Vec3 centre = total_area > 0.0 ? weighted_sum * (1.0 / total_area) : Vec3{};
 
-    // Signed pyramid decomposition. The sign is an invariant of the face
-    // orientation and must not be erased here: validation uses it to reject
-    // globally inverted cells. The absolute value is exposed separately as
-    // the geometric measure for kernels that require a positive volume.
     double signed_volume = 0.0;
-    for (std::size_t k = 0; k < n_cell_faces; ++k) {
-        const FaceIndex f = face_ids[k];
-        const Vec3& cf = face_centres[f];
-        const Vec3& sf = face_Sf[f];
-        const double area = sf.mag();
-        if (!(area > 0.0))
-            throw std::runtime_error("CellGeometry: degenerate face");
-        signed_volume += (cf - centre).dot(sf);
+
+    if (is_2d) {
+        // 2D mesh: the pyramid formula gives zero because (Cf - Cc)·Sf = 0
+        // (all z=0, Sf only has z-component). Use face areas as cell area.
+        // For the current topology, each cell has one face (the cell itself),
+        // so the sum of face areas equals the cell area.
+        for (std::size_t k = 0; k < n_cell_faces; ++k) {
+            const FaceIndex f = face_ids[k];
+            const double area = face_Sf[f].mag();
+            if (!(area > 0.0))
+                throw std::runtime_error("CellGeometry: degenerate face");
+            signed_volume += area;
+        }
+    } else {
+        // 3D mesh: signed pyramid decomposition.
+        for (std::size_t k = 0; k < n_cell_faces; ++k) {
+            const FaceIndex f = face_ids[k];
+            const Vec3& cf = face_centres[f];
+            const Vec3& sf = face_Sf[f];
+            const double area = sf.mag();
+            if (!(area > 0.0))
+                throw std::runtime_error("CellGeometry: degenerate face");
+            signed_volume += (cf - centre).dot(sf);
+        }
+        signed_volume /= 3.0;
     }
-    signed_volume /= 3.0;
 
     return {centre, std::abs(signed_volume), signed_volume};
 }

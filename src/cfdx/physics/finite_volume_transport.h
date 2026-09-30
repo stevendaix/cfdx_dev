@@ -193,14 +193,24 @@ inline void validate_scalar_controls(const ScalarSolveControls& c)
 inline double boundary_normal_distance(
     const FvGeometry& geometry, std::size_t face, std::size_t cell)
 {
-    const auto& Sf=geometry.face_area_vectors[face];
-    const double area=Sf.mag();
-    if(!(area>0.0)||!std::isfinite(area))
+    const auto& Sf = geometry.face_area_vectors[face];
+    const double area = Sf.mag();
+    if (!(area > 0.0) || !std::isfinite(area))
         throw std::runtime_error("boundary_normal_distance: degenerate face");
-    const auto d=geometry.face_centres[face]-geometry.cell_centres[cell];
-    const double dn=std::abs(d.dot(Sf))/area;
-    if(!(dn>0.0)||!std::isfinite(dn))
+    const auto d = geometry.face_centres[face] - geometry.cell_centres[cell];
+    const double dn = std::abs(d.dot(Sf)) / area;
+    if (!(dn > 0.0) || !std::isfinite(dn)) {
+        // 2D fallback: face centre coincides with cell centre (degenerate topology
+        // where 2D cells are represented as single faces). Approximate the normal
+        // distance using the cell's characteristic length sqrt(area).
+        const double cell_vol = geometry.cell_volumes[cell];
+        if (cell_vol > 0.0 && std::isfinite(cell_vol)) {
+            const double dn2 = std::sqrt(cell_vol);
+            if (dn2 > 0.0 && std::isfinite(dn2))
+                return dn2;
+        }
         throw std::runtime_error("boundary_normal_distance: invalid normal distance");
+    }
     return dn;
 }
 

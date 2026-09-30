@@ -27,6 +27,11 @@ bool is_openfoam_case(const std::filesystem::path& path) {
            std::filesystem::exists(poly / "neighbour");
 }
 
+bool is_cfdx_h5(const std::filesystem::path& path) {
+    if (path.extension() != ".h5") return false;
+    return path.stem() == ".cfdx" || path.filename().string().find(".cfdx.h5") != std::string::npos;
+}
+
 bool import_with_meshio(const std::filesystem::path& input, cfdx::core::Mesh& mesh) {
 #ifndef CFDX_SOURCE_DIR
     (void)input;
@@ -75,6 +80,13 @@ bool import_mesh(const std::string& path, cfdx::core::Mesh& mesh) {
     if (is_openfoam_case(input))
         return cfdx::io::openfoam::import_openfoam_case(path, mesh);
     if (!std::filesystem::is_regular_file(input)) return false;
+
+    // CFDX native format: read directly with the internal HDF5 reader.
+    // This avoids the meshio round-trip and preserves the exact topology.
+    if (is_cfdx_h5(input))
+        return cfdx::io::read_mesh_hdf5(path, mesh);
+
+    // All other formats (SU2, VTK, CGNS, etc.) go through meshio.
     return import_with_meshio(input, mesh);
 }
 } // namespace cfdx::io::mesh

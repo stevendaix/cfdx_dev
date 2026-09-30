@@ -32,6 +32,21 @@ _ELEMENT_FACES: dict[str, list[list[int]]] = {
     "quad": [[0, 1, 2, 3]],
 }
 
+# Root attribute naming the on-disk interchange layout. The C++ reader does not
+# currently validate it, but mesh importers and tooling key off it.
+CFDX_HDF5_FORMAT = "CFDX-HDF5-mesh-v1"
+
+# FNV-1a parameters. The offset basis is intentionally *not* the full 64-bit
+# FNV basis (14695981039346656037): the C++ reader in
+# src/cfdx/io/hdf5/hdf5_reader.cpp seeds its hashes with a truncated constant,
+# and these values must match it byte-for-byte or integrity checks fail.
+_FNV_OFFSET_BASIS = 1469598103934665603
+_FNV_PRIME = 1099511628211
+_UINT64_MASK = 0xFFFFFFFFFFFFFFFF
+
+# Boundary patch types, mirroring cfdx::core::PatchType.
+_PATCH_TYPE_WALL = 0
+
 _TYPE_ALIASES: dict[str, str] = {
     "tetrahedron": "tetra",
     "tetra": "tetra",
@@ -45,6 +60,89 @@ _TYPE_ALIASES: dict[str, str] = {
     "quad": "quad",
     "quadrilateral": "quad",
 }
+
+
+def _fnv1a_update(hash_value: int, values: np.ndarray) -> int:
+    """Fold a raw array into an FNV-1a hash over its native byte image.
+
+    Mirrors ``fnv1a_update_vector()`` in the C++ reader: an empty array
+    contributes nothing and leaves the hash untouched.
+    """
+    arr = np.ascontiguousarray(values)
+    if arr.size == 0:
+        return hash_value
+    for byte in arr.tobytes(order="C"):
+        hash_value = ((hash_value ^ byte) * _FNV_PRIME) & _UINT64_MASK
+    return hash_value
+
+
+def _hash_hex(hash_value: int) -> str:
+    """Render a hash as the C++ reader's 16-digit zero-padded lowercase hex."""
+    return f"{hash_value:016x}"
+
+
+def _integrity_hashes(m: dict) -> tuple[str, str, str]:
+    """Compute ``(topology_hash, geometry_hash, mesh_hash)`` for a CFDX mesh.
+
+    The digest order and seed values are dictated by ``read_mesh_hdf5()`` and
+    must be reproduced exactly:
+
+    * ``topology`` seeds from the basis and folds the CSR arrays, skipping the
+      ``face_offsets``/``cell_offsets`` terms when the mesh has no faces/cells.
+    * ``geometry`` seeds from the basis again and folds x/y/z as separate
+      contiguous runs.
+    * ``mesh`` continues from ``topology`` and folds the same coordinates.
+    """
+    points = m["points"]
+    n_faces = m["n_faces"]
+    n_cells = m["n_cells"]
+
+    topology = _FNV_OFFSET_BASIS
+    topology = _fnv1a_update(topology, m["face_vertices"])
+    if n_faces > 0:
+        topology = _fnv1a_update(topology, m["face_offsets"])
+    topology = _fnv1a_update(topology, m["owner"])
+    topology = _fnv1a_update(topology, m["neighbour"])
+    topology = _fnv1a_update(topology, m["cell_faces"])
+    if n_cells > 0:
+        topology = _fnv1a_update(topology, m["cell_offsets"])
+
+    coords = [
+        np.ascontiguousarray(points[:, i], dtype=np.float64)
+        for i in range(3)
+    ]
+
+    geometry = _FNV_OFFSET_BASIS
+    for c in coords:
+        geometry = _fnv1a_update(geometry, c)
+
+    mesh_hash = topology
+    for c in coords:
+        mesh_hash = _fnv1a_update(mesh_hash, c)
+
+    return _hash_hex(topology), _hash_hex(geometry), _hash_hex(mesh_hash)
+
+
+def _boundary_patch_metadata(m: dict) -> tuple[Optional[str], np.ndarray, np.ndarray]:
+    """Derive a single generic ``boundary`` patch from unmatched faces.
+
+    The C++ reader treats the presence of the ``boundary_patches`` attribute as
+    a promise that the ``patch_face_ids``/``patch_face_offsets`` CSR datasets
+    exist and agree with it, so the attribute is only emitted together with
+    them. Returns ``(metadata, patch_face_ids, patch_face_offsets)``.
+    """
+    boundary_faces = np.flatnonzero(m["neighbour"] < 0).astype(np.uint64)
+
+    offsets = np.zeros(1, dtype=np.uint64)
+    if boundary_faces.size == 0:
+        return None, np.empty(0, dtype=np.uint64), offsets
+
+    offsets = np.append(offsets, np.uint64(boundary_faces.size))
+    start = int(boundary_faces[0])
+    metadata = (
+        f"boundary:{start}:{int(boundary_faces.size)}:{_PATCH_TYPE_WALL}"
+    )
+    return metadata, boundary_faces, offsets
 
 
 def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
@@ -124,7 +222,7 @@ def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
         cell_offsets_arr[i + 1] = cell_offsets_arr[i] + len(cf)
 
     return {
-        "points": points.flatten(),
+        "points": points,  # 2D array (n_points, 3) — CFDX reader expects rank 2
         "face_vertices": np.array(fv_flat, dtype=np.uint64),
         "face_offsets": face_offsets_arr,
         "owner": owner,
@@ -144,17 +242,23 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
 
     * Root-level datasets: ``points``, ``face_vertices``, ``face_offsets``,
       ``owner``, ``neighbour``, ``cell_faces``, ``cell_offsets``.
-    * Root-level string attributes: ``source_solver``, ``source_format``,
-      ``source_version``, ``source_case_path``, ``case_setup_json``,
-      ``gap_report_json``.
-    * Mesh-level attributes: ``boundary_patches`` (optional), integrity
-      hashes.
+    * Root-level string attributes: ``format``, ``format_version``,
+      ``schema_version``, ``cfdx_version``, ``topology_hash``,
+      ``geometry_hash``, ``mesh_hash``, ``n_points``, ``n_faces``,
+      ``n_cells``, ``boundary_patches``.
+    * Provenance attributes: ``source_solver``, ``source_format``,
+      ``source_version``, ``source_case_path``, ``source_case_name``,
+      ``case_setup_json``, ``gap_report_json``, ``mesh_topology``.
+    * ``boundary_patches`` is written only together with the
+      ``patch_face_ids``/``patch_face_offsets`` CSR datasets it describes, and
+      only when the mesh has unmatched (boundary) faces.
     * ``/fields/scalar/<name>`` and ``/fields/vector/<name>`` datasets.
     """
     import pathlib
     output_path = pathlib.Path(output_path)
 
     with h5py.File(output_path, "w") as f:
+        f.attrs["format"] = CFDX_HDF5_FORMAT
         f.attrs["format_version"] = "1"
         f.attrs["schema_version"] = str(CFDX_SCHEMA_VERSION)
         f.attrs["cfdx_version"] = "0.7"
@@ -203,6 +307,21 @@ def _write_mesh_topology(f: h5py.File, m: dict) -> None:
     f.create_dataset("cell_faces", data=m["cell_faces"])
     f.create_dataset("cell_offsets", data=m["cell_offsets"])
     f.attrs["mesh_topology"] = "cfdx-csr-v1"
+
+    f.attrs["n_points"] = str(m["n_points"])
+    f.attrs["n_faces"] = str(m["n_faces"])
+    f.attrs["n_cells"] = str(m["n_cells"])
+
+    topology_hash, geometry_hash, mesh_hash = _integrity_hashes(m)
+    f.attrs["topology_hash"] = topology_hash
+    f.attrs["geometry_hash"] = geometry_hash
+    f.attrs["mesh_hash"] = mesh_hash
+
+    metadata, patch_ids, patch_offsets = _boundary_patch_metadata(m)
+    if metadata is not None:
+        f.attrs["boundary_patches"] = metadata
+        f.create_dataset("patch_face_ids", data=patch_ids)
+        f.create_dataset("patch_face_offsets", data=patch_offsets)
 
 
 def _gap_report_to_json(gap) -> str:
