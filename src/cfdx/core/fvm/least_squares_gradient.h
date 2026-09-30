@@ -119,4 +119,77 @@ inline Vec3 least_squares_gradient(
     return least_squares_gradient(centre, value, neighbour_centres, neighbour_values, nullptr);
 }
 
-} // namespace cfdx::core\n
+enum class GradientWeighting {
+    UNIFORM,
+    INVERSE_DISTANCE,
+    INVERSE_DISTANCE_SQUARED
+};
+
+inline Vec3 weighted_least_squares_gradient(
+    const Vec3& centre,
+    double value,
+    const std::vector<Vec3>& neighbour_centres,
+    const std::vector<double>& neighbour_values,
+    GradientWeighting weighting,
+    StencilQuality* quality = nullptr)
+{
+    if (neighbour_centres.size() != neighbour_values.size())
+        throw std::invalid_argument("weighted_least_squares_gradient: neighbour dimensions do not match");
+
+    StencilQuality q;
+    q.samples = neighbour_centres.size();
+    q.dimension = 3;
+    double a[3][3] = {};
+    double b[3] = {};
+
+    for (std::size_t k = 0; k < neighbour_centres.size(); ++k) {
+        const Vec3 d = neighbour_centres[k] - centre;
+        const double r2 = d.mag2();
+        if (!(r2 > 0.0) || !std::isfinite(r2)) {
+            q.finite = false;
+            continue;
+        }
+        const double r = std::sqrt(r2);
+        double w = 1.0;
+        if (weighting == GradientWeighting::INVERSE_DISTANCE) w = 1.0 / r;
+        if (weighting == GradientWeighting::INVERSE_DISTANCE_SQUARED) w = 1.0 / r2;
+        const double dv = neighbour_values[k] - value;
+        a[0][0]+=w*d.x*d.x; a[0][1]+=w*d.x*d.y; a[0][2]+=w*d.x*d.z;
+        a[1][0]+=w*d.y*d.x; a[1][1]+=w*d.y*d.y; a[1][2]+=w*d.y*d.z;
+        a[2][0]+=w*d.z*d.x; a[2][1]+=w*d.z*d.y; a[2][2]+=w*d.z*d.z;
+        b[0]+=w*d.x*dv; b[1]+=w*d.y*dv; b[2]+=w*d.z*dv;
+    }
+
+    double scale=0.0;
+    for (int i=0;i<3;++i) scale=std::max(scale,std::abs(a[i][i]));
+    q.scale=scale;
+    if (!(scale>0.0) || !std::isfinite(scale)) {
+        if (quality) *quality=q;
+        return {};
+    }
+    const double tol=128.0*std::numeric_limits<double>::epsilon()*scale;
+    double m[3][4] = {};
+    for(int i=0;i<3;++i){for(int j=0;j<3;++j)m[i][j]=a[i][j];m[i][3]=b[i];}
+    bool pivoted[3]={false,false,false};
+    double minp=std::numeric_limits<double>::infinity(), maxp=0.0;
+    for(int col=0;col<3;++col){
+        int p=col; double pa=std::abs(m[col][col]);
+        for(int row=col+1;row<3;++row) if(std::abs(m[row][col])>pa){pa=std::abs(m[row][col]);p=row;}
+        if(!(pa>tol)) continue;
+        if(p!=col) for(int j=col;j<4;++j) std::swap(m[col][j],m[p][j]);
+        pivoted[col]=true; ++q.rank;
+        minp=std::min(minp,std::abs(m[col][col])); maxp=std::max(maxp,std::abs(m[col][col]));
+        for(int row=col+1;row<3;++row){const double f=m[row][col]/m[col][col];for(int j=col;j<4;++j)m[row][j]-=f*m[col][j];}
+    }
+    q.min_pivot=std::isfinite(minp)?minp:0.0; q.max_pivot=maxp; q.full_rank=q.rank==3;
+    q.condition_estimate=q.min_pivot>0.0?q.max_pivot/q.min_pivot:std::numeric_limits<double>::infinity();
+    if(quality)*quality=q;
+    if(q.rank<3) throw std::runtime_error("weighted_least_squares_gradient: rank-deficient stencil");
+    double x[3]={};
+    for(int i=2;i>=0;--i){double rhs=m[i][3];for(int j=i+1;j<3;++j)rhs-=m[i][j]*x[j];x[i]=rhs/m[i][i];}
+    if(!std::isfinite(x[0])||!std::isfinite(x[1])||!std::isfinite(x[2]))
+        throw std::runtime_error("weighted_least_squares_gradient: non-finite gradient");
+    return {x[0],x[1],x[2]};
+}
+
+} // namespace cfdx::core
