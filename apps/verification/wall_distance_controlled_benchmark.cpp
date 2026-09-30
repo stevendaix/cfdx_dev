@@ -141,6 +141,16 @@ struct Row {
     double poisson_exact_phi_numerical_gradient_linf_error{};
     double poisson_full_reconstruction_linf_error{};
     std::size_t poisson_gradient_nondifferentiable_cells{};
+    double poisson_exact_phi_operator_residual_inf{};
+    double poisson_exact_phi_cut_residual_inf{};
+    double poisson_exact_phi_face_residual_inf{};
+    double poisson_exact_phi_edge_residual_inf{};
+    double poisson_exact_phi_corner_residual_inf{};
+    std::size_t poisson_exact_phi_cut_cells{};
+    std::size_t poisson_exact_phi_face_cells{};
+    std::size_t poisson_exact_phi_edge_cells{};
+    std::size_t poisson_exact_phi_corner_cells{};
+    std::size_t poisson_exact_phi_max_residual_cell{};
 };
 
 std::vector<WallDistanceMethod> methods()
@@ -278,6 +288,16 @@ int main(int argc, char** argv)
             double poisson_exact_phi_numerical_gradient_linf_error=0.0;
             double poisson_full_reconstruction_linf_error=0.0;
             std::size_t poisson_gradient_nondifferentiable_cells=0;
+            double poisson_exact_phi_operator_residual_inf=0.0;
+            double poisson_exact_phi_cut_residual_inf=0.0;
+            double poisson_exact_phi_face_residual_inf=0.0;
+            double poisson_exact_phi_edge_residual_inf=0.0;
+            double poisson_exact_phi_corner_residual_inf=0.0;
+            std::size_t poisson_exact_phi_cut_cells=0;
+            std::size_t poisson_exact_phi_face_cells=0;
+            std::size_t poisson_exact_phi_edge_cells=0;
+            std::size_t poisson_exact_phi_corner_cells=0;
+            std::size_t poisson_exact_phi_max_residual_cell=0;
             if(method==WallDistanceMethod::POISSON) {
                 // Re-run only the elliptic solve and replace the reconstructed
                 // gradient by the exact geometric gradient of the box.  This
@@ -292,6 +312,58 @@ int main(int argc, char** argv)
                 double num_phi_exact_grad_e2=0.0, num_phi_exact_grad_em=0.0;
                 double exact_phi_num_grad_e2=0.0, exact_phi_num_grad_em=0.0;
                 double full_e2=0.0, full_em=0.0;
+                double exact_phi_operator_residual_max=0.0;
+                auto update_operator_audit = [&](std::size_t id, double exact_phi) {
+                    const auto& p = grid.points[id];
+                    const double op_residual = std::abs(-poisson_laplacian_at(bvh, [&]() {
+                        // This lambda is intentionally replaced below by the full
+                        // manufactured field; kept unreachable to avoid a second
+                        // operator implementation in the benchmark.
+                        return std::vector<double>{exact_phi};
+                    }(), grid, id) - 1.0);
+                    (void)op_residual;
+                    (void)p;
+                };
+                (void)update_operator_audit;
+                std::vector<double> exact_phi_field(grid.points.size(), 0.0);
+                for(std::size_t id=0;id<grid.points.size();++id) {
+                    if(grid.solid[id]) continue;
+                    const double d=analytic[id];
+                    exact_phi_field[id]=d+0.5*d*d;
+                }
+                for(std::size_t id=0;id<grid.points.size();++id) {
+                    if(grid.solid[id]) continue;
+                    const double op_residual=std::abs(-poisson_laplacian_at(bvh,exact_phi_field,grid,id)-1.0);
+                    const auto& p=grid.points[id];
+                    const int outside=(p.x<0.0||p.x>1.0)+(p.y<0.0||p.y>1.0)+(p.z<0.0||p.z>1.0);
+                    bool cut=false;
+                    const std::size_t k=id/(grid.nx*grid.ny), rem=id%(grid.nx*grid.ny), j=rem/grid.nx, i=rem%grid.nx;
+                    auto check=[&](std::size_t q,bool exists){ if(exists && grid.solid[q]) cut=true; };
+                    check(i>0?grid.index(i-1,j,k):0,i>0); check(i+1<grid.nx?grid.index(i+1,j,k):0,i+1<grid.nx);
+                    check(j>0?grid.index(i,j-1,k):0,j>0); check(j+1<grid.ny?grid.index(i,j+1,k):0,j+1<grid.ny);
+                    check(k>0?grid.index(i,j,k-1):0,k>0); check(k+1<grid.nz?grid.index(i,j,k+1):0,k+1<grid.nz);
+                    exact_phi_operator_residual_max=std::max(exact_phi_operator_residual_max,op_residual);
+                    if(op_residual>poisson_exact_phi_operator_residual_inf) poisson_exact_phi_max_residual_cell=id;
+                    poisson_exact_phi_operator_residual_inf=std::max(poisson_exact_phi_operator_residual_inf,op_residual);
+                    if(cut) { ++poisson_exact_phi_cut_cells; poisson_exact_phi_cut_residual_inf=std::max(poisson_exact_phi_cut_residual_inf,op_residual); }
+                    if(outside==1) { ++poisson_exact_phi_face_cells; poisson_exact_phi_face_residual_inf=std::max(poisson_exact_phi_face_residual_inf,op_residual); }
+                    if(outside==2) { ++poisson_exact_phi_edge_cells; poisson_exact_phi_edge_residual_inf=std::max(poisson_exact_phi_edge_residual_inf,op_residual); }
+                    if(outside==3) { ++poisson_exact_phi_corner_cells; poisson_exact_phi_corner_residual_inf=std::max(poisson_exact_phi_corner_residual_inf,op_residual); }
+                }
+                std::cout << "Poisson exact-phi operator audit"
+                          << ", max_abs_Aphi_minus_b=" << poisson_exact_phi_operator_residual_inf
+                          << ", max_cut_cell=" << poisson_exact_phi_cut_residual_inf
+                          << ", max_face_region=" << poisson_exact_phi_face_residual_inf
+                          << ", max_edge_region=" << poisson_exact_phi_edge_residual_inf
+                          << ", max_corner_region=" << poisson_exact_phi_corner_residual_inf
+                          << ", cut_cells=" << poisson_exact_phi_cut_cells
+                          << ", face_cells=" << poisson_exact_phi_face_cells
+                          << ", edge_cells=" << poisson_exact_phi_edge_cells
+                          << ", corner_cells=" << poisson_exact_phi_corner_cells
+                          << ", max_cell=" << poisson_exact_phi_max_residual_cell
+                          << ", max_point=" << grid.points[poisson_exact_phi_max_residual_cell].x
+                          << ":" << grid.points[poisson_exact_phi_max_residual_cell].y
+                          << ":" << grid.points[poisson_exact_phi_max_residual_cell].z << "\n";
                 for(std::size_t id=0;id<grid.points.size();++id) {
                     if(grid.solid[id]) continue;
                     bool exact_grad_defined = false;
@@ -404,7 +476,17 @@ int main(int argc, char** argv)
                 poisson_numerical_phi_exact_gradient_linf_error,
                 poisson_exact_phi_numerical_gradient_linf_error,
                 poisson_full_reconstruction_linf_error,
-                poisson_gradient_nondifferentiable_cells
+                poisson_gradient_nondifferentiable_cells,
+                poisson_exact_phi_operator_residual_inf,
+                poisson_exact_phi_cut_residual_inf,
+                poisson_exact_phi_face_residual_inf,
+                poisson_exact_phi_edge_residual_inf,
+                poisson_exact_phi_corner_residual_inf,
+                poisson_exact_phi_cut_cells,
+                poisson_exact_phi_face_cells,
+                poisson_exact_phi_edge_cells,
+                poisson_exact_phi_corner_cells,
+                poisson_exact_phi_max_residual_cell
             });
 
             std::cout << result.method << ", "
@@ -451,7 +533,11 @@ int main(int argc, char** argv)
            "poisson_exact_phi_numerical_gradient_l2_error,poisson_full_reconstruction_l2_error,"
            "poisson_exact_phi_exact_gradient_linf_error,poisson_numerical_phi_exact_gradient_linf_error,"
            "poisson_exact_phi_numerical_gradient_linf_error,poisson_full_reconstruction_linf_error,"
-           "poisson_gradient_nondifferentiable_cells\n";
+           "poisson_gradient_nondifferentiable_cells,poisson_exact_phi_operator_residual_inf,"
+           "poisson_exact_phi_cut_residual_inf,poisson_exact_phi_face_residual_inf,"
+           "poisson_exact_phi_edge_residual_inf,poisson_exact_phi_corner_residual_inf,"
+           "poisson_exact_phi_cut_cells,poisson_exact_phi_face_cells,poisson_exact_phi_edge_cells,"
+           "poisson_exact_phi_corner_cells,poisson_exact_phi_max_residual_cell\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -478,7 +564,17 @@ int main(int argc, char** argv)
             << r.poisson_numerical_phi_exact_gradient_linf_error << ','
             << r.poisson_exact_phi_numerical_gradient_linf_error << ','
             << r.poisson_full_reconstruction_linf_error << ','
-            << r.poisson_gradient_nondifferentiable_cells
+            << r.poisson_gradient_nondifferentiable_cells << ','
+            << r.poisson_exact_phi_operator_residual_inf << ','
+            << r.poisson_exact_phi_cut_residual_inf << ','
+            << r.poisson_exact_phi_face_residual_inf << ','
+            << r.poisson_exact_phi_edge_residual_inf << ','
+            << r.poisson_exact_phi_corner_residual_inf << ','
+            << r.poisson_exact_phi_cut_cells << ','
+            << r.poisson_exact_phi_face_cells << ','
+            << r.poisson_exact_phi_edge_cells << ','
+            << r.poisson_exact_phi_corner_cells << ','
+            << r.poisson_exact_phi_max_residual_cell
             << '\n';
     }
 
