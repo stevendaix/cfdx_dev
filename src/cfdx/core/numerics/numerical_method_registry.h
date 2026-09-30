@@ -15,6 +15,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
     return {
         {"gradient.gauss_cell","Green-Gauss cell gradient",F::Gradient,S::Implemented,C::LocalFaceConservative,false,false,true,1,0,
          "grad(phi)=1/V sum_f phi_f Sf","numerics.gradient.gauss",{"constant","linear","quadratic","skewed","non_orthogonal"}},
+        {"gradient.gauss_vertex","Vertex-based Green-Gauss gradient",F::Gradient,S::Implemented,C::LocalFaceConservative,false,false,false,1,0,
+         "inverse-distance vertex average; Green-Gauss over vertex-derived face values","numerics.gradient.gauss_vertex",{"constant","linear","refinement"}},
         {"gradient.least_squares","Weighted least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,true,1,0,
          "argmin_g sum_N w_N(phi_N-phi_P-g.dx)^2","numerics.gradient.least_squares",{"constant","linear","rank_detection","skewed"}},
         {"interpolation.linear","Cell-to-face linear interpolation",F::Interpolation,S::Implemented,C::LocalFaceConservative,false,false,true,2,0,

@@ -26,9 +26,10 @@
 #include "cfdx/core/fvm/least_squares_gradient.h"
 #include <cmath>
 #include <cstddef>
-#include <stdexcept>
-#include <vector>
 #include <cstdint>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 #include <algorithm>
 
 namespace cfdx {
@@ -181,6 +182,132 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
         grad(c, 2) = g.z;
     }
     return grad;
+}
+
+// Vertex-based (secondary) Green-Gauss gradient.
+//
+// Cell values are interpolated to the mesh vertices with inverse-distance
+// weighting, vertex values are averaged onto each face, and the gradient is
+// then the Green-Gauss sum:
+//   phi_v   = sum_c (phi_c / |C_c - P_v|) / sum_c (1/|C_c - P_v|)
+//   phi_f   = average of phi_v over the face vertices
+//   grad_c  = (1/V_c) sum_f phi_f Sf_c
+//
+// This is the classic "Green-Gauss node based" variant. It is linear-exact on
+// affine meshes (the weighted vertex average is exact there) but does not, in
+// general, reproduce quadratic fields to machine precision, so its
+// verification requirements differ from the cell-based scheme.
+inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    const GeometryCache& geometry)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    const std::size_t n_faces = mesh.n_faces();
+    const std::size_t n_points = mesh.n_points();
+
+    if (!is_valid(geometry, mesh))
+        throw std::invalid_argument("compute_gradient_gauss_vertex: invalid geometry cache");
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_gauss_vertex: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_gauss_vertex: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const auto* face_vertices = mesh.faces().vertices_data();
+    const auto* face_offsets = mesh.faces().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* cell_values = cell_field.component_data(0);
+
+    // Unique vertices per cell (a hexahedral cell touches each vertex through
+    // several faces, so dedupe before weighting).
+    std::vector<std::vector<std::size_t>> cell_vertices(n_cells);
+    {
+        std::vector<std::size_t> scratch;
+        std::vector<char> seen(n_points, 0);
+        for (std::size_t c = 0; c < n_cells; ++c) {
+            scratch.clear();
+            for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                const std::size_t f = cell_faces[k];
+                for (Offset o = face_offsets[f]; o < face_offsets[f + 1]; ++o) {
+                    const std::size_t v = face_vertices[o];
+                    if (!seen[v]) { seen[v] = 1; scratch.push_back(v); }
+                }
+            }
+            cell_vertices[c] = scratch;
+            for (const std::size_t v : scratch) seen[v] = 0;
+        }
+    }
+
+    // Inverse-distance vertex averaging from the neighbouring cells.
+    std::vector<std::vector<std::pair<std::size_t, double>>> vertex_cells(n_points);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const Vec3 cc = geometry.cell_centres[c];
+        for (const std::size_t v : cell_vertices[c]) {
+            const double dx = mesh.points().x(v) - cc.x;
+            const double dy = mesh.points().y(v) - cc.y;
+            const double dz = mesh.points().z(v) - cc.z;
+            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (!(r > 1e-14) || !std::isfinite(r))
+                throw std::runtime_error("compute_gradient_gauss_vertex: degenerate vertex-cell distance");
+            vertex_cells[v].emplace_back(c, 1.0 / r);
+        }
+    }
+
+    std::vector<double> vertex_values(n_points, 0.0);
+    std::vector<double> vertex_weights(n_points, 0.0);
+    for (std::size_t v = 0; v < n_points; ++v) {
+        double acc = 0.0;
+        for (const auto& [c, w] : vertex_cells[v]) {
+            acc += w * cell_values[c];
+            vertex_weights[v] += w;
+        }
+        if (vertex_weights[v] > 0.0) vertex_values[v] = acc / vertex_weights[v];
+    }
+
+    // Average vertex values onto each face.
+    std::vector<double> face_values(n_faces, 0.0);
+    for (std::size_t f = 0; f < n_faces; ++f) {
+        double acc = 0.0;
+        std::size_t count = 0;
+        for (Offset o = face_offsets[f]; o < face_offsets[f + 1]; ++o, ++count)
+            acc += vertex_values[face_vertices[o]];
+        face_values[f] = count ? acc / static_cast<double>(count) : 0.0;
+    }
+
+    // Green-Gauss assembly, identical to the cell-based operator.
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_vg", cell_field.metadata().unit + "/m", 3);
+    double* gx = grad.component_data(0);
+    double* gy = grad.component_data(1);
+    double* gz = grad.component_data(2);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        Vec3 sum;
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const Vec3 Sf = (own.owner(f) == c)
+                ? geometry.face_Sf[f]
+                : geometry.face_Sf[f] * (-1.0);
+            sum = sum + Sf * face_values[f];
+        }
+        const double volume = geometry.cell_volumes[c];
+        if (!(volume > 0.0) || !std::isfinite(volume))
+            throw std::runtime_error("compute_gradient_gauss_vertex: non-positive cell volume");
+        const double inv_volume = 1.0 / volume;
+        gx[c] = sum.x * inv_volume;
+        gy[c] = sum.y * inv_volume;
+        gz[c] = sum.z * inv_volume;
+    }
+    return grad;
+}
+
+inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const GeometryCache geometry = make_geometry_cache(mesh);
+    return compute_gradient_gauss_vertex(cell_field, mesh, geometry);
 }
 
 }  // namespace core

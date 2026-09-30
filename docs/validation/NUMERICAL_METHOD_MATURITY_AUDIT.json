@@ -38,10 +38,11 @@
         "tests/validation/test_gradient_verification.cpp"
       ],
       "gaps": [
-        "weighted/vertex GG qualification",
-        "boundary reconstruction matrix",
+        "least-squares weight-variant qualification",
         "gradient limiter integration",
-        "polyhedral gradient campaign"
+        "boundary reconstruction matrix",
+        "polyhedral gradient campaign",
+        "vertex-based Green-Gauss on non-affine/polyhedral meshes"
       ]
     },
     {

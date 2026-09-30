@@ -58,6 +58,15 @@
     },
     {
       "package_id": "N2",
+      "requirement": "Green-Gauss node/vertex-based gradient",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
+        "tests/validation/test_gradient_verification.cpp"
+      ]
+    },
+    {
+      "package_id": "N2",
       "requirement": "least-squares gradient",
       "status": "implemented",
       "evidence": [
@@ -87,7 +96,8 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
-        "src/cfdx/core/numerics/interpolation.h"
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_gradient_verification.cpp"
       ]
     },
     {
