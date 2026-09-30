@@ -16,6 +16,7 @@ using namespace cfdx::physics;
 
 namespace {
 
+// Controlled-box diagnostics intentionally keep the production Poisson operator unchanged.\n
 void add_triangle(WallSurface& s, std::size_t a, std::size_t b, std::size_t c)
 {
     s.triangles.push_back({{a, b, c}});
