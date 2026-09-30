@@ -132,3 +132,61 @@ unchanged graph may use the native AMG numeric-refresh path.
 ## Current master integration
 
 This qualification slice is rebased onto the current `master`. The repository now also provides generic algebraic Schur infrastructure (`BlockOperator`, `SchurApproximation`, and sparse CSR matrix products) for subsequent LSC/BFBt/PCD and scalable coupled-preconditioner work. The present 4N Block-Schur-AMG implementation remains deliberately bounded and independently qualified; it does not claim to implement those newer generic interfaces.
+
+
+## N8.2 — Multilevel AMG qualification contract
+
+The N8.2 qualification is stricter than a single successful solve. For both
+native interpolation families — **Direct-CF (Ruge–Stüben)** and
+**Smoothed Aggregation** — the qualification executable must inspect every
+constructed transfer level.
+
+For every level (l) with prolongation (P_l) and coarse operator
+(A_{l+1}), the campaign checks:
+
+1. **Real multilevel hierarchy:** more than two levels are constructed on the
+   production qualification problem; no single-level/direct-coarse shortcut is
+   accepted for this gate.
+2. **Galerkin identity:** the stored coarse matrix satisfies
+   (A_{l+1}=P_l^T A_l P_l) to a numerical reconstruction tolerance.
+3. **Constant preservation:** every prolongation row satisfies (P_l 1=1)
+   to machine-level tolerance for the elliptic null/near-nullspace contract.
+4. **Coarse-space coverage:** every coarse column has at least one fine
+   representative; zero-column transfers fail.
+5. **Coarse operator integrity:** symmetry and positive Gershgorin lower-bound
+   diagnostics are finite and non-negative within round-off.
+6. **Smoother stage:** a four-sweep smoother must reduce the manufactured
+   low-frequency mode residual.
+7. **Two-grid stage:** the complete smoother + coarse correction + post-smoothing
+   cycle must contract the manufactured low-frequency mode.
+8. **Full V-cycle energy:** the A-energy error ratio must be strictly below one,
+   using
+   [
+   ho_E =
+   sqrt{\frac{e^T A e}{e_0^T A e_0}} < 1.
+   ]
+   Euclidean residual reduction is retained as diagnostic evidence and is not
+   used as a substitute for this energy criterion.
+
+The same gates are applied independently to Direct-CF and Smoothed Aggregation
+on the same (N=4096) 1-D Dirichlet Poisson hierarchy. Existing anisotropic
+and FVM-diffusion tests remain complementary robustness gates.
+
+The Ruge–Stüben implementation also explicitly uses the complete strong
+C-neighbour set of an intermediate F-point when constructing the indirect
+interpolation contribution. Restricting that set to the intersection with the
+original F-point's C-neighbours is not the classical RS formula and is not
+accepted.
+
+### N8.2 evidence state
+
+Before this PR, the repository already contained the two native interpolation
+implementations and several diagnostics, but the qualification executable
+gated the V-cycle energy only at level 0. Structural diagnostics for deeper
+levels were printed but did not determine the final PASS/FAIL state.
+
+This PR promotes those diagnostics into explicit gates for **every transfer
+level and both interpolation families**, including smoother-only, two-grid and
+full-V-cycle evidence. No solver tolerance is relaxed, no test is disabled, and
+no fallback is introduced.
+
