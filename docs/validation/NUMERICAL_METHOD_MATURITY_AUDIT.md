@@ -23,7 +23,7 @@ An implementation registry entry never implies validation.
 | N2 gradients/reconstruction | PARTIAL | cell/vertex/point-linear Green-Gauss + linear/quadratic least-squares with orthogonal/skewed/stretched observed-order V&V, pinned zero-gradient boundary policy, and a tetrahedral campaign (2:1 sweep: quadratic LS reaches ~2nd order asserted ≥1.5; two-point GG inconsistent; vertex/point/LS ~1st order) |
 | N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed with explicit skewness-correction contract and quantified skew ladder (order ~2; uncorrected non-convergent under skew); tetrahedra: corrected operator linear-exact only with LS-family gradients (Linf ~5e-13) but smooth Laplacian remains O(1) — a discretisation gap, not just a gradient swap |
 | N4 convection | PARTIAL | selectable upwind/TVD (MUSCL, 5 limiters) + central with 1D boundedness/linear-exactness/order/conservation V&V; QUICK, blended, multidimensional policy and production wiring incomplete |
-| N5 temporal | PARTIAL | Euler/CN/BDF2 exist; history/restart/RK/variable-step/order campaign incomplete |
+| N5 temporal | PARTIAL | measured order matrix (Euler~1, CN~2, BDF2~2, RK2~2, RK3~3) asserted and verified; RK2 mislabelled first-order helper fixed; history/restart/variable-step and full transient-MMS matrix still open |
 | N6 CFL/time-step | PARTIAL | adaptive CFL/pseudo-transient controllers exist; full characteristic-length/rollback/audit contract incomplete |
 | N7 nonlinear convergence | PARTIAL | convergence infrastructure exists; unified conservation/QoI/continuation qualification incomplete |
 | N8 linear/preconditioners | PARTIAL | AMG/FieldSplit/Schur are advanced; exact-Schur oracle, LSC/BFBt/PCD and scaling remain |
