@@ -198,7 +198,7 @@ int main() {
             if(og.solid[id]) continue;
             const auto x=og.points[id];
             const double d=(x.x+x.y)*inv_sqrt2;
-            if(d<=0.375 || d>=1.75 || std::abs(x.z)>0.75) continue;
+            if(d<=0.0 || d>=1.75 || std::abs(x.z)>0.75) continue;
 
             const std::size_t k=id/(og.nx*og.ny);
             const std::size_t rem=id%(og.nx*og.ny);
