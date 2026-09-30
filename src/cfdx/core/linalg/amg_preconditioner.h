@@ -759,6 +759,41 @@ public:
         return two_grid_residual_ratio(level, rhs);
     }
 
+    double sine_mode_vcycle_energy_ratio(std::size_t level,
+                                            std::size_t mode) const
+    {
+        if (level >= levels_.size() || mode == 0)
+            throw std::out_of_range("sine_mode_vcycle_energy_ratio: invalid level or mode");
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i)
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs))
+            return std::numeric_limits<double>::infinity();
+        Vector x(n, 0.0);
+        if (!vcycle(level, rhs, x))
+            return std::numeric_limits<double>::infinity();
+
+        Vector error(n, 0.0), Aerror(n, 0.0), Aexact(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) error(i) = exact(i) - x(i);
+        if (!apply_operator(level, error, Aerror) ||
+            !apply_operator(level, exact, Aexact))
+            return std::numeric_limits<double>::infinity();
+
+        double eAe = 0.0;
+        double exactAe = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            eAe += error(i) * Aerror(i);
+            exactAe += exact(i) * Aexact(i);
+        }
+        if (!std::isfinite(eAe) || !std::isfinite(exactAe) || exactAe <= 0.0)
+            return std::numeric_limits<double>::infinity();
+        return std::sqrt(std::max(0.0, eAe) / exactAe);
+    }
+
     double sine_mode_smoother_residual_ratio(std::size_t level,
                                              std::size_t mode,
                                              std::size_t sweeps) const
@@ -1232,13 +1267,18 @@ private:
             for (const std::size_t k : strong[i]) {
                 if (point[k] != Point::Fine) continue;
 
-                // Classical RS uses the strong C-neighbour set of k
-                // itself. Using C_i^s ∩ C_k^s truncates the denominator and
-                // becomes wrong on recursively generated Galerkin operators.
+                // Classical RS interpolation uses the complete strong
+                // C-neighbour set of the intermediate F-point k. Restricting
+                // this contribution to C_i^s ∩ C_k^s is not the RS formula
+                // and can destroy the interpolation space on recursively
+                // generated Galerkin operators.
                 double c_sum = 0.0;
+                std::vector<std::size_t> k_c_neighbors;
                 for (const std::size_t m : strong[k]) {
-                    if (point[m] == Point::Coarse)
+                    if (point[m] == Point::Coarse) {
                         c_sum += matrix_value(k, m);
+                        k_c_neighbors.push_back(m);
+                    }
                 }
                 if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
                     prolongation.clear();
@@ -1248,7 +1288,7 @@ private:
                 }
 
                 const double aik = matrix_value(i, k);
-                for (const std::size_t j : c_neighbors) {
+                for (const std::size_t j : k_c_neighbors) {
                     const double akj = matrix_value(k, j);
                     weights[coarse_index[j]] += aik * akj / c_sum;
                 }
