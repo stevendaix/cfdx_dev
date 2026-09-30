@@ -329,7 +329,6 @@ int main(int argc, char** argv)
                     check(i>0?grid.index(i-1,j,k):0,i>0); check(i+1<grid.nx?grid.index(i+1,j,k):0,i+1<grid.nx);
                     check(j>0?grid.index(i,j-1,k):0,j>0); check(j+1<grid.ny?grid.index(i,j+1,k):0,j+1<grid.ny);
                     check(k>0?grid.index(i,j,k-1):0,k>0); check(k+1<grid.nz?grid.index(i,j,k+1):0,k+1<grid.nz);
-                    exact_phi_operator_residual_max=std::max(exact_phi_operator_residual_max,op_residual);
                     if(op_residual>poisson_exact_phi_operator_residual_inf) poisson_exact_phi_max_residual_cell=id;
                     poisson_exact_phi_operator_residual_inf=std::max(poisson_exact_phi_operator_residual_inf,op_residual);
                     if(cut) { ++poisson_exact_phi_cut_cells; poisson_exact_phi_cut_residual_inf=std::max(poisson_exact_phi_cut_residual_inf,op_residual); }
