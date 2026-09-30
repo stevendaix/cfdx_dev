@@ -137,7 +137,8 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 
 inline Field<double, Location::CELL> compute_gradient_least_squares(
     const Field<double, Location::CELL>& cell_field,
-    const Mesh& mesh)
+    const Mesh& mesh,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -170,6 +171,12 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
                 if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
             } else {
                 nb = owner;
+            }
+            if (owner == c && nraw < 0) {
+                if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
+                    throw std::runtime_error("compute_gradient_least_squares: boundary face in rejected stencil at cell "
+                                             + std::to_string(c));
+                continue;
             }
             if (nb >= n_cells || nb == c)
                 continue;
@@ -687,7 +694,8 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
-    double condition_limit = std::numeric_limits<double>::infinity())
+    double condition_limit = std::numeric_limits<double>::infinity(),
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -716,6 +724,12 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                 if (raw>=0) nb=static_cast<std::size_t>(raw);
             } else {
                 nb=owner;
+            }
+            if (owner == c && raw < 0) {
+                if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
+                    throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
+                                             + std::to_string(c));
+                continue;
             }
             if (nb<n_cells && nb!=c) {
                 centres.push_back(geometry.cell_centres[nb]);
