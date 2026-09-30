@@ -528,6 +528,87 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
                                   const WallDistanceVec3& q,
                                   double h);
 
+// Per-axis 1D Shortley-Weller stencil (Shortley & Weller 1938).
+//
+// For a fluid node P with a neighbour on each side of the axis, each
+// neighbour is one of:
+//   - absent (outside the grid): homogeneous Neumann, drop that side
+//     entirely (matches the pre-existing outer-boundary treatment);
+//   - fluid: distance = grid spacing h, value = f[q];
+//   - solid (wall): distance = delta (BVH ray, clamped to
+//     wall_offset_relative_floor*h), value = phi_wall = 0.
+//
+// When both sides are present, the true 2nd-order irregular-boundary
+// stencil is
+//     f''_P = 2/(h_-*(h_-+h_+)) * f_-
+//           + 2/(h_+*(h_-+h_+)) * f_+
+//           - 2/(h_-*h_+)       * f_P
+// which is exact for a quadratic and reduces to (f_- + f_+ - 2 f_P)/h^2
+// when h_- = h_+ = h.
+//
+// The previous per-face stencil (-f_P/(h*delta) on a solid face plus
+// (f_q - f_P)/h^2 on the opposite fluid face) is inconsistent when
+// delta != h: its relative error on the coefficient is (1 - delta/h)/2,
+// independent of h. This produced ~97% L2 error on the complex wing-body
+// benchmark. Tracked in #466.
+//
+// When only one side is present (grid edge), fall back to the one-sided
+// per-face contribution so the outer-boundary treatment is unchanged.
+namespace poisson_stencil_detail {
+
+struct AxisNeighbour {
+    bool present{false};
+    double distance{0.0};  // h for fluid, delta for solid, ignored if !present
+    double value{0.0};     // f[q] for fluid, 0 for solid (wall Dirichlet)
+};
+
+inline AxisNeighbour classify_neighbour(const WallDistanceBvh& bvh,
+                                        const std::vector<double>& f,
+                                        const WallDistanceGrid& g,
+                                        const WallDistanceVec3& p,
+                                        std::size_t q, bool exists, double h) {
+    AxisNeighbour out;
+    if (!exists) return out;
+    if (g.solid[q]) {
+        out.present = true;
+        out.distance = poisson_wall_offset(bvh, p, g.points[q], h);
+        out.value = 0.0;
+    } else if (std::isfinite(f[q])) {
+        out.present = true;
+        out.distance = h;
+        out.value = f[q];
+    }
+    return out;
+}
+
+// Contribution of one axis to the Laplacian at f[id].
+inline double axis_laplacian(const AxisNeighbour& m,
+                             const AxisNeighbour& p,
+                             double h, double f_id) {
+    if (m.present && p.present) {
+        // Shortley-Weller 2nd-order irregular stencil.
+        const double sum = m.distance + p.distance;
+        return 2.0 * (m.value / (m.distance * sum)
+                      + p.value / (p.distance * sum)
+                      - f_id  / (m.distance * p.distance));
+    }
+    if (m.present) return (m.value - f_id) / (h * m.distance);
+    if (p.present) return (p.value - f_id) / (h * p.distance);
+    return 0.0;
+}
+
+// Contribution of one axis to the diagonal of A = -Laplacian.
+inline double axis_diagonal(const AxisNeighbour& m,
+                            const AxisNeighbour& p,
+                            double h) {
+    if (m.present && p.present) return 2.0 / (m.distance * p.distance);
+    if (m.present) return 1.0 / (h * m.distance);
+    if (p.present) return 1.0 / (h * p.distance);
+    return 0.0;
+}
+
+} // namespace poisson_stencil_detail
+
 inline double eikonal_update(const std::array<double,3>& a,
                                   const std::array<double,3>& h,
                                   double rhs) {
@@ -632,28 +713,31 @@ inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& 
     return l;
 }
 
+// BVH-aware laplacian used by the Hamilton-Jacobi and hybrid pseudo-time
+// integrators. Wall neighbours contribute a Dirichlet zero-value flux at
+// distance delta rather than at grid distance h. Shares the same
+// Shortley-Weller irregular stencil as poisson_laplacian_at for
+// consistency between the elliptic solve and the pseudo-time relaxation.
 inline double laplacian_at(const WallDistanceBvh& bvh,
                            const std::vector<double>& f,
                            const WallDistanceGrid& g,
                            std::size_t id) {
+    using poisson_stencil_detail::classify_neighbour;
+    using poisson_stencil_detail::axis_laplacian;
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    double l=0.0;
-    auto add_face=[&](std::size_t q,bool exists,double hh) {
-        if(!exists) return;
-        if(g.solid[q]) {
-            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],hh);
-            if(delta>0.0 && std::isfinite(delta)) l-=f[id]/(hh*delta);
-        } else if(std::isfinite(f[q])) {
-            l+=(f[q]-f[id])/(hh*hh);
-        }
-    };
+    const auto& p=g.points[id];
     const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
     const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
     const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
-    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
-    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
-    return l;
+    return axis_laplacian(classify_neighbour(bvh,f,g,p,xm,i>0,g.spacing.x),
+                          classify_neighbour(bvh,f,g,p,xp,i+1<g.nx,g.spacing.x),
+                          g.spacing.x,f[id])
+         + axis_laplacian(classify_neighbour(bvh,f,g,p,ym,j>0,g.spacing.y),
+                          classify_neighbour(bvh,f,g,p,yp,j+1<g.ny,g.spacing.y),
+                          g.spacing.y,f[id])
+         + axis_laplacian(classify_neighbour(bvh,f,g,p,zm,k>0,g.spacing.z),
+                          classify_neighbour(bvh,f,g,p,zp,k+1<g.nz,g.spacing.z),
+                          g.spacing.z,f[id]);
 }
 
 inline double godunov_gradient_at(const WallDistanceBvh& bvh,
@@ -1046,43 +1130,51 @@ inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
                                    const std::vector<double>& f,
                                    const WallDistanceGrid& g,
                                    std::size_t id) {
+    using poisson_stencil_detail::classify_neighbour;
+    using poisson_stencil_detail::axis_laplacian;
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    double l=0.0;
-    auto add_face=[&](std::size_t q,bool exists,double h) {
-        if(!exists) return;
-        if(g.solid[q]) {
-            const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],h);
-            l-=f[id]/(h*delta);
-        } else if(std::isfinite(f[q])) {
-            l+=(f[q]-f[id])/(h*h);
-        }
-    };
+    const auto& p=g.points[id];
     const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
     const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
     const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
-    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
-    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
-    return l;
+    const auto xn=classify_neighbour(bvh,f,g,p,xm,i>0,g.spacing.x);
+    const auto xP=classify_neighbour(bvh,f,g,p,xp,i+1<g.nx,g.spacing.x);
+    const auto yn=classify_neighbour(bvh,f,g,p,ym,j>0,g.spacing.y);
+    const auto yP=classify_neighbour(bvh,f,g,p,yp,j+1<g.ny,g.spacing.y);
+    const auto zn=classify_neighbour(bvh,f,g,p,zm,k>0,g.spacing.z);
+    const auto zP=classify_neighbour(bvh,f,g,p,zp,k+1<g.nz,g.spacing.z);
+    return axis_laplacian(xn,xP,g.spacing.x,f[id])
+         + axis_laplacian(yn,yP,g.spacing.y,f[id])
+         + axis_laplacian(zn,zP,g.spacing.z,f[id]);
 }
 
 inline double poisson_diagonal(const WallDistanceBvh& bvh,
                                const WallDistanceGrid& g,
                                std::size_t id) {
+    using poisson_stencil_detail::AxisNeighbour;
+    using poisson_stencil_detail::axis_diagonal;
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    double d=0.0;
-    auto add_face=[&](std::size_t q,bool exists,double h) {
-        if(!exists) return;
-        d += g.solid[q] ? 1.0/(h*poisson_wall_offset(bvh,g.points[id],g.points[q],h))
-                        : 1.0/(h*h);
+    const auto& p=g.points[id];
+    // The diagonal only depends on presence and distance; values are
+    // irrelevant. Inline a lightweight classifier so we never touch f[q].
+    auto side=[&](std::size_t q, bool exists, double h) {
+        AxisNeighbour out;
+        if(!exists) return out;
+        out.present=true;
+        out.distance=g.solid[q]
+            ? poisson_wall_offset(bvh,p,g.points[q],h)
+            : h;
+        return out;
     };
     const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
     const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
     const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-    add_face(xm,i>0,g.spacing.x); add_face(xp,i+1<g.nx,g.spacing.x);
-    add_face(ym,j>0,g.spacing.y); add_face(yp,j+1<g.ny,g.spacing.y);
-    add_face(zm,k>0,g.spacing.z); add_face(zp,k+1<g.nz,g.spacing.z);
-    return d;
+    return axis_diagonal(side(xm,i>0,g.spacing.x),
+                         side(xp,i+1<g.nx,g.spacing.x),g.spacing.x)
+         + axis_diagonal(side(ym,j>0,g.spacing.y),
+                         side(yp,j+1<g.ny,g.spacing.y),g.spacing.y)
+         + axis_diagonal(side(zm,k>0,g.spacing.z),
+                         side(zp,k+1<g.nz,g.spacing.z),g.spacing.z);
 }
 
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
@@ -1096,45 +1188,62 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     // with homogeneous Neumann treatment at the outer computational boundary.
     //
     // Solid neighbours are Dirichlet values phi_b=0 in the discrete operator.
-    // Outer boundaries are homogeneous Neumann zero-flux faces.  The stencil
-    // is assembled as a symmetric face graph so PCG is mathematically valid.
-    // No artificial zero-valued seed band is imposed on the Poisson solution.
+    // Outer boundaries are homogeneous Neumann zero-flux faces.
     //
-    // The operator is symmetric positive definite for a domain connected to
-    // at least one Dirichlet wall. Use preconditioned conjugate gradients,
-    // as OpenFOAM does for its Poisson wall-distance solve (PCG/DIC or GAMG).
+    // The discrete operator uses the 2nd-order Shortley-Weller irregular
+    // stencil at cut cells (see poisson_laplacian_at). That stencil is
+    // consistent to O(h^2) even on a wall arbitrarily close to a grid node,
+    // but it is NOT symmetric when the two axis neighbours of a fluid node
+    // see different distances (typical of cut cells). The previous PCG
+    // solver here required an SPD operator; with the S-W stencil we use
+    // BiCGStab, which handles non-symmetric operators. The system stays
+    // positive-definite (a similarity transform of an SPD operator), so
+    // BiCGStab remains an appropriate outer Krylov method. Diagonal Jacobi
+    // preconditioning uses poisson_diagonal, which for the S-W stencil
+    // gives the true 2/(hm*hp) diagonal entry.
     const std::size_t n=g.points.size();
     std::vector<double> phi(n,0.0);
-    std::vector<double> r(n,0.0);
-    std::vector<double> z(n,0.0);
-    std::vector<double> p(n,0.0);
-    std::vector<double> Ap(n,0.0);
 
     auto is_fluid=[](const WallDistanceGrid& grid,std::size_t id) {
         return !grid.solid[id];
     };
 
     auto diagonal=[&](std::size_t id) {
-        return poisson_diagonal(bvh,g,id);
+        const double d=poisson_diagonal(bvh,g,id);
+        return d>0.0 ? d : 1.0;
     };
 
+    // A * x, evaluated only on fluid degrees of freedom.
     auto apply=[&](const std::vector<double>& x,std::vector<double>& y) {
         std::fill(y.begin(),y.end(),0.0);
         for(std::size_t id=0;id<n;++id) {
             if(!is_fluid(g,id)) continue;
-            // A = -L, with the same solid Dirichlet and outer Neumann
-            // treatment used by poisson_laplacian_at().
             y[id] = -poisson_laplacian_at(bvh,x,g,id);
         }
     };
 
-    // b = 1 in every fluid degree of freedom.
-    apply(phi,Ap);
+    // Diagonal Jacobi preconditioner: M^-1 z = y  <=>  z = D^-1 y.
+    auto precondition=[&](const std::vector<double>& in,std::vector<double>& out) {
+        std::fill(out.begin(),out.end(),0.0);
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) out[id]=in[id]/diagonal(id);
+    };
+
+    // BiCGStab state (Saad, Iterative Methods for Sparse Linear Systems,
+    // Algorithm 7.7).
+    std::vector<double> r(n,0.0), rhat(n,0.0), p(n,0.0), v(n,0.0);
+    std::vector<double> s(n,0.0), t(n,0.0);
+    std::vector<double> phat(n,0.0), shat(n,0.0);
+    std::vector<double> Ax(n,0.0);
+
+    // r0 = b - A x0 = 1 - A phi  (phi starts at zero, so r0 = 1 on fluid DOFs)
+    apply(phi,Ax);
     double residual_inf=0.0;
     std::size_t fluid_count=0;
     for(std::size_t id=0;id<n;++id) {
         if(!is_fluid(g,id)) continue;
-        r[id]=1.0-Ap[id];
+        r[id]=1.0-Ax[id];
+        rhat[id]=r[id];
         residual_inf=std::max(residual_inf,std::abs(r[id]));
         ++fluid_count;
     }
@@ -1145,20 +1254,9 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         return phi;
     }
 
-    for(std::size_t id=0;id<n;++id) {
-        if(is_fluid(g,id)) {
-            z[id]=r[id]/diagonal(id);
-            p[id]=z[id];
-        }
-    }
-
-    double rz_old=0.0;
-    for(std::size_t id=0;id<n;++id)
-        if(is_fluid(g,id)) rz_old += r[id]*z[id];
-
-    std::size_t used=0;
     constexpr double abs_tol=1e-10;
     constexpr double breakdown_tol=1e-30;
+    std::size_t used=0;
 
     if(residual_inf<=abs_tol) {
         if(used_iter) *used_iter=0;
@@ -1166,56 +1264,88 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         return phi;
     }
 
+    double rho_old=1.0, alpha=1.0, omega=1.0;
+
     for(std::size_t it=0;it<max_iter;++it) {
-        apply(p,Ap);
-
-        double pAp=0.0;
+        double rho=0.0;
         for(std::size_t id=0;id<n;++id)
-            if(is_fluid(g,id)) pAp += p[id]*Ap[id];
+            if(is_fluid(g,id)) rho += rhat[id]*r[id];
 
-        if(!(pAp>breakdown_tol) || !std::isfinite(pAp)) {
-            used=it;
+        if(!std::isfinite(rho) || std::abs(rho)<=breakdown_tol) {
+            used=it; break;
+        }
+
+        if(it==0) {
+            for(std::size_t id=0;id<n;++id) if(is_fluid(g,id)) p[id]=r[id];
+        } else {
+            if(std::abs(rho_old)<=breakdown_tol || std::abs(omega)<=breakdown_tol) {
+                used=it; break;
+            }
+            const double beta=(rho/rho_old)*(alpha/omega);
+            for(std::size_t id=0;id<n;++id)
+                if(is_fluid(g,id)) p[id]=r[id]+beta*(p[id]-omega*v[id]);
+        }
+
+        precondition(p,phat);
+        apply(phat,v);
+
+        double rhat_v=0.0;
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) rhat_v += rhat[id]*v[id];
+        if(std::abs(rhat_v)<=breakdown_tol || !std::isfinite(rhat_v)) {
+            used=it; break;
+        }
+        alpha=rho/rhat_v;
+
+        // s = r - alpha v
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) s[id]=r[id]-alpha*v[id];
+
+        double s_inf=0.0;
+        for(std::size_t id=0;id<n;++id)
+            if(is_fluid(g,id)) s_inf=std::max(s_inf,std::abs(s[id]));
+        if(s_inf<=abs_tol) {
+            // x <- x + alpha * phat, residual has been driven below tol
+            for(std::size_t id=0;id<n;++id)
+                if(is_fluid(g,id)) phi[id]+=alpha*phat[id];
+            residual_inf=s_inf;
+            used=it+1;
             break;
         }
 
-        const double alpha=rz_old/pAp;
-        if(!std::isfinite(alpha)) {
-            used=it;
-            break;
-        }
+        precondition(s,shat);
+        apply(shat,t);
 
+        double tt=0.0, ts=0.0;
+        for(std::size_t id=0;id<n;++id) {
+            if(!is_fluid(g,id)) continue;
+            tt += t[id]*t[id];
+            ts += t[id]*s[id];
+        }
+        if(!(tt>breakdown_tol) || !std::isfinite(tt)) {
+            used=it; break;
+        }
+        omega=ts/tt;
+
+        residual_inf=0.0;
         double max_change=0.0;
         for(std::size_t id=0;id<n;++id) {
             if(!is_fluid(g,id)) continue;
-            const double old=phi[id];
-            phi[id] += alpha*p[id];
-            r[id] -= alpha*Ap[id];
-            max_change=std::max(max_change,std::abs(phi[id]-old));
-        }
-
-        residual_inf=0.0;
-        double rz_new=0.0;
-        for(std::size_t id=0;id<n;++id) {
-            if(!is_fluid(g,id)) continue;
+            const double delta=alpha*phat[id]+omega*shat[id];
+            phi[id]+=delta;
+            r[id]=s[id]-omega*t[id];
             residual_inf=std::max(residual_inf,std::abs(r[id]));
-            z[id]=r[id]/diagonal(id);
-            rz_new += r[id]*z[id];
+            max_change=std::max(max_change,std::abs(delta));
         }
 
         used=it+1;
         if(residual_inf<=abs_tol) break;
+        if(std::abs(omega)<=breakdown_tol) break;
 
-        if(!(std::isfinite(rz_new)) || rz_old<=breakdown_tol) break;
-
-        const double beta=rz_new/rz_old;
-        for(std::size_t id=0;id<n;++id)
-            if(is_fluid(g,id)) p[id]=z[id]+beta*p[id];
-
-        rz_old=rz_new;
-
-        // A stagnating Krylov iteration is a numerical failure, not
-        // convergence. Keep the residual visible to the caller.
+        // Stagnation is a numerical failure, not convergence.
         if(max_change==0.0 && residual_inf>abs_tol) break;
+
+        rho_old=rho;
     }
 
     if(used_iter) *used_iter=used;
