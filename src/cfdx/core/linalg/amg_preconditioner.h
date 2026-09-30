@@ -794,6 +794,106 @@ public:
         return std::sqrt(std::max(0.0, eAe) / exactAe);
     }
 
+    double two_grid_sine_mode_energy_ratio(std::size_t level, std::size_t mode) const
+    {
+        if (level + 1 >= levels_.size() || mode == 0)
+            throw std::out_of_range("two_grid_sine_mode_energy_ratio: invalid level or mode");
+        const std::size_t n = levels_[level].A.n_rows();
+        Vector exact(n, 0.0);
+        constexpr double pi = 3.14159265358979323846;
+        for (std::size_t i = 0; i < n; ++i)
+            exact(i) = std::sin(pi * static_cast<double>(mode * (i + 1)) /
+                                 static_cast<double>(n + 1));
+        Vector rhs(n, 0.0);
+        if (!apply_operator(level, exact, rhs))
+            return std::numeric_limits<double>::infinity();
+
+        Vector x(n, 0.0), Ax(n), res(n);
+        if (!smooth(level, rhs, x, pre_) || !apply_operator(level, x, Ax))
+            return std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < n; ++i) res(i) = rhs(i) - Ax(i);
+
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        Vector rc(nc, 0.0);
+        for (std::size_t i = 0; i < n; ++i)
+            for (const auto& [col, weight] : levels_[level].prolongation[i])
+                rc(col) += weight * res(i);
+
+        Vector ec(nc, 0.0), r = rc, z(nc, 0.0), p(nc, 0.0), Ap(nc, 0.0);
+        const auto& Ac = levels_[level + 1].A;
+        const auto* row = Ac.row_offsets_data();
+        const auto* col = Ac.columns_data();
+        const auto* val = Ac.values_data();
+        double rz = 0.0, rhs_norm2 = 0.0;
+        for (std::size_t i = 0; i < nc; ++i) {
+            rhs_norm2 += rc(i) * rc(i);
+            double diag = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                if (col[k] == i) diag += val[k];
+            if (!std::isfinite(diag) || diag <= 0.0)
+                return std::numeric_limits<double>::infinity();
+            z(i) = r(i) / diag;
+            p(i) = z(i);
+            rz += r(i) * z(i);
+        }
+        const double rhs_norm = std::sqrt(rhs_norm2);
+        if (rhs_norm > 0.0) {
+            const std::size_t max_iter = std::max<std::size_t>(100, 4 * nc);
+            const double target = 1e-12 * rhs_norm;
+            bool converged = false;
+            for (std::size_t iter = 0; iter < max_iter; ++iter) {
+                const auto values = Ac.matvec(p);
+                for (std::size_t i = 0; i < nc; ++i) Ap(i) = values[i];
+                double pAp = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) pAp += p(i) * Ap(i);
+                if (!std::isfinite(pAp) || pAp <= 0.0)
+                    return std::numeric_limits<double>::infinity();
+                const double alpha = rz / pAp;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    ec(i) += alpha * p(i);
+                    r(i) -= alpha * Ap(i);
+                }
+                double rr = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) rr += r(i) * r(i);
+                if (std::sqrt(rr) <= target) { converged = true; break; }
+                double rz_new = 0.0;
+                for (std::size_t i = 0; i < nc; ++i) {
+                    double diag = 0.0;
+                    for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                        if (col[k] == i) diag += val[k];
+                    z(i) = r(i) / diag;
+                    rz_new += r(i) * z(i);
+                }
+                const double beta = rz_new / rz;
+                for (std::size_t i = 0; i < nc; ++i) p(i) = z(i) + beta * p(i);
+                rz = rz_new;
+            }
+            if (!converged) return std::numeric_limits<double>::infinity();
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            double correction = 0.0;
+            for (const auto& [coarse, weight] : levels_[level].prolongation[i])
+                correction += weight * ec(coarse);
+            x(i) += correction;
+        }
+        if (!smooth(level, rhs, x, post_))
+            return std::numeric_limits<double>::infinity();
+
+        Vector error(n, 0.0), Aerror(n), Aexact(n);
+        for (std::size_t i = 0; i < n; ++i) error(i) = exact(i) - x(i);
+        if (!apply_operator(level, error, Aerror) ||
+            !apply_operator(level, exact, Aexact))
+            return std::numeric_limits<double>::infinity();
+        double eAe = 0.0, exactAe = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            eAe += error(i) * Aerror(i);
+            exactAe += exact(i) * Aexact(i);
+        }
+        if (!std::isfinite(eAe) || !std::isfinite(exactAe) || exactAe <= 0.0)
+            return std::numeric_limits<double>::infinity();
+        return std::sqrt(std::max(0.0, eAe) / exactAe);
+    }
+
     double sine_mode_smoother_residual_ratio(std::size_t level,
                                              std::size_t mode,
                                              std::size_t sweeps) const
