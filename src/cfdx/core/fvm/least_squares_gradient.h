@@ -176,7 +176,7 @@ inline Vec3 weighted_least_squares_gradient(
         for(int row=col+1;row<3;++row) if(std::abs(m[row][col])>pa){pa=std::abs(m[row][col]);p=row;}
         if(!(pa>tol)) continue;
         if(p!=col) for(int j=col;j<4;++j) std::swap(m[col][j],m[p][j]);
-        pivoted[col]=true; ++q.rank;
+        ++q.rank;
         minp=std::min(minp,std::abs(m[col][col])); maxp=std::max(maxp,std::abs(m[col][col]));
         for(int row=col+1;row<3;++row){const double f=m[row][col]/m[col][col];for(int j=col;j<4;++j)m[row][j]-=f*m[col][j];}
     }
