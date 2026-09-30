@@ -222,6 +222,45 @@ std::vector<WallDistanceMethod> methods()
     };
 }
 
+// Iteration budget for the iterative methods.
+//
+// A single constant budget for every resolution is not a neutral choice: it
+// silently turns a convergence gate into a resolution gate. Each solver has its
+// own cost law and they are not the same.
+//
+// The pseudo-time methods (Hamilton-Jacobi, advection-diffusion and the hybrid)
+// take an explicit step limited by the diffusive bound
+// dt <= 0.9/(2*gamma*(hx^-2+hy^-2+hz^-2)) in wall_distance.h, that is
+// dt = O(h^2), so the number of steps needed to reach steady state grows like
+// O(n^2). Measured with the old fixed budget of 500: advection-diffusion needed
+// 68 steps at n=16 and 224 at n=32 (factor 3.3), then hit the ceiling at n=64
+// with residual_inf = 4.3e-5 and at n=128 with 0.18. Hamilton-Jacobi hit it from
+// n=32 onwards but was not gated, so its non-convergence went unreported.
+//
+// The Poisson path is a Krylov solve whose iteration count grows like O(n):
+// measured 46 / 98 / 207 / 461 at n = 16 / 32 / 64 / 128, a clean factor 2.2 per
+// refinement. At n=128 it was using 461 of the 500 available, so the old budget
+// was one refinement away from failing for the same non-reason.
+//
+// Budgets below are those cost laws, normalized at n=16 with roughly a factor 4
+// of margin over the counts measured there (46 for Poisson, 208 for the slowest
+// pseudo-time method). Methods that are direct or purely graph-based ignore the
+// budget entirely.
+std::size_t iteration_budget(WallDistanceMethod method, std::size_t n)
+{
+    const double ratio = static_cast<double>(n) / 16.0;
+    switch (method) {
+    case WallDistanceMethod::POISSON:
+        return static_cast<std::size_t>(200.0 * ratio);
+    case WallDistanceMethod::HAMILTON_JACOBI:
+    case WallDistanceMethod::ADVECTION_DIFFUSION:
+    case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
+        return static_cast<std::size_t>(1000.0 * ratio * ratio);
+    default:
+        return 500;
+    }
+}
+
 std::vector<std::size_t> parse_sizes(int argc, char** argv)
 {
     std::vector<std::size_t> sizes;
@@ -244,8 +283,7 @@ int main(int argc, char** argv)
     const auto sizes = parse_sizes(argc, argv);
 
     std::vector<Row> rows;
-    bool poisson_failure = false;
-    bool advection_diffusion_failure = false;
+    bool convergence_failure = false;
 
     for (const auto n : sizes) {
         const double lo = -0.5;
@@ -310,8 +348,9 @@ int main(int argc, char** argv)
                   << ", degenerate=" << offsets.degenerate_count << "\n";
 
         for (const auto method : methods()) {
+            const std::size_t budget = iteration_budget(method, n);
             const auto t0 = std::chrono::steady_clock::now();
-            const auto result = compute_wall_distance(method, surface, grid, 500);
+            const auto result = compute_wall_distance(method, surface, grid, budget);
             const auto t1 = std::chrono::steady_clock::now();
 
             const auto m = compare_wall_distance(
@@ -359,8 +398,11 @@ int main(int argc, char** argv)
                 // that the Poisson phi has an exact analytical solution.
                 std::size_t diagnostic_iterations=0;
                 double diagnostic_residual=0.0;
+                // Same budget as the gated solve above: this is the same
+                // elliptic problem, so a separate constant here would silently
+                // diagnose a differently-converged field.
                 const auto diagnostic_phi=poisson_potential(
-                    bvh,grid,500,1.5,&diagnostic_iterations,&diagnostic_residual);
+                    bvh,grid,budget,1.5,&diagnostic_iterations,&diagnostic_residual);
                 double e2=0.0,r2=0.0,em=0.0,rm=0.0;
                 double exact_phi_exact_grad_e2=0.0, exact_phi_exact_grad_em=0.0;
                 double num_phi_exact_grad_e2=0.0, num_phi_exact_grad_em=0.0;
@@ -476,18 +518,20 @@ int main(int argc, char** argv)
                           << ", diagnostic_iterations=" << diagnostic_iterations << "\n";
             }
 
-            if (method == WallDistanceMethod::POISSON && !result.converged) {
-                poisson_failure = true;
-                std::cerr << "FAIL Poisson did not converge at N=" << n
+            // Gate every method uniformly. Singling out Poisson and
+            // advection-diffusion let Hamilton-Jacobi and the hybrid exhaust
+            // their budget from N=32 onwards without the benchmark ever saying
+            // so: at N=128 Hamilton-Jacobi stopped at residual_inf=0.63 and the
+            // run was still reported as a wall-distance benchmark success.
+            // Direct and graph-based methods report converged=true with a
+            // stopping_reason of "direct" or "graph_complete", so they are not
+            // affected by this rule.
+            if (!result.converged) {
+                convergence_failure = true;
+                std::cerr << "FAIL " << result.method
+                          << " did not converge at N=" << n
                           << ": residual_inf=" << result.residual_inf
-                          << ", iterations=" << result.iterations
-                          << ", stopping_reason=" << result.stopping_reason << "\n";
-            }
-            if (method == WallDistanceMethod::ADVECTION_DIFFUSION && !result.converged) {
-                advection_diffusion_failure = true;
-                std::cerr << "FAIL Advection-diffusion did not converge at N=" << n
-                          << ": residual_inf=" << result.residual_inf
-                          << ", iterations=" << result.iterations
+                          << ", iterations=" << result.iterations << "/" << budget
                           << ", stopping_reason=" << result.stopping_reason << "\n";
             }
 
@@ -627,7 +671,6 @@ int main(int argc, char** argv)
             << '\n';
     }
 
-    if(poisson_failure) return 4;
-    if(advection_diffusion_failure) return 5;
+    if(convergence_failure) return 4;
     return 0;
 }
