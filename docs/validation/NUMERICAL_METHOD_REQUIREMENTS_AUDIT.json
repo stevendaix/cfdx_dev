@@ -159,9 +159,10 @@
     {
       "package_id": "N3",
       "requirement": "quantitative high-non-orthogonality campaign",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
       ]
     },
     {

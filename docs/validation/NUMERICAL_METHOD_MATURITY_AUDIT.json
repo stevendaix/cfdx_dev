@@ -51,11 +51,12 @@
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
-        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
       ],
       "gaps": [
         "explicit skew correction contract",
-        "high-nonorthogonality quantitative campaign"
+        "non-affine / extremely non-orthogonal and polyhedral diffusion"
       ]
     },
     {

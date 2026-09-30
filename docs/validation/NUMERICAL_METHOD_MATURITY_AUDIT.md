@@ -21,7 +21,7 @@ An implementation registry entry never implies validation.
 |---|---|---|
 | N1 contracts | PARTIAL | numerical contracts, registry and explicit selection resolver exist; complete case/report traceability is incomplete |
 | N2 gradients/reconstruction | PARTIAL | Gauss/least-squares foundations exist with orthogonal/skewed/stretched observed-order V&V; weighted/vertex/boundary/reconstruction and polyhedral V&V incomplete |
-| N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed operators exist; skew policy and full accuracy campaign incomplete |
+| N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed operators with a quantified skew ladder (order ~2; uncorrected non-convergent under skew); skew-contract and non-affine/polyhedral cases incomplete |
 | N4 convection | PARTIAL | upwind/second-order/TVD infrastructure exists; complete scheme library and multidimensional V&V incomplete |
 | N5 temporal | PARTIAL | Euler/CN/BDF2 exist; history/restart/RK/variable-step/order campaign incomplete |
 | N6 CFL/time-step | PARTIAL | adaptive CFL/pseudo-transient controllers exist; full characteristic-length/rollback/audit contract incomplete |
