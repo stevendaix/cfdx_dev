@@ -31,6 +31,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <string>
 #include <algorithm>
 
 namespace cfdx {
@@ -679,6 +680,62 @@ inline Field<double, Location::CELL> compute_gradient_gauss_point(
     return compute_gradient_gauss_point(cell_field, mesh, geometry);
 }
 
+
+// Explicit weighted least-squares field gradient. The weighting policy is part
+// of the method contract; no hidden change to the legacy least-squares path.
+inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
+    double condition_limit = std::numeric_limits<double>::infinity())
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_weighted_least_squares: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_weighted_least_squares: field must be scalar (dim=1)");
+
+    const auto geometry = make_geometry_cache(mesh);
+    const auto* faces = mesh.cells().faces_data();
+    const auto* offsets = mesh.cells().offsets_data();
+    const auto& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_wls", cell_field.metadata().unit + "/m", 3);
+
+    for (std::size_t c=0; c<n_cells; ++c) {
+        std::vector<Vec3> centres;
+        std::vector<double> vals;
+        for (Offset k=offsets[c]; k<offsets[c+1]; ++k) {
+            const std::size_t f=faces[k];
+            const std::size_t owner=own.owner(f);
+            const std::int64_t raw=own.neighbour(f);
+            std::size_t nb=n_cells;
+            if (owner==c) {
+                if (raw>=0) nb=static_cast<std::size_t>(raw);
+            } else {
+                nb=owner;
+            }
+            if (nb<n_cells && nb!=c) {
+                centres.push_back(geometry.cell_centres[nb]);
+                vals.push_back(values[nb]);
+            }
+        }
+        StencilQuality q;
+        const Vec3 g=weighted_least_squares_gradient(
+            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        if (!q.full_rank)
+            throw std::runtime_error("compute_gradient_weighted_least_squares: rank-deficient stencil at cell "
+                                     + std::to_string(c));
+        if (std::isfinite(condition_limit) && !q.well_conditioned(condition_limit))
+            throw std::runtime_error("compute_gradient_weighted_least_squares: ill-conditioned stencil at cell "
+                                     + std::to_string(c));
+        grad(c,0)=g.x; grad(c,1)=g.y; grad(c,2)=g.z;
+    }
+    return grad;
+}
+
 // Shared cell-gradient selection used by derived operators (e.g. the
 // non-orthogonal correction of compute_laplacian). GAUSS_TWO_POINT is the
 // affine-optimal default (second order on affine meshes); the alternatives are
@@ -695,7 +752,7 @@ inline const char* to_string(GradientScheme s) {
     switch (s) {
         case GradientScheme::GAUSS_TWO_POINT:      return "gauss_two_point";
         case GradientScheme::GAUSS_POINT:          return "gauss_point";
-        case GradientScheme::LEAST_SQUARES:        return "least_squares";
+        case GradientScheme::LEAST_SQUARES:        return "least_squares";\n        case GradientScheme::WEIGHTED_LEAST_SQUARES: return "weighted_least_squares";
         case GradientScheme::LEAST_SQUARES_QUADRATIC: return "least_squares_quadratic";
         default:                                   return "unknown";
     }
@@ -704,7 +761,7 @@ inline const char* to_string(GradientScheme s) {
 inline GradientScheme gradient_scheme_from_string(const std::string& s) {
     if (s == "gauss_two_point")          return GradientScheme::GAUSS_TWO_POINT;
     if (s == "gauss_point")              return GradientScheme::GAUSS_POINT;
-    if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;
+    if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;\n    if (s == "weighted_least_squares")   return GradientScheme::WEIGHTED_LEAST_SQUARES;
     if (s == "least_squares_quadratic")  return GradientScheme::LEAST_SQUARES_QUADRATIC;
     throw std::runtime_error("gradient_scheme_from_string: unknown scheme '" + s + "'");
 }
