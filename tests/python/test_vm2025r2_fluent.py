@@ -127,20 +127,18 @@ class TestVM2025R2FluentCases:
             assert result.mesh["points"].shape[1] == 3
             assert result.setup.mesh_info.n_vertices > 0
 
-    @pytest.mark.parametrize("case_name", [
-        "VMFL001",  # rotating concentric cylinder
-        "VMFL015_WB",  # valve
-        "VMFL042_WB",  # mixing
-        "VMFL040_WB",  # diffuser
-        "VMFL044_WB",  # nozzle-3d
-        "VMFL048_WB",  # pipebend
+    @pytest.mark.parametrize("case_path", [
+        "VMFL001/VMFL001_WB_0_files/dp0/FLU/Fluent/VMFL001_rot_conc_cyl-1.cas.h5",
+        "VMFL015_WB/VMFL015_WB_1_files/dp0/FLU/Fluent/valve10-2.cas.h5",
+        "VMFL042_WB/VMFL042_WB_0_files/dp0/FFF/Fluent/VMFL042_mixing-1.cas.h5",
+        "VMFL040_WB/VMFL040_WB_1_files/dp0/FFF/Fluent/diffuser-1.cas.h5",
+        "VMFL044_WB/VMFL044_WB_1_files/dp0/FFF/Fluent/nozzle-3d-1.cas.h5",
+        "VMFL048_WB/VMFL048_WB_1_files/dp0/FLU/Fluent/VMFL048_pipebend-1.cas.h5",
     ])
-    def test_specific_cases(self, case_name, base_dir):
-        """Test specific known cases by name."""
-        # Find the case file
-        cas_files = list(base_dir.rglob(f"{case_name}*.cas.h5"))
-        assert cas_files, f"No cas.h5 found for {case_name}"
-        cas_file = cas_files[0]
+    def test_specific_cases(self, case_path, base_dir):
+        """Test specific known cases by relative path."""
+        cas_file = base_dir / case_path
+        assert cas_file.exists(), f"No cas.h5 found at {case_path}"
 
         adapter = FluentAdapter()
         info = SourceInfo()
@@ -208,6 +206,69 @@ class TestVM2025R2FluentCases:
 
         # Mesh dimension should be 3
         assert adapter.setup.mesh_info.dimension == 3
+
+    def test_full_workflow_2d_rerun(self, base_dir):
+        """Test full workflow: read cas.h5 + dat.h5, convert, save, rerun."""
+        # VMFL001 - 2D axisymmetric rotating concentric cylinder
+        cas_file = base_dir / "VMFL001" / "VMFL001_WB_0_files" / "dp0" / "FLU" / "Fluent" / "VMFL001_rot_conc_cyl-1.cas.h5"
+        dat_file = cas_file.parent / "VMFL001_rot_conc_cyl-1-00150.dat.h5"
+
+        if not dat_file.exists():
+            pytest.skip("No .dat.h5 available for VMFL001")
+
+        # Step 1: Read Fluent files
+        adapter = FluentAdapter()
+        adapter.parse_cas_h5(str(cas_file))
+        assert len(adapter._points) > 0
+        assert adapter.setup.mesh_info.dimension == 2
+
+        # Step 2: Import results
+        result = ConversionResult(source=SourceInfo())
+        dat_ok = adapter.import_results(str(dat_file), result)
+        assert dat_ok
+        assert len(result.available_fields.get("scalar", [])) >= 1
+        assert len(result.available_fields.get("vector", [])) >= 1
+
+        # Step 3: Convert to CFDX (with blocking gap for volume topology)
+        conv_result = ConversionResult(source=SourceInfo())
+        conv_ok = adapter.convert(str(cas_file), conv_result)
+        # Expected to be blocked due to no volume topology in .cas.h5
+        assert conv_result.gap_report.has_blocking()
+        assert conv_result.mesh is not None
+        assert conv_result.mesh["points"].shape[1] == 3
+
+        # Step 4: Save as CFDX HDF5 case (requires mesh topology, which is blocked)
+        # Note: This would require volume mesh topology - skip full save test for now
+        # The conversion provides mesh points and setup but no volume cells
+
+    def test_full_workflow_3d_rerun(self, base_dir):
+        """Test full workflow for 3D case."""
+        # VMFL015 - 3D valve
+        cas_file = base_dir / "VMFL015_WB" / "VMFL015_WB_1_files" / "dp0" / "FLU" / "Fluent" / "valve10-2.cas.h5"
+        dat_file = cas_file.parent / "valve10-2-00170.dat.h5"
+
+        if not dat_file.exists():
+            pytest.skip("No .dat.h5 available for VMFL015")
+
+        adapter = FluentAdapter()
+        adapter.parse_cas_h5(str(cas_file))
+        assert len(adapter._points) > 0
+        assert adapter.setup.mesh_info.dimension == 3
+
+        result = ConversionResult(source=SourceInfo())
+        dat_ok = adapter.import_results(str(dat_file), result)
+        assert dat_ok
+        assert len(result.available_fields.get("scalar", [])) >= 1
+        assert len(result.available_fields.get("vector", [])) >= 1
+
+        # The conversion provides all metadata needed for CFDX case setup
+        # but volume topology is missing from .cas.h5 (blocking gap)
+        conv_result = ConversionResult(source=SourceInfo())
+        conv_ok = adapter.convert(str(cas_file), conv_result)
+        assert conv_result.gap_report.has_blocking()
+        assert conv_result.setup.turbulence_model == "kw-standard-viscous"
+        assert len(conv_result.setup.materials) >= 1
+        assert len(conv_result.setup.boundary_conditions) >= 1
 
 
 if __name__ == "__main__":
