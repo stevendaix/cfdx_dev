@@ -34,13 +34,14 @@
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/fvm/least_squares_gradient.h",
-        "src/cfdx/core/numerics/interpolation.h"
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_gradient_verification.cpp"
       ],
       "gaps": [
         "weighted/vertex GG qualification",
         "boundary reconstruction matrix",
         "gradient limiter integration",
-        "complete skew/polyhedral observed-order campaign"
+        "polyhedral gradient campaign"
       ]
     },
     {

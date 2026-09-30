@@ -14,6 +14,8 @@ struct ErrorMetrics {
     double linf = 0.0;
     double l2_relative = 0.0;
     double linf_relative = 0.0;
+    double l1 = 0.0;
+    double l1_relative = 0.0;
 };
 
 inline ErrorMetrics error_norms(const std::vector<double>& numerical,
@@ -27,7 +29,9 @@ inline ErrorMetrics error_norms(const std::vector<double>& numerical,
 
     double sum_w = 0.0;
     double sum_e2 = 0.0;
+    double sum_abs_e = 0.0;
     double sum_exact2 = 0.0;
+    double sum_abs_exact = 0.0;
     double max_e = 0.0;
     double max_exact = 0.0;
     for (std::size_t i = 0; i < numerical.size(); ++i) {
@@ -37,15 +41,20 @@ inline ErrorMetrics error_norms(const std::vector<double>& numerical,
         const double e = std::abs(numerical[i] - exact[i]);
         sum_w += w;
         sum_e2 += w * e * e;
+        sum_abs_e += w * e;
         sum_exact2 += w * exact[i] * exact[i];
+        sum_abs_exact += w * std::abs(exact[i]);
         max_e = std::max(max_e, e);
         max_exact = std::max(max_exact, std::abs(exact[i]));
     }
     const double l2=std::sqrt(sum_e2/sum_w);
+    const double l1=sum_abs_e/sum_w;
     const double exact_l2=std::sqrt(sum_exact2/sum_w);
+    const double exact_l1=sum_abs_exact/sum_w;
     const double scale=std::max(exact_l2,std::numeric_limits<double>::min());
     const double inf_scale=std::max(max_exact,std::numeric_limits<double>::min());
-    return {l2,max_e,l2/scale,max_e/inf_scale};
+    const double l1_scale=std::max(exact_l1,std::numeric_limits<double>::min());
+    return {l2,max_e,l2/scale,max_e/inf_scale,l1,l1/l1_scale};
 }
 
 inline double observed_order(double coarse_error, double fine_error,

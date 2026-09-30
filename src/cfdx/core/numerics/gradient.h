@@ -158,11 +158,15 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
             const std::size_t f = cell_faces[k];
             const std::size_t owner = own.owner(f);
             const auto nraw = own.neighbour(f);
+            // The adjacent cell can be either the stored owner or the stored
+            // neighbour depending on which side of the face cell c lies. Using
+            // only faces owned by c drops every higher-index neighbour and
+            // degrades the stencil to a one-sided, first-order operator.
             std::size_t nb = n_cells;
-            if (nraw >= 0) {
-                nb = static_cast<std::size_t>(nraw);
-            } else if (owner != c) {
-                continue;
+            if (owner == c) {
+                if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
+            } else {
+                nb = owner;
             }
             if (nb >= n_cells || nb == c)
                 continue;

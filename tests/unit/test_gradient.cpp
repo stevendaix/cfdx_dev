@@ -332,5 +332,56 @@ int main() {
         EXPECT_TRUE(grad.size() == 0);
     });
 
+    run_case("least_squares_uses_both_face_orientations", []() {
+        // Three cells in a row. Cell 1 is the stored owner of only one internal
+        // face; the other internal face stores cell 1 as its neighbour. A
+        // correct wrapper must use both adjacent cells, otherwise the stencil
+        // is one-sided and not exact for a quadratic field.
+        Mesh m;
+        m.points().resize(16);
+        const double p[16][3] = {
+            {0,0,0},{1,0,0},{2,0,0},{3,0,0},
+            {0,1,0},{1,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{1,0,1},{2,0,1},{3,0,1},
+            {0,1,1},{1,1,1},{2,1,1},{3,1,1}};
+        for (std::size_t i = 0; i < 16; ++i)
+            m.points().set(i, p[i][0], p[i][1], p[i][2]);
+
+        const std::vector<std::vector<Index>> fs = {
+            {0,4,12,8},{1,9,13,5},{2,10,14,6},{3,7,15,11},
+            {0,1,9,8},{4,12,13,5},{0,4,5,1},{8,9,13,12},
+            {1,2,10,9},{5,13,14,6},{1,5,6,2},{9,10,14,13},
+            {2,3,11,10},{6,14,15,7},{2,6,7,3},{10,11,15,14}};
+        for (const auto& face : fs)
+            m.faces().push_face(face);
+        m.ownership().resize(fs.size());
+        for (std::size_t f = 0; f < fs.size(); ++f)
+            m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        m.ownership().set_owner(0,0);
+        m.ownership().set_owner(1,0); m.ownership().set_neighbour(1,1);
+        m.ownership().set_owner(2,1); m.ownership().set_neighbour(2,2);
+        m.ownership().set_owner(3,2);
+        for (std::size_t f : {4u,5u,6u,7u}) m.ownership().set_owner(f,0);
+        for (std::size_t f : {8u,9u,10u,11u}) m.ownership().set_owner(f,1);
+        for (std::size_t f : {12u,13u,14u,15u}) m.ownership().set_owner(f,2);
+        m.cells().push_cell({0,1,4,5,6,7});
+        m.cells().push_cell({1,2,8,9,10,11});
+        m.cells().push_cell({2,3,12,13,14,15});
+
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(3, "phi", "1", 1);
+        for (std::size_t c = 0; c < 3; ++c) {
+            const double x = geometry.cell_centres[c].x;
+            phi(c) = x * x;  // exact gradient 2x: 1.0, 3.0, 5.0
+        }
+
+        const auto grad = compute_gradient_least_squares(phi, m);
+        // Only the central cell has two x-neighbours, so it is the one that
+        // must be quadratic-exact. The old one-sided stencil returned 4.0 here.
+        EXPECT_NEAR(grad(1,0), 3.0, 1e-12);
+        EXPECT_NEAR(grad(1,1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(1,2), 0.0, 1e-12);
+    });
+
     return run_all();
 }
