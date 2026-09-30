@@ -19,7 +19,7 @@ An implementation registry entry never implies validation.
 
 | Package | Status | Main evidence / gap |
 |---|---|---|
-| N1 contracts | PARTIAL | numerical contracts and registry exist; complete case/report traceability is incomplete |
+| N1 contracts | PARTIAL | numerical contracts, registry and explicit selection resolver exist; complete case/report traceability is incomplete |
 | N2 gradients/reconstruction | PARTIAL | Gauss/least-squares foundations exist; weighted/vertex/boundary/reconstruction V&V is incomplete |
 | N3 diffusion | PARTIAL | orthogonal/corrected/limited operators exist; over-relaxed/skew policy and full accuracy campaign incomplete |
 | N4 convection | PARTIAL | upwind/second-order/TVD infrastructure exists; complete scheme library and multidimensional V&V incomplete |

@@ -19,11 +19,11 @@
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_contract.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/numerics/numerical_method_selection.h",
         "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
       ],
       "gaps": [
-        "case/report traceability",
-        "explicit selection audit",
+        "case/report traceability: emitting the resolved scheme into every case load and validation report",
         "complete conservation/boundedness contract integration"
       ]
     },

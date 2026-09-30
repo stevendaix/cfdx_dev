@@ -24,9 +24,11 @@
     {
       "package_id": "N1",
       "requirement": "explicit case/numerics scheme selection",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_registry.h"
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/numerics/numerical_method_selection.h",
+        "tests/validation/test_numerical_model_verification.cpp"
       ]
     },
     {
