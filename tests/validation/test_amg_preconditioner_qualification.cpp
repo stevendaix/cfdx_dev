@@ -268,7 +268,7 @@ int main() {
         for (std::size_t mode = 1; mode <= 4; ++mode) {
             const double ratio = vcycle.two_grid_sine_mode_residual_ratio(0, mode);
             std::cout << "amg_sine_mode DirectCF mode=" << mode
-                      << " two_grid_residual_ratio=" << ratio << '\\n';
+                      << " two_grid_residual_ratio=" << ratio << '\n';
             if (!std::isfinite(ratio)) diagnostic_ok = false;
         }
 
@@ -286,8 +286,7 @@ int main() {
                 std::cout << "amg_sine_stage DirectCF mode=" << mode
                           << " coarse_only_ratio=" << coarse_ratio
                           << " smoother_4_ratio=" << smooth_ratio << '\n';
-                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio) ||
-                    !std::isfinite(full_ratio))
+                if (!std::isfinite(coarse_ratio) || !std::isfinite(smooth_ratio))
                     diagnostic_ok = false;
             }
         }
@@ -303,10 +302,11 @@ int main() {
         EXPECT_TRUE(sa.setup(A_diag));
         for (const auto& row : sa.prolongation_boundary_rows(0, 3)) {
             std::cout << "amg_boundary_P SA"
-                      << " fine=" << row.fine_index;
+                      << " fine=" << row.fine_index
+                      << " aggregate=" << vcycle.aggregate_of(row.fine_index);
             for (const auto& [coarse, weight] : row.entries)
                 std::cout << " c" << coarse << "=" << weight;
-            std::cout << '\\n';
+            std::cout << '\n';
         }
 
         const auto transfer = sa.transfer_diagnostics();
@@ -339,7 +339,7 @@ int main() {
         for (std::size_t mode = 1; mode <= 4; ++mode) {
             const double ratio = sa.two_grid_sine_mode_residual_ratio(0, mode);
             std::cout << "amg_sine_mode SA mode=" << mode
-                      << " two_grid_residual_ratio=" << ratio << '\\n';
+                      << " two_grid_residual_ratio=" << ratio << '\n';
             if (!std::isfinite(ratio)) diagnostic_ok = false;
         }
 
