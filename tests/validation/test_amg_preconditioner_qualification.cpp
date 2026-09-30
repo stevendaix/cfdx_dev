@@ -184,7 +184,9 @@ int main() {
                  return solve_cg(A, b, x, amg, 5000, 1e-10);
              });
 
-    // Targeted AMG/CG qualification campaign. The five experiments are
+    // Targeted AMG/CG qualification campaign. Structural transfer coverage is diagnostic-only;
+    // the existing contraction gate remains authoritative.
+    // The five experiments are
     // intentionally separated so a failure in one mechanism does not hide
     // evidence from the others.
     bool qualification_ok = true;
