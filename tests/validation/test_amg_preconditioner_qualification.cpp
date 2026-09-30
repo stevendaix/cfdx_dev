@@ -398,6 +398,9 @@ int main() {
                     diagnostic_ok = false;
             }
         }
+
+        qualification_ok = qualification_ok &&
+                           qualify_multilevel_hierarchy(vcycle, "DirectCF");
     }
 
 
@@ -495,6 +498,9 @@ int main() {
                     diagnostic_ok = false;
             }
         }
+
+        qualification_ok = qualification_ok &&
+                           qualify_multilevel_hierarchy(sa, "SA");
     }
 
     auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
