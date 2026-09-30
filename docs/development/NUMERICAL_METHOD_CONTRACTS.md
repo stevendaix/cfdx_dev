@@ -83,7 +83,7 @@ This ordering keeps architecture work separate from numerical changes and makes 
 
 The registry is intentionally based on the production implementation rather than on the desired future method list.
 
-- **Gradients:** Green-Gauss and least-squares are implemented. Least-squares is currently a field-level wrapper around the existing rank-aware kernel in `core/fvm/least_squares_gradient.h`.
+- **Gradients:** Green-Gauss and least-squares are implemented. Least-squares is currently a field-level wrapper around the existing rank-aware kernel in `core/fvm/least_squares_gradient.h`. The wrapper must resolve the adjacent cell from whichever side of a face the cell lies on; using only faces the cell owns reduces the stencil to a one-sided, first-order operator. `tests/validation/test_gradient_verification.cpp` now exercises both gradients on orthogonal, affine-sheared and stretched mesh families (constant, linear, quadratic and smooth fields, measured observed order), and `tests/unit/test_gradient.cpp` pins the face-orientation behaviour.
 - **Interpolation/limiters:** linear and upwind interpolation are production paths. MinMod, Van Leer, Superbee, Van Albada and MC exist as limiter coefficient kernels; their presence does **not** imply that all five are selectable production convection schemes.
 - **Convection:** the scalar FVM transport path currently exposes upwind, bounded second-order upwind and TVD; the production TVD branch is currently wired to **MinMod**. Other limiter kernels remain implementation primitives until a complete transport-path integration and V&V campaign exists.
 - **Diffusion:** orthogonal, corrected, limited and uncorrected variants exist in the finite-volume path.
