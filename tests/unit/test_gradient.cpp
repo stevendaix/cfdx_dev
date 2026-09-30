@@ -431,5 +431,21 @@ int main() {
         EXPECT_TRUE(q.condition_estimate > 1.0e6);
     });
 
+
+    run_case("least_squares_boundary_policy_is_explicit", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "phi", "1", 1);
+        f(0) = 1.0;
+        EXPECT_THROW(
+            compute_gradient_least_squares(
+                f, m, BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL),
+            std::runtime_error);
+        const auto g = compute_gradient_least_squares(
+            f, m, BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        EXPECT_NEAR(g(0,0), 0.0, 1e-12);
+        EXPECT_NEAR(g(0,1), 0.0, 1e-12);
+        EXPECT_NEAR(g(0,2), 0.0, 1e-12);
+    });
+
     return run_all();
 }
