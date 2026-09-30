@@ -20,7 +20,7 @@ An implementation registry entry never implies validation.
 | Package | Status | Main evidence / gap |
 |---|---|---|
 | N1 contracts | PARTIAL | numerical contracts, registry and explicit selection resolver exist; complete case/report traceability is incomplete |
-| N2 gradients/reconstruction | PARTIAL | cell/vertex/point-linear Green-Gauss and least-squares with orthogonal/skewed/stretched observed-order V&V, pinned zero-gradient boundary policy, and a tetrahedral campaign (constant exact all, linear exact LS/vertex/point; two-point GG inconsistent on tets ~0.1, point-linear ~0.5-0.9, second order still open) |
+| N2 gradients/reconstruction | PARTIAL | cell/vertex/point-linear Green-Gauss and least-squares with orthogonal/skewed/stretched observed-order V&V, pinned zero-gradient boundary policy, and a tetrahedral campaign (constant exact all, linear exact LS/vertex/point; two-point GG inconsistent on tets ~0.1, point-linear ~0.5-0.9 but only ~1.1-1.6 on affine vs ~2 for two-point; genuinely second-order polyhedral gradients still open) |
 | N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed with explicit skewness-correction contract and quantified skew ladder (order ~2; uncorrected non-convergent under skew); tetras O(1)/non-convergent (blocked by gradient polyhedral accuracy) pending non-affine/polyhedral accuracy work |
 | N4 convection | PARTIAL | selectable upwind/TVD (MUSCL, 5 limiters) + central with 1D boundedness/linear-exactness/order/conservation V&V; QUICK, blended, multidimensional policy and production wiring incomplete |
 | N5 temporal | PARTIAL | Euler/CN/BDF2 exist; history/restart/RK/variable-step/order campaign incomplete |
