@@ -169,8 +169,8 @@ double safe_two_grid_ratio(const MatrixFreeVcyclePreconditioner& amg,
 template <typename AMG>
 bool qualify_multilevel_hierarchy(const AMG& amg,
                                   const char* label,
-                                  double max_energy_ratio = 1.0) {
-    const levels = amg.hierarchy_level_sizes();
+                                  double max_energy_ratio = 0.999999) {
+    const auto levels = amg.hierarchy_level_sizes();
     bool ok = levels.size() >= 3;
     if (!ok) return false;
 
@@ -215,7 +215,7 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
                       << " level=" << d.level << " mode=1 energy=" << energy
                       << " smoother4=" << smoother
                       << " two_grid_l2_residual=" << two_grid << '\n';
-            if (!std::isfinite(smoother) || !std::isfinite(two_grid)) ok = false;
+            if (!std::isfinite(smoother) || smoother >= 0.999999 ||\n                !std::isfinite(two_grid) || two_grid >= 0.999999)\n                ok = false;
         }
     }
     return ok;
