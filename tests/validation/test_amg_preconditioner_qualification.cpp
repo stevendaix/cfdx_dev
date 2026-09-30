@@ -228,13 +228,13 @@ int main() {
             const double energy_ratio =
                 vcycle.sine_mode_vcycle_energy_ratio(0, mode);
             std::cout << "amg_sine_mode_energy DirectCF mode=" << mode
-                      << " vcycle_energy_ratio=" << energy_ratio << '\\n';
+                      << " vcycle_energy_ratio=" << energy_ratio << '\n';
             if (!std::isfinite(energy_ratio) || energy_ratio >= 1.0)
                 qualification_ok = false;
             max_energy_ratio = std::max(max_energy_ratio, energy_ratio);
         }
         std::cout << "amg_vcycle_energy_gate DirectCF max_ratio="
-                  << max_energy_ratio << '\\n';
+                  << max_energy_ratio << '\n';
 
         // Full multilevel transfer audit: every level must expose the actual
         // coarse-space properties, not only the first P. These are evidence
@@ -262,7 +262,7 @@ int main() {
                       << " zero_columns=" << coverage.zero_columns
                       << " column_nnz=[" << coverage.min_nnz << "," << coverage.max_nnz << "]"
                       << " anchored_columns=" << coverage.anchored_columns
-                      << " coarse_size=" << d.coarse_size << '\\n';
+                      << " coarse_size=" << d.coarse_size << '\n';
             std::cout << "amg_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
@@ -319,18 +319,6 @@ int main() {
         }
     }
 
-        double sa_max_energy_ratio = 0.0;
-        for (std::size_t mode = 1; mode <= 4; ++mode) {
-            const double energy_ratio =
-                sa.sine_mode_vcycle_energy_ratio(0, mode);
-            std::cout << "amg_sine_mode_energy SA mode=" << mode
-                      << " vcycle_energy_ratio=" << energy_ratio << '\\n';
-            if (!std::isfinite(energy_ratio) || energy_ratio >= 1.0)
-                qualification_ok = false;
-            sa_max_energy_ratio = std::max(sa_max_energy_ratio, energy_ratio);
-        }
-        std::cout << "amg_vcycle_energy_gate SA max_ratio="
-                  << sa_max_energy_ratio << '\\n';
 
     // Repeat the same transfer/two-grid audit for SA so that common
     // multilevel/Galerkin defects are separated from Direct-CF construction.
@@ -340,6 +328,23 @@ int main() {
             op, 0.7, 4, 4, 0.25, 25,
             AMGInterpolationPolicy::SmoothedAggregation);
         EXPECT_TRUE(sa.setup(A_diag));
+
+        // Same manufactured low-frequency A-energy contraction gate as the
+        // Direct-CF branch above, so both interpolation policies are
+        // qualified against identical criteria.
+        double sa_max_energy_ratio = 0.0;
+        for (std::size_t mode = 1; mode <= 4; ++mode) {
+            const double energy_ratio =
+                sa.sine_mode_vcycle_energy_ratio(0, mode);
+            std::cout << "amg_sine_mode_energy SA mode=" << mode
+                      << " vcycle_energy_ratio=" << energy_ratio << '\n';
+            if (!std::isfinite(energy_ratio) || energy_ratio >= 1.0)
+                qualification_ok = false;
+            sa_max_energy_ratio = std::max(sa_max_energy_ratio, energy_ratio);
+        }
+        std::cout << "amg_vcycle_energy_gate SA max_ratio="
+                  << sa_max_energy_ratio << '\n';
+
         for (const auto& row : sa.prolongation_boundary_rows(0, 3)) {
             std::cout << "amg_boundary_P SA"
                       << " fine=" << row.fine_index
@@ -358,7 +363,7 @@ int main() {
                       << " zero_columns=" << coverage.zero_columns
                       << " column_nnz=[" << coverage.min_nnz << "," << coverage.max_nnz << "]"
                       << " anchored_columns=" << coverage.anchored_columns
-                      << " coarse_size=" << d.coarse_size << '\\n';
+                      << " coarse_size=" << d.coarse_size << '\n';
             std::cout << "amg_sa_transfer"
                       << " level=" << d.level
                       << " fine=" << d.fine_size
@@ -468,13 +473,24 @@ int main() {
         std::cout << " P_nnz=" << sa.first_prolongation_nnz() << "\n";
     }
 
+    // Attainable accuracy of this qualification system. A = make_poisson(4096)
+    // has cond(A) = 6.80e6, so the FP64 floor on the relative true residual is
+    // of order eps*cond(A) = 1.5e-9. Measured: a direct LAPACK-grade solve of
+    // this very system leaves a relative true residual of 1.74e-10. A solver
+    // tolerance below that floor is unsatisfiable by any method, direct or
+    // iterative, so requesting 1e-10 made CONVERGED unreachable and left the
+    // iteration grinding against a target it could not hit. The requested
+    // tolerance is therefore the same 1e-9 as the acceptance gate below, which
+    // also makes the gate implied by CONVERGED instead of independent of it.
+    constexpr double attainable_tolerance = 1e-9;
+
     // 2) CG + AMG with residual replacement completely disabled. This isolates
     // recurrence drift from the replacement/restart safeguard.
     {
         NativeBoomerAMGPreconditioner amg;
         Vector x(n_diag, 0.0);
         const auto result = solve_cg_controlled(
-            A_diag, b_diag, x, amg, 5000, 1e-10,
+            A_diag, b_diag, x, amg, 5000, attainable_tolerance,
             CGResidualReplacementPolicy::Disabled);
         print_cg_diagnostics("amg_cg_no_replacement", result);
         std::cout << "amg_cg_no_replacement true_residual="
@@ -487,7 +503,7 @@ int main() {
         NativeBoomerAMGPreconditioner amg;
         Vector x(n_diag, 0.0);
         const auto result = solve_cg_controlled(
-            A_diag, b_diag, x, amg, 5000, 1e-10,
+            A_diag, b_diag, x, amg, 5000, attainable_tolerance,
             CGResidualReplacementPolicy::Periodic, 100);
         print_cg_diagnostics("amg_cg_periodic100", result);
         std::cout << "amg_cg_periodic100 true_residual="
@@ -499,7 +515,8 @@ int main() {
     {
         NativeBoomerAMGPreconditioner amg;
         Vector x(n_diag, 0.0);
-        const auto result = solve_cg_controlled(A_diag, b_diag, x, amg, 5000, 1e-10,
+        const auto result = solve_cg_controlled(A_diag, b_diag, x, amg, 5000,
+            attainable_tolerance,
             CGResidualReplacementPolicy::Periodic, 16);
         print_cg_diagnostics("amg_cg_periodic16", result);
         std::cout << "amg_cg_periodic16 true_residual="
@@ -513,7 +530,7 @@ int main() {
         NativeBoomerAMGPreconditioner amg;
         Vector x(n_diag, 0.0);
         adaptive_result = solve_cg_controlled(
-            A_diag, b_diag, x, amg, 5000, 1e-10,
+            A_diag, b_diag, x, amg, 5000, attainable_tolerance,
             CGResidualReplacementPolicy::Adaptive);
         print_cg_diagnostics("amg_cg_adaptive", adaptive_result);
         const double true_r = relative_true_residual(A_diag, x, b_diag);

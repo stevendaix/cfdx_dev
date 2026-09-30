@@ -92,7 +92,7 @@ int main(){
              << " iterations=" << r.iterations
              << " true_residual=" << rr
              << " pressure_hierarchy_builds=" << pc.pressure_hierarchy_builds()
-             << " pressure_numeric_updates=" << pc.pressure_numeric_updates() << '\\n';
+             << " pressure_numeric_updates=" << pc.pressure_numeric_updates() << '\n';
    EXPECT_TRUE(r.status==SolverStatus::CONVERGED);
    EXPECT_TRUE(std::isfinite(rr));
    EXPECT_TRUE(rr<1e-9);

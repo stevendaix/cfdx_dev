@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace cfdx {
@@ -224,6 +225,18 @@ inline SolverResult solve_cg_impl(
         return result;
     }
 
+    // Residual replacement only pays for itself while b-Ax is still
+    // decreasing. Once the iteration reaches the attainable accuracy of the
+    // system -- about eps*cond(A) in relative terms, which no solver, direct or
+    // iterative, can improve upon in FP64 -- the recursive residual keeps
+    // shrinking while b-Ax does not. The gap criterion below is then satisfied
+    // at every remaining iteration, and the restart that follows each
+    // replacement discards the Krylov direction, degrading CG into
+    // preconditioned steepest descent for the rest of the budget. Requiring
+    // measurable progress since the previous replacement bounds the number of
+    // replacements to O(log(r0/attainable_floor)).
+    double residual_at_last_replacement = std::numeric_limits<double>::infinity();
+
     for (std::size_t iter = 1; iter <= max_iter; ++iter) {
         // Ap = A p
         std::vector<double> Ap(n, 0.0);
@@ -333,16 +346,48 @@ inline SolverResult solve_cg_impl(
             result.max_true_residual = std::max(result.max_true_residual, res);
             result.min_true_residual = std::min(result.min_true_residual, res);
             constexpr double residual_gap_fraction = 0.25;
+            const bool made_progress =
+                res < 0.5 * residual_at_last_replacement;
+            // A non-positive r^T z means the recursive residual has been
+            // annihilated by cancellation. z = M^{-1}r is then numerically
+            // zero, so the next search direction is zero and p^T A p vanishes.
+            // That is a dead recurrence, not an unusable preconditioner, and it
+            // must be recognized here: otherwise it surfaces one iteration
+            // later as a spurious NOT_APPLICABLE from the p^T A p guard, which
+            // wrongly tells the caller to abandon a perfectly valid
+            // preconditioner.
+            const bool recurrence_collapsed = !(rsnew > 0.0);
             const bool adaptive_replacement =
                 residual_policy == CGResidualReplacementPolicy::Adaptive &&
                 std::isfinite(recursive_res) && scale > 0.0 &&
-                gap > residual_gap_fraction * scale;
+                gap > residual_gap_fraction * scale && made_progress;
             const bool periodic_replacement =
                 residual_policy == CGResidualReplacementPolicy::Periodic &&
                 periodic_replacement_interval > 0 &&
                 (iter % periodic_replacement_interval == 0);
-            if (adaptive_replacement || periodic_replacement) {
+            // Repairing a collapsed recurrence is itself a replacement, so the
+            // Disabled policy must not do it, and it is pointless once b-Ax has
+            // stopped improving.
+            const bool repair_collapse =
+                recurrence_collapsed && made_progress &&
+                residual_policy != CGResidualReplacementPolicy::Disabled;
+            if (recurrence_collapsed && !repair_collapse &&
+                !periodic_replacement) {
+                // The recurrence is dead and replacing it cannot help, so the
+                // iteration has extracted all the accuracy this system allows.
+                // Report the accuracy actually achieved, at the iteration where
+                // it was reached, instead of spending the remaining budget on a
+                // zero search direction.
+                result.status = SolverStatus::MAX_ITER_REACHED;
+                result.iterations = iter;
+                result.residual = res;
+                result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                return result;
+            }
+            if (adaptive_replacement || periodic_replacement ||
+                repair_collapse) {
                 ++result.residual_replacements;
+                residual_at_last_replacement = res;
                 if (result.first_residual_replacement == 0)
                     result.first_residual_replacement = iter;
                 result.last_residual_replacement = iter;

@@ -77,7 +77,7 @@ static bool check_amg(
     Vector correction;
     if (!amg.apply(rhs, correction) || !correction.is_valid()) return false;
     const double ratio = true_residual_ratio(A, rhs, correction);
-    std::cerr << "AMG residual ratio=" << ratio << " threshold=" << max_ratio << "\\n";
+    std::cerr << "AMG residual ratio=" << ratio << " threshold=" << max_ratio << "\n";
     return std::isfinite(ratio) && ratio < max_ratio;
 }
 
@@ -346,7 +346,7 @@ int main() {
     Vector rhs1d(4);
     for (std::size_t i = 0; i < rhs1d.size(); ++i) rhs1d(i) = (i % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson1d, rhs1d, 1.0)) {
-        std::cerr << "1D Poisson AMG residual reduction failed\\n";
+        std::cerr << "1D Poisson AMG residual reduction failed\n";
         return 9;
     }
 
@@ -354,7 +354,7 @@ int main() {
     Vector rhs2d(16);
     for (std::size_t i = 0; i < rhs2d.size(); ++i) rhs2d(i) = ((i % 4 + i / 4) % 2 == 0) ? 1.0 : -1.0;
     if (!check_amg(poisson2d, rhs2d, 0.999)) {
-        std::cerr << "2D Poisson AMG residual reduction failed\\n";
+        std::cerr << "2D Poisson AMG residual reduction failed\n";
         return 10;
     }
     if (!check_amg(
@@ -367,7 +367,7 @@ int main() {
     const SparseMatrix anisotropic = make_anisotropic_diffusion_2d(16, 16, 1.0, 1000.0);
     Vector rhs_aniso(256, 1.0);
     if (!check_amg(anisotropic, rhs_aniso, 0.99)) {
-        std::cerr << "Strongly anisotropic AMG regression failed\\n";
+        std::cerr << "Strongly anisotropic AMG regression failed\n";
         return 12;
     }
     if (!check_amg(
@@ -426,7 +426,7 @@ int main() {
     const SparseMatrix fvm_diffusion = make_fvm_diffusion_2d(16, 16, 1.0, 20.0);
     Vector rhs_fvm(256, 1.0);
     if (!check_amg(fvm_diffusion, rhs_fvm, 0.95)) {
-        std::cerr << "FVM diffusion AMG regression failed\\n";
+        std::cerr << "FVM diffusion AMG regression failed\n";
         return 16;
     }
 
@@ -447,7 +447,7 @@ int main() {
     duplicate_diag.finalize();
     Vector rhs_dup(4, 1.0);
     if (!check_amg(duplicate_diag, rhs_dup, 0.95)) {
-        std::cerr << "Duplicate-diagonal AMG regression failed\\n";
+        std::cerr << "Duplicate-diagonal AMG regression failed\n";
         return 11;
     }
 
