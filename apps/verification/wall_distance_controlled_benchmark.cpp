@@ -222,45 +222,6 @@ std::vector<WallDistanceMethod> methods()
     };
 }
 
-// Iteration budget for the iterative methods.
-//
-// A single constant budget for every resolution is not a neutral choice: it
-// silently turns a convergence gate into a resolution gate. Each solver has its
-// own cost law and they are not the same.
-//
-// The pseudo-time methods (Hamilton-Jacobi, advection-diffusion and the hybrid)
-// take an explicit step limited by the diffusive bound
-// dt <= 0.9/(2*gamma*(hx^-2+hy^-2+hz^-2)) in wall_distance.h, that is
-// dt = O(h^2), so the number of steps needed to reach steady state grows like
-// O(n^2). Measured with the old fixed budget of 500: advection-diffusion needed
-// 68 steps at n=16 and 224 at n=32 (factor 3.3), then hit the ceiling at n=64
-// with residual_inf = 4.3e-5 and at n=128 with 0.18. Hamilton-Jacobi hit it from
-// n=32 onwards but was not gated, so its non-convergence went unreported.
-//
-// The Poisson path is a Krylov solve whose iteration count grows like O(n):
-// measured 46 / 98 / 207 / 461 at n = 16 / 32 / 64 / 128, a clean factor 2.2 per
-// refinement. At n=128 it was using 461 of the 500 available, so the old budget
-// was one refinement away from failing for the same non-reason.
-//
-// Budgets below are those cost laws, normalized at n=16 with roughly a factor 4
-// of margin over the counts measured there (46 for Poisson, 208 for the slowest
-// pseudo-time method). Methods that are direct or purely graph-based ignore the
-// budget entirely.
-std::size_t iteration_budget(WallDistanceMethod method, std::size_t n)
-{
-    const double ratio = static_cast<double>(n) / 16.0;
-    switch (method) {
-    case WallDistanceMethod::POISSON:
-        return static_cast<std::size_t>(200.0 * ratio);
-    case WallDistanceMethod::HAMILTON_JACOBI:
-    case WallDistanceMethod::ADVECTION_DIFFUSION:
-    case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
-        return static_cast<std::size_t>(1000.0 * ratio * ratio);
-    default:
-        return 500;
-    }
-}
-
 std::vector<std::size_t> parse_sizes(int argc, char** argv)
 {
     std::vector<std::size_t> sizes;
@@ -348,7 +309,7 @@ int main(int argc, char** argv)
                   << ", degenerate=" << offsets.degenerate_count << "\n";
 
         for (const auto method : methods()) {
-            const std::size_t budget = iteration_budget(method, n);
+            const std::size_t budget = wall_distance_iteration_budget(method, n);
             const auto t0 = std::chrono::steady_clock::now();
             const auto result = compute_wall_distance(method, surface, grid, budget);
             const auto t1 = std::chrono::steady_clock::now();

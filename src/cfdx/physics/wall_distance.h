@@ -94,6 +94,39 @@ inline const char* wall_distance_method_name(WallDistanceMethod m) {
     return "unknown";
 }
 
+// Iteration budget for the iterative methods, indexed by a linear resolution n.
+//
+// A single constant budget across all resolutions and methods silently turns a
+// convergence gate into a resolution gate. Each solver has its own cost law:
+//
+//   * Poisson is a Krylov solve; its iteration count grows like O(n). Measured
+//     46 / 98 / 207 / 461 at n=16 / 32 / 64 / 128, a clean factor 2.2 per
+//     refinement.
+//   * Hamilton-Jacobi, advection-diffusion and the hybrid all take an explicit
+//     pseudo-time step bounded by dt = O(h^2), so the number of steps to reach
+//     steady state grows like O(n^2). Measured with the old fixed budget of
+//     500: advection-diffusion needed 68 steps at n=16 and 224 at n=32
+//     (factor 3.3), then hit the ceiling at n=64 with residual 4.3e-5.
+//
+// Budgets below are those cost laws, normalized at n=16 with roughly a factor 4
+// of margin over the counts measured there (46 for Poisson, 208 for the slowest
+// pseudo-time method). Methods that are direct or purely graph-based ignore the
+// budget entirely.
+inline std::size_t wall_distance_iteration_budget(WallDistanceMethod method,
+                                                  std::size_t n) {
+    const double ratio=static_cast<double>(n)/16.0;
+    switch(method) {
+    case WallDistanceMethod::POISSON:
+        return static_cast<std::size_t>(200.0*ratio);
+    case WallDistanceMethod::HAMILTON_JACOBI:
+    case WallDistanceMethod::ADVECTION_DIFFUSION:
+    case WallDistanceMethod::HYBRID_POISSON_EIKONAL:
+        return static_cast<std::size_t>(1000.0*ratio*ratio);
+    default:
+        return 500;
+    }
+}
+
 inline double point_triangle_distance2(const WallDistanceVec3& p,
                                        const WallDistanceVec3& a,
                                        const WallDistanceVec3& b,
@@ -950,15 +983,33 @@ inline WallDistancePoissonAudit audit_poisson_operator(const WallDistanceBvh& bv
     return a;
 }
 
+// Minimum wall offset as a fraction of the local grid spacing.
+//
+// The cut-face Dirichlet contribution scales as 1/(h*delta). If delta is
+// allowed to approach zero (wall arbitrarily close to a grid node), the
+// diagonal coefficient of the Poisson operator diverges: on the complex
+// benchmark we observed max_wall_coefficient = 3.3e12 against typical
+// interior coefficients of ~23, producing a condition number of ~10^11
+// and a PCG that converges to the wrong solution (residual small, phi
+// pinned to zero over the corrupted row).
+//
+// Clamping delta from below at ~5% of h keeps the diagonal bounded by
+// 20/h^2 while introducing at most a 5%*h positioning error at the wall,
+// which is below the discretisation error of the one-sided ghost-cell
+// closure itself. This is the standard treatment in cut-cell Poisson
+// solvers (Shortley-Weller with epsilon-clamp).
+inline constexpr double wall_offset_relative_floor = 0.05;
+
 inline WallDistancePoissonWallOffsetDiagnostic poisson_wall_offset_diagnostic(
     const WallDistanceBvh& bvh,const WallDistanceVec3& p,
     const WallDistanceVec3& q,double h) {
     WallDistancePoissonWallOffsetDiagnostic out;
+    const double floor=wall_offset_relative_floor*h;
     const auto segment=q-p;
     const double length=wd_norm(segment);
     const double ray=bvh.ray_distance(p,segment,length);
-    if(std::isfinite(ray) && ray>1e-12) {
-        out.delta=std::clamp(ray,1e-12,h);
+    if(std::isfinite(ray) && ray>0.0) {
+        out.delta=std::clamp(ray,floor,h);
         out.ray_hit=true;
         return out;
     }
@@ -966,7 +1017,7 @@ inline WallDistancePoissonWallOffsetDiagnostic poisson_wall_offset_diagnostic(
     out.fallback=true;
     const double d=bvh.nearest_distance(p);
     if(!std::isfinite(d) || d<=0.0) {
-        out.delta=std::max(1e-12,h);
+        out.delta=h;
         out.bad_alignment=true;
         out.alignment=0.0;
         return out;
@@ -977,9 +1028,9 @@ inline WallDistancePoissonWallOffsetDiagnostic poisson_wall_offset_diagnostic(
     out.alignment=std::abs(wd_dot(n,dir));
     if(out.alignment<0.25) {
         out.bad_alignment=true;
-        out.delta=std::min(d,h);
+        out.delta=std::clamp(d,floor,h);
     } else {
-        out.delta=std::clamp(d/out.alignment,1e-12,h);
+        out.delta=std::clamp(d/out.alignment,floor,h);
     }
     return out;
 }
