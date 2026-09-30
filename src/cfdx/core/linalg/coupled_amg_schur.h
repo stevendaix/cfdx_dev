@@ -47,7 +47,15 @@ struct CoupledBlockSchurOptions {
 // [Ux, Uy, Uz, p], using a cell-local 3x3 velocity block and an AMG solve
 // of the explicitly assembled pressure Schur approximation
 //
-//   S~ = C - D M_b^{-1} G.
+//   S~ = C - D M_b^{-1} G,
+//
+// where M_b is the block-diagonal collection of cell-local 3x3 velocity
+// blocks -- NOT the inverse of the full velocity operator A_uu. The exact
+// Schur complement S = C - D A_uu^{-1} G is not computed; that would
+// require an inner solve for A_uu at every apply(). S~ is a valid and
+// cheap Schur *approximation* in the SIMPLE/PCD family, and this class
+// is intentionally named CoupledBlockSchurAMGPreconditioner to make the
+// block-local approximation part of the type name (tracked in #481).
 //
 // The pressure AMG is a genuine preconditioner for S~, not a scalar Jacobi
 // replacement. The class is intentionally serial/native until MPI/GPU block

@@ -334,18 +334,29 @@ int main() {
         std::cerr << "Unexpected direct-coarse Smoothed Aggregation hierarchy\n";
         return 31;
     }
+    // Quantitative gate: a working smoothed-aggregation V-cycle on the 4x4
+    // Poisson block must contract the residual by at least a factor of 2 in
+    // one cycle. The old gate (< 1.0) accepted any non-divergent output and
+    // therefore did not distinguish a correct AMG from a broken one.
     Vector sa_correction;
     if (!smoothed_aggregation.apply(rhs, sa_correction) ||
-        true_residual_ratio(A, rhs, sa_correction) >= 1.0) {
-        std::cerr << "Smoothed aggregation did not reduce the true residual\n";
+        true_residual_ratio(A, rhs, sa_correction) >= 0.5) {
+        std::cerr << "Smoothed aggregation V-cycle did not halve the residual\n";
         return 32;
     }
 
-    // Quantitative multilevel checks requested by Phase 4.7.
+    // Quantitative multilevel checks (Phase 4.7).
+    //
+    // The residual-ratio thresholds below are chosen to actually gate the
+    // AMG contraction rather than merely confirm non-divergence. On the
+    // elliptic problems below a properly tuned V-cycle contracts by roughly
+    // 0.05 to 0.3 per cycle depending on conditioning and anisotropy; we
+    // gate at 2x that theoretical contraction to remain runner-stable while
+    // still failing loudly on a broken hierarchy.
     const SparseMatrix poisson1d = make_poisson_1d(4);
     Vector rhs1d(4);
     for (std::size_t i = 0; i < rhs1d.size(); ++i) rhs1d(i) = (i % 2 == 0) ? 1.0 : -1.0;
-    if (!check_amg(poisson1d, rhs1d, 1.0)) {
+    if (!check_amg(poisson1d, rhs1d, 0.3)) {
         std::cerr << "1D Poisson AMG residual reduction failed\n";
         return 9;
     }
@@ -353,25 +364,28 @@ int main() {
     const SparseMatrix poisson2d = make_poisson_2d(4, 4);
     Vector rhs2d(16);
     for (std::size_t i = 0; i < rhs2d.size(); ++i) rhs2d(i) = ((i % 4 + i / 4) % 2 == 0) ? 1.0 : -1.0;
-    if (!check_amg(poisson2d, rhs2d, 0.999)) {
+    if (!check_amg(poisson2d, rhs2d, 0.3)) {
         std::cerr << "2D Poisson AMG residual reduction failed\n";
         return 10;
     }
     if (!check_amg(
-            poisson2d, rhs2d, 0.999,
+            poisson2d, rhs2d, 0.3,
             AMGInterpolationPolicy::SmoothedAggregation)) {
         std::cerr << "2D Poisson smoothed aggregation residual reduction failed\n";
         return 33;
     }
 
+    // 1:1000 anisotropy is deliberately hard for classical AMG; permit a
+    // looser but still meaningful contraction factor. A broken hierarchy
+    // typically returns 0.9+ here.
     const SparseMatrix anisotropic = make_anisotropic_diffusion_2d(16, 16, 1.0, 1000.0);
     Vector rhs_aniso(256, 1.0);
-    if (!check_amg(anisotropic, rhs_aniso, 0.99)) {
+    if (!check_amg(anisotropic, rhs_aniso, 0.6)) {
         std::cerr << "Strongly anisotropic AMG regression failed\n";
         return 12;
     }
     if (!check_amg(
-            anisotropic, rhs_aniso, 0.99,
+            anisotropic, rhs_aniso, 0.6,
             AMGInterpolationPolicy::SmoothedAggregation)) {
         std::cerr << "Anisotropic smoothed aggregation regression failed\n";
         return 34;
