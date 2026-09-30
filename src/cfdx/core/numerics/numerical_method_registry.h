@@ -45,6 +45,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "orthogonal + tangential gradient correction","numerics.diffusion.corrected",{"MMS","non_orthogonal_refinement"}},
         {"diffusion.limited","Limited non-orthogonal diffusion",F::Diffusion,S::Implemented,C::LocalFaceConservative,false,false,false,1,0,
          "orthogonal + bounded correction","numerics.diffusion.limited",{"MMS","non_orthogonal_robustness"}},
+        {"diffusion.over_relaxed","Over-relaxed non-orthogonal diffusion",F::Diffusion,S::Implemented,C::LocalFaceConservative,false,false,false,1,0,
+         "alpha=|Sf|^2/(Sf.d), correction (Sf-alpha d).grad_f with Sf-alpha d orthogonal to Sf","numerics.diffusion.over_relaxed",{"linear_exactness","non_orthogonal_refinement","conservation"}},
         {"temporal.euler_explicit","Explicit Euler",F::Temporal,S::Implemented,C::NotApplicable,false,false,false,0,1,
          "phi(n+1)=phi(n)+dt RHS(n)","numerics.temporal.euler_explicit",{"analytical_decay","temporal_refinement"}},
         {"temporal.euler_implicit","Implicit Euler",F::Temporal,S::Implemented,C::NotApplicable,false,false,false,0,1,

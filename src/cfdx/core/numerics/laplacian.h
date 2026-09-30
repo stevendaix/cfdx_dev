@@ -48,24 +48,27 @@ enum class LaplacianScheme : std::uint8_t {
     ORTHOGONAL = 0,
     CORRECTED,
     LIMITED,
-    UNCORRECTED
+    UNCORRECTED,
+    OVER_RELAXED
 };
 
 inline const char* to_string(LaplacianScheme s) {
     switch (s) {
-        case LaplacianScheme::ORTHOGONAL:  return "orthogonal";
-        case LaplacianScheme::CORRECTED:   return "corrected";
-        case LaplacianScheme::LIMITED:     return "limited";
-        case LaplacianScheme::UNCORRECTED: return "uncorrected";
+        case LaplacianScheme::ORTHOGONAL:   return "orthogonal";
+        case LaplacianScheme::CORRECTED:    return "corrected";
+        case LaplacianScheme::LIMITED:      return "limited";
+        case LaplacianScheme::UNCORRECTED:  return "uncorrected";
+        case LaplacianScheme::OVER_RELAXED: return "over_relaxed";
         default:                            return "unknown";
     }
 }
 
 inline LaplacianScheme laplacian_scheme_from_string(const std::string& s) {
-    if (s == "orthogonal")  return LaplacianScheme::ORTHOGONAL;
-    if (s == "corrected")   return LaplacianScheme::CORRECTED;
-    if (s == "limited")     return LaplacianScheme::LIMITED;
-    if (s == "uncorrected") return LaplacianScheme::UNCORRECTED;
+    if (s == "orthogonal")   return LaplacianScheme::ORTHOGONAL;
+    if (s == "corrected")    return LaplacianScheme::CORRECTED;
+    if (s == "limited")      return LaplacianScheme::LIMITED;
+    if (s == "uncorrected")  return LaplacianScheme::UNCORRECTED;
+    if (s == "over_relaxed") return LaplacianScheme::OVER_RELAXED;
     throw std::runtime_error("laplacian_scheme_from_string: unknown scheme '" + s + "'");
 }
 
@@ -106,7 +109,8 @@ inline Field<double, Location::CELL> compute_laplacian(
     double* out = lap.component_data(0);
     Field<double, Location::CELL> gradients;
     if (scheme == LaplacianScheme::CORRECTED ||
-        scheme == LaplacianScheme::LIMITED)
+        scheme == LaplacianScheme::LIMITED ||
+        scheme == LaplacianScheme::OVER_RELAXED)
         gradients = compute_gradient_gauss(cell_field, mesh, geometry);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
@@ -141,13 +145,28 @@ inline Field<double, Location::CELL> compute_laplacian(
                 !std::isfinite(d) || !std::isfinite(area))
                 throw std::runtime_error("compute_laplacian: invalid internal-face geometry");
 
-            const double orth_dot = Sf.dot(dvec);
-            const Vec3 Sf_orth = dvec * (orth_dot / d2);
-            const double orth_conductance = orth_dot / d2;
-            double contribution = orth_conductance * (phi[nb] - phi[owner]);
+            const double sd = Sf.dot(dvec);
+            double alpha = 0.0;
+            if (scheme == LaplacianScheme::OVER_RELAXED) {
+                // Over-relaxed (Jasak) implicit coefficient alpha = |Sf|^2 / (Sf.d).
+                // The residual correction Sf - alpha*d is orthogonal to Sf,
+                // which minimises the explicit non-orthogonal correction and is
+                // more robust than the orthogonal choice on highly
+                // non-orthogonal faces.
+                const double sf2 = Sf.dot(Sf);
+                if (sd == 0.0 || std::abs(sd) <= 1e-30 * std::sqrt(sf2 * d2))
+                    throw std::runtime_error(
+                        "compute_laplacian: over-relaxed decomposition is singular when Sf.d = 0");
+                alpha = sf2 / sd;
+            } else {
+                // Orthogonal two-point conductance alpha = (Sf.d) / |d|^2.
+                alpha = sd / d2;
+            }
+            double contribution = alpha * (phi[nb] - phi[owner]);
             if (scheme == LaplacianScheme::CORRECTED ||
-                scheme == LaplacianScheme::LIMITED) {
-                const Vec3 Sf_corr = Sf - Sf_orth;
+                scheme == LaplacianScheme::LIMITED ||
+                scheme == LaplacianScheme::OVER_RELAXED) {
+                const Vec3 Sf_corr = Sf - dvec * alpha;
                 const Vec3 grad_face{
                     0.5 * (gradients(owner, 0) + gradients(nb, 0)),
                     0.5 * (gradients(owner, 1) + gradients(nb, 1)),

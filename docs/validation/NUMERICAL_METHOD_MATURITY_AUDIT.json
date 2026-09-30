@@ -50,12 +50,14 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
-        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+        "tests/unit/test_laplacian.cpp",
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
       ],
       "gaps": [
-        "over-relaxed policy",
         "explicit skew correction contract",
-        "high-nonorthogonality quantitative campaign"
+        "non-affine / extremely non-orthogonal and polyhedral diffusion",
+        "quantitative skew campaign registered but promotion to verified is pending execution of the full validation job on the final SHA"
       ]
     },
     {

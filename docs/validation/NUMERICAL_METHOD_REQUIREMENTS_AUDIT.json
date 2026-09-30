@@ -142,8 +142,11 @@
     {
       "package_id": "N3",
       "requirement": "over-relaxed diffusion formulation",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/laplacian.h",
+        "tests/unit/test_laplacian.cpp"
+      ]
     },
     {
       "package_id": "N3",
@@ -156,9 +159,10 @@
     {
       "package_id": "N3",
       "requirement": "quantitative high-non-orthogonality campaign",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/validation/test_nonorthogonal_skew_campaign.cpp"
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
       ]
     },
     {
