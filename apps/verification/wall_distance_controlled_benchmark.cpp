@@ -423,7 +423,7 @@ int main(int argc, char** argv)
                     // This is an input manufactured from the geometric
                     // distance; it is not claimed to solve the Poisson PDE
                     // exactly in edge/corner regions.
-                    const double exact_phi=d+0.5*d*d;
+                    const double exact_phi=d-0.5*d*d;
                     const double d_exact_exact=reconstruct_from_gradient(exact_phi,exact_grad);
                     const double d_num_exact=reconstruct_from_gradient(diagnostic_phi[id],exact_grad);
                     const double gx=poisson_reconstruction_gradient_component(bvh,diagnostic_phi,grid,id,0);
