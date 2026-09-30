@@ -215,7 +215,9 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
                       << " level=" << d.level << " mode=1 energy=" << energy
                       << " smoother4=" << smoother
                       << " two_grid_l2_residual=" << two_grid << '\n';
-            if (!std::isfinite(smoother) || smoother >= 0.999999 ||\n                !std::isfinite(two_grid) || two_grid >= 0.999999)\n                ok = false;
+            if (!std::isfinite(smoother) || smoother >= 0.999999 ||
+                !std::isfinite(two_grid) || two_grid >= 0.999999)
+                ok = false;
         }
     }
     return ok;
