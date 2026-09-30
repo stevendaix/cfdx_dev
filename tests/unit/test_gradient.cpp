@@ -426,7 +426,7 @@ int main() {
         StencilQuality q;
         (void)weighted_least_squares_gradient(
             centre, 0.0, neighbours, values,
-            GradientWeighting::INVERSE_DISTANCE_SQUARED, &q);
+            GradientWeighting::UNIFORM, &q);
         EXPECT_TRUE(q.full_rank);
         EXPECT_TRUE(q.condition_estimate > 1.0e6);
     });
