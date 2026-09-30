@@ -243,13 +243,14 @@ void require(bool condition, const std::string& message)
 
 // The three gradient schemes exercised by the campaign: cell-based
 // Green-Gauss, vertex-based (secondary) Green-Gauss and least-squares.
-enum class GradScheme { GaussCell, GaussVertex, LeastSquares };
+enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares };
 
 std::string scheme_name(GradScheme s)
 {
     switch (s) {
         case GradScheme::GaussCell:   return "green_gauss";
         case GradScheme::GaussVertex: return "green_gauss_vertex";
+        case GradScheme::GaussPoint:  return "green_gauss_point";
         case GradScheme::LeastSquares: return "least_squares";
     }
     return "unknown";
@@ -264,6 +265,8 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
             return compute_gradient_gauss(phi, grid.mesh, grid.geometry);
         case GradScheme::GaussVertex:
             return compute_gradient_gauss_vertex(phi, grid.mesh, grid.geometry);
+        case GradScheme::GaussPoint:
+            return compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
         case GradScheme::LeastSquares:
             return compute_gradient_least_squares(phi, grid.mesh);
     }
@@ -300,7 +303,7 @@ void check_exactness(const std::string& family, double shear, double stretch)
     const Grid grid = make_affine_cube(6, shear, stretch);
 
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
         const std::string name = scheme_name(scheme);
 
         const auto constant_field = sample_field(grid, kConstant);
@@ -322,7 +325,7 @@ void check_exactness(const std::string& family, double shear, double stretch)
 void check_order(const std::string& family, double shear, double stretch, const FieldCase& field)
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
         const std::string name = scheme_name(scheme);
         const auto errors = refinement_errors(shear, stretch, field, scheme);
         for (std::size_t i = 0; i < errors.size(); ++i) {
