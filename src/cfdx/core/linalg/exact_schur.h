@@ -11,6 +11,11 @@
 
 namespace cfdx::core {
 
+struct ExactSchurControls {
+    std::size_t max_iter = 200;
+    double tolerance = 1e-10;
+};
+
 // Exact algebraic Schur complement approximation:
 //
 //     S = C - D Auu^{-1} G
@@ -38,10 +43,7 @@ namespace cfdx::core {
 // which cheaper approximations are compared. Tracked in #481.
 class ExactSchurApproximation final : public SchurApproximation {
 public:
-    struct Controls {
-        std::size_t max_iter = 200;
-        double tolerance = 1e-10;
-    };
+    using Controls = ExactSchurControls;
 
     // Solve Auu * y = rhs, filling y. Return false on failure.
     // The callback owns any preconditioner/hierarchy state; it must be
@@ -49,7 +51,7 @@ public:
     using AuuSolve = std::function<bool(const Vector& rhs, Vector& y)>;
 
     explicit ExactSchurApproximation(AuuSolve auu_solve,
-                                     const Controls& controls = Controls())
+                                     const Controls& controls = Controls{})
         : auu_solve_(std::move(auu_solve)), controls_(controls) {}
 
     const char* name() const noexcept override { return "exact_schur"; }
