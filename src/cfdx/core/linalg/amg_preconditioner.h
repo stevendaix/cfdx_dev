@@ -397,6 +397,31 @@ public:
         return value;
     }
 
+    struct ProlongationRowDiagnostic {
+        std::size_t fine_index = 0;
+        std::vector<std::pair<std::size_t, double>> entries;
+    };
+
+    // Diagnostic-only access to the first/last interpolation rows. This exposes
+    // the actual stored P weights without changing the hierarchy construction.
+    std::vector<ProlongationRowDiagnostic> prolongation_boundary_rows(
+        std::size_t level, std::size_t count) const
+    {
+        std::vector<ProlongationRowDiagnostic> out;
+        if (level + 1 >= levels_.size() || count == 0) return out;
+        const auto& P = levels_[level].prolongation;
+        const std::size_t n = P.size();
+        const std::size_t take = std::min(count, n);
+        out.reserve(2 * take);
+        for (std::size_t i = 0; i < take; ++i)
+            out.push_back({i, P[i]});
+        const std::size_t begin = n - take;
+        for (std::size_t i = begin; i < n; ++i)
+            if (i >= take)
+                out.push_back({i, P[i]});
+        return out;
+    }
+
     struct TransferDiagnostic {
         std::size_t level = 0;
         std::size_t fine_size = 0;
