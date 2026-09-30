@@ -81,7 +81,7 @@ inline Vec3 least_squares_gradient(
         }
         if (!(pivot_abs > rank_tol)) continue;
         if (pivot!=col) for (int j=col;j<4;++j) std::swap(m[col][j],m[pivot][j]);
-        pivoted[col]=true; ++q.rank;
+        ++q.rank;
         min_pivot=std::min(min_pivot,std::abs(m[col][col]));
         max_pivot=std::max(max_pivot,std::abs(m[col][col]));
         for (int row=col+1;row<3;++row) {
@@ -170,7 +170,6 @@ inline Vec3 weighted_least_squares_gradient(
     const double tol=128.0*std::numeric_limits<double>::epsilon()*scale;
     double m[3][4] = {};
     for(int i=0;i<3;++i){for(int j=0;j<3;++j)m[i][j]=a[i][j];m[i][3]=b[i];}
-    bool pivoted[3]={false,false,false};
     double minp=std::numeric_limits<double>::infinity(), maxp=0.0;
     for(int col=0;col<3;++col){
         int p=col; double pa=std::abs(m[col][col]);
