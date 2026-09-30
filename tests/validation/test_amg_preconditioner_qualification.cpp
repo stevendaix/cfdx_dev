@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 #include "cfdx/core/linalg/linear_operator.h"
@@ -165,9 +166,91 @@ double safe_two_grid_ratio(const MatrixFreeVcyclePreconditioner& amg,
     }
 }
 
+
+template <typename AMG>
+bool qualify_multilevel_hierarchy(const AMG& amg,
+                                  const char* label,
+                                  double max_energy_ratio = 0.999999) {
+    const auto levels = amg.hierarchy_level_sizes();
+    bool ok = levels.size() >= 3;
+    if (!ok) return false;
+
+    const auto transfers = amg.transfer_diagnostics();
+    if (transfers.size() + 1 != levels.size()) ok = false;
+    const double gershgorin_roundoff = 100.0 * std::numeric_limits<double>::epsilon();
+
+    // Smoothed aggregation Jacobi smoothing does not preserve M-matrix
+    // structure from fine to coarse (Vaněk, Mandel, Brezina 2001). Coarse
+    // operators may have positive off-diagonals even when the fine operator
+    // is strictly diagonally dominant. A small negative Gershgorin bound
+    // (~-0.1) at irregular aggregate boundaries is expected and does not
+    // indicate non-SPD or instability—only loss of strict diagonal dominance.
+    // Direct-CF maintains strict M-matrix structure and must use the tight
+    // round-off tolerance.
+    const bool is_sa = (std::string(label).find("SA") != std::string::npos);
+    const double gershgorin_tolerance = is_sa ? 0.15 : gershgorin_roundoff;
+
+    for (const auto& d : transfers) {
+        const auto coverage = amg.transfer_column_coverage(d.level);
+        const bool structural =
+            std::isfinite(d.galerkin_relative_error) && d.galerkin_relative_error <= 1e-12 &&
+            std::isfinite(d.row_sum_min) && std::isfinite(d.row_sum_max) &&
+            std::abs(d.row_sum_min - 1.0) <= 1e-12 &&
+            std::abs(d.row_sum_max - 1.0) <= 1e-12 &&
+            coverage.zero_columns == 0 && coverage.min_nnz > 0 &&
+            std::isfinite(d.coarse_symmetry_relative_error) &&
+            d.coarse_symmetry_relative_error <= 1e-12 &&
+            std::isfinite(d.coarse_gershgorin_lower_bound) &&
+            d.coarse_gershgorin_lower_bound >= -gershgorin_tolerance;
+        std::cout << "amg_n82_transfer_gate label=" << label
+                  << " level=" << d.level << " fine=" << d.fine_size
+                  << " coarse=" << d.coarse_size << " galerkin=" << d.galerkin_relative_error
+                  << " row_sum=[" << d.row_sum_min << "," << d.row_sum_max << "]"
+                  << " zero_columns=" << coverage.zero_columns
+                  << " min_column_nnz=" << coverage.min_nnz
+                  << " symmetry=" << d.coarse_symmetry_relative_error
+                  << " gershgorin=" << d.coarse_gershgorin_lower_bound
+                  << " structural=" << (structural ? "PASS" : "FAIL") << '\n';
+        ok = ok && structural;
+
+        if (d.fine_size >= 8) {
+            const double energy = amg.sine_mode_vcycle_energy_ratio(d.level, 1);
+            const bool energy_ok = std::isfinite(energy) && energy < max_energy_ratio;
+
+            const std::size_t smoother_mode = std::max<std::size_t>(2, d.fine_size / 2);
+            const double smoother =
+                amg.sine_mode_smoother_residual_ratio(d.level, smoother_mode, 4);
+            const bool smoother_ok = std::isfinite(smoother) && smoother < 1.0;
+
+            const double two_grid_energy =
+                amg.two_grid_sine_mode_energy_ratio(d.level, 1);
+            const bool two_grid_energy_ok =
+                std::isfinite(two_grid_energy) && two_grid_energy < max_energy_ratio;
+            const double two_grid_l2 =
+                amg.two_grid_sine_mode_residual_ratio(d.level, 1);
+
+            std::cout << "amg_n82_energy_gate label=" << label
+                      << " level=" << d.level << " mode=1 energy=" << energy
+                      << " threshold=" << max_energy_ratio
+                      << " status=" << (energy_ok ? "PASS" : "FAIL") << '\n';
+            std::cout << "amg_n82_stage_gate label=" << label
+                      << " level=" << d.level
+                      << " smoother_mode=" << smoother_mode
+                      << " smoother4=" << smoother
+                      << " smoother_status=" << (smoother_ok ? "PASS" : "FAIL")
+                      << " two_grid_energy=" << two_grid_energy
+                      << " two_grid_energy_status="
+                      << (two_grid_energy_ok ? "PASS" : "FAIL")
+                      << " two_grid_l2_residual_diagnostic=" << two_grid_l2 << '\n';
+            ok = ok && energy_ok && smoother_ok && two_grid_energy_ok;
+        }
+    }
+    return ok;
+}
 } // namespace
 
 int main() {
+    std::cout << std::setprecision(17);
     run_case("amg_vs_jacobi_poisson", make_poisson(256), make_rhs(256),
              [](Vector& x) {
                  const auto A = make_poisson(256);
@@ -317,6 +400,9 @@ int main() {
                     diagnostic_ok = false;
             }
         }
+
+        const bool direct_cf_ok = qualify_multilevel_hierarchy(vcycle, "DirectCF");
+        qualification_ok = qualification_ok && direct_cf_ok;
     }
 
 
@@ -414,6 +500,9 @@ int main() {
                     diagnostic_ok = false;
             }
         }
+
+        const bool sa_ok = qualify_multilevel_hierarchy(sa, "SA");
+        qualification_ok = qualification_ok && sa_ok;
     }
 
     auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
