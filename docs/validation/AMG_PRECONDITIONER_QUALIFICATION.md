@@ -155,10 +155,12 @@ For every level (l) with prolongation (P_l) and coarse operator
    representative; zero-column transfers fail.
 5. **Coarse operator integrity:** symmetry and positive Gershgorin lower-bound
    diagnostics are finite and non-negative within round-off.
-6. **Smoother stage:** a four-sweep smoother must reduce the manufactured
-   low-frequency mode residual.
+6. **Smoother stage:** a four-sweep smoother must reduce a manufactured
+   high-frequency mode. Low-frequency response remains diagnostic because
+   smoothing is expected to leave smooth error largely untouched.
 7. **Two-grid stage:** the complete smoother + coarse correction + post-smoothing
-   cycle must contract the manufactured low-frequency mode.
+   cycle must contract the manufactured low-frequency mode in A-energy. The
+   Euclidean residual ratio remains diagnostic only; it is not an acceptance gate.
 8. **Full V-cycle energy:** the A-energy error ratio must be strictly below one,
    using
    [
@@ -190,3 +192,8 @@ level and both interpolation families**, including smoother-only, two-grid and
 full-V-cycle evidence. No solver tolerance is relaxed, no test is disabled, and
 no fallback is introduced.
 
+
+
+### N8.2 gate implementation notes
+
+The qualification executable evaluates Direct-CF and Smoothed Aggregation independently, so a failure in one interpolation family cannot short-circuit the qualification of the other. The smoother gate uses a representative high-frequency manufactured mode rather than the lowest-frequency mode. The two-grid acceptance metric is the same A-energy error norm used by the V-cycle criterion; Euclidean residual ratios are retained for diagnosis only because residual and error-energy norms are not equivalent. Gershgorin lower bounds are accepted only within an explicit floating-point round-off envelope, not an arbitrary negative tolerance.
