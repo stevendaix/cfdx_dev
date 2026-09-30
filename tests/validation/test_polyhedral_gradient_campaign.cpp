@@ -184,12 +184,13 @@ inline const FieldCase kConstant{"constant", constant_value, constant_gradient};
 inline const FieldCase kLinear{"linear", linear_value, linear_gradient};
 inline const FieldCase kSmooth{"smooth", smooth_value, smooth_gradient};
 
-enum class GradScheme { GaussCell, GaussVertex, LeastSquares };
+enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares };
 std::string scheme_name(GradScheme s)
 {
     switch (s) {
         case GradScheme::GaussCell:   return "green_gauss";
         case GradScheme::GaussVertex: return "green_gauss_vertex";
+        case GradScheme::GaussPoint:  return "green_gauss_point";
         case GradScheme::LeastSquares: return "least_squares";
     }
     return "unknown";
@@ -204,6 +205,8 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
             return compute_gradient_gauss(phi, grid.mesh, grid.geometry);
         case GradScheme::GaussVertex:
             return compute_gradient_gauss_vertex(phi, grid.mesh, grid.geometry);
+        case GradScheme::GaussPoint:
+            return compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
         case GradScheme::LeastSquares:
             return compute_gradient_least_squares(phi, grid.mesh);
     }
@@ -251,7 +254,7 @@ void check_exactness(std::size_t n)
 {
     const Grid grid = make_tet_grid(n);
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
         const std::string name = scheme_name(scheme);
 
         const auto cf = sample_field(grid, kConstant);
@@ -264,11 +267,10 @@ void check_exactness(std::size_t n)
         const auto le = gradient_error(grid, compute_scheme(grid, lf, scheme), kLinear, true);
         std::cout << "POLY_GRAD n=" << n << " scheme=" << name << " field=linear"
                   << " L2=" << le.l2 << " Linf=" << le.linf << "\n";
-        // Only least-squares is linear-exact on unstructured tetrahedra: the
-        // Gauss face interpolation weights assume (or project onto) the
-        // owner-neighbour line, which is not the face centroid line for a tet.
-        // Report the Gauss/vertex error; enforce exactness only for LS.
-        if (scheme == GradScheme::LeastSquares || scheme == GradScheme::GaussVertex)
+        // Least-squares, vertex GG and point-linear GG are linear-exact on
+        // interior tetrahedra; the two-point Gauss scheme is not (face
+        // centroid off the owner-neighbour line).
+        if (scheme != GradScheme::GaussCell)
             require(le.linf <= 1e-9, name + ": must be linear-exact on interior tets");
         else
             require(std::isfinite(le.l1) && std::isfinite(le.l2),
@@ -279,7 +281,7 @@ void check_exactness(std::size_t n)
 void check_order()
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
         std::vector<double> errors;
         for (const std::size_t n : {4u, 6u, 8u}) {
             const Grid grid = make_tet_grid(n);
@@ -294,16 +296,25 @@ void check_order()
         }
         require(std::isfinite(errors.back()),
                 scheme_name(scheme) + ": tet gradient errors must be finite");
-        if (scheme == GradScheme::LeastSquares || scheme == GradScheme::GaussVertex) {
+        if (scheme == GradScheme::GaussCell) {
+            // Two-point Gauss is the documented skew-inconsistent scheme.
+        } else {
+            // Least-squares, vertex GG and point-linear GG are all linear-exact
+            // (consistent) on interior tetrahedra, so refinement must reduce the
+            // error. Their measured smooth-field order at these resolutions is
+            // ~0.4-0.9 (reported, no floor asserted): the skew-corrected
+            // point-linear scheme has the best constants but reaching second
+            // order on tetrahedra still requires higher-order reconstruction.
             require(errors.back() < errors.front(),
                     scheme_name(scheme) + ": tet refinement must reduce the error");
         }
         // The measured smooth-field orders on this tetrahedral stencil
-        // (cell Green-Gauss ~0.1-0.2, vertex ~0.4-0.65, least-squares ~0.4)
-        // are documented as a finding: none of the three schemes reaches second
-        // order on tetrahedra with these stencils, which is exactly why the
-        // polyhedral gradient V&V gap exists. Only the robust invariants above
-        // are asserted.
+        // (cell Green-Gauss ~0.1-0.2 and non-consistent; vertex ~0.4-0.65;
+        // least-squares ~0.4; skew-corrected point-linear ~0.5-0.9) are
+        // documented as a finding: linear-consistency is achieved by LS/vertex/
+        // point, but none reaches second order at these resolutions, which is
+        // exactly why the polyhedral scheme-accuracy gap stays open. Only the
+        // robust invariants above are asserted.
     }
 }
 

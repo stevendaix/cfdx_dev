@@ -32,8 +32,8 @@
       "name": "Gradient and reconstruction framework",
       "status": "partial",
       "evidence": [
-        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/fvm/least_squares_gradient.h",
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/interpolation.h",
         "tests/validation/test_gradient_verification.cpp",
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
@@ -42,7 +42,7 @@
         "least-squares weight-variant qualification",
         "gradient limiter integration",
         "boundary reconstruction matrix",
-        "polyhedral gradient scheme accuracy: all three schemes are only (sub-)first-order on a tetrahedral stencil (measured ~0.1-0.7); needs a proper projection/weighted interpolation",
+        "polyhedral gradient scheme accuracy: skew-corrected point-linear GG (gradient.gauss_point) is linear-exact and lifts the GG family to ~0.5-0.9 order on tets; second order still requires higher-order vertex/face reconstruction",
         "vertex-based Green-Gauss on non-affine/polyhedral meshes"
       ]
     },
