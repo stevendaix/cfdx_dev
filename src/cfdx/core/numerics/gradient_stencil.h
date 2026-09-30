@@ -7,7 +7,7 @@
 
 namespace cfdx::core {
 
-struct StencilQuality {
+enum class BoundaryGradientPolicy {\n    EXCLUDE_BOUNDARY,\n    ZERO_GRADIENT_GHOST,\n    REJECT_BOUNDARY_STENCIL\n};\n\nstruct StencilQuality {
     std::size_t samples = 0;
     int dimension = 0;
     int rank = 0;
