@@ -227,10 +227,11 @@ int main() {
         // multi-entry rows expose the actual F-point interpolation weights.
         for (const auto& row : vcycle.prolongation_boundary_rows(0, 3)) {
             std::cout << "amg_boundary_P DirectCF"
-                      << " fine=" << row.fine_index;
+                      << " fine=" << row.fine_index
+                      << " aggregate=" << vcycle.aggregate_of(row.fine_index);
             for (const auto& [coarse, weight] : row.entries)
                 std::cout << " c" << coarse << "=" << weight;
-            std::cout << '\\n';
+            std::cout << '\n';
         }
 
         const auto transfer = vcycle.transfer_diagnostics();
@@ -282,8 +283,6 @@ int main() {
                     coarse_only.two_grid_sine_mode_residual_ratio(0, mode);
                 const double smooth_ratio =
                     vcycle.sine_mode_smoother_residual_ratio(0, mode, 4);
-                const double full_ratio =
-                    vcycle.two_grid_sine_mode_residual_ratio(0, mode);
                 std::cout << "amg_sine_stage DirectCF mode=" << mode
                           << " coarse_only_ratio=" << coarse_ratio
                           << " smoother_4_ratio=" << smooth_ratio << '\n';
