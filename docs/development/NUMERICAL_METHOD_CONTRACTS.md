@@ -102,7 +102,7 @@ For an internal face with centre-distance vector `d = C_N - C_P` and area vector
 | LIMITED | `(Sf.d)/|d|^2` | `Sf - alpha d`, limiter in [0,1] | correction bounded by the orthogonal part |
 
 This decomposition table is the explicit skewness-correction contract; the campaigns above are its quantitative evidence.
-- **Temporal/CFL:** Euler explicit/implicit, Crank-Nicolson, BDF2, local time stepping, adaptive CFL and pseudo-transient CFL are present.
+- **Temporal/CFL:** Euler explicit/implicit, Crank-Nicolson, BDF2, local time stepping, adaptive CFL and pseudo-transient CFL are present. Explicit RK2 (midpoint) and RK3 (Williamson low-storage) are provided by `cfdx/physics/low_storage_time_integration.h` and registered (`numerics.temporal.rk2`/`.rk3`). `tests/validation/test_temporal_order_matrix.cpp` asserts the measured temporal order matrix on u'=-u with a 2:1 sweep (Euler~1, CN~2, BDF2~2, RK2~2, RK3~3). NOTE: the RK2 helper was previously implemented with `dt/2` weights on BOTH stages (violating `b·c = 1/2`), which made it only first order; it is fixed to the true midpoint rule (see #461 N5). History/restart semantics and a full transient-MMS matrix remain open.
 - **Linear algebra:** CG, BiCGStab, GMRES and FGMRES are available; native AMG/Smoothed Aggregation AMG and block FieldSplit/Schur infrastructure are present. Planned catalog entries are not registered as implemented methods.
 - **Pressure-velocity:** SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and coupled paths are present. Their registration remains `implemented` until method-specific quantitative evidence is attached.
 
