@@ -16,7 +16,8 @@ inline Field<double, Location::CELL> compute_convection(
     const Mesh& mesh,
     InterpScheme scheme = InterpScheme::UPWIND,
     LimiterType limiter_type = LimiterType::NONE,
-    const GeometryCache* geometry_in = nullptr)
+    const GeometryCache* geometry_in = nullptr,
+    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT)
 {
     if (scalar.dimension() != 1) {
         throw std::runtime_error("compute_convection: scalar field required");
@@ -33,7 +34,7 @@ inline Field<double, Location::CELL> compute_convection(
     Field<double, Location::FACE> face_value;
     if (scheme == InterpScheme::LIMITED) {
         const GeometryCache geometry = geometry_in ? *geometry_in : make_geometry_cache(mesh);
-        const auto grad = compute_gradient_gauss(scalar, mesh, geometry);
+        const auto grad = cell_gradient(scalar, mesh, geometry, gradient_scheme);
         face_value = interpolate_cell_to_face(
             scalar, mesh, geometry, scheme, &face_flux, limiter_type, &grad);
     } else {
