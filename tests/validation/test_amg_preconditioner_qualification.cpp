@@ -302,6 +302,14 @@ int main() {
             op, 0.7, 4, 4, 0.25, 25,
             AMGInterpolationPolicy::SmoothedAggregation);
         EXPECT_TRUE(sa.setup(A_diag));
+        for (const auto& row : sa.prolongation_boundary_rows(0, 3)) {
+            std::cout << "amg_boundary_P SA"
+                      << " fine=" << row.fine_index;
+            for (const auto& [coarse, weight] : row.entries)
+                std::cout << " c" << coarse << "=" << weight;
+            std::cout << '\\n';
+        }
+
         const auto transfer = sa.transfer_diagnostics();
         for (const auto& d : transfer) {
             std::cout << "amg_sa_transfer"
