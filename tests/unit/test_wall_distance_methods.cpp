@@ -171,10 +171,10 @@ int main() {
         const double inv_sqrt2=1.0/std::sqrt(2.0);
         WallSurface oblique;
         oblique.points={
-            {-2.0*inv_sqrt2,  2.0*inv_sqrt2,-2.0},
-            { 2.0*inv_sqrt2, -2.0*inv_sqrt2,-2.0},
-            { 2.0*inv_sqrt2, -2.0*inv_sqrt2, 2.0},
-            {-2.0*inv_sqrt2,  2.0*inv_sqrt2, 2.0}};
+            {-3.0*inv_sqrt2,  3.0*inv_sqrt2,-2.0},
+            { 3.0*inv_sqrt2, -3.0*inv_sqrt2,-2.0},
+            { 3.0*inv_sqrt2, -3.0*inv_sqrt2, 2.0},
+            {-3.0*inv_sqrt2,  3.0*inv_sqrt2, 2.0}};
         oblique.triangles={{{0,1,2}},{{0,2,3}}};
         const auto og=make_wall_distance_grid(
             n,n,9,{-2.0,-2.0,-1.0},{h,h,0.25},
