@@ -1,0 +1,31 @@
+name: Numerical maturity audit
+
+on:
+  push:
+    paths:
+      - "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json"
+      - "docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json"
+      - "scripts/validate_numerical_maturity_audit.py"
+      - ".github/workflows/numerical-maturity-audit.yml"
+  pull_request:
+    paths:
+      - "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json"
+      - "docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json"
+      - "scripts/validate_numerical_maturity_audit.py"
+      - ".github/workflows/numerical-maturity-audit.yml"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The evidence-existence check below only means something on a full
+      # checkout, so both audits are validated from the repository root.
+      - name: Validate #461 audits
+        run: |
+          python scripts/validate_numerical_maturity_audit.py \
+            docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json \
+            docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
