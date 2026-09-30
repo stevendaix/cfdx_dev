@@ -389,7 +389,11 @@ int main(int argc, char** argv)
                     const double op_residual=std::abs(-poisson_laplacian_at(bvh,exact_phi_field,grid,id)-1.0);
                     if(op_residual>poisson_exact_phi_operator_residual_inf) poisson_exact_phi_max_residual_cell=id;
                     poisson_exact_phi_operator_residual_inf=std::max(poisson_exact_phi_operator_residual_inf,op_residual);
-                    if(solid_neighbours>0) ++poisson_exact_phi_cut_cells;
+                    if(solid_neighbours>0) {
+                        ++poisson_exact_phi_cut_cells;
+                        poisson_exact_phi_cut_residual_inf =
+                            std::max(poisson_exact_phi_cut_residual_inf, op_residual);
+                    }
                     if(solid_neighbours==1) { ++poisson_exact_phi_face_cells; poisson_exact_phi_face_residual_inf=std::max(poisson_exact_phi_face_residual_inf,op_residual); }
                     if(solid_neighbours==2) { ++poisson_exact_phi_edge_cells; poisson_exact_phi_edge_residual_inf=std::max(poisson_exact_phi_edge_residual_inf,op_residual); }
                     if(solid_neighbours>=3) { ++poisson_exact_phi_corner_cells; poisson_exact_phi_corner_residual_inf=std::max(poisson_exact_phi_corner_residual_inf,op_residual); }
