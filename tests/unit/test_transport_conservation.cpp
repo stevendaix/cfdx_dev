@@ -24,6 +24,11 @@ static Mesh one_cell_mesh() {
         m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
     }
     m.cells().push_cell({0,1,2,3,4,5});
+    cfdx::Patch wall;
+    wall.name = "wall";
+    wall.type = cfdx::PatchType::WALL;
+    for (std::size_t f = 0; f < 6; ++f) wall.face_ids.push_back(f);
+    m.boundary().add_patch(wall);
     return m;
 }
 
