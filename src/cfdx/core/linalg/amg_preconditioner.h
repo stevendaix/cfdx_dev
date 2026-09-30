@@ -445,6 +445,36 @@ public:
         double coarse_gershgorin_lower_bound = 0.0;
     };
 
+    struct TransferColumnCoverage {
+        std::size_t zero_columns = 0;
+        std::size_t min_nnz = 0;
+        std::size_t max_nnz = 0;
+        std::size_t anchored_columns = 0;
+    };
+
+    TransferColumnCoverage transfer_column_coverage(std::size_t level) const
+    {
+        if (level + 1 >= levels_.size())
+            throw std::out_of_range("transfer_column_coverage: invalid level");
+        const auto& P = levels_[level].prolongation;
+        const std::size_t nc = levels_[level + 1].A.n_rows();
+        std::vector<std::size_t> nnz(nc, 0), anchors(nc, 0);
+        for (const auto& row : P) {
+            for (const auto& [c, w] : row) {
+                if (c >= nc) continue;
+                ++nnz[c];
+                if (row.size() == 1 && std::abs(w - 1.0) <= 1e-14) ++anchors[c];
+            }
+        }
+        TransferColumnCoverage out;
+        out.min_nnz = nnz.empty() ? 0 : *std::min_element(nnz.begin(), nnz.end());
+        out.max_nnz = nnz.empty() ? 0 : *std::max_element(nnz.begin(), nnz.end());
+        out.zero_columns = static_cast<std::size_t>(std::count(nnz.begin(), nnz.end(), 0));
+        out.anchored_columns = static_cast<std::size_t>(std::count_if(anchors.begin(), anchors.end(),
+            [](std::size_t n) { return n > 0; }));
+        return out;
+    }
+
     std::vector<TransferDiagnostic> transfer_diagnostics() const
     {
         std::vector<TransferDiagnostic> out;
