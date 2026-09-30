@@ -241,15 +241,43 @@ void require(bool condition, const std::string& message)
     if (!condition) throw std::runtime_error(message);
 }
 
+// The three gradient schemes exercised by the campaign: cell-based
+// Green-Gauss, vertex-based (secondary) Green-Gauss and least-squares.
+enum class GradScheme { GaussCell, GaussVertex, LeastSquares };
+
+std::string scheme_name(GradScheme s)
+{
+    switch (s) {
+        case GradScheme::GaussCell:   return "green_gauss";
+        case GradScheme::GaussVertex: return "green_gauss_vertex";
+        case GradScheme::LeastSquares: return "least_squares";
+    }
+    return "unknown";
+}
+
+Field<double, Location::CELL> compute_scheme(const Grid& grid,
+                                             const Field<double, Location::CELL>& phi,
+                                             GradScheme s)
+{
+    switch (s) {
+        case GradScheme::GaussCell:
+            return compute_gradient_gauss(phi, grid.mesh, grid.geometry);
+        case GradScheme::GaussVertex:
+            return compute_gradient_gauss_vertex(phi, grid.mesh, grid.geometry);
+        case GradScheme::LeastSquares:
+            return compute_gradient_least_squares(phi, grid.mesh);
+    }
+    return Field<double, Location::CELL>();
+}
+
 std::vector<double> refinement_errors(double shear, double stretch, const FieldCase& field,
-                                      bool least_squares)
+                                      GradScheme scheme)
 {
     std::vector<double> errors;
     for (std::size_t n : {4u, 8u, 16u}) {
         const Grid grid = make_affine_cube(n, shear, stretch);
         const auto phi = sample_field(grid, field);
-        const auto grad = least_squares ? compute_gradient_least_squares(phi, grid.mesh)
-                                        : compute_gradient_gauss(phi, grid.mesh, grid.geometry);
+        const auto grad = compute_scheme(grid, phi, scheme);
         const auto e = gradient_error(grid, grad, field, true);
         errors.push_back(e.l2);
     }
@@ -271,32 +299,34 @@ void check_exactness(const std::string& family, double shear, double stretch)
 {
     const Grid grid = make_affine_cube(6, shear, stretch);
 
-    for (const bool ls : {false, true}) {
-        const std::string scheme = ls ? "least_squares" : "green_gauss";
+    for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
+                                    GradScheme::LeastSquares}) {
+        const std::string name = scheme_name(scheme);
 
         const auto constant_field = sample_field(grid, kConstant);
-        const auto cg = ls ? compute_gradient_least_squares(constant_field, grid.mesh)
-                           : compute_gradient_gauss(constant_field, grid.mesh, grid.geometry);
+        const auto cg = compute_scheme(grid, constant_field, scheme);
         const auto ce = gradient_error(grid, cg, kConstant, false);
-        report(family, scheme, kConstant, ce);
-        require(ce.linf <= 1e-12, family + "/" + scheme + ": constant field must have zero gradient");
+        report(family, name, kConstant, ce);
+        require(ce.linf <= 1e-12,
+                family + "/" + name + ": constant field must have zero gradient");
 
         const auto linear_field = sample_field(grid, kLinear);
-        const auto lg = ls ? compute_gradient_least_squares(linear_field, grid.mesh)
-                           : compute_gradient_gauss(linear_field, grid.mesh, grid.geometry);
+        const auto lg = compute_scheme(grid, linear_field, scheme);
         const auto le = gradient_error(grid, lg, kLinear, true);
-        report(family, scheme, kLinear, le);
-        require(le.linf <= 1e-9, family + "/" + scheme + ": linear field must be exact on the interior");
+        report(family, name, kLinear, le);
+        require(le.linf <= 1e-9,
+                family + "/" + name + ": linear field must be exact on the interior");
     }
 }
 
 void check_order(const std::string& family, double shear, double stretch, const FieldCase& field)
 {
-    for (const bool ls : {false, true}) {
-        const std::string scheme = ls ? "least_squares" : "green_gauss";
-        const auto errors = refinement_errors(shear, stretch, field, ls);
+    for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
+                                    GradScheme::LeastSquares}) {
+        const std::string name = scheme_name(scheme);
+        const auto errors = refinement_errors(shear, stretch, field, scheme);
         for (std::size_t i = 0; i < errors.size(); ++i) {
-            std::cout << "GRADIENT_VV_ORDER family=" << family << " scheme=" << scheme
+            std::cout << "GRADIENT_VV_ORDER family=" << family << " scheme=" << name
                       << " field=" << field.name << " n=" << (4u << i)
                       << " L2=" << errors[i];
             if (i > 0)
@@ -304,8 +334,8 @@ void check_order(const std::string& family, double shear, double stretch, const 
             std::cout << "\n";
         }
         require(errors.back() < errors.front(),
-                family + "/" + scheme + "/" + field.name + ": refinement must reduce the error");
-        require_order(errors, 1.0, 1.0, family + "/" + scheme + "/" + field.name);
+                family + "/" + name + "/" + field.name + ": refinement must reduce the error");
+        require_order(errors, 1.0, 1.0, family + "/" + name + "/" + field.name);
     }
 }
 
@@ -315,23 +345,67 @@ void check_order(const std::string& family, double shear, double stretch, const 
 // the |Delta|^2 term in Delta(phi) is even in Delta and cancels over a
 // centrally-symmetric +/- stencil, so the normal equations return the exact
 // gradient. This is a stronger property than first-order exactness and is part
-// of the reconstruction contract.
+// of the reconstruction contract. The vertex-based Green-Gauss scheme is not
+// quadratic-exact in general, so it is reported here and its reduction/order
+// behaviour is covered by check_order.
 void check_quadratic(const std::string& family, double shear, double stretch)
 {
     const Grid grid = make_affine_cube(8, shear, stretch);
 
     const auto field = sample_field(grid, kQuadratic);
+
     const auto gg = compute_gradient_gauss(field, grid.mesh, grid.geometry);
     const auto gg_err = gradient_error(grid, gg, kQuadratic, true);
-    report(family, "green_gauss", kQuadratic, gg_err);
+    report(family, scheme_name(GradScheme::GaussCell), kQuadratic, gg_err);
     require(gg_err.linf <= 1e-9,
             family + ": Green-Gauss must be quadratic-exact on an affine mesh");
 
+    const auto vg = compute_gradient_gauss_vertex(field, grid.mesh, grid.geometry);
+    const auto vg_err = gradient_error(grid, vg, kQuadratic, true);
+    report(family, scheme_name(GradScheme::GaussVertex), kQuadratic, vg_err);
+    require(std::isfinite(vg_err.l1) && std::isfinite(vg_err.l2) &&
+            std::isfinite(vg_err.linf),
+            family + ": vertex Green-Gauss quadratic error must be finite");
+
     const auto ls = compute_gradient_least_squares(field, grid.mesh);
     const auto ls_err = gradient_error(grid, ls, kQuadratic, true);
-    report(family, "least_squares", kQuadratic, ls_err);
+    report(family, scheme_name(GradScheme::LeastSquares), kQuadratic, ls_err);
     require(ls_err.linf <= 1e-9,
             family + ": least-squares must be quadratic-exact on an affine mesh");
+}
+
+// Boundary-neighbour policy: the cell-based Green-Gauss operator treats a
+// boundary face by the zero-gradient rule (phi_f = phi_owner), represented by
+// a zero geometric interpolation weight. This contract is what makes interior
+// gradients exact while boundary-adjacent cells carry the boundary
+// approximation; pin it so it cannot silently change.
+void check_boundary_policy(const std::string& family, double shear, double stretch)
+{
+    const Grid grid = make_affine_cube(6, shear, stretch);
+
+    const FaceOwnership& own = grid.mesh.ownership();
+    std::size_t boundary_face = 0;
+    for (std::size_t f = 0; f < grid.mesh.n_faces(); ++f) {
+        if (own.neighbour(f) < 0) { boundary_face = f; break; }
+    }
+    const std::size_t owner = own.owner(boundary_face);
+    const double w = geometric_interpolation_weight(
+        grid.geometry.face_centres[boundary_face],
+        grid.geometry.cell_centres[owner], nullptr);
+    require(w == 0.0, family + ": boundary face interpolation weight must be 0 (zero-gradient)");
+
+    // The boundary approximation pollutes boundary-adjacent cells: their
+    // cell-based gradient must differ from the exact linear gradient.
+    const auto phi = sample_field(grid, kLinear);
+    const auto grad = compute_gradient_gauss(phi, grid.mesh, grid.geometry);
+    const Vec3 gc = grid.geometry.cell_centres[owner];
+    const Vec3 exact = kLinear.exact_gradient(gc);
+    const Vec3 g{grad(owner, 0), grad(owner, 1), grad(owner, 2)};
+    const double err = (g - exact).mag();
+    require(err > 1e-9,
+            family + ": boundary-adjacent gradient must carry the zero-gradient boundary approximation");
+    std::cout << "GRADIENT_BOUNDARY family=" << family
+              << " scheme=green_gauss boundary_cell_err=" << err << "\n";
 }
 
 } // namespace
@@ -344,6 +418,10 @@ int main()
         check_exactness("orthogonal", 0.0, 1.0);
         check_exactness("sheared", 0.5, 1.0);
         check_exactness("stretched", 0.0, 4.0);
+
+        check_boundary_policy("orthogonal", 0.0, 1.0);
+        check_boundary_policy("sheared", 0.5, 1.0);
+        check_boundary_policy("stretched", 0.0, 4.0);
 
         check_quadratic("orthogonal", 0.0, 1.0);
         check_quadratic("sheared", 0.5, 1.0);
