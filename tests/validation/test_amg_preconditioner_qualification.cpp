@@ -220,6 +220,19 @@ int main() {
         // Full multilevel transfer audit: every level must expose the actual
         // coarse-space properties, not only the first P. These are evidence
         // diagnostics; the existing contraction gate remains unchanged.
+        // Boundary-focused interpolation audit. For the 1-D Dirichlet
+        // Poisson case, print the first/last three stored P rows so the
+        // boundary treatment can be compared directly with a geometric
+        // reference. A singleton row with weight 1 identifies a C-point;
+        // multi-entry rows expose the actual F-point interpolation weights.
+        for (const auto& row : vcycle.prolongation_boundary_rows(0, 3)) {
+            std::cout << "amg_boundary_P DirectCF"
+                      << " fine=" << row.fine_index;
+            for (const auto& [coarse, weight] : row.entries)
+                std::cout << " c" << coarse << "=" << weight;
+            std::cout << '\\n';
+        }
+
         const auto transfer = vcycle.transfer_diagnostics();
         for (const auto& d : transfer) {
             std::cout << "amg_transfer"
