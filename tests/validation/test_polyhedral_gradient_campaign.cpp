@@ -291,7 +291,7 @@ void check_order()
                                     GradScheme::GaussPoint, GradScheme::LeastSquares, GradScheme::LeastSquares2,
                                     GradScheme::LeastSquaresQuad}) {
         std::vector<double> errors;
-        for (const std::size_t n : {4u, 6u, 8u}) {
+        for (const std::size_t n : {4u, 8u, 16u}) {
             const Grid grid = make_tet_grid(n);
             const auto phi = sample_field(grid, kSmooth);
             const auto e = gradient_error(grid, compute_scheme(grid, phi, scheme), kSmooth, true);
@@ -305,24 +305,29 @@ void check_order()
         require(std::isfinite(errors.back()),
                 scheme_name(scheme) + ": tet gradient errors must be finite");
         if (scheme == GradScheme::GaussCell) {
-            // Two-point Gauss is the documented skew-inconsistent scheme.
+            // Two-point Gauss is not even linear-consistent on tetrahedra.
+        } else if (scheme == GradScheme::LeastSquaresQuad) {
+            require(errors.back() < errors.front(),
+                    "quadratic LS: tet refinement must reduce the error");
+            require_order(errors, 2.0, 1.5,
+                          "quadratic least-squares gradient on tetrahedra");
         } else {
-            // Least-squares, vertex GG and point-linear GG are all linear-exact
-            // (consistent) on interior tetrahedra, so refinement must reduce the
-            // error. Their measured smooth-field order at these resolutions is
-            // ~0.4-0.9 (reported, no floor asserted): the skew-corrected
-            // point-linear scheme has the best constants but reaching second
-            // order on tetrahedra still requires higher-order reconstruction.
+            // Vertex GG, point-linear GG and the least-squares variants are
+            // linear-consistent; refinement must reduce the error.
             require(errors.back() < errors.front(),
                     scheme_name(scheme) + ": tet refinement must reduce the error");
         }
-        // The measured smooth-field orders on this tetrahedral stencil
-        // (cell Green-Gauss ~0.1-0.2 and non-consistent; vertex ~0.4-0.65;
-        // least-squares ~0.4; skew-corrected point-linear ~0.5-0.9) are
-        // documented as a finding: linear-consistency is achieved by LS/vertex/
-        // point, but none reaches second order at these resolutions, which is
-        // exactly why the polyhedral scheme-accuracy gap stays open. Only the
-        // robust invariants above are asserted.
+// Smooth-field observed orders on the tetrahedral grid with a 2:1
+    // refinement sweep (n = 4, 8, 16):
+    //   two-point GG      ~0.25/0.08  (non-consistent)
+    //   vertex GG         ~1.06/0.98  (converging, first order)
+    //   point-linear GG   ~1.45/1.08
+    //   least-squares     ~0.77/0.96
+    //   2-ring LS         ~1.09/1.01
+    //   quadratic LS      ~2.13/2.01  (**second order**)
+    // So only the quadratic-basis least-squares reaches second order on
+    // tetrahedra; the others are first-order-converging (except the two-point
+    // Gauss scheme, which is not even linear-consistent there).
     }
 }
 
