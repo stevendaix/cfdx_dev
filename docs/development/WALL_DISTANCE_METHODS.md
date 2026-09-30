@@ -14,12 +14,17 @@ independent wall-distance implementations:
   Zhang et al. (NASA/FUN3D, ICCFD12 2024).
 - MESH_WAVE: graph/advancing-front propagation from wall-near seeds.
 - DIRECTIONAL_MESH_WAVE: directional variant of graph propagation.
-- POISSON: discrete Poisson predictor followed by the classical distance
-  reconstruction d = sqrt(|grad(phi)|^2 + 2 phi) - |grad(phi)|.
-- EIKONAL: fast-sweeping solution of |grad(d)| = 1.
-- HAMILTON_JACOBI: relaxed pseudo-time form of the same distance equation.
-- ADVECTION_DIFFUSION: Eikonal result with controlled smoothing.
-- HYBRID_POISSON_EIKONAL: Poisson predictor blended with Eikonal correction.
+- POISSON: solve -laplacian(phi)=1 with phi=0 on cut wall faces and outer
+  homogeneous Neumann treatment, then use the Tucker reconstruction
+  d = sqrt(|grad(phi)|^2 + 2 phi) - |grad(phi)|.
+- EIKONAL: monotone upwind/fast-sweeping solution of |grad(d)| = 1 with a
+  numerical wall seed band.
+- HAMILTON_JACOBI: pseudo-time relaxation of the implemented modified
+  equation |grad(d)| = 1 + epsilon*d*laplacian(d), with Godunov gradient.
+- ADVECTION_DIFFUSION: transport form U.grad(d) = 1 + Gamma*laplacian(d),
+  using upwind advection and central diffusion.
+- HYBRID_POISSON_EIKONAL: Poisson initialization followed by H-J refinement;
+  no arbitrary weighted blend of two distance fields.
 
 The PDE methods in this first implementation deliberately live in the
 distance benchmark layer. They are not yet wired into the production CFD
@@ -43,7 +48,9 @@ Reported quantities:
 
 The exact geometric method is a mandatory self-consistency gate. No method is
 declared physically validated by this benchmark; it only measures the distance
-field against a geometric reference.
+field against a geometric reference. For Poisson, the separate manufactured
+benchmark and error-budget decomposition are mandatory because a small linear
+residual does not establish correctness of the reconstructed distance.
 
 ## Bibliography / external references
 

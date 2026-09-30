@@ -55,9 +55,12 @@ WallSurface make_complex_wing_body_tail() {
 }
 
 bool inside_complex(const WallDistanceVec3& p) {
-    const double dx=(p.x-4.5)/4.5;
-    const double cyl=dx*dx+(p.y/0.72)*(p.y/0.72)+(p.z/0.72)*(p.z/0.72);
-    if(cyl<=1.0) return true;
+    // Keep the computational solid exactly consistent with add_cylinder_x():
+    // the surface is a finite cylinder x in [0,9] with circular radius 0.72.
+    // The previous ellipsoidal test silently changed the solid topology near
+    // both cylinder end caps, invalidating the complex-geometry benchmark.
+    if(p.x>=0.0 && p.x<=9.0 &&
+       p.y*p.y+p.z*p.z<=0.72*0.72) return true;
     if(p.x>=3.0 && p.x<=6.4 && std::abs(p.y)<=3.8 && std::abs(p.z)<=0.10) return true;
     if(p.x>=7.0 && p.x<=8.7 && std::abs(p.y)<=1.9 && std::abs(p.z)<=0.08) return true;
     if(p.x>=7.2 && p.x<=8.8 && std::abs(p.y)<=0.12 && p.z>=0.0 && p.z<=1.45) return true;
@@ -65,7 +68,15 @@ bool inside_complex(const WallDistanceVec3& p) {
     return false;
 }
 
-struct Row { std::string method; double l2,linf,near_l2,violations; std::size_t invalid; double ms; };
+struct Row {
+    std::string method; double l2,linf,near_l2,violations,residual;
+    std::size_t invalid,iterations; double ms,init_ms,poisson_ms;
+    std::size_t poisson_iterations; double poisson_residual; bool converged;
+    double min_distance,max_distance;
+    std::size_t wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment;
+    double wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max;
+    double poisson_distance_l2_error,poisson_distance_linf_error;
+};
 
 } // namespace
 
@@ -76,6 +87,15 @@ int main(int argc,char** argv) {
         40,30,22,{-1.5,-5.0,-2.2},{0.30,0.34,0.21},inside_complex);
     const auto reference=exact_reference(surface,grid);
     const double h=std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
+    const WallDistanceBvh poisson_bvh(surface);
+    const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
+    const auto poisson_offset_audit=audit_poisson_wall_offsets(poisson_bvh,grid);
+    const std::size_t max_id=poisson_offset_audit.max_wall_coefficient_cell;
+    const std::size_t max_k=max_id/(grid.nx*grid.ny);
+    const std::size_t max_rem=max_id%(grid.nx*grid.ny);
+    const std::size_t max_j=max_rem/grid.nx;
+    const std::size_t max_i=max_rem%grid.nx;
+    const auto max_p=grid.points[max_id];
 
     const std::array<WallDistanceMethod,9> methods={{
         WallDistanceMethod::EXACT_GEOMETRIC,
@@ -93,27 +113,83 @@ int main(int argc,char** argv) {
     std::cout << "surface_vertices=" << surface.points.size()
               << " surface_triangles=" << surface.triangles.size()
               << " samples=" << grid.points.size() << " h=" << h << "\n";
-    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    std::cout << "poisson_operator,fluid_nodes=" << poisson_operator_audit.fluid_nodes
+              << ",fluid_fluid_faces=" << poisson_operator_audit.fluid_fluid_faces
+              << ",solid_faces=" << poisson_operator_audit.solid_faces
+              << ",outer_faces=" << poisson_operator_audit.outer_faces
+              << ",min_diagonal=" << poisson_operator_audit.min_diagonal
+              << ",max_diagonal=" << poisson_operator_audit.max_diagonal
+              << ",min_diagonal_dominance=" << poisson_operator_audit.min_diagonal_dominance
+              << ",symmetry_error=" << poisson_operator_audit.symmetry_error
+              << ",min_delta_over_h=" << poisson_offset_audit.min_delta_over_h
+              << ",max_delta_over_h=" << poisson_offset_audit.max_delta_over_h
+              << ",max_wall_coefficient=" << poisson_offset_audit.max_wall_coefficient
+              << ",max_wall_coefficient_cell=" << poisson_offset_audit.max_wall_coefficient_cell
+              << ",max_wall_coefficient_ijk=" << max_i << ":" << max_j << ":" << max_k
+              << ",max_wall_coefficient_point=" << max_p.x << ":" << max_p.y << ":" << max_p.z
+              << ",max_wall_coefficient_delta=" << poisson_offset_audit.max_wall_coefficient_delta
+              << ",max_wall_coefficient_h=" << poisson_offset_audit.max_wall_coefficient_h
+              << ",degenerate_wall_offsets=" << poisson_offset_audit.degenerate_count << "\n";
+    constexpr std::size_t benchmark_iterations=500;
+    std::cout << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error\n";
 
     for(const auto method:methods) {
+        double init_ms=0.0, poisson_ms=0.0;
+        if(method==WallDistanceMethod::HAMILTON_JACOBI) {
+            const auto p0=std::chrono::steady_clock::now();
+            std::size_t init_iter=0;
+            (void)eikonal_fast_sweep(surface,grid,benchmark_iterations,&init_iter);
+            const auto p1=std::chrono::steady_clock::now();
+            init_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
+        } else if(method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+            const auto p0=std::chrono::steady_clock::now();
+            std::size_t poisson_iter=0; double poisson_residual=0.0;
+            (void)poisson_distance(surface,grid,benchmark_iterations,1.5,&poisson_iter,&poisson_residual);
+            const auto p1=std::chrono::steady_clock::now();
+            poisson_ms=std::chrono::duration<double,std::milli>(p1-p0).count();
+        }
         const auto t0=std::chrono::steady_clock::now();
-        const auto result=compute_wall_distance(method,surface,grid,80);
+        const auto result=compute_wall_distance(method,surface,grid,benchmark_iterations);
         const auto t1=std::chrono::steady_clock::now();
         const double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
         const auto m=compare_wall_distance(grid,reference,result.distance,2.0*h);
-        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,0,ms});
+        std::size_t invalid=0;
+        double min_distance=std::numeric_limits<double>::infinity();
+        double max_distance=0.0;
+        for(std::size_t i=0;i<result.distance.size();++i) {
+            if(grid.solid[i]) continue;
+            if(!result.valid[i] || !std::isfinite(result.distance[i])) { ++invalid; continue; }
+            min_distance=std::min(min_distance,result.distance[i]);
+            max_distance=std::max(max_distance,result.distance[i]);
+        }
+        if(!std::isfinite(min_distance)) min_distance=0.0;
+        rows.push_back({result.method,m.l2_relative,m.linf_relative,m.near_wall_l2_relative,m.monotonicity_violations,
+            result.residual_inf,invalid,result.iterations,ms,init_ms,poisson_ms,result.auxiliary_iterations,
+            result.auxiliary_residual_inf,result.converged,min_distance,max_distance,
+            result.poisson_wall_ray_hits,result.poisson_wall_ray_misses,result.poisson_wall_fallbacks,
+            result.poisson_wall_bad_alignment,result.poisson_wall_min_alignment,result.poisson_phi_min,
+            result.poisson_phi_max,result.poisson_grad_min,result.poisson_grad_max,
+            result.poisson_distance_l2_error,result.poisson_distance_linf_error});
         std::cout << result.method << "," << std::setprecision(8)
                   << m.l2_relative << "," << m.linf_relative << ","
                   << m.near_wall_l2_relative << "," << m.monotonicity_violations << ","
-                  << ms << "\n";
+                  << invalid << "," << result.iterations << "," << result.residual_inf << ","
+                  << ms << "," << result.auxiliary_iterations << "," << result.auxiliary_residual_inf
+                  << "," << (result.converged ? "true" : "false") << "\n";
     }
 
     std::ofstream csv(output);
     if(!csv) throw std::runtime_error("cannot open benchmark output: "+output);
-    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,time_ms\n";
+    csv << "method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error\n";
     for(const auto& r:rows)
         csv << r.method << "," << r.l2 << "," << r.linf << "," << r.near_l2 << ","
-            << r.violations << "," << r.ms << "\n";
+            << r.violations << "," << r.invalid << "," << r.iterations << "," << r.residual << "," << r.ms
+            << "," << r.init_ms << "," << r.poisson_ms << "," << r.poisson_iterations
+            << "," << r.poisson_residual << "," << (r.converged ? "true" : "false") << "," << r.min_distance << "," << r.max_distance
+            << "," << r.wall_ray_hits << "," << r.wall_ray_misses << "," << r.wall_fallbacks << ","
+            << r.wall_bad_alignment << "," << r.wall_min_alignment << "," << r.poisson_phi_min << ","
+            << r.poisson_phi_max << "," << r.poisson_grad_min << "," << r.poisson_grad_max << ","
+            << r.poisson_distance_l2_error << "," << r.poisson_distance_linf_error << "\n";
     csv.close();
 
     // The exact method must be an exact self-reference. This is a regression

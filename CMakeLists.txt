@@ -330,6 +330,19 @@ endif()
 add_executable(cfdx_wall_distance_complex_benchmark apps/verification/wall_distance_complex_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_complex_benchmark PRIVATE cfdx_core)
 
+add_executable(cfdx_wall_distance_controlled_benchmark apps/verification/wall_distance_controlled_benchmark.cpp)
+target_link_libraries(cfdx_wall_distance_controlled_benchmark PRIVATE cfdx_core)
+
+add_executable(cfdx_wall_distance_poisson_manufactured apps/verification/wall_distance_poisson_manufactured.cpp)
+target_link_libraries(cfdx_wall_distance_poisson_manufactured PRIVATE cfdx_core)
+
+add_executable(cfdx_wall_distance_poisson_decomposition apps/verification/wall_distance_poisson_decomposition.cpp)
+target_link_libraries(cfdx_wall_distance_poisson_decomposition PRIVATE cfdx_core)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(cfdx_wall_distance_poisson_manufactured PRIVATE
+        -Werror=multichar -Werror=unused-parameter)
+endif()
+
 add_library(cfdx_core STATIC ${CFDX_CORE_SOURCES})
 target_include_directories(cfdx_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src

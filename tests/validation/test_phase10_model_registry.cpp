@@ -95,8 +95,10 @@ int main() {
             validate_turbulence_controls(c);
             double nut = 0.0;
             if (model == TurbulenceModel::WALE) {
+                // WALE requires the tensor invariants of the resolved velocity
+                // gradient; the qualification test must provide them explicitly.
                 nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0,
-                                      1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 0.5);
+                                      1.0, 0.0, 0.0, 1.0, 2.0, 0.5, 0.5);
             } else {
                 nut = turbulence_nu_t(0.1, 0.02, 10.0, 0.01, c, 1.0);
             }

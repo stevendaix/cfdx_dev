@@ -103,19 +103,95 @@ jobs:
             build/**/*.csv
           if-no-files-found: ignore
 
-      - name: Run wall-distance benchmark report
+      - name: Run wall-distance complex benchmark report
+        id: wall_complex
+        continue-on-error: true
         if: matrix.build_type == 'Release'
         run: |
           ./build/cfdx_wall_distance_complex_benchmark build/wall_distance_complex_benchmark.csv
-          echo "=== Wall-distance benchmark ==="
+          echo "=== Wall-distance complex benchmark ==="
           cat build/wall_distance_complex_benchmark.csv
 
-      - name: Upload wall-distance benchmark
-        if: matrix.build_type == 'Release'
+      - name: Validate wall-distance complex CSV schema
+        id: wall_complex_schema
+        if: ${{ matrix.build_type == 'Release' && steps.wall_complex.outcome == 'success' && !cancelled() }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+          p=Path('build/wall_distance_complex_benchmark.csv')
+          with p.open(newline='') as f:
+              r=csv.reader(f)
+              header=next(r)
+              for i,row in enumerate(r,2):
+                  if len(row)!=len(header):
+                      raise SystemExit(f'CSV schema mismatch at line {i}: {len(row)} fields, expected {len(header)}')
+          print(f'CSV schema OK: {len(header)} columns')
+          PY
+
+      - name: Upload wall-distance complex benchmark
+        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: wall-distance-benchmark
+          name: wall-distance-complex-benchmark
           path: build/wall_distance_complex_benchmark.csv
+          if-no-files-found: error
+
+      - name: Run wall-distance controlled benchmark report
+        id: wall_controlled
+        continue-on-error: true
+        if: matrix.build_type == 'Release'
+        run: |
+          # N=128 is deliberately not run here. The pseudo-time methods cost
+          # O(n^2) iterations, so an honest convergence budget at N=128 is 16x
+          # the N=64 one on 8x the cells -- over an hour of runner time for a
+          # single point. That refinement belongs to the opt-in total-validation
+          # workflow, which already exists for long campaigns.
+          ./build/cfdx_wall_distance_controlled_benchmark             build/wall_distance_controlled_benchmark.csv 16 32 64
+          echo "=== Wall-distance controlled benchmark ==="
+          cat build/wall_distance_controlled_benchmark.csv
+
+      - name: Upload wall-distance controlled benchmark
+        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-distance-controlled-benchmark
+          path: build/wall_distance_controlled_benchmark.csv
+          if-no-files-found: error
+
+      - name: Run wall-distance Poisson manufactured benchmark
+        id: wall_manufactured
+        continue-on-error: true
+        if: matrix.build_type == 'Release'
+        run: |
+          ./build/cfdx_wall_distance_poisson_manufactured build/wall_distance_poisson_manufactured.csv
+          echo "=== Wall-distance Poisson manufactured benchmark ==="
+          cat build/wall_distance_poisson_manufactured.csv
+
+      - name: Upload wall-distance Poisson manufactured benchmark
+        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-distance-poisson-manufactured
+          path: build/wall_distance_poisson_manufactured.csv
+          if-no-files-found: error
+
+      - name: Run wall-distance Poisson error-budget decomposition
+        id: wall_decomposition
+        continue-on-error: true
+        if: matrix.build_type == 'Release'
+        run: |
+          ./build/cfdx_wall_distance_poisson_decomposition build/wall_distance_poisson_decomposition.csv
+          echo "=== Wall-distance Poisson error-budget decomposition ==="
+          cat build/wall_distance_poisson_decomposition.csv
+
+      - name: Upload wall-distance Poisson error-budget decomposition
+        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-distance-poisson-decomposition
+          path: build/wall_distance_poisson_decomposition.csv
           if-no-files-found: error
 
       - name: Test validation report generator
@@ -165,15 +241,28 @@ jobs:
           build_outcome='${{ steps.build.outcome }}'
           ctest_outcome='${{ steps.ctest.outcome }}'
           validation_report_outcome='${{ steps.validation_report_test.outcome }}'
+          wall_complex_outcome='${{ steps.wall_complex.outcome }}'
+          wall_controlled_outcome='${{ steps.wall_controlled.outcome }}'
+          wall_manufactured_outcome='${{ steps.wall_manufactured.outcome }}'
+          wall_complex_schema_outcome='${{ steps.wall_complex_schema.outcome }}'
+          wall_decomposition_outcome='${{ steps.wall_decomposition.outcome }}'
           echo "build outcome: $build_outcome"
           echo "ctest outcome: $ctest_outcome"
           echo "validation report test outcome: $validation_report_outcome"
+          echo "wall complex benchmark outcome: $wall_complex_outcome"
+          echo "wall controlled benchmark outcome: $wall_controlled_outcome"
+          echo "wall manufactured benchmark outcome: $wall_manufactured_outcome"
+          echo "wall complex CSV schema outcome: $wall_complex_schema_outcome"
+          echo "wall Poisson decomposition outcome: $wall_decomposition_outcome"
           if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
           if [[ '${{ matrix.build_type }}' == 'Release' &&
-                "$validation_report_outcome" != "success" ]]; then
+                ( "$validation_report_outcome" != "success" ||
+                  "$wall_complex_outcome" != "success" ||
+                  "$wall_controlled_outcome" != "success" ||
+                  "$wall_manufactured_outcome" != "success" ) ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
