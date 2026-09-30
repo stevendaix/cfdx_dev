@@ -42,7 +42,7 @@
         "least-squares weight-variant qualification",
         "gradient limiter integration",
         "boundary reconstruction matrix",
-        "polyhedral gradient scheme accuracy: skew-corrected point-linear GG (gradient.gauss_point) is linear-exact and lifts the GG family to ~0.5-0.9 order on tets; second order still requires higher-order vertex/face reconstruction",
+        "polyhedral gradient scheme accuracy: quadratic least-squares (gradient.least_squares_quadratic) is the most accurate (nested L2 ~0.02 at n=16) and linear-exact but only ~0.8-1.2 order on tets; clean second order remains research-grade",
         "vertex-based Green-Gauss on non-affine/polyhedral meshes"
       ]
     },
