@@ -745,6 +745,7 @@ enum class GradientScheme : std::uint8_t {
     GAUSS_TWO_POINT = 0,
     GAUSS_POINT,
     LEAST_SQUARES,
+    WEIGHTED_LEAST_SQUARES,
     LEAST_SQUARES_QUADRATIC
 };
 
