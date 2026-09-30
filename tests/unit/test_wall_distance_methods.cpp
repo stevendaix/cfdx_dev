@@ -178,7 +178,7 @@ int main() {
         oblique.triangles={{{0,1,2}},{{0,2,3}}};
         const auto og=make_wall_distance_grid(
             n,n,9,{-2.0,-2.0,-1.0},{h,h,0.25},
-            [](const WallDistanceVec3& p){ return p.x+p.y<0.0; });
+            [](const WallDistanceVec3& p){ return p.x+p.y<=0.0; });
         const WallDistanceBvh obvh(oblique);
         const double L_oblique=4.0;
         std::vector<double> oblique_phi(og.points.size(),0.0);
