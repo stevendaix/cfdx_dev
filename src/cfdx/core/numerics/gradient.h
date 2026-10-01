@@ -731,25 +731,31 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                     throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
 
-                if (boundary_conditions && f < boundary_conditions->size()) {
-                    const auto bc = (*boundary_conditions)[f];
-                    const Vec3 n = geometry.face_normals[f];
-                    const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
-                    const double dn = dface.dot(n);
-                    if (!(dn > 0.0) || !std::isfinite(dn))
-                        throw std::runtime_error(
-                            "compute_gradient_weighted_least_squares: invalid boundary distance at face "
-                            + std::to_string(f));
+                // ZERO_GRADIENT_GHOST is a real policy even when no explicit
+                // boundary-condition vector is supplied. In that case the
+                // boundary sample is a mirrored zero-gradient ghost carrying
+                // the owner value. An explicit condition overrides that
+                // default on a face-by-face basis.
+                BoundaryGradientCondition bc;
+                if (boundary_conditions && f < boundary_conditions->size())
+                    bc = (*boundary_conditions)[f];
 
-                    const Vec3 ghost = geometry.cell_centres[c] + n * (2.0 * dn);
-                    centres.push_back(ghost);
-                    if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
-                        vals.push_back(values[c]);
-                    else if (bc.type == BoundaryGradientConditionType::DIRICHLET)
-                        vals.push_back(2.0 * bc.value - values[c]);
-                    else
-                        vals.push_back(values[c] + 2.0 * dn * bc.value);
-                }
+                const Vec3 n = geometry.face_normals[f];
+                const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
+                const double dn = dface.dot(n);
+                if (!(dn > 0.0) || !std::isfinite(dn))
+                    throw std::runtime_error(
+                        "compute_gradient_weighted_least_squares: invalid boundary distance at face "
+                        + std::to_string(f));
+
+                const Vec3 ghost = geometry.cell_centres[c] + n * (2.0 * dn);
+                centres.push_back(ghost);
+                if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
+                    vals.push_back(values[c]);
+                else if (bc.type == BoundaryGradientConditionType::DIRICHLET)
+                    vals.push_back(2.0 * bc.value - values[c]);
+                else
+                    vals.push_back(values[c] + 2.0 * dn * bc.value);
                 continue;
             }
             if (nb<n_cells && nb!=c) {
