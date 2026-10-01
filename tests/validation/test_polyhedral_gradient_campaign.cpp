@@ -578,7 +578,6 @@ void check_wls_mesh_stencil_campaign()
                 std::size_t checked = 0;
                 const auto smooth = sample_field(grid, kSmooth);
                 std::vector<double> smooth_errors;
-                smooth_errors.reserve(1);
 
                 const auto* cell_faces = grid.mesh.cells().faces_data();
                 const auto* cell_offsets = grid.mesh.cells().offsets_data();
@@ -629,7 +628,7 @@ void check_wls_mesh_stencil_campaign()
                 require(checked == grid.interior.size(),
                         "mesh WLS campaign: not all interior stencils were checked");
 
-                const auto grad = compute_gradient_weighted_least_squares_extended(
+                const auto grad = compute_gradient_weighted_least_squares(
                     smooth, grid.mesh, weighting);
                 const auto smooth_error = gradient_error(
                     grid, grad, kSmooth, true);
