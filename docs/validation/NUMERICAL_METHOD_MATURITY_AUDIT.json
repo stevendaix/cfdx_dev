@@ -59,7 +59,7 @@
       ],
       "gaps": [
         "non-affine / extremely non-orthogonal meshes",
-        "polyhedral diffusion accuracy: smooth-field Laplacians stay O(1)/non-convergent on tetrahedra even with linear-consistent (LS-family) gradients \u2014 a discretisation gap, not a gradient swap; the corrected operator IS linear-exact on tets with LS-family gradients (measured Linf ~5e-13)"
+        "polyhedral diffusion smooth Laplacian is O(1)-inconsistent on tetrahedra (measured L2 plateau ~2.1, order ~0, even in the deep interior [0.3,0.7]^3 with a second-order LS-quadratic gradient): the face-gradient in the non-orthogonal correction is evaluated at the cell-centre midpoint, off the face centroid; the residual does not vanish on non-affine meshes (exact only for linear fields) - a discretisation impossibility for the current corrected/over-relaxed operators; fixing requires evaluating the face gradient at the face centroid (Hessian-aware)"
       ]
     },
     {
