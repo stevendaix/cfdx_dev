@@ -35,7 +35,8 @@ namespace core {
 enum class InterpScheme : std::uint8_t {
     LINEAR = 0,
     UPWIND,
-    LIMITED
+    LIMITED,
+    BLENDED
 };
 
 enum class LimiterType : std::uint8_t {
@@ -123,7 +124,8 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
     InterpScheme scheme,
     const Field<double, Location::FACE>* face_flux = nullptr,
     LimiterType limiter_type = LimiterType::NONE,
-    const Field<double, Location::CELL>* cell_gradient = nullptr)
+    const Field<double, Location::CELL>* cell_gradient = nullptr,
+    double blend_linear = 0.75)
 {
     const std::size_t n_faces = mesh.n_faces();
     const std::size_t n_cells = mesh.n_cells();
@@ -135,6 +137,12 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
         throw std::runtime_error("interpolate_cell_to_face: dimension must be >= 1");
     if (face_flux && (face_flux->size() != n_faces || face_flux->dimension() != 1))
         throw std::runtime_error("interpolate_cell_to_face: face_flux must be scalar with n_faces values");
+    if (scheme == InterpScheme::BLENDED) {
+        if (!face_flux)
+            throw std::runtime_error("interpolate_cell_to_face: BLENDED requires face_flux");
+        if (!std::isfinite(blend_linear) || blend_linear < 0.0 || blend_linear > 1.0)
+            throw std::invalid_argument("interpolate_cell_to_face: blend_linear must be in [0, 1]");
+    }
     if (scheme == InterpScheme::UPWIND && !face_flux)
         throw std::runtime_error("interpolate_cell_to_face: UPWIND requires face_flux");
     if (scheme == InterpScheme::LIMITED) {
@@ -178,6 +186,10 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
                 v = 0.5 * (vo + vn);
             } else if (scheme == InterpScheme::UPWIND) {
                 v = (flux[f] >= 0.0) ? vo : vn;
+            } else if (scheme == InterpScheme::BLENDED) {
+                // Central/upwind blending: v = blend*linear + (1-blend)*upwind.
+                const double v_up = (flux[f] >= 0.0) ? vo : vn;
+                v = blend_linear * 0.5 * (vo + vn) + (1.0 - blend_linear) * v_up;
             } else if (scheme == InterpScheme::LIMITED) {
                 // Reconstruct from the upwind cell to the actual face centre.
                 // The limiter is applied to the directional ratio along the
@@ -223,17 +235,13 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
     InterpScheme scheme,
     const Field<double, Location::FACE>* face_flux = nullptr,
     LimiterType limiter_type = LimiterType::NONE,
-    const Field<double, Location::CELL>* cell_gradient = nullptr)
+    const Field<double, Location::CELL>* cell_gradient = nullptr,
+    double blend_linear = 0.75)
 {
-    if (scheme == InterpScheme::LIMITED) {
-        const GeometryCache geometry = make_geometry_cache(mesh);
-        return interpolate_cell_to_face(
-            cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
-    }
-    // Linear/upwind interpolation only needs topology and ownership.
-    GeometryCache geometry;
+    const GeometryCache geometry = make_geometry_cache(mesh);
     return interpolate_cell_to_face(
-        cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient);
+        cell_field, mesh, geometry, scheme, face_flux, limiter_type, cell_gradient,
+        blend_linear);
 }
 
 }  // namespace core

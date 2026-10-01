@@ -220,8 +220,12 @@
     {
       "package_id": "N4",
       "requirement": "bounded central/blending",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "tests/validation/test_convection_blending.cpp"
+      ]
     },
     {
       "package_id": "N4",

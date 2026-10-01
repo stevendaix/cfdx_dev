@@ -70,10 +70,11 @@
         "src/cfdx/core/numerics/convection.h",
         "src/cfdx/core/numerics/convection_assembly.h",
         "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_blending.cpp",
         "tests/validation/test_convection_scheme_verification.cpp"
       ],
       "gaps": [
-        "complete central/blended family",
+        "QUICK-equivalent quadratic scheme",
         "QUICK-equivalent quadratic scheme",
         "multidimensional limiter policy",
         "production transport wiring + multidimensional scheme-level V&V"

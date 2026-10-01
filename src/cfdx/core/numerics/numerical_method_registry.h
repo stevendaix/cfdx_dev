@@ -43,6 +43,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "MUSCL with psi=mc","numerics.convection.tvd.mc",{"boundedness","TVD","smooth_refinement","steep_gradient"}},
         {"convection.central","Central (average) convection",F::Convection,S::Implemented,C::LocalFaceConservative,false,false,false,2,0,
          "phi_f=0.5(phi_P+phi_N)","numerics.convection.central",{"smooth_refinement","conservation"}},
+        {"convection.blended","Blended linear/upwind convection",F::Convection,S::Implemented,C::LocalFaceConservative,false,false,false,1,0,
+         "phi_f=beta*0.5(phi_P+phi_N)+(1-beta)*upwind","numerics.convection.blended",{"refinement","skewed","bounded"}},
         {"interpolation.limiter.minmod","MinMod limiter coefficient",F::Interpolation,S::Implemented,C::NotApplicable,true,true,false,0,0,
          "psi=max(0,min(1,r))","numerics.limiter.minmod",{"coefficient_exactness","boundedness"}},
         {"interpolation.limiter.vanleer","Van Leer limiter coefficient",F::Interpolation,S::Implemented,C::NotApplicable,true,true,false,0,0,

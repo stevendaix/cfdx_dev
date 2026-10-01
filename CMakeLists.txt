@@ -600,6 +600,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
+    add_cfdx_test(test_convection_blending tests/validation/test_convection_blending.cpp)
     add_cfdx_test(test_temporal_order_matrix tests/validation/test_temporal_order_matrix.cpp)
     add_cfdx_test(test_gradient_verification tests/validation/test_gradient_verification.cpp)
     add_cfdx_test(test_polyhedral_gradient_campaign tests/validation/test_polyhedral_gradient_campaign.cpp)
