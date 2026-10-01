@@ -458,6 +458,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_mesh_family_volumes tests/numerical/test_mesh_family_volumes.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
+    add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
     add_cfdx_test(test_newton_field tests/unit/test_newton_field.cpp)
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
