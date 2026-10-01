@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -300,6 +301,120 @@ void check_exactness(std::size_t n)
 
 
 
+
+double symmetric_condition_reference(const Vec3& centre,
+                                     const std::vector<Vec3>& neighbours,
+                                     GradientWeighting weighting)
+{
+    double a[3][3] = {};
+    for (const Vec3& p : neighbours) {
+        const Vec3 d = p - centre;
+        const double r2 = d.mag2();
+        if (!(r2 > 0.0) || !std::isfinite(r2))
+            return std::numeric_limits<double>::infinity();
+        const double r = std::sqrt(r2);
+        double w = 1.0;
+        if (weighting == GradientWeighting::INVERSE_DISTANCE) w = 1.0 / r;
+        if (weighting == GradientWeighting::INVERSE_DISTANCE_SQUARED) w = 1.0 / r2;
+        a[0][0] += w*d.x*d.x; a[0][1] += w*d.x*d.y; a[0][2] += w*d.x*d.z;
+        a[1][0] += w*d.y*d.x; a[1][1] += w*d.y*d.y; a[1][2] += w*d.y*d.z;
+        a[2][0] += w*d.z*d.x; a[2][1] += w*d.z*d.y; a[2][2] += w*d.z*d.z;
+    }
+
+    // Jacobi diagonalisation of the symmetric normal matrix.  This is an
+    // independent reference for the spectral 2-norm condition number.
+    for (int sweep = 0; sweep < 50; ++sweep) {
+        int p = 0, q = 1;
+        double max_off = std::abs(a[0][1]);
+        if (std::abs(a[0][2]) > max_off) { max_off = std::abs(a[0][2]); p = 0; q = 2; }
+        if (std::abs(a[1][2]) > max_off) { max_off = std::abs(a[1][2]); p = 1; q = 2; }
+        if (!(max_off > 0.0) || !std::isfinite(max_off)) break;
+        const double tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        const double t = (tau >= 0.0 ? 1.0 : -1.0) /
+                         (std::abs(tau) + std::sqrt(1.0 + tau*tau));
+        const double cs = 1.0 / std::sqrt(1.0 + t*t);
+        const double sn = t * cs;
+        const double app = a[p][p], aqq = a[q][q], apq = a[p][q];
+        a[p][p] = app - t*apq;
+        a[q][q] = aqq + t*apq;
+        a[p][q] = a[q][p] = 0.0;
+        for (int k = 0; k < 3; ++k) {
+            if (k == p || k == q) continue;
+            const double akp = a[k][p], akq = a[k][q];
+            a[k][p] = a[p][k] = cs*akp - sn*akq;
+            a[k][q] = a[q][k] = sn*akp + cs*akq;
+        }
+    }
+    double lo = a[0][0], hi = a[0][0];
+    for (int i = 1; i < 3; ++i) {
+        lo = std::min(lo, a[i][i]);
+        hi = std::max(hi, a[i][i]);
+    }
+    if (!(lo > 0.0) || !std::isfinite(lo) || !std::isfinite(hi))
+        return std::numeric_limits<double>::infinity();
+    return hi / lo;
+}
+
+void check_wls_conditioning_reference_campaign()
+{
+    struct Family { const char* name; std::vector<Vec3> points; };
+    const double e = 1.0e-6;
+    const std::vector<Family> families = {
+        {"isotropic", {
+            {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}}},
+        {"anisotropic", {
+            {1,0,0},{-1,0,0},{0,0.1,0},{0,-0.1,0},{0,0,1.7},{0,0,-1.7}}},
+        {"quasi_coplanar", {
+            {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0.3,0.7,e},{-0.3,-0.7,-e}}},
+        {"quasi_collinear", {
+            {1,0,0},{-1,0,0},{2,e,0},{-2,-e,0},{3,0,e},{-3,0,-e}}}
+    };
+    const std::array<double,3> scales = {1.0, 1.0e-4, 1.0e4};
+    const std::array<GradientWeighting,3> weights = {
+        GradientWeighting::UNIFORM,
+        GradientWeighting::INVERSE_DISTANCE,
+        GradientWeighting::INVERSE_DISTANCE_SQUARED
+    };
+    const char* weight_names[] = {"uniform", "1/r", "1/r2"};
+
+    std::cout << "WLS_REFERENCE family weighting scale rank pivot_ratio spectral_condition\\n";
+    for (const auto& family : families) {
+        for (const auto weighting : weights) {
+            for (const double scale : scales) {
+                std::vector<Vec3> pts;
+                pts.reserve(family.points.size());
+                for (const Vec3& p : family.points) pts.push_back(Vec3{scale*p.x, scale*p.y, scale*p.z});
+
+                StencilQuality q;
+                bool rejected = false;
+                try {
+                    (void)weighted_least_squares_gradient(
+                        Vec3{0,0,0}, 0.0, pts,
+                        std::vector<double>(pts.size(), 0.0),
+                        weighting, &q);
+                } catch (const std::runtime_error&) {
+                    rejected = true;
+                }
+
+                const double reference = symmetric_condition_reference(
+                    Vec3{0,0,0}, pts, weighting);
+                std::cout << "WLS_REFERENCE family=" << family.name
+                          << " weighting=" << weight_names[static_cast<int>(weighting)]
+                          << " scale=" << scale
+                          << " rank=" << q.rank
+                          << " pivot_ratio=" << q.condition_estimate
+                          << " spectral_condition=" << reference
+                          << " rejected=" << (rejected ? "true" : "false") << "\n";
+
+                require(std::isfinite(reference) || q.rank < 3,
+                        "conditioning reference: finite-rank mismatch");
+                require(q.condition_estimate >= 1.0 || std::isinf(q.condition_estimate),
+                        "conditioning estimator must be >= 1 or infinite");
+            }
+        }
+    }
+}
+
 void check_wls_conditioning()
 {
     // Diagnostic calibration only.  This campaign characterizes the current
@@ -445,6 +560,7 @@ int main()
         check_exactness(3);
         check_order();
         check_distorted_order();
+        check_wls_conditioning_reference_campaign();
         check_wls_conditioning();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
         return 0;
