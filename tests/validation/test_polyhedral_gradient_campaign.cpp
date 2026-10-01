@@ -62,7 +62,8 @@ std::string tri_key(std::size_t a, std::size_t b, std::size_t c)
     return std::to_string(v[0]) + "/" + std::to_string(v[1]) + "/" + std::to_string(v[2]);
 }
 
-Grid make_tet_grid(std::size_t n)
+Grid make_tet_grid(std::size_t n, double sx = 1.0, double sy = 1.0, double sz = 1.0,
+                    double shear_xy = 0.0, double shear_xz = 0.0)
 {
     if (n < 1) throw std::invalid_argument("make_tet_grid: n must be >= 1");
 
@@ -76,9 +77,13 @@ Grid make_tet_grid(std::size_t n)
     for (std::size_t z = 0; z <= n; ++z)
         for (std::size_t y = 0; y <= n; ++y)
             for (std::size_t x = 0; x <= n; ++x)
+                const double qx = static_cast<double>(x) / n;
+                const double qy = static_cast<double>(y) / n;
+                const double qz = static_cast<double>(z) / n;
                 m.points().set(vid(x, y, z),
-                    static_cast<double>(x) / n, static_cast<double>(y) / n,
-                    static_cast<double>(z) / n);
+                    sx * qx + shear_xy * qy + shear_xz * qz,
+                    sy * qy,
+                    sz * qz);
 
     std::unordered_map<std::string, std::size_t> face_ids;
     std::vector<std::vector<std::size_t>> face_cells;
@@ -292,6 +297,35 @@ void check_exactness(std::size_t n)
     }
 }
 
+void check_distorted_order()
+{
+    // Fixed affine distortion: 10:1 aspect ratio in y plus x-y/x-z shear.
+    // The physical field is evaluated at the transformed cell centres, so
+    // this probes the gradient operator on a consistently refined,
+    // high-aspect-ratio/skewed tetrahedral family.
+    const std::array<GradScheme, 2> schemes = {
+        GradScheme::LeastSquaresWeighted, GradScheme::LeastSquaresWeightedInvR};
+    for (const GradScheme scheme : schemes) {
+        std::vector<double> errors;
+        for (const std::size_t n : {4u, 8u, 16u}) {
+            const Grid grid = make_tet_grid(n, 1.0, 0.1, 1.8, 0.35, 0.20);
+            const auto phi = sample_field(grid, kSmooth);
+            const auto e = gradient_error(grid,
+                compute_scheme(grid, phi, scheme), kSmooth, true);
+            require(std::isfinite(e.l2), scheme_name(scheme) + ": distorted L2 must be finite");
+            errors.push_back(e.l2);
+            std::cout << "POLY_GRAD_DISTORTED scheme=" << scheme_name(scheme)
+                      << " n=" << n << " L2=" << e.l2 << " Linf=" << e.linf;
+            if (errors.size() > 1)
+                std::cout << " order=" << observed_order(errors[errors.size()-2], errors.back());
+            std::cout << "
+";
+        }
+        require(errors.back() < errors.front(),
+                scheme_name(scheme) + ": distorted tetra refinement must reduce error");
+    }
+}
+
 void check_order()
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
@@ -347,6 +381,7 @@ int main()
         std::cout << std::setprecision(12);
         check_exactness(3);
         check_order();
+        check_distorted_order();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
         return 0;
     } catch (const std::exception& e) {
