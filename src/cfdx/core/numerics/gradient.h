@@ -695,7 +695,8 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
     const Mesh& mesh,
     GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
     double condition_limit = std::numeric_limits<double>::infinity(),
-    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -729,6 +730,26 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                 if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
                     throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
+
+                if (boundary_conditions && f < boundary_conditions->size()) {
+                    const auto bc = (*boundary_conditions)[f];
+                    const Vec3 n = geometry.face_normals[f];
+                    const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
+                    const double dn = dface.dot(n);
+                    if (!(dn > 0.0) || !std::isfinite(dn))
+                        throw std::runtime_error(
+                            "compute_gradient_weighted_least_squares: invalid boundary distance at face "
+                            + std::to_string(f));
+
+                    const Vec3 ghost = geometry.cell_centres[c] + n * (2.0 * dn);
+                    centres.push_back(ghost);
+                    if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
+                        vals.push_back(values[c]);
+                    else if (bc.type == BoundaryGradientConditionType::DIRICHLET)
+                        vals.push_back(2.0 * bc.value - values[c]);
+                    else
+                        vals.push_back(values[c] + 2.0 * dn * bc.value);
+                }
                 continue;
             }
             if (nb<n_cells && nb!=c) {
