@@ -531,6 +531,13 @@ void check_distorted_order()
         }
         require(errors.back() < errors.front(),
                 scheme_name(scheme) + ": distorted tetra refinement must reduce error");
+        if (scheme == GradScheme::LeastSquaresQuad) {
+            // The fixed affine distortion preserves polynomial degree. The
+            // observed refinement orders (~2.14 and ~2.03 in this campaign)
+            // therefore justify an explicit second-order V&V gate here.
+            require_order(errors, 2.0, 1.5,
+                          "quadratic least-squares gradient on distorted tetrahedra");
+        }
     }
 }
 
