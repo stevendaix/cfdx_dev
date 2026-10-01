@@ -308,15 +308,15 @@ void check_wls_conditioning()
     // epsilon^-2.  This gives a deterministic calibration of the diagnostic
     // without relying on a particular mesh generator.
     //
-    // Acceptance policy for the current double-precision implementation:
-    //   cond <= 1e8  : acceptable conditioning;
-    //   1e8 < cond <= 1e10 : degraded, diagnostic only;
-    //   cond > 1e10 : reject for a production stencil.
+    // Provisional acceptance policy for the current double-precision
+    // implementation:
+    //   cond <= 1e8 : acceptable conditioning;
+    //   cond > 1e8 or numerical rank loss : reject the production stencil.
     //
-    // The 1e10 ceiling corresponds to O(1e-6) worst-case round-off
-    // amplification at double precision (up to a modest safety factor).
+    // The campaign deliberately drives the stencil past this boundary.  The
+    // threshold is conservative and remains a V&V acceptance criterion to be
+    // revisited if the solver gains a more robust scaled/SVD-quality metric.
     constexpr double kAcceptable = 1.0e8;
-    constexpr double kReject = 1.0e10;
 
     const std::array<double, 6> epsilons = {
         1.0, 1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10};
@@ -331,34 +331,39 @@ void check_wls_conditioning()
         const std::vector<double> values(neighbours.size(), 0.0);
 
         StencilQuality q;
-        (void)weighted_least_squares_gradient(
-            centre, 0.0, neighbours, values,
-            GradientWeighting::UNIFORM, &q);
+        bool rejected_by_rank = false;
+        try {
+            (void)weighted_least_squares_gradient(
+                centre, 0.0, neighbours, values,
+                GradientWeighting::UNIFORM, &q);
+        } catch (const std::runtime_error&) {
+            rejected_by_rank = true;
+        }
 
         // At the extreme end, the rank gate is itself the rejection
         // mechanism: once the normal-equation pivot falls below the numerical
         // rank tolerance, the stencil is not usable in double precision.
-        if (!q.full_rank) {
+        if (rejected_by_rank) {
             std::cout << "WLS_CONDITIONING eps=" << eps
                       << " condition=" << q.condition_estimate
                       << " class=REJECT rank=" << q.rank << "\n";
-            require(previous > kReject,
-                    "conditioning campaign: rank loss occurred before the condition rejection threshold");
+            require(previous >= kAcceptable,
+                    "conditioning campaign: rank loss occurred before the accepted conditioning boundary");
             break;
         }
 
+        require(q.full_rank, "conditioning campaign: accepted stencil must be full rank");
         require(std::isfinite(q.condition_estimate),
                 "conditioning campaign: non-finite condition estimate");
         if (previous > 0.0)
             require(q.condition_estimate > previous,
                     "conditioning campaign: condition estimate must increase monotonically");
+        require(q.condition_estimate <= kAcceptable,
+                "conditioning campaign: condition above acceptance threshold was not rejected");
 
-        const char* class_name =
-            q.condition_estimate <= kAcceptable ? "ACCEPTABLE" :
-            q.condition_estimate <= kReject ? "DEGRADED" : "REJECT";
         std::cout << "WLS_CONDITIONING eps=" << eps
                   << " condition=" << q.condition_estimate
-                  << " class=" << class_name << "\n";
+                  << " class=ACCEPTABLE\n";
 
         previous = q.condition_estimate;
     }
