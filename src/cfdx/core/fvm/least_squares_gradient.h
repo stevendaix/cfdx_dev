@@ -93,8 +93,9 @@ inline Vec3 least_squares_gradient(
     q.min_pivot = std::isfinite(min_pivot) ? min_pivot : 0.0;
     q.max_pivot = max_pivot;
     q.full_rank = q.rank == 3;
-    q.condition_estimate = q.min_pivot > 0.0 ? q.max_pivot/q.min_pivot
-                                              : std::numeric_limits<double>::infinity();
+    q.condition_estimate = q.full_rank && q.min_pivot > 0.0
+        ? q.max_pivot/q.min_pivot
+        : std::numeric_limits<double>::infinity();
 
     if (quality) *quality = q;
     if (q.rank == 0) return {};
@@ -182,7 +183,9 @@ inline Vec3 weighted_least_squares_gradient(
         for(int row=col+1;row<3;++row){const double f=m[row][col]/m[col][col];for(int j=col;j<4;++j)m[row][j]-=f*m[col][j];}
     }
     q.min_pivot=std::isfinite(minp)?minp:0.0; q.max_pivot=maxp; q.full_rank=q.rank==3;
-    q.condition_estimate=q.min_pivot>0.0?q.max_pivot/q.min_pivot:std::numeric_limits<double>::infinity();
+    q.condition_estimate=q.full_rank && q.min_pivot>0.0
+        ? q.max_pivot/q.min_pivot
+        : std::numeric_limits<double>::infinity();
     if(quality)*quality=q;
     if(q.rank<3) throw std::runtime_error("weighted_least_squares_gradient: rank-deficient stencil");
     double x[3]={};
