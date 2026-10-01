@@ -347,26 +347,32 @@
     {
       "package_id": "N5",
       "requirement": "BDF2 history lifecycle",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "src/cfdx/core/numerics/temporal.h",
         "src/cfdx/physics/temporal.h",
-        "tests/unit/test_temporal.cpp"
+        "tests/unit/test_temporal.cpp",
+        "tests/unit/test_temporal_history.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "restart history semantics",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_restart_mapping.cpp"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/unit/test_restart_mapping.cpp",
+        "tests/unit/test_temporal_history.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "variable-time-step consistency",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "src/cfdx/physics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "src/cfdx/physics/temporal.h",
+        "tests/unit/test_temporal_history.cpp"
       ]
     },
     {
