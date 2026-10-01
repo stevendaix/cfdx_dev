@@ -322,11 +322,11 @@ inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
 // Extended-stencil least-squares gradient (two rings of face neighbours).
 //
 // The base least-squares gradient uses only the face-neighbour cells (4 for a
-// tetrahedron), which is linear-exact but leaves a first-order curvature error
-// on smooth fields (measured ~0.4 order on the Kuhn tetrahedral grid). Fit the
-// SAME linear basis over two rings of neighbours: the richer, more balanced
-// stencil cancels the even (curvature) contributions in the normal equations,
-// restoring near-second-order smooth-field behaviour on unstructured meshes.
+// tetrahedron). The extended stencil improves robustness and removes the
+// rank-deficiency observed for the weighted one-ring stencil on the Kuhn
+// tetrahedral family. It remains a linear-basis fit: on the tested tetrahedral
+// families its smooth-field order is approximately one. The quadratic-basis
+// least-squares fit is the second-order control.
 inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
