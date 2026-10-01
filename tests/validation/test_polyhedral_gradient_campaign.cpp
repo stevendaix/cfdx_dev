@@ -564,7 +564,7 @@ void check_wls_mesh_stencil_campaign()
         GradientWeighting::INVERSE_DISTANCE_SQUARED,
         GradientWeighting::INVERSE_DISTANCE
     }};
-    const char* weighting_names[] = {"1/r2", "1/r"};
+    const auto weighting_name = [](GradientWeighting w) {\n        switch (w) {\n            case GradientWeighting::INVERSE_DISTANCE_SQUARED: return "1/r2";\n            case GradientWeighting::INVERSE_DISTANCE: return "1/r";\n            default: return "uniform";\n        }\n    };
 
     for (const auto& mesh_case : cases) {
         for (const auto weighting : weightings) {
@@ -639,7 +639,7 @@ void check_wls_mesh_stencil_campaign()
                         "mesh WLS campaign: smooth-field error must not increase on refinement");
 
                 std::cout << "WLS_MESH_STENCIL case=" << mesh_case.name
-                          << " weighting=" << weighting_names[static_cast<int>(weighting)]
+                          << " weighting=" << weighting_name(weighting)
                           << " n=" << n
                           << " cells=" << checked
                           << " min_condition=" << min_condition
