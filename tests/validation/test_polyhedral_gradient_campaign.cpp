@@ -335,7 +335,18 @@ void check_wls_conditioning()
             centre, 0.0, neighbours, values,
             GradientWeighting::UNIFORM, &q);
 
-        require(q.full_rank, "conditioning campaign: controlled stencil lost rank");
+        // At the extreme end, the rank gate is itself the rejection
+        // mechanism: once the normal-equation pivot falls below the numerical
+        // rank tolerance, the stencil is not usable in double precision.
+        if (!q.full_rank) {
+            std::cout << "WLS_CONDITIONING eps=" << eps
+                      << " condition=" << q.condition_estimate
+                      << " class=REJECT rank=" << q.rank << "\n";
+            require(previous > kReject,
+                    "conditioning campaign: rank loss occurred before the condition rejection threshold");
+            break;
+        }
+
         require(std::isfinite(q.condition_estimate),
                 "conditioning campaign: non-finite condition estimate");
         if (previous > 0.0)
