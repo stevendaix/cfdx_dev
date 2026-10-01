@@ -338,7 +338,9 @@ void check_exactness(const std::string& family, double shear, double stretch)
 void check_order(const std::string& family, double shear, double stretch, const FieldCase& field)
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares,
+                                    GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
         const std::string name = scheme_name(scheme);
         const auto errors = refinement_errors(shear, stretch, field, scheme);
         for (std::size_t i = 0; i < errors.size(); ++i) {
