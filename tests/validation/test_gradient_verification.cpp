@@ -431,6 +431,80 @@ void check_boundary_policy(const std::string& family, double shear, double stret
               << " scheme=green_gauss boundary_cell_err=" << err << "\n";
 }
 
+
+void check_wls_boundary_reconstruction(const std::string& family, double shear, double stretch)
+{
+    const Grid grid = make_affine_cube(6, shear, stretch);
+    const auto phi = sample_field(grid, kLinear);
+    const auto& own = grid.mesh.ownership();
+
+    std::vector<BoundaryGradientCondition> dirichlet(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> neumann(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> mixed(grid.mesh.n_faces());
+
+    std::size_t n_boundary = 0;
+    for (std::size_t f = 0; f < grid.mesh.n_faces(); ++f) {
+        if (own.neighbour(f) >= 0) continue;
+        ++n_boundary;
+        const Vec3 n = grid.geometry.face_normals[f];
+        const double boundary_value = linear_value(grid.geometry.face_centres[f]);
+        const double normal_gradient = linear_gradient(grid.geometry.face_centres[f]).dot(n);
+
+        dirichlet[f] = {BoundaryGradientConditionType::DIRICHLET, boundary_value};
+        neumann[f] = {BoundaryGradientConditionType::NEUMANN, normal_gradient};
+
+        // Mixed matrix: Dirichlet on the two directions with the largest
+        // normal component in the affine physical frame, Neumann on the
+        // remaining boundary family. This also exercises corners where
+        // multiple boundary conditions meet.
+        const double ax = std::abs(n.x);
+        const double ay = std::abs(n.y);
+        const double az = std::abs(n.z);
+        if (az >= ax && az >= ay)
+            mixed[f] = {BoundaryGradientConditionType::NEUMANN, normal_gradient};
+        else
+            mixed[f] = {BoundaryGradientConditionType::DIRICHLET, boundary_value};
+    }
+    require(n_boundary > 0, family + ": boundary campaign requires boundary faces");
+
+    for (const auto* entry : {&dirichlet, &neumann, &mixed}) {
+        const auto grad = compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, entry);
+        const auto err = gradient_error(grid, grad, kLinear, false);
+        report(family, "weighted_least_squares_boundary", kLinear, err);
+        require(std::isfinite(err.l1) && std::isfinite(err.l2) && std::isfinite(err.linf),
+                family + ": boundary WLS errors must be finite");
+        require(err.linf <= 1e-9,
+                family + ": linear field must remain exact with explicit boundary reconstruction");
+    }
+
+    // Constant + zero-gradient ghosts: every cell, including corners, must
+    // remain exactly constant.
+    const auto constant = sample_field(grid, kConstant);
+    std::vector<BoundaryGradientCondition> zero(grid.mesh.n_faces());
+    const auto zg = compute_gradient_weighted_least_squares(
+        constant, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+        std::numeric_limits<double>::infinity(),
+        BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &zero);
+    const auto ze = gradient_error(grid, zg, kConstant, false);
+    report(family, "weighted_least_squares_zero_gradient", kConstant, ze);
+    require(ze.linf <= 1e-12,
+            family + ": zero-gradient boundary reconstruction must preserve constants");
+
+    bool rejected = false;
+    try {
+        (void)compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, family + ": REJECT_BOUNDARY_STENCIL must reject boundary stencils");
+}
+
 } // namespace
 
 int main()
