@@ -633,11 +633,17 @@ void check_boundary_reconstruction()
         constant, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
         std::numeric_limits<double>::infinity(),
         BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
-    const auto zero = boundary_error(zg, boundary_cells);
+    // For the constant-field invariant the exact gradient is zero; do not
+    // reuse boundary_error(), which is intentionally defined against the
+    // linear-field reference gradient.
+    double zero_linf = 0.0;
+    for (const std::size_t c : boundary_cells) {
+        const Vec3 numerical{zg(c, 0), zg(c, 1), zg(c, 2)};
+        zero_linf = std::max(zero_linf, numerical.mag());
+    }
     std::cout << "POLY_GRAD_BOUNDARY case=zero_gradient_default"
-              << " L1=" << zero.l1 << " L2=" << zero.l2
-              << " Linf=" << zero.linf << "\n";
-    require(zero.linf <= 1e-12,
+              << " Linf=" << zero_linf << "\n";
+    require(zero_linf <= 1e-12,
             "tet zero-gradient default ghost must preserve constants");
 
     bool rejected = false;
