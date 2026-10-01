@@ -465,5 +465,20 @@ int main() {
         EXPECT_NEAR(g(0,2), 0.0, 1e-12);
     });
 
+    run_case("weighted_least_squares_zero_gradient_policy_without_bc_data", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "phi", "1", 1);
+        f(0) = 7.0;
+
+        const auto g = compute_gradient_weighted_least_squares(
+            f, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
+
+        EXPECT_NEAR(g(0, 0), 0.0, 1e-12);
+        EXPECT_NEAR(g(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(g(0, 2), 0.0, 1e-12);
+    });
+
     return run_all();
 }
