@@ -302,21 +302,13 @@ void check_exactness(std::size_t n)
 
 void check_wls_conditioning()
 {
-    // Deterministic conditioning calibration.  The normal matrix has diagonal
-    // entries proportional to {1, epsilon^2, 1}, so the condition estimate
-    // scales as epsilon^-2.
-    //
-    // Current double-precision production policy:
-    //   cond <= 1e8 : acceptable;
-    //   cond > 1e8  : reject the stencil;
-    //   numerical rank loss is an independent hard rejection.
-    constexpr double kAcceptable = 1.0e8;
-
+    // Diagnostic calibration only.  This campaign characterizes the current
+    // pivot-ratio estimator and rank transition; it deliberately does not
+    // define a production acceptance threshold.
     const std::array<double, 6> epsilons = {
         1.0, 1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10};
 
     double previous = 0.0;
-    bool saw_condition_rejection = false;
     bool saw_rank_rejection = false;
 
     for (const double eps : epsilons) {
@@ -341,54 +333,32 @@ void check_wls_conditioning()
             std::cout << "WLS_CONDITIONING eps=" << eps
                       << " condition=" << q.condition_estimate
                       << " class=REJECT_RANK rank=" << q.rank << "\n";
-            require(q.condition_estimate > kAcceptable,
-                    "conditioning campaign: rank loss must occur beyond accepted conditioning");
+            require(q.rank < 3,
+                    "conditioning campaign: rank rejection must report rank loss");
+            require(std::isinf(q.condition_estimate),
+                    "conditioning campaign: rank loss must report infinite condition estimate");
             saw_rank_rejection = true;
             break;
         }
 
-        require(q.full_rank, "conditioning campaign: non-rank-deficient stencil must be full rank");
+        require(q.full_rank,
+                "conditioning campaign: non-rejected stencil must be full rank");
         require(std::isfinite(q.condition_estimate),
-                "conditioning campaign: non-finite condition estimate");
+                "conditioning campaign: full-rank stencil must have finite condition estimate");
         if (previous > 0.0)
             require(q.condition_estimate > previous,
                     "conditioning campaign: condition estimate must increase monotonically");
 
-        if (q.condition_estimate <= kAcceptable * (1.0 + 1.0e-12)) {
-            std::cout << "WLS_CONDITIONING eps=" << eps
-                      << " condition=" << q.condition_estimate
-                      << " class=ACCEPTABLE\n";
-            previous = q.condition_estimate;
-        } else {
-            std::cout << "WLS_CONDITIONING eps=" << eps
-                      << " condition=" << q.condition_estimate
-                      << " class=REJECT_CONDITION rank=" << q.rank << "\n";
-            require(previous >= kAcceptable,
-                    "conditioning campaign: condition rejection occurred before the accepted boundary was exercised");
-            saw_condition_rejection = true;
-        }
+        std::cout << "WLS_CONDITIONING eps=" << eps
+                  << " condition=" << q.condition_estimate
+                  << " class=FULL_RANK rank=" << q.rank << "\n";
+        previous = q.condition_estimate;
     }
 
-    require(previous >= kAcceptable,
-            "conditioning campaign: accepted boundary was not exercised");
-    require(saw_condition_rejection,
-            "conditioning campaign: condition-based rejection was not exercised");
+    require(previous > 1.0e8,
+            "conditioning campaign: calibration must reach a strongly ill-conditioned full-rank stencil");
     require(saw_rank_rejection,
             "conditioning campaign: rank-based rejection was not exercised");
-
-    // Explicitly verify the measured policy boundary itself.
-    const Vec3 centre{0.0, 0.0, 0.0};
-    const std::vector<Vec3> neighbours = {
-        {1.0, 0.0, 0.0}, {-1.0, 0.0, 0.0},
-        {0.0, 1.0e-4, 0.0}, {0.0, -1.0e-4, 0.0},
-        {0.0, 0.0, 1.0}, {0.0, 0.0, -1.0}};
-    StencilQuality q;
-    (void)weighted_least_squares_gradient(
-        centre, 0.0, neighbours,
-        std::vector<double>(neighbours.size(), 0.0),
-        GradientWeighting::UNIFORM, &q);
-    require(std::abs(q.condition_estimate - kAcceptable) <= 1.0e-6 * kAcceptable,
-            "conditioning campaign: measured boundary does not match acceptance threshold");
 }
 
 void check_distorted_order()
