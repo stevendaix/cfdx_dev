@@ -736,7 +736,12 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                 // boundary sample is a mirrored zero-gradient ghost carrying
                 // the owner value. An explicit condition overrides that
                 // default on a face-by-face basis.
-                BoundaryGradientCondition bc;
+                // No explicit BC vector means the documented default policy:
+                // a zero-gradient ghost carrying the owner value. Do not rely
+                // on the enum's default constructor value here because that
+                // would silently turn the implicit policy into another BC type.
+                BoundaryGradientCondition bc{
+                    BoundaryGradientConditionType::ZERO_GRADIENT, 0.0};
                 if (boundary_conditions && f < boundary_conditions->size())
                     bc = (*boundary_conditions)[f];
 
