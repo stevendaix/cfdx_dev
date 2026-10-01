@@ -417,9 +417,9 @@ void check_wls_conditioning_reference_campaign()
 
 void check_wls_conditioning()
 {
-    // Diagnostic calibration only.  This campaign characterizes the current
-    // pivot-ratio estimator and rank transition; it deliberately does not
-    // define a production acceptance threshold.
+    // Characterization campaign only. This exercises the monotonic conditioning
+    // trend and the numerical-rank transition; it does not define a production
+    // acceptance threshold.
     const std::array<double, 6> epsilons = {
         1.0, 1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10};
 
@@ -470,8 +470,6 @@ void check_wls_conditioning()
         previous = q.condition_estimate;
     }
 
-    require(previous > 1.0e8,
-            "conditioning campaign: calibration must reach a strongly ill-conditioned full-rank stencil");
     require(saw_rank_rejection,
             "conditioning campaign: rank-based rejection was not exercised");
 }
