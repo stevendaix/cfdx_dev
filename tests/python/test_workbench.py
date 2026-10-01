@@ -18,14 +18,21 @@ def test_workbench_is_importable_without_qt() -> None:
 def test_workbench_has_stable_docks() -> None:
     from PySide6.QtWidgets import QDockWidget
     from cfdx.gui import create_application
+    from cfdx.session import SimulationState
 
     app = create_application(["cfdx-workbench-test"])
-    window = CFDXWorkbenchWindow(CFDXSession())
+    session = CFDXSession()
+    session.state = SimulationState.READY
+    window = CFDXWorkbenchWindow(session)
     assert window.objectName() == ""
     assert window.workflow_tree.objectName() == "workbench.workflow_tree"
+    assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
+    assert window.workflow_tree.topLevelItem(0).child(4).text(0).endswith("[ ]")
     assert window.findChild(QDockWidget, "workbench.dock.workflow") is not None
     assert window.findChild(QDockWidget, "workbench.dock.properties") is not None
     assert window.findChild(QDockWidget, "workbench.dock.monitor") is not None
     assert window.centralWidget().objectName() == "workbench.viewport"
+    window.workflow_tree.setCurrentItem(window.workflow_tree.topLevelItem(0).child(4))
+    assert window.application.state.selection.stable_id == "boundaries"
     window.close()
     app.quit()

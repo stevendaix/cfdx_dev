@@ -5,6 +5,7 @@ remain owned by the application/session layer and the existing GUI adapters.
 """
 from __future__ import annotations
 
+from .application import Application, ApplicationStateChanged, WorkflowStatus, workflow_children
 from .session import CFDXSession
 
 try:
@@ -33,9 +34,17 @@ if QMainWindow is not object:
         SETTINGS_ORGANIZATION = "CFDX"
         SETTINGS_APPLICATION = "Workbench"
 
-        def __init__(self, session: CFDXSession | None = None) -> None:
+        def __init__(
+            self,
+            session: CFDXSession | None = None,
+            *,
+            application: Application | None = None,
+        ) -> None:
             super().__init__()
-            self.session = session or CFDXSession()
+            self.application = application or Application(session or CFDXSession())
+            self.session = self.application.session
+            self._application_state = self.application.state
+            self.application.events.subscribe(ApplicationStateChanged, self._state_changed)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -75,20 +84,9 @@ if QMainWindow is not object:
             self.workflow_tree = QTreeWidget()
             self.workflow_tree.setObjectName("workbench.workflow_tree")
             self.workflow_tree.setHeaderLabel("Workflow")
-            setup = QTreeWidgetItem(["SETUP"])
-            for label in ("Geometry", "Mesh", "Physics", "Materials", "Boundaries", "Numerics", "Solver"):
-                setup.addChild(QTreeWidgetItem([label]))
-            run = QTreeWidgetItem(["RUN"])
-            for label in ("Check", "Initialize", "Run", "Monitor", "Checkpoint"):
-                run.addChild(QTreeWidgetItem([label]))
-            results = QTreeWidgetItem(["RESULTS"])
-            for label in ("Fields", "Contours", "Vectors", "Slices", "Probes", "Reports"):
-                results.addChild(QTreeWidgetItem([label]))
-            self.workflow_tree.addTopLevelItems([setup, run, results])
-            setup.setExpanded(True)
-            run.setExpanded(True)
-            results.setExpanded(True)
+            self.workflow_tree.itemSelectionChanged.connect(self._selection_changed)
             self._add_dock("Workflow", "workbench.dock.workflow", self.workflow_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+            self._refresh_workflow(self._application_state)
 
             viewport = QLabel("3D VIEWPORT\n\nRenderer adapter placeholder")
             viewport.setObjectName("workbench.viewport")
@@ -123,6 +121,50 @@ if QMainWindow is not object:
                 f"State: {self.session.state.value} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
             )
             self.setStatusBar(status)
+
+        @staticmethod
+        def _status_marker(status: WorkflowStatus) -> str:
+            return {
+                WorkflowStatus.COMPLETE: "[OK]",
+                WorkflowStatus.WARNING: "[!]",
+                WorkflowStatus.ERROR: "[X]",
+                WorkflowStatus.NOT_CONFIGURED: "[ ]",
+            }[status]
+
+        def _refresh_workflow(self, state) -> None:
+            self.workflow_tree.clear()
+            roots = workflow_children(state.workflow, None)
+            for step in roots:
+                root = QTreeWidgetItem([f"{step.label}  {self._status_marker(step.status)}"])
+                root.setData(0, Qt.ItemDataRole.UserRole, step.id)
+                root.setData(0, Qt.ItemDataRole.UserRole + 1, step.kind)
+                root.setToolTip(0, step.message or step.status.value)
+                self.workflow_tree.addTopLevelItem(root)
+                for child in workflow_children(state.workflow, step.id):
+                    item = QTreeWidgetItem([f"{child.label}  {self._status_marker(child.status)}"])
+                    item.setData(0, Qt.ItemDataRole.UserRole, child.id)
+                    item.setData(0, Qt.ItemDataRole.UserRole + 1, child.kind)
+                    item.setToolTip(0, child.message or child.status.value)
+                    root.addChild(item)
+                root.setExpanded(True)
+
+        def _state_changed(self, state) -> None:
+            self._application_state = state
+            self._refresh_workflow(state)
+            self.statusBar().showMessage(
+                f"State: {state.simulation_state.value} | Iteration: {state.execution.iteration} | "
+                f"Time: {state.execution.time:g}"
+            )
+
+        def _selection_changed(self) -> None:
+            items = self.workflow_tree.selectedItems()
+            if not items:
+                return
+            item = items[0]
+            stable_id = item.data(0, Qt.ItemDataRole.UserRole)
+            kind = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            label = item.text(0).rsplit("  [", 1)[0]
+            self.application.select(stable_id, kind, label)
 
         def _restore_layout(self) -> None:
             geometry = self._settings.value("geometry")
