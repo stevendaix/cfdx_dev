@@ -165,6 +165,10 @@ inline Vec3 weighted_least_squares_gradient(
     double scale=0.0;
     for (int i=0;i<3;++i) scale=std::max(scale,std::abs(a[i][i]));
     q.scale=scale;
+    if (!q.finite) {
+        if (quality) *quality=q;
+        throw std::runtime_error("weighted_least_squares_gradient: non-finite stencil geometry");
+    }
     if (!(scale>0.0) || !std::isfinite(scale)) {
         if (quality) *quality=q;
         return {};
