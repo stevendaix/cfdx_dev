@@ -392,7 +392,8 @@ void check_limiter_gradient_variants()
         }
         std::cout << "CONV3D_WLS_ORDER gradient=" << to_string(gs);
         for (std::size_t k = 0; k < errors.size(); ++k) {
-            std::cout << " n=" << {8u,16u,32u}[k] << " L2=" << errors[k];
+            const std::size_t n = (k == 0 ? 8u : (k == 1 ? 16u : 32u));
+            std::cout << " n=" << n << " L2=" << errors[k];
             if (k) std::cout << " order=" << observed_order(errors[k-1], errors[k]);
         }
         std::cout << "\n";
