@@ -750,6 +750,82 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
     return grad;
 }
 
+
+inline Field<double, Location::CELL> compute_gradient_weighted_least_squares_extended(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
+    double condition_limit = std::numeric_limits<double>::infinity())
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_weighted_least_squares_extended: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_weighted_least_squares_extended: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) {
+                if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
+            } else {
+                nb = owner;
+            }
+            if (nb < n_cells && nb != c)
+                ring1[c].push_back(nb);
+        }
+    }
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_wls2", cell_field.metadata().unit + "/m", 3);
+    std::vector<unsigned char> seen(n_cells, 0);
+    std::vector<Vec3> centres;
+    std::vector<double> vals;
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        centres.clear();
+        vals.clear();
+        auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1;
+            centres.push_back(geometry.cell_centres[nb]);
+            vals.push_back(values[nb]);
+        };
+        for (const auto nb : ring1[c]) add(nb);
+        for (const auto nb : ring1[c])
+            for (const auto nb2 : ring1[nb]) add(nb2);
+
+        StencilQuality q;
+        const Vec3 g = weighted_least_squares_gradient(
+            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        if (!q.full_rank)
+            throw std::runtime_error(
+                "compute_gradient_weighted_least_squares_extended: rank-deficient stencil at cell "
+                + std::to_string(c));
+        if (std::isfinite(condition_limit) && !q.well_conditioned(condition_limit))
+            throw std::runtime_error(
+                "compute_gradient_weighted_least_squares_extended: ill-conditioned stencil at cell "
+                + std::to_string(c));
+        grad(c, 0) = g.x;
+        grad(c, 1) = g.y;
+        grad(c, 2) = g.z;
+        for (const auto nb : ring1[c]) seen[nb] = 0;
+        for (const auto nb : ring1[c])
+            for (const auto nb2 : ring1[nb]) seen[nb2] = 0;
+    }
+    return grad;
+}
+
 // Shared cell-gradient selection used by derived operators (e.g. the
 // non-orthogonal correction of compute_laplacian). GAUSS_TWO_POINT is the
 // affine-optimal default (second order on affine meshes); the alternatives are
