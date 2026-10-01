@@ -82,6 +82,13 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
 
+      - name: Print N2 gradient V&V diagnostics
+        id: gradient_vv_diagnostics
+        if: ${{ matrix.build_type == 'Release' && !cancelled() }}
+        run: |
+          echo "=== N2 tetrahedral gradient V&V ==="
+          ./build/test_polyhedral_gradient_campaign
+
       - name: Run wall-distance complex benchmark report
         id: wall_complex
         continue-on-error: true
