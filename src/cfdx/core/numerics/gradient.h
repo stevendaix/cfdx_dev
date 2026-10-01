@@ -748,14 +748,23 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                         "compute_gradient_weighted_least_squares: invalid boundary distance at face "
                         + std::to_string(f));
 
-                const Vec3 ghost = geometry.cell_centres[c] + n * (2.0 * dn);
-                centres.push_back(ghost);
-                if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
-                    vals.push_back(values[c]);
-                else if (bc.type == BoundaryGradientConditionType::DIRICHLET)
+                if (bc.type == BoundaryGradientConditionType::DIRICHLET) {
+                    // Reflect through the face-centre so the midpoint of the
+                    // owner/ghost pair is exactly the Dirichlet location.
+                    centres.push_back(geometry.face_centres[f] * 2.0
+                                     - geometry.cell_centres[c]);
                     vals.push_back(2.0 * bc.value - values[c]);
-                else
-                    vals.push_back(values[c] + 2.0 * dn * bc.value);
+                } else {
+                    // For zero-gradient/Neumann data, reflect through the
+                    // face plane along its normal. The displacement is
+                    // 2*dn*n, so the supplied normal derivative is an exact
+                    // linear-field value at the ghost location.
+                    centres.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
+                        vals.push_back(values[c]);
+                    else
+                        vals.push_back(values[c] + 2.0 * dn * bc.value);
+                }
                 continue;
             }
             if (nb<n_cells && nb!=c) {
