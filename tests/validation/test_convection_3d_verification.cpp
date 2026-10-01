@@ -317,6 +317,91 @@ void check_order()
     }
 }
 
+
+void check_limiter_gradient_variants()
+{
+    // N2/N4 bridge: the limiter contract must remain bounded and convergent
+    // when its reconstruction gradient is supplied by the production
+    // least-squares family, not only by Green-Gauss.
+    const std::vector<GradientScheme> gradients = {
+        GradientScheme::LEAST_SQUARES,
+        GradientScheme::WEIGHTED_LEAST_SQUARES,
+        GradientScheme::LEAST_SQUARES_QUADRATIC};
+
+    const std::vector<LimiterType> limiters = {
+        LimiterType::MINMOD, LimiterType::VANLEER, LimiterType::SUPERBEE,
+        LimiterType::VAN_ALBADA, LimiterType::MC};
+
+    const Grid grid = make_cartesian_cube(12);
+    const auto flux = positive_flux(grid, 1.0);
+    const auto phi = cell_field(grid, sample(grid, step_value));
+
+    for (const GradientScheme gs : gradients) {
+        const auto grad = cell_gradient(phi, grid.mesh, grid.geometry, gs);
+        for (const LimiterType limiter : limiters) {
+            const auto face = interpolate_cell_to_face(
+                phi, grid.mesh, grid.geometry, InterpScheme::LIMITED,
+                &flux, limiter, &grad);
+            const auto& own = grid.mesh.ownership();
+            for (const std::size_t f : grid.all_faces) {
+                const std::size_t o = own.owner(f);
+                const std::size_t nb = static_cast<std::size_t>(own.neighbour(f));
+                require(face(f) >= std::min(phi(o), phi(nb)) - 1e-12 &&
+                        face(f) <= std::max(phi(o), phi(nb)) + 1e-12,
+                        std::string(to_string(gs)) + "/" + to_string(limiter) +
+                        ": WLS-family limiter reconstruction must remain bounded");
+            }
+        }
+        std::cout << "CONV3D_WLS_BOUNDED gradient=" << to_string(gs) << " ok\n";
+    }
+
+    // Linear exactness is checked independently of the limiter choice. On
+    // this affine Cartesian stencil the LS family should reproduce the exact
+    // cell gradient, hence psi(1)=1 must reconstruct the exact face value.
+    const auto linear = cell_field(grid, sample(grid, linear_value));
+    for (const GradientScheme gs : gradients) {
+        const auto grad = cell_gradient(linear, grid.mesh, grid.geometry, gs);
+        const auto face = interpolate_cell_to_face(
+            linear, grid.mesh, grid.geometry, InterpScheme::LIMITED,
+            &flux, LimiterType::VANLEER, &grad);
+        const auto e = face_error(grid, face, linear_value, true);
+        require(e.linf <= 1e-9,
+                std::string(to_string(gs)) + ": limiter + LS-family gradient must be linear-exact");
+        std::cout << "CONV3D_WLS_LINEAR gradient=" << to_string(gs)
+                  << " Linf=" << e.linf << " L2=" << e.l2 << "\n";
+    }
+
+    // Smooth-field refinement: require a genuinely second-order TVD path for
+    // each LS-family gradient. No isolated one-level pass is sufficient.
+    for (const GradientScheme gs : gradients) {
+        std::vector<double> errors;
+        for (const std::size_t n : {8u, 16u, 32u}) {
+            const Grid g = make_cartesian_cube(n);
+            const auto f = positive_flux(g, 1.0);
+            const auto field = cell_field(g, sample(g, smooth_value));
+            const auto grad = cell_gradient(field, g.mesh, g.geometry, gs);
+            const auto face = interpolate_cell_to_face(
+                field, g.mesh, g.geometry, InterpScheme::LIMITED,
+                &f, LimiterType::VANLEER, &grad);
+            std::vector<double> got, want;
+            for (const std::size_t face_id : window_faces(g)) {
+                got.push_back(face(face_id));
+                want.push_back(smooth_value(g.geometry.face_centres[face_id]));
+            }
+            errors.push_back(error_norms(got, want).l2);
+        }
+        std::cout << "CONV3D_WLS_ORDER gradient=" << to_string(gs);
+        for (std::size_t k = 0; k < errors.size(); ++k) {
+            const std::size_t n = (k == 0 ? 8u : (k == 1 ? 16u : 32u));
+            std::cout << " n=" << n << " L2=" << errors[k];
+            if (k) std::cout << " order=" << observed_order(errors[k-1], errors[k]);
+        }
+        std::cout << "\n";
+        require_order(errors, 2.0, 1.5,
+                      std::string("limiter + ") + to_string(gs) + " smooth-field refinement");
+    }
+}
+
 void check_constant_advection()
 {
     const Grid grid = make_cartesian_cube(10);
@@ -337,6 +422,7 @@ int main()
         std::cout << std::setprecision(12);
         check_boundedness_linear();
         check_order();
+        check_limiter_gradient_variants();
         check_constant_advection();
         std::cout << "CONVECTION_3D_VERIFICATION: PASS\n";
         return 0;

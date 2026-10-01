@@ -34,16 +34,17 @@
       "evidence": [
         "src/cfdx/core/fvm/least_squares_gradient.h",
         "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/gradient_stencil.h",
         "src/cfdx/core/numerics/interpolation.h",
+        "tests/unit/test_gradient.cpp",
         "tests/validation/test_gradient_verification.cpp",
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ],
       "gaps": [
-        "least-squares weight-variant qualification",
         "gradient limiter integration",
-        "boundary reconstruction matrix",
         "two-point Gauss still not linear-consistent on tetrahedra",
-        "vertex-based Green-Gauss on non-affine/polyhedral meshes"
+        "vertex-based Green-Gauss on non-affine/polyhedral meshes",
+        "WLS extended-stencil accuracy on general (non-affine) polyhedra"
       ]
     },
     {
