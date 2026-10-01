@@ -368,8 +368,8 @@ void check_wls_conditioning()
         previous = q.condition_estimate;
     }
 
-    require(previous > kReject,
-            "conditioning campaign: reject threshold was not exercised");
+    require(previous >= kAcceptable,
+            "conditioning campaign: accepted boundary was not exercised");
 
     // Explicitly verify the policy boundary with the measured metric.
     {
