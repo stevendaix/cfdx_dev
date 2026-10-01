@@ -520,6 +520,10 @@ int main()
         check_boundary_policy("sheared", 0.5, 1.0);
         check_boundary_policy("stretched", 0.0, 4.0);
 
+        check_wls_boundary_reconstruction("orthogonal", 0.0, 1.0);
+        check_wls_boundary_reconstruction("sheared", 0.5, 1.0);
+        check_wls_boundary_reconstruction("stretched", 0.0, 4.0);
+
         check_quadratic("orthogonal", 0.0, 1.0);
         check_quadratic("sheared", 0.5, 1.0);
         check_quadratic("stretched", 0.0, 4.0);
