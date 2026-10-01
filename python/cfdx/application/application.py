@@ -14,7 +14,7 @@ from .commands import (
     SetNumericalOption,
     StopSolver,
 )
-from .events import ApplicationStateChanged, EventBus
+from .events import ApplicationStateChanged, EventBus, SelectionChanged
 from .state import ApplicationState, SelectionState, build_application_state
 
 
@@ -74,3 +74,9 @@ class Application:
 
     def stop(self) -> ApplicationState:
         return self.execute(StopSolver())
+
+    def select(self, stable_id: str | None, kind: str | None, label: str | None) -> ApplicationState:
+        self.selection = SelectionState(stable_id, kind, label)
+        snapshot = self.state
+        self.events.publish(SelectionChanged(snapshot))
+        return snapshot
