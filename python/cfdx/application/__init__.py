@@ -7,6 +7,7 @@ from .commands import (
     ResumeSolver,
     RunSolver,
     SetNumericalOption,
+    SetProperty,
     StopSolver,
     ValidateCase,
 )
@@ -29,6 +30,7 @@ from .state import (
     build_application_state,
 )
 from .workflow import WorkflowStatus, WorkflowStepState, build_workflow_state, workflow_children
+from .properties import PropertyState, properties_for_selection, set_property
 
 __all__ = [
     "Application",
@@ -49,6 +51,7 @@ __all__ = [
     "SelectionChanged",
     "SelectionState",
     "SetNumericalOption",
+    "SetProperty",
     "StopSolver",
     "ValidateCase",
     "ValidationChanged",
@@ -57,4 +60,7 @@ __all__ = [
     "build_application_state",
     "build_workflow_state",
     "workflow_children",
+    "PropertyState",
+    "properties_for_selection",
+    "set_property",
 ]
