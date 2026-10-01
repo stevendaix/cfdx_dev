@@ -610,7 +610,13 @@ void check_wls_mesh_stencil_campaign()
         GradientWeighting::INVERSE_DISTANCE_SQUARED,
         GradientWeighting::INVERSE_DISTANCE
     }};
-    const auto weighting_name = [](GradientWeighting w) {\n        switch (w) {\n            case GradientWeighting::INVERSE_DISTANCE_SQUARED: return "1/r2";\n            case GradientWeighting::INVERSE_DISTANCE: return "1/r";\n            default: return "uniform";\n        }\n    };
+    const auto weighting_name = [](GradientWeighting w) {
+        switch (w) {
+            case GradientWeighting::INVERSE_DISTANCE_SQUARED: return "1/r2";
+            case GradientWeighting::INVERSE_DISTANCE: return "1/r";
+            default: return "uniform";
+        }
+    };
 
     for (const auto& mesh_case : cases) {
         for (const auto weighting : weightings) {
