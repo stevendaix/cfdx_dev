@@ -576,6 +576,9 @@ void check_wls_mesh_stencil_campaign()
                 double max_condition = 0.0;
                 double min_condition = std::numeric_limits<double>::infinity();
                 std::size_t checked = 0;
+                const auto smooth = sample_field(grid, kSmooth);
+                std::vector<double> smooth_errors;
+                smooth_errors.reserve(1);
 
                 const auto* cell_faces = grid.mesh.cells().faces_data();
                 const auto* cell_offsets = grid.mesh.cells().offsets_data();
@@ -626,14 +629,29 @@ void check_wls_mesh_stencil_campaign()
                 require(checked == grid.interior.size(),
                         "mesh WLS campaign: not all interior stencils were checked");
 
+                const auto grad = compute_gradient_weighted_least_squares_extended(
+                    smooth, grid.mesh, weighting);
+                const auto smooth_error = gradient_error(
+                    grid, grad, kSmooth, true);
+                require(std::isfinite(smooth_error.l2),
+                        "mesh WLS campaign: smooth-field L2 error must be finite");
+                smooth_errors.push_back(smooth_error.l2);
+                require(smooth_errors.back() < smooth_errors.front() || smooth_errors.size() == 1,
+                        "mesh WLS campaign: smooth-field error must not increase on refinement");
+
                 std::cout << "WLS_MESH_STENCIL case=" << mesh_case.name
                           << " weighting=" << weighting_names[static_cast<int>(weighting)]
                           << " n=" << n
                           << " cells=" << checked
                           << " min_condition=" << min_condition
                           << " max_condition=" << max_condition
-                          << " rank=3"
-                          << " rejected=false\n";
+                          << " smooth_L2=" << smooth_error.l2
+                          << " smooth_Linf=" << smooth_error.linf;
+                if (smooth_errors.size() > 1)
+                    std::cout << " smooth_order="
+                              << observed_order(smooth_errors[smooth_errors.size() - 2],
+                                                 smooth_errors.back());
+                std::cout << " rank=3 rejected=false\n";
             }
         }
     }
