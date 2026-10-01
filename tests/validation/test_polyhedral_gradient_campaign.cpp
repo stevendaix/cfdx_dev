@@ -542,6 +542,52 @@ void check_distorted_order()
 }
 
 
+void check_green_gauss_polyhedral_convergence()
+{
+    // Dedicated V&V for the vertex/node and point-linear Green-Gauss variants.
+    // Both are linear-consistent on the interior of the tested affine tetrahedral
+    // families. No second-order gate is imposed here: the campaign characterizes
+    // the observed smooth-field convergence separately from the quadratic-LS gate.
+    const std::array<GradScheme, 2> schemes = {
+        GradScheme::GaussVertex, GradScheme::GaussPoint};
+
+    for (const GradScheme scheme : schemes) {
+        for (const bool distorted : {false, true}) {
+            std::vector<double> errors;
+            for (const std::size_t n : {4u, 8u, 16u}) {
+                const Grid grid = distorted
+                    ? make_tet_grid(n, 1.0, 0.1, 1.8, 0.35, 0.20)
+                    : make_tet_grid(n);
+                const auto linear = sample_field(grid, kLinear);
+                const auto linear_error = gradient_error(
+                    grid, compute_scheme(grid, linear, scheme), kLinear, true);
+                require(linear_error.linf <= 1e-9,
+                        scheme_name(scheme) + ": interior linear exactness must hold");
+
+                const auto smooth = sample_field(grid, kSmooth);
+                const auto smooth_error = gradient_error(
+                    grid, compute_scheme(grid, smooth, scheme), kSmooth, true);
+                require(std::isfinite(smooth_error.l2) &&
+                        std::isfinite(smooth_error.linf),
+                        scheme_name(scheme) + ": smooth errors must be finite");
+                errors.push_back(smooth_error.l2);
+
+                std::cout << "POLY_GRAD_GG_CONVERGENCE scheme=" << scheme_name(scheme)
+                          << " mesh=" << (distorted ? "distorted" : "regular")
+                          << " n=" << n
+                          << " L2=" << smooth_error.l2
+                          << " Linf=" << smooth_error.linf;
+                if (errors.size() > 1)
+                    std::cout << " order="
+                              << observed_order(errors[errors.size() - 2], errors.back());
+                std::cout << "\n";
+            }
+            require(errors.back() < errors.front(),
+                    scheme_name(scheme) + ": smooth-field error must decrease under refinement");
+        }
+    }
+}
+
 void check_wls_mesh_stencil_campaign()
 {
     // Characterize the WLS quality on the actual cell-centre stencils used by
@@ -838,6 +884,7 @@ int main()
         check_exactness(3);
         check_order();
         check_distorted_order();
+        check_green_gauss_polyhedral_convergence();
         check_boundary_reconstruction();
         check_wls_mesh_stencil_campaign();
         check_wls_conditioning_reference_campaign();
