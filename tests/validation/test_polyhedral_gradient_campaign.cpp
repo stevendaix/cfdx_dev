@@ -323,8 +323,12 @@ void check_order()
         require(std::isfinite(errors.back()),
                 scheme_name(scheme) + ": tet gradient errors must be finite");
         if (scheme == GradScheme::LeastSquaresQuad) {
-            const double o1 = observed_order(errors[0], errors[1]);
-            const double o2 = observed_order(errors[1], errors[2]);
+            // The tetrahedral campaign refines n=4 -> 6 -> 8, so h is
+            // proportional to 1/n and the refinement ratios are 6/4 and 8/6.
+            // Do not use the verification helper default (ratio=2): that would
+            // report a false sub-second-order result for this non-dyadic mesh sequence.
+            const double o1 = observed_order(errors[0], errors[1], 6.0 / 4.0);
+            const double o2 = observed_order(errors[1], errors[2], 8.0 / 6.0);
             require(o1 >= 1.8 && o2 >= 1.8,
                     "least_squares_quadratic: tetrahedral smooth-field order must be >= 1.8");
         } else if (scheme == GradScheme::GaussCell) {
