@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -382,7 +383,7 @@ void check_wls_conditioning_reference_campaign()
             for (const double scale : scales) {
                 std::vector<Vec3> pts;
                 pts.reserve(family.points.size());
-                for (const Vec3& p : family.points) pts.push_back(scale * p);
+                for (const Vec3& p : family.points) pts.push_back(Vec3{scale*p.x, scale*p.y, scale*p.z});
 
                 StencilQuality q;
                 bool rejected = false;
