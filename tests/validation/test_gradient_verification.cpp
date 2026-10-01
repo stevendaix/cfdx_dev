@@ -243,7 +243,10 @@ void require(bool condition, const std::string& message)
 
 // The three gradient schemes exercised by the campaign: cell-based
 // Green-Gauss, vertex-based (secondary) Green-Gauss and least-squares.
-enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares };
+enum class GradScheme {
+    GaussCell, GaussVertex, GaussPoint, LeastSquares,
+    LeastSquaresWeighted, LeastSquaresWeightedInvR
+};
 
 std::string scheme_name(GradScheme s)
 {
@@ -252,6 +255,8 @@ std::string scheme_name(GradScheme s)
         case GradScheme::GaussVertex: return "green_gauss_vertex";
         case GradScheme::GaussPoint:  return "green_gauss_point";
         case GradScheme::LeastSquares: return "least_squares";
+        case GradScheme::LeastSquaresWeighted: return "weighted_least_squares_1_over_r2";
+        case GradScheme::LeastSquaresWeightedInvR: return "weighted_least_squares_1_over_r";
     }
     return "unknown";
 }
@@ -269,6 +274,12 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
             return compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
         case GradScheme::LeastSquares:
             return compute_gradient_least_squares(phi, grid.mesh);
+        case GradScheme::LeastSquaresWeighted:
+            return compute_gradient_weighted_least_squares_extended(
+                phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED);
+        case GradScheme::LeastSquaresWeightedInvR:
+            return compute_gradient_weighted_least_squares_extended(
+                phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE);
     }
     return Field<double, Location::CELL>();
 }
@@ -303,7 +314,9 @@ void check_exactness(const std::string& family, double shear, double stretch)
     const Grid grid = make_affine_cube(6, shear, stretch);
 
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares,
+                                    GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
         const std::string name = scheme_name(scheme);
 
         const auto constant_field = sample_field(grid, kConstant);
@@ -370,11 +383,16 @@ void check_quadratic(const std::string& family, double shear, double stretch)
             std::isfinite(vg_err.linf),
             family + ": vertex Green-Gauss quadratic error must be finite");
 
-    const auto ls = compute_gradient_least_squares(field, grid.mesh);
-    const auto ls_err = gradient_error(grid, ls, kQuadratic, true);
-    report(family, scheme_name(GradScheme::LeastSquares), kQuadratic, ls_err);
-    require(ls_err.linf <= 1e-9,
-            family + ": least-squares must be quadratic-exact on an affine mesh");
+    for (const GradScheme scheme : {GradScheme::LeastSquares,
+                                    GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
+        const auto ls = compute_scheme(grid, field, scheme);
+        const auto ls_err = gradient_error(grid, ls, kQuadratic, true);
+        report(family, scheme_name(scheme), kQuadratic, ls_err);
+        require(ls_err.linf <= 1e-9,
+                family + "/" + scheme_name(scheme) +
+                ": least-squares family must be quadratic-exact on an affine mesh");
+    }
 }
 
 // Boundary-neighbour policy: the cell-based Green-Gauss operator treats a
