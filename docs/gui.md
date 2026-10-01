@@ -3,6 +3,10 @@
 The application layer is shared by headless, TUI and GUI clients. Python owns
 orchestration state; numerical kernels remain in C++.
 
+The Workbench migration target and the incremental GUI PR plan are documented
+in [GUI architecture](gui/ARCHITECTURE.md). The current `cfdx.gui` entry point
+remains supported while the dockable Workbench is introduced incrementally.
+
 ## Headless
 
 Run the deterministic orchestration example:
