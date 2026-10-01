@@ -28,6 +28,7 @@ from .state import (
     SelectionState,
     build_application_state,
 )
+from .workflow import WorkflowStatus, WorkflowStepState, build_workflow_state, workflow_children
 
 __all__ = [
     "Application",
@@ -51,5 +52,9 @@ __all__ = [
     "StopSolver",
     "ValidateCase",
     "ValidationChanged",
+    "WorkflowStatus",
+    "WorkflowStepState",
     "build_application_state",
+    "build_workflow_state",
+    "workflow_children",
 ]
