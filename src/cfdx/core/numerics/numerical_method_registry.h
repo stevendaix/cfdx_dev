@@ -23,6 +23,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "argmin_g sum_N w_N(phi_N-phi_P-g.dx)^2","numerics.gradient.least_squares",{"constant","linear","rank_detection","skewed"}},
         {"gradient.least_squares_weighted","Explicit weighted least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,false,2,0,
          "argmin_g sum_N w_N(phi_N-phi_P-g.dx)^2 with selectable distance weighting","numerics.gradient.weighted_least_squares",{"constant","linear","rank_detection","conditioning","skewed","polyhedral"}},
+        {"gradient.least_squares_weighted_extended","Extended weighted least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,false,3,0,
+         "same weighted LS fit over a two-ring cell stencil","numerics.gradient.weighted_least_squares_extended",{"constant","linear","smooth","tetrahedral","polyhedral","conditioning"}},
         {"gradient.least_squares_quadratic","Quadratic-basis least-squares gradient",F::Gradient,S::Implemented,C::NotApplicable,false,false,false,2,0,
          "linear + Hessian fit over two rings of face neighbours; best polyhedral accuracy","numerics.gradient.least_squares_quadratic",{"constant","linear","skewed","polyhedral","refinement"}},
         {"interpolation.linear","Cell-to-face linear interpolation",F::Interpolation,S::Implemented,C::LocalFaceConservative,false,false,true,2,0,
