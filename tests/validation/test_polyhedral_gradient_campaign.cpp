@@ -822,6 +822,7 @@ int main()
         check_order();
         check_distorted_order();
         check_boundary_reconstruction();
+        check_wls_mesh_stencil_campaign();
         check_wls_conditioning_reference_campaign();
         check_wls_conditioning();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
