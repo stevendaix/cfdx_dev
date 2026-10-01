@@ -406,6 +406,24 @@ int main() {
         EXPECT_NEAR(g.z, expected.z, 1e-12);
     });
 
+    run_case("weighted_least_squares_rejects_non_finite_geometry", []() {
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.0, 0.0, 0.0},
+            {std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0},
+            {0.0, 1.0, 0.0},
+            {0.0, 0.0, 1.0}
+        };
+        const std::vector<double> values(neighbours.size(), 0.0);
+        StencilQuality q;
+        EXPECT_THROW(
+            weighted_least_squares_gradient(
+                centre, 0.0, neighbours, values,
+                GradientWeighting::UNIFORM, &q),
+            std::runtime_error);
+        EXPECT_TRUE(!q.finite);
+    });
+
     run_case("weighted_least_squares_rejects_rank_deficient_stencil", []() {
         const Vec3 centre{0.0,0.0,0.0};
         const std::vector<Vec3> neighbours = {{1.0,0.0,0.0},{-1.0,0.0,0.0}};
