@@ -511,8 +511,9 @@ void check_distorted_order()
     // The physical field is evaluated at the transformed cell centres, so
     // this probes the gradient operator on a consistently refined,
     // high-aspect-ratio/skewed tetrahedral family.
-    const std::array<GradScheme, 2> schemes = {
-        GradScheme::LeastSquaresWeighted, GradScheme::LeastSquaresWeightedInvR};
+    const std::array<GradScheme, 3> schemes = {
+        GradScheme::LeastSquaresWeighted, GradScheme::LeastSquaresWeightedInvR,
+        GradScheme::LeastSquaresQuad};
     for (const GradScheme scheme : schemes) {
         std::vector<double> errors;
         for (const std::size_t n : {4u, 8u, 16u}) {
