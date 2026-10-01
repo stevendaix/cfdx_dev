@@ -76,14 +76,15 @@ Grid make_tet_grid(std::size_t n, double sx = 1.0, double sy = 1.0, double sz = 
     m.points().resize(nv * nv * nv);
     for (std::size_t z = 0; z <= n; ++z)
         for (std::size_t y = 0; y <= n; ++y)
-            for (std::size_t x = 0; x <= n; ++x)
-                const double qx = static_cast<double>(x) / n;
-                const double qy = static_cast<double>(y) / n;
-                const double qz = static_cast<double>(z) / n;
+            for (std::size_t x = 0; x <= n; ++x) {
+                const double qx = static_cast<double>(x) / static_cast<double>(n);
+                const double qy = static_cast<double>(y) / static_cast<double>(n);
+                const double qz = static_cast<double>(z) / static_cast<double>(n);
                 m.points().set(vid(x, y, z),
                     sx * qx + shear_xy * qy + shear_xz * qz,
                     sy * qy,
                     sz * qz);
+            }
 
     std::unordered_map<std::string, std::size_t> face_ids;
     std::vector<std::vector<std::size_t>> face_cells;
@@ -318,8 +319,7 @@ void check_distorted_order()
                       << " n=" << n << " L2=" << e.l2 << " Linf=" << e.linf;
             if (errors.size() > 1)
                 std::cout << " order=" << observed_order(errors[errors.size()-2], errors.back());
-            std::cout << "
-";
+            std::cout << "\n";
         }
         require(errors.back() < errors.front(),
                 scheme_name(scheme) + ": distorted tetra refinement must reduce error");
