@@ -216,9 +216,9 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
         case GradScheme::LeastSquares2:
             return compute_gradient_least_squares_extended(phi, grid.mesh);
         case GradScheme::LeastSquaresWeighted:
-            return compute_gradient_weighted_least_squares(phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED);
+            return compute_gradient_weighted_least_squares_extended(phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED);
         case GradScheme::LeastSquaresWeightedInvR:
-            return compute_gradient_weighted_least_squares(phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE);
+            return compute_gradient_weighted_least_squares_extended(phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE);
         case GradScheme::LeastSquaresQuad:
             return compute_gradient_least_squares_quadratic(phi, grid.mesh);
     }
