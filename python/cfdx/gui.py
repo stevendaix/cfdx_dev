@@ -722,8 +722,10 @@ if QApplication is not None:
         return QApplication.instance() or QApplication(argv or [])
 
     def launch(session: CFDXSession | None = None, argv: list[str] | None = None) -> int:
+        from .workbench import CFDXWorkbenchWindow
+
         app = create_application(argv)
-        window = CFDXMainWindow(session)
+        window = CFDXWorkbenchWindow(session)
         window.show()
         return app.exec()
 else:
