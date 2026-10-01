@@ -541,6 +541,104 @@ void check_distorted_order()
     }
 }
 
+
+void check_wls_mesh_stencil_campaign()
+{
+    // Characterize the WLS quality on the actual cell-centre stencils used by
+    // the tetrahedral V&V meshes. The synthetic conditioning campaign above
+    // proves the estimator/rank contract; this campaign checks that the
+    // production mesh-derived stencils are also full rank and diagnosable.
+    struct MeshCase {
+        const char* name;
+        double sx;
+        double sy;
+        double sz;
+        double shear_xy;
+        double shear_xz;
+    };
+    const std::array<MeshCase, 2> cases = {{
+        {"regular", 1.0, 1.0, 1.0, 0.0, 0.0},
+        {"distorted", 1.0, 0.1, 1.8, 0.35, 0.20}
+    }};
+    const std::array<GradientWeighting, 2> weightings = {{
+        GradientWeighting::INVERSE_DISTANCE_SQUARED,
+        GradientWeighting::INVERSE_DISTANCE
+    }};
+    const char* weighting_names[] = {"1/r2", "1/r"};
+
+    for (const auto& mesh_case : cases) {
+        for (const auto weighting : weightings) {
+            for (const std::size_t n : {4u, 8u, 16u}) {
+                const Grid grid = make_tet_grid(
+                    n, mesh_case.sx, mesh_case.sy, mesh_case.sz,
+                    mesh_case.shear_xy, mesh_case.shear_xz);
+
+                double max_condition = 0.0;
+                double min_condition = std::numeric_limits<double>::infinity();
+                std::size_t checked = 0;
+
+                const auto* cell_faces = grid.mesh.cells().faces_data();
+                const auto* cell_offsets = grid.mesh.cells().offsets_data();
+                const auto& own = grid.mesh.ownership();
+
+                for (const std::size_t c : grid.interior) {
+                    std::vector<Vec3> centres;
+                    centres.reserve(4);
+                    for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                        const std::size_t f = cell_faces[k];
+                        const std::size_t owner = own.owner(f);
+                        const std::int64_t raw = own.neighbour(f);
+                        std::size_t nb = grid.mesh.n_cells();
+                        if (owner == c) {
+                            if (raw >= 0) nb = static_cast<std::size_t>(raw);
+                        } else {
+                            nb = owner;
+                        }
+                        if (nb < grid.mesh.n_cells() && nb != c)
+                            centres.push_back(grid.geometry.cell_centres[nb]);
+                    }
+
+                    require(centres.size() == 4,
+                            "mesh WLS campaign: tetrahedron must expose four face-neighbour centres");
+
+                    StencilQuality q;
+                    const std::vector<double> values(centres.size(), 0.0);
+                    (void)weighted_least_squares_gradient(
+                        grid.geometry.cell_centres[c], 0.0, centres, values,
+                        weighting, &q);
+
+                    require(q.full_rank,
+                            std::string("mesh WLS campaign: rank loss on ") +
+                            mesh_case.name + " interior stencil");
+                    require(q.rank == 3,
+                            std::string("mesh WLS campaign: expected rank 3 on ") +
+                            mesh_case.name + " interior stencil");
+                    require(std::isfinite(q.condition_estimate) &&
+                            q.condition_estimate >= 1.0,
+                            std::string("mesh WLS campaign: invalid condition diagnostic on ") +
+                            mesh_case.name + " interior stencil");
+
+                    max_condition = std::max(max_condition, q.condition_estimate);
+                    min_condition = std::min(min_condition, q.condition_estimate);
+                    ++checked;
+                }
+
+                require(checked == grid.interior.size(),
+                        "mesh WLS campaign: not all interior stencils were checked");
+
+                std::cout << "WLS_MESH_STENCIL case=" << mesh_case.name
+                          << " weighting=" << weighting_names[static_cast<int>(weighting)]
+                          << " n=" << n
+                          << " cells=" << checked
+                          << " min_condition=" << min_condition
+                          << " max_condition=" << max_condition
+                          << " rank=3"
+                          << " rejected=false\n";
+            }
+        }
+    }
+}
+
 void check_boundary_reconstruction()
 {
     const Grid grid = make_tet_grid(4, 1.0, 0.8, 1.4, 0.25, 0.15);
