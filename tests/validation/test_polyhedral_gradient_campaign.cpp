@@ -377,13 +377,14 @@ void check_wls_conditioning_reference_campaign()
     };
     const char* weight_names[] = {"uniform", "1/r", "1/r2"};
 
-    std::cout << "WLS_REFERENCE family weighting scale rank pivot_ratio spectral_condition\\n";
+    std::cout << "WLS_REFERENCE family weighting scale rank pivot_ratio spectral_condition rejected\n";
     for (const auto& family : families) {
         for (const auto weighting : weights) {
             for (const double scale : scales) {
                 std::vector<Vec3> pts;
                 pts.reserve(family.points.size());
-                for (const Vec3& p : family.points) pts.push_back(Vec3{scale*p.x, scale*p.y, scale*p.z});
+                for (const Vec3& p : family.points)
+                    pts.push_back(Vec3{scale*p.x, scale*p.y, scale*p.z});
 
                 StencilQuality q;
                 bool rejected = false;
@@ -406,10 +407,26 @@ void check_wls_conditioning_reference_campaign()
                           << " spectral_condition=" << reference
                           << " rejected=" << (rejected ? "true" : "false") << "\n";
 
-                require(std::isfinite(reference) || q.rank < 3,
-                        "conditioning reference: finite-rank mismatch");
+                require(std::isfinite(reference),
+                        "conditioning reference: spectral condition must remain finite for characterized stencils");
                 require(q.condition_estimate >= 1.0 || std::isinf(q.condition_estimate),
                         "conditioning estimator must be >= 1 or infinite");
+
+                const bool expected_rank_rejection =
+                    std::string(family.name) == "quasi_collinear";
+                if (expected_rank_rejection) {
+                    require(q.rank < 3,
+                            "conditioning reference: quasi-collinear family must expose numerical rank loss");
+                    require(rejected,
+                            "conditioning reference: quasi-collinear family must be rejected by WLS");
+                    require(std::isinf(q.condition_estimate),
+                            "conditioning reference: numerical rank loss must report infinite pivot diagnostic");
+                } else {
+                    require(q.rank == 3,
+                            "conditioning reference: non-collinear family must remain full rank");
+                    require(!rejected,
+                            "conditioning reference: full-rank characterized family must not be rejected");
+                }
             }
         }
     }
@@ -423,7 +440,8 @@ void check_wls_conditioning()
     const std::array<double, 6> epsilons = {
         1.0, 1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10};
 
-    double previous = 0.0;
+    double previous_pivot = 0.0;
+    double previous_reference = 0.0;
     bool saw_rank_rejection = false;
 
     for (const double eps : epsilons) {
@@ -444,14 +462,22 @@ void check_wls_conditioning()
             rank_rejected = true;
         }
 
+        const double reference =
+            symmetric_condition_reference(centre, neighbours, GradientWeighting::UNIFORM);
+        require(std::isfinite(reference),
+                "conditioning campaign: independent spectral reference must remain finite");
+
         if (rank_rejected) {
             std::cout << "WLS_CONDITIONING eps=" << eps
-                      << " condition=" << q.condition_estimate
+                      << " pivot=" << q.condition_estimate
+                      << " spectral_condition=" << reference
                       << " class=REJECT_RANK rank=" << q.rank << "\n";
             require(q.rank < 3,
                     "conditioning campaign: rank rejection must report rank loss");
             require(std::isinf(q.condition_estimate),
-                    "conditioning campaign: rank loss must report infinite condition estimate");
+                    "conditioning campaign: rank loss must report infinite pivot diagnostic");
+            require(reference > previous_reference,
+                    "conditioning campaign: independent reference must continue increasing at rank transition");
             saw_rank_rejection = true;
             break;
         }
@@ -459,15 +485,20 @@ void check_wls_conditioning()
         require(q.full_rank,
                 "conditioning campaign: non-rejected stencil must be full rank");
         require(std::isfinite(q.condition_estimate),
-                "conditioning campaign: full-rank stencil must have finite condition estimate");
-        if (previous > 0.0)
-            require(q.condition_estimate > previous,
-                    "conditioning campaign: condition estimate must increase monotonically");
+                "conditioning campaign: full-rank stencil must have finite pivot diagnostic");
+        if (previous_pivot > 0.0)
+            require(q.condition_estimate > previous_pivot,
+                    "conditioning campaign: pivot diagnostic must increase monotonically");
+        if (previous_reference > 0.0)
+            require(reference > previous_reference,
+                    "conditioning campaign: independent spectral reference must increase monotonically");
 
         std::cout << "WLS_CONDITIONING eps=" << eps
-                  << " condition=" << q.condition_estimate
+                  << " pivot=" << q.condition_estimate
+                  << " spectral_condition=" << reference
                   << " class=FULL_RANK rank=" << q.rank << "\n";
-        previous = q.condition_estimate;
+        previous_pivot = q.condition_estimate;
+        previous_reference = reference;
     }
 
     require(saw_rank_rejection,
