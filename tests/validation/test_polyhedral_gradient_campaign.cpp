@@ -188,6 +188,27 @@ inline const FieldCase kLinear{"linear", linear_value, linear_gradient};
 inline const FieldCase kQuadratic{"quadratic", quadratic_value, quadratic_gradient};
 inline const FieldCase kSmooth{"smooth", smooth_value, smooth_gradient};
 
+double cubic_x3(const Vec3& p) { return p.x*p.x*p.x; }
+Vec3 cubic_x3_gradient(const Vec3& p) { return Vec3{3.0*p.x*p.x, 0.0, 0.0}; }
+double cubic_y3(const Vec3& p) { return p.y*p.y*p.y; }
+Vec3 cubic_y3_gradient(const Vec3& p) { return Vec3{0.0, 3.0*p.y*p.y, 0.0}; }
+double cubic_z3(const Vec3& p) { return p.z*p.z*p.z; }
+Vec3 cubic_z3_gradient(const Vec3& p) { return Vec3{0.0, 0.0, 3.0*p.z*p.z}; }
+double cubic_x2y(const Vec3& p) { return p.x*p.x*p.y; }
+Vec3 cubic_x2y_gradient(const Vec3& p) { return Vec3{2.0*p.x*p.y, p.x*p.x, 0.0}; }
+double cubic_x2z(const Vec3& p) { return p.x*p.x*p.z; }
+Vec3 cubic_x2z_gradient(const Vec3& p) { return Vec3{2.0*p.x*p.z, 0.0, p.x*p.x}; }
+double cubic_y2x(const Vec3& p) { return p.y*p.y*p.x; }
+Vec3 cubic_y2x_gradient(const Vec3& p) { return Vec3{p.y*p.y, 2.0*p.x*p.y, 0.0}; }
+double cubic_y2z(const Vec3& p) { return p.y*p.y*p.z; }
+Vec3 cubic_y2z_gradient(const Vec3& p) { return Vec3{0.0, 2.0*p.y*p.z, p.y*p.y}; }
+double cubic_z2x(const Vec3& p) { return p.z*p.z*p.x; }
+Vec3 cubic_z2x_gradient(const Vec3& p) { return Vec3{p.z*p.z, 0.0, 2.0*p.x*p.z}; }
+double cubic_z2y(const Vec3& p) { return p.z*p.z*p.y; }
+Vec3 cubic_z2y_gradient(const Vec3& p) { return Vec3{0.0, p.z*p.z, 2.0*p.y*p.z}; }
+double cubic_xyz(const Vec3& p) { return p.x*p.y*p.z; }
+Vec3 cubic_xyz_gradient(const Vec3& p) { return Vec3{p.y*p.z, p.x*p.z, p.x*p.y}; }
+
 enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares, LeastSquares2, LeastSquaresQuad };
 std::string scheme_name(GradScheme s)
 {
@@ -289,6 +310,162 @@ void check_exactness(std::size_t n)
     }
 }
 
+struct StencilDiagnostics {
+    std::size_t size = 0;
+    int rank = 0;
+    double sigma_min = 0.0;
+    double sigma_max = 0.0;
+    double condition = 0.0;
+    double radius_min = 0.0;
+    double radius_max = 0.0;
+};
+
+StencilDiagnostics quadratic_stencil_diagnostics(const Grid& grid, std::size_t c)
+{
+    const std::size_t n_cells = grid.mesh.n_cells();
+    const auto* cell_faces = grid.mesh.cells().faces_data();
+    const auto* cell_offsets = grid.mesh.cells().offsets_data();
+    const FaceOwnership& own = grid.mesh.ownership();
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t cell = 0; cell < n_cells; ++cell) {
+        auto& ring = ring1[cell];
+        for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == cell) {
+                if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
+            } else {
+                nb = owner;
+            }
+            if (nb < n_cells && nb != cell) ring.push_back(nb);
+        }
+        std::sort(ring.begin(), ring.end());
+        ring.erase(std::unique(ring.begin(), ring.end()), ring.end());
+    }
+
+    std::vector<unsigned char> seen(n_cells, 0);
+    std::vector<std::size_t> touched;
+    std::vector<std::size_t> frontier = ring1[c];
+    std::vector<std::size_t> stencil;
+    auto add = [&](std::size_t nb) {
+        if (nb == c || seen[nb]) return;
+        seen[nb] = 1;
+        touched.push_back(nb);
+        stencil.push_back(nb);
+    };
+    for (const std::size_t nb : frontier) add(nb);
+    for (int depth = 0; depth < 2; ++depth) {
+        std::vector<std::size_t> next;
+        for (const std::size_t nb : frontier)
+            for (const std::size_t nb2 : ring1[nb])
+                if (nb2 != c && !seen[nb2]) { add(nb2); next.push_back(nb2); }
+        frontier.swap(next);
+        if (frontier.empty()) break;
+    }
+
+    double h = 0.0;
+    double rmin = std::numeric_limits<double>::max();
+    double rmax = 0.0;
+    for (const std::size_t nb : stencil) {
+        const double r = (grid.geometry.cell_centres[nb] - grid.geometry.cell_centres[c]).mag();
+        h += r;
+        rmin = std::min(rmin, r);
+        rmax = std::max(rmax, r);
+    }
+    h /= static_cast<double>(stencil.size());
+
+    double A[9][9] = {};
+    for (const std::size_t nb : stencil) {
+        const Vec3 q = (grid.geometry.cell_centres[nb] - grid.geometry.cell_centres[c]) * (1.0 / h);
+        const double r2 = q.mag2();
+        const double w = 1.0 / r2;
+        const double b[9] = {q.x,q.y,q.z,q.x*q.x,q.y*q.y,q.z*q.z,q.x*q.y,q.x*q.z,q.y*q.z};
+        for (int i = 0; i < 9; ++i)
+            for (int j = 0; j < 9; ++j)
+                A[i][j] += w*b[i]*b[j];
+    }
+
+    // Jacobi eigensolve of the symmetric positive-semidefinite normal matrix.
+    double D[9][9];
+    for (int i = 0; i < 9; ++i)
+        for (int j = 0; j < 9; ++j)
+            D[i][j] = A[i][j];
+    for (int sweep = 0; sweep < 100; ++sweep) {
+        int p = 0, q = 1;
+        double largest = 0.0;
+        for (int i = 0; i < 9; ++i)
+            for (int j = i + 1; j < 9; ++j)
+                if (std::abs(D[i][j]) > largest) { largest = std::abs(D[i][j]); p = i; q = j; }
+        if (largest <= 1e-13) break;
+        const double tau = (D[q][q] - D[p][p]) / (2.0 * D[p][q]);
+        const double t = (tau >= 0.0 ? 1.0 : -1.0) /
+                         (std::abs(tau) + std::sqrt(1.0 + tau*tau));
+        const double cs = 1.0 / std::sqrt(1.0 + t*t);
+        const double sn = t * cs;
+        const double app = D[p][p], aqq = D[q][q], apq = D[p][q];
+        D[p][p] = app - t*apq;
+        D[q][q] = aqq + t*apq;
+        D[p][q] = D[q][p] = 0.0;
+        for (int k = 0; k < 9; ++k) {
+            if (k == p || k == q) continue;
+            const double dkp = D[k][p], dkq = D[k][q];
+            D[k][p] = D[p][k] = cs*dkp - sn*dkq;
+            D[k][q] = D[q][k] = sn*dkp + cs*dkq;
+        }
+    }
+
+    std::array<double,9> lambda{};
+    for (int i = 0; i < 9; ++i) lambda[i] = std::max(0.0, D[i][i]);
+    std::sort(lambda.begin(), lambda.end());
+    const double scale = lambda.back();
+    const double tol = 4096.0 * std::numeric_limits<double>::epsilon() * scale;
+    int rank = 0;
+    for (const double v : lambda) if (v > tol) ++rank;
+
+    StencilDiagnostics out;
+    out.size = stencil.size();
+    out.rank = rank;
+    out.sigma_min = std::sqrt(lambda.front());
+    out.sigma_max = std::sqrt(lambda.back());
+    out.condition = out.sigma_min > 0.0 ? out.sigma_max / out.sigma_min
+                                        : std::numeric_limits<double>::infinity();
+    out.radius_min = rmin;
+    out.radius_max = rmax;
+    for (const std::size_t nb : touched) seen[nb] = 0;
+    return out;
+}
+
+void check_stencil_diagnostics()
+{
+    for (const std::size_t n : {4u, 6u, 8u}) {
+        const Grid grid = make_tet_grid(n);
+        std::size_t min_size = std::numeric_limits<std::size_t>::max(), max_size = 0;
+        int min_rank = 9, max_rank = 0;
+        double min_sigma = std::numeric_limits<double>::max(), max_sigma = 0.0;
+        double max_condition = 0.0, min_radius = std::numeric_limits<double>::max(), max_radius = 0.0;
+        for (const std::size_t c : grid.interior) {
+            const auto d = quadratic_stencil_diagnostics(grid, c);
+            min_size = std::min(min_size, d.size); max_size = std::max(max_size, d.size);
+            min_rank = std::min(min_rank, d.rank); max_rank = std::max(max_rank, d.rank);
+            min_sigma = std::min(min_sigma, d.sigma_min); max_sigma = std::max(max_sigma, d.sigma_max);
+            max_condition = std::max(max_condition, d.condition);
+            min_radius = std::min(min_radius, d.radius_min); max_radius = std::max(max_radius, d.radius_max);
+        }
+        std::cout << "POLY_GRAD_DIAG n=" << n
+                  << " stencil_size=[" << min_size << "," << max_size << "]"
+                  << " rank=[" << min_rank << "," << max_rank << "]"
+                  << " sigma_min=" << min_sigma << " sigma_max=" << max_sigma
+                  << " cond_max=" << max_condition
+                  << " radius=[" << min_radius << "," << max_radius << "]\n";
+        require(min_rank == 9 && max_rank == 9,
+                "least_squares_quadratic: all interior stencils must have full rank 9");
+        require(std::isfinite(max_condition),
+                "least_squares_quadratic: stencil condition numbers must be finite");
+    }
+}
+
 void check_quadratic_reconstruction()
 {
     for (const std::size_t n : {4u, 6u, 8u}) {
@@ -300,6 +477,45 @@ void check_quadratic_reconstruction()
                   << " L2=" << e.l2 << " Linf=" << e.linf << "\n";
         require(e.linf <= 1e-8,
                 "least_squares_quadratic: quadratic field must be exact on interior tetrahedra");
+    }
+}
+
+void check_cubic_basis()
+{
+    const std::array<FieldCase,10> fields{{
+        {"x3", cubic_x3, cubic_x3_gradient},
+        {"y3", cubic_y3, cubic_y3_gradient},
+        {"z3", cubic_z3, cubic_z3_gradient},
+        {"x2y", cubic_x2y, cubic_x2y_gradient},
+        {"x2z", cubic_x2z, cubic_x2z_gradient},
+        {"y2x", cubic_y2x, cubic_y2x_gradient},
+        {"y2z", cubic_y2z, cubic_y2z_gradient},
+        {"z2x", cubic_z2x, cubic_z2x_gradient},
+        {"z2y", cubic_z2y, cubic_z2y_gradient},
+        {"xyz", cubic_xyz, cubic_xyz_gradient}
+    }};
+    for (const auto& field : fields) {
+        std::vector<double> errors;
+        for (const std::size_t n : {4u, 6u, 8u}) {
+            const Grid grid = make_tet_grid(n);
+            const auto phi = sample_field(grid, field);
+            const auto e = gradient_error(grid,
+                compute_scheme(grid, phi, GradScheme::LeastSquaresQuad), field, true);
+            errors.push_back(e.l2);
+            std::cout << "POLY_GRAD_CUBIC field=" << field.name << " n=" << n
+                      << " L2=" << e.l2 << " Linf=" << e.linf;
+            if (errors.size() > 1)
+                std::cout << " order=" << observed_order(
+                    errors[errors.size()-2], errors.back(),
+                    static_cast<double>(n) / static_cast<double>(
+                        std::array<std::size_t,3>{4u,6u,8u}[errors.size()-2]));
+            std::cout << "\n";
+        }
+        const double o1 = observed_order(errors[0], errors[1], 6.0/4.0);
+        const double o2 = observed_order(errors[1], errors[2], 8.0/6.0);
+        require(std::isfinite(errors[2]) && o1 >= 1.8 && o2 >= 1.8,
+                std::string("least_squares_quadratic: cubic field ") + field.name +
+                " must show >= 1.8 gradient order");
     }
 }
 
@@ -355,6 +571,8 @@ int main()
         std::cout << std::setprecision(12);
         check_exactness(3);
         check_quadratic_reconstruction();
+        check_stencil_diagnostics();
+        check_cubic_basis();
         check_order();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
         return 0;
