@@ -94,7 +94,6 @@ if QMainWindow is not object:
             viewport.setObjectName("workbench.viewport")
             viewport.setAlignment(Qt.AlignmentFlag.AlignCenter)
             viewport.setMinimumSize(480, 320)
-            self._add_dock("Viewport", "workbench.dock.viewport", viewport, Qt.DockWidgetArea.RightDockWidgetArea)
             self.setCentralWidget(viewport)
 
             properties = QTextEdit()
