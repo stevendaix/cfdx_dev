@@ -13,8 +13,11 @@ try:
     from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QDockWidget,
+        QFormLayout,
         QLabel,
+        QLineEdit,
         QMainWindow,
+        QPushButton,
         QStatusBar,
         QTextEdit,
         QTreeWidget,
@@ -95,9 +98,7 @@ if QMainWindow is not object:
             self.setCentralWidget(viewport)
 
             properties = QTextEdit()
-            properties.setObjectName("workbench.properties")
-            properties.setReadOnly(True)
-            properties.setPlaceholderText("Select an item to inspect its properties")
+            properties = self._build_properties_panel()
             self._add_dock("Properties", "workbench.dock.properties", properties, Qt.DockWidgetArea.RightDockWidgetArea)
 
             monitor = QTextEdit()
@@ -105,6 +106,46 @@ if QMainWindow is not object:
             monitor.setReadOnly(True)
             monitor.setPlainText("MONITORS\nNo execution attached")
             self._add_dock("Monitors / Console", "workbench.dock.monitor", monitor, Qt.DockWidgetArea.BottomDockWidgetArea)
+
+        def _build_properties_panel(self) -> QWidget:
+            panel = QWidget()
+            panel.setObjectName("workbench.properties")
+            panel._form = QFormLayout(panel)
+            panel._form.addRow(QLabel("Select a workflow item"))
+            self.properties_panel = panel
+            self._refresh_properties()
+            return panel
+
+        def _refresh_properties(self) -> None:
+            if not hasattr(self, "properties_panel"):
+                return
+            form = self.properties_panel._form
+            while form.count():
+                item = form.takeAt(0)
+                if item.widget() is not None:
+                    item.widget().deleteLater()
+            properties = self.application.properties()
+            if not properties:
+                form.addRow(QLabel("No editable properties for this selection"))
+                return
+            for prop in properties:
+                editor = QLineEdit(str(prop.value))
+                editor.setObjectName(f"workbench.property.{prop.key}")
+                editor.setReadOnly(not prop.editable)
+                button = QPushButton("Apply")
+                button.setEnabled(prop.editable)
+                button.clicked.connect(lambda _checked=False, p=prop, e=editor: self._apply_property(p.key, e.text()))
+                form.addRow(prop.label, editor)
+                form.addRow("", button)
+
+        def _apply_property(self, key: str, raw_value: str) -> None:
+            try:
+                value = float(raw_value) if key == "numerics.cfl" else raw_value
+                self.application.set_property(key, value)
+            except (KeyError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Property error: {exc}")
+            else:
+                self._refresh_properties()
 
         def _add_dock(self, title: str, object_name: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
             dock = QDockWidget(title, self)
@@ -155,6 +196,7 @@ if QMainWindow is not object:
                 f"State: {state.simulation_state.value} | Iteration: {state.execution.iteration} | "
                 f"Time: {state.execution.time:g}"
             )
+            self._refresh_properties()
 
         def _selection_changed(self) -> None:
             items = self.workflow_tree.selectedItems()

@@ -12,10 +12,12 @@ from .commands import (
     ResumeSolver,
     RunSolver,
     SetNumericalOption,
+    SetProperty,
     StopSolver,
 )
 from .events import ApplicationStateChanged, EventBus, SelectionChanged
 from .state import ApplicationState, SelectionState, build_application_state
+from .properties import PropertyState, properties_for_selection
 
 
 class Application:
@@ -52,7 +54,7 @@ class Application:
 
     def execute(self, command: Command) -> ApplicationState:
         command.execute(self)
-        if isinstance(command, SetNumericalOption):
+        if isinstance(command, (SetNumericalOption, SetProperty)):
             self.dirty = True
         snapshot = self.state
         self.events.publish(ApplicationStateChanged(snapshot))
@@ -62,6 +64,22 @@ class Application:
         self, key: str, value: Any, impact: ChangeImpact = ChangeImpact.HOT
     ) -> ApplicationState:
         return self.execute(SetNumericalOption(key, value, impact))
+
+    def properties(self) -> tuple[PropertyState, ...]:
+        return properties_for_selection(self.session.case, self.selection.stable_id)
+
+    def set_property(self, key: str, value: Any) -> ApplicationState:
+        return self.execute(SetProperty(key, value))
+
+    def set_diagnostics(self, diagnostics: Iterable[Any]) -> ApplicationState:
+        self.diagnostics = tuple(diagnostics)
+        snapshot = self.state
+        self.events.publish(ApplicationStateChanged(snapshot))
+        return snapshot
+
+    def validate(self, validator, mesh=None) -> ApplicationState:
+        report = validator(self.session.case, mesh)
+        return self.set_diagnostics(report.diagnostics)
 
     def run(self) -> ApplicationState:
         return self.execute(RunSolver())

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TYPE_CHECKING
 
 from ..session import CFDXSession, ChangeImpact
+from .properties import set_property
 
 if TYPE_CHECKING:
     from ..execution import ExecutionController
@@ -30,6 +31,18 @@ class SetNumericalOption(Command):
 
     def execute(self, context: CommandContext) -> None:
         context.session.edit(self.key, self.value, self.impact)
+
+
+@dataclass(frozen=True)
+class SetProperty(Command):
+    key: str
+    value: Any
+
+    def execute(self, context: CommandContext) -> None:
+        impact = set_property(context.session.case, self.key, self.value)
+        context.session.case_revision += 1
+        if impact is not ChangeImpact.HOT:
+            context.session.mark_restart_required()
 
 
 class _ControllerCommand(Command):
