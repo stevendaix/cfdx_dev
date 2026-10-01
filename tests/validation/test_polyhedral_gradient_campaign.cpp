@@ -533,6 +533,126 @@ void check_distorted_order()
     }
 }
 
+void check_boundary_reconstruction()
+{
+    const Grid grid = make_tet_grid(4, 1.0, 0.8, 1.4, 0.25, 0.15);
+    const auto phi = sample_field(grid, kLinear);
+    const auto& own = grid.mesh.ownership();
+
+    std::vector<BoundaryGradientCondition> dirichlet(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> neumann(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> mixed(grid.mesh.n_faces());
+
+    std::vector<std::size_t> boundary_cells;
+    std::vector<std::size_t> corner_cells;
+    std::vector<unsigned> boundary_count(grid.mesh.n_cells(), 0);
+
+    for (std::size_t f = 0; f < grid.mesh.n_faces(); ++f) {
+        if (own.neighbour(f) >= 0) continue;
+        const std::size_t c = own.owner(f);
+        ++boundary_count[c];
+
+        const Vec3 n = grid.geometry.face_normals[f];
+        const double face_value = linear_value(grid.geometry.face_centres[f]);
+        const double normal_gradient =
+            linear_gradient(grid.geometry.face_centres[f]).dot(n);
+
+        dirichlet[f] = {
+            BoundaryGradientConditionType::DIRICHLET, face_value};
+        neumann[f] = {
+            BoundaryGradientConditionType::NEUMANN, normal_gradient};
+
+        // Alternate BC type by boundary face so cells at edges/corners
+        // necessarily exercise mixed reconstruction.
+        mixed[f] = (f % 2 == 0)
+            ? BoundaryGradientCondition{
+                  BoundaryGradientConditionType::DIRICHLET, face_value}
+            : BoundaryGradientCondition{
+                  BoundaryGradientConditionType::NEUMANN, normal_gradient};
+    }
+
+    for (std::size_t c = 0; c < grid.mesh.n_cells(); ++c) {
+        if (boundary_count[c] > 0) boundary_cells.push_back(c);
+        if (boundary_count[c] >= 2) corner_cells.push_back(c);
+    }
+    require(!boundary_cells.empty(),
+            "tet boundary campaign requires boundary-adjacent cells");
+    require(!corner_cells.empty(),
+            "tet boundary campaign requires corner/edge cells");
+
+    const auto boundary_error = [&](const Field<double, Location::CELL>& grad,
+                                     const std::vector<std::size_t>& cells) {
+        std::vector<double> got, want, weights;
+        for (const std::size_t c : cells) {
+            const Vec3 exact = kLinear.exact_gradient(grid.geometry.cell_centres[c]);
+            const Vec3 numerical{grad(c, 0), grad(c, 1), grad(c, 2)};
+            const double err = (numerical - exact).mag();
+            got.push_back(exact.mag() + err);
+            want.push_back(exact.mag());
+            weights.push_back(grid.geometry.cell_volumes[c]);
+        }
+        return error_norms(got, want, weights);
+    };
+
+    const std::array<std::pair<const char*, const std::vector<BoundaryGradientCondition>*>, 3> cases = {{
+        {"dirichlet", &dirichlet},
+        {"neumann", &neumann},
+        {"mixed", &mixed}
+    }};
+
+    for (const auto& [name, conditions] : cases) {
+        const auto grad = compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, conditions);
+
+        const auto all = boundary_error(grad, boundary_cells);
+        const auto corners = boundary_error(grad, corner_cells);
+        std::cout << "POLY_GRAD_BOUNDARY case=" << name
+                  << " cells=" << boundary_cells.size()
+                  << " L1=" << all.l1 << " L2=" << all.l2
+                  << " Linf=" << all.linf << "\n";
+        std::cout << "POLY_GRAD_BOUNDARY_CORNER case=" << name
+                  << " cells=" << corner_cells.size()
+                  << " L1=" << corners.l1 << " L2=" << corners.l2
+                  << " Linf=" << corners.linf << "\n";
+
+        require(std::isfinite(all.l1) && std::isfinite(all.l2) &&
+                std::isfinite(all.linf),
+                std::string("tet boundary ") + name + ": errors must be finite");
+        require(all.linf <= 1e-9,
+                std::string("tet boundary ") + name +
+                ": linear field must remain exact");
+        require(corners.linf <= 1e-9,
+                std::string("tet boundary ") + name +
+                ": corner/edge cells must remain exact");
+    }
+
+    const auto constant = sample_field(grid, kConstant);
+    const auto zg = compute_gradient_weighted_least_squares(
+        constant, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+        std::numeric_limits<double>::infinity(),
+        BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
+    const auto zero = boundary_error(zg, boundary_cells);
+    std::cout << "POLY_GRAD_BOUNDARY case=zero_gradient_default"
+              << " L1=" << zero.l1 << " L2=" << zero.l2
+              << " Linf=" << zero.linf << "\n";
+    require(zero.linf <= 1e-12,
+            "tet zero-gradient default ghost must preserve constants");
+
+    bool rejected = false;
+    try {
+        (void)compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected,
+            "tet REJECT_BOUNDARY_STENCIL must reject boundary stencils");
+}
+
 void check_order()
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
@@ -589,6 +709,7 @@ int main()
         check_exactness(3);
         check_order();
         check_distorted_order();
+        check_boundary_reconstruction();
         check_wls_conditioning_reference_campaign();
         check_wls_conditioning();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
