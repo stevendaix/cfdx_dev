@@ -138,11 +138,12 @@
       "status": "partial",
       "evidence": [
         "docs/development/HYPRE_PETSC_CFDX_AUDIT.md",
-        "docs/validation/M1_M4_VERIFICATION_PLAN.md"
+        "docs/validation/M1_M4_VERIFICATION_PLAN.md",
+        "src/cfdx/core/linalg/simplerc_schur.h",
+        "tests/unit/test_simplerc_schur.cpp"
       ],
       "gaps": [
         "exact Schur oracle",
-        "SIMPLEC/LSC/BFBt/PCD algebraic approximations",
         "null-space policy matrix",
         "scaling and memory campaign",
         "attainable-accuracy floor recorded per benchmark point (see #481)"

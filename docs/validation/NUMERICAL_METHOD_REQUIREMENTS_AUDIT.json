@@ -559,8 +559,12 @@
     {
       "package_id": "N8",
       "requirement": "SIMPLEC algebraic Schur",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/exact_schur.h",
+        "src/cfdx/core/linalg/simplerc_schur.h",
+        "tests/unit/test_simplerc_schur.cpp"
+      ]
     },
     {
       "package_id": "N8",
