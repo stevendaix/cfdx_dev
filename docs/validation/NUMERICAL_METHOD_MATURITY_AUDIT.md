@@ -26,7 +26,7 @@ An implementation registry entry never implies validation.
 | N5 temporal | PARTIAL | measured order matrix (Euler~1, CN~2, BDF2~2, RK2~2, RK3~3) verified; variable-step BDF2 (ω-ratio coefficients) + history lifecycle + restart semantics implemented and tested; RK2 first-order helper fixed; full transient-MMS matrix still open |
 | N6 CFL/time-step | PARTIAL | adaptive CFL/pseudo-transient controllers exist; full characteristic-length/rollback/audit contract incomplete |
 | N7 nonlinear convergence | PARTIAL | convergence infrastructure exists; unified conservation/QoI/continuation qualification incomplete |
-| N8 linear/preconditioners | PARTIAL | AMG/FieldSplit/Schur are advanced; exact-Schur oracle, LSC/BFBt/PCD and scaling remain |
+| N8 linear/preconditioners | PARTIAL | AMG/FieldSplit/Schur advanced; exact-Schur oracle + SIMPLE/SIMPLEC algebraic Schur (vs-oracle error qualified); LSC/BFBt/PCD, null-space and scaling remain |
 | N9 pressure-velocity | PARTIAL | multiple algorithms are registered; common quantitative acceptance matrix is incomplete |
 | N10 difficult meshes | PARTIAL | #423 supplies mesh robustness infrastructure; numerical degradation campaign is not fully integrated |
 | N11 conservation/boundedness | PARTIAL | #479/#480 provide strong diagnostics; full benchmark campaign remains |
