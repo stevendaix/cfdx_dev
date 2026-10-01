@@ -13,6 +13,17 @@ enum class BoundaryGradientPolicy {
     REJECT_BOUNDARY_STENCIL
 };
 
+enum class BoundaryGradientConditionType {
+    ZERO_GRADIENT,
+    DIRICHLET,
+    NEUMANN
+};
+
+struct BoundaryGradientCondition {
+    BoundaryGradientConditionType type = BoundaryGradientConditionType::ZERO_GRADIENT;
+    double value = 0.0;
+};
+
 struct StencilQuality {
     std::size_t samples = 0;
     int dimension = 0;
