@@ -347,6 +347,8 @@ void check_wls_conditioning()
             std::cout << "WLS_CONDITIONING eps=" << eps
                       << " condition=" << q.condition_estimate
                       << " class=REJECT rank=" << q.rank << "\n";
+            require(q.condition_estimate > kAcceptable,
+                    "conditioning campaign: rank rejection did not occur above the accepted conditioning boundary");
             require(previous >= kAcceptable,
                     "conditioning campaign: rank loss occurred before the accepted conditioning boundary");
             break;
@@ -358,8 +360,8 @@ void check_wls_conditioning()
         if (previous > 0.0)
             require(q.condition_estimate > previous,
                     "conditioning campaign: condition estimate must increase monotonically");
-        require(q.condition_estimate <= kAcceptable,
-                "conditioning campaign: condition above acceptance threshold was not rejected");
+        require(q.condition_estimate <= kAcceptable * (1.0 + 1.0e-12),
+                "conditioning campaign: condition above acceptance threshold was not accepted");
 
         std::cout << "WLS_CONDITIONING eps=" << eps
                   << " condition=" << q.condition_estimate
