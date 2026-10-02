@@ -1,5 +1,7 @@
 # Numerical Methods Maturity Audit — Issue #461
 
+> V&V status semantics and promotion gates are governed by `docs/validation/CFDX_VV_GOVERNANCE.md`. This audit interprets repository evidence against that governance; it does not promote a package by implementation presence alone.
+
 ## Purpose
 
 Repository-level audit of the numerical-method maturity work tracked by #461.
@@ -16,6 +18,8 @@ Status semantics:
 An implementation registry entry never implies validation.
 
 ## Executive result
+
+The audit uses the following evidence chain: requirement → implementation → executable test → code verification → solution verification → physical validation (where applicable) → qualification.
 
 | Package | Status | Main evidence / gap |
 |---|---|---|
