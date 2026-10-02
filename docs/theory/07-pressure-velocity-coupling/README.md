@@ -49,7 +49,7 @@ $$
 A_uu+Gp=b_u,\qquad Du=b_p,
 $$
 
-eliminating u gives a pressure Schur system
+eliminating u gives
 
 $$
 Sp=b_p-DA_u^{-1}b_u,
