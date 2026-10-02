@@ -122,6 +122,29 @@ validation/*
 
 These sources must eventually point to their new authoritative owner. Obsolete duplicates are removed only after the replacement is complete and covered by CI.
 
+## Executable scientific authoring
+
+The authoritative source for quantitative Theory is version-controlled Python in Jupytext percent format. A Python source contains Markdown cells, equations, executable experiments and deterministic checks. Jupytext's percent format uses explicit `# %%` cell markers and is designed to remain an ordinary diffable Python file.
+
+```text
+Python .py
+   │
+   ├── scientific explanation
+   ├── equations
+   ├── executable experiment
+   └── verification checks
+   │
+   ▼
+MyST-NB + Sphinx
+   │
+   ├── HTML / PyData theme
+   └── Typst publication pipeline
+```
+
+Committed `.ipynb` files are not the source of truth.
+
+## Domains
+
 ## Scientific publication
 
 The documentation stack is Sphinx + MyST + PyData Sphinx Theme with MathJax and BibTeX. Executable scientific content is generated from version-controlled Python sources; generated figures and reports are outputs, not sources of truth.
