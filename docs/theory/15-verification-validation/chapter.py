@@ -1,56 +1,140 @@
 # %% [markdown]
-# Verification and Validation
+# 15 — Verification, Validation and Qualification
 #
-# ## 15.1 Definitions
-# Verification asks whether the numerical implementation solves the specified mathematical model correctly. Validation asks whether the mathematical/physical model represents the target physical system adequately. Qualification is a declared engineering scope with explicit acceptance criteria and retained evidence.
+# ## 15.1 Vocabulary
 #
-# ## 15.2 Code verification
-# Use unit tests, algebraic identities, dimensional checks, exact polynomial fields and manufactured solutions.
+# **Code verification:** is the implementation faithful to the specified mathematical model?
 #
-# ## 15.3 Solution verification
-# Separate spatial, temporal and iterative errors. If
+# **Solution verification:** is the computed numerical solution sufficiently converged with respect to discretisation and iteration?
+#
+# **Validation:** does the mathematical model reproduce the target physical behaviour within stated uncertainty?
+#
+# **Qualification:** has a declared capability population met explicit engineering acceptance criteria with retained evidence?
+#
+# These labels must never be collapsed into one generic “pass”.
+#
+# ## 15.2 Manufactured solutions
+#
+# Choose a smooth exact field \(u_e\). If
 # \[
-# E_h\approx Ch^p,
+# Lu=f,
 # \]
-# then
+# construct
 # \[
-# p_{obs}=\frac{\ln(E_h/E_{h/r})}{\ln r}.
+# f_{MMS}=L(u_e).
 # \]
-# A GCI-style estimate is
+# Solve the manufactured problem and measure
 # \[
-# GCI_{12}=F_s\frac{|u_1-u_2|}{|u_1|}\frac1{r^p-1}.
+# E_2=
+# \left(
+# \frac{\sum_PV_P|u_P-u_e(\mathbf x_P)|^2}
+# {\sum_PV_P|u_e(\mathbf x_P)|^2}
+# \right)^{1/2}.
 # \]
-# The safety factor, refinement ratio, p and assumptions must be retained.
+# MMS isolates discretisation implementation from uncertain physical data.
 #
-# ## 15.4 MMS
-# Select \(u_{exact}\) and derive
+# ## 15.3 Spatial convergence
+#
+# If
 # \[
-# S_{MMS}=L(u_{exact}).
+# E_h=Ch^p,
 # \]
-# The numerical solution is then compared directly with the exact field.
-#
-# ## 15.5 Conservation verification
+# then for two levels:
 # \[
-# R_C=\text{inflow}-\text{outflow}+\text{source}-dQ/dt.
+# p_{obs}=
+# \frac{\ln(E_H/E_h)}{\ln(H/h)}.
 # \]
-# Report a normalized defect and its reference scale.
+# Three or more levels are preferred because pre-asymptotic behaviour can otherwise mimic an incorrect order.
 #
-# ## 15.6 Validation
-# Independent analytical or experimental references and uncertainty are required. Agreement with another CFD code alone is not physical validation.
+# ## 15.4 Temporal convergence
 #
-# ## 15.7 Evidence
-# Retain mesh, physical parameters, numerical settings, stopping criteria, software revision, raw diagnostics and post-processing definitions.
+# Hold spatial error sufficiently below temporal error and use
+# \[
+# E_{\Delta t}=C\Delta t^p.
+# \]
+# Then repeat with at least two refinement ratios and keep nonlinear/linear tolerances sufficiently tight that iteration error does not dominate.
 #
-# ## 15.8 CFDX paths
-# tests/unit/  
-# tests/numerical/  
-# tests/validation/  
-# docs/validation/
+# ## 15.5 Iterative error
 #
-# Qualification must be inferred only from retained evidence and declared acceptance gates.
+# Let \(x^\*\) be the converged discrete solution and \(x_k\) the current iterate. The iterative error is
+# \[
+# e_{iter}=x_k-x^\*.
+# \]
+# The residual
+# \[
+# r_k=b-Ax_k
+# \]
+# is related to this error by \(r_k=-Ae_{iter}\). A small residual therefore implies small error only under conditioning assumptions.
 #
+# ## 15.6 Conservation verification
+#
+# Define
+# \[
+# R_C=
+# \frac{d}{dt}\sum_Pq_PV_P+
+# \sum_{f\in\partial\Omega}F_f-
+# \sum_Ps_PV_P.
+# \]
+# Normalise with a declared scale \(Q_{ref}\):
+# \[
+# \epsilon_C=\frac{|R_C|}{Q_{ref}}.
+# \]
+# Report both signed and absolute defects when cancellation matters.
+#
+# ## 15.7 Richardson/GCI
+#
+# For
+# \[
+# Q_h=Q+C h^p+O(h^{p+1}),
+# \]
+# Richardson extrapolation is
+# \[
+# Q_{ext}=Q_h+\frac{Q_h-Q_H}{r^p-1}.
+# \]
+# A common GCI form is
+# \[
+# GCI_{fine}
+# =F_s\frac{|Q_{fine}-Q_{coarse}|}{|Q_{fine}|}
+# \frac1{r^p-1}.
+# \]
+# It is meaningful only when the grids are in a defensible asymptotic regime.
+#
+# ## 15.8 Analytical benchmarks
+#
+# Typical CFDX analytical targets include Couette:
+# \[
+# u(y)=U\frac yH,
+# \]
+# and plane Poiseuille:
+# \[
+# u(y)=\frac{G}{2\mu}y(H-y)
+# \]
+# for the corresponding pressure-gradient convention.
+#
+# ## 15.9 Validation uncertainty
+#
+# A comparison should distinguish numerical uncertainty \(U_{num}\), input uncertainty \(U_{input}\), experimental uncertainty \(U_{exp}\) and model-form discrepancy. A simple combined standard uncertainty may be
+# \[
+# U_c=\sqrt{U_1^2+U_2^2+\cdots}
+# \]
+# only when the stated independence/combination assumptions apply.
+#
+# ## 15.10 Evidence package
+#
+# Retain at minimum:
+# case/setup revision, mesh and topology, physical constants, numerical schemes, solver tolerances, iteration history, output fields, derived quantities, software revision, hardware/runtime information when relevant, and post-processing scripts.
+#
+# ## 15.11 Qualification matrix
+#
+# A qualification statement must identify:
+# population, geometry family, physics, numerical method, parameter range, acceptance criterion, evidence artifact, software revision and expiration/review rule.
+#
+# ## 15.12 CFDX evidence locations
+#
+# Executable checks live in [tests/unit](../../../tests/unit/), [tests/numerical](../../../tests/numerical/) and [tests/validation](../../../tests/validation/). Current evidence is retained under [docs/validation](../../validation/). Stable V&V publication/navigation is under [docs/vv](../../vv/).
+#
+# ## 15.13 Executable order check
 # %%
-from __future__ import annotations
 import numpy as np
 E=np.array([1e-2,2.5e-3,6.25e-4])
 assert np.allclose(np.log(E[:-1]/E[1:])/np.log(2),2.0)
