@@ -65,3 +65,10 @@ The Boussinesq approximation can represent density variation only where it mater
 ## V&V
 
 Use analytical conduction, transient diffusion MMS, convection-diffusion, interface flux balance, property-regression tests and global energy conservation. Validation results must identify material data and boundary conditions.
+
+
+## Scientific explanation standard
+
+Every major equation or method in this chapter must explain: physical/mathematical motivation; variables, units and sign conventions; derivation; FVM/discrete formulation; actual CFDX algorithm/code path; analytical or numerical example; errors, limitations and sensitivities; exact source files; executable verification tests; benchmark/V&V evidence; and bibliography with stable identifiers.
+
+Comparison tables are summaries after the mathematics, never substitutes for it. Status must remain **Implemented / Verified / Validated / Qualified** and documentation must never promote numerical maturity.
