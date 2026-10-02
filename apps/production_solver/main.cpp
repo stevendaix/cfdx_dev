@@ -5,6 +5,7 @@
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <string>
