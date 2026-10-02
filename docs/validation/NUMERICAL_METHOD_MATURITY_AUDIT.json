@@ -33,7 +33,7 @@
     {
       "id": "N2",
       "name": "Gradient and reconstruction framework",
-      "status": "partial",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/fvm/least_squares_gradient.h",
         "src/cfdx/core/numerics/gradient.h",
@@ -41,13 +41,13 @@
         "src/cfdx/core/numerics/interpolation.h",
         "tests/unit/test_gradient.cpp",
         "tests/validation/test_gradient_verification.cpp",
-        "tests/validation/test_polyhedral_gradient_campaign.cpp"
+        "tests/validation/test_polyhedral_gradient_campaign.cpp",
+        "non-affine polyhedral campaign added in PR branch: tests/validation/test_polyhedral_gradient_campaign.cpp"
       ],
       "gaps": [
-        "gradient limiter integration",
-        "two-point Gauss still not linear-consistent on tetrahedra",
-        "vertex-based Green-Gauss on non-affine/polyhedral meshes",
-        "WLS extended-stencil accuracy on general (non-affine) polyhedra"
+        "two-point cell Green-Gauss is deliberately domain-restricted: not linear-consistent on tetrahedra because centre-line face interpolation is not face-centroid consistent",
+        "vertex-based Green-Gauss remains a secondary method with a narrower verified applicability domain; it is not promoted as a universal non-affine polyhedral method",
+        "gradient limiters are qualified under N4 convection/reconstruction and are not an N2 gradient-package gate"
       ]
     },
     {
