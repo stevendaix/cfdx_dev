@@ -38,6 +38,7 @@ void apply_explicit_case_numerics(
 
     bool pressure_velocity_selected = false;
     bool convection_selected = false;
+    bool gradient_selected = false;
     for (const auto& selection : setup.numerical_report.resolved) {
         if (selection.family == NumericalMethodFamily::PressureVelocity) {
             pressure_velocity_selected = true;
@@ -56,6 +57,12 @@ void apply_explicit_case_numerics(
             else
                 throw std::invalid_argument(
                     "unsupported resolved pressure-velocity selection: " +
+                    selection.method_id);
+        } else if (selection.family == NumericalMethodFamily::Gradient) {
+            gradient_selected = true;
+            if (selection.method_id != "gradient.gauss_cell")
+                throw std::invalid_argument(
+                    "production solver does not yet consume resolved gradient selection: " +
                     selection.method_id);
         } else if (selection.family == NumericalMethodFamily::Convection) {
             convection_selected = true;
@@ -91,6 +98,10 @@ void apply_explicit_case_numerics(
                     "unsupported resolved linear-solver selection: " +
                     selection.method_id);
             }
+        } else if (selection.family == NumericalMethodFamily::Temporal) {
+            throw std::invalid_argument(
+                "steady production solver does not consume a temporal selection: " +
+                selection.method_id);
         } else if (selection.family == NumericalMethodFamily::Preconditioner) {
             PreconditionerModel model = PreconditionerModel::Auto;
             if (selection.method_id == "preconditioner.native_amg")
@@ -117,6 +128,9 @@ void apply_explicit_case_numerics(
     if (!convection_selected)
         throw std::invalid_argument(
             "case numerics.selection does not select convection");
+    if (!gradient_selected)
+        throw std::invalid_argument(
+            "case numerics.selection does not select a consumed gradient method");
 }
 
 Options parse(int argc, char** argv)
