@@ -22,6 +22,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/numerics/gradient.h"
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -36,7 +37,9 @@ enum class InterpScheme : std::uint8_t {
     LINEAR = 0,
     UPWIND,
     LIMITED,
-    BLENDED
+    BLENDED,
+    QUICK,
+    QUICK_BOUNDED
 };
 
 enum class LimiterType : std::uint8_t {
@@ -53,6 +56,9 @@ inline const char* to_string(InterpScheme s) {
         case InterpScheme::LINEAR:  return "linear";
         case InterpScheme::UPWIND:  return "upwind";
         case InterpScheme::LIMITED: return "limited";
+        case InterpScheme::BLENDED: return "blended";
+        case InterpScheme::QUICK: return "quick";
+        case InterpScheme::QUICK_BOUNDED: return "quick_bounded";
         default:                    return "unknown";
     }
 }
@@ -73,6 +79,9 @@ inline InterpScheme interp_scheme_from_string(const std::string& s) {
     if (s == "linear")  return InterpScheme::LINEAR;
     if (s == "upwind")  return InterpScheme::UPWIND;
     if (s == "limited") return InterpScheme::LIMITED;
+    if (s == "blended") return InterpScheme::BLENDED;
+    if (s == "quick") return InterpScheme::QUICK;
+    if (s == "quick_bounded") return InterpScheme::QUICK_BOUNDED;
     throw std::runtime_error("interp_scheme_from_string: unknown scheme '" + s + "'");
 }
 
@@ -143,6 +152,8 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
         if (!std::isfinite(blend_linear) || blend_linear < 0.0 || blend_linear > 1.0)
             throw std::invalid_argument("interpolate_cell_to_face: blend_linear must be in [0, 1]");
     }
+    if ((scheme == InterpScheme::QUICK || scheme == InterpScheme::QUICK_BOUNDED) && !face_flux)
+        throw std::runtime_error("interpolate_cell_to_face: QUICK requires face_flux");
     if (scheme == InterpScheme::UPWIND && !face_flux)
         throw std::runtime_error("interpolate_cell_to_face: UPWIND requires face_flux");
     if (scheme == InterpScheme::LIMITED) {
@@ -163,6 +174,16 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
 
     const FaceOwnership& own = mesh.ownership();
     const double* flux = face_flux ? face_flux->component_data(0) : nullptr;
+
+    // QUICK is a multidimensional quadratic upwind reconstruction. The
+    // quadratic least-squares fit is deliberately independent of the N2
+    // gradient selected by the MUSCL/TVD path.
+    Field<double, Location::CELL> quadratic_fit;
+    if (scheme == InterpScheme::QUICK || scheme == InterpScheme::QUICK_BOUNDED) {
+        if (cell_field.dimension() != 1)
+            throw std::runtime_error("interpolate_cell_to_face: QUICK currently supports scalar fields");
+        quadratic_fit = compute_quadratic_fit_least_squares(cell_field, mesh);
+    }
 
     for (std::size_t f = 0; f < n_faces; ++f) {
         const std::size_t owner = own.owner(f);
@@ -190,6 +211,30 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
                 // Central/upwind blending: v = blend*linear + (1-blend)*upwind.
                 const double v_up = (flux[f] >= 0.0) ? vo : vn;
                 v = blend_linear * 0.5 * (vo + vn) + (1.0 - blend_linear) * v_up;
+            } else if (scheme == InterpScheme::QUICK || scheme == InterpScheme::QUICK_BOUNDED) {
+                const bool owner_upwind = flux[f] >= 0.0;
+                const std::size_t up = owner_upwind ? owner : neighbour;
+                const double* q0 = quadratic_fit.component_data(0);
+                const double* q1 = quadratic_fit.component_data(1);
+                const double* q2 = quadratic_fit.component_data(2);
+                const double* q3 = quadratic_fit.component_data(3);
+                const double* q4 = quadratic_fit.component_data(4);
+                const double* q5 = quadratic_fit.component_data(5);
+                const double* q6 = quadratic_fit.component_data(6);
+                const double* q7 = quadratic_fit.component_data(7);
+                const double* q8 = quadratic_fit.component_data(8);
+                const Vec3 d = geometry.face_centres[f] - geometry.cell_centres[up];
+                const double raw = cell_field.component_data(0)[up]
+                    + q0[up]*d.x + q1[up]*d.y + q2[up]*d.z
+                    + q3[up]*d.x*d.x + q4[up]*d.y*d.y + q5[up]*d.z*d.z
+                    + q6[up]*d.x*d.y + q7[up]*d.x*d.z + q8[up]*d.y*d.z;
+                if (scheme == InterpScheme::QUICK_BOUNDED) {
+                    const double lo = std::min(vo, vn);
+                    const double hi = std::max(vo, vn);
+                    v = std::max(lo, std::min(hi, raw));
+                } else {
+                    v = raw;
+                }
             } else if (scheme == InterpScheme::LIMITED) {
                 // Reconstruct from the upwind cell to the actual face centre.
                 // The limiter is applied to the directional ratio along the
