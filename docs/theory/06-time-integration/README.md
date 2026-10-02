@@ -15,3 +15,5 @@
 10. Pseudo-transient continuation
 11. Steady versus transient iteration
 12. Temporal verification
+
+The chapter will separate mathematical theory, CFDX implementation contracts, executable experiments and V&V evidence.
