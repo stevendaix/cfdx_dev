@@ -15,20 +15,19 @@
     {
       "id": "N1",
       "name": "Numerical-method architecture and contracts",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "docs/development/NUMERICAL_METHOD_CONTRACTS.md",
         "src/cfdx/core/numerics/numerical_method_contract.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/core/numerics/numerical_method_selection.h",
-        "tests/unit/test_case_numerics_report.cpp"
+        "src/cfdx/core/numerics/spatial_scheme_contract.h",
+        "tests/unit/test_case_numerics_report.cpp",
+        "tests/unit/test_spatial_scheme_contract.cpp",
+        "src/cfdx/python/cfdx/io/numerical_selection.py",
+        "src/cfdx/python/cfdx/io/converter.py"
       ],
-      "gaps": [
-        "wiring every case loader (Fluent/CFD) to emit resolve-case numerics report",
-        "common spatial scheme abstraction",
-        "reconstruction/interpolation/flux contracts",
-        "conservation/boundedness contract integration"
-      ]
+      "gaps": []
     },
     {
       "id": "N2",
