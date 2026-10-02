@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is the chapter navigation and contract. Quantitative theory and executable experiments belong to the Python percent source; this page must not duplicate numerical results.
+
 # Finite-Volume Method
 
 **Status: TOPO — detailed course chapter not yet migrated.**
