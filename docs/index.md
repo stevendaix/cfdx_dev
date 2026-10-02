@@ -41,6 +41,28 @@ theory/14-numerical-analysis/README
 theory/15-verification-validation/README
 ```
 
+## Complete document hierarchy
+
+The visible navigation above is curated. A hidden global tree keeps every source document reachable during migration and prevents accidental orphaning. This follows the standard Sphinx toctree hierarchy mechanism. citeturn2search1
+
+```{toctree}
+:hidden:
+:glob:
+
+README
+application/*
+development/*
+theory/*/README
+theory/04-gradients-reconstruction/*
+user/*/README
+developer/*/README
+vv/*/README
+validation/*
+boundary_conditions
+gui
+mesh_import
+```
+
 ## Existing documentation under migration
 
 The repository already contains useful material outside the new domain structure. Until migration is complete, these documents remain published through a dedicated legacy/migration tree.
