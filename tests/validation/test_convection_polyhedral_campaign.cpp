@@ -54,7 +54,7 @@ Grid make_hex_frustum_chain(std::size_t n)
             m.ownership().set_owner(right[i],i);
             m.ownership().set_neighbour(right[i],static_cast<std::int64_t>(i+1));
         }
-        m.ownership().set_owner(left[i],i);
+        if (i==0) m.ownership().set_owner(left[i],i);
         for (const auto f:side[i]) {
             m.ownership().set_owner(f,i);
             m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
@@ -72,7 +72,8 @@ Grid make_hex_frustum_chain(std::size_t n)
     for (std::size_t i=0;i<n;++i) for (const auto f:side[i]) walls.face_ids.push_back(f);
     m.boundary().add_patch(inlet); m.boundary().add_patch(outlet); m.boundary().add_patch(walls);
 
-    Grid g{std::move(m),make_geometry_cache(m),{}};
+    const auto geometry=make_geometry_cache(m);
+    Grid g{std::move(m),geometry,{}};
     for (std::size_t f=0;f<g.mesh.n_faces();++f)
         if (g.mesh.ownership().neighbour(f)>=0) g.internal_faces.push_back(f);
     return g;
