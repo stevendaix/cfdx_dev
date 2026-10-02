@@ -1,52 +1,127 @@
 # %% [markdown]
-"""# Foundations
+# Foundations
 
-## Scientific purpose
+## 0.1 Continuum hypothesis
 
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
+CFD represents macroscopic quantities by fields
+\[
+\rho=\rho(\mathbf x,t),\quad \mathbf u=\mathbf u(\mathbf x,t),\quad
+p=p(\mathbf x,t),\quad T=T(\mathbf x,t).
+\]
+The continuum hypothesis replaces molecular-scale fluctuations by smooth fields at the scale resolved by the solver.
 
-## Required structure
+## 0.2 Kinematics
 
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
+The material derivative is
+\[
+\frac{D\phi}{Dt}=\frac{\partial\phi}{\partial t}+\mathbf u\cdot\nabla\phi.
+\]
+The velocity gradient is decomposed into deformation and rotation:
+\[
+\nabla\mathbf u=\mathbf D+\mathbf W,
+\quad
+\mathbf D=\frac12(\nabla\mathbf u+\nabla\mathbf u^T),
+\quad
+\mathbf W=\frac12(\nabla\mathbf u-\nabla\mathbf u^T).
+\]
 
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
+## 0.3 Conservation
 
-## Core equations
+For density q, flux F and source s,
+\[
+\frac{\partial q}{\partial t}+\nabla\cdot\mathbf F=s.
+\]
+For a fixed control volume,
+\[
+\frac{d}{dt}\int_Vq\,dV+\oint_{\partial V}\mathbf F\cdot\mathbf n\,dA
+=\int_Vs\,dV.
+\]
+This integral statement is the mathematical foundation of finite volume discretisation.
 
-- rho=mass/volume
-- continuity: d rho/dt + div(rho u)=0
-- Navier-Stokes: rho Du/Dt = -grad(p)+div(tau)+rho f
-- energy: rho De/Dt = -p div(u)+tau:grad(u)-div(q)+Q
-- Newtonian stress: tau=2 mu D + lambda div(u) I
-- Fourier: q=-k grad(T)
-- Re=rho U L/mu; Ma=U/a; Pe=UL/alpha
+## 0.4 Constitutive laws
 
-## Scientific checks
+Newtonian stress:
+\[
+\boldsymbol\sigma=-p\mathbf I+
+2\mu\mathbf D+\lambda(\nabla\cdot\mathbf u)\mathbf I.
+\]
+Fourier heat flux:
+\[
+\mathbf q=-k\nabla T.
+\]
+These relations are constitutive assumptions and must not be confused with conservation laws.
 
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+## 0.5 Navier--Stokes
 
-## CFDX traceability
+Mass:
+\[
+\frac{\partial\rho}{\partial t}+\nabla\cdot(\rho\mathbf u)=0.
+\]
+Momentum:
+\[
+\rho\frac{D\mathbf u}{Dt}
+=-\nabla p+\nabla\cdot\boldsymbol\tau+\rho\mathbf f.
+\]
+For constant viscosity and incompressible flow:
+\[
+\nabla\cdot\mathbf u=0,\qquad
+\rho\frac{D\mathbf u}{Dt}
+=-\nabla p+\mu\nabla^2\mathbf u+\rho\mathbf f.
+\]
 
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+## 0.6 Boundary and initial conditions
 
-## References
+Dirichlet:
+\[
+\phi=\phi_b.
+\]
+Neumann:
+\[
+\nabla\phi\cdot\mathbf n=g_N.
+\]
+Robin:
+\[
+a\phi+b\nabla\phi\cdot\mathbf n=c.
+\]
+Transient problems additionally require an initial condition.
 
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
+## 0.7 Dimensionless groups
+
+\[
+Re=\frac{\rho UL}{\mu},\qquad
+Ma=\frac{U}{a},\qquad
+Pe=\frac{UL}{\alpha},\qquad
+Pr=\frac{\nu}{\alpha}.
+\]
+Every term of a governing equation must have compatible dimensions. Nondimensionalisation also exposes dominant balances.
+
+## 0.8 CFDX traceability
+
+Field representation: src/cfdx/core/field/field.h  
+Mesh representation: src/cfdx/core/mesh/mesh.h  
+Boundary conditions: src/cfdx/core/boundary/  
+Incompressible physics: src/cfdx/physics/incompressible.h  
+Steady solver: src/cfdx/physics/steady_incompressible_solver.h
+
+The source paths establish traceability, not numerical qualification.
+
+## 0.9 Numerical chain
+
+\[
+\text{PDE}\rightarrow\text{integral balance}\rightarrow
+\text{discrete operator}\rightarrow A x=b
+\rightarrow\text{numerical solution}\rightarrow\text{evidence}.
+\]
+
+## 0.10 Evidence vocabulary
+
+Implemented means code exists. Verified means a specified mathematical/software property has executable evidence. Validated means comparison with independent physical/reference evidence supports the declared case. Qualified means the declared population and acceptance gates are complete.
 
 # %%
 from __future__ import annotations
 import numpy as np
 
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
+rho,U,L,mu=1000.0,2.0,0.1,1e-3
+Re=rho*U*L/mu
+assert np.isclose(Re,2e5)
+assert np.isfinite(Re)
