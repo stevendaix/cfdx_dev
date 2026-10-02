@@ -1,132 +1,162 @@
 # %% [markdown]
 # 07 — Pressure–Velocity Coupling
 #
-# ## 7.1 Incompressible constraint
+# ## 7.1 Governing constraint
 #
 # For constant-density incompressible flow:
-# \[
-# \nabla\cdot\mathbf u=0,
-# \]
-# while momentum is
-# \[
-# \rho\left(
-# \frac{\partial\mathbf u}{\partial t}
-# +\nabla\cdot(\mathbf u\otimes\mathbf u)
-# \right)
-# =-\nabla p+\nabla\cdot(2\mu\mathbf S)+\mathbf f,
-# \quad
-# \mathbf S=\frac12(\nabla\mathbf u+\nabla\mathbf u^T).
-# \]
-# Pressure is a constraint variable: it adjusts so that the discrete velocity satisfies the discrete continuity equation.
+# [
+# 
+ablacdotmathbf u=0,
+# ]
+# [
+# holeft(
+# rac{partialmathbf u}{partial t}
+# +
+ablacdot(mathbf uotimesmathbf u)ight)
+# =-
+abla p+
+ablacdot(2mumathbf S)+mathbf f.
+# ]
+# The pressure is not obtained from an independent equation of state; it is the Lagrange multiplier enforcing discrete continuity.
 #
-# ## 7.2 Discrete saddle-point system
+# ## 7.2 Discrete block system and Schur complement
 #
-# Linearisation gives
-# \[
-# \begin{bmatrix}
-# A_u&G\\
+# [
+# egin{bmatrix}
+# A_u&G\
 # D&C
-# \end{bmatrix}
-# \begin{bmatrix}\mathbf u\\p\end{bmatrix}
+# end{bmatrix}
+# egin{bmatrix}mathbf u\pend{bmatrix}
 # =
-# \begin{bmatrix}b_u\\b_p\end{bmatrix}.
-# \]
-# \(G\) is a pressure-gradient block and \(D\) a velocity-divergence block. In an ideal conservative pairing their discrete relationship is constrained by the chosen inner products and boundary treatment.
-#
-# Eliminating velocity:
-# \[
+# egin{bmatrix}b_u\b_pend{bmatrix}.
+# ]
+# Eliminating velocity gives
+# [
 # S=C-DA_u^{-1}G,
-# \]
-# \[
+# qquad
 # Sp=b_p-DA_u^{-1}b_u.
-# \]
-# This is the mathematical basis for pressure-Schur preconditioning.
+# ]
+# This connects segregated pressure correction to the exact coupled algebraic problem.
 #
-# ## 7.3 SIMPLE
+# ## 7.3 SIMPLE derivation
 #
-# Split the momentum equation:
-# \[
-# A_u u=b_u-Gp.
-# \]
-# Using an approximate inverse \(H\approx A_u^{-1}\):
-# \[
-# u\approx H(b_u-Gp).
-# \]
-# A pressure correction \(p'=p^{new}-p\) is obtained from continuity:
-# \[
-# D H G\,p'=D H(b_u-Gp)-b_p.
-# \]
-# The actual CFDX implementation may use diagonal or another approximation; the approximation defines the algorithm.
+# Write
+# [
+# A_umathbf u=b_u-Gp.
+# ]
+# Let (H) approximate (A_u^{-1}). Then
+# [
+# mathbf uapprox H(b_u-Gp).
+# ]
+# Introduce corrections
+# [
+# p^{new}=p+p',qquad
+# mathbf u^{new}=mathbf u+mathbf u',
+# ]
+# with
+# [
+# mathbf u'approx-HGp'.
+# ]
+# Continuity gives
+# [
+# Dmathbf u'=-Dmathbf u,
+# ]
+# hence
+# [
+# D H G,p'=Dmathbf u.
+# ]
+# Sign changes in this equation occur if the code defines the pressure-gradient block with the opposite sign; the implementation must be audited against the assembled row rather than against a memorised textbook formula.
 #
 # ## 7.4 SIMPLEC
 #
-# SIMPLEC changes the approximation used for the velocity correction so that less of the momentum-correction coupling is discarded. It is not simply a renamed SIMPLE implementation. The exact coefficient correction must be documented and verified against the implemented matrix row.
+# SIMPLEC changes the approximation for the velocity correction so that additional off-diagonal momentum coupling is retained. Its identity is therefore encoded in the exact approximation (H), not merely in an enum value.
 #
 # ## 7.5 PISO
 #
-# PISO performs multiple pressure-correction stages within a time step:
-# \[
-# u^{*}=A_u^{-1}(b_u-Gp^n),
-# \]
-# followed by pressure correction and velocity correction, then repeated correction using the updated flux/velocity. The number and ordering of corrections are part of the algorithm contract.
+# Starting from a predictor
+# [
+# A_umathbf u^*=b_u-Gp^n,
+# ]
+# PISO applies successive pressure corrections within the same time level. Each correction updates the face flux/velocity and generates a new continuity defect. The number of correction stages is an algorithmic parameter.
 #
 # ## 7.6 PIMPLE
 #
-# PIMPLE introduces outer nonlinear iterations around PISO-like inner corrections:
-# \[
-# \text{outer loop}\rightarrow
-# \text{momentum}\rightarrow
-# \text{pressure corrections}\rightarrow
-# \text{convergence test}.
-# \]
-# Relaxation and stopping criteria must be separated from the underlying pressure-correction equations.
+# PIMPLE combines outer nonlinear iterations with pressure-correction stages:
+# [
+# oxed{	ext{outer iteration}
+# ightarrow	ext{momentum}
+# ightarrow	ext{pressure corrections}
+# ightarrow	ext{relaxation}
+# ightarrow	ext{convergence}}.
+# ]
+# Outer iteration and inner pressure-correction convergence must be reported separately.
 #
-# ## 7.7 Fractional step
+# ## 7.7 Fractional-step projection
 #
-# A projection method first computes
-# \[
-# \frac{u^*-u^n}{\Delta t}=R(u^n),
-# \]
-# then solves
-# \[
-# \nabla^2p^{n+1}
-# =\frac{\rho}{\Delta t}\nabla\cdot u^*,
-# \]
-# and projects:
-# \[
-# u^{n+1}=u^*-\frac{\Delta t}{\rho}\nabla p^{n+1}.
-# \]
-# Boundary conditions for \(p\) and \(u\) must be derived consistently; the projection is not automatically equivalent to a collocated FVM SIMPLE formulation.
+# Predictor:
+# [
+# rac{mathbf u^*-mathbf u^n}{Delta t}=R(mathbf u^n).
+# ]
+# Pressure equation:
+# [
+# 
+abla^2p^{n+1}
+# =rac{ho}{Delta t}
+ablacdotmathbf u^*.
+# ]
+# Projection:
+# [
+# mathbf u^{n+1}
+# =mathbf u^*-rac{Delta t}{ho}
+abla p^{n+1}.
+# ]
+# Taking the divergence yields
+# [
+# 
+ablacdotmathbf u^{n+1}=0
+# ]
+# if the pressure equation and discrete gradient/divergence pair are exactly consistent.
 #
-# ## 7.8 Pressure null space
+# ## 7.8 Pressure gauge and compatibility
 #
-# With pure Neumann pressure boundaries,
-# \[
-# p'=p+C
-# \]
-# leaves \(\nabla p\) unchanged. The discrete pressure matrix is singular unless a gauge or explicit null-space constraint is imposed. A solver that converges only after arbitrary pressure shifting has not necessarily demonstrated correct gauge handling.
+# Under pure Neumann pressure conditions,
+# [
+# pightarrow p+C
+# ]
+# is a null-space transformation. The pressure Poisson equation also requires a compatibility condition:
+# [
+# int_Omega b_p,dV
+# =int_{partialOmega}rac{partial p}{partial n},dA
+# ]
+# in the continuous case. A discrete incompatibility can prevent convergence even when the operator itself is correct.
 #
-# ## 7.9 Rhie–Chow / face flux
+# ## 7.9 Collocated face mass flux
 #
-# Collocated arrangements can admit pressure checkerboarding if pressure and velocity are interpolated independently. A Rhie–Chow-type momentum interpolation introduces a pressure-difference correction into the face mass flux. The exact formula, coefficient scaling and boundary behaviour must be taken from the CFDX implementation before claiming equivalence to a named method.
+# A collocated scheme needs a pressure-velocity interpolation that avoids an odd-even pressure mode. A Rhie–Chow-type flux has the generic structure
+# [
+# dot m_f=
+# dot m_f^{interp}
+# -D_fleft[
+# (p_N-p_P)-(
+abla p)_fcdotmathbf d_{PN}
+# ight],
+# ]
+# where (D_f) is derived from the momentum diagonal/coefficient. The exact CFDX formula, including signs and boundary handling, must be taken from the implementation.
 #
-# ## 7.10 Verification
+# ## 7.10 Coupling qualification
 #
-# Required operator checks include:
-# \[
-# D u=0,
-# \qquad
-# \|r_u\|\rightarrow0,
-# \qquad
-# \|r_p\|\rightarrow0,
-# \]
-# plus pressure-gauge invariance, manufactured solutions and canonical incompressible flows. Couette and Poiseuille provide particularly useful low-complexity checks; Ghia tests the coupled steady solver at a more demanding level.
+# A complete test is not just (|r|ightarrow0). It should include
+# [
+# |Dmathbf u|,quad
+# |r_u|,quad
+# |r_p|,quad
+# Delta p	ext{ gauge invariance},
+# ]
+# plus conservation and canonical flow quantities. The coupling method must be tested on more than one initial condition because a single converged state can hide a checkerboard or null-space defect.
 #
 # ## 7.11 CFDX implementation
 #
-# See [pressure_velocity.h](../../../src/cfdx/physics/pressure_velocity.h), [pressure_velocity_algorithms.h](../../../src/cfdx/physics/pressure_velocity_algorithms.h) and [steady_incompressible_solver.h](../../../src/cfdx/physics/steady_incompressible_solver.h).
-#
-# Verification includes [test_steady_incompressible_solver.cpp](../../../tests/validation/test_steady_incompressible_solver.cpp) and incompressible unit tests.
+# See [pressure_velocity.h](../../../src/cfdx/physics/pressure_velocity.h), [pressure_velocity_algorithms.h](../../../src/cfdx/physics/pressure_velocity_algorithms.h), [steady_incompressible_solver.h](../../../src/cfdx/physics/steady_incompressible_solver.h) and [numerical_method_registry.h](../../../src/cfdx/core/numerics/numerical_method_registry.h).
 #
 # ## 7.12 Executable Schur check
 # %%
