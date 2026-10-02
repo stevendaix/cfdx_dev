@@ -1,115 +1,164 @@
 # %% [markdown]
 # 12 — Radiation
 #
-# ## 12.1 Black-body emission
+# ## 12.1 Blackbody
 #
 # \[
 # E_b=\sigma T^4,\qquad
 # \sigma=5.670374419\times10^{-8}\;W\,m^{-2}K^{-4}.
 # \]
-# A grey diffuse surface emits
+# Grey diffuse emission:
 # \[
-# E=\varepsilon\sigma T^4.
+# E=\varepsilon E_b.
 # \]
 #
 # ## 12.2 Irradiation and radiosity
 #
-# Let \(G\) be irradiation and \(J\) radiosity:
 # \[
-# J=\varepsilon\sigma T^4+(1-\varepsilon)G.
+# J=E+(1-\varepsilon)G,
 # \]
-# Net outward radiative flux:
 # \[
 # q''=J-G.
 # \]
-# For opaque grey surfaces, \(\alpha+\rho=1\) and, at thermal equilibrium, Kirchhoff's law gives \(\alpha=\varepsilon\).
-#
-# ## 12.3 View factors
-#
-# The view factor \(F_{ij}\) is the fraction of radiation leaving surface \(i\) that reaches \(j\). For a closed enclosure:
+# Thus
 # \[
-# \sum_jF_{ij}=1.
+# q''=\varepsilon(E_b-G).
 # \]
-# Reciprocity:
-# \[
-# A_iF_{ij}=A_jF_{ji}.
-# \]
-# These are geometric identities and therefore independent S2S verification targets.
 #
-# ## 12.4 S2S radiosity system
+# ## 12.3 Two-surface exchange
 #
-# Irradiation is
+# For black surfaces:
 # \[
-# G_i=\sum_jF_{ij}J_j.
+# Q_{1\rightarrow2}
+# =
+# A_1F_{12}\sigma(T_1^4-T_2^4).
 # \]
-# Substitution gives
+# For grey surfaces, the resistance-network form is
 # \[
-# J_i=\varepsilon_i\sigma T_i^4+
-# (1-\varepsilon_i)\sum_jF_{ij}J_j.
+# Q=
+# \frac{\sigma(T_1^4-T_2^4)}
+# {\frac{1-\varepsilon_1}{A_1\varepsilon_1}
+# +\frac1{A_1F_{12}}
+# +\frac{1-\varepsilon_2}{A_2\varepsilon_2}}.
 # \]
-# Hence
+#
+# ## 12.4 View factors
+#
+# \[
+# \sum_jF_{ij}=1,
+# \qquad
+# A_iF_{ij}=A_jF_{ji},
+# \qquad
+# 0\le F_{ij}\le1.
+# \]
+# Closure, reciprocity and bounds are independent geometry checks.
+#
+# ## 12.5 S2S radiosity system
+#
+# \[
+# G_i=\sum_jF_{ij}J_j,
+# \]
+# therefore
 # \[
 # \left[I-\operatorname{diag}(1-\varepsilon)F\right]J
 # =\varepsilon\sigma T^4.
 # \]
-# The surface net heat rate is \(Q_i=A_i(J_i-G_i)\).
-#
-# ## 12.5 Radiation conservation
-#
-# For an isolated enclosure, the net exchange satisfies
+# Net surface power:
 # \[
-# \sum_iQ_i=0
+# Q_i=A_i(J_i-G_i).
 # \]
-# when there are no volumetric sources/sinks and the view-factor system is consistent. A non-zero defect can originate from geometry, reciprocity, matrix solution or boundary data.
 #
-# ## 12.6 P1 approximation
+# ## 12.6 P1
 #
-# A common grey, isotropic-scattering P1 form is
+# A common participating-media P1 equation is
 # \[
 # -\nabla\cdot\left(\frac{1}{3\beta}\nabla G\right)
 # +\beta G
-# =4\beta\sigma T^4,
+# =4\beta\sigma T^4
 # \]
-# where \(\beta\) is an extinction coefficient under the adopted convention. Absorption and scattering alter the exact coefficients/source terms.
+# under a particular grey, isotropic convention. The exact implementation includes absorption/scattering and source conventions that must be checked against the source.
 #
 # ## 12.7 DOM
 #
-# The radiative transfer equation may be written
+# The radiative transfer equation:
 # \[
-# \mathbf s\cdot\nabla I(\mathbf x,\mathbf s)
-# +\beta I
-# =\kappa I_b+\sigma_s\int_{4\pi}\Phi(\mathbf s,\mathbf s')I(\mathbf s')\,d\Omega'.
+# \mathbf s\cdot\nabla I+\beta I
+# =
+# \kappa I_b+
+# \sigma_s\int_{4\pi}\Phi(\mathbf s,\mathbf s')I(\mathbf s')d\Omega'.
 # \]
-# Discrete ordinates replace the angular integral by directions \(\mathbf s_m\) and weights \(w_m\):
+# Discrete ordinates:
 # \[
 # \mathbf s_m\cdot\nabla I_m+\beta I_m
-# =\kappa I_b+\sigma_s\sum_n w_n\Phi_{mn}I_n.
+# =
+# \kappa I_b+
+# \sigma_s\sum_nw_n\Phi_{mn}I_n.
 # \]
-# Angular quadrature accuracy and ray/discretisation effects must be part of verification.
-#
-# ## 12.8 Coupling to energy
-#
-# Radiation contributes an energy source/sink:
+# Angular quadrature must reproduce declared moments:
 # \[
-# S_T=-\nabla\cdot\mathbf q_{rad}
+# \sum_mw_m,\quad
+# \sum_mw_m\mathbf s_m,\quad
+# \sum_mw_m\mathbf s_m\otimes\mathbf s_m.
 # \]
-# in a volume formulation, or an equivalent surface heat flux at boundaries. The sign must match the thermal equation convention.
 #
-# ## 12.9 Verification
+# ## 12.8 Participating media
 #
-# S2S: view-factor closure → reciprocity → analytical two-surface exchange → enclosure energy conservation.
+# Absorption \(\kappa\), scattering \(\sigma_s\) and extinction
+# \[
+# \beta=\kappa+\sigma_s
+# \]
+# define optical thickness
+# \[
+# \tau=\beta L.
+# \]
+# Thin/intermediate/thick regimes should be tested separately.
 #
-# P1/DOM: manufactured optical transport → limiting/positivity → angular/refinement studies → coupled thermal benchmark.
+# ## 12.9 Rosseland diffusion
 #
-# ## 12.10 CFDX implementation
+# In optically thick media:
+# \[
+# \mathbf q_{rad}
+# =-\frac{16\sigma T^3}{3\kappa_R}\nabla T.
+# \]
+# Hence an effective radiative conductivity is
+# \[
+# k_{rad}=\frac{16\sigma T^3}{3\kappa_R}.
+# \]
+# This is a diffusion approximation, not a replacement for general DOM/S2S physics.
+#
+# ## 12.10 Nonlinear radiation-energy coupling
+#
+# For a volumetric radiative loss \(q_{rad}(T)\), linearisation gives
+# \[
+# S(T)\approx S(T_*)+S_p(T-T_*),
+# \qquad
+# S_p=\frac{dS}{dT}(T_*).
+# \]
+# For \(q_{rad}=4\kappa\sigma T^4\):
+# \[
+# \frac{dq_{rad}}{dT}=16\kappa\sigma T^3.
+# \]
+# Correct source sign and linearisation are essential to energy stability.
+#
+# ## 12.11 Verification
+#
+# \[
+# blackbody\rightarrow grey\ wall\rightarrow
+# view\ factor\ closure/reciprocity\rightarrow
+# S2S\ exchange\rightarrow
+# P1\ equilibrium\rightarrow
+# DOM\ angular\ moments\rightarrow
+# coupled\ thermal\ energy.
+# \]
+#
+# ## 12.12 CFDX implementation
 #
 # See [radiation.h](../../../src/cfdx/physics/radiation.h), [radiation_models.h](../../../src/cfdx/physics/radiation_models.h), [radiation_s2s.h](../../../src/cfdx/physics/radiation_s2s.h), [radiation_solver.h](../../../src/cfdx/physics/radiation_solver.h) and [radiation_streaming.h](../../../src/cfdx/physics/radiation_streaming.h).
 #
-# Tests: [test_radiation_vv.cpp](../../../tests/validation/test_radiation_vv.cpp), [test_s2s_radiation_vv.cpp](../../../tests/validation/test_s2s_radiation_vv.cpp), [test_phase12_radiation_vv.cpp](../../../tests/validation/test_phase12_radiation_vv.cpp).
+# Tests: [test_radiation_vv.cpp](../../../tests/validation/test_radiation_vv.cpp), [test_s2s_radiation_vv.cpp](../../../tests/validation/test_s2s_radiation_vv.cpp), [test_phase12_radiation_vv.cpp](../../../tests/validation/test_phase12_radiation_vv.cpp), plus thermal/radiation regression.
 #
-# ## 12.11 Executable Stefan–Boltzmann check
+# ## 12.13 Executable Stefan–Boltzmann check
 # %%
 import numpy as np
 sigma=5.670374419e-8
-T=300.0
-assert np.isclose(sigma*T**4,459.300326939)
+assert np.isclose(sigma*300.0**4,459.300326939)
