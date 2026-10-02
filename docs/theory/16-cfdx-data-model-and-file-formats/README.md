@@ -147,3 +147,8 @@ The authoritative implementation files are:
     src/cfdx/io/hdf5/mini_json.h
 
 The documentation must be updated whenever the serialized contract changes.
+
+
+## Scientific explanation standard
+
+For every important equation, algorithm or data-model rule, document the motivation; definitions/units/sign conventions; derivation or formal rationale; discrete/FVM representation where applicable; actual CFDX execution path; example; error/limitation/sensitivity analysis; exact implementation files; executable verification; benchmark/V&V evidence; and stable bibliography/reference identifiers. Tables summarize explanations and do not replace them. Keep **Implemented / Verified / Validated / Qualified** distinct; documentation maturity never promotes numerical maturity.
