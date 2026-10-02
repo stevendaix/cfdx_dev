@@ -43,6 +43,7 @@ theory/14-numerical-analysis/README
 theory/15-verification-validation/README
 theory/16-cfdx-data-model-and-file-formats/README
 theory/17-computational-chain-and-code-map/README
+theory/18-source-tree-physics-audit/README
 ```
 
 ## Migration control
