@@ -334,14 +334,16 @@ The repository already contains implementations for:
 - independent continuity and momentum diagnostics;
 - Couette and cavity acceptance paths.
 
-The remaining N9 qualification gap is evidence, not the existence of algorithm names:
+The executable closure now contains a common physical matrix in `tests/validation/test_n9_physical_matrix.cpp`. It runs SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and coupled U-p on:
 
-- independent pressure–velocity/Rhie–Chow verification;
-- a single common benchmark matrix including a controlled skew/non-orthogonal case;
-- pressure/continuity manufactured-solution evidence once the forcing interface is available;
-- explicit synchronization of the machine-readable N9 maturity status with executable evidence.
+- Couette flow with an analytical profile gate;
+- pressure-driven Poiseuille flow with an analytical profile gate;
+- lid-driven cavity with physical convergence and cross-algorithm equivalence gates;
+- a controlled skew/non-orthogonal Couette mesh.
 
-Therefore N9 remains **PARTIAL** until those gates are executable and green on the exact final HEAD.
+The remaining boundary of N9 is the external-flow member of the matrix: the repository does not yet expose a pressure–velocity-coupled external-flow benchmark with a production-quality oracle for all six algorithms. That item therefore remains explicitly PARTIAL rather than being converted into a synthetic PASS.
+
+Therefore N9 remains **PARTIAL** until the external-flow gate is executable and green on the exact final HEAD.
 
 ## 11. Definition of Done
 
