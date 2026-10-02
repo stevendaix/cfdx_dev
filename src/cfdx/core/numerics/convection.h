@@ -67,7 +67,7 @@ inline Field<double, Location::CELL> compute_convection(
             const std::int64_t ni = ownership_diag.neighbour(f);
             if (ni < 0) continue;
             const std::size_t n = static_cast<std::size_t>(ni);
-            const double lo = std::min(scalar(o), scalar(n));
+            const double lo = std::min(scalar(o, 0), scalar(n, 0));
             const double hi = std::max(scalar(o), scalar(n));
             const double vf = fv[f];
             const double tol = 64.0 * std::numeric_limits<double>::epsilon()
