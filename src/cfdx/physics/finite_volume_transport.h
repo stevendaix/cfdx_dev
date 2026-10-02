@@ -345,19 +345,20 @@ inline ScalarEquation assemble_scalar_equation(
                 const std::size_t upwind = F >= 0.0 ? o : n;
                 const std::size_t downwind = F >= 0.0 ? n : o;
                 const double phi_up = (*convected_field)(upwind);
-                const auto& C_up = geometry.cell_centres[upwind];
-                const auto& Cf = geometry.face_centres[f];
-                const double* gx = reconstructed_gradient.component_data(0);
-                const double* gy = reconstructed_gradient.component_data(1);
-                const double* gz = reconstructed_gradient.component_data(2);
-                const double high_increment =
-                    gx[upwind] * (Cf.x - C_up.x) +
-                    gy[upwind] * (Cf.y - C_up.y) +
-                    gz[upwind] * (Cf.z - C_up.z);
-                double phi_high = phi_up + high_increment;
                 const double phi_other = (*convected_field)(downwind);
+                double phi_high = phi_up;
 
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                    const auto& C_up = geometry.cell_centres[upwind];
+                    const auto& Cf = geometry.face_centres[f];
+                    const double* gx = reconstructed_gradient.component_data(0);
+                    const double* gy = reconstructed_gradient.component_data(1);
+                    const double* gz = reconstructed_gradient.component_data(2);
+                    const double high_increment =
+                        gx[upwind] * (Cf.x - C_up.x) +
+                        gy[upwind] * (Cf.y - C_up.y) +
+                        gz[upwind] * (Cf.z - C_up.z);
+                    phi_high = phi_up + high_increment;
                     // Keep the historical bounded SOU reconstruction.
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
@@ -368,6 +369,15 @@ inline ScalarEquation assemble_scalar_equation(
                     // distance, not the half-distance from the upwind centre
                     // to the face. For an exact linear field this gives r=1,
                     // so MINMOD retains the centred linear face value.
+                    const auto& C_up = geometry.cell_centres[upwind];
+                    const auto& Cf = geometry.face_centres[f];
+                    const double* gx = reconstructed_gradient.component_data(0);
+                    const double* gy = reconstructed_gradient.component_data(1);
+                    const double* gz = reconstructed_gradient.component_data(2);
+                    const double high_increment =
+                        gx[upwind] * (Cf.x - C_up.x) +
+                        gy[upwind] * (Cf.y - C_up.y) +
+                        gz[upwind] * (Cf.z - C_up.z);
                     const double delta_down = phi_other - phi_up;
                     const auto& C_down = geometry.cell_centres[downwind];
                     const double delta_upwind_to_down =
