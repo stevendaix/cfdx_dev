@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 18 — CFDX Source-Tree Physics and Numerical Audit
 
 **Status: AUDIT REGISTER — generated from the current PR #530 repository tree.**
