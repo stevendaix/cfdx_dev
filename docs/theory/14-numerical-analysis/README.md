@@ -73,3 +73,10 @@ CFDX N2 already demonstrates that linear exactness is not proof of second-order 
 ## Evidence
 
 Every convergence claim records mesh family, refinement ratio, norm, order, solver convergence, conservation, boundary treatment, exact software revision and negative results.
+
+
+## Scientific explanation standard
+
+Every major equation or method in this chapter must explain: physical/mathematical motivation; variables, units and sign conventions; derivation; FVM/discrete formulation; actual CFDX algorithm/code path; analytical or numerical example; errors, limitations and sensitivities; exact source files; executable verification tests; benchmark/V&V evidence; and bibliography with stable identifiers.
+
+Comparison tables are summaries after the mathematics, never substitutes for it. Status must remain **Implemented / Verified / Validated / Qualified** and documentation must never promote numerical maturity.
