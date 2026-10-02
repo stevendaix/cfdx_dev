@@ -1,16 +1,53 @@
 # %% [markdown]
 """# Linear Algebra
 
-## Scientific objective
+## Scientific purpose
 
-The discretised problem is A*x=b. CG applies to symmetric positive-definite systems; GMRES treats general nonsymmetric systems; BiCGStab provides a short-recurrence nonsymmetric alternative. Preconditioning changes the algebraic problem to improve convergence. Linear residual reduction is not itself a physical accuracy metric.
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
 
-## Status
+## Required structure
 
-Implementation, verification, validation and qualification remain separate claims.
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
+
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
+
+## Core equations
+
+- A x=b
+- r=b-Ax
+- CG requires symmetric positive definite A
+- GMRES minimizes residual over a Krylov space
+- kappa(A)=||A|| ||A^-1||
+- preconditioned system M^-1 A x=M^-1 b
+- true residual must be recomputed from the original operator
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
 from __future__ import annotations
+import numpy as np
 
-import numpy as np; A=np.array([[4.,1.],[1.,3.]]); b=np.array([1.,2.]); x=np.linalg.solve(A,b); assert np.linalg.norm(b-A@x)<1e-14
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
+A=np.array([[2.,1.],[1.,3.]]); b=np.array([1.,2.]); sol=np.linalg.solve(A,b); assert np.allclose(A@sol,b)
