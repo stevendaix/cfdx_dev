@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 16 — CFDX Data Model, Mesh Files and Case Formats
 
 **Status: CODE-AUDITED against the current PR branch.**
