@@ -72,16 +72,17 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/convection.h",
-        "src/cfdx/core/numerics/convection_assembly.h",
         "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_convection_scheme_verification.cpp",
+        "tests/validation/test_convection_3d_verification.cpp",
         "tests/validation/test_convection_blending.cpp",
-        "tests/validation/test_convection_scheme_verification.cpp"
+        "tests/validation/test_convection_polyhedral_campaign.cpp"
       ],
       "gaps": [
-        "general non-orthogonal/skew mesh V&V",
-        "tetrahedral/polyhedral scheme-level V&V",
-        "steep-gradient/discontinuity campaign",
-        "final measured scheme-level qualification gates"
+        "arbitrary non-affine polyhedral mesh family beyond the qualified tetrahedral/affine-skew families",
+        "full solver-level discontinuity/steep-gradient matrix including boundedness/QoI on physical transport cases",
+        "CI execution and retained quantitative evidence for the new qualification campaign"
       ]
     },
     {
