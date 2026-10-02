@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
