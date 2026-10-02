@@ -9,7 +9,7 @@ CFDX documentation is a single scientific publication system with four domains:
 
 ## Source model
 
-The authoritative source for quantitative Theory is version-controlled Python in Jupytext percent format. A Python source contains Markdown cells, equations, executable experiments and deterministic checks. Jupytext's percent format uses explicit `# %%` cell markers and is designed to remain an ordinary diffable Python file. citeturn0search0turn0search7
+The authoritative source for quantitative Theory is version-controlled Python in Jupytext percent format. A Python source contains Markdown cells, equations, executable experiments and deterministic checks. Jupytext's percent format uses explicit `# %%` cell markers and is designed to remain an ordinary diffable Python file.
 
 ```text
 Python .py
