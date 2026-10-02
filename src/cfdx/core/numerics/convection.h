@@ -7,8 +7,18 @@
 #include "cfdx/core/numerics/gradient.h"
 #include <cstddef>
 #include <stdexcept>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace cfdx::core {
+
+struct ConvectionDiagnostics {
+    std::size_t limited_faces = 0;
+    std::size_t unbounded_faces = 0;
+    std::size_t fallback_faces = 0;
+    std::size_t reconstruction_failures = 0;
+};
 
 inline Field<double, Location::CELL> compute_convection(
     const Field<double, Location::CELL>& scalar,
@@ -17,7 +27,9 @@ inline Field<double, Location::CELL> compute_convection(
     InterpScheme scheme = InterpScheme::UPWIND,
     LimiterType limiter_type = LimiterType::NONE,
     const GeometryCache* geometry_in = nullptr,
-    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT)
+    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT,
+    double blend_linear = 0.75,
+    ConvectionDiagnostics* diagnostics = nullptr)
 {
     if (scalar.dimension() != 1) {
         throw std::runtime_error("compute_convection: scalar field required");
@@ -29,6 +41,8 @@ inline Field<double, Location::CELL> compute_convection(
         throw std::runtime_error("compute_convection: field size != n_cells");
     }
 
+    if (diagnostics) *diagnostics = ConvectionDiagnostics{};
+
     // LIMITED (TVD/MUSCL) reconstruction needs the cell gradients and the
     // geometry cache. A caller-supplied cache is reused when provided.
     Field<double, Location::FACE> face_value;
@@ -39,7 +53,29 @@ inline Field<double, Location::CELL> compute_convection(
             scalar, mesh, geometry, scheme, &face_flux, limiter_type, &grad);
     } else {
         face_value = interpolate_cell_to_face(
-            scalar, mesh, InterpScheme(scheme), &face_flux, limiter_type, nullptr);
+            scalar, mesh, InterpScheme(scheme), &face_flux, limiter_type, nullptr,
+            blend_linear);
+    }
+
+    // Face-level diagnostics are deliberately independent of the assembled
+    // divergence. They identify the reconstruction actually evaluated.
+    if (diagnostics) {
+        const auto& ownership_diag = mesh.ownership();
+        const double* fv = face_value.component_data(0);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const std::size_t o = ownership_diag.owner(f);
+            const std::int64_t ni = ownership_diag.neighbour(f);
+            if (ni < 0) continue;
+            const std::size_t n = static_cast<std::size_t>(ni);
+            const double lo = std::min(scalar(o), scalar(n));
+            const double hi = std::max(scalar(o), scalar(n));
+            const double vf = fv[f];
+            const double tol = 64.0 * std::numeric_limits<double>::epsilon()
+                             * std::max({1.0, std::abs(lo), std::abs(hi), std::abs(vf)});
+            if (scheme == InterpScheme::LIMITED || scheme == InterpScheme::QUICK_BOUNDED)
+                if (vf >= lo - tol && vf <= hi + tol) ++diagnostics->limited_faces;
+            if (vf < lo - tol || vf > hi + tol) ++diagnostics->unbounded_faces;
+        }
     }
 
     const auto& ownership = mesh.ownership();
