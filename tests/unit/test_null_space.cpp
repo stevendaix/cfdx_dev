@@ -2,6 +2,7 @@
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "common/test_harness.h"
 
 #include <cmath>
@@ -122,6 +123,36 @@ int main() {
         EXPECT_TRUE(!null_space.is_compatible(rhs));
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
         EXPECT_NEAR(solution.norm2(), 0.0, 0.0);
+    });
+
+    run_case("matrix_diagnostics_and_explicit_scaling", [] {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0e-8);
+        A.push_back(0, 1, -2.0e-8);
+        A.push_back(1, 0, -1.0e3);
+        A.push_back(1, 1, 2.0e3);
+        A.push_back(2, 2, 3.0);
+        A.finalize();
+
+        const auto diagnostics = diagnose_matrix(A, 1e-10);
+        EXPECT_TRUE(diagnostics.finite);
+        EXPECT_TRUE(diagnostics.empty_rows == 0);
+        EXPECT_TRUE(diagnostics.empty_columns == 0);
+        EXPECT_TRUE(diagnostics.missing_diagonal == 0);
+        EXPECT_TRUE(diagnostics.isolated_dofs == 1);
+        EXPECT_TRUE(diagnostics.connected_components == 2);
+        EXPECT_TRUE(diagnostics.diagonal_dynamic_range > 1e11);
+
+        const auto pathologies = classify_matrix_pathologies(diagnostics);
+        EXPECT_TRUE(pathologies.size() >= 1);
+        EXPECT_TRUE(std::string(to_string(pathologies.back())) != "none");
+
+        const auto scaled = scale_matrix(A, MatrixScaling::RowColumn);
+        EXPECT_TRUE(scaled.applied);
+        EXPECT_TRUE(scaled.row_scale[0] > 1.0e7);
+        EXPECT_TRUE(scaled.row_scale[1] < 1.0e-3);
+        EXPECT_TRUE(scaled.column_scale[0] < 1.0e-3);
+        EXPECT_TRUE(std::isfinite(scaled.matrix(0, 1)));
     });
 
     run_case("dispatcher_exposes_constant_pressure_null_space", [] {
