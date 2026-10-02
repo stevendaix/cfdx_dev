@@ -1,115 +1,175 @@
-> **Executable source:** [chapter.py](chapter.py)  
-> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+# Time Integration
 
-# 06 — Time Integration
+This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
-**Status: REPOSITORY-GROUNDED.**
+## Detailed course structure
 
-After spatial discretisation,
+### 1. Semi-discrete equations
 
-$$
-M\frac{d\mathbf u}{dt}=\mathbf R(\mathbf u,t).
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-The temporal method acts on this semi-discrete system, so spatial and temporal errors must be separated.
+### 2. Explicit Euler
 
-## Backward Euler
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-\frac{u^{n+1}-u^n}{\Delta t}=R(u^{n+1},t^{n+1}).
-$$
+### 3. Implicit Euler
 
-It is first order in time.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Crank–Nicolson
+### 4. Crank-Nicolson
 
-$$
-\frac{u^{n+1}-u^n}{\Delta t}
-=\frac12[R^{n+1}+R^n].
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-For smooth problems it is second order under the usual regularity assumptions.
+### 5. BDF2
 
-## BDF2
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-\frac{3u^{n+1}-4u^n+u^{n-1}}{2\Delta t}=R^{n+1}.
-$$
+### 6. Variable time step
 
-Variable-step coefficients must depend on the actual step history.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Runge–Kutta
+### 7. CFL and stability
 
-$$
-u^{(i)}=u^n+\Delta t\sum_{j<i}a_{ij}R(u^{(j)}),
-\qquad
-u^{n+1}=u^n+\Delta t\sum_i b_iR(u^{(i)}).
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Stability depends on the amplification polynomial and the spatial eigenvalues.
+### 8. Pseudo-transient
 
-Current numerical contracts are in core/numerics/temporal.h; higher-level temporal and adaptive controls are in physics/temporal.h, adaptive_cfl.h, local_time_stepping.h and low_storage_time_integration.h.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Restart
+### 9. Time-step control
 
-Multi-step methods require their history state. A restart campaign must compare a continuous run with a run split at a checkpoint and demonstrate equivalent physical and temporal state.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## V&V
+### 10. Restart history
 
-Use analytical decay, transient diffusion MMS, smooth advection, temporal refinement at fixed spatial resolution, mixed space/time refinement and restart equivalence. Report observed temporal order separately from nonlinear convergence.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
+### 11. Temporal verification
 
-## Scientific explanation standard
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-This chapter is part of the CFDX Theory course. A short descriptive statement or comparison table is not sufficient for a major numerical or physical method.
+## Mandatory equation template
 
-For every important equation or method, the final documentation must follow this chain:
+Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
 
-$$
-\boxed{
-\text{motivation}
-\rightarrow
-\text{definitions}
-\rightarrow
-\text{derivation}
-\rightarrow
-\text{FVM/discretisation}
-\rightarrow
-\text{CFDX algorithm}
-\rightarrow
-\text{example}
-\rightarrow
-\text{error/limitations}
-\rightarrow
-\text{tests}
-\rightarrow
-\text{benchmark/V\&V}
-\rightarrow
-\text{bibliography}
-}
-$$
+## Evidence vocabulary
 
-### Required explanation
+**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
 
-1. Explain why the equation or method is needed and what physical/mathematical problem it solves.
-2. Define every symbol, tensor/vector/scalar, unit and sign convention.
-3. Derive the formula sufficiently for a reader to reproduce the result.
-4. Show the finite-volume or discrete transformation where applicable.
-5. Explain the actual CFDX computational sequence, not only the textbook algorithm.
-6. Give a small analytical, manufactured-solution or numerical example whenever meaningful.
-7. Explain truncation error, consistency, stability, conditioning, boundedness, conservation and sensitivity as applicable.
-8. Identify the exact implementation files and the data passed between stages.
-9. Link the mathematical property to executable verification tests.
-10. Identify the benchmark and V&V evidence, including scope and limitations.
-11. Cite the scientific literature and record stable bibliographic identifiers in the project bibliography.
+## Scientific figures
 
-Comparison tables remain useful, but they are summaries **after** the mathematical explanation and never substitutes for it.
+Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
 
-### Evidence vocabulary
+## Repository traceability
 
-- **Implemented** — an executable code path exists.
-- **Verified** — a defined mathematical/software property has executable evidence.
-- **Validated** — comparison exists against an independent physical or trusted reference.
-- **Qualified** — the declared capability is demonstrated over an explicit scope.
-
-A chapter may be scientifically complete while a capability remains unqualified. Documentation must never promote numerical maturity.
+Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.

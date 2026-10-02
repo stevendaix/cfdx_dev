@@ -1,120 +1,175 @@
-> **Executable source:** [chapter.py](chapter.py)  
-> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+# Linear Algebra
 
-# 08 — Linear Algebra
+This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
-**Status: REPOSITORY-GROUNDED.**
+## Detailed course structure
 
-Finite-volume assembly produces
+### 1. Discrete linear system
 
-$$
-A\mathbf x=\mathbf b.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-For an approximate solution,
+### 2. Sparse storage
 
-$$
-r=b-Ax,
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-and the algebraic error satisfies
+### 3. Matrix properties
 
-$$
-Ae=r.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-A small residual does not by itself imply a small solution error when A is poorly conditioned.
+### 4. Direct solvers
 
-## Krylov methods
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-CG is intended for symmetric positive-definite systems. BiCGStab and GMRES address broader nonsymmetric systems. Current implementations include cg_solver.h, bicgstab_solver.h, gmres_solver.h, krylov_controls.h and krylov_reductions.h.
+### 5. Stationary iterative methods
 
-## Preconditioning
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-With M,
+### 6. Krylov methods
 
-$$
-M^{-1}Ax=M^{-1}b.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-The preconditioner changes the numerical path while preserving the target solution when used consistently.
+### 7. Residuals
 
-CFDX separates solver and preconditioner contracts and contains AMG, block, Schur, matrix-free and mixed-precision infrastructure.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Conditioning
+### 8. Preconditioning
 
-$$
-\kappa(A)=\lVert A\rVert\lVert A^{-1}\rVert.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Conditioning affects the relation between residual, perturbation and solution error.
+### 9. Scaling
 
-For SPD operators, the energy norm
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-\lVert e\rVert_A=\sqrt{e^TAe}
-$$
+### 10. Breakdown and failure
 
-is especially relevant to multigrid contraction.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Required solver contract
+### 11. Linear verification
 
-Every production linear solve should identify operator class, scaling, Krylov method, preconditioner, stopping criteria, true residual recomputation and failure/stagnation reason.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-V&V must report true residual reduction, iterations, setup cost, solve cost, memory and reproducibility. Functional CPU/MPI/GPU execution must not be confused with numerical equivalence or performance.
+## Mandatory equation template
 
+Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
 
-## Scientific explanation standard
+## Evidence vocabulary
 
-This chapter is part of the CFDX Theory course. A short descriptive statement or comparison table is not sufficient for a major numerical or physical method.
+**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
 
-For every important equation or method, the final documentation must follow this chain:
+## Scientific figures
 
-$$
-\boxed{
-\text{motivation}
-\rightarrow
-\text{definitions}
-\rightarrow
-\text{derivation}
-\rightarrow
-\text{FVM/discretisation}
-\rightarrow
-\text{CFDX algorithm}
-\rightarrow
-\text{example}
-\rightarrow
-\text{error/limitations}
-\rightarrow
-\text{tests}
-\rightarrow
-\text{benchmark/V\&V}
-\rightarrow
-\text{bibliography}
-}
-$$
+Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
 
-### Required explanation
+## Repository traceability
 
-1. Explain why the equation or method is needed and what physical/mathematical problem it solves.
-2. Define every symbol, tensor/vector/scalar, unit and sign convention.
-3. Derive the formula sufficiently for a reader to reproduce the result.
-4. Show the finite-volume or discrete transformation where applicable.
-5. Explain the actual CFDX computational sequence, not only the textbook algorithm.
-6. Give a small analytical, manufactured-solution or numerical example whenever meaningful.
-7. Explain truncation error, consistency, stability, conditioning, boundedness, conservation and sensitivity as applicable.
-8. Identify the exact implementation files and the data passed between stages.
-9. Link the mathematical property to executable verification tests.
-10. Identify the benchmark and V&V evidence, including scope and limitations.
-11. Cite the scientific literature and record stable bibliographic identifiers in the project bibliography.
-
-Comparison tables remain useful, but they are summaries **after** the mathematical explanation and never substitutes for it.
-
-### Evidence vocabulary
-
-- **Implemented** — an executable code path exists.
-- **Verified** — a defined mathematical/software property has executable evidence.
-- **Validated** — comparison exists against an independent physical or trusted reference.
-- **Qualified** — the declared capability is demonstrated over an explicit scope.
-
-A chapter may be scientifically complete while a capability remains unqualified. Documentation must never promote numerical maturity.
+Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.

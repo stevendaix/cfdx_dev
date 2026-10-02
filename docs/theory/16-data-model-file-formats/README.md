@@ -1,10 +1,10 @@
-# Verification and Validation
+# Data Model and File Formats
 
 This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
 ## Detailed course structure
 
-### 1. V&V vocabulary
+### 1. Case model
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -18,7 +18,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 2. Requirements
+### 2. CFDX HDF5
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -32,7 +32,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 3. Code verification
+### 3. Checkpoint HDF5
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -46,7 +46,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 4. Solution verification
+### 4. Topology schema
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -60,7 +60,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 5. Manufactured solutions
+### 5. Fields schema
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -74,7 +74,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 6. Analytical benchmarks
+### 6. Boundary schema
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -88,7 +88,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 7. Grid convergence
+### 7. Numerics schema
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -102,7 +102,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 8. Time convergence
+### 8. Provenance
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -116,7 +116,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 9. Iterative error
+### 9. VTU output
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -130,7 +130,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 10. Conservation verification
+### 10. Compatibility
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.
@@ -144,49 +144,7 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 - Benchmark/reference evidence where applicable.
 - Limitations, failure modes and improvement paths.
 
-### 11. Validation
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 12. Uncertainty
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 13. Qualification
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 14. Evidence artifacts
+### 11. Round-trip verification
 
 - Physical motivation and scope.
 - Definitions, symbols, dimensions and SI units.

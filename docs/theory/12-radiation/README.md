@@ -1,47 +1,189 @@
-> **Executable source:** [chapter.py](chapter.py)  
-> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+# Radiation
 
-# 12 — Radiation
+This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
-**Status: REPOSITORY-GROUNDED; supported model scope must come from executable evidence.**
+## Detailed course structure
 
-For a blackbody,
+### 1. Radiative physics
 
-$$
-E_b=\sigma T^4.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Radiation is nonlinear in temperature and enters the thermal energy balance through surface or volumetric exchange.
+### 2. Surface emission
 
-## Surface-to-surface radiation
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Diffuse-gray exchange uses view factors and emissivities. Two fundamental geometric checks are
+### 3. Stefan-Boltzmann
 
-$$
-\sum_jF_{ij}=1,
-\qquad
-A_iF_{ij}=A_jF_{ji},
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-when the corresponding closed-surface assumptions hold.
+### 4. View factors
 
-## CFDX implementation families
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-The source tree contains radiation.h, radiation_models.h, radiation_s2s.h, radiation_solver.h, radiation_advanced.h and radiation_streaming.h.
+### 5. Surface-to-surface
 
-Each family must be mapped to its mathematical formulation before assigning maturity.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Coupling
+### 6. P1 model
 
-Radiative heat flux enters the energy balance as a boundary/source contribution. Radiation and energy modules must share the same sign convention.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Verification
+### 7. DOM model
 
-Use blackbody emission, view-factor closure/reciprocity where implemented, symmetric two-surface exchange, radiative energy conservation and coupled thermal-radiation regression. A radiation unit test is not physical validation.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
+### 8. Absorption and emission
 
-## Scientific explanation standard
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Every major equation or method in this chapter must explain: physical/mathematical motivation; variables, units and sign conventions; derivation; FVM/discrete formulation; actual CFDX algorithm/code path; analytical or numerical example; errors, limitations and sensitivities; exact source files; executable verification tests; benchmark/V&V evidence; and bibliography with stable identifiers.
+### 9. Scattering
 
-Comparison tables are summaries after the mathematics, never substitutes for it. Status must remain **Implemented / Verified / Validated / Qualified** and documentation must never promote numerical maturity.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 10. Radiative boundaries
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 11. Radiative conservation
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 12. Radiation verification
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+## Mandatory equation template
+
+Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
+
+## Evidence vocabulary
+
+**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
+
+## Scientific figures
+
+Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
+
+## Repository traceability
+
+Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.

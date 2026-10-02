@@ -1,136 +1,189 @@
-> **Executable source:** [chapter.py](chapter.py)  
-> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+# Pressure–Velocity Coupling
 
-# 07 — Pressure–Velocity Coupling
+This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
-**Status: REPOSITORY-GROUNDED.**
+## Detailed course structure
 
-For incompressible flow,
+### 1. Incompressible Navier-Stokes
 
-$$
-\nabla\cdot\mathbf u=0.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-A generic linearised coupled system is
+### 2. Pressure correction
 
-$$
-\begin{bmatrix}A_u&G\\D&0\end{bmatrix}
-\begin{bmatrix}u\\p\end{bmatrix}
-=
-\begin{bmatrix}b_u\\b_p\end{bmatrix}.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-Pressure acts as the constraint variable.
+### 3. SIMPLE
 
-## Segregated algorithms
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-SIMPLE and SIMPLEC derive a pressure-correction system from an approximation of the momentum inverse. PISO performs multiple correction stages. PIMPLE combines outer nonlinear iterations with pressure corrections.
+### 4. SIMPLEC
 
-The exact CFDX update sequence, relaxation and face-pressure treatment must be documented from the implementation, not inferred from the algorithm name.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Fractional step
+### 5. PISO
 
-A simplified projection method is
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-u^*=u^n+\Delta t R(u^n,p^n),
-$$
+### 6. PIMPLE
 
-followed by
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-\nabla^2p^{n+1}=\frac{\rho}{\Delta t}\nabla\cdot u^*,
-$$
+### 7. Fractional step
 
-and velocity correction. The actual discrete operator must be traced to CFDX code.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-## Schur complement
+### 8. Coupled solver
 
-For
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-A_uu+Gp=b_u,\qquad Du=b_p,
-$$
+### 9. Rhie-Chow
 
-eliminating u gives
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-Sp=b_p-DA_u^{-1}b_u,
-\qquad S=-DA_u^{-1}G
-$$
+### 10. Pressure null space
 
-up to the chosen sign convention.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-CFDX has exact and approximate Schur infrastructure in core/linalg.
+### 11. Schur complement
 
-## Pressure null space
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-For a pure Neumann pressure problem,
+### 12. Coupling verification
 
-$$
-p'=p+C.
-$$
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-A reference, mean constraint or explicit null-space treatment is required.
+## Mandatory equation template
 
-Relevant implementation families include physics/pressure_velocity.h, pressure_velocity_algorithms.h, steady_incompressible_solver.h and core/linalg/null_space.h.
+Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
 
-## V&V
+## Evidence vocabulary
 
-Report continuity imbalance, momentum residual, nonlinear and linear iterations, pressure reference policy, relaxation/CFL sensitivity, conservation and canonical QoIs. Couette and Poiseuille provide analytical baselines; cavity and external-flow cases test multidimensional coupling.
+**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
 
+## Scientific figures
 
-## Scientific explanation standard
+Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
 
-This chapter is part of the CFDX Theory course. A short descriptive statement or comparison table is not sufficient for a major numerical or physical method.
+## Repository traceability
 
-For every important equation or method, the final documentation must follow this chain:
-
-$$
-\boxed{
-\text{motivation}
-\rightarrow
-\text{definitions}
-\rightarrow
-\text{derivation}
-\rightarrow
-\text{FVM/discretisation}
-\rightarrow
-\text{CFDX algorithm}
-\rightarrow
-\text{example}
-\rightarrow
-\text{error/limitations}
-\rightarrow
-\text{tests}
-\rightarrow
-\text{benchmark/V\&V}
-\rightarrow
-\text{bibliography}
-}
-$$
-
-### Required explanation
-
-1. Explain why the equation or method is needed and what physical/mathematical problem it solves.
-2. Define every symbol, tensor/vector/scalar, unit and sign convention.
-3. Derive the formula sufficiently for a reader to reproduce the result.
-4. Show the finite-volume or discrete transformation where applicable.
-5. Explain the actual CFDX computational sequence, not only the textbook algorithm.
-6. Give a small analytical, manufactured-solution or numerical example whenever meaningful.
-7. Explain truncation error, consistency, stability, conditioning, boundedness, conservation and sensitivity as applicable.
-8. Identify the exact implementation files and the data passed between stages.
-9. Link the mathematical property to executable verification tests.
-10. Identify the benchmark and V&V evidence, including scope and limitations.
-11. Cite the scientific literature and record stable bibliographic identifiers in the project bibliography.
-
-Comparison tables remain useful, but they are summaries **after** the mathematical explanation and never substitutes for it.
-
-### Evidence vocabulary
-
-- **Implemented** — an executable code path exists.
-- **Verified** — a defined mathematical/software property has executable evidence.
-- **Validated** — comparison exists against an independent physical or trusted reference.
-- **Qualified** — the declared capability is demonstrated over an explicit scope.
-
-A chapter may be scientifically complete while a capability remains unqualified. Documentation must never promote numerical maturity.
+Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
