@@ -65,6 +65,15 @@ case level. The native CFDX HDF5 case path now supports a canonical `numerics.se
 
 The Python adapter normalization boundary now populates `numerics.selection` for the numerical families currently consumed by the production runtime. The production solver loads `.cfdx.h5` through the case loader and consumes the resolved pressure-velocity, convection and supported gradient selections; explicit linear-solver and preconditioner selections are consumed when present. Unsupported runtime selections are rejected rather than silently falling back. Remaining qualification work is end-to-end CI evidence and source-specific extraction for linear-solver choices.
 
+
+## Common spatial-scheme contract
+
+`core/numerics/spatial_scheme_contract.h` provides the common N1 vocabulary for gradient, reconstruction, interpolation, convection, diffusion and flux roles. It deliberately separates scheme identity (the registry configuration key) from the concrete operator implementation. A spatial contract declares formulation, formal order, boundedness/monotonicity and conservation claims; invalid bounded-convection claims are rejected.
+
+The unified Python conversion pipeline is the single adapter boundary for Fluent, SU2, OpenFOAM, Star-CCM+ and Code_Saturne. It canonicalises the normalised `CaseSetup.numerics` into `numerics.selection` for every adapter. A source-specific numerical value that has no canonical mapping is now a blocking conversion gap rather than an implicit default. The HDF5 writer persists the deterministic selection report, and the native case loader resolves the same keys against the C++ registry before solver startup.
+
+The spatial contract is architectural evidence, not a numerical qualification: quantitative verification remains owned by N2/N3/N4 and the corresponding V&V campaigns.
+
 ## Initial migration targets
 
 The next implementation waves should register the existing numerical families without changing their algorithms first:
