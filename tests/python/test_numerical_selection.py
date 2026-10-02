@@ -23,6 +23,7 @@ def test_build_numerical_selection_uses_registry_keys():
         coupled_solver="SIMPLEC",
         transient_scheme="bdf2",
         preconditioner="native_amg",
+        linear_solver="fgmres",
     )
     selection = build_numerical_selection(scheme)
 
@@ -31,6 +32,7 @@ def test_build_numerical_selection_uses_registry_keys():
         ("convection", "numerics.convection.second_order_upwind"),
         ("temporal", "numerics.temporal.bdf2"),
         ("pressure_velocity", "pressure_velocity.simplec"),
+        ("linear_solver", "linear.fgmres"),
         ("preconditioner", "preconditioner.native_amg"),
     ]
     assert selection.required_families == [
@@ -38,6 +40,7 @@ def test_build_numerical_selection_uses_registry_keys():
         "convection",
         "temporal",
         "pressure_velocity",
+        "linear_solver",
         "preconditioner",
     ]
 
