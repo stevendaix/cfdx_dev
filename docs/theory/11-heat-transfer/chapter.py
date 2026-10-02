@@ -1,51 +1,58 @@
 # %% [markdown]
-"""# Heat Transfer
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- rho De/Dt=-p div(u)+tau:grad(u)-div(q)+Q
-- q=-k grad(T)
-- rho cp DT/Dt=div(k grad(T))+Q
-- alpha=k/(rho cp)
-- Pe=UL/alpha
-- interface condition q_fluid.n=q_solid.n
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Heat Transfer
+#
+# ## 11.1 Energy equation
+# \[
+# \rho c_p\frac{DT}{Dt}=\nabla\cdot(k\nabla T)+S_T.
+# \]
+# Thermal diffusivity:
+# \[
+# \alpha=\frac{k}{\rho c_p}.
+# \]
+#
+# ## 11.2 Fourier law
+# \[
+# \mathbf q=-k\nabla T,\qquad
+# q_n=-k\nabla T\cdot\mathbf n.
+# \]
+#
+# ## 11.3 Boundary conditions
+# Fixed temperature: \(T=T_b\).  
+# Fixed flux:
+# \[
+# -k\nabla T\cdot\mathbf n=q_b''.
+# \]
+# Convection:
+# \[
+# -k\nabla T\cdot\mathbf n=h(T_s-T_\infty).
+# \]
+#
+# ## 11.4 Conjugate heat transfer
+# At a perfect interface:
+# \[
+# T_1=T_2,\qquad
+# \mathbf q_1\cdot\mathbf n_1+\mathbf q_2\cdot\mathbf n_2=0.
+# \]
+# Temperature continuity and heat-flux conservation are separate requirements.
+#
+# ## 11.5 Dimensionless groups
+# \[
+# Pe=\frac{UL}{\alpha},\qquad
+# Bi=\frac{hL_c}{k_s},\qquad
+# Fo=\frac{\alpha t}{L_c^2}.
+# \]
+#
+# ## 11.6 Verification
+# One-dimensional conduction, manufactured solutions, transient analytical solutions and CHT interface balances provide progressively stronger evidence.
+#
+# ## 11.7 CFDX traceability
+# src/cfdx/physics/thermal.h  
+# src/cfdx/physics/energy_solver.h  
+# src/cfdx/physics/cht_solver.h  
+# src/cfdx/transport/conductivity/conductivity.h  
+# Tests: tests/validation/test_thermal_vv.cpp, tests/validation/test_cht_validation.cpp, tests/validation/test_thermal_radiation_model_matrix.cpp
+#
 # %%
 from __future__ import annotations
-import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
+k,rho,cp=10.,1000.,4200.
+assert np.isclose(k/(rho*cp),10./4.2e6)
