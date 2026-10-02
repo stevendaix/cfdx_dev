@@ -7,6 +7,7 @@
 #pragma once
 
 #include "cfdx/core/numerics/numerical_method_contract.h"
+#include "cfdx/core/numerics/numerical_method_selection.h"
 
 #include <stdexcept>
 #include <string>
