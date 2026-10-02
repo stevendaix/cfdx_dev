@@ -225,11 +225,12 @@
     {
       "package_id": "N4",
       "requirement": "central convection",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
         "src/cfdx/core/numerics/convection.h",
-        "src/cfdx/core/numerics/numerical_method_registry.h",
-        "tests/validation/test_convection_scheme_verification.cpp"
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_scheme_verification.cpp",
+        "tests/validation/test_convection_3d_verification.cpp"
       ]
     },
     {
@@ -333,9 +334,10 @@
       "requirement": "scheme-level boundedness/conservation/order V&V",
       "status": "partial",
       "evidence": [
-        "tests/validation/test_benchmark_matrix.cpp",
         "tests/validation/test_convection_scheme_verification.cpp",
-        "tests/validation/test_discretization_verification.cpp"
+        "tests/validation/test_convection_3d_verification.cpp",
+        "tests/validation/test_convection_blending.cpp",
+        "tests/validation/test_convection_polyhedral_campaign.cpp"
       ]
     },
     {
