@@ -48,6 +48,10 @@ The Theory site is organised as a **course**, not as a feature list. Each chapte
 
 The chapters are intentionally sequential: later numerical methods rely on definitions established earlier.
 
+## Complete scientific reference
+
+See [COMPLETE_THEORY.md](COMPLETE_THEORY.md) for the full mathematical course, equations, derivations, repository-relative source links, verification formulations, and evidence rules for all 19 chapters.
+
 ## Detailed chapter navigation
 
 | # | Chapter | Main purpose |
