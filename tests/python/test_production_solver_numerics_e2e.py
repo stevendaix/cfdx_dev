@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 
+# This test intentionally imports only the canonical I/O package tree.
 def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
     solver = Path(os.environ["CFDX_PRODUCTION_SOLVER"])
     assert solver.is_file()
