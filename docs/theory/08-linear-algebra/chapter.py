@@ -4,107 +4,133 @@
 # ## 8.1 Discrete system
 #
 # CFD assembly produces
-# \[
-# Ax=b,\qquad r=b-Ax.
-# \]
-# The residual is an algebraic defect. It is not by itself a discretisation-error estimate.
+# [
+# Ax=b,qquad r=b-Ax.
+# ]
+# The residual is an algebraic defect, not a discretisation-error estimate.
 #
-# ## 8.2 Sparse structure
+# ## 8.2 Sparse structure and block systems
 #
-# A finite-volume row contains the owner coefficient and contributions from the stencil:
-# \[
-# a_Px_P+\sum_Na_{PN}x_N=b_P.
-# \]
-# Sparse storage records only non-zero coefficients. Matrix sparsity is dictated by mesh connectivity and block coupling.
+# A scalar finite-volume row is
+# [
+# a_Px_P+sum_Na_{PN}x_N=b_P.
+# ]
+# For coupled velocity/pressure/energy variables, the same graph becomes a block matrix. A block preconditioner can exploit this structure without changing the underlying assembled equations.
 #
-# ## 8.3 Direct methods
+# ## 8.3 Direct and stationary iterations
 #
-# Gaussian elimination conceptually performs
-# \[
-# A=LU,
-# \]
-# followed by \(Ly=b\) and \(Ux=y\). Sparse direct methods reorder unknowns to control fill-in. Memory growth can make direct factorisation unsuitable for large 3-D CFD systems.
-#
-# ## 8.4 Jacobi and Gauss–Seidel
-#
-# Splitting \(A=D+L+U\):
-# \[
-# x^{k+1}=D^{-1}(b-(L+U)x^k)
-# \]
-# for Jacobi, while Gauss–Seidel uses updated lower-block values:
-# \[
+# Gaussian elimination conceptually gives
+# [
+# A=LU,qquad Ly=b,qquad Ux=y.
+# ]
+# With (A=D+L+U), Jacobi is
+# [
+# x^{k+1}=D^{-1}[b-(L+U)x^k],
+# ]
+# while Gauss–Seidel is
+# [
 # (D+L)x^{k+1}=b-Ux^k.
-# \]
-# Their convergence depends on the spectrum of the iteration matrix.
+# ]
+# Convergence is governed by the spectral radius
+# [
+# ho(T)<1
+# ]
+# of the corresponding iteration matrix (T).
 #
-# ## 8.5 CG
+# ## 8.4 Conjugate gradients
 #
-# For symmetric positive-definite \(A\), conjugate gradients minimises the error in
-# \[
-# \|e\|_A=\sqrt{e^TAe}.
-# \]
+# For SPD (A), CG constructs (A)-orthogonal search directions and minimises
+# [
+# |e|_A=sqrt{e^TAe}.
+# ]
 # The classical bound is
-# \[
-# \|e_k\|_A\le
-# 2\left(
-# \frac{\sqrt{\kappa(A)}-1}{\sqrt{\kappa(A)}+1}
-# \right)^k\|e_0\|_A.
-# \]
-# This bound is a theoretical estimate, not a promise for an arbitrary CFD matrix.
+# [
+# |e_k|_Ale
+# 2left(
+# rac{sqrt{kappa(A)}-1}{sqrt{kappa(A)}+1}
+# ight)^k|e_0|_A.
+# ]
+# The SPD requirement matters: applying CG to a genuinely nonsymmetric or indefinite matrix invalidates the standard theory.
 #
-# ## 8.6 GMRES
+# ## 8.5 GMRES
 #
-# \[
-# \mathcal K_k(A,r_0)
-# =\mathrm{span}\{r_0,Ar_0,\ldots,A^{k-1}r_0\}.
-# \]
-# GMRES chooses
-# \[
-# x_k=\arg\min_{x\in x_0+\mathcal K_k}\|b-Ax\|_2.
-# \]
-# Restarted GMRES replaces the full Krylov basis after a chosen dimension.
+# [
+# mathcal K_k(A,r_0)
+# =operatorname{span}{r_0,Ar_0,ldots,A^{k-1}r_0},
+# ]
+# [
+# x_k=argmin_{xin x_0+mathcal K_k}|b-Ax|_2.
+# ]
+# The Arnoldi relation can be written
+# [
+# AV_k=V_{k+1}ar H_k.
+# ]
+# Restarted GMRES limits memory by replacing the Krylov basis after (m) iterations, at the cost of potentially losing useful spectral information.
+#
+# ## 8.6 FGMRES
+#
+# Flexible GMRES permits a varying preconditioner:
+# [
+# z_k=M_k^{-1}v_k,
+# ]
+# rather than requiring one fixed (M^{-1}). This is important when AMG, MGR or inner nonlinear solves change between iterations. It is not interchangeable with ordinary GMRES if the preconditioner is variable.
 #
 # ## 8.7 BiCGStab
 #
-# BiCGStab combines bi-conjugate-gradient ideas with stabilisation. It is useful for nonsymmetric systems but has different breakdown and convergence behaviour from GMRES; it should not be described as a cheaper equivalent.
+# BiCGStab targets nonsymmetric systems using a stabilised bi-Lanczos-type recurrence. It can converge rapidly on some CFD matrices but can also experience breakdown or irregular residual histories. The implementation must distinguish true-residual failure from recurrence breakdown.
 #
 # ## 8.8 Preconditioning
 #
-# Given \(M\approx A\):
-# \[
+# Given (Mapprox A),
+# [
 # M^{-1}Ax=M^{-1}b.
-# \]
-# Left and right preconditioning produce different residual interpretations:
-# \[
-# M^{-1}Ax=M^{-1}b
-# \quad\text{or}\quad
-# AM^{-1}y=b,\;x=M^{-1}y.
-# \]
-# Diagnostics must state which residual is monitored.
+# ]
+# Right preconditioning gives
+# [
+# AM^{-1}y=b,qquad x=M^{-1}y.
+# ]
+# The solver's stopping metric must therefore identify whether it monitors a preconditioned or true residual.
 #
-# ## 8.9 True residual and scaling
+# ## 8.9 True residual, backward error and scaling
 #
-# A robust verification periodically recomputes
-# \[
-# r_{true}=b-Ax
-# \]
-# from the original matrix. Relative residual:
-# \[
-# \eta=\frac{\|b-Ax\|}{\|b\|+\|A\|\|x\|}.
-# \]
-# Scaling is important because raw norms depend on units and variable magnitude.
+# The true residual is
+# [
+# r=b-Ax.
+# ]
+# A scale-aware backward-error measure is
+# [
+# eta=
+# rac{|b-Ax|}
+# {|b|+|A||x|}.
+# ]
+# This is often more meaningful than a raw absolute residual for variables with different units.
 #
-# ## 8.10 Breakdown
+# ## 8.10 Null spaces and singular systems
 #
-# Failure can result from singularity, indefiniteness, loss of orthogonality, poor conditioning, NaN/Inf coefficients, incompatible BCs or an ineffective preconditioner. The diagnostic must identify the algebraic failure rather than simply increasing the iteration limit.
+# Pressure Poisson operators with pure Neumann conditions have a constant null mode:
+# [
+# Amathbf1=0.
+# ]
+# A Krylov solver must either operate in the compatible subspace or receive an explicit null-space/gauge treatment. A generic convergence criterion cannot repair an incompatible right-hand side.
 #
-# ## 8.11 CFDX implementation
+# ## 8.11 Conditioning and non-normality
 #
-# See [sparse_matrix.h](../../../src/cfdx/core/linalg/sparse_matrix.h), [linear_system.h](../../../src/cfdx/core/linalg/linear_system.h), [cg_solver.h](../../../src/cfdx/core/linalg/cg_solver.h), [gmres_solver.h](../../../src/cfdx/core/linalg/gmres_solver.h), [bicgstab_solver.h](../../../src/cfdx/core/linalg/bicgstab_solver.h), and [linear_solver_dispatch.h](../../../src/cfdx/core/linalg/linear_solver_dispatch.h).
+# [
+# kappa(A)=|A||A^{-1}|.
+# ]
+# For nonsymmetric/non-normal matrices, eigenvalues alone do not fully determine transient Krylov behaviour. Pseudospectral sensitivity and field-of-values arguments can be more relevant than the SPD CG estimate.
 #
-# Tests include the CG, GMRES and Krylov-preconditioning unit suites.
+# ## 8.12 Breakdown diagnostics
 #
-# ## 8.12 Executable exact solve
+# Failure can result from singularity, indefiniteness, loss of orthogonality, NaN/Inf coefficients, incompatible BCs, stagnation or an ineffective preconditioner. Increasing the iteration limit without identifying the mechanism is not a numerical fix.
+#
+# ## 8.13 CFDX implementation
+#
+# See [sparse_matrix.h](../../../src/cfdx/core/linalg/sparse_matrix.h), [linear_system.h](../../../src/cfdx/core/linalg/linear_system.h), [cg_solver.h](../../../src/cfdx/core/linalg/cg_solver.h), [gmres_solver.h](../../../src/cfdx/core/linalg/gmres_solver.h), [bicgstab_solver.h](../../../src/cfdx/core/linalg/bicgstab_solver.h), [linear_solver_models.h](../../../src/cfdx/core/linalg/linear_solver_models.h) and [linear_solver_dispatch.h](../../../src/cfdx/core/linalg/linear_solver_dispatch.h).
+#
+# Current method-registry evidence distinguishes implemented/verified methods; a solver enum alone is not qualification evidence.
+#
+# ## 8.14 Executable exact solve
 # %%
 import numpy as np
 A=np.array([[4.,1.],[1.,3.]])
