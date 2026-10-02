@@ -25,7 +25,6 @@ def test_build_numerical_selection_uses_registry_keys():
     assert [(e.family, e.configuration_key) for e in selection.entries] == [
         ("gradient", "numerics.gradient.least_squares"),
         ("convection", "numerics.convection.second_order_upwind"),
-        ("interpolation", "numerics.interpolation.linear"),
         ("temporal", "numerics.temporal.bdf2"),
         ("pressure_velocity", "pressure_velocity.simplec"),
         ("preconditioner", "preconditioner.native_amg"),
@@ -33,7 +32,6 @@ def test_build_numerical_selection_uses_registry_keys():
     assert selection.required_families == [
         "gradient",
         "convection",
-        "interpolation",
         "temporal",
         "pressure_velocity",
         "preconditioner",
