@@ -338,6 +338,38 @@ void check_smooth_order()
     EXPECT_TRUE(quick_error[2] < quick_error[1]);
 }
 
+void check_tvd_smooth_order()
+{
+    const Vec3 U{0.8,-0.35,0.6};
+    const std::vector<LimiterType> limiters = {
+        LimiterType::MINMOD, LimiterType::VANLEER,
+        LimiterType::SUPERBEE, LimiterType::VAN_ALBADA,
+        LimiterType::MC};
+
+    for (const LimiterType limiter : limiters) {
+        std::vector<double> errors;
+        for (const std::size_t n : {4u,8u,16u}) {
+            const Grid g=make_tet_grid(n,0.35,0.20);
+            const auto flux=make_flux(g,U);
+            const auto phi=sample_smooth(g);
+            const auto exact=exact_advection(g,U);
+            const auto grad=compute_gradient_least_squares_quadratic(phi,g.mesh);
+            const auto face=interpolate_cell_to_face(
+                phi,g.mesh,g.geometry,InterpScheme::LIMITED,&flux,limiter,&grad);
+            const auto div=divergence_from_face(g,flux,face);
+            const double e=interior_l2(g,div,exact);
+            errors.push_back(e);
+            std::cout<<"N4_TVD_ORDER limiter="<<to_string(limiter)
+                     <<" n="<<n<<" L2="<<e<<"\n";
+        }
+        const double p=observed_order(errors[1],errors[2]);
+        std::cout<<"N4_TVD_ORDER limiter="<<to_string(limiter)
+                 <<" order="<<p<<"\n";
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_TRUE(p>1.20);
+    }
+}
+
 void check_bounded_reconstruction()
 {
     const Grid g=make_tet_grid(8,0.35,0.20);
@@ -407,6 +439,7 @@ int main()
     run_case("n4_conservation_constant",check_conservation_constant);
     run_case("n4_quick_linear_exactness",check_quick_linear_exactness);
     run_case("n4_smooth_order",check_smooth_order);
+    run_case("n4_tvd_smooth_order",check_tvd_smooth_order);
     run_case("n4_bounded_reconstruction",check_bounded_reconstruction);
     run_case("n4_production_diagnostics",check_production_diagnostics);
     return run_all();
