@@ -3,6 +3,12 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+import sys
+
+# This legacy E2E exercises the application Python package under python/cfdx.
+# Keep it independent from the canonical I/O package used by the N1 numerics E2E.
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "python"))
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
 from cfdx.io.converter import convert
