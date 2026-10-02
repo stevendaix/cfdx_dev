@@ -876,9 +876,12 @@ bool read_case_cfdx_h5(const std::string& filename,
     // A malformed explicit selection is a case-load failure, not a solver-time
     // fallback. Legacy files without the block remain readable during migration.
     if (setup.has_explicit_numerics) {
+        const auto parse_errors = setup.numerical_report.errors;
         setup.numerical_report = cfdx::core::resolve_case_numerics(
             source.case_name.empty() ? filename : source.case_name,
             setup.numerical_config);
+        setup.numerical_report.errors.insert(
+            setup.numerical_report.errors.end(), parse_errors.begin(), parse_errors.end());
         if (!setup.numerical_report.valid()) {
             std::string reason = "invalid explicit numerical configuration";
             if (!setup.numerical_report.errors.empty())
