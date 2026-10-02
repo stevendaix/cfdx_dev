@@ -35,3 +35,10 @@ Radiative heat flux enters the energy balance as a boundary/source contribution.
 ## Verification
 
 Use blackbody emission, view-factor closure/reciprocity where implemented, symmetric two-surface exchange, radiative energy conservation and coupled thermal-radiation regression. A radiation unit test is not physical validation.
+
+
+## Scientific explanation standard
+
+Every major equation or method in this chapter must explain: physical/mathematical motivation; variables, units and sign conventions; derivation; FVM/discrete formulation; actual CFDX algorithm/code path; analytical or numerical example; errors, limitations and sensitivities; exact source files; executable verification tests; benchmark/V&V evidence; and bibliography with stable identifiers.
+
+Comparison tables are summaries after the mathematics, never substitutes for it. Status must remain **Implemented / Verified / Validated / Qualified** and documentation must never promote numerical maturity.
