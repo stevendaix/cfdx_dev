@@ -14,6 +14,10 @@ api/README
 contributing/README
 ```
 
+## Migration map
+
+The active legacy-to-domain migration is tracked in [Documentation Migration Map](migration/README.md). This is the working inventory for reconciling existing application, development, GUI, mesh-import, boundary-condition and validation material.
+
 ## Existing implementation material
 
 Existing documents under `docs/development/` remain migration sources until their information has been reconciled with the new structure.
