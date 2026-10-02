@@ -1,70 +1,58 @@
-# CFDX Theory
+# CFDX Theory — Numerical Methods Course
 
-The Theory documentation is a structured CFD and numerical-method course for CFDX.
+CFDX Theory is intended to read as a coherent CFD and numerical-analysis course, not as an API manual.
 
-Its purpose is to explain the mathematics, numerical analysis and physical assumptions behind the methods implemented by CFDX. It is not a list of API calls and it is not a copy of the source code.
+Each chapter follows the same scientific progression:
 
-## Course structure
+**physical problem → mathematical formulation → discretisation → numerical properties → implementation consequences → verification → executable experiment → references**
 
-```text
-00-foundations
-01-conservation-laws
-02-finite-volume-method
-03-meshes
-04-gradients-reconstruction
-05-fluxes
-06-time-integration
-07-pressure-velocity-coupling
-08-linear-algebra
-09-amg-mgr-schur
-10-turbulence
-11-heat-transfer
-12-radiation
-13-multiphysics
-14-numerical-analysis
-15-verification-validation
-```
+## Course map
 
-Each chapter may contain several lessons. The directory number defines conceptual order, not implementation maturity.
+| Chapter | Topic | Status |
+|---|---|---|
+| 00 | Foundations | TOPO |
+| 01 | Conservation laws | TOPO |
+| 02 | Finite-volume method | TOPO |
+| 03 | Meshes | TOPO |
+| 04 | Gradients and reconstruction | PILOT COMPLETE |
+| 05 | Fluxes | TOPO |
+| 06 | Time integration | TOPO |
+| 07 | Pressure–velocity coupling | TOPO |
+| 08 | Linear algebra | TOPO |
+| 09 | AMG / MGR / Schur | TOPO |
+| 10 | Turbulence | TOPO |
+| 11 | Heat transfer | TOPO |
+| 12 | Radiation | TOPO |
+| 13 | Multiphysics | TOPO |
+| 14 | Numerical analysis | TOPO |
+| 15 | Verification and validation | TOPO |
 
-## Standard chapter contract
+**TOPO means that the subject and intended contents have been identified, not that the CFDX capability is implemented.**
 
-A substantive theory chapter should normally contain:
+## Complete chapter template
 
-1. Motivation and physical problem.
-2. Mathematical formulation.
-3. Assumptions and scope.
-4. Discretisation.
-5. Conservation properties.
-6. Consistency, stability and accuracy.
-7. Error sources and failure modes.
-8. Numerical examples.
-9. CFDX implementation consequences.
-10. Verification methodology.
-11. References.
+Every mature chapter should contain:
 
-When a chapter contains an executable numerical experiment, the experiment must identify the mathematical problem, reference solution, mesh/discretisation, numerical configuration, measured quantities, expected behaviour and reproducibility command.
+1. Motivation
+2. Physical problem
+3. Mathematical formulation
+4. Discretisation
+5. Numerical properties
+6. Accuracy
+7. Stability
+8. Conservation
+9. Limitations
+10. CFDX implementation consequences
+11. Verification methodology
+12. Executable numerical experiment
+13. References
 
-## Executable scientific content
+## Pilot
 
-Python is the preferred execution language for theory demonstrations. The long-term model is:
+[Gradients and Reconstruction](04-gradients-reconstruction/README) is the reference format. It contains a complete 17-section course chapter and an independent executable Python study.
 
-```text
-theory source
-    -> Python executable experiment
-    -> machine-readable result
-    -> generated figure/table
-    -> web rendering
-    -> Typst publication
-```
+The pilot is the template to use before expanding the remaining chapters.
 
-Committed notebooks are not the default. Prefer Python source files that can be executed in CI and rendered into the documentation.
+## Source-of-truth rule
 
-## Rules
-
-- Do not claim a numerical property from a plot alone.
-- Do not claim an order of accuracy without a defined refinement study.
-- Do not hide failed experiments.
-- Do not hard-code a result merely to reproduce a figure.
-- Do not duplicate implementation contracts from Developer documentation.
-- Link every non-trivial theoretical assertion to the authoritative reference.
+Theory explains mathematics and methods. It does not own implementation status, qualification status or generated numerical results. Those remain in Developer/V&V authoritative sources.
