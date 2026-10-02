@@ -736,7 +736,8 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
                     if (known_family)
                         setup.numerical_config.entries.push_back({parsed, key});
                     else
-                        setup.numerical_report.errors.push_back("unknown numerical method family: " + family);
+                        setup.numerical_report.errors.push_back(
+                            "unknown numerical method family: " + family);
                 }
             }
             const mini_json::value* required = mini_json::find(*selection, "required_families");
@@ -759,9 +760,13 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
                         cfdx::core::NumericalMethodFamily::Reconstruction}) {
                         if (family_v.string == cfdx::core::to_string(candidate)) {
                             setup.numerical_config.required_families.push_back(candidate);
+                            known_family = true;
                             break;
                         }
                     }
+                    if (!known_family)
+                        setup.numerical_report.errors.push_back(
+                            "unknown required numerical method family: " + family_v.string);
                 }
             }
         }
