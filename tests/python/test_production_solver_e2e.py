@@ -3,15 +3,8 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-import sys
-
-# This legacy E2E exercises the application Python package under python/cfdx.
-# Keep it independent from the canonical I/O package used by the N1 numerics E2E.
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "python"))
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
-from cfdx.io.converter import convert
 from cfdx.dat_io import read_dat_restart
 
 
@@ -29,7 +22,6 @@ def _run(controller: ExecutionController) -> None:
         f"production solver failed: error={controller.error!r}; "
         f"output={output[-40:]!r}"
     )
-
 
 
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
@@ -102,3 +94,8 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     xml = outputs[-1].read_text(encoding="utf-8")
     assert 'Name="physical_time"' in xml
     assert 'Name="iteration"' in xml
+
+
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory(prefix="cfdx-production-e2e-") as directory:
+        test_production_solver_full_application_e2e(Path(directory))
