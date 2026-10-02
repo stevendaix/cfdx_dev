@@ -51,32 +51,66 @@ points + connectivity
 
 This distinction is fundamental for reproducibility.
 
-## 3. Canonical HDF5 hierarchy
+## 3. Actual CFDX-HDF5 v1 layout
 
-The current specification defines:
+The implementation does **not** currently use the previously proposed hierarchical `/mesh/...`, `/physics/...` and `/numerics/...` tree as its on-disk representation. The current case-level implementation is deliberately flatter.
+
+The authoritative root-level datasets and groups are documented in `src/cfdx/io/hdf5/case_hdf5_io.h`:
 
 ~~~text
 /
-├── meta/
-├── case/
-├── mesh/
-│   ├── points/
-│   ├── faces/
-│   ├── cells/
-│   ├── boundary/
-│   └── geometry/
-├── fields/
-├── boundary_conditions/
-├── physics/
-├── numerics/
-├── solver/
-├── runtime/
-├── decomposition/
-├── output/
-└── results/
+├── points                         float64 [n_points, 3]
+├── face_vertices                  uint64  [n_face_vertex_refs]
+├── face_offsets                   uint64  [n_faces + 1]
+├── owner                          uint64  [n_faces]
+├── neighbour                      int64   [n_faces]
+├── cell_faces                     uint64  [n_cell_face_refs]
+├── cell_offsets                   uint64  [n_cells + 1]
+│
+├── /fields/
+│   ├── /scalar/<name>             float64 [n_cells]
+│   └── /vector/<name>             float64 [n_cells, dim]
+│
+└── root attributes
+    ├── format_version
+    ├── schema_version
+    ├── cfdx_version
+    ├── topology_hash
+    ├── geometry_hash
+    ├── mesh_hash
+    ├── creation_date
+    ├── modification_date
+    ├── dimension
+    ├── precision
+    ├── endian
+    ├── source_solver
+    ├── source_format
+    ├── source_version
+    ├── source_case_path
+    ├── source_case_name
+    ├── case_setup_json
+    ├── gap_report_json
+    ├── mesh_topology
+    └── boundary_patches (optional)
 ~~~
 
-Optional groups must always be interpreted according to the schema version.
+This distinction is important: the Theory documentation must never present a **target architecture** as though it were the current file format.
+
+The current C++ implementation defines:
+
+~~~text
+CFDX_HDF5_FORMAT_VERSION = 1
+CFDX_HDF5_SCHEMA_VERSION = 1
+CFDX_VERSION = "0.7"
+~~~
+
+The format therefore has three different versioning concepts:
+
+1. **format version** — file-level interchange contract;
+2. **schema version** — interpretation of the stored datasets/attributes;
+3. **CFDX application version** — software version producing/consuming the file.
+
+A change to the serialized layout must update the appropriate compatibility contract and its tests.
 
 ## 4. Schema metadata
 
