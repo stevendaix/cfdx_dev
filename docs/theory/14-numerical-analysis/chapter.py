@@ -1,53 +1,49 @@
 # %% [markdown]
-"""# Numerical Analysis
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- L_h u_h = P_h L u + O(h^p)
-- E_h=||u_h-u_exact||
-- p_obs=log(E_h/E_h2)/log(2)
-- consistency means truncation error tends to zero
-- stability bounds perturbation growth
-- bounded schemes enforce admissible extrema
-- kappa(A) controls amplification of algebraic perturbations
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Numerical Analysis
+#
+# ## 14.1 Consistency
+# \[
+# L_hu=Lu+\tau_h,\qquad \tau_h\to0.
+# \]
+# Truncation error is a local operator property.
+#
+# ## 14.2 Accuracy and observed order
+# \[
+# E_h\approx Ch^p,\qquad
+# p_{obs}=\frac{\ln(E_h/E_{h/r})}{\ln r}.
+# \]
+# A controlled mesh sequence and negligible iterative error are required.
+#
+# ## 14.3 Stability
+# For \(U_t=AU\), the discrete method has an amplification operator G. Stability requires bounded powers over the declared regime.
+#
+# ## 14.4 Boundedness and monotonicity
+# A bounded reconstruction may require
+# \[
+# \min_N\phi_N\le\phi_f\le\max_N\phi_N.
+# \]
+# Monotonicity concerns the full discrete operator.
+#
+# ## 14.5 Conditioning
+# \[
+# \kappa(A)=\|A\|\|A^{-1}\|.
+# \]
+# It measures perturbation sensitivity and is not itself a convergence prediction for non-normal systems.
+#
+# ## 14.6 Error budget
+# \[
+# E_{total}\lesssim E_{model}+E_{space}+E_{time}+E_{iteration}+E_{roundoff}+E_{input}.
+# \]
+#
+# ## 14.7 CFDX traceability
+# src/cfdx/core/numerics/  
+# src/cfdx/core/linalg/  
+# tests/validation/test_mesh_refinement_order.cpp  
+# tests/validation/test_mms_scalar_diffusion.cpp  
+# tests/unit/test_conservation_boundedness.cpp
+#
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
-errors=np.array([1e-2,2.5e-3,6.25e-4]); p=np.log(errors[:-1]/errors[1:])/np.log(2); assert np.allclose(p,2.0)
+E=np.array([1e-2,2.5e-3,6.25e-4])
+assert np.allclose(np.log(E[:-1]/E[1:])/np.log(2),2.0)
