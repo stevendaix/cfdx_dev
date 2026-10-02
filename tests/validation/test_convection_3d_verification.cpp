@@ -509,6 +509,15 @@ void check_skew_mesh_order()
                   << " n=32 L2=" << errors[2]
                   << " order=" << p << "\n";
         require(std::isfinite(p), name + ": skew order must be finite");
+        // An exactly reproducing scheme (e.g. QUICK on the quadratic-included
+        // profile) has machine-zero error and therefore an UNDEFINED observed
+        // order: gating on rounding noise is meaningless. Exempt it and keep
+        // the order gate for the finite-error schemes.
+        if (errors[2] < 1e-12) {
+            std::cout << "CONV3D_SKEW_ORDER scheme=" << name
+                      << " exact (error<1e-12): order gate exempt\n";
+            continue;
+        }
         if (scheme == InterpScheme::UPWIND)
             require(p > 0.70, name + ": skew upwind must remain first order");
         else
