@@ -152,7 +152,7 @@
     {
       "package_id": "N2",
       "requirement": "polyhedral gradient scheme accuracy",
-      "status": "qualified"verified",
+      "status": "verified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
@@ -162,7 +162,7 @@
     {
       "package_id": "N3",
       "requirement": "orthogonal diffusion",
-      "status": "qualified"implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -170,7 +170,7 @@
     {
       "package_id": "N3",
       "requirement": "corrected non-orthogonal diffusion",
-      "status": "qualified"implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h"
@@ -179,7 +179,7 @@
     {
       "package_id": "N3",
       "requirement": "limited non-orthogonal diffusion",
-      "status": "qualified"implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -187,7 +187,7 @@
     {
       "package_id": "N3",
       "requirement": "over-relaxed diffusion formulation",
-      "status": "qualified"implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
@@ -197,7 +197,7 @@
     {
       "package_id": "N3",
       "requirement": "skewness correction contract",
-      "status": "qualified"implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
@@ -207,7 +207,7 @@
     {
       "package_id": "N3",
       "requirement": "quantitative high-non-orthogonality campaign",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
