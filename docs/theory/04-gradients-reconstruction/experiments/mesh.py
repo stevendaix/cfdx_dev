@@ -70,10 +70,10 @@ def make_skewed_mesh(n: int, skew: float = 0.20) -> Mesh2D:
             fc = []
             fa = []
             for a, b, nb_idx in (
-                (0, 1, nb[0]),
-                (1, 2, nb[1]),
-                (3, 0, nb[2]),
-                (2, 3, nb[3]),
+                (3, 0, nb[0]),  # left
+                (1, 2, nb[1]),  # right
+                (0, 1, nb[2]),  # bottom
+                (2, 3, nb[3]),  # top
             ):
                 p0, p1 = pts[a], pts[b]
                 fc.append(0.5 * (p0 + p1))
