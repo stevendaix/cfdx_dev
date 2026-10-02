@@ -136,3 +136,41 @@ assert np.allclose(S.sum(axis=0), 0.0)
 # For a constant field, the convective contribution is zero when the mass fluxes close.
 phi = 7.0
 assert np.isclose(phi * S.sum(axis=0)[0], 0.0)
+
+
+# %% [markdown]
+# ## 2.14 Discrete conservation and algebraic assembly
+#
+# For a cell P, the conservative semi-discrete balance can be written
+#
+# \[
+# \frac{d}{dt}(\rho_P\phi_PV_P)+\sum_f F_{c,f}-\sum_f F_{d,f}-S_PV_P=0.
+# \]
+#
+# The assembly contract is that every internal-face contribution is generated once with owner orientation and once with the opposite neighbour orientation. The two contributions must represent the same physical numerical flux with opposite signs.
+#
+# For a linearised row,
+#
+# \[
+# a_P\phi_P+\sum_N a_{PN}\phi_N=b_P.
+# \]
+#
+# The coefficient pattern depends on the selected interpolation, diffusion reconstruction, source treatment, boundary condition and time scheme. It must therefore be inspected as an assembled operator rather than inferred from the continuous equation alone.
+#
+# ## 2.15 Verification ladder
+#
+# The recommended sequence is:
+#
+# 1. geometric face-vector closure;
+# 2. constant-field invariance;
+# 3. internal-face flux antisymmetry;
+# 4. exact simple-field diffusion;
+# 5. isolated operator MMS;
+# 6. mesh convergence;
+# 7. coupled benchmark.
+#
+# This ordering localises defects before nonlinear coupling can mask them.
+#
+# ## 2.16 Limitations and improvement paths
+#
+# Non-orthogonal and skewed meshes introduce reconstruction error. Higher-order convection introduces boundedness/oscillation trade-offs. Strong source terms can alter diagonal dominance. Future improvements should therefore be qualified per operator, mesh family and scheme rather than by a single global benchmark.
