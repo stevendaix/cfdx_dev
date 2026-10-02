@@ -1,163 +1,103 @@
 # 17 — CFDX Computational Chain and Code-to-Physics Map
 
-**Status: IN PROGRESS — implementation traceability chapter.**
+**Status: CODE-AUDITED; this is the traceability backbone for the Theory chapters.**
 
-This chapter explains how a physical equation becomes a computed quantity in CFDX.
+## 1. Global chain
 
-## 1. Global calculation chain
+    case / mesh input
+          ↓
+    import + schema validation
+          ↓
+    mesh topology
+          ↓
+    geometry
+          ↓
+    fields + boundary conditions
+          ↓
+    numerical-method selection
+          ↓
+    FVM operators
+          ↓
+    physical equations
+          ↓
+    linearisation / coupling
+          ↓
+    sparse linear systems
+          ↓
+    Krylov / AMG / Schur / preconditioning
+          ↓
+    updated fields
+          ↓
+    residual + conservation + boundedness + QoI
+          ↓
+    V&V evidence
 
-~~~text
-CASE / MESH INPUT
-      |
-      v
-IO + schema validation
-      |
-      v
-Mesh topology
-      |
-      v
-Geometry
-      |
-      v
-Fields + boundary conditions
-      |
-      v
-Numerical-method selection
-      |
-      v
-FVM operators
-      |
-      +-- gradient
-      +-- interpolation
-      +-- divergence
-      +-- diffusion / Laplacian
-      +-- convection
-      +-- flux
-      +-- source
-      +-- time integration
-      |
-      v
-Physical equations
-      |
-      +-- continuity
-      +-- momentum
-      +-- energy
-      +-- turbulence
-      +-- radiation / multiphysics
-      |
-      v
-Linearisation / coupling
-      |
-      v
-Sparse linear system
-      |
-      v
-Krylov / AMG / Schur / preconditioner
-      |
-      v
-Updated fields
-      |
-      +-- residuals
-      +-- conservation
-      +-- boundedness
-      +-- QoIs
-      +-- output
-      |
-      v
-V&V evidence
-~~~
+The chain is a traceability model, not a claim that every branch is production-qualified.
 
-## 2. Mesh and geometry
+## 2. Mesh → geometry → operators
 
-The C++ core contains core/mesh and core/geometry families.
+Mesh topology is stored in core/mesh. Geometry is derived in core/geometry.
 
-The mathematical distinction is:
+The fundamental relationship is
 
 $$
-\text{topology}\rightarrow\text{geometry}\rightarrow\text{control-volume integrals}.
+\text{topology}\rightarrow\text{geometry}\rightarrow
+\text{control-volume integrals}.
 $$
 
-Important quantities include cell volume, cell centroid, face centroid, face area and oriented face-area vector.
-
-The Theory will give each quantity a definition, construction formula, orientation convention and mesh-quality consequence.
+The geometry layer provides the quantities consumed by gradients, interpolation, diffusion and flux assembly.
 
 ## 3. Fields
 
-A scalar cell field is conceptually
+Field metadata distinguishes location, dimension, unit, precision and storage. Current locations include cell, face, point and boundary.
+
+A scalar cell field is
 
 $$
-\phi:\mathcal C\rightarrow\mathbb R,
+\phi:\mathcal C\rightarrow\mathbb R.
 $$
 
-and a vector field is
+A vector field is
 
 $$
 \mathbf u:\mathcal C\rightarrow\mathbb R^3.
 $$
 
-Storage location matters: a cell value, face value and point value are different mathematical objects.
-
-Relevant implementation families are core/field/field.h, core/field/storage.h and their source files.
+A face value is not the same mathematical object as a cell value or cell gradient.
 
 ## 4. Boundary chain
 
-~~~text
-mesh patch
-    |
-    v
-boundary role
-    |
-    v
-field condition
-    |
-    v
-mathematical constraint
-    |
-    v
-FVM boundary contribution
-~~~
+    mesh patch
+       ↓
+    boundary role
+       ↓
+    field condition
+       ↓
+    mathematical constraint
+       ↓
+    FVM boundary contribution
 
-Relevant code families include core/boundary and physics/boundary_constraint_fvm.h.
+Current implementation families are core/boundary and physics/boundary_constraint_fvm.h. The Theory must trace each supported condition to its discrete matrix/RHS contribution.
 
-The Theory will derive the actual discrete contribution of each supported condition.
+## 5. Numerical-method chain
 
-## 5. Gradient chain
+The current numerical family contains separate contracts/dispatch for:
+- gradient;
+- stencil and boundary policy;
+- interpolation;
+- convection and assembly;
+- divergence;
+- flux;
+- Laplacian;
+- source terms;
+- temporal integration;
+- conservation;
+- matrix-free operators;
+- method registry and case selection.
 
-For scalar phi:
+This separation is the basis for N1: changing a gradient must not silently change face interpolation or temporal discretisation.
 
-$$
-\nabla\phi
-$$
-
-is a continuous differential quantity.
-
-The discrete chain is:
-
-~~~text
-cell values
-    |
-    +-- neighbour stencil
-    +-- face geometry
-    +-- boundary information
-    |
-    v
-gradient reconstruction
-    |
-    +-- Green-Gauss
-    +-- least-squares
-    +-- weighted least-squares
-    +-- boundary policy
-    +-- limiter where applicable
-    |
-    v
-cell gradient
-~~~
-
-The Theory must distinguish gradient calculation from face-value reconstruction.
-
-Relevant code includes core/numerics/gradient.h, gradient_stencil.h and core/fvm/least_squares_gradient.h.
-
-## 6. Diffusion chain
+## 6. Diffusion
 
 For
 
@@ -165,17 +105,15 @@ $$
 \nabla\cdot(\Gamma\nabla\phi),
 $$
 
-the finite-volume contribution is
+the FV flux is
 
 $$
-\sum_f \Gamma_f(\nabla\phi)_f\cdot\mathbf S_f.
+F_f=\Gamma_f(\nabla\phi)_f\cdot\mathbf S_f.
 $$
 
-The numerical chain contains coefficient interpolation, face-normal gradient evaluation, non-orthogonal correction, limiting if present and matrix assembly.
+The current Laplacian consumes geometry and reconstructed gradients. Therefore N2 and N3 cannot be qualified independently when the gradient is part of the non-orthogonal correction.
 
-The current implementation is centered around core/numerics/laplacian.h and its geometry/gradient dependencies.
-
-## 7. Convection chain
+## 7. Convection
 
 For
 
@@ -183,231 +121,54 @@ $$
 \nabla\cdot(\rho\mathbf u\phi),
 $$
 
-define
-
 $$
-\dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f.
-$$
-
-Then
-
-$$
-\Phi_{\phi,f}=\dot m_f\phi_f.
+\dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f,
+\qquad
+F_f=\dot m_f\phi_f.
 $$
 
-Thus convection is not one algorithm: it combines mass flux, face-state reconstruction and boundary treatment.
+The numerical method consists of mass flux, face reconstruction, limiter/boundedness policy and boundary treatment.
 
-The Theory will document each actual CFDX scheme and its applicable accuracy/boundedness evidence.
+## 8. Physics
 
-## 8. Incompressible momentum
+Current physics families include incompressible flow, pressure-velocity algorithms, scalar transport, thermal/energy, radiation, turbulence, wall distance, axisymmetric flow, low-Mach/compressible paths, multiphysics and conservation/boundedness controls.
 
-The continuous equation is
+The source tree is deliberately not collapsed into one generic solver equation: each model has its own assumptions and source terms.
 
-$$
-\rho\frac{\partial\mathbf u}{\partial t}
-+\rho\nabla\cdot(\mathbf u\otimes\mathbf u)
-=
--\nabla p+\nabla\cdot(2\mu\mathbf S)+\mathbf S_m.
-$$
+## 9. Linear algebra
 
-The computational chain is:
-
-~~~text
-U, p, materials
-      |
-      +-- grad(U)
-      +-- convection
-      +-- diffusion
-      +-- pressure gradient
-      +-- source terms
-      |
-      v
-momentum equations
-      |
-      v
-pressure-velocity coupling
-      |
-      v
-velocity / pressure correction
-      |
-      v
-continuity verification
-~~~
-
-Relevant current implementation families include physics/incompressible.h, physics/finite_volume_transport.h, physics/steady_incompressible_solver.h and physics/pressure_velocity*.h.
-
-## 9. Pressure-velocity coupling
-
-For incompressible flow:
-
-$$
-\nabla\cdot\mathbf u=0.
-$$
-
-Pressure enforces this constraint.
-
-The Theory must therefore explain the momentum predictor, pressure correction, pressure Poisson/Schur structure, relaxation, null-space handling and continuity criterion.
-
-Algorithm names such as SIMPLE, SIMPLEC, PISO or PIMPLE are not sufficient by themselves; the equations and update sequence must be documented.
-
-## 10. Linear algebra
-
-After discretisation:
+The algebraic system is
 
 $$
 A\mathbf x=\mathbf b.
 $$
 
-The chain is:
+Current infrastructure contains Krylov solvers, sparse matrices, linear operators, block operators, AMG, MGR, Schur, field split, null-space, matrix-free and mixed-precision paths.
 
-~~~text
-FVM assembly
-    |
-    v
-Sparse A + RHS b
-    |
-    +-- CG
-    +-- BiCGStab
-    +-- GMRES
-    +-- coupled/block methods
-    |
-    v
-Preconditioner
-    |
-    +-- AMG
-    +-- Schur
-    +-- field-split
-    |
-    v
-solution + true residual
-~~~
+Algebraic convergence and physical convergence are separate evidence layers.
 
-The Theory must distinguish algebraic convergence from physical convergence and conservation.
+## 10. File-level audit rule
 
-## 11. Thermal and radiation
+Each important source file must eventually have a row with:
 
-Thermal transport includes equations such as
-
-$$
-\rho c_p
-\left(
-\frac{\partial T}{\partial t}
-+\mathbf u\cdot\nabla T
-\right)
-=
-\nabla\cdot(k\nabla T)+S_T.
-$$
-
-Relevant current families include physics/thermal.h, energy_solver.h, cht_solver.h and radiation-related models/solvers.
-
-Each model will receive its own derivation, assumptions and benchmark matrix.
-
-## 12. Turbulence
-
-RANS begins with
-
-$$
-\mathbf u=\overline{\mathbf u}+\mathbf u'.
-$$
-
-Averaging introduces additional stresses and therefore a closure problem.
-
-~~~text
-Navier-Stokes
-      |
-      v
-Reynolds decomposition
-      |
-      v
-averaged equations
-      |
-      v
-closure problem
-      |
-      v
-turbulence model
-      |
-      v
-additional variables / effective stresses
-~~~
-
-Current code contains turbulence, SST, Spalart-Allmaras and wall-distance families. The Theory will explain their equations and distinguish implementation from qualification.
-
-## 13. Time integration
-
-For
-
-$$
-\frac{d\mathbf u}{dt}=\mathcal R(\mathbf u,t),
-$$
-
-backward Euler is
-
-$$
-\frac{\mathbf u^{n+1}-\mathbf u^n}{\Delta t}
-=
-\mathcal R(\mathbf u^{n+1},t^{n+1}).
-$$
-
-Every temporal method must be documented with consistency, order, stability, history and restart semantics.
-
-## 14. Verification chain
-
-~~~text
-physical equation
-       |
-       v
-discrete equation
-       |
-       v
-implementation file
-       |
-       v
-unit/operator test
-       |
-       v
-MMS or analytical benchmark
-       |
-       v
-mesh/time refinement
-       |
-       v
-independent diagnostic
-       |
-       v
-V&V evidence
-~~~
-
-A test that merely executes a code path is not automatically verification.
-
-## 15. File-by-file audit standard
-
-For each important numerical/physics source file, the Theory audit records:
-
-| Item | Required information |
+| Item | Evidence |
 |---|---|
-| File | exact repository path |
-| Mathematical role | equation/operator/model |
-| Inputs | fields, geometry, material data |
-| Outputs | field, flux, matrix or diagnostic |
-| Equation | governing expression |
-| Assumptions | modelling/discretisation assumptions |
-| Sign conventions | orientation and flux convention |
-| Tests | exact test files |
-| Benchmark | reference problem |
-| Status | implemented / verified / qualified |
-| Limitation | known negative evidence |
-| Improvement | technically justified next step |
-| References | bibliography entries |
+| exact path | repository |
+| equation/operator | Theory derivation |
+| inputs/outputs | API and implementation |
+| assumptions | code + numerical contract |
+| sign convention | geometry/flux contract |
+| tests | exact test target/file |
+| benchmark | analytical/MMS/reference case |
+| maturity | implemented / verified / qualified |
+| limitations | negative evidence |
+| improvement | technically justified |
+| bibliography | reference identifiers |
 
-This is the standard for the continuing source-tree audit.
+The audit register in chapter 18 is the index; detailed equation pages remain in the domain chapters.
 
-## 16. Status vocabulary
+## 11. Promotion rule
 
-The Theory deliberately uses three separate labels:
+A code path may be implemented without being verified. A verified operator may remain unvalidated. A validated case does not qualify every mesh family or solver backend.
 
-- Implemented: a code path exists and is exercised.
-- Verified: mathematical properties have executable evidence.
-- Qualified: the defined V&V campaign supports the intended scope.
-
-These labels must never be collapsed into a single generic “supported” statement.
+This separation is mandatory throughout CFDX Theory and V&V.
