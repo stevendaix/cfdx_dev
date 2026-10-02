@@ -1,86 +1,138 @@
 # %% [markdown]
-# Finite-Volume Method
+# 02 — Finite-Volume Method
 #
-# ## 2.1 Integral formulation
+# This chapter derives the finite-volume discretisation from the conservation law to the algebraic row. The key principle is that each control volume owns a balance: internal-face fluxes are shared and cancel exactly when the same numerical face flux is used with opposite orientation.
 #
-# For
+# ## 2.1 Generic transport equation
+#
+# We use
 # \[
-# \frac{\partial(\rho\phi)}{\partial t}+\nabla\cdot(\rho\mathbf u\phi)
-# =\nabla\cdot(\Gamma\nabla\phi)+S,
+# \frac{\partial(\rho\phi)}{\partial t}
+# +\nabla\cdot(\rho\mathbf u\phi)
+# =\nabla\cdot(\Gamma\nabla\phi)+S_\phi .
 # \]
-# integration over a control volume gives
+# Here \(\rho\,[kg\,m^{-3}]\), \(\mathbf u\,[m\,s^{-1}]\), \(\Gamma\) is the diffusion coefficient and \(S_\phi\) is a volumetric source. The dimensions of \(\phi\) depend on the transported quantity.
+#
+# ## 2.2 Control-volume integration
+#
+# Integrating over \(V_P\) and applying Gauss' theorem:
 # \[
 # \frac{d}{dt}\int_{V_P}\rho\phi\,dV+
 # \sum_f\int_{A_f}\rho\mathbf u\phi\cdot\mathbf n_f\,dA
 # =
 # \sum_f\int_{A_f}\Gamma\nabla\phi\cdot\mathbf n_f\,dA+
-# \int_{V_P}S\,dV.
+# \int_{V_P}S_\phi\,dV.
 # \]
-# This is the central FVM principle: conservation is discretised as a balance over a finite volume, not reconstructed from pointwise derivatives.
-#
-# ## 2.2 Geometry
-#
+# Define \(\mathbf S_f=A_f\mathbf n_f\). For a closed polyhedron,
 # \[
-# \mathbf S_f=A_f\mathbf n_f,\qquad
-# \sum_f\mathbf S_f=\mathbf0.
+# \sum_f\mathbf S_f=0.
 # \]
-# The second identity is the closure condition of a closed polyhedron.
 #
-# ## 2.3 Face fluxes
+# ## 2.3 Spatial approximation
 #
+# With cell-centred values:
 # \[
-# \dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f,
-# \qquad
+# \dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f,\qquad
 # F_{c,f}=\dot m_f\phi_f,
 # \]
+# and
 # \[
-# F_{d,f}=-\Gamma_f(\nabla\phi)_f\cdot\mathbf S_f.
+# F_{d,f}=\Gamma_f(\nabla\phi)_f\cdot\mathbf S_f.
 # \]
-# One physical internal face must have one conservative flux with opposite orientation in its two neighbouring cells.
+# The sign convention must be stated once: here positive \(F_f\) is outward from owner cell \(P\). The neighbour sees the same physical flux with the opposite orientation.
 #
-# ## 2.4 Algebraic equation
+# ## 2.4 Semi-discrete row
 #
-# After spatial approximation and source linearisation,
+# For implicit Euler:
+# \[
+# \frac{(\rho\phi V)_P^{n+1}-(\rho\phi V)_P^n}{\Delta t}
+# +\sum_fF_{c,f}^{n+1}
+# =\sum_fF_{d,f}^{n+1}+S_PV_P .
+# \]
+# After linearisation:
 # \[
 # a_P\phi_P=\sum_Na_{PN}\phi_N+b_P.
 # \]
-# The coefficients depend on convection, diffusion, temporal discretisation, source treatment and boundary conditions. Properties such as diagonal dominance or an M-matrix structure must therefore be demonstrated for the specific scheme.
+# The coefficient row is not universal: it depends on convection scheme, diffusion reconstruction, source linearisation, temporal scheme and BC discretisation.
 #
-# ## 2.5 Diffusion and non-orthogonality
+# ## 2.5 Diffusion on an orthogonal face
 #
-# With \(\mathbf d_{PN}=\mathbf C_N-\mathbf C_P\),
+# Let \(\mathbf d_{PN}=\mathbf C_N-\mathbf C_P\). If \(\mathbf S_f\parallel\mathbf d_{PN}\),
 # \[
-# \nabla\phi\cdot\mathbf S_f
-# =
-# \nabla\phi\cdot\mathbf S_f^\parallel+
-# \nabla\phi\cdot\mathbf S_f^\perp.
+# (\nabla\phi)_f\cdot\mathbf S_f
+# \approx
+# \frac{\phi_N-\phi_P}{|\mathbf d_{PN}|}
+# \frac{\mathbf d_{PN}\cdot\mathbf S_f}{|\mathbf d_{PN}|}.
 # \]
-# The perpendicular correction is a geometric consequence of non-orthogonality. Its accuracy depends directly on the gradient reconstruction.
-#
-# ## 2.6 Boundedness
-#
-# A scheme claiming a local maximum principle must define its admissible bounds and demonstrate them. A generic local requirement is
+# More generally decompose
 # \[
-# \min_N\phi_N\le\phi_f\le\max_N\phi_N.
+# \mathbf S_f=\mathbf S_f^\parallel+\mathbf S_f^\perp
 # \]
-# High-order interpolation can violate this and therefore needs limiting when boundedness is required.
+# and reconstruct the correction using a verified gradient.
 #
-# ## 2.7 Verification hierarchy
+# ## 2.6 Source linearisation
 #
-# First verify geometric closure and constant-field invariance. Then verify linear-field exactness, conservation, MMS, refinement order and finally coupled-physics behaviour. Passing a solver benchmark does not replace operator-level verification.
+# A common linearisation is
+# \[
+# S_\phi=S_C+S_P\phi_P,
+# \]
+# so that the diagonal contribution is modified by the chosen source treatment. Stability and boundedness depend on the signs and treatment of these terms; they must be verified rather than assumed.
 #
-# ## 2.8 CFDX traceability
+# ## 2.7 Boundary faces
 #
-# Discrete diffusion: src/cfdx/core/numerics/laplacian.h  
-# Divergence: src/cfdx/core/numerics/divergence.h  
-# Convection: src/cfdx/core/numerics/convection.h  
-# Sources: src/cfdx/core/numerics/source_term.h  
-# FVM transport: src/cfdx/physics/finite_volume_transport.h
+# A boundary face has no ordinary neighbour. Dirichlet, Neumann and Robin conditions therefore become algebraic contributions to the owner row. For a prescribed diffusive flux \(q_f\),
+# \[
+# F_{d,f}=q_fA_f.
+# \]
+# For a prescribed value, the face value and gradient reconstruction must be derived from the actual boundary discretisation.
 #
-# The relative source links are intentionally kept beside the equations so that the theory remains directly auditable.
+# ## 2.8 Conservation and boundedness are different
 #
+# Conservation requires shared internal fluxes to be antisymmetric:
+# \[
+# F_{P,f}+F_{N,f}=0.
+# \]
+# Boundedness instead concerns admissible solution values, e.g.
+# \[
+# \min_{N\in\mathcal N(P)}\phi_N
+# \le\phi_f\le
+# \max_{N\in\mathcal N(P)}\phi_N .
+# \]
+# A scheme may be conservative but unbounded, or bounded but non-conservative if implemented incorrectly.
+#
+# ## 2.9 Algebraic properties
+#
+# For diffusion-dominated scalar equations, an M-matrix-like structure is often desirable:
+# \[
+# a_P>0,\qquad a_{PN}\le0
+# \]
+# under the relevant sign convention, together with appropriate diagonal dominance. Convection, non-orthogonal correction and source terms can invalidate these properties; therefore the property belongs to a declared scheme and mesh regime.
+#
+# ## 2.10 Polyhedral FVM
+#
+# The method does not require hexahedra. For arbitrary polyhedra the essential objects are oriented faces, owner/neighbour connectivity, face area vectors, cell volumes and consistent centres. The topological and geometric invariants are documented in the mesh chapter.
+#
+# ## 2.11 Verification sequence
+#
+# 1. closed-cell area-vector closure;
+# 2. constant-field invariance;
+# 3. exact cancellation of internal fluxes;
+# 4. linear-field diffusion;
+# 5. MMS;
+# 6. mesh refinement and observed order;
+# 7. coupled solver benchmarks.
+#
+# A successful global benchmark is not sufficient to diagnose an operator-level error.
+#
+# ## 2.12 CFDX implementation
+#
+# Core numerical operators are in [divergence.h](../../../src/cfdx/core/numerics/divergence.h), [laplacian.h](../../../src/cfdx/core/numerics/laplacian.h), [convection.h](../../../src/cfdx/core/numerics/convection.h), [source_term.h](../../../src/cfdx/core/numerics/source_term.h), and [flux.h](../../../src/cfdx/core/numerics/flux.h). The transport assembly is in [finite_volume_transport.h](../../../src/cfdx/physics/finite_volume_transport.h).
+#
+# ## 2.13 Executable analytical check
 # %%
-from __future__ import annotations
 import numpy as np
-S=np.array([[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],float)
-assert np.allclose(S.sum(axis=0),0.0)
+S = np.array([[1.,0.,0.],[-1.,0.,0.],[0.,1.,0.],[0.,-1.,0.]])
+assert np.allclose(S.sum(axis=0), 0.0)
+# For a constant field, the convective contribution is zero when the mass fluxes close.
+phi = 7.0
+assert np.isclose(phi * S.sum(axis=0)[0], 0.0)
