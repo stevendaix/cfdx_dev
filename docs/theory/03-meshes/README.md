@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 03 — Meshes
 
 **Status: REPOSITORY-GROUNDED. This chapter documents the current mesh model; it does not claim mesh qualification.**
