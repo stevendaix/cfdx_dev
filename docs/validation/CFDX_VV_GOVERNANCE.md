@@ -188,3 +188,66 @@ Qualification is therefore a statement about a defined scope, not a claim that t
 - MMS-based code-verification methodology for manufactured solutions.
 
 These references provide methodological guidance. CFDX acceptance thresholds remain case- and contract-specific and must be documented in repository evidence.
+
+## 16. Documentation architecture
+
+The V&V directory is a controlled evidence system, not a collection of independent notes.
+
+Target structure:
+
+docs/validation/
+├── README.md                         # entry point and navigation
+├── 00_governance/                    # terminology, gates, lifecycle, rules
+├── 01_registries/                    # machine-readable source of truth
+├── 02_method_verification/           # mathematical/operator verification
+├── 03_solver_verification/           # complete solver/integration campaigns
+├── 04_qualification/                 # promotion programme and templates
+├── 05_cases/                         # frozen individual benchmark cases
+├── 06_references/                    # provenance and reference datasets
+└── 07_reporting/                     # report generation and publication
+
+This is the target architecture. Migration must be incremental and must not break links or machine-readable consumers.
+
+### 16.1 Single responsibility
+Every document has exactly one primary role: governance, registry, method verification, solver verification, qualification, case, reference, or reporting. If a document accumulates another role, split it and link the two documents.
+
+### 16.2 Source of truth
+Each fact has one authoritative owner. V&V terminology/gates belong to governance; case status to the qualification registry; #461 requirement status to the requirements audit; capability catalogue to the capability matrix; reference provenance to reference records; case configuration/results to the case sheet plus retained machine-readable artifact; executable CI result to CI artifacts; human-readable summaries to reports. Other documents summarize and link; they do not create competing facts.
+
+### 16.3 No duplicate matrices
+Do not create a new matrix when an existing registry already owns the same dimension. A new matrix is allowed only when it answers a different question and explicitly states its scope. Capability, requirements, qualification, and campaign-result matrices are related but not interchangeable.
+
+### 16.4 Document lifecycle
+1. Proposal: define role and owner.
+2. Scope: state what it does and does not claim.
+3. Reference contract: identify mathematical/literature sources.
+4. Implementation: add executable evidence where applicable.
+5. Evidence: retain machine-readable outputs.
+6. Review: audit against governance gates.
+7. Promotion: update the relevant registry only after evidence exists.
+8. Maintenance: update or explicitly supersede stale documents.
+A document must never be created merely to make an issue appear complete.
+
+### 16.5 Required evidence header
+Every method, solver, qualification, and case document must state: Scope; Status; authoritative source/registry; evidence location; related issue/PR; last verified commit/date; known limitations. Numerical-result documents must additionally identify CFDX commit, build/compiler/platform, case ID, mesh/configuration ID, and test/CI job ID.
+
+### 16.6 Naming rules
+Use stable semantic names for new documents. Prefer N2_GRADIENT_VERIFICATION.md, N8_AMG_QUALIFICATION.md, and GHIA_RE100_CASE.md. Avoid new generic phase names such as PHASE9_ACCEPTANCE.md or NEW_FINAL_VALIDATION.md. Historical phase documents may remain while their authority is clarified.
+
+### 16.7 Status synchronization
+A result update must modify the authoritative registry and evidence document in the same PR. Never change Markdown status without updating the machine-readable registry; never mark PASS without retained executable evidence; never erase failed evidence. A regression must move the status back to the appropriate non-qualified state.
+
+### 16.8 Promotion
+Promotion is a state transition: PLANNED → IMPLEMENTED → VERIFIED → VALIDATED (when physical validation applies) → QUALIFIED. READY and DIAGNOSTIC are execution states, not maturity promotions.
+
+### 16.9 Case implementation rule
+A new qualification case starts with a stable case ID and registry entry, then frozen reference provenance, executable implementation, machine-readable result output, independent diagnostics, convergence/refinement studies where applicable, CI execution, case-sheet evidence, and only then registry promotion.
+
+### 16.10 Failure handling
+Failures are first-class V&V evidence. Retain failure class, failing metric, reproduction command, artifact, known root cause, and next action. Do not delete a case, disable a test, or rewrite acceptance criteria solely because it failed.
+
+### 16.11 V&V PR review checklist
+Before merge: correct document category; one authoritative owner per fact; explicit scope; implementation separated from verification/validation; frozen references; predeclared acceptance criteria; independent recomputation where appropriate; separated mesh/time/iterative error; retained failures; synchronized registry and narrative; retained CI artifacts; and sufficient evidence for any requested status transition.
+
+### 16.12 Migration policy
+The existing documentation contains valuable evidence but has grown organically. Do not perform a destructive mass rename. Migrate in small PRs: establish architecture and README; classify every document; identify overlaps; choose authoritative owners; add cross-links/deprecation notices; rename only after links/tooling are migrated; remove superseded duplicates only after replacement is proven. Specialist documents such as AMG, MGR, turbulence, conservation, and wall-distance remain separate until ownership is explicit.
