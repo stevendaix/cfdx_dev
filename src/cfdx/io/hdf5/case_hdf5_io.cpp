@@ -708,7 +708,11 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             const mini_json::value* entries = mini_json::find(*selection, "entries");
             if (entries && entries->is_array()) {
                 for (const auto& entry_v : entries->array) {
-                    if (!entry_v.is_object()) continue;
+                    if (!entry_v.is_object()) {
+                        setup.numerical_report.errors.push_back(
+                            "numerical selection entry must be an object");
+                        continue;
+                    }
                     const std::string family = json_get_string(entry_v, "family");
                     const std::string key = json_get_string(entry_v, "configuration_key");
                     cfdx::core::NumericalMethodFamily parsed = cfdx::core::NumericalMethodFamily::Convection;
