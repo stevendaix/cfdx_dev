@@ -704,25 +704,28 @@
     {
       "package_id": "N10",
       "requirement": "mesh quality ladder",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "src/cfdx/core/geometry/mesh_validator.h"
       ]
     },
     {
       "package_id": "N10",
       "requirement": "orthogonal/skew/non-orthogonal controlled cases",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp"
       ]
     },
     {
       "package_id": "N10",
       "requirement": "high aspect ratio",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "src/cfdx/core/geometry/mesh_validator.h"
       ]
     },
     {
@@ -730,15 +733,26 @@
       "requirement": "polyhedral numerical validation",
       "status": "partial",
       "evidence": [
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp",
         "docs/validation/M1_M4_VERIFICATION_PLAN.md"
       ]
     },
     {
       "package_id": "N10",
-      "requirement": "invalid/degenerate rejection",
-      "status": "implemented",
+      "requirement": "solver robustness versus mesh quality",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/core/geometry/mesh_validator.h"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "invalid/degenerate rejection",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h",
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp"
       ]
     },
     {
