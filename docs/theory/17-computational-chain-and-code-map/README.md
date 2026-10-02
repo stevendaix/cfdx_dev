@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 17 — CFDX Computational Chain and Code-to-Physics Map
 
 **Status: CODE-AUDITED; this is the traceability backbone for the Theory chapters.**
