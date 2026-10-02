@@ -1,5 +1,7 @@
 # CFDX Engineering Qualification Campaign
 
+> **V&V governance:** `docs/validation/CFDX_VV_GOVERNANCE.md` is the authoritative document for V&V terminology, evidence classes, promotion gates, traceability, and no-false-positive rules. This campaign defines the case-level qualification programme under that governance.
+
 Issue #118 is the authoritative qualification programme for CFDX. It is deliberately different from a collection of unit tests or capability checks.
 
 The campaign answers one engineering question:
@@ -126,6 +128,8 @@ Every promoted case must have a calculation sheet containing, without exceptions
 
 ## 3. Qualification gates
 
+These gates are the case-level application of V0–V7 in the V&V governance document. A case may have additional domain-specific gates, but it must not weaken the common gates.
+
 A case is **PASS** only when all gates below are satisfied:
 
 ### Gate A — Reference integrity
@@ -143,8 +147,8 @@ The relevant global balances close within the case-specific acceptance contract.
 ### Gate E — Quantitative agreement
 The CFDX QoI is compared against the independent reference using a declared error metric.
 
-### Gate F — Grid verification
-Where applicable, at least three systematically refined meshes are used to distinguish discretization error from model/reference error.
+### Gate F — Grid/time verification
+Where a formal refinement claim is made, use a documented systematic refinement sequence. Three or more levels are preferred for an observed-order/GCI study; fewer levels may be used only when the mathematical or computational scope is explicitly documented. Spatial and temporal refinement must be separated where both contribute.
 
 ### Gate G — Regression
 The complete case can be rerun in CI and produces machine-readable diagnostics and retained evidence.
@@ -153,6 +157,8 @@ The complete case can be rerun in CI and produces machine-readable diagnostics a
 The calculation sheet records the exact configuration, result, error, observed order, runtime and regression status.
 
 ## 4. Verification versus validation
+
+The terms are governed by `CFDX_VV_GOVERNANCE.md`; this section applies them specifically to qualification cases.
 
 The campaign explicitly separates:
 
