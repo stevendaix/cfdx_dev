@@ -124,6 +124,12 @@ jobs:
           path: build/wall_distance_complex_benchmark.csv
           if-no-files-found: error
 
+      - name: Test canonical numerical-selection adapter boundary
+        id: numerical_selection_python
+        if: matrix.build_type == 'Release'
+        continue-on-error: true
+        run: python -m pytest -q tests/python/test_numerical_selection.py
+
       - name: Test validation report generator
         id: validation_report_test
         if: matrix.build_type == 'Release'
