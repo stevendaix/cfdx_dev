@@ -1,24 +1,52 @@
-# CFDX User Documentation
+# CFDX User Guide
 
-User documentation answers practical questions: how to create a case, configure a model, run a simulation, inspect results, restart a calculation and diagnose a failure.
+**Status: TOPO — migration of existing user documentation is not complete.**
 
-It must remain independent of internal implementation details.
+The User domain answers **how to use CFDX** without requiring knowledge of internal C++ implementation.
 
-## Structure
+## Planned navigation
 
-```text
-getting-started/
-concepts/
-workflow/
-reference/
-examples/
-```
+### Getting started
+- installation and prerequisites;
+- build and first execution;
+- first case;
+- mesh creation/import;
+- selecting physics and numerics;
+- reading results.
 
-## Rules
+### Concepts
+- cases and files;
+- meshes and regions;
+- fields and boundary conditions;
+- physics models;
+- numerics and solver selection;
+- convergence and stopping criteria;
+- checkpoints and restart;
+- post-processing.
 
-- Start from the user's task, not from the C++ class hierarchy.
-- Do not document an implementation detail unless it changes user-visible behaviour.
-- Every supported option must have a defined status.
-- Unsupported or experimental features must be labelled explicitly.
-- Commands and configuration examples must be executable or marked as illustrative.
-- User documentation must not create a second source of truth for V&V status.
+### Workflow
+- case setup;
+- mesh workflow;
+- physics setup;
+- numerics setup;
+- execution and monitoring;
+- restart;
+- probes/time series;
+- result export;
+- V&V workflow.
+
+### Reference
+- case schema;
+- numerics options;
+- boundary conditions;
+- solver options;
+- output formats;
+- command-line/TUI/GUI interfaces.
+
+## Existing material
+
+The repository already contains useful documents such as `docs/boundary_conditions.md`, `docs/mesh_import.md` and `docs/gui.md`. These are migration sources and must be reconciled with the User domain before removal or deprecation.
+
+## Rule
+
+User documentation describes supported behavior. It must not silently document planned or unqualified capabilities as production features.
