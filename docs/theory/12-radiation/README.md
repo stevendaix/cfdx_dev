@@ -1,18 +1,37 @@
-# Radiation
+# 12 — Radiation
 
-**Status: TOPO — detailed course chapter not yet migrated.**
+**Status: REPOSITORY-GROUNDED; supported model scope must come from executable evidence.**
 
-## Planned course
-1. Radiation physics
-2. Blackbody radiation
-3. Spectral properties
-4. Surface radiation
-5. View factors
-6. Surface-to-surface radiation
-7. Participating media
-8. Radiation boundary conditions
-9. Energy coupling
-10. Conservation and reciprocity
-11. Radiation verification
-12. Thermal-radiation validation
+For a blackbody,
 
+$$
+E_b=\sigma T^4.
+$$
+
+Radiation is nonlinear in temperature and enters the thermal energy balance through surface or volumetric exchange.
+
+## Surface-to-surface radiation
+
+Diffuse-gray exchange uses view factors and emissivities. Two fundamental geometric checks are
+
+$$
+\sum_jF_{ij}=1,
+\qquad
+A_iF_{ij}=A_jF_{ji},
+$$
+
+when the corresponding closed-surface assumptions hold.
+
+## CFDX implementation families
+
+The source tree contains radiation.h, radiation_models.h, radiation_s2s.h, radiation_solver.h, radiation_advanced.h and radiation_streaming.h.
+
+Each family must be mapped to its mathematical formulation before assigning maturity.
+
+## Coupling
+
+Radiative heat flux enters the energy balance as a boundary/source contribution. Radiation and energy modules must share the same sign convention.
+
+## Verification
+
+Use blackbody emission, view-factor closure/reciprocity where implemented, symmetric two-surface exchange, radiative energy conservation and coupled thermal-radiation regression. A radiation unit test is not physical validation.
