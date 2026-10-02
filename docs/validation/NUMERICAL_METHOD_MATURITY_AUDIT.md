@@ -19,7 +19,7 @@ An implementation registry entry never implies validation.
 
 | Package | Status | Main evidence / gap |
 |---|---|---|
-| N1 contracts | PARTIAL | numerical contracts, registry and explicit selection resolver exist; complete case/report traceability is incomplete |
+| N1 contracts | PARTIAL | registry, explicit resolver + case-level resolution report (`resolve_case_numerics` / `format_numerics_report`, deterministic) exist; wiring every case loader and the common-scheme/contracts items remain |
 | N2 gradients/reconstruction | PARTIAL | cell/vertex/point-linear GG + linear/weighted/quadratic least-squares with stencil-quality and conditioning diagnostics (independent spectral reference), Dirichlet/Neumann/mixed boundary reconstruction, orthogonal/skewed/stretched/distorted-tetrahedral V&V; quadratic LS ~2nd order on tets asserted; remaining: limiter integration, two-point GG consistency on tets, general non-affine polyhedra |
 | N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed with explicit skewness-correction contract and quantified skew ladder (order ~2; uncorrected non-convergent under skew); tetrahedra: corrected operator linear-exact only with LS-family gradients (Linf ~5e-13) but the smooth Laplacian is O(1)-inconsistent (plateau ~2.1, order ~0, even deep) — face gradient evaluated off the face centroid; a Hessian-aware face evaluation would be needed |
 | N4 convection | PARTIAL | selectable upwind/TVD (MUSCL, 5 limiters), central and blended (β=central fraction; face-bounded, order ~1→2 as β→1) with 1-D/3-D boundedness/linear-exactness/order/conservation V&V; QUICK, multidimensional policy and production wiring incomplete |

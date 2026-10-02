@@ -17,14 +17,17 @@
       "name": "Numerical-method architecture and contracts",
       "status": "partial",
       "evidence": [
+        "docs/development/NUMERICAL_METHOD_CONTRACTS.md",
         "src/cfdx/core/numerics/numerical_method_contract.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/core/numerics/numerical_method_selection.h",
-        "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
+        "tests/unit/test_case_numerics_report.cpp"
       ],
       "gaps": [
-        "case/report traceability: emitting the resolved scheme into every case load and validation report",
-        "complete conservation/boundedness contract integration"
+        "wiring every case loader (Fluent/CFD) to emit resolve-case numerics report",
+        "common spatial scheme abstraction",
+        "reconstruction/interpolation/flux contracts",
+        "conservation/boundedness contract integration"
       ]
     },
     {

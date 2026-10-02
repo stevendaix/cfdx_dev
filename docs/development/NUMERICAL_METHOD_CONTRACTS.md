@@ -54,6 +54,15 @@ metadata into an enforced selection path. A case resolves a scheme with
 The resolver is total over the registry: every registered method round-trips from its own key.
 This is the machine-checkable form of the rule "configuration must expose the selected method".
 
+For a whole case configuration, `resolve_case_numerics(case_name, entries)` resolves every
+`(family, key)` entry and produces a `CaseNumericsReport`: accepted entries give auditable
+`NumericalSchemeSelection` records, rejected entries (unknown / empty / wrong-family key) are
+recorded as errors — **no silent fallback, no throw**. `format_numerics_report` renders a
+deterministic plain-text report (one `scheme[...]` line per resolved scheme plus `error:` lines),
+which is what a case-loading or validation pipeline records. `tests/unit/test_case_numerics_report.cpp`
+covers determinism, error trapping, cross-family rejection and a full-registry round trip at the
+case level. Wiring *every* case loader to emit this report remains tracked.
+
 ## Initial migration targets
 
 The next implementation waves should register the existing numerical families without changing their algorithms first:
