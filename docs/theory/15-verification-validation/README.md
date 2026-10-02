@@ -61,3 +61,8 @@ A validation result identifies the independent reference, uncertainty, model dis
 Evidence retains exact commit, case/setup, mesh identity, numerical-method selection, compiler/build mode, hardware/backend, raw machine-readable metrics, report and acceptance rule.
 
 The V&V governance and validation documents remain the authoritative status source.
+
+
+## Scientific explanation standard
+
+For every important equation, algorithm or data-model rule, document the motivation; definitions/units/sign conventions; derivation or formal rationale; discrete/FVM representation where applicable; actual CFDX execution path; example; error/limitation/sensitivity analysis; exact implementation files; executable verification; benchmark/V&V evidence; and stable bibliography/reference identifiers. Tables summarize explanations and do not replace them. Keep **Implemented / Verified / Validated / Qualified** distinct; documentation maturity never promotes numerical maturity.
