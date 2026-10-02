@@ -11,7 +11,6 @@ CFDX documentation is organised as four complementary domains:
 
 ```{toctree}
 :maxdepth: 2
-:caption: Documentation domains
 
 theory/README
 user/README
@@ -23,7 +22,6 @@ vv/README
 
 ```{toctree}
 :maxdepth: 2
-:caption: Numerical methods
 
 theory/00-foundations/README
 theory/01-conservation-laws/README
@@ -43,11 +41,24 @@ theory/14-numerical-analysis/README
 theory/15-verification-validation/README
 ```
 
-## Existing documentation to migrate
+## Existing documentation under migration
 
-The repository already contains useful material outside the new four-domain structure, including boundary-condition, mesh-import, GUI, development and validation documents. These are migration sources, not automatically authoritative duplicates.
+The repository already contains useful material outside the new domain structure. Until migration is complete, these documents remain published through a dedicated legacy/migration tree.
 
-Migration must preserve links and provenance before obsolete copies are removed.
+```{toctree}
+:maxdepth: 2
+:caption: Existing documentation — migration source
+
+README
+application/*
+development/*
+boundary_conditions
+gui
+mesh_import
+validation/*
+```
+
+These are migration sources. Their content and status must be reconciled with the new Theory/User/Developer/V&V source-of-truth rules before obsolete copies are removed.
 
 ## Scientific publication
 
