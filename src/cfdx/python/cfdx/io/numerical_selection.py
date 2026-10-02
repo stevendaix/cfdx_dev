@@ -58,6 +58,13 @@ _PRESSURE_VELOCITY_KEYS = {
     "coupled": "pressure_velocity.coupled",
 }
 
+_LINEAR_SOLVER_KEYS = {
+    "cg": "linear.cg",
+    "bicgstab": "linear.bicgstab",
+    "gmres": "linear.gmres",
+    "fgmres": "linear.fgmres",
+}
+
 _PRECONDITIONER_KEYS = {
     "native_amg": "preconditioner.native_amg",
     "amg": "preconditioner.native_amg",
@@ -98,6 +105,8 @@ def build_numerical_selection(numerics: NumericalScheme) -> NumericalSelectionCo
         _add(cfg, "temporal", numerics.transient_scheme, _TEMPORAL_KEYS)
 
     _add(cfg, "pressure_velocity", numerics.coupled_solver, _PRESSURE_VELOCITY_KEYS)
+    if numerics.linear_solver:
+        _add(cfg, "linear_solver", numerics.linear_solver, _LINEAR_SOLVER_KEYS)
 
     if numerics.preconditioner:
         _add(cfg, "preconditioner", numerics.preconditioner, _PRECONDITIONER_KEYS)
