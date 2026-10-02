@@ -1,6 +1,8 @@
 """Tests for the Python-to-CFDX canonical numerical selection boundary."""
 
 import json
+import shutil
+from pathlib import Path
 
 import h5py
 
@@ -44,9 +46,13 @@ def test_unmapped_source_value_is_not_silently_rewritten():
     assert all(e.family != "convection" for e in selection.entries)
 
 
-def test_converted_case_contains_canonical_selection(su2_case, tmp_path):
+def test_converted_case_contains_canonical_selection(tmp_path):
+    data_dir = Path(__file__).parent / ".." / "data" / "su2"
+    source = tmp_path / "case.su2"
+    shutil.copy(data_dir / "mesh_NACA0012_inv.su2", source)
+    shutil.copy(data_dir / "inv_NACA0012_basic.cfg", tmp_path / "case.cfg")
     output = tmp_path / "case.cfdx.h5"
-    result = convert(su2_case, output=output)
+    result = convert(source, output=output)
 
     selection = result.case.numerics.selection
     assert selection.entries
