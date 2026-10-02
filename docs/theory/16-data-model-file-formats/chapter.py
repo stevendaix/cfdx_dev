@@ -1,26 +1,48 @@
 # %% [markdown]
-"""# Data Model and File Formats
-
-Scientific executable chapter. Follow physical motivation, definitions, assumptions, governing equations, discretisation, numerical properties, CFDX implementation, verification evidence, limitations and references. Implementation is not automatically verification, validation or qualification.
-
-## Core equations and contracts
-
-- case setup is declarative state
-- HDF5 datasets map topology, fields and metadata to typed arrays
-- restart state must preserve sufficient history for the selected temporal scheme
-- VTU stores visualization-oriented field data rather than authoritative case setup
-- provenance links result to case, mesh, numerical configuration and software revision
-
-## Evidence rule
-
-Every implementation claim must map to actual source files and tests. Every numerical result must identify configuration, mesh/resolution, solver settings and software revision. Missing evidence is a documented gap.
-"""
-
+# Data Model and File Formats
+#
+# ## 16.1 Semantic separation
+# CFDX separates authoritative setup, runtime state and visualization:
+# \[
+# \text{case.cfdx.h5}=\text{setup},\quad
+# \text{case.dat.h5}=\text{checkpoint},\quad
+# \text{case}_{t}.vtu=\text{visualization}.
+# \]
+#
+# ## 16.2 Case model
+# \[
+# \mathcal C=\{\mathcal M,\mathcal B,\mathcal P,\mathcal N,\mathcal F,\mathcal V\},
+# \]
+# representing mesh, boundaries, physical models, numerical configuration, fields and metadata/provenance.
+#
+# ## 16.3 HDF5 contract
+# A dataset is conceptually
+# \[
+# D=(shape,dtype,data,attributes).
+# \]
+# Schema must define units, component ordering, topology, field location, boundary identifiers, version and compatibility.
+#
+# ## 16.4 Restart
+# A checkpoint must contain every field/history quantity needed by the selected temporal and nonlinear algorithms. Restart correctness is a numerical property, not merely successful file parsing.
+#
+# ## 16.5 Round trip
+# For supported data:
+# \[
+# R(W(x))\equiv x
+# \]
+# within explicitly documented representation limits.
+#
+# ## 16.6 Provenance
+# A result should identify case revision, mesh, physics, numerics, solver configuration and software revision.
+#
+# ## 16.7 CFDX paths
+# src/cfdx/io/hdf5/  
+# src/cfdx/io/restart/  
+# src/cfdx/io/vtu/  
+# Tests: tests/unit/test_case_hdf5_io.cpp, tests/unit/test_hdf5_roundtrip.cpp, tests/validation/test_solver_vtu_provenance.cpp
+#
 # %%
 from __future__ import annotations
 import numpy as np
-x=np.linspace(0.0,1.0,5)
-assert np.all(np.isfinite(x))
-payload=np.array([1.,2.,3.])
-assert payload.dtype.kind == "f"
-assert payload.shape == (3,)
+x=np.arange(12,dtype=float).reshape(3,4)
+assert np.array_equal(x,x.copy())
