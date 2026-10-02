@@ -37,7 +37,7 @@ jobs:
         run: |
           python3 -m venv .venv-validation
           .venv-validation/bin/python -m pip install --upgrade pip
-          .venv-validation/bin/python -m pip install h5py meshio pytest numpy matplotlib
+          .venv-validation/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
           .venv-validation/bin/python -m pip install -e .
           echo "$PWD/.venv-validation/bin" >> "$GITHUB_PATH"
 
@@ -61,6 +61,17 @@ jobs:
         continue-on-error: true
         run: cmake --build build-validation --parallel 2
 
+      - name: Run N1 numerical-method gate
+        id: n1_numerics
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build-validation -R '^(test_spatial_scheme_contract|test_case_numerics_report|test_case_hdf5_io|test_production_solver_numerics_e2e)$' --output-on-failure --no-tests=error
+          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_su2_adapter.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
       - name: Run fast regression and validation tests
         id: fast_tests
         if: steps.build.outcome == 'success'
@@ -185,6 +196,7 @@ jobs:
         run: |
           echo "configure=${{ steps.configure.outcome }}"
           echo "build=${{ steps.build.outcome }}"
+          echo "n1_numerics=${{ steps.n1_numerics.outcome }}"
           echo "fast_tests=${{ steps.fast_tests.outcome }}"
           echo "long_tests=${{ steps.long_tests.outcome }}"
           echo "wall_controlled=${{ steps.wall_controlled.outcome }}"
@@ -196,6 +208,7 @@ jobs:
           echo "application_e2e=${{ steps.application_e2e.outcome }}"
           if [[ "${{ steps.configure.outcome }}" != "success" ||
                 "${{ steps.build.outcome }}" != "success" ||
+                "${{ steps.n1_numerics.outcome }}" != "success" ||
                 "${{ steps.fast_tests.outcome }}" != "success" ||
                 "${{ steps.long_tests.outcome }}" != "success" ||
                 "${{ steps.wall_controlled.outcome }}" != "success" ||

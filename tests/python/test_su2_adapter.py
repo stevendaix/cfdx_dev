@@ -57,6 +57,7 @@ class TestSu2Adapter:
         assert "AOA" in adapter._cfg_params
         assert adapter.setup.initial_condition.velocity > 0
         assert adapter.setup.turbulence_model == "laminar"
+        assert adapter.setup.numerics.linear_solver == "fgmres"
 
 
     def test_parse_incompressible_naca0012_config(self):

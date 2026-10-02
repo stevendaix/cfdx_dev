@@ -40,6 +40,7 @@ import numpy as np
 
 from cfdx.io.gap_analysis import GapAnalysis, GapAnalysisReport
 from cfdx.io.hdf5_writer import write_case_cfdx_h5
+from cfdx.io.numerical_selection import build_numerical_selection, validate_numerical_selection
 from cfdx.io.interfaces import ConversionResult as AdapterResult
 from cfdx.io.schema import (
     CFDX_SCHEMA_VERSION,
@@ -272,6 +273,15 @@ def _normalize(
     for name, data in list(legacy.scalar_fields) + list(legacy.vec_fields):
         result.fields.append((name, data))
     result.solver_settings = _solver_settings(setup, legacy)
+
+    if setup is not None:
+        setup.numerics.selection = build_numerical_selection(setup.numerics)
+        result.solver_settings["numerics"]["selection"] = setup.numerics.selection.model_dump(mode="json")
+        for error in validate_numerical_selection(setup.numerics):
+            result.gap_analysis.unsupported_blocking(
+                "numerics", "canonical_selection", error,
+                "Add an explicit CFDX numerical registry mapping before conversion"
+            )
 
     _copy_gap(legacy.gap_report, result.gap_analysis)
     _record_missing_data(result)

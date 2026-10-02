@@ -40,7 +40,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           .venv/bin/python -c "import gmsh; print(gmsh.__version__)"
 
@@ -123,6 +123,13 @@ jobs:
           name: wall-distance-complex-benchmark
           path: build/wall_distance_complex_benchmark.csv
           if-no-files-found: error
+
+      - name: Test canonical numerical-selection adapter boundary
+        id: numerical_selection_python
+        if: matrix.build_type == 'Release'
+        run: python -m pytest -q tests/python/test_numerical_selection.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
 
       - name: Test validation report generator
         id: validation_report_test

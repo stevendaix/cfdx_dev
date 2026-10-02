@@ -428,6 +428,8 @@ class Su2Adapter(SolverAdapter):
         if "CONV_NUM_METHOD_FLOW" in p:
             scheme_val = p["CONV_NUM_METHOD_FLOW"]
             self.setup.numerics.momentum_scheme = scheme_val.lower()
+        if "LINEAR_SOLVER" in p:
+            self.setup.numerics.linear_solver = p["LINEAR_SOLVER"].strip().lower()
         if "TIME_DISCRE_FLOW" in p:
             td = p["TIME_DISCRE_FLOW"].lower()
             self.setup.numerics.transient_scheme = td
@@ -640,7 +642,7 @@ class Su2Adapter(SolverAdapter):
                          if k not in ("MACH_NUMBER", "AOA", "FREESTREAM_PRESSURE",
                                       "FREESTREAM_TEMPERATURE", "SOLVER", "KIND_TURB_MODEL",
                                       "TURB_MODEL", "NUM_METHOD_GRAD", "CONV_NUM_METHOD_FLOW",
-                                      "TIME_DISCRE_FLOW", "MUSCL", "ITER", "CFL_NUMBER",
+                                      "TIME_DISCRE_FLOW", "MUSCL", "LINEAR_SOLVER", "ITER", "CFL_NUMBER",
                                       "FREESTREAM_DENSITY", "VISC")]
         for k in unmapped_keys:
             gap.unsupported_nonblocking(

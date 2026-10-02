@@ -6,6 +6,7 @@
 // with no silent fallback. The report is deterministic.
 
 #include "cfdx/core/numerics/numerical_method_selection.h"
+#include "cfdx/core/numerics/case_numerics_config.h"
 #include "common/test_harness.h"
 
 #include <algorithm>

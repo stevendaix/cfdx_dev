@@ -418,6 +418,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
+    add_cfdx_test(test_spatial_scheme_contract tests/unit/test_spatial_scheme_contract.cpp)
     add_cfdx_test(test_conservation_boundedness tests/unit/test_conservation_boundedness.cpp)
     add_cfdx_test(test_transport_conservation tests/unit/test_transport_conservation.cpp)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
@@ -811,6 +812,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
             set_tests_properties(test_production_solver_e2e PROPERTIES
                 ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+            add_test(NAME test_production_solver_numerics_e2e
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_numerics_e2e.py)
+            set_tests_properties(test_production_solver_numerics_e2e PROPERTIES
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
         endif()
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
