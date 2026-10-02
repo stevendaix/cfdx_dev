@@ -1,7 +1,7 @@
 # %% [markdown]
 # # 06 — Temporal Convergence
 #
-# For a temporal method of order p,
+# For a method of formal order p,
 #
 # \[
 # E_{\Delta t}=C\Delta t^p.
@@ -9,10 +9,14 @@
 #
 # ## Campaign
 #
-# Keep the spatial discretisation fixed and sufficiently fine. Reduce delta-t by a known ratio and measure a quantity at a consistent physical time.
+# Keep the spatial error below the temporal signal, refine \(\Delta t\) by a known ratio, compare at the same physical time and keep nonlinear/linear errors controlled.
 #
-# Nonlinear and linear solve errors must remain below the temporal discretisation signal.
+# ## Schemes
+#
+# Verify explicit Euler, implicit Euler, Crank–Nicolson, BDF2 and any Runge–Kutta implementation against their expected stability and order properties.
+#
+# Variable-step methods require the actual time-step ratio in the analysis; constant-step formulae must not be reused blindly.
 #
 # ## Restart
 #
-# A restarted run must preserve the mathematical state required by the time integrator. Multistep methods such as BDF2 also require the history needed by the method.
+# A restart is part of verification. Multistep schemes must restore the required history and reproduce the expected trajectory within the declared numerical criterion.

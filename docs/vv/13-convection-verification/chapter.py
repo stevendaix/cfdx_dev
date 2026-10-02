@@ -1,18 +1,22 @@
 # %% [markdown]
 # # 13 — Convection Verification
 #
-# flux conservation, formal order and boundedness/limiting.
+# Convective fluxes have both conservation and accuracy requirements.
 #
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# ## Generic flux
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# F_f=(\rho\mathbf u\cdot\mathbf S)_f\,\phi_f.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Schemes
 #
-# ## Integrity rules
+# Verify upwind, central and higher-order/reconstructed schemes separately. The scheme identifier must correspond to the algorithm actually executed.
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# ## Campaign
+#
+# Use constant-field preservation, linear-field tests, smooth MMS, transport benchmarks and boundedness tests. Include mesh distortion when reconstruction is sensitive to it.
+#
+# ## Stability versus accuracy
+#
+# A bounded scheme may be strongly dissipative. A high-order scheme may require limiting. Report both accuracy and admissibility rather than collapsing them into one score.

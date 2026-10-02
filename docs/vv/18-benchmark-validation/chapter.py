@@ -1,18 +1,26 @@
 # %% [markdown]
 # # 18 — Benchmark Validation
 #
-# independent physical/reference comparison and uncertainty.
+# Validation compares CFDX with an independent physical or reference basis. It is different from code verification.
 #
-# ## Development / evidence contract
+# ## Benchmark record
 #
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# Define geometry, operating conditions, fluid properties, boundary conditions, numerical method, quantity of interest, reference source, uncertainty and acceptance criterion.
+#
+# ## Comparison
+#
+# For a quantity Q:
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# e_Q=\frac{|Q_{CFDX}-Q_{ref}|}{Q_{ref}}.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# The metric must be appropriate to the reference uncertainty; pointwise comparison is not always meaningful.
 #
-# ## Integrity rules
+# ## Existing CFDX campaigns
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# Couette, Poiseuille, Ghia, thermal/radiation and the more difficult VMFL036/BFS/NACA families must be reported from actual current repository evidence. Do not infer current status from historical discussion.
+#
+# ## Independence
+#
+# A benchmark source, analytical reference or independent code should be identified. A value copied from CFDX documentation is not an independent validation oracle.

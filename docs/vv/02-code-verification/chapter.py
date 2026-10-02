@@ -1,28 +1,31 @@
 # %% [markdown]
 # # 02 — Code Verification
 #
-# Code verification asks whether the implementation reproduces a specified algorithm or invariant.
+# Code verification asks whether the implementation reproduces the specified mathematical algorithm or invariant.
 #
-# ## Conservation example
+# ## Verification ladder
 #
-# For an internal face shared by owner P and neighbour N,
+# 1. geometry/topology invariants;
+# 2. algebraic invariants;
+# 3. constant and linear manufactured fields;
+# 4. isolated operators;
+# 5. MMS;
+# 6. coupled manufactured problems.
+#
+# ## Example: face flux antisymmetry
+#
+# For an internal face shared by P and N,
 #
 # \[
 # F_{P,f}+F_{N,f}=0.
 # \]
 #
-# The test should evaluate the same physical face flux through both orientations and assert antisymmetry within a declared floating-point tolerance.
+# This verifies a discrete conservation contract independently of the global flow solution.
 #
-# ## Verification hierarchy
+# ## Oracle types
 #
-# 1. algebraic invariants;
-# 2. constant and linear manufactured fields;
-# 3. isolated operators;
-# 4. MMS;
-# 5. coupled manufactured problems.
+# Use exact algebraic results, analytical solutions, manufactured solutions, independently implemented reference calculations, or invariant identities. A second copy of the same implementation is not an independent oracle.
 #
-# A coupled benchmark does not replace lower-level operator evidence because compensating errors can hide each other.
+# ## Reporting
 #
-# ## Evidence
-#
-# Record test identifier, source revision, numerical configuration, measured quantity and acceptance criterion.
+# Record test ID, software revision, configuration, oracle, metric, tolerance and raw diagnostic. Distinguish numerical round-off from algorithmic failure.

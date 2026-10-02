@@ -1,32 +1,30 @@
 # %% [markdown]
 # # 03 — Solution Verification
 #
-# Solution verification separates discretisation error from iterative error.
+# Solution verification estimates whether the numerical solution is sufficiently close to the mathematical solution for the declared calculation.
+#
+# ## Error budget
 #
 # \[
-# e_{total}\approx e_{space}+e_{time}+e_{iter}+e_{other}.
+# e_{total}\approx e_{space}+e_{time}+e_{iter}+e_{model}+e_{other}.
 # \]
 #
-# The decomposition is conceptual; the terms should be isolated experimentally where possible.
+# Model-form error belongs to validation/model assessment and should not be hidden inside discretisation error.
 #
 # ## Iterative error
 #
-# For a linear system,
+# For \(Ax=b\),
 #
 # \[
 # r=b-Ax=-A(x-x^*).
 # \]
 #
-# Residual magnitude alone is therefore not a universal error bound. Conditioning and the norm must be considered.
+# A small residual is not a universal error bound; conditioning and the chosen norm matter.
 #
-# ## Spatial verification
+# ## Spatial and temporal isolation
 #
-# Refine the mesh while controlling other errors, calculate observed order and demonstrate an asymptotic trend before claiming the formal order.
-#
-# ## Temporal verification
-#
-# Refine delta-t while keeping spatial error below the temporal signal. Nonlinear and linear solve errors must remain below that signal.
+# Spatial studies hold temporal and iterative errors below the spatial signal. Temporal studies do the converse. Nonlinear convergence must be tighter than the discretisation signal being measured.
 #
 # ## Reporting
 #
-# Report mesh/time-step sequence, solver tolerances, measured quantity, errors, observed order and pre-asymptotic behaviour.
+# Give mesh/time-step sequence, norms, stopping criteria, observed order, asymptotic evidence and sensitivity to solver tolerances.

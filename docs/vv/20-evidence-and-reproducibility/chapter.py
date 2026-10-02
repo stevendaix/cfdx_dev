@@ -1,18 +1,26 @@
 # %% [markdown]
 # # 20 — Evidence and Reproducibility
 #
-# revision, setup, mesh, raw data, post-processing and replay.
+# A V&V result should be replayable by another developer from retained information.
 #
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# ## Minimum manifest
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# E=(revision,setup,mesh,physics,numerics,solver,environment,raw,postprocess,criterion).
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Artifact classes
 #
-# ## Integrity rules
+# Retain machine-readable raw results, derived metrics, logs, mesh identifiers, configuration and the exact post-processing definition. Human-readable reports are secondary to raw evidence.
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# ## Reproducibility
+#
+# Record compiler/build configuration, relevant dependency versions, hardware and parallel configuration when they can affect results.
+#
+# ## Replay
+#
+# A replay should regenerate the metric from the retained raw result without manual intervention beyond documented setup.
+#
+# ## Integrity
+#
+# Never overwrite a failed campaign with a later pass. Preserve the historical result and link the new campaign as a new evidence record.

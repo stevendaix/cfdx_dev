@@ -1,18 +1,38 @@
 # %% [markdown]
 # # 09 — Linear Solver Verification
 #
-# true residual, exact systems, null spaces and preconditioner evidence.
-#
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# For
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# Ax=b,
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# verify the solver independently of the CFD application.
 #
-# ## Integrity rules
+# ## Metrics
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# True residual:
+#
+# \[
+# r=b-Ax.
+# \]
+#
+# Relative residual:
+#
+# \[
+# \eta=\frac{\|r\|}{\|b\|}.
+# \]
+#
+# Backward error may be more meaningful for ill-conditioned systems.
+#
+# ## Test ladder
+#
+# Exact diagonal systems → small dense systems → sparse systems → nonsymmetric systems → ill-conditioned systems → null-space systems → CFD matrices.
+#
+# ## Krylov methods
+#
+# Verify CG assumptions separately from GMRES/FGMRES/BiCGStab. Variable preconditioning must not be tested with an incompatible solver contract.
+#
+# ## AMG/MGR/Schur
+#
+# Test the preconditioner against exact small-system oracles before using large CFD cases. Energy contraction is distinct from residual reduction and should be used where the method's contract requires it.

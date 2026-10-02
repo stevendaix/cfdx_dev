@@ -1,18 +1,30 @@
 # %% [markdown]
 # # 16 — Radiation Verification
 #
-# blackbody, view factors, S2S, P1 and DOM.
+# Radiation is nonlinear and must be verified independently before multiphysics coupling.
 #
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# ## Blackbody oracle
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# E_b=\sigma T^4.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Surface exchange
 #
-# ## Integrity rules
+# Verify view-factor reciprocity and closure where applicable:
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# \[
+# A_iF_{ij}=A_jF_{ji},
+# \qquad
+# \sum_jF_{ij}=1
+# \]
+#
+# for a closed enclosure under the assumptions of the method.
+#
+# ## Models
+#
+# Verify S2S, P1 and DOM/RTE components independently where implemented. Distinguish geometric/view-factor error from nonlinear radiation iteration error.
+#
+# ## Coupling
+#
+# A coupled thermal-radiation pass requires independent evidence for both radiation and energy conservation.
