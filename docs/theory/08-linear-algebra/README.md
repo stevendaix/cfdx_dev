@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 08 — Linear Algebra
 
 **Status: REPOSITORY-GROUNDED.**
