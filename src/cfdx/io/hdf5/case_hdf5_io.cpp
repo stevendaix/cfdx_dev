@@ -466,6 +466,25 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
     }
     num_obj.object["raw_settings"] = std::move(raw_obj);
     obj.object["numerics"] = std::move(num_obj);
+    // Canonical N1 numerical selections. This is deliberately separate from
+    // legacy human-readable scheme fields: the registry keys are the machine
+    // contract consumed by the numerical resolver.
+    if (setup.has_explicit_numerics) {
+        mini_json::value selection_obj(mini_json::value_type::object);
+        mini_json::array_t entries_arr;
+        for (const auto& entry : setup.numerical_config.entries) {
+            mini_json::value entry_obj(mini_json::value_type::object);
+            entry_obj.object["family"] = std::string(cfdx::core::to_string(entry.family));
+            entry_obj.object["configuration_key"] = entry.configuration_key;
+            entries_arr.push_back(std::move(entry_obj));
+        }
+        selection_obj.object["entries"] = std::move(entries_arr);
+        mini_json::array_t required_arr;
+        for (const auto family : setup.numerical_config.required_families)
+            required_arr.emplace_back(std::string(cfdx::core::to_string(family)));
+        selection_obj.object["required_families"] = std::move(required_arr);
+        num_obj.object["selection"] = std::move(selection_obj);
+    }
 
     // Reference values
     obj.object["ref_length"] = mini_json::value(setup.ref_length);
@@ -683,6 +702,70 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
         setup.numerics.residual_target = json_get_string(*num, "residual_target", "1e-5");
         setup.numerics.max_iterations = static_cast<int>(json_get_number(*num, "max_iterations", 500.0));
 
+        const mini_json::value* selection = mini_json::find(*num, "selection");
+        if (selection && selection->is_object()) {
+            setup.has_explicit_numerics = true;
+            const mini_json::value* entries = mini_json::find(*selection, "entries");
+            if (entries && entries->is_array()) {
+                for (const auto& entry_v : entries->array) {
+                    if (!entry_v.is_object()) continue;
+                    const std::string family = json_get_string(entry_v, "family");
+                    const std::string key = json_get_string(entry_v, "configuration_key");
+                    cfdx::core::NumericalMethodFamily parsed = cfdx::core::NumericalMethodFamily::Convection;
+                    bool known_family = false;
+                    for (const auto candidate : {
+                        cfdx::core::NumericalMethodFamily::Gradient,
+                        cfdx::core::NumericalMethodFamily::Interpolation,
+                        cfdx::core::NumericalMethodFamily::Convection,
+                        cfdx::core::NumericalMethodFamily::Diffusion,
+                        cfdx::core::NumericalMethodFamily::Source,
+                        cfdx::core::NumericalMethodFamily::Temporal,
+                        cfdx::core::NumericalMethodFamily::TimeStep,
+                        cfdx::core::NumericalMethodFamily::Nonlinear,
+                        cfdx::core::NumericalMethodFamily::LinearSolver,
+                        cfdx::core::NumericalMethodFamily::Preconditioner,
+                        cfdx::core::NumericalMethodFamily::PressureVelocity,
+                        cfdx::core::NumericalMethodFamily::Conservation,
+                        cfdx::core::NumericalMethodFamily::Reconstruction}) {
+                        if (family == cfdx::core::to_string(candidate)) {
+                            parsed = candidate;
+                            known_family = true;
+                            break;
+                        }
+                    }
+                    if (known_family)
+                        setup.numerical_config.entries.push_back({parsed, key});
+                    else
+                        setup.numerical_report.errors.push_back("unknown numerical method family: " + family);
+                }
+            }
+            const mini_json::value* required = mini_json::find(*selection, "required_families");
+            if (required && required->is_array()) {
+                for (const auto& family_v : required->array) {
+                    if (!family_v.is_string()) continue;
+                    for (const auto candidate : {
+                        cfdx::core::NumericalMethodFamily::Gradient,
+                        cfdx::core::NumericalMethodFamily::Interpolation,
+                        cfdx::core::NumericalMethodFamily::Convection,
+                        cfdx::core::NumericalMethodFamily::Diffusion,
+                        cfdx::core::NumericalMethodFamily::Source,
+                        cfdx::core::NumericalMethodFamily::Temporal,
+                        cfdx::core::NumericalMethodFamily::TimeStep,
+                        cfdx::core::NumericalMethodFamily::Nonlinear,
+                        cfdx::core::NumericalMethodFamily::LinearSolver,
+                        cfdx::core::NumericalMethodFamily::Preconditioner,
+                        cfdx::core::NumericalMethodFamily::PressureVelocity,
+                        cfdx::core::NumericalMethodFamily::Conservation,
+                        cfdx::core::NumericalMethodFamily::Reconstruction}) {
+                        if (family_v.string == cfdx::core::to_string(candidate)) {
+                            setup.numerical_config.required_families.push_back(candidate);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         const mini_json::value* rs = mini_json::find(*num, "raw_settings");
         if (rs && rs->is_object()) {
             for (const auto& [k, v] : rs->object) {
@@ -786,6 +869,21 @@ bool read_case_cfdx_h5(const std::string& filename,
         mini_json::value root = mini_json::value::parse_safe(case_setup_json);
         if (root.is_object()) {
             case_setup_from_json(root, setup);
+        }
+    }
+
+    // Resolve the canonical numerical selection as part of case loading.
+    // A malformed explicit selection is a case-load failure, not a solver-time
+    // fallback. Legacy files without the block remain readable during migration.
+    if (setup.has_explicit_numerics) {
+        setup.numerical_report = cfdx::core::resolve_case_numerics(
+            source.case_name.empty() ? filename : source.case_name,
+            setup.numerical_config);
+        if (!setup.numerical_report.valid()) {
+            std::string reason = "invalid explicit numerical configuration";
+            if (!setup.numerical_report.errors.empty())
+                reason += ": " + setup.numerical_report.errors.front();
+            return fail(reason);
         }
     }
 
