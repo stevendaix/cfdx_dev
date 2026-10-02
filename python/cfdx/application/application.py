@@ -71,6 +71,36 @@ class Application:
         self.events.publish(ApplicationStateChanged(snapshot))
         return snapshot
 
+    def attach_controller(self, controller: ExecutionController) -> ApplicationState:
+        if self.run_center is not None:
+            self.run_center.close()
+        self.controller = controller
+        self.run_center = RunCenterModel(controller)
+        self.run_center.on_change = lambda _state: self._publish_state()
+        return self._publish_state()
+
+    def replace_session(self, session: CFDXSession, *, project_path: str | Path | None = None) -> ApplicationState:
+        runner = getattr(self.controller, "runner", None) if self.controller is not None else None
+        if getattr(runner, "running", False):
+            raise RuntimeError("cannot replace an active session")
+        if self.run_center is not None:
+            self.run_center.close()
+        self.session = session
+        self.controller = None
+        self.run_center = None
+        self.project_path = project_path
+        self.selection = SelectionState()
+        self.diagnostics = ()
+        self.results = ResultsState()
+        self.dirty = False
+        return self._publish_state()
+
+    def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
+        self.project_path = path
+        if dirty is not None:
+            self.dirty = dirty
+        return self._publish_state()
+
     def set_numerical_option(
         self, key: str, value: Any, impact: ChangeImpact = ChangeImpact.HOT
     ) -> ApplicationState:
