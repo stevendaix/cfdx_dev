@@ -94,8 +94,6 @@ def build_numerical_selection(numerics: NumericalScheme) -> NumericalSelectionCo
 
     _add(cfg, "gradient", numerics.gradient_operator, _GRADIENT_KEYS)
     _add(cfg, "convection", numerics.momentum_scheme, _CONVECTION_KEYS)
-    _add(cfg, "interpolation", numerics.momentum_interpolation, _INTERPOLATION_KEYS)
-
     if _normalise(numerics.transient_scheme) not in ("", "steady"):
         _add(cfg, "temporal", numerics.transient_scheme, _TEMPORAL_KEYS)
 
