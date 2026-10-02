@@ -52,7 +52,7 @@ def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
         (entry.family, entry.configuration_key)
         for entry in converted.case.numerics.selection.entries
     }
-    assert ("gradient", "numerics.gradient.gauss_cell") in selected
+    assert ("gradient", "numerics.gradient.gauss") in selected
     assert ("convection", "numerics.convection.upwind") in selected
     assert ("pressure_velocity", "pressure_velocity.simple") in selected
 
@@ -81,9 +81,10 @@ def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
 
     diagnostics = "".join(output)
     assert "Resolved numerical selections:" in diagnostics
-    assert "scheme[gradient]=numerics.gradient.gauss_cell" in diagnostics
+    assert "scheme[gradient]=numerics.gradient.gauss" in diagnostics
     assert "scheme[convection]=numerics.convection.upwind" in diagnostics
     assert "scheme[pressure_velocity]=pressure_velocity.simple" in diagnostics
+    assert "scheme[linear_solver]=linear.fgmres" in diagnostics
 
 
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
