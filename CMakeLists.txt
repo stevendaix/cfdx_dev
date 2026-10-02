@@ -491,6 +491,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_n9_pressure_velocity_closure tests/validation/test_n9_pressure_velocity_closure.cpp)
     set_tests_properties(test_n9_pressure_velocity_closure PROPERTIES LABELS "n9;qualification;validation")
+    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES LABELS "n9;qualification;validation;validation-total")
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
     add_cfdx_test(test_solver_vtu_provenance tests/validation/test_solver_vtu_provenance.cpp)
     add_executable(test_ghia_cavity tests/validation/test_ghia_cavity.cpp)
