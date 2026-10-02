@@ -77,12 +77,11 @@
         "tests/validation/test_convection_scheme_verification.cpp",
         "tests/validation/test_convection_3d_verification.cpp",
         "tests/validation/test_convection_blending.cpp",
-        "tests/validation/test_convection_polyhedral_campaign.cpp"
+        "tests/validation/test_convection_polyhedral_campaign.cpp",
+        "tests/validation/test_convection_solver_qualification.cpp"
       ],
       "gaps": [
-        "arbitrary non-affine polyhedral mesh family beyond the qualified tetrahedral/affine-skew families",
-        "full solver-level discontinuity/steep-gradient matrix including boundedness/QoI on physical transport cases",
-        "CI execution and retained quantitative evidence for the new qualification campaign"
+        "CI execution and retained quantitative evidence for the latest qualification HEAD"
       ]
     },
     {
