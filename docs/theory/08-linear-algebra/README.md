@@ -1,28 +1,20 @@
 # 08 — Linear Algebra
 
-## 1. Discrete problem
-
-Each implicit CFD equation becomes
+## 1. Discrete system
+Every implicit equation produces
 \[
-A x=b.
+Ax=b,\qquad r=b-Ax.
 \]
-The residual is
-\[
-r=b-Ax.
-\]
-A solver tolerance is meaningful only together with scaling, the initial residual and the true residual recomputed independently.
+The true residual must be recomputable independently from the assembled operator.
 
-## 2. Sparse structure
-
-Finite-volume matrices are sparse because a cell interacts with its local stencil. CSR-like storage represents row pointers, column indices and non-zero values without storing zeros.
+## 2. Sparse matrix
+Finite volume gives local coupling, hence most entries of \(A\) are zero. CSR-style storage uses values, column indices and row offsets. Matrix topology and matrix values must be treated as different update classes.
 
 ## 3. Conditioning
-
-For a nonsingular matrix,
 \[
 \kappa(A)=\|A\|\|A^{-1}\|.
 \]
-Perturbation theory gives, schematically,
+For perturbations,
 \[
 \frac{\|\delta x\|}{\|x\|}
 \lesssim
@@ -33,49 +25,35 @@ Perturbation theory gives, schematically,
 \frac{\|\delta b\|}{\|b\|}
 \right).
 \]
-Poor conditioning amplifies numerical perturbations.
+A large condition number amplifies coefficient and round-off errors.
 
-## 4. Direct methods
-
-Factorisation writes \(A=LU\) or a related factorisation. It is robust for moderate systems but memory-intensive for large CFD meshes.
-
-## 5. Krylov methods
-
-CG applies to suitable symmetric positive-definite systems. GMRES handles general nonsymmetric systems:
+## 4. Krylov methods
 \[
-x_m\in x_0+\mathcal K_m(A,r_0),
+\mathcal K_m(A,r_0)=span\{r_0,Ar_0,\ldots,A^{m-1}r_0\}.
 \]
-where
+CG is appropriate for SPD matrices; GMRES targets general systems. Restarted GMRES limits memory but changes the Krylov process.
+
+## 5. Preconditioning
 \[
-\mathcal K_m=span\{r_0,Ar_0,\ldots,A^{m-1}r_0\}.
+M^{-1}Ax=M^{-1}b.
 \]
+A good preconditioner clusters/restructures the spectrum without changing the physical solution. Left, right and split preconditioning have different residual interpretations.
 
-## 6. Preconditioning
-
-Solve instead
-\[
-M^{-1}Ax=M^{-1}b,
-\]
-where \(M^{-1}\) approximates \(A^{-1}\) cheaply. The objective is not to change the physical equation but to reduce the difficulty seen by the Krylov method.
-
-## 7. Residuals and energy norms
-
-For SPD \(A\), an energy norm is
+## 6. Energy norm
+For SPD \(A\),
 \[
 \|e\|_A=\sqrt{e^TAe}.
 \]
-A residual contraction
+Energy contraction is
 \[
-\frac{\|r_{k+1}\|}{\|r_k\|}<1
+\rho_E=\frac{\|e_{out}\|_A}{\|e_{in}\|_A}.
 \]
-does not necessarily imply an equivalent error contraction. AMG qualification should therefore use the norm specified by the mathematical contract.
+This is distinct from residual contraction \(\|r_{out}\|/\|r_{in}\|\).
 
-## 8. Breakdown
+## 7. Failure modes
+A solver can fail through singularity, incompatible RHS, loss of definiteness, stagnation, breakdown or excessive iteration count. Automatic solver substitution must not hide the original failure.
 
-Failures include singular systems, incompatible RHS, loss of definiteness, zero pivots, stagnation and excessive condition numbers. The solver must report the failure reason rather than silently switching to a different method.
+**CFDX path:** `src/cfdx/core/linalg/`.
 
-**CFDX paths:** `src/cfdx/core/linalg/`, tests under `tests/unit/`.
-
-## 9. Verification
-
-Use manufactured linear systems, symmetry checks, true residual recomputation, known eigenvalue/conditioning cases and solver iteration histories.
+## 8. Verification
+Use known matrices, exact solutions, independent residuals, symmetry/SPD checks, condition estimates and iteration histories. AMG and Schur are covered in chapter 09.
