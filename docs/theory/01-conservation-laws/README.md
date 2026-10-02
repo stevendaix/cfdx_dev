@@ -1,161 +1,113 @@
-# Conservation Laws
+# 01 — Conservation Laws
 
-This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
+## 1. Generic balance
 
-## Detailed course structure
+For an extensive quantity with density \(q\), flux \(\mathbf F\) and source \(s\),
+\[
+\frac{d}{dt}\int_Vq\,dV+\oint_{\partial V}\mathbf F\cdot\mathbf n\,dA=\int_Vs\,dV.
+\]
+Finite volume retains this integral form, which is why internal face fluxes can cancel exactly.
 
-### 1. Control-volume balance
+## 2. Mass
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+\[
+\frac{\partial\rho}{\partial t}+\nabla\cdot(\rho\mathbf u)=0.
+\]
+Integrating over cell \(P\):
+\[
+\frac{d(\rho_PV_P)}{dt}+\sum_{f\in\partial P}F_{m,f}=0,
+\qquad
+F_{m,f}=\rho_f\mathbf u_f\cdot\mathbf S_f.
+\]
+For an internal face shared by \(P\) and \(N\),
+\[
+\mathbf S_{f,N}=-\mathbf S_{f,P},
+\]
+so one physical flux is counted with opposite signs.
 
-### 2. Mass conservation
+## 3. Momentum
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+\[
+\frac{d}{dt}\int_V\rho\mathbf u\,dV+
+\oint\rho\mathbf u(\mathbf u\cdot\mathbf n)\,dA
+=
+-\oint p\mathbf n\,dA+
+\oint\boldsymbol\tau\mathbf n\,dA+
+\int_V\rho\mathbf f\,dV.
+\]
+The pressure contribution is a surface force; viscous stress is also a surface traction.
 
-### 3. Momentum conservation
+**CFDX paths:** `src/cfdx/physics/incompressible.h`, `src/cfdx/core/numerics/flux.h`.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 4. Energy
 
-### 4. Energy conservation
+\[
+\frac{d}{dt}\int_V\rho E\,dV+
+\oint(\rho E+p)\mathbf u\cdot\mathbf n\,dA
+=
+\oint(\boldsymbol\tau\mathbf u-\mathbf q)\cdot\mathbf n\,dA+
+\int_VS_E\,dV.
+\]
+With Fourier's law \(\mathbf q=-k\nabla T\), the conductive flux leaving a cell is \(-k\nabla T\cdot\mathbf n\).
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+**CFDX path:** `src/cfdx/physics/thermal.h`.
 
-### 5. Species conservation
+## 5. Species
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+For mass fraction \(Y_k\),
+\[
+\frac{\partial(\rho Y_k)}{\partial t}
++\nabla\cdot(\rho\mathbf uY_k)
+=
+-\nabla\cdot\mathbf J_k+\dot\omega_k,
+\]
+with
+\[
+\sum_kY_k=1,\qquad \sum_k\mathbf J_k=0
+\]
+for a consistent mixture model.
 
-### 6. Fluxes and sources
+## 6. Conservation after discretisation
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+A cell equation has the form
+\[
+a_P\phi_P=\sum_Na_{PN}\phi_N+b_P.
+\]
+The coefficients arise from face fluxes and sources, not from an arbitrary algebraic fit. A global conservation diagnostic is
+\[
+R_{global}=\sum_P
+\left[
+\frac{d}{dt}(q_PV_P)+\sum_fF_{q,f}-S_PV_P
+\right].
+\]
+For a closed steady system, \(R_{global}\) should vanish to the expected arithmetic/discretisation tolerance.
 
-### 7. Boundary integrals
+## 7. Flux antisymmetry
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+For an internal face,
+\[
+F_{P,f}+F_{N,f}=0.
+\]
+This is stronger than checking that a final global sum is small: two errors can cancel globally. CFDX verification should therefore inspect both per-face antisymmetry and global closure.
 
-### 8. Local versus global conservation
+## 8. Boundary terms
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+Boundary faces have no neighbouring cell. Their contribution must be generated from the declared physical boundary condition. The sign is always defined using the outward normal of the current control volume.
 
-### 9. Conservation after discretisation
+**CFDX paths:** `src/cfdx/core/boundary/`, `src/cfdx/physics/boundary_constraint_fvm.h`.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 9. Conservation and boundedness
 
-### 10. Conservation verification
+Conservation and boundedness are different properties. A conservative discretisation can still produce an unphysical overshoot. Positivity of a scalar may require coefficient and limiter conditions in addition to exact flux cancellation.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 10. Verification
 
-## Mandatory equation template
+Required evidence includes:
+1. constant-field flux cancellation;
+2. internal-face antisymmetry;
+3. closed-domain conservation;
+4. source-term balance;
+5. refinement of conservation error where appropriate;
+6. independent reconstruction of reported residuals.
 
-Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
-
-## Evidence vocabulary
-
-**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
-
-## Scientific figures
-
-Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
-
-## Repository traceability
-
-Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
+**Implementation:** `src/cfdx/core/numerics/flux.h`, `src/cfdx/core/numerics/convection.h`, `src/cfdx/core/numerics/laplacian.h`.
