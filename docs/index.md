@@ -39,10 +39,6 @@ developer/README
 vv/README
 ```
 
-## Complete Theory reference
-
-The full mathematical reference is [COMPLETE_THEORY.md](theory/COMPLETE_THEORY). It is the quickest route from a governing equation to the corresponding CFDX source and verification test.
-
 ## Theory course
 
 Each chapter has a navigation README and an executable `chapter.py` source.
@@ -66,8 +62,8 @@ theory/12-radiation/README
 theory/13-multiphysics/README
 theory/14-numerical-analysis/README
 theory/15-verification-validation/README
-theory/16-cfdx-data-model-and-file-formats/README
-theory/17-computational-chain-and-code-map/README
+theory/16-data-model-file-formats/README
+theory/17-computational-chain/README
 theory/18-source-tree-physics-audit/README
 ```
 
@@ -92,8 +88,8 @@ theory/12-radiation/chapter
 theory/13-multiphysics/chapter
 theory/14-numerical-analysis/chapter
 theory/15-verification-validation/chapter
-theory/16-cfdx-data-model-and-file-formats/chapter
-theory/17-computational-chain-and-code-map/chapter
+theory/16-data-model-file-formats/chapter
+theory/17-computational-chain/chapter
 theory/18-source-tree-physics-audit/chapter
 ```
 
