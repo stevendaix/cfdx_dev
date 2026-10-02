@@ -114,3 +114,31 @@ def build_numerical_selection(numerics: NumericalScheme) -> NumericalSelectionCo
     # De-duplicate required families while preserving deterministic order.
     cfg.required_families = list(dict.fromkeys(cfg.required_families))
     return cfg
+
+
+def validate_numerical_selection(numerics: NumericalScheme) -> list[str]:
+    """Return source-setting values that could not be mapped canonically.
+
+    A normalized source setting is either represented by an explicit CFDX
+    registry key or reported as a blocking conversion gap. This prevents an
+    adapter-specific scheme name from disappearing into a default.
+    """
+    errors: list[str] = []
+    checks = (
+        ("gradient", numerics.gradient_operator, _GRADIENT_KEYS),
+        ("convection", numerics.momentum_scheme, _CONVECTION_KEYS),
+        ("pressure_velocity", numerics.coupled_solver, _PRESSURE_VELOCITY_KEYS),
+    )
+    for family, value, mapping in checks:
+        if str(value).strip() and _normalise(value) not in mapping:
+            errors.append(f"unmapped numerical setting for {family}: {value!r}")
+
+    transient = _normalise(numerics.transient_scheme)
+    if transient not in ("", "steady") and transient not in _TEMPORAL_KEYS:
+        errors.append(f"unmapped numerical setting for temporal: {numerics.transient_scheme!r}")
+
+    if numerics.linear_solver and _normalise(numerics.linear_solver) not in _LINEAR_SOLVER_KEYS:
+        errors.append(f"unmapped numerical setting for linear_solver: {numerics.linear_solver!r}")
+    if numerics.preconditioner and _normalise(numerics.preconditioner) not in _PRECONDITIONER_KEYS:
+        errors.append(f"unmapped numerical setting for preconditioner: {numerics.preconditioner!r}")
+    return errors
