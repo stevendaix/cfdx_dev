@@ -62,3 +62,11 @@ The observed order is an experimental result. It must not be replaced by the ord
 This experiment alone does not qualify the CFDX gradient implementation. It does not prove correct boundary conditions for every physical model, robustness on every polyhedral topology, behaviour for discontinuous fields, nonlinear solver convergence or parallel equivalence.
 
 Those properties require separate V&V evidence.
+
+## Executable reference study
+
+The accompanying `experiments/run_gradient_study.py` applies the same manufactured-field methodology to an independently generated skewed quadrilateral mesh. It evaluates Green–Gauss, least-squares and weighted least-squares reconstruction on four refinement levels and computes the observed orders directly from the numerical results.
+
+The study intentionally excludes boundary cells from the convergence norm because their stencil is incomplete. This is a methodological choice, not a claim that boundary reconstruction is solved; boundary closure is treated separately in [Section 7](07-boundary-reconstruction.md).
+
+The generated output is diagnostic/reference data. It is not copied into the documentation as a claimed qualification result.
