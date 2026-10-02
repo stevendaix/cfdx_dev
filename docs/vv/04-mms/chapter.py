@@ -1,13 +1,13 @@
 # %% [markdown]
-# # 04 — Manufactured Solutions
+# # 04 — Method of Manufactured Solutions
 #
-# Given
+# For a differential operator
 #
 # \[
 # L(u)=f,
 # \]
 #
-# select a smooth exact field u_e and construct
+# choose a smooth exact field \(u_e\) and construct
 #
 # \[
 # f_{MMS}=L(u_e).
@@ -18,20 +18,19 @@
 # \[
 # E_2=
 # \left(
-# \frac{\sum_PV_P|u_P-u_e|^2}
-# {\sum_PV_P|u_e|^2}
+# \frac{\sum_P V_P|u_P-u_e|^2}
+# {\sum_P V_P|u_e|^2}
 # \right)^{1/2}.
 # \]
 #
 # ## Campaign
 #
-# 1. choose a smooth solution;
-# 2. derive the source independently;
-# 3. use multiple mesh levels;
-# 4. control iterative error;
-# 5. compute observed order;
-# 6. inspect local error as well as global norms.
+# Select a smooth field, derive the source independently, impose compatible boundaries, refine the mesh, control iterative error and calculate observed order.
 #
-# MMS is useful for gradients, diffusion, convection, source linearisation and coupled operators.
+# ## Scope
 #
-# A wrong order is evidence to investigate, not a reason to change the criterion after execution.
+# MMS should be used for gradients, diffusion, convection, source terms, temporal operators and coupled equations. Use multiple mesh families where geometry quality may influence the result.
+#
+# ## Diagnostics
+#
+# Inspect local error, boundary error, conditioning and conservation in addition to the global norm. A global norm can hide local defects.

@@ -1,18 +1,28 @@
 # %% [markdown]
 # # 11 — Gradient Verification
 #
-# Green–Gauss, LS/WLS, vertex, boundary reconstruction and observed order.
+# The gradient contract includes both the cell gradient and the independent face-value reconstruction.
 #
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# ## Green–Gauss
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# \nabla\phi_P\approx\frac{1}{V_P}\sum_f\phi_f\mathbf S_f.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Least squares
 #
-# ## Integrity rules
+# \[
+# (A^TWA)g=A^TWb.
+# \]
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# Verify rank and conditioning of \(A^TWA\); do not hide rank deficiency with arbitrary regularisation.
+#
+# ## Required population
+#
+# Test constant and linear fields, polyhedral and tetrahedral meshes, boundary-neighbour policies, skewness, non-orthogonality, conditioning and refinement order.
+#
+# ## Current qualification rule
+#
+# Formal second order must be demonstrated by an actual CFDX refinement campaign. A reference implementation or a theoretical order statement is not qualification evidence.
+#
+# Gradient limiting and face reconstruction must have separate tests so that one cannot mask an error in the other.

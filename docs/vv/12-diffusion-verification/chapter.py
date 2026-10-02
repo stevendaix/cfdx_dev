@@ -1,18 +1,32 @@
 # %% [markdown]
 # # 12 — Diffusion Verification
 #
-# constant/linear fields, MMS, orthogonal and non-orthogonal diffusion.
-#
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# Diffusion begins from
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# \nabla\cdot(\Gamma\nabla\phi).
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Baseline tests
 #
-# ## Integrity rules
+# Constant field → zero flux. Linear field on an appropriate mesh → exact/controlled gradient. Smooth MMS → observed order.
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# ## Non-orthogonality
+#
+# Separate the orthogonal contribution from the correction:
+#
+# \[
+# \mathbf d_f\cdot\nabla\phi
+# =
+# \text{orthogonal part}+\text{non\!\!-orthogonal correction}.
+# \]
+#
+# Test each contribution and their sum.
+#
+# ## Boundaries
+#
+# Verify Dirichlet, Neumann and mixed/Robin conditions independently, including flux sign conventions and source linearisation.
+#
+# ## Acceptance
+#
+# Report flux error, field error, conservation defect and observed order. Do not qualify diffusion from a single benchmark.

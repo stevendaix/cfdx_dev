@@ -1,18 +1,26 @@
 # %% [markdown]
 # # 08 — Boundedness
 #
-# admissible range, positivity, monotonicity and limiter evidence.
+# Boundedness prevents numerical overshoots and undershoots from violating declared admissible ranges.
 #
-# ## Development / evidence contract
+# ## Discrete requirement
 #
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# For a scalar with bounds \(\phi_{min}\le\phi\le\phi_{max}\),
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# \phi_{min}\le\phi_P\le\phi_{max}.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# Positivity is the special case \(\phi_{min}=0\).
 #
-# ## Integrity rules
+# ## Verification
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# Test constant fields, monotone data, discontinuities, skewed meshes and limiting activation. Report minimum, maximum, number of violations and their magnitude.
+#
+# ## Important distinction
+#
+# Boundedness is not the same as accuracy. Excessive diffusion can be bounded but inaccurate. A limiter must therefore be verified for both its admissibility property and its expected formal behaviour in smooth regions.
+#
+# ## Failure analysis
+#
+# Identify whether violations originate in interpolation, flux linearisation, source treatment, boundary conditions or solver convergence.

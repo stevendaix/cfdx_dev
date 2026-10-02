@@ -1,18 +1,20 @@
 # %% [markdown]
 # # 14 — Turbulence Verification
 #
-# closure equations, positivity, wall distance and coupling.
+# Turbulence verification begins with the closure equations and their admissibility constraints.
 #
-# ## Development / evidence contract
+# ## Models
 #
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# Verify each implemented closure separately: k–epsilon variants, SST k–omega, Spalart–Allmaras and LES/DES-family models where implemented.
 #
-# \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
-# \]
+# ## Checks
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# Verify positivity of turbulent kinetic energy and dissipation/frequency variables, wall-distance dependence, production/destruction signs, clipping policies and limiting.
 #
-# ## Integrity rules
+# ## Wall distance
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# Since wall distance enters several closures, verify it independently on analytical geometries before coupling it to turbulence.
+#
+# ## Qualification
+#
+# Model qualification is model- and regime-specific. A passing case does not qualify all Reynolds numbers, geometries or adverse-pressure-gradient regimes.

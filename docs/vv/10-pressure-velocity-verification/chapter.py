@@ -1,18 +1,34 @@
 # %% [markdown]
 # # 10 — Pressure–Velocity Verification
 #
-# divergence, pressure gauge, projection and Schur-oracle checks.
-#
-# ## Development / evidence contract
-#
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# In incompressible flow the algebraic system has a saddle-point structure:
 #
 # \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
+# \begin{bmatrix}A&G\\D&0\end{bmatrix}
+# \begin{bmatrix}u\\p\end{bmatrix}
+# =
+# \begin{bmatrix}b_u\\b_p\end{bmatrix}.
 # \]
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Required checks
 #
-# ## Integrity rules
+# - pressure gauge/null space;
+# - compatibility of mass source and boundary fluxes;
+# - divergence reduction;
+# - pressure-correction consistency;
+# - face-flux consistency;
+# - convergence independent of residual-only claims.
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# ## Algorithms
+#
+# Verify SIMPLE/SIMPLEC, PISO, PIMPLE, fractional-step projection and coupled methods with controlled problems before comparing full CFD benchmarks.
+#
+# ## Schur oracle
+#
+# For small block systems compare the implemented pressure operator with an independently constructed Schur complement:
+#
+# \[
+# S=D A^{-1}G.
+# \]
+#
+# Approximate Schur operators must document the approximation and its qualification scope.

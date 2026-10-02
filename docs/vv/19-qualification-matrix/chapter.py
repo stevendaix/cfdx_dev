@@ -1,18 +1,26 @@
 # %% [markdown]
 # # 19 — Qualification Matrix
 #
-# bounded capability populations and acceptance gates.
+# Qualification is a bounded population statement, not a global “CFDX is validated” label.
 #
-# ## Development / evidence contract
+# ## Matrix
 #
-# The chapter must connect the mathematical requirement to an implementation point and to executable evidence.
+# Each row should contain:
 #
-# \[
-# \text{requirement}\rightarrow\text{implementation}\rightarrow\text{test}\rightarrow\text{evidence}.
-# \]
+# | Field | Meaning |
+# |---|---|
+# | Capability | equation/model/algorithm |
+# | Population | geometry/regime/mesh/method range |
+# | Requirement | measurable claim |
+# | Test | reproducible campaign |
+# | Criterion | pre-declared gate |
+# | Evidence | retained artifact |
+# | Status | implemented/verified/validated/qualified |
 #
-# A passing test is evidence only for the property and population it explicitly defines. It does not automatically establish validation or qualification.
+# ## Gate logic
 #
-# ## Integrity rules
+# A capability is qualified only when every required population member and gate is satisfied. Optional or failed cases remain visible and must not be silently removed from the population.
 #
-# Do not silently substitute algorithms, relax numerical criteria to obtain a pass, or present a reference value as a CFDX result.
+# ## N2 example
+#
+# Gradient methods require separate evidence for Green–Gauss, LS/WLS, vertex methods, boundary reconstruction, conditioning and observed order. A single smooth benchmark cannot qualify the whole gradient capability.
