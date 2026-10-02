@@ -1,13 +1,34 @@
 # CFDX Documentation
 
-CFDX documentation is organised as four complementary domains:
+CFDX documentation is a single scientific publication system with four domains:
 
-- **Theory** — CFD and numerical methods as a coherent scientific course.
-- **User** — task-oriented workflows and supported usage.
+- **Theory** — executable CFD and numerical-method course.
+- **User** — task-oriented usage and workflows.
 - **Developer** — architecture, contracts and implementation.
-- **V&V** — evidence from requirements through qualification.
+- **V&V** — evidence and qualification governance.
 
-## Documentation domains
+## Source model
+
+The authoritative source for quantitative Theory is version-controlled Python in Jupytext percent format. A Python source contains Markdown cells, equations, executable experiments and deterministic checks. Jupytext's percent format uses explicit `# %%` cell markers and is designed to remain an ordinary diffable Python file. citeturn0search0turn0search7
+
+```text
+Python .py
+   │
+   ├── scientific explanation
+   ├── equations
+   ├── executable experiment
+   └── verification checks
+   │
+   ▼
+MyST-NB + Sphinx
+   │
+   ├── HTML / PyData theme
+   └── Typst publication pipeline
+```
+
+Committed `.ipynb` files are not the source of truth.
+
+## Domains
 
 ```{toctree}
 :maxdepth: 2
@@ -20,8 +41,11 @@ vv/README
 
 ## Theory course
 
+Each chapter has a navigation README and an executable `chapter.py` source.
+
 ```{toctree}
 :maxdepth: 2
+
 theory/00-foundations/README
 theory/01-conservation-laws/README
 theory/02-finite-volume-method/README
@@ -43,56 +67,36 @@ theory/17-computational-chain-and-code-map/README
 theory/18-source-tree-physics-audit/README
 ```
 
-## Migration control
-
-The migration map is the authoritative index for reconciling the existing documentation with the new publication domains.
-
-```{toctree}
-:maxdepth: 2
-developer/migration/README
-```
-
-It records ownership, migration status, acceptance criteria and the next source families to migrate. It does not replace the source documents.
-
-## Complete document hierarchy
-
-The visible navigation is curated. A hidden global tree keeps every source document reachable during migration and prevents accidental orphaning.
+## Executable Theory sources
 
 ```{toctree}
 :hidden:
-:glob:
-README
-application/*
-development/*
-theory/*/README
-theory/04-gradients-reconstruction/*
-user/*/README
-developer/*/README
-vv/*/README
-validation/*
-boundary_conditions
-gui
-mesh_import
+
+theory/00-foundations/chapter
+theory/01-conservation-laws/chapter
+theory/02-finite-volume-method/chapter
+theory/03-meshes/chapter
+theory/04-gradients-reconstruction/chapter
+theory/05-fluxes/chapter
+theory/06-time-integration/chapter
+theory/07-pressure-velocity-coupling/chapter
+theory/08-linear-algebra/chapter
+theory/09-amg-mgr-schur/chapter
+theory/10-turbulence/chapter
+theory/11-heat-transfer/chapter
+theory/12-radiation/chapter
+theory/13-multiphysics/chapter
+theory/14-numerical-analysis/chapter
+theory/15-verification-validation/chapter
+theory/16-cfdx-data-model-and-file-formats/chapter
+theory/17-computational-chain-and-code-map/chapter
+theory/18-source-tree-physics-audit/chapter
 ```
 
-## Existing documentation under migration
+## Existing documentation
 
-The existing material remains published until its replacement is proven. Migration is performed family-by-family; evidence is not deleted merely to make the new hierarchy cleaner.
+Existing Markdown under `docs/application`, `docs/development`, `docs/validation`, `docs/user`, `docs/developer` and `docs/vv` remains available during migration. It must not become a second source of truth for Theory claims.
 
-```{toctree}
-:maxdepth: 2
-:caption: Existing documentation — migration source
-README
-application/*
-development/*
-boundary_conditions
-gui
-mesh_import
-validation/*
-```
+## Publication rule
 
-These sources must eventually point to their new authoritative owner. Obsolete duplicates are removed only after the replacement is complete and covered by CI.
-
-## Scientific publication
-
-The documentation stack is Sphinx + MyST + PyData Sphinx Theme with MathJax and BibTeX. Executable scientific content is generated from version-controlled Python sources; generated figures and reports are outputs, not sources of truth.
+Generated HTML, figures, tables and reports are outputs. Source equations, source data and executable experiments remain version-controlled inputs. V&V status comes from evidence, not manually copied prose.
