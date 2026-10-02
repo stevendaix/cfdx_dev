@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable, TYPE_CHECKING
 
 from ..session import CFDXSession, SimulationState
+from .results import ResultsState
 from .workflow import WorkflowStepState, build_workflow_state
 
 if TYPE_CHECKING:
@@ -52,6 +53,7 @@ class ApplicationState:
     diagnostics: tuple[Any, ...]
     case_tree: tuple[Any, ...]
     workflow: tuple[WorkflowStepState, ...]
+    results: ResultsState
 
 
 def build_application_state(
@@ -63,6 +65,7 @@ def build_application_state(
     controller: ExecutionController | None = None,
     capabilities: Iterable[str] = (),
     diagnostics: Iterable[Any] = (),
+    results: ResultsState | None = None,
 ) -> ApplicationState:
     """Build a snapshot without copying or mutating CFD domain state."""
     diagnostics_tuple = tuple(diagnostics)
@@ -98,4 +101,5 @@ def build_application_state(
         diagnostics=diagnostics_tuple,
         case_tree=tuple(session.case_tree()),
         workflow=build_workflow_state(session, diagnostics=diagnostics_tuple),
+        results=results or ResultsState(),
     )

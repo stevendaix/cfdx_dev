@@ -13,6 +13,7 @@ try:
     from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QDockWidget,
+        QFileDialog,
         QFormLayout,
         QLabel,
         QLineEdit,
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover
 
 if QMainWindow is not object:
     from .run_center_panel import RunCenterPanel
+    from .results_panel import ResultsPanel
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
@@ -91,6 +93,9 @@ if QMainWindow is not object:
             self.workflow_tree.itemSelectionChanged.connect(self._selection_changed)
             self._add_dock("Workflow", "workbench.dock.workflow", self.workflow_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
             self._refresh_workflow(self._application_state)
+            self.results_panel = ResultsPanel(self.application)
+            self.results_panel.on_open = self._open_results_directory
+            self._add_dock("Results", "workbench.dock.results", self.results_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
 
             viewport = QLabel("3D VIEWPORT\n\nRenderer adapter placeholder")
             viewport.setObjectName("workbench.viewport")
@@ -114,6 +119,15 @@ if QMainWindow is not object:
             self.properties_panel = panel
             self._refresh_properties()
             return panel
+
+        def _open_results_directory(self) -> None:
+            directory = QFileDialog.getExistingDirectory(self, "Open CFDX Results Directory")
+            if not directory:
+                return
+            try:
+                self.application.open_results(directory)
+            except (OSError, ValueError) as exc:
+                self.statusBar().showMessage(f"Results error: {exc}")
 
         def _refresh_properties(self) -> None:
             if not hasattr(self, "properties_panel"):

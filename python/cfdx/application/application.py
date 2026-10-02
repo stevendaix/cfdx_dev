@@ -15,10 +15,12 @@ from .commands import (
     SetProperty,
     StopSolver,
 )
-from .events import ApplicationStateChanged, EventBus, SelectionChanged
+from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
 from .state import ApplicationState, SelectionState, build_application_state
 from .properties import PropertyState, properties_for_selection
 from .run_center import RunCenterModel
+from .results import ResultsState, build_results_state
+from ..results_series import ResultSeries, discover_result_series
 
 
 class Application:
@@ -40,6 +42,7 @@ class Application:
         self.diagnostics: tuple[Any, ...] = ()
         self.dirty = False
         self.events = EventBus()
+        self.results = ResultsState()
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
             self.run_center.on_change = lambda _state: self._publish_state()
@@ -54,6 +57,7 @@ class Application:
             controller=self.controller,
             capabilities=self.capabilities,
             diagnostics=self.diagnostics,
+            results=self.results,
         )
 
     def execute(self, command: Command) -> ApplicationState:
@@ -85,6 +89,39 @@ class Application:
     def validate(self, validator, mesh=None) -> ApplicationState:
         report = validator(self.session.case, mesh)
         return self.set_diagnostics(report.diagnostics)
+
+    def set_results(self, series: ResultSeries | None, *, directory: str | Path | None = None) -> ApplicationState:
+        self.results = build_results_state(series, directory=directory)
+        self.events.publish(ResultsChanged(self.state))
+        return self.state
+
+    def open_results(self, directory: str | Path) -> ApplicationState:
+        path = Path(directory)
+        return self.set_results(discover_result_series(path, inspect_fields=True), directory=path)
+
+    def select_result_frame(self, stable_id: str) -> ApplicationState:
+        if stable_id not in {frame.stable_id for frame in self.results.frames}:
+            raise KeyError(stable_id)
+        self.results = ResultsState(
+            self.results.directory,
+            self.results.frames,
+            stable_id,
+            self.results.selected_field,
+        )
+        self.events.publish(ResultsChanged(self.state))
+        return self.state
+
+    def select_result_field(self, field: str) -> ApplicationState:
+        if field not in self.results.field_names:
+            raise KeyError(field)
+        self.results = ResultsState(
+            self.results.directory,
+            self.results.frames,
+            self.results.selected_frame_id,
+            field,
+        )
+        self.events.publish(ResultsChanged(self.state))
+        return self.state
 
     def run(self) -> ApplicationState:
         return self.execute(RunSolver())
