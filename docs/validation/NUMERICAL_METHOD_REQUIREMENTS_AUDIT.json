@@ -152,7 +152,7 @@
     {
       "package_id": "N2",
       "requirement": "polyhedral gradient scheme accuracy",
-      "status": "verified",
+      "status": "qualified"verified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
@@ -162,7 +162,7 @@
     {
       "package_id": "N3",
       "requirement": "orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified"implemented",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -170,7 +170,7 @@
     {
       "package_id": "N3",
       "requirement": "corrected non-orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified"implemented",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h"
@@ -179,7 +179,7 @@
     {
       "package_id": "N3",
       "requirement": "limited non-orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified"implemented",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -187,7 +187,7 @@
     {
       "package_id": "N3",
       "requirement": "over-relaxed diffusion formulation",
-      "status": "implemented",
+      "status": "qualified"implemented",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
@@ -197,7 +197,7 @@
     {
       "package_id": "N3",
       "requirement": "skewness correction contract",
-      "status": "implemented",
+      "status": "qualified"implemented",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
@@ -210,7 +210,9 @@
       "status": "implemented",
       "evidence": [
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "src/cfdx/core/numerics/diffusion_diagnostics.h",
+        "tests/unit/test_diffusion_diagnostics.cpp"
       ]
     },
     {
