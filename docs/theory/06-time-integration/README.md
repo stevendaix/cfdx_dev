@@ -1,83 +1,78 @@
 # 06 — Time Integration
 
-## 1. Semi-discrete equation
-
-After spatial discretisation,
+After spatial discretisation the semi-discrete problem is
 \[
-M\frac{d\mathbf u}{dt}=R(\mathbf u,t),
+M\dot u=R(u,t).
 \]
-or, after moving terms,
+For a linear diffusion/advection operator, \(\dot u=Lu+f\). The temporal scheme must be analysed separately from spatial accuracy.
+
+## 1. Explicit Euler
 \[
-\frac{d\mathbf u}{dt}=F(\mathbf u,t).
+u^{n+1}=u^n+\Delta t,F(u^n,t^n).
 \]
-
-**CFDX path:** `src/cfdx/core/numerics/temporal.h`.
-
-## 2. Explicit Euler
-
+Taylor expansion gives
 \[
-\mathbf u^{n+1}=\mathbf u^n+\Delta tF(\mathbf u^n,t^n).
+u(t+\Delta t)=u+\Delta t\dot u+\frac{\Delta t^2}{2}\ddot u+O(\Delta t^3),
 \]
-The local truncation error is \(O(\Delta t^2)\), giving first-order global accuracy. Stability depends on the eigenvalues of the spatial operator.
-
-## 3. Implicit Euler
-
+so the global order is one. For \(\dot u=\lambda u\), the amplification factor is
 \[
-\mathbf u^{n+1}=\mathbf u^n+\Delta tF(\mathbf u^{n+1},t^{n+1}).
+G=1+\lambda\Delta t,
 \]
-For a linear system \(F=-A\mathbf u+b\),
+and stability requires \(|G|\le1\).
+
+## 2. Implicit Euler
 \[
-(I+\Delta tA)\mathbf u^{n+1}=\mathbf u^n+\Delta t b.
+u^{n+1}=u^n+\Delta tF(u^{n+1},t^{n+1}).
 \]
-It is first-order accurate but often substantially more stable for stiff diffusion.
-
-## 4. Crank–Nicolson
-
+For \(F=-Au+b\),
 \[
-\mathbf u^{n+1}=\mathbf u^n+
-\frac{\Delta t}{2}
-[F(\mathbf u^n,t^n)+F(\mathbf u^{n+1},t^{n+1})],
+(I+\Delta t A)u^{n+1}=u^n+\Delta tb.
 \]
-with second-order temporal accuracy for sufficiently smooth solutions.
+It is first-order but robust for stiff diffusion.
 
-## 5. BDF2
+## 3. Crank–Nicolson
+\[
+u^{n+1}=u^n+\frac{\Delta t}{2}
+[F(u^n,t^n)+F(u^{n+1},t^{n+1})].
+\]
+The method is second-order for smooth solutions but may oscillate for strongly stiff/non-smooth problems.
 
-For constant \(\Delta t\),
+## 4. BDF2
 \[
 \frac{3u^{n+1}-4u^n+u^{n-1}}{2\Delta t}=F(u^{n+1},t^{n+1}).
 \]
-It is second-order and implicit.
+Its global temporal order is two for constant step size. Variable-step coefficients must be derived from the actual step ratio rather than copied from the constant-step formula.
 
-## 6. CFL
-
-For advection, a representative Courant number is
+## 5. CFL and diffusion restrictions
+For advection,
 \[
 Co=\frac{U\Delta t}{\Delta x}.
 \]
-On a finite-volume mesh a cell-based definition is
+For diffusion,
 \[
-Co_P=\frac{\Delta t}{V_P}\sum_f\max(F_{m,f},0)/\rho_f,
+Fo=\frac{\alpha\Delta t}{\Delta x^2}.
 \]
-up to the exact convention used by the implementation. The convention must be documented rather than assumed.
-
-## 7. Pseudo-transient continuation
-
-A steady nonlinear problem
+The precise finite-volume definition must use the cell volume and face fluxes:
 \[
-R(u)=0
+Co_P\sim\frac{\Delta t}{V_P}\sum_f\frac{|F_f|}{\rho_f}.
 \]
-may be solved through
+Stability limits are properties of the complete discretisation, not universal constants.
+
+## 6. Pseudo-transient continuation
+A steady residual \(R(u)=0\) can be approached through
 \[
 M\frac{u^{n+1}-u^n}{\Delta t}+R(u^{n+1})=0.
 \]
-The pseudo-time step is a nonlinear stabilisation parameter, not physical time.
+Here \(\Delta t\) is numerical, not physical.
+
+## 7. Restart
+A restart must preserve the discrete state at \(t_n\), including all history variables required by multi-step schemes. BDF2 therefore requires enough previous states to reconstruct its derivative.
+
+**CFDX path:** `src/cfdx/core/numerics/temporal.h`; application state/checkpoint: `src/cfdx/application/`, `python/cfdx/checkpoint.py`.
 
 ## 8. Verification
-
-Use manufactured ODE/PDE solutions, temporal refinement at fixed spatial resolution, order estimation
+Use a manufactured ODE, diffusion eigenmode, temporal refinement and restart equivalence. For fixed spatial error,
 \[
-p=\frac{\log(E_{\Delta t}/E_{\Delta t/2})}{\log2},
+p_t=\frac{\ln(E_{\Delta t}/E_{\Delta t/r})}{\ln r}.
 \]
-and sensitivity to solver tolerances.
-
-**Implementation:** `src/cfdx/core/numerics/temporal.h`, with time history/checkpoint handling in `src/cfdx/application/`.
+Do not infer temporal order from a mixed space/time refinement campaign.
