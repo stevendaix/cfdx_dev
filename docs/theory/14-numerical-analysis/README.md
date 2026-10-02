@@ -1,189 +1,62 @@
-# Numerical Analysis
+# 14 — Numerical Analysis
 
-This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
+## 1. Truncation error
+For continuous operator \(L\) and discrete operator \(L_h\),
+\[
+\tau_h=L_hu-Lu.
+\]
+Consistency requires \(\tau_h\to0\) as \(h\to0\) under the regularity assumptions of the scheme.
 
-## Detailed course structure
+## 2. Convergence and observed order
+If
+\[
+E(h)=Ch^p,
+\]
+then
+\[
+p_{obs}=\frac{\ln(E_h/E_{h/r})}{\ln r}.
+\]
+This formula is meaningful only for a controlled refinement family with a stable error norm and unchanged mathematical problem.
 
-### 1. Consistency
+## 3. Stability
+For
+\[
+\dot u=Lu,
+\]
+a one-step method gives
+\[
+u^{n+1}=G(\Delta tL)u^n.
+\]
+Stability requires the eigenvalues of the amplification operator to lie in the method's stability region.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 4. Monotonicity/boundedness
+A bounded scalar solution should satisfy
+\[
+\phi_{min}\le\phi_h\le\phi_{max}.
+\]
+A coefficient condition such as
+\[
+a_P\ge\sum_Na_{PN}\ge0
+\]
+is a useful diffusion-dominated diagnostic, but not a universal theorem for every CFD scheme.
 
-### 2. Truncation error
+## 5. Dissipation/dispersion
+For Fourier mode \(e^{ikx}\), a numerical method introduces amplitude and phase errors. Dissipation alters amplitude; dispersion alters phase. These must be studied independently for transport/wave problems.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 6. Conditioning
+\[
+\kappa(A)=\|A\|\|A^{-1}\|.
+\]
+Large \(\kappa\) amplifies perturbations and can explain solver sensitivity without implying a physical modelling error.
 
-### 3. Stability
+## 7. Error budget
+Conceptually,
+\[
+E_{total}\sim E_h+E_t+E_i+E_m+E_g,
+\]
+for spatial, temporal, iterative, modelling and geometry/input contributions. This is a diagnostic decomposition, not an exact statistical identity.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 8. Mesh effects
+Observed order can be corrupted by changing topology, aspect ratio, skewness or boundary treatment while refining. Each V&V campaign must therefore state its refinement family.
 
-### 4. Convergence
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 5. Accuracy
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 6. Dissipation and dispersion
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 7. Monotonicity
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 8. Boundedness
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 9. Conditioning
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 10. Error budget
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 11. Observed order
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-### 12. Mesh-quality effects
-
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-## Mandatory equation template
-
-Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
-
-## Evidence vocabulary
-
-**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
-
-## Scientific figures
-
-Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
-
-## Repository traceability
-
-Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
+**CFDX paths:** `src/cfdx/core/numerics/`, `src/cfdx/core/linalg/`; reference experiments are under `docs/theory/04-gradients-reconstruction/experiments/`.
