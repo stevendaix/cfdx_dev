@@ -32,7 +32,8 @@ myst_enable_extensions = [
 nb_custom_formats = {
     ".py": ["jupytext.reads", {"fmt": "py:percent"}],
 }
-nb_execution_mode = "off"
+nb_execution_mode = "auto"
+nb_execution_timeout = 120
 
 bibtex_bibfiles = ["references/bibliography.bib"]
 bibtex_default_style = "unsrt"
