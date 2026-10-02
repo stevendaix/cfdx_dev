@@ -1,3 +1,17 @@
 # Linear Algebra
 
-This section is part of the CFDX documentation architecture. Content is added through dedicated migration/authoring PRs; do not duplicate material from another documentation domain.
+**Status: TOPO — detailed course chapter not yet migrated.**
+
+## Planned course
+1. Sparse matrices
+2. Symmetry and definiteness
+3. Conditioning and scaling
+4. Direct solvers
+5. Stationary iterations
+6. Krylov methods
+7. Preconditioning
+8. Residual versus algebraic error
+9. Energy norms
+10. Stopping criteria
+11. Parallel linear algebra
+12. Floating-point reproducibility
