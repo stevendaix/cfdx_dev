@@ -700,6 +700,7 @@
       "requirement": "common Couette/Poiseuille/cavity/external/skew matrix",
       "status": "partial",
       "evidence": [
+        "tests/validation/test_n9_physical_matrix.cpp",
         "tests/validation/test_phase9_acceptance.cpp"
       ]
     },
