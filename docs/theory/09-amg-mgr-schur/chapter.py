@@ -3,112 +3,130 @@
 #
 # ## 9.1 Saddle-point structure
 #
-# A coupled incompressible system can be written
-# \[
+# [
 # A=
-# \begin{bmatrix}
-# A_{uu}&A_{up}\\
+# egin{bmatrix}
+# A_{uu}&A_{up}\
 # A_{pu}&A_{pp}
-# \end{bmatrix}.
-# \]
-# Eliminating the velocity block gives
-# \[
+# end{bmatrix},
+# qquad
 # S=A_{pp}-A_{pu}A_{uu}^{-1}A_{up}.
-# \]
-# This exact Schur complement is generally expensive because applying it requires solving with \(A_{uu}\).
+# ]
+# The exact Schur action is expensive because applying it requires an (A_{uu}) solve.
 #
-# ## 9.2 Approximate Schur
+# ## 9.2 Block factorisation
 #
-# Replace \(A_{uu}^{-1}\) by \(M_u^{-1}\):
-# \[
-# \widetilde S=A_{pp}-A_{pu}M_u^{-1}A_{up}.
-# \]
-# A useful verification is to compare \(\widetilde Sx\) against an exact/reference Schur action on controlled matrices.
-#
-# ## 9.3 Block factorisation
-#
-# When \(A_{uu}\) is invertible:
-# \[
+# [
 # A=
-# \begin{bmatrix}I&0\\A_{pu}A_{uu}^{-1}&I\end{bmatrix}
-# \begin{bmatrix}A_{uu}&0\\0&S\end{bmatrix}
-# \begin{bmatrix}I&A_{uu}^{-1}A_{up}\\0&I\end{bmatrix}.
-# \]
-# This identity explains why block preconditioners can solve velocity and pressure subproblems separately.
+# egin{bmatrix}I&0\A_{pu}A_{uu}^{-1}&Iend{bmatrix}
+# egin{bmatrix}A_{uu}&0\0&Send{bmatrix}
+# egin{bmatrix}I&A_{uu}^{-1}A_{up}\0&Iend{bmatrix}.
+# ]
+# This identity is the algebraic foundation of block-Schur preconditioning.
 #
-# ## 9.4 AMG principle
+# ## 9.3 Approximate Schur and LSC/BFBt concepts
 #
-# Algebraic multigrid constructs a hierarchy
-# \[
-# A_h,\;A_H,\;A_{H_2},\ldots
-# \]
-# and uses smoothing to reduce high-frequency error and coarse correction to reduce low-frequency error.
+# With (M_u^{-1}approx A_{uu}^{-1}),
+# [
+# widetilde S=A_{pp}-A_{pu}M_u^{-1}A_{up}.
+# ]
+# Pressure-convection-diffusion and least-squares-commutator-type approximations exploit relationships between velocity and pressure operators. A BFBt/LSC implementation must be qualified from the actual discrete (D,G,A_u) blocks; naming the preconditioner is not sufficient.
 #
-# ## 9.5 Galerkin coarse operator
+# ## 9.4 AMG two-level principle
 #
-# \[
-# A_H=R A_h P.
-# \]
-# With \(R=P^T\) in a symmetric setting, the coarse operator inherits a variational relationship to the fine operator. Any non-Galerkin approximation is a different algorithm and needs its own verification.
+# Let (P) prolong coarse vectors and (R) restrict fine residuals:
+# [
+# A_H=R A_hP.
+# ]
+# A two-level correction is
+# [
+# xleftarrow x+P A_H^{-1}R(b-A_hx).
+# ]
+# A smoother reduces error components poorly represented on the coarse grid; the coarse correction removes low-frequency/algebraically smooth components.
 #
-# ## 9.6 V-cycle
+# ## 9.5 V-cycle
 #
-# A conceptual V-cycle is
-# \[
-# x\leftarrow S_{\rm pre}(A,b,x)
-# \rightarrow r=b-Ax
-# \rightarrow r_H=Rr
-# \rightarrow A_H e_H=r_H
-# \rightarrow x\leftarrow x+Pe_H
-# \rightarrow S_{\rm post}.
-# \]
-# Coarse solves, smoothing counts and transfer operators are part of the preconditioner definition.
+# [
+# xightarrow S_{pre}
+# ightarrow r=b-Ax
+# ightarrow r_H=Rr
+# ightarrow A_He_H=r_H
+# ightarrow x+Pe_H
+# ightarrow S_{post}.
+# ]
+# Coarse solve, smoother, transfer, damping and stopping rules together define the V-cycle.
 #
-# ## 9.7 Energy norm
+# ## 9.6 Energy norm and contraction
 #
-# For SPD \(A\):
-# \[
-# \|e\|_A=\sqrt{e^TAe}.
-# \]
-# A V-cycle contraction diagnostic is
-# \[
-# q_E=\frac{\|e_{out}\|_A}{\|e_{in}\|_A}.
-# \]
-# Energy contraction is more structural than simply observing a residual decrease on one right-hand side.
+# For SPD (A),
+# [
+# |e|_A=sqrt{e^TAe}.
+# ]
+# Define
+# [
+# q_E=rac{|e_{out}|_A}{|e_{in}|_A}.
+# ]
+# A hierarchy qualification should use an energy-norm contraction or another operator-level metric, not only a single right-hand-side residual ratio.
 #
-# ## 9.8 Coarsening and interpolation
+# ## 9.7 Ruge–Stüben and strength of connection
 #
-# Coarsening selects coarse variables \(C\) and fine variables \(F\). Interpolation approximates
-# \[
-# x_F\approx P_{FC}x_C.
-# \]
-# Ruge–Stüben-style strength of connection, classical interpolation and smoothed aggregation make different mathematical assumptions and must not be conflated.
+# AMG coarsening defines a strength relation, for example from a threshold applied to matrix couplings. Classical interpolation then builds
+# [
+# x_Fapprox P_{FC}x_C.
+# ]
+# A bug in strength/interpolation can produce a hierarchy that looks structurally valid but has poor or non-contracting error reduction; hence transfer and contraction tests belong in the qualification.
+#
+# ## 9.8 Smoothed aggregation
+#
+# Aggregation first forms groups of fine unknowns, constructs tentative prolongation (P_0), then smooths it:
+# [
+# P=(I-omega D^{-1}A)P_0
+# ]
+# in a representative Jacobi smoothing form. The exact smoother and near-nullspace vectors are part of the method.
 #
 # ## 9.9 MGR
 #
-# Multigrid reduction selects a subset of variables to retain while reducing other blocks. In block CFD systems the variable ordering and block elimination strategy are essential:
-# \[
-# x=
-# \begin{bmatrix}x_C\\x_F\end{bmatrix}.
-# \]
-# The resulting hierarchy depends on the chosen coarse variables and relaxation.
+# Split variables into retained (C) and eliminated (F):
+# [
+# x=egin{bmatrix}x_C\x_Fend{bmatrix}.
+# ]
+# MGR recursively reduces the system while retaining selected physical variables. For incompressible flow this enables, for example, velocity-block reduction followed by a pressure/Schur hierarchy. Variable ordering and block maps are therefore first-class correctness data.
 #
-# ## 9.10 Matrix update semantics
+# ## 9.10 Matrix-value versus graph updates
 #
-# If only values change:
-# \[
-# A^{new}=A^{old}+\Delta A
-# \]
-# while sparsity is unchanged, a hierarchy may need numerical refresh. If connectivity changes, \(P,R\), graph strength and coarse sparsity may all change, requiring structural rebuild. Silent reuse of stale hierarchy data is a correctness risk.
+# If only coefficients change,
+# [
+# A^{new}=A^{old}+Delta A
+# ]
+# with unchanged sparsity, numerical hierarchy data may need refresh. If connectivity changes, the graph and coarse sparsity may change and a structural rebuild can be required. Reusing a stale hierarchy after a topology change is not a valid optimisation.
 #
-# ## 9.11 Verification
+# ## 9.11 Exact-oracle qualification
 #
-# The minimum hierarchy ladder is:
-# exact Schur oracle → approximate Schur action → Galerkin identity → transfer dimensions → V-cycle contraction → matrix-update semantics → coupled solver evidence.
+# A robust sequence is
+# [
+# oxed{
+# 	ext{exact Schur}
+# ightarrow
+# 	ext{approximate Schur}
+# ightarrow
+# 	ext{Galerkin identity}
+# ightarrow
+# 	ext{transfer correctness}
+# ightarrow
+# 	ext{energy contraction}
+# ightarrow
+# 	ext{matrix updates}
+# ightarrow
+# 	ext{coupled CFD}
+# }.
+# ]
+# Each stage isolates a different failure mode.
 #
 # ## 9.12 CFDX implementation
 #
-# The current source tree contains [amg_preconditioner.h](../../../src/cfdx/core/linalg/amg_preconditioner.h), [coupled_amg_schur.h](../../../src/cfdx/core/linalg/coupled_amg_schur.h), [block_schur.h](../../../src/cfdx/core/linalg/block_schur.h) and HYPRE AMG integration. Tests include [test_exact_schur.cpp](../../../tests/unit/test_exact_schur.cpp), [test_schur_preconditioner.cpp](../../../tests/unit/test_schur_preconditioner.cpp), [test_mgr_preconditioner.cpp](../../../tests/unit/test_mgr_preconditioner.cpp), [test_amg_preconditioner_qualification.cpp](../../../tests/validation/test_amg_preconditioner_qualification.cpp) and [test_coupled_block_schur_amg.cpp](../../../tests/validation/test_coupled_block_schur_amg.cpp).
+# Relevant sources include [amg_preconditioner.h](../../../src/cfdx/core/linalg/amg_preconditioner.h), [coupled_amg_schur.h](../../../src/cfdx/core/linalg/coupled_amg_schur.h), [block_schur.h](../../../src/cfdx/core/linalg/block_schur.h), [mgr_preconditioner.h](../../../src/cfdx/core/linalg/mgr_preconditioner.h), [linear_solver_dispatch.h](../../../src/cfdx/core/linalg/linear_solver_dispatch.h).
+#
+# Qualification tests include [test_exact_schur.cpp](../../../tests/unit/test_exact_schur.cpp), [test_schur_preconditioner.cpp](../../../tests/unit/test_schur_preconditioner.cpp), [test_mgr_preconditioner.cpp](../../../tests/unit/test_mgr_preconditioner.cpp), [test_amg_preconditioner_qualification.cpp](../../../tests/validation/test_amg_preconditioner_qualification.cpp) and [test_coupled_block_schur_amg.cpp](../../../tests/validation/test_coupled_block_schur_amg.cpp).
 #
 # ## 9.13 Executable Schur oracle
 # %%
