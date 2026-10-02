@@ -1,104 +1,85 @@
 # 07 — Pressure–Velocity Coupling
 
-For incompressible flow, pressure enforces the divergence constraint rather than being supplied by an independent thermodynamic equation.
-
-## 1. Block system
-
-Linearisation gives
+For incompressible flow, pressure is a Lagrange multiplier enforcing
 \[
-\begin{bmatrix}
-A & G\\
-D & 0
-\end{bmatrix}
-\begin{bmatrix}
-u\\p
-\end{bmatrix}
-=
-\begin{bmatrix}
-b\\0
-\end{bmatrix}.
+D u=0,
 \]
-Here \(A\) is the momentum operator, \(G\) pressure gradient and \(D\) discrete divergence.
+not an independent thermodynamic variable.
+
+## 1. Block equations
+After discretisation,
+\[
+\begin{bmatrix}A&G\\D&0\end{bmatrix}
+\begin{bmatrix}u\\p\end{bmatrix}
+=
+\begin{bmatrix}b\\0\end{bmatrix}.
+\]
+Here \(A\) contains momentum, \(G\) pressure gradient and \(D\) divergence.
 
 ## 2. Schur complement
-
-From
-\[
-Au+Gp=b,
-\qquad
-Du=0,
-\]
-we obtain
+From \(Au+Gp=b\),
 \[
 u=A^{-1}(b-Gp),
 \]
-then
+and therefore
 \[
-(DA^{-1}G)p=DA^{-1}b.
+DA^{-1}Gp=DA^{-1}b.
 \]
-The Schur operator is
+The pressure operator is
 \[
 S=DA^{-1}G.
 \]
-Its quality controls pressure correction and coupled convergence.
+An approximate pressure solver replaces \(A^{-1}\) by \(\tilde A^{-1}\).
 
 **CFDX paths:** `src/cfdx/physics/pressure_velocity.h`, `src/cfdx/core/linalg/exact_schur.h`, `src/cfdx/core/linalg/block_schur.h`.
 
 ## 3. SIMPLE
-
-With approximate momentum inverse \(\tilde A^{-1}\),
+Linearising momentum gives
 \[
-\tilde S=D\tilde A^{-1}G.
+A\delta u=-G\delta p+r_u,
+\qquad
+D\delta u=-r_p.
 \]
-A pressure correction is obtained from the approximate Schur system and relaxed before updating velocity and pressure. The approximation makes SIMPLE inexpensive but iterative.
+With \(A^{-1}\approx\tilde A^{-1}\),
+\[
+(D\tilde A^{-1}G)\delta p=
+r_p+D\tilde A^{-1}r_u.
+\]
+Relaxation is then applied to pressure and/or velocity. SIMPLE convergence depends strongly on the Schur approximation.
 
 ## 4. SIMPLEC
-
-SIMPLEC modifies the momentum-correction approximation to reduce the influence of neighbour velocity corrections. The exact algebra must follow the CFDX implementation rather than a generic label.
-
-**CFDX path:** `src/cfdx/core/linalg/simplerc_schur.h`.
+SIMPLEC modifies the approximation to the velocity correction so that neighbour corrections are represented differently. The exact coefficient formula is implementation-defined and must be traced to `src/cfdx/core/linalg/simplerc_schur.h`.
 
 ## 5. PISO
-
-PISO performs multiple pressure-correction stages within a time step so that the corrected velocity satisfies continuity more tightly without a complete outer nonlinear iteration.
+PISO performs successive pressure corrections inside a time step. Each correction attempts to reduce the continuity defect without requiring a complete outer momentum solve.
 
 ## 6. PIMPLE
-
-PIMPLE combines pressure-correction iterations with outer under-relaxed/nonlinear loops. It is particularly useful for transient problems where multiple pressure corrections and outer iterations are required.
+PIMPLE combines inner pressure corrections with outer nonlinear iterations. Its usefulness comes from separating fast pressure correction from slower nonlinear coupling.
 
 ## 7. Fractional step
-
-A projection method first computes an intermediate velocity,
+A projection method computes
 \[
-\frac{u^*-u^n}{\Delta t}=N(u^n)-\nabla p^*,
+\frac{u^*-u^n}{\Delta t}=N(u^n),
 \]
-then corrects it:
+then
 \[
-u^{n+1}=u^*-\Delta t\nabla\delta p,
+u^{n+1}=u^*-\Delta tG\delta p.
 \]
-with
+Applying \(D\) and enforcing \(Du^{n+1}=0\) gives
 \[
-\nabla^2\delta p=\frac{1}{\Delta t}\nabla\cdot u^*.
+(DG)\delta p=\frac{1}{\Delta t}Du^*.
 \]
+Boundary and pressure-gauge treatment are part of this equation.
 
-## 8. Coupled solve
+## 8. Collocated pressure/velocity
+A collocated arrangement can admit checkerboard pressure modes. Face mass fluxes therefore need a pressure-velocity coupling correction consistent with the momentum equation. Any Rhie–Chow-like implementation must be tested against a manufactured checkerboard mode.
 
-A monolithic approach solves the saddle-point system directly or through block preconditioning. This avoids some splitting errors but requires robust block linear algebra.
-
-## 9. Rhie–Chow and checkerboarding
-
-On collocated grids, pressure and velocity can decouple through a checkerboard mode. Face mass flux reconstruction must therefore couple pressure and momentum consistently. Any Rhie–Chow-like correction must be documented algebraically and verified on a pressure-mode test.
-
-## 10. Pressure null space
-
-Pressure is defined only up to an additive constant for closed incompressible domains:
+## 9. Pressure null space
+For closed incompressible flow,
 \[
-p'=p+C.
+p\mapsto p+C
 \]
-A gauge constraint such as \(\int_\Omega p\,d\Omega=0\) or one reference value removes the null space.
+leaves the velocity unchanged. A gauge such as \(p(x_0)=0\) or \(\int p\,dV=0\) removes the null space.
 
-## 11. Verification
-
-Use discrete divergence, pressure null-space, manufactured pressure-gradient, lid-driven cavity, Poiseuille and coupling-iteration diagnostics.
-
-**Implementation:** `src/cfdx/physics/pressure_velocity.h`, `src/cfdx/physics/pressure_velocity_algorithms.h`, `src/cfdx/core/linalg/`.
+## 10. Verification
+Check discrete continuity, pressure gauge, Schur oracle, manufactured pressure gradient, Poiseuille and Ghia cavity. Solver residual reduction alone is not a coupling verification criterion.
