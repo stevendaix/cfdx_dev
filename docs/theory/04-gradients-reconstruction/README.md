@@ -18,11 +18,34 @@ This chapter develops spatial gradient reconstruction from continuous mathematic
 12. [Comparison of methods](12-comparison-of-methods.md)
 13. [CFDX implementation contract](13-cfdx-implementation.md)
 14. [Verification](14-verification.md)
+15. [Worked example](15-worked-example.md)
+16. [Numerical pitfalls](16-numerical-pitfalls.md)
+17. [Summary](17-summary.md)
 
 ## Executable science
 
-The next layer of this pilot adds Python experiments for linear and quadratic manufactured fields, mesh refinement, error norms, observed order and diagnostic visualisation. Generated figures and tables must remain reproducible from source code.
+The pilot now contains an independent Python reference study with:
+
+- a deterministic skewed quadrilateral mesh;
+- Green–Gauss, least-squares and weighted least-squares reconstruction;
+- linear and quadratic manufactured fields;
+- volume-weighted relative L2 errors;
+- observed-order calculation over four refinement levels;
+- conditioning diagnostics for LS/WLS;
+- a deterministic self-check.
+
+Run the study from `experiments/` with `python self_check.py` and
+`python run_gradient_study.py`. The resulting numerical values are generated
+at execution time; no convergence result is hard-coded into the documentation.
+
+## Scientific status
+
+The reference experiment is a mathematical cross-check and teaching instrument.
+It is deliberately independent of the CFDX implementation and is therefore not
+a qualification oracle. Formal N2 qualification remains governed by the V&V
+requirements and executable CFDX evidence.
 
 ## Traceability
 
-This chapter is the Theory-side explanation for the N2 gradient/reconstruction work. Authoritative implementation and V&V records remain in their respective repository domains.
+This chapter is the Theory-side explanation for the N2 gradient/reconstruction work.
+Authoritative implementation and V&V records remain in their respective repository domains.
