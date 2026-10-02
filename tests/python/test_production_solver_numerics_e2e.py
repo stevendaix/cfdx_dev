@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 
 def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
-    solver = Path(__import__("os").environ["CFDX_PRODUCTION_SOLVER"])
+    solver = Path(os.environ["CFDX_PRODUCTION_SOLVER"])
     assert solver.is_file()
 
     root = Path(__file__).resolve().parents[2]
