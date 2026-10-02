@@ -279,6 +279,26 @@ void check_conservation_constant()
         EXPECT_NEAR(total,0.0,1e-12);
         EXPECT_TRUE(max_abs<1e-11);
     }
+
+    const auto grad=compute_gradient_least_squares_quadratic(constant,g.mesh);
+    for (const LimiterType limiter : {
+            LimiterType::MINMOD, LimiterType::VANLEER,
+            LimiterType::SUPERBEE, LimiterType::VAN_ALBADA,
+            LimiterType::MC}) {
+        const auto fv=interpolate_cell_to_face(
+            constant,g.mesh,g.geometry,InterpScheme::LIMITED,&flux,limiter,&grad);
+        const auto div=divergence_from_face(g,flux,fv);
+        double total=0.0;
+        double max_abs=0.0;
+        for (std::size_t c=0;c<g.mesh.n_cells();++c) {
+            total += g.geometry.cell_volumes[c]*div(c);
+            max_abs=std::max(max_abs,std::abs(div(c)));
+        }
+        std::cout<<"N4_CONSERVATION limiter="<<to_string(limiter)
+                 <<" total="<<total<<" max_abs="<<max_abs<<"\n";
+        EXPECT_NEAR(total,0.0,1e-12);
+        EXPECT_TRUE(max_abs<1e-11);
+    }
 }
 
 void check_quick_linear_exactness()
