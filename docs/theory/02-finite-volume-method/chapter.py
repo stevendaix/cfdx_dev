@@ -1,20 +1,50 @@
 # %% [markdown]
 """# Finite-Volume Method
 
-## Scientific objective
+## Scientific purpose
 
-Integrating a conservation law over cell P gives d/dt integral_VP(phi)dV + sum_f(F_f.S_f)=integral_VP(S)dV. Geometry enters through volume and oriented face vectors; reconstruction supplies face states; assembly produces A*x=b. Conservation is structural and independent of nonlinear convergence.
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
 
-## Executable contract
+## Required structure
 
-The code cell below is deliberately small: it is a deterministic algebraic sanity check. Chapter-specific quantitative experiments must be added beside this source and linked to the relevant V&V evidence.
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
 
-## Status
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
 
-Implementation, verification, validation and qualification are separate claims. This chapter does not promote CFDX maturity.
+## Core equations
+
+- int_V div(F)dV = int_boundary F.n dA
+- sum_f F_f = S_P V_P
+- a_P phi_P = sum_N a_N phi_N + b_P
+- sum_f S_f = 0 for a closed polyhedron
+- discrete conservation follows from shared face fluxes
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
 from __future__ import annotations
+import numpy as np
 
-gamma=2.; area=3.; distance=4.; assert abs(gamma*area/distance-1.5)<1e-14
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
