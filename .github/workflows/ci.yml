@@ -127,7 +127,6 @@ jobs:
       - name: Test canonical numerical-selection adapter boundary
         id: numerical_selection_python
         if: matrix.build_type == 'Release'
-        continue-on-error: true
         run: python -m pytest -q tests/python/test_numerical_selection.py
 
       - name: Test validation report generator
