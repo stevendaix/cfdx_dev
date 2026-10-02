@@ -42,7 +42,7 @@ struct Grid {
 };
 
 // Cartesian n x n x n hexahedral grid on [0,1]^3 (affine cube builder).
-Grid make_cartesian_cube(std::size_t n)
+Grid make_cartesian_cube(std::size_t n, double shear_xy = 0.0, double shear_xz = 0.0)
 {
     if (n < 4) throw std::invalid_argument("make_cartesian_cube: n must be >= 4");
     const double h = 1.0 / static_cast<double>(n);
@@ -66,8 +66,10 @@ Grid make_cartesian_cube(std::size_t n)
                     {x0,y0,z0}, {x1,y0,z0}, {x1,y1,z0}, {x0,y1,z0},
                     {x0,y0,z1}, {x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}
                 };
-                for (std::size_t q = 0; q < 8; ++q)
-                    m.points().set(b + q, raw[q][0], raw[q][1], raw[q][2]);
+                for (std::size_t q = 0; q < 8; ++q) {
+                    const double x = raw[q][0] + shear_xy * raw[q][1] + shear_xz * raw[q][2];
+                    m.points().set(b + q, x, raw[q][1], raw[q][2]);
+                }
             }
 
     std::vector<std::vector<std::size_t>> faces_per_cell(nc);
@@ -452,6 +454,67 @@ void check_quick_and_diagnostics()
               << " raw_unbounded_faces=" << raw.unbounded_faces << "\n";
 }
 
+void check_skew_mesh_order()
+{
+    // Affine shear preserves planar faces and exact refinement, but removes
+    // orthogonality. This is the controlled N4 skew/non-orthogonal campaign.
+    const std::vector<std::size_t> ns = {8u, 16u, 32u};
+    const double shear_xy = 0.75;
+    const double shear_xz = -0.35;
+
+    auto measure = [](const Grid& grid, InterpScheme scheme,
+                      LimiterType limiter = LimiterType::NONE) {
+        const auto flux = positive_flux(grid, 1.0);
+        const auto phi = cell_field(grid, sample(grid, smooth_value));
+        Field<double, Location::CELL> grad;
+        const Field<double, Location::CELL>* gp = nullptr;
+        if (scheme == InterpScheme::LIMITED) {
+            grad = compute_gradient_least_squares_quadratic(phi, grid.mesh);
+            gp = &grad;
+        }
+        const auto face = interpolate_cell_to_face(
+            phi, grid.mesh, grid.geometry, scheme, &flux, limiter, gp,
+            scheme == InterpScheme::BLENDED ? 1.0 : 0.75);
+        const auto win = window_faces(grid);
+        std::vector<double> got, want;
+        got.reserve(win.size());
+        want.reserve(win.size());
+        for (const std::size_t f : win) {
+            got.push_back(face(f));
+            want.push_back(smooth_value(grid.geometry.face_centres[f]));
+        }
+        return error_norms(got, want).l2;
+    };
+
+    const std::vector<std::pair<InterpScheme, std::string>> schemes = {
+        {InterpScheme::UPWIND, "upwind"},
+        {InterpScheme::LINEAR, "central"},
+        {InterpScheme::BLENDED, "blended_beta1"},
+        {InterpScheme::QUICK, "quick"},
+        {InterpScheme::LIMITED, "tvd_vanleer"}};
+
+    for (const auto& [scheme, name] : schemes) {
+        std::vector<double> errors;
+        for (const std::size_t n : ns) {
+            const Grid g = make_cartesian_cube(n, shear_xy, shear_xz);
+            errors.push_back(measure(
+                g, scheme, scheme == InterpScheme::LIMITED
+                    ? LimiterType::VANLEER : LimiterType::NONE));
+        }
+        const double p = observed_order(errors[1], errors[2]);
+        std::cout << "CONV3D_SKEW_ORDER scheme=" << name
+                  << " n=8 L2=" << errors[0]
+                  << " n=16 L2=" << errors[1]
+                  << " n=32 L2=" << errors[2]
+                  << " order=" << p << "\n";
+        require(std::isfinite(p), name + ": skew order must be finite");
+        if (scheme == InterpScheme::UPWIND)
+            require(p > 0.70, name + ": skew upwind must remain first order");
+        else
+            require(p > 1.50, name + ": skew second-order reconstruction gate failed");
+    }
+}
+
 void check_constant_advection()
 {
     const Grid grid = make_cartesian_cube(10);
@@ -474,6 +537,7 @@ int main()
         check_order();
         check_limiter_gradient_variants();
         check_quick_and_diagnostics();
+        check_skew_mesh_order();
         check_constant_advection();
         std::cout << "CONVECTION_3D_VERIFICATION: PASS\n";
         return 0;
