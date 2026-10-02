@@ -1,50 +1,62 @@
 # %% [markdown]
-"""# Pressure–Velocity Coupling
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- div(u)=0
-- A_u u + G p = b_u; D u + C p=b_p
-- S=C-D A_u^-1 G
-- SIMPLE pressure correction approximates A_u^-1 locally
-- pure-Neumann pressure has a constant null mode
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Pressure--Velocity Coupling
+#
+# ## 7.1 Constraint
+# \[
+# \nabla\cdot\mathbf u=0.
+# \]
+# Pressure is the Lagrange multiplier enforcing the incompressibility constraint.
+#
+# ## 7.2 Block system and Schur complement
+# \[
+# \begin{bmatrix}A_u&G\\D&C\end{bmatrix}
+# \begin{bmatrix}u\\p\end{bmatrix}
+# =
+# \begin{bmatrix}b_u\\b_p\end{bmatrix},
+# \]
+# \[
+# S=C-D A_u^{-1}G.
+# \]
+# The pressure equation after elimination is \(Sp=b_p-D A_u^{-1}b_u\).
+#
+# ## 7.3 SIMPLE and SIMPLEC
+#
+# SIMPLE derives a pressure correction using an approximate inverse of the momentum operator. SIMPLEC modifies the velocity-correction approximation to retain coupling differently. They must be treated as distinct numerical algorithms.
+#
+# ## 7.4 PISO and PIMPLE
+#
+# PISO applies multiple pressure corrections in one outer step. PIMPLE combines outer nonlinear iterations with PISO-like corrections. The exact loop ordering, relaxation and stopping criteria define the implemented algorithm.
+#
+# ## 7.5 Fractional step
+# \[
+# u^*=u^n+\Delta tR(u^n),
+# \]
+# \[
+# \nabla^2p^{n+1}=\frac{\rho}{\Delta t}\nabla\cdot u^*,
+# \]
+# \[
+# u^{n+1}=u^*-\frac{\Delta t}{\rho}\nabla p^{n+1}.
+# \]
+#
+# ## 7.6 Pressure null space
+# Under pure Neumann pressure conditions,
+# \[
+# p\mapsto p+C
+# \]
+# leaves velocity unchanged. Gauge fixing or explicit null-space handling is therefore mandatory.
+#
+# ## 7.7 Rhie--Chow
+#
+# Collocated meshes require a face mass-flux interpolation that prevents checkerboard pressure modes. The CFDX implementation must be documented from the actual discrete formula.
+#
+# ## 7.8 CFDX traceability
+# src/cfdx/physics/pressure_velocity.h  
+# src/cfdx/physics/pressure_velocity_algorithms.h  
+# src/cfdx/physics/steady_incompressible_solver.h  
+# Tests: tests/unit/test_incompressible.cpp, tests/validation/test_steady_incompressible_solver.cpp
+#
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
+A=np.array([[3.,1.],[1.,2.]])
+assert np.all(np.linalg.eigvalsh(A)>0)
