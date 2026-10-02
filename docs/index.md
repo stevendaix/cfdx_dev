@@ -95,3 +95,11 @@ These sources must eventually point to their new authoritative owner. Obsolete d
 ## Scientific publication
 
 The documentation stack is Sphinx + MyST + PyData Sphinx Theme with MathJax and BibTeX. Executable scientific content is generated from version-controlled Python sources; generated figures and reports are outputs, not sources of truth.
+
+## References
+
+The project uses one authoritative BibTeX bibliography.
+
+```{bibliography}
+:all:
+```
