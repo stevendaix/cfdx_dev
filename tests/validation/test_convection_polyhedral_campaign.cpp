@@ -21,6 +21,7 @@
 #include "cfdx/core/field/field.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
