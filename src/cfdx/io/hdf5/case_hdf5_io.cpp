@@ -743,7 +743,12 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             const mini_json::value* required = mini_json::find(*selection, "required_families");
             if (required && required->is_array()) {
                 for (const auto& family_v : required->array) {
-                    if (!family_v.is_string()) continue;
+                    if (!family_v.is_string()) {
+                        setup.numerical_report.errors.push_back(
+                            "required numerical method family must be a string");
+                        continue;
+                    }
+                    bool known_family = false;
                     for (const auto candidate : {
                         cfdx::core::NumericalMethodFamily::Gradient,
                         cfdx::core::NumericalMethodFamily::Interpolation,
