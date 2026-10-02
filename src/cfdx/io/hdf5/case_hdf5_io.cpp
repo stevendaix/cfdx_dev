@@ -465,7 +465,6 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
         raw_obj.object[k] = v;
     }
     num_obj.object["raw_settings"] = std::move(raw_obj);
-    obj.object["numerics"] = std::move(num_obj);
     // Canonical N1 numerical selections. This is deliberately separate from
     // legacy human-readable scheme fields: the registry keys are the machine
     // contract consumed by the numerical resolver.
@@ -485,6 +484,7 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
         selection_obj.object["required_families"] = std::move(required_arr);
         num_obj.object["selection"] = std::move(selection_obj);
     }
+    obj.object["numerics"] = std::move(num_obj);
 
     // Reference values
     obj.object["ref_length"] = mini_json::value(setup.ref_length);
