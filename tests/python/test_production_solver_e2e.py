@@ -38,7 +38,7 @@ def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
     case_dir = tmp_path / "explicit_case"
     case_dir.mkdir()
     source_case = case_dir / source.name
-    config_case = case_dir / "case.cfg"
+    config_case = case_dir / source.with_suffix(".cfg").name
     source_case.write_bytes(source.read_bytes())
     config_case.write_bytes(config.read_bytes())
     case_path = case_dir / "case.cfdx.h5"
