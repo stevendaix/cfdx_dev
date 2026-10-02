@@ -370,6 +370,71 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("case_hdf5_explicit_numerics_are_resolved_on_load", []() {
+        const std::string filename = "/tmp/cfdx_case_explicit_numerics.h5";
+        std::remove(filename.c_str());
+
+        Mesh mesh = make_unit_cube();
+        SourceInfo source = make_test_source();
+        CaseSetup setup = make_default_setup();
+        GapAnalysis gap;
+        setup.has_explicit_numerics = true;
+        setup.numerical_config.entries = {
+            {NumericalMethodFamily::Gradient,
+             configuration_keys_for_family(NumericalMethodFamily::Gradient).front()},
+            {NumericalMethodFamily::Diffusion,
+             configuration_keys_for_family(NumericalMethodFamily::Diffusion).front()},
+            {NumericalMethodFamily::Temporal,
+             configuration_keys_for_family(NumericalMethodFamily::Temporal).front()},
+        };
+        setup.numerical_config.required_families = {
+            NumericalMethodFamily::Gradient,
+            NumericalMethodFamily::Diffusion,
+            NumericalMethodFamily::Temporal,
+        };
+
+        EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
+
+        Mesh loaded;
+        SourceInfo loaded_source;
+        CaseSetup loaded_setup;
+        GapAnalysis loaded_gap;
+        EXPECT_TRUE(read_case_cfdx_h5(filename, loaded, loaded_source, loaded_setup, loaded_gap));
+        EXPECT_TRUE(loaded_setup.has_explicit_numerics);
+        EXPECT_TRUE(loaded_setup.numerical_report.valid());
+        EXPECT_TRUE(loaded_setup.numerical_report.resolved.size() == 3);
+        EXPECT_TRUE(loaded_setup.numerical_report.errors.empty());
+
+        std::remove(filename.c_str());
+    });
+
+    run_case("case_hdf5_ambiguous_explicit_numerics_are_rejected", []() {
+        const std::string filename = "/tmp/cfdx_case_ambiguous_numerics.h5";
+        std::remove(filename.c_str());
+
+        Mesh mesh = make_unit_cube();
+        SourceInfo source = make_test_source();
+        CaseSetup setup = make_default_setup();
+        GapAnalysis gap;
+        setup.has_explicit_numerics = true;
+        const auto keys = configuration_keys_for_family(NumericalMethodFamily::Gradient);
+        setup.numerical_config.entries = {
+            {NumericalMethodFamily::Gradient, keys[0]},
+            {NumericalMethodFamily::Gradient, keys[1]},
+        };
+        setup.numerical_config.required_families = {NumericalMethodFamily::Gradient};
+
+        EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
+
+        Mesh loaded;
+        SourceInfo loaded_source;
+        CaseSetup loaded_setup;
+        GapAnalysis loaded_gap;
+        EXPECT_FALSE(read_case_cfdx_h5(filename, loaded, loaded_source, loaded_setup, loaded_gap));
+
+        std::remove(filename.c_str());
+    });
+
     run_case("case_hdf5_read_scalar_fields", []() {
         const std::string filename = "/tmp/cfdx_case_scalar_fields.h5";
         std::remove(filename.c_str());
