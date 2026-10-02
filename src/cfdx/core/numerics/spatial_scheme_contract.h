@@ -74,7 +74,7 @@ struct SpatialSchemeSelection {
 
 inline SpatialSchemeSelection make_spatial_scheme_selection(
     SpatialSchemeRole role,
-    const NumericalSchemeFamily family,
+    const NumericalMethodFamily family,
     const std::string& configuration_key)
 {
     const auto method = make_scheme_selection(family, configuration_key);
