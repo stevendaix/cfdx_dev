@@ -79,7 +79,7 @@ mesh_import
 
 ## Complete document hierarchy
 
-The visible navigation above is curated. A hidden global tree keeps every source document reachable during migration and prevents accidental orphaning. This follows the standard Sphinx toctree hierarchy mechanism. citeturn2search1
+The visible navigation above is curated. A hidden global tree keeps every source document reachable during migration and prevents accidental orphaning. This follows the standard Sphinx toctree hierarchy mechanism.
 
 ```{toctree}
 :hidden:
