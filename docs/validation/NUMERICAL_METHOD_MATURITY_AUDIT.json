@@ -55,6 +55,7 @@
       "name": "Diffusion and non-orthogonal correction",
       "status": "partial",
       "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
@@ -63,7 +64,7 @@
       ],
       "gaps": [
         "non-affine / extremely non-orthogonal meshes",
-        "polyhedral diffusion smooth Laplacian is O(1)-inconsistent on tetrahedra (measured L2 plateau ~2.1, order ~0, even in the deep interior [0.3,0.7]^3 with a second-order LS-quadratic gradient): the face-gradient in the non-orthogonal correction is evaluated at the cell-centre midpoint, off the face centroid; the residual does not vanish on non-affine meshes (exact only for linear fields) - a discretisation impossibility for the current corrected/over-relaxed operators; fixing requires evaluating the face gradient at the face centroid (Hessian-aware)"
+        "polyhedral diffusion is O(1) for the two-point+correction family on tetrahedra even with 2nd-order gradients and Hessian-at-centroid evaluation (measured: corrected 1.88/1.80/1.94, over-relaxed 2.09/2.04/2.20 at n=8/16/24, order~0): the alpha(phi_N-phi_P) curvature term accumulates O(H) in the divergence - needs a different discretisation (research-grade)"
       ]
     },
     {
