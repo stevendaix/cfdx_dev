@@ -66,7 +66,33 @@ A deliberately collapsed face is passed to the same production mesh validator. T
 
 ## Relationship with existing campaigns
 
-The existing non-orthogonal/skew Laplacian campaigns remain valid and are not replaced. N10 adds a cross-cutting mesh-quality ladder and solver robustness gate on top of those operator-specific tests.
+N10 deliberately reuses the repository's existing numerical V&V rather than
+creating a duplicate smooth-field accuracy suite.
+
+The following production tests are part of the N10 qualification subset through
+the `n10;validation;qualification` CTest label:
+
+- `test_gradient_verification`: orthogonal, affine-skewed and high-aspect-ratio
+  smooth-field refinement with L1/L2/Linf metrics and observed order;
+- `test_polyhedral_gradient_campaign`: tetrahedral/polyhedral gradient accuracy,
+  weighted least-squares and conditioning/rank-deficiency checks;
+- `test_nonorthogonal_skew_campaign`: controlled skew sweep;
+- `test_nonorthogonal_laplacian_campaign`: non-orthogonal diffusion V&V;
+- `test_polyhedral_laplacian_campaign`: polyhedral diffusion consistency.
+
+These cases already provide the spatial-accuracy evidence that a second
+N10-specific smooth-field campaign would duplicate.
+
+The dedicated N10 test therefore remains focused on the cross-cutting mesh
+robustness contracts:
+
+- quality metrics and controlled quality ladder;
+- solver convergence/true residual versus mesh quality;
+- polyhedral geometry acceptance;
+- valid near-degenerate geometry;
+- deterministic rejection of invalid geometry.
+
+Production imported fixtures from #423 remain a separate integration item.
 
 ## Current N10 status
 
