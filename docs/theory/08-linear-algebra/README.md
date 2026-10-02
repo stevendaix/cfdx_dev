@@ -15,3 +15,5 @@
 10. Stopping criteria
 11. Parallel linear algebra
 12. Floating-point reproducibility
+
+The chapter will separate mathematical theory, CFDX implementation contracts, executable experiments and V&V evidence.
