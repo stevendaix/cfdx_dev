@@ -1,93 +1,143 @@
 # %% [markdown]
 # 05 — Fluxes
 #
-# Fluxes are the numerical interface between conservation laws and the algebraic operator. One physical internal face must produce one numerical flux, with opposite signs for its two adjacent cells.
+# ## 5.1 Conservation meaning
 #
-# ## 5.1 Mass flux
+# For a control volume,
+# [
+# rac{d}{dt}int_Vhophi,dV
+# =-oint_{partial V}mathbf F_phicdotmathbf n,dA
+# +int_VS_phi,dV.
+# ]
+# A numerical face flux is therefore a discrete approximation to the surface integral. Its orientation must be explicit.
 #
-# \[
-# \dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f
-# \]
-# has units \(kg\,s^{-1}\). For incompressible constant-density flow, the same expression reduces to \(\rho\mathbf u_f\cdot\mathbf S_f\).
+# ## 5.2 Mass and momentum fluxes
 #
-# ## 5.2 Convective scalar flux
+# [
+# dot m_f=ho_fmathbf u_fcdotmathbf S_f.
+# ]
+# For momentum, the convective flux is
+# [
+# mathbf F_{m,f}=dot m_fmathbf u_f,
+# ]
+# while pressure contributes
+# [
+# mathbf F_{p,f}=-p_fmathbf S_f.
+# ]
+# Viscous traction for a Newtonian fluid is
+# [
+# oldsymbol	au=2mumathbf S
+# -rac23mu(
+ablacdotmathbf u)I,
+# qquad
+# mathbf F_{	au,f}=oldsymbol	au_fmathbf S_f.
+# ]
 #
-# \[
-# F_{c,f}=\dot m_f\phi_f.
-# \]
+# ## 5.3 Scalar convection
+#
+# [
+# F_{c,f}=dot m_fphi_f.
+# ]
 # Upwind:
-# \[
-# \phi_f=
-# \begin{cases}
-# \phi_P,&\dot m_f\ge0,\\
-# \phi_N,&\dot m_f<0.
-# \end{cases}
-# \]
-# Central interpolation:
-# \[
-# \phi_f=(1-w)\phi_P+w\phi_N.
-# \]
-# A higher-order reconstruction can be written
-# \[
-# \phi_f=\phi_P+\nabla\phi_P\cdot(\mathbf x_f-\mathbf C_P)+\cdots
-# \]
-# and therefore inherits the quality of the gradient and limiter.
+# [
+# phi_f=
+# egin{cases}
+# phi_P,&dot m_fge0,\
+# phi_N,&dot m_f<0.
+# end{cases}
+# ]
+# Central:
+# [
+# phi_f=(1-w)phi_P+wphi_N.
+# ]
+# A reconstructed scheme has the generic form
+# [
+# phi_f=phi_P+
+# 
+ablaphi_Pcdot(mathbf x_f-mathbf C_P)+
+# O(h^2).
+# ]
 #
-# ## 5.3 Diffusive flux
+# ## 5.4 Diffusive flux and non-orthogonal decomposition
 #
-# For a transported scalar:
-# \[
-# F_{d,f}=-\Gamma_f\nabla\phi_f\cdot\mathbf S_f
-# \]
-# when \(F_d\) denotes outward physical flux. The corresponding PDE term is \(+\nabla\cdot(\Gamma\nabla\phi)\); sign conventions must never be mixed between PDE and outward-flux definitions.
+# [
+# F_{d,f}=-Gamma_f
+ablaphi_fcdotmathbf S_f.
+# ]
+# With
+# [
+# mathbf S_f=mathbf S_f^parallel+mathbf S_f^perp,
+# ]
+# [
+# F_{d,f}
+# =-Gamma_f
+ablaphi_fcdotmathbf S_f^parallel
+# -Gamma_f
+ablaphi_fcdotmathbf S_f^perp.
+# ]
+# The first term can use a two-point centre difference:
+# [
+# 
+ablaphi_fcdotmathbf S_f^parallel
+# approx
+# rac{phi_N-phi_P}{|mathbf d_{PN}|}
+# rac{mathbf d_{PN}cdotmathbf S_f}{|mathbf d_{PN}|}.
+# ]
+# The correction term depends on a reconstructed gradient and is therefore sensitive to N2.
 #
-# ## 5.4 Pressure force
+# ## 5.5 Flux antisymmetry
 #
-# Pressure contributes
-# \[
-# \mathbf F_{p,f}=-p_f\mathbf S_f
-# \]
-# to the momentum balance with the outward-normal convention.
-#
-# ## 5.5 Energy and species
-#
-# Convective energy flux is typically \(\dot m_f h_f\) or \(\dot m_f e_f\), depending on the chosen formulation. Species convection is \(\dot m_fY_{k,f}\); molecular diffusion adds a constitutive flux. The selected energy/species variable and reference enthalpy must be explicit.
-#
-# ## 5.6 Internal-face antisymmetry
-#
-# For one face:
-# \[
-# \mathbf S_{Nf}=-\mathbf S_{Pf},
-# \qquad
+# For an internal face:
+# [
+# mathbf S_{Nf}=-mathbf S_{Pf},
+# qquad
 # F_{Nf}=-F_{Pf}.
-# \]
-# This is stronger than checking a global balance because a pair of wrong fluxes can still cancel globally.
+# ]
+# This must be enforced at the shared-face level, not recreated independently from two cell rows.
 #
-# ## 5.7 Non-orthogonal diffusion
+# ## 5.6 Boundary fluxes
 #
-# \[
-# \nabla\phi_f\cdot\mathbf S_f
-# =
-# \nabla\phi_f\cdot\mathbf S_f^\parallel+
-# \nabla\phi_f\cdot\mathbf S_f^\perp.
-# \]
-# The correction term requires a gradient reconstruction and therefore couples N2 and N3.
+# A prescribed outward flux (q_Gamma) gives
+# [
+# F_Gamma=q_Gamma A_f.
+# ]
+# A Dirichlet condition instead determines a boundary state/value and therefore enters through the selected reconstruction and constitutive flux. Robin conditions combine value and flux, for example
+# [
+# -k
+abla Tcdot n=h(T-T_infty).
+# ]
 #
-# ## 5.8 Boundedness
+# ## 5.7 Boundedness and TVD concepts
 #
-# For a bounded face interpolation one may require
-# \[
-# \min(\phi_P,\phi_N)\le\phi_f\le\max(\phi_P,\phi_N).
-# \]
-# Multidimensional limiters need a stronger cell-neighbourhood definition. Boundedness must be verified for the actual stencil and not inferred from a one-dimensional formula.
+# Pairwise boundedness requires
+# [
+# min(phi_P,phi_N)lephi_flemax(phi_P,phi_N).
+# ]
+# For one-dimensional linear advection, a TVD analysis is often expressed using the Courant number
+# [
+# C=rac{uDelta t}{Delta x}
+# ]
+# and a flux-limiter function (psi(r)), where
+# [
+# r=rac{phi_i-phi_{i-1}}{phi_{i+1}-phi_i}.
+# ]
+# The limiter must satisfy the appropriate Sweby-region constraints for the declared time/space discretisation; a limiter kernel alone is not a complete TVD proof.
+#
+# ## 5.8 Flux linearisation
+#
+# After face interpolation, the flux contributes to the algebraic row:
+# [
+# a_Pphi_P+sum_Na_{PN}phi_N=b_P.
+# ]
+# The coefficient signs depend on the flux convention and on whether the term is treated explicitly, implicitly, or deferred-correction. The code-level coefficient contract is therefore part of the numerical-method definition.
 #
 # ## 5.9 CFDX implementation
 #
-# The numerical interfaces are in [flux.h](../../../src/cfdx/core/numerics/flux.h), [convection.h](../../../src/cfdx/core/numerics/convection.h), [interpolation.h](../../../src/cfdx/core/numerics/interpolation.h), [divergence.h](../../../src/cfdx/core/numerics/divergence.h) and [laplacian.h](../../../src/cfdx/core/numerics/laplacian.h).
+# Core interfaces: [flux.h](../../../src/cfdx/core/numerics/flux.h), [convection.h](../../../src/cfdx/core/numerics/convection.h), [interpolation.h](../../../src/cfdx/core/numerics/interpolation.h), [divergence.h](../../../src/cfdx/core/numerics/divergence.h), [laplacian.h](../../../src/cfdx/core/numerics/laplacian.h).
 #
-# Verification uses [test_convection_scheme_verification.cpp](../../../tests/validation/test_convection_scheme_verification.cpp), [test_convection_3d_verification.cpp](../../../tests/validation/test_convection_3d_verification.cpp), [test_convection_blending.cpp](../../../tests/validation/test_convection_blending.cpp) and conservation tests.
+# Verification: [test_convection_scheme_verification.cpp](../../../tests/validation/test_convection_scheme_verification.cpp), [test_convection_3d_verification.cpp](../../../tests/validation/test_convection_3d_verification.cpp), [test_convection_blending.cpp](../../../tests/validation/test_convection_blending.cpp), plus conservation/boundedness campaigns.
 #
-# ## 5.10 Executable antisymmetry check
+# ## 5.10 Executable antisymmetry
 # %%
 import numpy as np
 F = 2.5
