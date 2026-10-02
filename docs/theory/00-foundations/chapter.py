@@ -1,151 +1,181 @@
 # %% [markdown]
 # 00 — Fluid Mechanics Foundations
 #
-# This chapter is the fluid-mechanics course of CFDX. The objective is to derive the equations before discussing their numerical approximation.
+# This is the fluid-mechanics course underlying CFDX. The numerical chapters should be read only after the continuous equations, constitutive assumptions, dimensions and boundary conditions are understood.
 #
-# ## 0.1 What CFD solves
+# ## 0.1 Continuum fields and assumptions
 #
-# A CFD calculation solves a mathematical model defined by
+# The primary macroscopic fields are
 # \[
-# \oxed{geometry+fluid\ model+conservation\ laws+constitutive\ laws+initial/boundary\ conditions}
+# \rho(\mathbf x,t),\quad p(\mathbf x,t),\quad T(\mathbf x,t),\quad
+# \mathbf u(\mathbf x,t),\quad Y_k(\mathbf x,t).
 # \]
-# The computed field U_h is an approximation of the continuous solution U. Spatial discretisation introduces h, temporal discretisation introduces Δt, and the algebraic solver introduces an iterative error.
-#
-# ## 0.2 Continuum hypothesis
-#
-# Macroscopic fields are
+# The continuum approximation is associated with
 # \[
-# \rho(\mathbf x,t),\quad p(\mathbf x,t),\quad T(\mathbf x,t),\quad \mathbf u(\mathbf x,t),\quad Y_k(\mathbf x,t).
+# Kn=\frac{\lambda_{mfp}}{L}\ll1.
 # \]
-# The Knudsen number
+# CFDX classical Navier–Stokes models are intended for this continuum regime.
+#
+# ## 0.2 Material derivative
+#
+# Eulerian fields are functions of fixed spatial coordinates. Following a material particle gives
 # \[
-# Kn=\frac{\lambda_{mfp}}{L}
+# \boxed{\frac{D\phi}{Dt}=
+# \frac{\partial\phi}{\partial t}+\mathbf u\cdot\nabla\phi}.
 # \]
-# measures the separation between molecular and continuum scales. Classical Navier–Stokes CFD assumes the continuum regime.
+# This identity is the bridge between integral conservation laws and transport equations.
 #
-# ## 0.3 Eulerian and Lagrangian descriptions
-#
-# Eulerian fields are observed at fixed x; a Lagrangian description follows a material particle. For any scalar:
-# \[
-# \frac{D\phi}{Dt}=\frac{\partial\phi}{\partial t}+\mathbf u\cdot\nabla\phi.
-# \]
-# The first term is local change; the second is convection through the spatial gradient.
-#
-# ## 0.4 Kinematics
+# ## 0.3 Kinematics
 #
 # \[
 # \nabla\mathbf u=\mathbf D+\mathbf W,
-# \quad
-# \mathbf D=\frac12(\nabla\mathbf u+\nabla\mathbf u^T),
-# \quad
+# \]
+# \[
+# \mathbf D=\frac12(\nabla\mathbf u+\nabla\mathbf u^T),\qquad
 # \mathbf W=\frac12(\nabla\mathbf u-\nabla\mathbf u^T).
 # \]
-# D measures deformation and W rigid-body rotation. Vorticity is
+# The rate-of-deformation tensor \(\mathbf D\) controls viscous strain in a Newtonian fluid. Vorticity is
 # \[
 # \boldsymbol\omega=\nabla\times\mathbf u.
 # \]
 #
-# ## 0.5 Mass conservation
+# ## 0.4 Mass conservation
 #
+# Integral mass conservation:
 # \[
-# \frac{\partial\rho}{\partial t}+\nabla\cdot(\rho\mathbf u)=0.
+# \frac{d}{dt}\int_V\rho\,dV+
+# \oint_{\partial V}\rho\mathbf u\cdot\mathbf n\,dA=0.
 # \]
-# Equivalently:
+# Local form:
 # \[
-# \frac{D\rho}{Dt}+\rho\nabla\cdot\mathbf u=0.
+# \boxed{\frac{\partial\rho}{\partial t}+\nabla\cdot(\rho\mathbf u)=0}.
 # \]
-# Constant-density incompressible flow therefore satisfies
+# With constant \(\rho\):
 # \[
 # \boxed{\nabla\cdot\mathbf u=0}.
 # \]
 #
-# ## 0.6 Momentum and Cauchy stress
+# ## 0.5 Momentum conservation
 #
+# Cauchy's equation is
 # \[
-# \rho\frac{D\mathbf u}{Dt}=\nabla\cdot\boldsymbol\sigma+\rho\mathbf f,
-# \qquad
+# \rho\frac{D\mathbf u}{Dt}
+# =\nabla\cdot\boldsymbol\sigma+\rho\mathbf f,
+# \]
+# with
+# \[
 # \boldsymbol\sigma=-p\mathbf I+\boldsymbol\tau.
 # \]
-# Hence
+# Therefore
 # \[
-# \rho\frac{D\mathbf u}{Dt}=-\nabla p+\nabla\cdot\boldsymbol\tau+\rho\mathbf f.
+# \rho\frac{D\mathbf u}{Dt}
+# =-\nabla p+\nabla\cdot\boldsymbol\tau+\rho\mathbf f.
 # \]
 #
-# ## 0.7 Newtonian constitutive law
+# ## 0.6 Newtonian constitutive law
 #
 # \[
-# \boldsymbol\tau=2\mu\mathbf D+\lambda(\nabla\cdot\mathbf u)\mathbf I.
+# \boldsymbol\tau
+# =2\mu\mathbf D+\lambda(\nabla\cdot\mathbf u)\mathbf I.
 # \]
-# For constant μ and incompressibility:
+# For constant \(\mu\) and incompressibility:
 # \[
 # \nabla\cdot\boldsymbol\tau=\mu\nabla^2\mathbf u.
 # \]
-# Therefore:
+# The incompressible Navier–Stokes equations become
 # \[
-# \boxed{\rho(\partial_t\mathbf u+\mathbf u\cdot\nabla\mathbf u)
-# =-\nabla p+\mu\nabla^2\mathbf u+\rho\mathbf f}.
+# \boxed{
+# \rho\left(
+# \frac{\partial\mathbf u}{\partial t}
+# +\mathbf u\cdot\nabla\mathbf u
+# \right)
+# =-\nabla p+\mu\nabla^2\mathbf u+\rho\mathbf f
+# }.
 # \]
 #
-# ## 0.8 Physical meaning of Navier–Stokes
+# ## 0.7 Physical interpretation
 #
 # \[
 # \underbrace{\rho\partial_t\mathbf u}_{local\ inertia}
-# +\underbrace{\rho(\mathbf u\cdot\nabla)\mathbf u}_{convective\ inertia}
-# =\underbrace{-\nabla p}_{pressure}
+# +\underbrace{\rho\mathbf u\cdot\nabla\mathbf u}_{convection}
+# =
+# \underbrace{-\nabla p}_{pressure}
 # +\underbrace{\mu\nabla^2\mathbf u}_{viscous\ diffusion}
 # +\underbrace{\rho\mathbf f}_{body\ force}.
 # \]
-# Numerical terms must not be confused with these physical contributions.
+# The numerical operator implementing each term must preserve the physical sign convention.
 #
-# ## 0.9 Reynolds number
+# ## 0.8 Reynolds number and scaling
 #
-# With scales U and L:
 # \[
 # Re=\frac{\rho UL}{\mu}=\frac{UL}{\nu}.
 # \]
-# It measures inertia relative to viscosity. Large Re does not, by itself, prove turbulence.
-#
-# ## 0.10 Pressure as a constraint
-#
-# In incompressible flow pressure enforces the divergence constraint. Taking the divergence of momentum together with ∇·u=0 generates a pressure equation. This is the origin of pressure–velocity coupling.
-#
-# ## 0.11 Vorticity
-#
-# For incompressible constant-viscosity flow:
+# Nondimensionalisation with \(x=Lx^*\), \(u=Uu^*\), \(t=(L/U)t^*\), \(p=\rho U^2p^*\) gives
 # \[
-# \partial_t\boldsymbol\omega+(\mathbf u\cdot\nabla)\boldsymbol\omega
-# =(\boldsymbol\omega\cdot\nabla)\mathbf u+\nu\nabla^2\boldsymbol\omega+\nabla\times\mathbf f.
-# \]
-# The stretching term is a specifically three-dimensional mechanism.
-#
-# ## 0.12 Energy
-#
-# \[
-# E=e+\frac12|\mathbf u|^2,
-# \]
-# \[
-# \partial_t(\rho E)+\nabla\cdot[(\rho E+p)\mathbf u]
-# =\nabla\cdot(\boldsymbol\tau\mathbf u-\mathbf q)+\rho\mathbf f\cdot\mathbf u+\dot q_v,
-# ]
-# with Fourier law
-# \[
-# \mathbf q=-k\nabla T.
+# \frac{\partial\mathbf u^*}{\partial t^*}
+# +\mathbf u^*\cdot\nabla^*\mathbf u^*
+# =-\nabla^*p^*+\frac1{Re}\nabla^{*2}\mathbf u^*+\mathbf f^*.
 # \]
 #
-# ## 0.13 Compressibility and equation of state
+# ## 0.9 Vorticity equation
 #
-# An ideal-gas closure is
+# For constant-density, constant-viscosity flow:
 # \[
-# p=\rho RT.
+# \frac{\partial\boldsymbol\omega}{\partial t}
+# +(\mathbf u\cdot\nabla)\boldsymbol\omega
+# =
+# (\boldsymbol\omega\cdot\nabla)\mathbf u
+# +\nu\nabla^2\boldsymbol\omega+\nabla\times\mathbf f.
 # \]
-# The speed of sound is
-# \[
-# a=\sqrt{\left(\frac{\partial p}{\partial\rho}\right)_s},
-# qquad Ma=\frac{U}{a}.
-# \]
-# Compressible solvers retain acoustic dynamics; low-Mach/incompressible formulations remove or constrain them.
+# The stretching term vanishes in strictly two-dimensional flow.
 #
-# ## 0.14 Boundary and initial conditions
+# ## 0.10 Energy
+#
+# Total specific energy:
+# \[
+# E=e+\frac12|\mathbf u|^2.
+# \]
+# A conservative total-energy form is
+# \[
+# \frac{\partial(\rho E)}{\partial t}
+# +\nabla\cdot[(\rho E+p)\mathbf u]
+# =
+# \nabla\cdot(\boldsymbol\tau\mathbf u-\mathbf q)
+# +\rho\mathbf f\cdot\mathbf u+\dot q_v.
+# \]
+# Fourier conduction:
+# \[
+# \boxed{\mathbf q=-k\nabla T}.
+# \]
+#
+# ## 0.11 Thermodynamic closure
+#
+# For an ideal gas:
+# \[
+# p=\rho RT,\qquad
+# h=h(T),\qquad
+# a^2=\left(\frac{\partial p}{\partial\rho}\right)_s.
+# \]
+# For constant \(c_p\), \(h=c_pT\), \(e=c_vT\), \(R=c_p-c_v\), and
+# \[
+# \gamma=\frac{c_p}{c_v},\qquad
+# a=\sqrt{\gamma RT}.
+# \]
+# Mach number:
+# \[
+# Ma=\frac Ua.
+# \]
+# CFDX also contains incompressible, ideal-gas and Peng–Robinson EOS families; the numerical documentation must identify which closure a case uses.
+#
+# ## 0.12 Low-Mach versus incompressible versus compressible
+#
+# Incompressible flow imposes
+# \[
+# \nabla\cdot\mathbf u=0.
+# \]
+# Compressible flow solves density/pressure/energy consistently with an EOS and supports acoustic waves. Low-Mach methods retain thermal density effects while controlling the ill-conditioning associated with very small acoustic time scales. These are different mathematical models, not merely solver options.
+#
+# ## 0.13 Boundary and initial conditions
 #
 # Dirichlet:
 # \[
@@ -159,51 +189,53 @@
 # \[
 # a\phi+b\nabla\phi\cdot\mathbf n=c.
 # \]
-# A transient problem additionally requires initial data.
+# Initial conditions specify the state at \(t=t_0\). A complete CFD problem is therefore PDE + constitutive closure + domain + BC + IC + material properties.
 #
-# ## 0.15 Boundary layers
+# ## 0.14 Boundary layers
 #
-# No-slip walls impose u=u_w. At large Re, viscous effects can be concentrated in thin wall-normal layers. This explains the importance of wall resolution, wall functions and wall-distance algorithms.
-#
-# ## 0.16 Bernoulli as a special case
-#
-# For steady inviscid flow with conservative body force:
+# No-slip imposes
 # \[
-# \frac p\rho+\frac12|\mathbf u|^2+gz=C.
+# \mathbf u=\mathbf u_w.
 # \]
-# Bernoulli is a reduced special case, not the general Navier–Stokes model.
-#
-# ## 0.17 Nondimensional Navier–Stokes
-#
-# With x=Lx*, u=Uu*, t=(L/U)t*, p=ρU²p*:
+# At high \(Re\), a thin viscous layer forms near the wall. Wall distance \(y\), friction velocity \(u_\tau\) and
 # \[
-# \partial_{t^*}\mathbf u^*+\mathbf u^*\cdot\nabla^*\mathbf u^*
-# =-\nabla^*p^*+\frac1{Re}\nabla^{*2}\mathbf u^*+\mathbf f^*.
+# y^+=\frac{u_\tau y}{\nu}
 # \]
-# This exposes dominant balances and supports similarity analysis.
+# become important for turbulence/wall-treatment modelling.
 #
-# ## 0.18 PDE character
+# ## 0.15 Bernoulli as a limiting case
 #
-# Convective, diffusive and pressure constraints have different mathematical behaviour. Hyperbolic components propagate information along characteristics; elliptic constraints have global influence; parabolic terms diffuse information. This classification influences boundary conditions, fluxes and solver algorithms.
+# Steady inviscid flow with conservative body force satisfies
+# \[
+# \frac p\rho+\frac12|\mathbf u|^2+gz=C
+# \]
+# along a streamline. It is a special reduction, not a replacement for Navier–Stokes.
 #
-# ## 0.19 From fluid mechanics to CFD
+# ## 0.16 PDE character
+#
+# Convective terms transport information; viscous terms diffuse it; incompressibility introduces an elliptic constraint. This explains why CFD contains both local flux discretisation and globally coupled linear solves.
+#
+# ## 0.17 From physics to CFDX
 #
 # \[
-# \boxed{physical\ model\rightarrow PDE\rightarrow integral\ balance
-# \rightarrow mesh\rightarrow face\ fluxes\rightarrow algebraic\ system
-# \rightarrow iterative\ solution}
+# physical\ problem
+# \rightarrow mathematical\ model
+# \rightarrow PDE
+# \rightarrow integral\ balance
+# \rightarrow mesh
+# \rightarrow reconstruction
+# \rightarrow fluxes
+# \rightarrow algebraic\ system
+# \rightarrow nonlinear/linear\ solution
+# \rightarrow V\&V.
 # \]
-# This chain is the organising principle for all later CFDX chapters.
 #
-# ## 0.20 CFDX traceability
+# ## 0.18 Source traceability
 #
-# Field abstractions are under src/cfdx/core/field/. Mesh abstractions are under src/cfdx/core/mesh/. Boundary infrastructure is under src/cfdx/core/boundary/. Physical models are under src/cfdx/physics/.
+# Physics lives mainly in [src/cfdx/physics](../../../src/cfdx/physics/), with thermodynamic and transport closures, while field/mesh/numerics provide the discretisation infrastructure. This chapter defines the equations; later chapters define their discrete implementation.
 #
-# A source path establishes traceability, not qualification; implementation status must be established from executable evidence.
-#
+# ## 0.19 Executable Reynolds check
 # %%
-from __future__ import annotations
 import numpy as np
 rho,U,L,mu=1000.0,2.0,0.1,1.0e-3
-Re=rho*U*L/mu
-assert np.isclose(Re,2.0e5)
+assert np.isclose(rho*U*L/mu,2.0e5)
