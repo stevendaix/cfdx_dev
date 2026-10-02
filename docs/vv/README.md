@@ -1,42 +1,21 @@
-# CFDX Verification, Validation & Qualification
+# CFDX Verification & Validation
 
-The V&V documentation defines how CFDX correctness and maturity are demonstrated.
+**Status: PARTIAL — governance is established; evidence migration is ongoing.**
 
-The detailed evidence store currently lives under [docs/validation/](../validation/README.md). This `docs/vv/` tree is the stable publication/navigation layer. Migration of evidence documents is incremental and governed by the V&V governance rules.
+```{toctree}
+:maxdepth: 2
 
-## V&V chain
-
-```text
-requirement
-    ↓
-implementation
-    ↓
-code verification
-    ↓
-solution verification
-    ↓
-validation (when physically applicable)
-    ↓
-qualification
+00-governance/README
+01-requirements/README
+02-code-verification/README
+03-solution-verification/README
+04-validation/README
+05-qualification/README
+06-cases/README
+07-references/README
+08-reports/README
 ```
 
-## Authoritative current material
+PR #530 remains authoritative for V&V governance. The `docs/validation/` tree remains the current evidence store during migration.
 
-- [V&V governance](../validation/CFDX_VV_GOVERNANCE.md)
-- [Qualification campaign](../validation/CFDX_QUALIFICATION_CAMPAIGN.md)
-- [Qualification case template](../validation/CFDX_QUALIFICATION_CASE_TEMPLATE.md)
-- [#461 requirements audit](../validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json)
-- [Numerical maturity audit](../validation/NUMERICAL_METHOD_MATURITY_AUDIT.md)
-- [Validation reporting](../validation/VALIDATION_REPORT.md)
-- [Documentation map](../validation/DOCUMENTATION_MAP.md)
-
-## Rules
-
-- Evidence is executable whenever practical.
-- Acceptance criteria are declared before observing the result.
-- Failures are retained.
-- Human-readable documents summarize evidence; machine-readable artifacts remain the regression source of truth.
-- Status promotion requires the corresponding evidence.
-- Cross-code agreement is supporting evidence, not an automatic oracle.
-
-See [CFDX V&V governance](../validation/CFDX_VV_GOVERNANCE.md) for the complete rules.
+The V&V publication layer must consume authoritative evidence rather than duplicate status matrices manually.
