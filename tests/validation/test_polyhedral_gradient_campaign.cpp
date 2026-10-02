@@ -708,6 +708,90 @@ void check_wls_mesh_stencil_campaign()
     }
 }
 
+
+void check_non_affine_polyhedral_convergence()
+{
+    // Shape-regular non-affine tetrahedral family. The perturbation vanishes
+    // on the physical boundary and scales with h, so refinement preserves the
+    // same dimensionless mesh distortion rather than introducing a fixed
+    // geometric error floor.
+    std::vector<double> quadratic_errors;
+    std::vector<double> point_errors;
+    std::vector<double> wls_errors;
+
+    for (const std::size_t n : {4u, 8u, 16u}) {
+        Grid grid = make_tet_grid(n);
+        const double h = 1.0 / static_cast<double>(n);
+        const std::size_t nv = n + 1;
+
+        for (std::size_t z = 0; z <= n; ++z) {
+            for (std::size_t y = 0; y <= n; ++y) {
+                for (std::size_t x = 0; x <= n; ++x) {
+                    const std::size_t id = x + nv * (y + nv * z);
+                    const double X = grid.mesh.points().x(id);
+                    const double Y = grid.mesh.points().y(id);
+                    const double Z = grid.mesh.points().z(id);
+                    const double pi = std::acos(-1.0);
+
+                    // Smooth, boundary-preserving non-affine deformation.
+                    const double dx = 0.10 * h * std::sin(pi * X)
+                                      * std::sin(pi * Y) * std::sin(pi * Z);
+                    const double dy = 0.07 * h * std::sin(pi * Y)
+                                      * std::sin(pi * Z) * std::sin(pi * X);
+                    const double dz = 0.05 * h * std::sin(pi * Z)
+                                      * std::sin(pi * X) * std::sin(pi * Y);
+
+                    grid.mesh.points().set(id, X + dx, Y + dy, Z + dz);
+                }
+            }
+        }
+        grid.geometry = make_geometry_cache(grid.mesh);
+
+        const auto phi = sample_field(grid, kSmooth);
+
+        const auto qls = compute_gradient_least_squares_quadratic(phi, grid.mesh);
+        const auto qerr = gradient_error(grid, qls, kSmooth, true);
+        quadratic_errors.push_back(qerr.l2);
+
+        const auto pg = compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
+        const auto perr = gradient_error(grid, pg, kSmooth, true);
+        point_errors.push_back(perr.l2);
+
+        const auto wls = compute_gradient_weighted_least_squares_extended(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED);
+        const auto werr = gradient_error(grid, wls, kSmooth, true);
+        wls_errors.push_back(werr.l2);
+
+        std::cout << "NON_AFFINE_POLY_GRAD n=" << n
+                  << " quadratic_L2=" << qerr.l2
+                  << " point_linear_L2=" << perr.l2
+                  << " wls_L2=" << werr.l2;
+        if (quadratic_errors.size() > 1)
+            std::cout << " quadratic_order="
+                      << observed_order(quadratic_errors[quadratic_errors.size() - 2],
+                                         quadratic_errors.back());
+        if (point_errors.size() > 1)
+            std::cout << " point_linear_order="
+                      << observed_order(point_errors[point_errors.size() - 2],
+                                         point_errors.back());
+        if (wls_errors.size() > 1)
+            std::cout << " wls_order="
+                      << observed_order(wls_errors[wls_errors.size() - 2],
+                                         wls_errors.back());
+        std::cout << "\n";
+    }
+
+    require(quadratic_errors.back() < quadratic_errors.front(),
+            "non-affine polyhedral quadratic LS must converge");
+    require_order(quadratic_errors, 2.0, 1.5,
+                  "quadratic LS on non-affine polyhedral tetrahedra");
+
+    require(point_errors.back() < point_errors.front(),
+            "non-affine point-linear Green-Gauss must converge");
+    require(wls_errors.back() < wls_errors.front(),
+            "non-affine extended WLS must converge");
+}
+
 void check_boundary_reconstruction()
 {
     const Grid grid = make_tet_grid(4, 1.0, 0.8, 1.4, 0.25, 0.15);
