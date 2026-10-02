@@ -1,16 +1,23 @@
-# CFDX Theory — Numerical Methods Course
+# CFDX Theory — Fluid Mechanics and Numerical CFD Course
 
 CFDX Theory is the scientific course and mathematical reference for CFDX. It is deliberately separate from the Developer implementation contract and from V&V acceptance status.
 
-The Theory site is organised as a **course**, not as a feature list. Each chapter moves from physics to mathematics, then to finite-volume discretisation, numerical analysis, implementation, executable evidence and limitations.
+The course has two complementary threads:
+
+1. **Fluid mechanics:** continuum mechanics → kinematics → conservation → constitutive laws → Navier–Stokes → energy → compressibility → boundary layers → dimensionless analysis.
+2. **Numerical CFD:** PDE → integral conservation law → mesh → reconstruction → fluxes → discretisation → algebraic system → pressure/velocity coupling → linear/nonlinear solution → convergence → verification → validation.
+
+The executable Python files in this directory are the scientific source of truth. They use Jupytext percent format and are rendered by Sphinx/MyST-NB.
 
 ## Master learning path
 
 ```
-00 Foundations
+A — FLUID MECHANICS
+00 Foundations / Fluid mechanics
    ↓
 01 Conservation laws
-   ↓
+
+B — SPATIAL DISCRETISATION
 02 Finite-volume method
    ↓
 03 Meshes
@@ -18,7 +25,8 @@ The Theory site is organised as a **course**, not as a feature list. Each chapte
 04 Gradients & reconstruction
    ↓
 05 Fluxes
-   ↓
+
+C — TIME + FLOW SOLUTION
 06 Time integration
    ↓
 07 Pressure–velocity coupling
@@ -26,7 +34,8 @@ The Theory site is organised as a **course**, not as a feature list. Each chapte
 08 Linear algebra
    ↓
 09 AMG / MGR / Schur
-   ↓
+
+D — PHYSICAL CLOSURES
 10 Turbulence
    ↓
 11 Heat transfer
@@ -34,94 +43,147 @@ The Theory site is organised as a **course**, not as a feature list. Each chapte
 12 Radiation
    ↓
 13 Multiphysics
-   ↓
+
+E — NUMERICAL EVIDENCE
 14 Numerical analysis
    ↓
 15 Verification & validation
-   ↓
+
+F — CFDX EXECUTION
 16 Data model & file formats
    ↓
-17 Computational chain
+17 How CFDX solves the equations
    ↓
 18 Source-tree physics audit
 ```
 
-The chapters are intentionally sequential: later numerical methods rely on definitions established earlier.
+## The course students should be able to follow
 
-## Complete scientific reference
+### Part I — Understand the fluid
 
-See [COMPLETE_THEORY.md](COMPLETE_THEORY.md) for the full mathematical course, equations, derivations, repository-relative source links, verification formulations, and evidence rules for all 19 chapters.
+Before touching a numerical scheme, the reader should be able to derive:
 
-## Detailed chapter navigation
+[
+rac{Dphi}{Dt}
+=
+rac{partialphi}{partial t}
++mathbf ucdot
+ablaphi,
+]
 
-| # | Chapter | Main purpose |
-|---|---|---|
-| 00 | Foundations | Build the continuum-mechanics, dimensional and physical basis |
-| 01 | Conservation laws | Derive mass, momentum, energy and species equations |
-| 02 | Finite-volume method | Transform conservation laws into locally conservative algebra |
-| 03 | Meshes | Define topology, geometry, orientation and mesh-quality metrics |
-| 04 | Gradients & reconstruction | Derive Green–Gauss, LS/WLS, reconstruction and limiting |
-| 05 | Fluxes | Build mass, convection, diffusion, pressure and energy fluxes |
-| 06 | Time integration | Derive Euler, CN, BDF2, CFL and timestep control |
-| 07 | Pressure–velocity coupling | Derive segregated and coupled incompressible algorithms |
-| 08 | Linear algebra | Explain sparse systems, Krylov methods, residuals and preconditioning |
-| 09 | AMG / MGR / Schur | Explain block systems, Schur complements and multigrid |
-| 10 | Turbulence | Derive RANS, LES and hybrid turbulence modelling |
-| 11 | Heat transfer | Derive thermal transport, conduction and CHT |
-| 12 | Radiation | Derive S2S, P1 and DOM radiation models |
-| 13 | Multiphysics | Explain coupled nonlinear systems and interfaces |
-| 14 | Numerical analysis | Establish consistency, stability, convergence and error theory |
-| 15 | Verification & validation | Establish the evidence chain from equations to qualification |
-| 16 | Data model | Explain the authoritative case/checkpoint/output representation |
-| 17 | Computational chain | Trace a case through the complete CFDX execution pipeline |
-| 18 | Source-tree audit | Connect physical equations to actual implementation files and tests |
+[
+rac{partialho}{partial t}
++
+ablacdot(homathbf u)=0,
+]
 
-Each chapter README contains its **full subsection register**. The executable `chapter.py` is the quantitative source for designated theory experiments.
+[
+horac{Dmathbf u}{Dt}
+=
+-
+abla p+
+ablacdotoldsymbol	au+homathbf f,
+]
 
-## Standard structure of every subsection
+and, for a Newtonian incompressible fluid,
 
-Every scientific subsection must contain, in this order where applicable:
+[
+ho
+left(
+rac{partialmathbf u}{partial t}
++mathbf ucdot
+ablamathbf u
+ight)
+=
+-
+abla p+mu
+abla^2mathbf u+homathbf f,
+qquad
 
-1. **Physical motivation**
-2. **Problem definition**
-3. **Variables and fields**
-4. **Dimensions and SI units**
-5. **Coordinate/sign conventions**
-6. **Assumptions**
-7. **Continuous governing equation**
-8. **Integral/control-volume form**
-9. **Finite-volume discretisation**
-10. **Algebraic formulation**
-11. **Numerical properties**
-12. **Implementation consequences**
-13. **CFDX source mapping**
-14. **Executable verification**
-15. **Benchmark/reference comparison**
-16. **Limitations and failure modes**
-17. **Improvement paths**
-18. **Bibliography**
+ablacdotmathbf u=0.
+]
 
-A table may summarise a result, but it must never replace the derivation.
+The meaning, units, assumptions and limits of every term are introduced before discretisation.
 
-## Mandatory equation contract
+### Part II — Understand how the PDE becomes a CFD problem
 
-For every important equation, the documentation must answer:
+The central transformation is
 
-- Where does the equation come from physically?
-- What assumptions are required?
-- What does every symbol mean?
-- What are the units?
-- What is the sign/orientation convention?
-- How does the continuous equation become a control-volume balance?
-- How is each face/volume term approximated?
-- What algebraic coefficient or residual contribution results?
-- Is the discretisation conservative?
-- What consistency/order is expected?
-- What stability/boundedness restrictions apply?
-- Which CFDX source files implement it?
-- Which executable test verifies it?
-- Which benchmark or independent reference validates it, if applicable?
-- What remains unverified or unqualified?
+[
+	ext{PDE}
+ightarrow
+int_V	ext{PDE},dV
+ightarrow
+	ext{face/volume contributions}
+ightarrow
+A(U)U=b(U).
+]
+
+For a generic transported quantity:
+
+[
+rac{partial(hophi)}{partial t}
++
+ablacdot(homathbf uphi)
+=
+
+ablacdot(Gamma
+ablaphi)+S.
+]
+
+Finite volume produces:
+
+[
+rac{d}{dt}int_Vhophi,dV
++
+sum_f F_{c,f}
+=
+sum_fF_{d,f}
++
+int_VS,dV.
+]
+
+The subsequent chapters explain how every term is approximated.
+
+### Part III — Understand how the algebraic problem is solved
+
+The course explicitly follows:
+
+[
+oxed{
+A(U)U=b(U)
+ightarrow
+	ext{nonlinear iteration}
+ightarrow
+	ext{linear system}
+ightarrow
+	ext{preconditioned Krylov/AMG solve}
+}
+]
+
+For incompressible flow:
+
+[
+egin{bmatrix}
+A_u&G\
+D&C
+end{bmatrix}
+egin{bmatrix}
+u\p
+end{bmatrix}
+=
+egin{bmatrix}
+b_u\b_p
+end{bmatrix},
+]
+
+with Schur complement
+
+[
+S=C-DA_u^{-1}G.
+]
+
+This explains why pressure–velocity coupling, Schur methods and AMG/MGR are not independent features: they arise from the mathematical structure of Navier–Stokes.
 
 ## Numerical-method traceability
 
@@ -149,54 +211,72 @@ validation
 qualification
 ```
 
-This is the central organising principle of the Theory documentation.
+## Standard subsection contract
+
+Where applicable, every important scientific subsection should contain:
+
+1. physical motivation;
+2. variables, dimensions and SI units;
+3. assumptions;
+4. continuous equation;
+5. derivation;
+6. integral/control-volume form;
+7. discrete formulation;
+8. algebraic contribution;
+9. numerical properties;
+10. failure modes;
+11. exact CFDX source mapping;
+12. executable verification;
+13. benchmark/reference;
+14. limitations;
+15. improvement paths;
+16. bibliography.
+
+## Scientific integrity
+
+- No invented CFDX results.
+- No reference value presented as a CFDX result.
+- No residual-only physical validation.
+- No implementation-to-qualification shortcut.
+- No tolerance relaxation to manufacture a green result.
+- No failing benchmark is silently converted into a pass.
+- Quantitative claims record the mesh, physics, numerical settings and software revision where relevant.
 
 ## Status vocabulary
 
-- **Implemented** — an actual code path exists.
-- **Verified** — a defined mathematical property has executable evidence.
-- **Validated** — an appropriate physical/reference comparison has been completed.
-- **Qualified** — the declared population and acceptance gates support the intended engineering scope.
+- **Implemented:** code path exists.
+- **Verified:** a defined mathematical/software property has executable evidence.
+- **Validated:** independent physical/reference evidence supports the declared case.
+- **Qualified:** declared population and acceptance gates are complete.
 
-These terms must never be collapsed into a single “supported” label.
+These states remain independent from documentation completeness.
 
-## Executable documentation
+## Main references
 
-Every chapter has an executable Python source where appropriate. The source uses Jupytext percent cells and is rendered by the Sphinx/MyST-NB documentation pipeline.
+The course is aligned with the classical finite-volume presentation of Versteeg & Malalasekera and with modern finite-volume/numerical practice. OpenFOAM's current documentation likewise describes the general scalar transport equation, control-volume integration, face interpolation, gradient/divergence/laplacian schemes and algebraic solution as successive numerical layers. citeturn0search1turn0search10
 
-The executable source is the source of truth for numerical examples. Generated figures, tables and HTML are publication outputs.
+See `docs/references/bibliography.bib` for the maintained bibliography.
 
-## Scientific integrity rules
+## Chapter navigation
 
-1. No invented CFDX results.
-2. No reference-oracle value presented as a CFDX result.
-3. No residual-only physical validation.
-4. No implementation-to-qualification shortcut.
-5. No tolerance relaxation to manufacture a green result.
-6. No disabled failing benchmark to manufacture maturity.
-7. Every quantitative result records its mesh/resolution, physics, numerical settings and software revision where relevant.
-8. External code comparisons are documented as methodological comparisons unless an independent validation oracle exists.
-
-## Relationship with the other documentation domains
-
-```
-THEORY
-  mathematical meaning
-       ↓
-DEVELOPER
-  implementation contract
-       ↓
-V&V
-  executable evidence / status
-       ↓
-USER
-  supported workflow
-```
-
-Information should be linked across these domains rather than copied.
-
-## Current scope
-
-The repository now contains a detailed subsection structure for all 19 Theory chapters and executable chapter sources. The next refinement of each subsection is expected to replace generic scaffolding with repository-grounded derivations, figures, quantitative experiments and exact code/test references.
-
-**Important:** documentation maturity does not change the N1–N17 numerical maturity recorded by the engineering roadmap, in particular N2 remains subject to its existing V&V gates.
+| # | Chapter | Role |
+|---|---|---|
+| 00 | Foundations | Complete fluid-mechanics introduction |
+| 01 | Conservation laws | Derive conservative governing equations |
+| 02 | Finite-volume method | Turn conservation laws into cell equations |
+| 03 | Meshes | Geometry and topology |
+| 04 | Gradients & reconstruction | Derivative and face reconstruction |
+| 05 | Fluxes | Conservative transport fluxes |
+| 06 | Time integration | Physical and pseudo-time discretisation |
+| 07 | Pressure–velocity coupling | SIMPLE/PISO/PIMPLE/fractional-step/coupled methods |
+| 08 | Linear algebra | Sparse systems and Krylov methods |
+| 09 | AMG/MGR/Schur | Scalable coupled linear solution |
+| 10 | Turbulence | RANS/LES/hybrid closure |
+| 11 | Heat transfer | Thermal transport and CHT |
+| 12 | Radiation | S2S/P1/DOM |
+| 13 | Multiphysics | Coupled residual/Jacobian systems |
+| 14 | Numerical analysis | Accuracy, stability and error |
+| 15 | V&V | Evidence and qualification |
+| 16 | Data model | Case/checkpoint/output semantics |
+| 17 | Computational chain | Complete numerical solution workflow |
+| 18 | Source-tree audit | Equation-to-code-to-test traceability |
