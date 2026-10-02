@@ -68,13 +68,13 @@ jobs:
         run: |
           python -m pytest -q tests/python/test_numerical_selection.py
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
       - name: Run SU2 adapter regression
         run: |
           python -m pytest -q tests/python/test_su2_adapter.py
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
       - name: Run production numerical-selection E2E
         run: |
