@@ -1,6 +1,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
+#include "cfdx/io/hdf5/case_hdf5_io.h"
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
@@ -20,6 +21,102 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
 };
+
+
+struct LoadedCaseNumerics {
+    bool from_case = false;
+};
+
+void apply_explicit_case_numerics(
+    const cfdx::io::CaseSetup& setup,
+    IncompressibleSolverControls& controls)
+{
+    if (!setup.has_explicit_numerics || !setup.numerical_report.valid())
+        throw std::invalid_argument(
+            "production solver requires a valid explicit numerics.selection block");
+
+    bool pressure_velocity_selected = false;
+    bool convection_selected = false;
+    for (const auto& selection : setup.numerical_report.resolved) {
+        if (selection.family == NumericalMethodFamily::PressureVelocity) {
+            pressure_velocity_selected = true;
+            if (selection.method_id == "pressure_velocity.simple")
+                controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+            else if (selection.method_id == "pressure_velocity.simplec")
+                controls.algorithm = PressureVelocityAlgorithm::SIMPLEC;
+            else if (selection.method_id == "pressure_velocity.piso")
+                controls.algorithm = PressureVelocityAlgorithm::PISO;
+            else if (selection.method_id == "pressure_velocity.pimple")
+                controls.algorithm = PressureVelocityAlgorithm::PIMPLE;
+            else if (selection.method_id == "pressure_velocity.fractional_step")
+                controls.algorithm = PressureVelocityAlgorithm::FRACTIONAL_STEP;
+            else if (selection.method_id == "pressure_velocity.coupled")
+                controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+            else
+                throw std::invalid_argument(
+                    "unsupported resolved pressure-velocity selection: " +
+                    selection.method_id);
+        } else if (selection.family == NumericalMethodFamily::Convection) {
+            convection_selected = true;
+            if (selection.method_id == "convection.upwind")
+                controls.convection_scheme = ConvectionScheme::UPWIND;
+            else if (selection.method_id == "convection.second_order_upwind")
+                controls.convection_scheme = ConvectionScheme::SECOND_ORDER_UPWIND;
+            else if (selection.method_id.rfind("convection.tvd.", 0) == 0)
+                controls.convection_scheme = ConvectionScheme::TVD;
+            else
+                throw std::invalid_argument(
+                    "unsupported resolved convection selection: " +
+                    selection.method_id);
+        } else if (selection.family == NumericalMethodFamily::LinearSolver) {
+            if (selection.method_id == "linear.cg") {
+                controls.momentum_linear_solver.krylov = KrylovModel::CG;
+                controls.pressure_linear_solver.krylov = KrylovModel::CG;
+                controls.coupled_linear_solver.krylov = KrylovModel::CG;
+            } else if (selection.method_id == "linear.bicgstab") {
+                controls.momentum_linear_solver.krylov = KrylovModel::BiCGStab;
+                controls.pressure_linear_solver.krylov = KrylovModel::BiCGStab;
+                controls.coupled_linear_solver.krylov = KrylovModel::BiCGStab;
+            } else if (selection.method_id == "linear.gmres") {
+                controls.momentum_linear_solver.krylov = KrylovModel::GMRES;
+                controls.pressure_linear_solver.krylov = KrylovModel::GMRES;
+                controls.coupled_linear_solver.krylov = KrylovModel::GMRES;
+            } else if (selection.method_id == "linear.fgmres") {
+                controls.momentum_linear_solver.krylov = KrylovModel::FGMRES;
+                controls.pressure_linear_solver.krylov = KrylovModel::FGMRES;
+                controls.coupled_linear_solver.krylov = KrylovModel::FGMRES;
+            } else {
+                throw std::invalid_argument(
+                    "unsupported resolved linear-solver selection: " +
+                    selection.method_id);
+            }
+        } else if (selection.family == NumericalMethodFamily::Preconditioner) {
+            PreconditionerModel model = PreconditionerModel::Auto;
+            if (selection.method_id == "preconditioner.native_amg")
+                model = PreconditionerModel::NativeAMG;
+            else if (selection.method_id == "preconditioner.smoothed_aggregation_amg")
+                model = PreconditionerModel::SmoothedAggregationAMG;
+            else if (selection.method_id == "preconditioner.native_fieldsplit")
+                model = PreconditionerModel::NativeFieldSplit;
+            else if (selection.method_id == "preconditioner.coupled_block_schur")
+                model = PreconditionerModel::CoupledBlockSchur;
+            else
+                throw std::invalid_argument(
+                    "unsupported resolved preconditioner selection: " +
+                    selection.method_id);
+            controls.momentum_linear_solver.preconditioner = model;
+            controls.pressure_linear_solver.preconditioner = model;
+            controls.coupled_linear_solver.preconditioner = model;
+        }
+    }
+
+    if (!pressure_velocity_selected)
+        throw std::invalid_argument(
+            "case numerics.selection does not select pressure_velocity");
+    if (!convection_selected)
+        throw std::invalid_argument(
+            "case numerics.selection does not select convection");
+}
 
 Options parse(int argc, char** argv)
 {
@@ -56,10 +153,19 @@ int main(int argc, char** argv)
         const Options options = parse(argc, argv);
         Mesh mesh;
         const std::string mesh_path = options.mesh;
+        CaseSetup case_setup;
+        SourceInfo case_source;
+        GapAnalysis case_gap;
+        const bool is_case_hdf5 =
+            mesh_path.size() >= 9 &&
+            mesh_path.substr(mesh_path.size() - 9) == ".cfdx.h5";
         bool ok = false;
-        if (mesh_path.size() >= 3 && 
-            (mesh_path.substr(mesh_path.size() - 3) == ".h5" ||
-             mesh_path.substr(mesh_path.size() - 8) == ".cfdx.h5")) {
+        if (is_case_hdf5) {
+            ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
+            if (!ok)
+                throw std::runtime_error("production solver: CFDX case load failed");
+        } else if (mesh_path.size() >= 3 &&
+                   mesh_path.substr(mesh_path.size() - 3) == ".h5") {
             ok = read_mesh_hdf5(mesh_path, mesh);
         } else {
             ok = gmsh::import_gmsh_mesh(mesh_path, mesh);
@@ -83,8 +189,18 @@ int main(int argc, char** argv)
         }
 
         IncompressibleSolverControls controls;
-        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
         controls.convergence.max_iterations = options.iterations;
+        if (is_case_hdf5) {
+            apply_explicit_case_numerics(case_setup, controls);
+            if (case_setup.numerics.max_iterations > 0)
+                controls.convergence.max_iterations =
+                    std::min<std::size_t>(
+                        controls.convergence.max_iterations,
+                        static_cast<std::size_t>(case_setup.numerics.max_iterations));
+        } else {
+            controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+            controls.convection_scheme = ConvectionScheme::UPWIND;
+        }
         controls.convergence.continuity_tolerance = 1e-12;
         controls.linear_max_iterations = 1000;
         controls.linear_tolerance = 1e-11;
