@@ -69,7 +69,7 @@ jobs:
         run: |
           set -o pipefail
           ctest --test-dir build-validation -R '^(test_spatial_scheme_contract|test_case_numerics_report|test_case_hdf5_io|test_production_solver_numerics_e2e)$' --output-on-failure --no-tests=error
-          python3 -m pytest -q tests/python/test_numerical_selection.py tests/python/test_su2_adapter.py
+          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_su2_adapter.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
       - name: Run fast regression and validation tests
