@@ -5,8 +5,14 @@ remain owned by the application/session layer and the existing GUI adapters.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from .application import Application, ApplicationStateChanged, WorkflowStatus, workflow_children
+from .case_io import read_case, save_case
+from .execution import ExecutionController
+from .runner import SolverRunner
 from .session import CFDXSession
+from .validation import validate_case
 
 try:
     from PySide6.QtCore import QSettings, Qt
@@ -71,20 +77,112 @@ if QMainWindow is not object:
             for label in ("New Project", "Open", "Save"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower().replace(' ', '_')}")
-                action.setEnabled(False)
                 toolbar.addAction(action)
+                if label == "New Project":
+                    action.triggered.connect(self._new_project)
+                    self.new_project_action = action
+                elif label == "Open":
+                    action.triggered.connect(self._open_case)
+                    self.open_case_action = action
+                else:
+                    action.triggered.connect(self._save_case)
+                    self.save_case_action = action
             toolbar.addSeparator()
             for label in ("Check", "Run", "Stop"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
-                action.setEnabled(False)
                 toolbar.addAction(action)
+                if label == "Check":
+                    action.triggered.connect(self._check_case)
+                    self.check_action = action
+                elif label == "Run":
+                    action.triggered.connect(self._run)
+                    self.run_action = action
+                else:
+                    action.triggered.connect(self._stop)
+                    self.stop_action = action
             toolbar.addSeparator()
             search = QAction("Search", self)
             search.setObjectName("workbench.action.search")
             search.setEnabled(False)
             toolbar.addAction(search)
             self.toolbar = toolbar
+
+        def _new_project(self) -> None:
+            self.application.replace_session(CFDXSession())
+            self.session = self.application.session
+            self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
+
+        def _open_case(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5 *.h5)")
+            if not path:
+                return
+            try:
+                self.application.replace_session(read_case(Path(path)), project_path=path)
+                self.session = self.application.session
+                self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
+            except (OSError, ValueError) as exc:
+                self.statusBar().showMessage(f"Open failed: {exc}")
+
+        def _save_case(self) -> None:
+            path = Path(self.application.project_path) if self.application.project_path else None
+            if path is None:
+                selected, _ = QFileDialog.getSaveFileName(
+                    self, "Save CFDX Case", f"{self.session.case.name}.cfdx.h5", "CFDX Case (*.cfdx.h5)"
+                )
+                if not selected:
+                    return
+                path = Path(selected)
+            try:
+                save_case(self.session, path)
+                self.application.set_project_path(path, dirty=False)
+            except (OSError, ValueError) as exc:
+                self.statusBar().showMessage(f"Save failed: {exc}")
+
+        def _ensure_controller(self) -> ExecutionController:
+            if self.application.controller is not None:
+                return self.application.controller
+            if self.application.project_path is None:
+                self._save_case()
+            if self.application.project_path is None:
+                raise ValueError("save the case before starting the solver")
+            solver = self.session.case.execution.solver
+            if not solver:
+                raise ValueError("execution.solver must be configured before Run")
+            command = [solver, str(self.application.project_path)]
+            if self.session.case.execution.mpi_ranks > 1:
+                command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
+            controller = ExecutionController(
+                self.session,
+                SolverRunner(command, cwd=Path(self.application.project_path).parent),
+            )
+            self.application.attach_controller(controller)
+            return controller
+
+        def _check_case(self) -> None:
+            try:
+                state = self.application.validate(validate_case)
+                if state.diagnostics:
+                    self.statusBar().showMessage(
+                        f"Validation: {len(state.diagnostics)} diagnostic(s)"
+                    )
+                else:
+                    self.statusBar().showMessage("Validation: case is valid")
+            except (OSError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Validation failed: {exc}")
+
+        def _run(self) -> None:
+            try:
+                self._ensure_controller()
+                self.application.run()
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Run failed: {exc}")
+
+        def _stop(self) -> None:
+            try:
+                self.application.stop()
+            except (RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Stop failed: {exc}")
 
         def _build_docks(self) -> None:
             self.workflow_tree = QTreeWidget()
@@ -211,6 +309,13 @@ if QMainWindow is not object:
                 f"Time: {state.execution.time:g}"
             )
             self._refresh_properties()
+            if hasattr(self, "run_action"):
+                running = state.simulation_state.value == "RUNNING"
+                paused = state.simulation_state.value == "PAUSED"
+                self.run_action.setEnabled(not running and not paused)
+                self.stop_action.setEnabled(running or paused)
+                self.check_action.setEnabled(not running and not paused)
+                self.save_case_action.setEnabled(not running and not paused)
 
         def _selection_changed(self) -> None:
             items = self.workflow_tree.selectedItems()
