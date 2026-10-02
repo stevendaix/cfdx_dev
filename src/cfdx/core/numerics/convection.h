@@ -68,7 +68,7 @@ inline Field<double, Location::CELL> compute_convection(
             if (ni < 0) continue;
             const std::size_t n = static_cast<std::size_t>(ni);
             const double lo = std::min(scalar(o, 0), scalar(n, 0));
-            const double hi = std::max(scalar(o), scalar(n));
+            const double hi = std::max(scalar(o, 0), scalar(n, 0));
             const double vf = fv[f];
             const double tol = 64.0 * std::numeric_limits<double>::epsilon()
                              * std::max({1.0, std::abs(lo), std::abs(hi), std::abs(vf)});
