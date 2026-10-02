@@ -1193,6 +1193,14 @@ bool write_case_cfdx_h5(const std::string& filename,
                         const SourceInfo& source,
                         const CaseSetup& setup,
                         const GapAnalysis& gap) {
+    cfdx::core::CaseNumericsReport numerical_report = setup.numerical_report;
+    if (setup.has_explicit_numerics) {
+        numerical_report = cfdx::core::resolve_case_numerics(
+            source.case_name.empty() ? filename : source.case_name,
+            setup.numerical_config);
+        if (!numerical_report.valid()) return false;
+    }
+
     hid_t fapl = create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
@@ -1223,7 +1231,7 @@ bool write_case_cfdx_h5(const std::string& filename,
     write_attr_str(file, "gap_report_json", gap.to_json());
     if (setup.has_explicit_numerics) {
         write_attr_str(file, "numerical_selection_report",
-                       cfdx::core::format_numerics_report(setup.numerical_report));
+                       cfdx::core::format_numerics_report(numerical_report));
     }
 
     // --- Points ---
