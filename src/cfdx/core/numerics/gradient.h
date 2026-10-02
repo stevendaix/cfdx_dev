@@ -400,15 +400,15 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
 // over two rings of neighbours (>= 9 independent points). The gradient is the
 // first three components of the 9-vector. This restores ~second order on
 // smooth fields at the cost of one 9x9 solve per cell.
-inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
+inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
-        throw std::runtime_error("compute_gradient_least_squares_quadratic: field size != n_cells");
+        throw std::runtime_error("compute_quadratic_fit_least_squares: field size != n_cells");
     if (cell_field.dimension() != 1)
-        throw std::runtime_error("compute_gradient_least_squares_quadratic: field must be scalar (dim=1)");
+        throw std::runtime_error("compute_quadratic_fit_least_squares: field must be scalar (dim=1)");
 
     const auto* cell_faces = mesh.cells().faces_data();
     const auto* cell_offsets = mesh.cells().offsets_data();
@@ -430,8 +430,8 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
         }
     }
 
-    Field<double, Location::CELL> grad(
-        n_cells, cell_field.name() + "_grad_lsq", cell_field.metadata().unit + "/m", 3);
+    Field<double, Location::CELL> fit(
+        n_cells, cell_field.name() + "_lsq_fit", cell_field.metadata().unit + "/m", 9);
     std::vector<char> seen(n_cells, 0);
 
     for (std::size_t c = 0; c < n_cells; ++c) {
@@ -466,7 +466,9 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
         for (const std::size_t nb : ring1[c])
             for (const std::size_t nb2 : ring1[nb]) seen[nb2] = 0;
 
-        Vec3 g;
+        Vec3 g{0.0, 0.0, 0.0};
+        double x[9] = {};
+        bool have_quad = false;
         if (npts >= 9) {
             // Solve the 9x9 normal equations with partial pivoting.
             double m[9][10] = {};
@@ -496,7 +498,6 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
                     for (int j = col; j < 10; ++j) m[row][j] -= factor * m[col][j];
                 }
             }
-            double x[9] = {};
             for (int i = 8; i >= 0; --i) {
                 if (!pivoted[i]) continue;
                 double rhs = m[i][9];
@@ -504,15 +505,38 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
                 if (std::abs(m[i][i]) > rank_tol) x[i] = rhs / m[i][i];
             }
             g = {x[0], x[1], x[2]};
+            have_quad = true;
         } else {
             g = least_squares_gradient(P, phi_c,
                 std::vector<Vec3>{}, std::vector<double>{});
         }
         if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z))
-            throw std::runtime_error("compute_gradient_least_squares_quadratic: non-finite gradient");
-        grad(c, 0) = g.x;
-        grad(c, 1) = g.y;
-        grad(c, 2) = g.z;
+            throw std::runtime_error("compute_quadratic_fit_least_squares: non-finite gradient");
+        fit(c, 0) = g.x;
+        fit(c, 1) = g.y;
+        fit(c, 2) = g.z;
+        if (have_quad) {
+            for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+        } else {
+            for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+        }
+    }
+    return fit;
+}
+
+// Gradient slice (components 0-2) of the quadratic least-squares fit.
+inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const auto fit = compute_quadratic_fit_least_squares(cell_field, mesh);
+    Field<double, Location::CELL> grad(
+        cell_field.size(), cell_field.name() + "_grad_lsq",
+        cell_field.metadata().unit + "/m", 3);
+    for (std::size_t c = 0; c < grad.size(); ++c) {
+        grad(c, 0) = fit(c, 0);
+        grad(c, 1) = fit(c, 1);
+        grad(c, 2) = fit(c, 2);
     }
     return grad;
 }
