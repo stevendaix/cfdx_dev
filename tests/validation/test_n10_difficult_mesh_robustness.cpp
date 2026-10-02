@@ -514,7 +514,6 @@ N10AccuracyMetrics n10_gradient_error(
 {
     double weighted_l1 = 0.0;
     double weighted_l2 = 0.0;
-    double total_volume = 0.0;
     double linf = 0.0;
 
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
@@ -525,10 +524,14 @@ N10AccuracyMetrics n10_gradient_error(
         const double w = geometry.cell_volumes[c];
         weighted_l1 += e * w;
         weighted_l2 += e * e * w;
-        total_volume += w;
         linf = std::max(linf, e);
     }
 
+    const double total_volume = [&]() {
+        double v = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) v += geometry.cell_volumes[c];
+        return v;
+    }();
     if (!(total_volume > 0.0) || !std::isfinite(total_volume))
         throw std::runtime_error("N10 accuracy: invalid total volume");
 
@@ -722,7 +725,7 @@ void run_n10_tetra_accuracy_family()
 
         double previous_l2 = std::numeric_limits<double>::quiet_NaN();
 
-        for (const std::size_t n : {2u, 4u, 8u}) {
+        for (const std::size_t n : {4u, 8u, 16u}) {
             const auto grid = make_tetra_grid(n);
             const auto quality = validate_mesh(grid.mesh);
             EXPECT_TRUE(quality.ok);
@@ -760,7 +763,7 @@ void run_n10_tetra_accuracy_family()
                       << " order=" << order
                       << " max_skewness=" << quality.max_skewness
                       << " max_nonorth_deg=" << quality.max_non_orthogonality_deg
-                      << " max_aspect=NA"
+                      << " max_aspect=" << [&]() {\n                             double a = 0.0;\n                             for (std::size_t c = 0; c < grid.mesh.n_cells(); ++c)\n                                 a = std::max(a, cell_bbox_aspect_ratio(grid.mesh, c));\n                             return a;\n                         }()
                       << "\n";
 
             EXPECT_TRUE(std::isfinite(l2));
