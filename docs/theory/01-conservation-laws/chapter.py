@@ -1,51 +1,98 @@
 # %% [markdown]
-"""# Conservation Laws
+# Conservation Laws
 
-## Scientific purpose
+## 1.1 Generic balance
 
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
+\[
+\frac{\partial q}{\partial t}+\nabla\cdot\mathbf F=s.
+\]
+Integration gives
+\[
+\frac{d}{dt}\int_{V_P}q\,dV+
+\oint_{\partial V_P}\mathbf F\cdot\mathbf n\,dA
+=\int_{V_P}s\,dV.
+\]
 
-## Required structure
+## 1.2 Mass
 
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
+\[
+\frac{\partial\rho}{\partial t}+\nabla\cdot(\rho\mathbf u)=0.
+\]
+The cell equation is
+\[
+\frac{d}{dt}(\rho_PV_P)+\sum_f\dot m_f=0,
+\qquad
+\dot m_f=\rho_f\mathbf u_f\cdot\mathbf S_f.
+\]
 
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
+## 1.3 Momentum
 
-## Core equations
+\[
+\frac{\partial(\rho\mathbf u)}{\partial t}
++\nabla\cdot(\rho\mathbf u\otimes\mathbf u)
+=-\nabla p+\nabla\cdot\boldsymbol\tau+\rho\mathbf f.
+\]
+The integral equation contains convective momentum, pressure traction, viscous traction and body force.
 
-- d/dt int_V rho dV + int_dV rho u.n dA=0
-- momentum: d/dt int_V rho u dV + int_dV rho u(u.n)dA = -int_dV p n dA + int_dV tau.n dA + int_V rho f dV
-- energy balance = accumulation + surface fluxes + sources
-- species: d/dt int rho Y dV + int rho Y u.n dA = int J.n dA + int S dV
-- internal face fluxes cancel pairwise when orientations are opposite
+## 1.4 Energy
 
-## Scientific checks
+With total specific energy \(E=e+|\mathbf u|^2/2\),
+\[
+\frac{\partial(\rho E)}{\partial t}
++\nabla\cdot[(\rho E+p)\mathbf u]
+=\nabla\cdot(\boldsymbol\tau\mathbf u-\mathbf q)
++\rho\mathbf f\cdot\mathbf u+\dot q_v.
+\]
 
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+## 1.5 Species
 
-## CFDX traceability
+\[
+\frac{\partial(\rho Y_i)}{\partial t}
++\nabla\cdot(\rho\mathbf uY_i)
+=-\nabla\cdot\mathbf J_i+\dot\omega_i.
+\]
+For a conservative mixture,
+\[
+\sum_iY_i=1,\qquad \sum_i\dot\omega_i=0.
+\]
 
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+## 1.6 Internal-face cancellation
 
-## References
+For two adjacent cells sharing one physical face,
+\[
+\mathbf S_{f,N}=-\mathbf S_{f,P}.
+\]
+A single conservative interface flux therefore satisfies
+\[
+F_{N,f}=-F_{P,f}.
+\]
+Summing all cell equations cancels internal faces exactly, leaving only physical-domain boundary fluxes and sources.
 
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
+## 1.7 Global conservation diagnostic
+
+\[
+R_C=
+\frac{d}{dt}\sum_Pq_PV_P+
+\sum_{f\in\partial\Omega}\Phi_f-
+\sum_Ps_PV_P.
+\]
+A normalized defect can be
+\[
+\epsilon_C=\frac{|R_C|}{Q_{\mathrm{ref}}},
+\]
+where the reference scale must be explicitly documented.
+
+## 1.8 CFDX traceability
+
+src/cfdx/core/numerics/conservation.h  
+src/cfdx/core/numerics/flux.h  
+src/cfdx/core/numerics/integrate.h  
+src/cfdx/physics/finite_volume_transport.h
+
+Verification must test face antisymmetry and global balances independently of solver residuals.
 
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
-assert np.allclose(1.0 + (-1.0), 0.0)
+S=np.array([1.2,-0.4,0.7])
+assert np.allclose(S+(-S),0.0)
