@@ -1,3 +1,6 @@
+> **Executable source:** [chapter.py](chapter.py)  
+> This README is navigation and chapter contract. Quantitative theory belongs to the Python percent source.
+
 # 15 — Verification and Validation
 
 **Status: REPOSITORY-GROUNDED educational chapter. Authoritative maturity remains in the V&V evidence layer.**
