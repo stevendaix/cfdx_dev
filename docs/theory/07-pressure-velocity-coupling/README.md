@@ -16,4 +16,4 @@
 11. Pressure null spaces
 12. Coupling convergence and verification
 
-Unsupported algorithms must remain explicitly marked PLANNED rather than being described as implemented.
+The chapter will separate mathematical theory, CFDX implementation contracts, executable experiments and V&V evidence.
