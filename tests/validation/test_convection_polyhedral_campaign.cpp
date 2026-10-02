@@ -204,12 +204,12 @@ Field<double,Location::CELL> divergence_from_face(
 {
     Field<double,Location::CELL> div(g.mesh.n_cells(),"div","1/s",1);
     const auto& own=g.mesh.ownership();
+    const auto* faces=g.mesh.cells().faces_data();
+    const auto* offsets=g.mesh.cells().offsets_data();
     for (std::size_t c=0;c<g.mesh.n_cells();++c) {
         double sum=0.0;
-        for (std::size_t f=0;f<g.mesh.n_faces();++f) {
-            const auto nb=own.neighbour(f);
-            const bool belongs=own.owner(f)==c || (nb>=0 && static_cast<std::size_t>(nb)==c);
-            if (!belongs) continue;
+        for (Offset k=offsets[c]; k<offsets[c+1]; ++k) {
+            const std::size_t f=faces[k];
             const double sign=own.owner(f)==c ? 1.0 : -1.0;
             sum += sign*flux(f)*face_value(f);
         }
