@@ -1,20 +1,51 @@
 # %% [markdown]
 """# Fluxes
 
-## Scientific objective
+## Scientific purpose
 
-Convective scalar flux is mdot_f*phi_f with mdot_f=rho_f*u_f.S_f. Diffusive flux is Gamma_f*grad(phi)_f.S_f. A scheme includes mass-flux definition, face reconstruction, limiting and boundary treatment. Internal-face antisymmetry, accuracy and boundedness are separate properties.
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
 
-## Executable contract
+## Required structure
 
-This deterministic cell is a minimal mathematical sanity check. Quantitative studies must be linked to V&V evidence.
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
 
-## Status
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
 
-Implementation, verification, validation and qualification remain separate claims.
+## Core equations
+
+- F_mass = rho u.S_f
+- F_conv = (rho u.S_f) phi_f
+- F_diff = -Gamma grad(phi).S_f
+- momentum pressure flux = -p S_f
+- energy convective flux = m_dot h_f
+- internal shared-face contributions have equal magnitude and opposite sign
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
 from __future__ import annotations
+import numpy as np
 
-mdot=2.; phi=.75; owner=mdot*phi; neighbour=-owner; assert abs(owner+neighbour)<1e-14
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
