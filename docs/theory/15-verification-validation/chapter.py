@@ -138,3 +138,23 @@
 import numpy as np
 E=np.array([1e-2,2.5e-3,6.25e-4])
 assert np.allclose(np.log(E[:-1]/E[1:])/np.log(2),2.0)
+
+
+# %% [markdown]
+# ## 15.13 From theory to executable V&V
+#
+# The V&V contract is a traceability chain:
+#
+# \[
+# \text{claim}\rightarrow\text{oracle}\rightarrow\text{metric}\rightarrow\text{criterion}\rightarrow\text{artifact}.
+# \]
+#
+# For each campaign, retain the software revision, setup, mesh, numerical schemes, solver criteria, raw result and post-processing definition. The evidence must identify whether it is code verification, solution verification, validation or qualification.
+#
+# ## 15.14 No residual-only validation
+#
+# A converged residual establishes an algebraic stopping condition, not physical correctness. Physical/reference comparison and discretisation uncertainty require independent evidence.
+#
+# ## 15.15 Qualification boundary
+#
+# Qualification is a bounded population statement. A passing case may support a capability claim only within the declared geometry, physics, numerical method and parameter range. Missing population members keep the claim incomplete.
