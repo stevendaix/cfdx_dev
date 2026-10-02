@@ -1,9 +1,50 @@
 # %% [markdown]
-"""# Source-Tree Physics and Numerical Audit
+"""# Source-Tree Physics Audit
 
-This chapter is a living audit register. For every important source file, record its equation or operator, inputs, outputs, assumptions, units, sign convention, invariants, tests, benchmark evidence, maturity, limitations and improvement path. File existence is never evidence of qualification.
+## Scientific purpose
+
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
+
+## Required structure
+
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
+
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
+
+## Core equations
+
+- each file must map to a physical or numerical contract
+- inputs -> transformations -> outputs -> invariants
+- equations must map to implementation symbols and tests
+- status = Implemented / Verified / Validated / Qualified
+- missing evidence is a documented gap, not an inferred capability
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
-FIELDS = ('source','equation','inputs','outputs','assumptions','units','sign','invariants','tests','benchmarks','status','limitations')
-assert len(FIELDS) == 12
+from __future__ import annotations
+import numpy as np
+
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
