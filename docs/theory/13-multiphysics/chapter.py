@@ -1,51 +1,50 @@
 # %% [markdown]
-"""# Multiphysics
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- F(y)=0
-- J(y) delta y=-F(y)
-- J=[F_u,u F_u,p;F_p,u F_p,p]
-- segregated iteration y^(k+1)=S(y^k)
-- monolithic solve J delta y=-F
-- interface residuals enforce conservation between subdomains
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Multiphysics
+#
+# ## 13.1 Coupled residual
+# \[
+# F(y)=0,\qquad y=(u,p,T,Y_1,\ldots).
+# \]
+# Newton linearisation:
+# \[
+# J(y^k)\delta y=-F(y^k),\qquad y^{k+1}=y^k+\delta y.
+# \]
+#
+# ## 13.2 Block Jacobian
+# \[
+# J=
+# \begin{bmatrix}
+# J_{uu}&J_{up}&J_{uT}&\cdots\\
+# J_{pu}&J_{pp}&J_{pT}&\cdots\\
+# J_{Tu}&J_{Tp}&J_{TT}&\cdots
+# \end{bmatrix}.
+# \]
+# Off-diagonal blocks represent coupling.
+#
+# ## 13.3 Segregated coupling
+# \[
+# y^{k+1}=S(y^k),\qquad
+# y^{k+1}\leftarrow(1-\omega)y^k+\omega S(y^k).
+# \]
+# Relaxation changes convergence path, not the underlying equations.
+#
+# ## 13.4 Interface conservation
+# \[
+# R_\Gamma=\sum_{f\in\Gamma}(q_f^{(1)}+q_f^{(2)}).
+# \]
+# This defect must be checked independently from field residuals.
+#
+# ## 13.5 CFDX traceability
+# src/cfdx/physics/finite_volume_transport.h  
+# src/cfdx/physics/cht_solver.h  
+# src/cfdx/physics/radiation_solver.h  
+# src/cfdx/physics/steady_incompressible_solver.h  
+# Tests: tests/validation/test_level_c_coupled_verification.cpp, tests/validation/test_cht_validation.cpp
+#
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
+J=np.array([[3.,1.],[1.,2.]])
+F=np.array([1.,-1.])
+d=np.linalg.solve(J,-F)
+assert np.allclose(J@d,-F)
