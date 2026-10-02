@@ -122,39 +122,6 @@ inline const char* to_string(MatrixPathology pathology) {
     return "unknown";
 }
 
-inline SolverFailureClass classify_solver_failure(
-    const SolverResult& result,
-    const MatrixDiagnostics& diagnostics,
-    bool rhs_compatible = true,
-    double stagnation_ratio = 0.95) {
-    if (!(stagnation_ratio >= 0.0 && stagnation_ratio <= 1.0) ||
-        !std::isfinite(stagnation_ratio))
-        throw std::invalid_argument("stagnation ratio must be finite and in [0,1]");
-
-    if (result.status == SolverStatus::CONVERGED)
-        return SolverFailureClass::None;
-    if (!std::isfinite(result.residual) ||
-        !std::isfinite(result.residual_relative))
-        return SolverFailureClass::NonFinite;
-
-    const auto pathologies = classify_matrix_pathologies(diagnostics);
-    if (!(pathologies.size() == 1 && pathologies.front() == MatrixPathology::None))
-        return SolverFailureClass::MatrixPathology;
-    if (!rhs_compatible)
-        return SolverFailureClass::IncompatibleRhs;
-    if (result.status == SolverStatus::DIVERGED)
-        return SolverFailureClass::Divergence;
-
-    if (result.status == SolverStatus::MAX_ITER_REACHED &&
-        std::isfinite(result.min_true_residual) &&
-        std::isfinite(result.max_true_residual) &&
-        result.max_true_residual > 0.0 &&
-        result.min_true_residual / result.max_true_residual >= stagnation_ratio)
-        return SolverFailureClass::Stagnation;
-
-    return SolverFailureClass::MaxIterations;
-}
-
 inline MatrixDiagnostics diagnose_matrix(
     const SparseMatrix& matrix,
     double diagonal_relative_tolerance = 1e-14) {
@@ -318,6 +285,39 @@ inline std::vector<MatrixPathology> classify_matrix_pathologies(
         result.push_back(MatrixPathology::DisconnectedMatrix);
     if (result.empty()) result.push_back(MatrixPathology::None);
     return result;
+}
+
+inline SolverFailureClass classify_solver_failure(
+    const SolverResult& result,
+    const MatrixDiagnostics& diagnostics,
+    bool rhs_compatible = true,
+    double stagnation_ratio = 0.95) {
+    if (!(stagnation_ratio >= 0.0 && stagnation_ratio <= 1.0) ||
+        !std::isfinite(stagnation_ratio))
+        throw std::invalid_argument("stagnation ratio must be finite and in [0,1]");
+
+    if (result.status == SolverStatus::CONVERGED)
+        return SolverFailureClass::None;
+    if (!std::isfinite(result.residual) ||
+        !std::isfinite(result.residual_relative))
+        return SolverFailureClass::NonFinite;
+
+    const auto pathologies = classify_matrix_pathologies(diagnostics);
+    if (!(pathologies.size() == 1 && pathologies.front() == MatrixPathology::None))
+        return SolverFailureClass::MatrixPathology;
+    if (!rhs_compatible)
+        return SolverFailureClass::IncompatibleRhs;
+    if (result.status == SolverStatus::DIVERGED)
+        return SolverFailureClass::Divergence;
+
+    if (result.status == SolverStatus::MAX_ITER_REACHED &&
+        std::isfinite(result.min_true_residual) &&
+        std::isfinite(result.max_true_residual) &&
+        result.max_true_residual > 0.0 &&
+        result.min_true_residual / result.max_true_residual >= stagnation_ratio)
+        return SolverFailureClass::Stagnation;
+
+    return SolverFailureClass::MaxIterations;
 }
 
 inline MatrixScalingResult scale_matrix(
