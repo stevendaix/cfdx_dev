@@ -28,6 +28,7 @@
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/core/numerics/numerical_method_selection.h",
+        "tests/unit/test_case_numerics_report.cpp",
         "tests/validation/test_numerical_model_verification.cpp"
       ]
     },
