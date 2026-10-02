@@ -1,19 +1,67 @@
-# Heat Transfer
+# 11 — Heat Transfer
 
-**Status: TOPO — detailed course chapter not yet migrated.**
+**Status: REPOSITORY-GROUNDED.**
 
-## Planned course
-1. Energy equation
-2. Thermal properties
-3. Conduction
-4. Convection
-5. Thermal boundary conditions
-6. Fluid/solid coupling
-7. Conjugate heat transfer
-8. Radiation coupling
-9. Thermal source terms
-10. Temperature-dependent properties
-11. Thermal conservation
-12. Verification and validation
+A representative thermal transport equation is
 
-The chapter will distinguish theory from actual CFDX implementation and qualification evidence.
+$$
+\rho c_p\left(
+\frac{\partial T}{\partial t}+\mathbf u\cdot\nabla T
+\right)
+=
+\nabla\cdot(k\nabla T)+S_T.
+$$
+
+The conserved variable and equation change for compressible formulations; Theory follows the actual CFDX equation path.
+
+## Conduction
+
+Fourier's law is
+
+$$
+\mathbf q=-k\nabla T.
+$$
+
+The outward face heat rate is
+
+$$
+Q_f=-k_f(\nabla T)_f\cdot\mathbf S_f.
+$$
+
+The sign convention must remain consistent at interfaces.
+
+## Convection
+
+Thermal convection has the same finite-volume structure as scalar transport:
+
+$$
+\Phi_{h,f}=\dot m_fh_f.
+$$
+
+Therefore thermal accuracy depends on the common flux and reconstruction contracts.
+
+## Properties
+
+Current thermophysical families include thermophysical_models.h, transport_models.h and equation_of_state.h. Temperature-dependent properties introduce nonlinear coupling.
+
+## Conjugate heat transfer
+
+At an ideal fluid-solid interface,
+
+$$
+T_f=T_s,
+\qquad
+q_{f,n}+q_{s,n}=0
+$$
+
+with the sign defined by a common interface orientation.
+
+Current solver family: cht_solver.h.
+
+## Buoyancy
+
+The Boussinesq approximation can represent density variation only where it materially affects buoyancy. The reference temperature and approximation assumptions must be explicit. Current source: boussinesq.h.
+
+## V&V
+
+Use analytical conduction, transient diffusion MMS, convection-diffusion, interface flux balance, property-regression tests and global energy conservation. Validation results must identify material data and boundary conditions.
