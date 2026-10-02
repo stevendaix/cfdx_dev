@@ -41,8 +41,7 @@
         "src/cfdx/core/numerics/interpolation.h",
         "tests/unit/test_gradient.cpp",
         "tests/validation/test_gradient_verification.cpp",
-        "tests/validation/test_polyhedral_gradient_campaign.cpp",
-        "non-affine polyhedral campaign added in PR branch: tests/validation/test_polyhedral_gradient_campaign.cpp"
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ],
       "gaps": [
         "two-point cell Green-Gauss is deliberately domain-restricted: not linear-consistent on tetrahedra because centre-line face interpolation is not face-centroid consistent",
