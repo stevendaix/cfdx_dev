@@ -1,189 +1,104 @@
-# Pressure–Velocity Coupling
+# 07 — Pressure–Velocity Coupling
 
-This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
+For incompressible flow, pressure enforces the divergence constraint rather than being supplied by an independent thermodynamic equation.
 
-## Detailed course structure
+## 1. Block system
 
-### 1. Incompressible Navier-Stokes
+Linearisation gives
+\[
+\begin{bmatrix}
+A & G\\
+D & 0
+\end{bmatrix}
+\begin{bmatrix}
+u\\p
+\end{bmatrix}
+=
+\begin{bmatrix}
+b\\0
+\end{bmatrix}.
+\]
+Here \(A\) is the momentum operator, \(G\) pressure gradient and \(D\) discrete divergence.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 2. Schur complement
 
-### 2. Pressure correction
+From
+\[
+Au+Gp=b,
+\qquad
+Du=0,
+\]
+we obtain
+\[
+u=A^{-1}(b-Gp),
+\]
+then
+\[
+(DA^{-1}G)p=DA^{-1}b.
+\]
+The Schur operator is
+\[
+S=DA^{-1}G.
+\]
+Its quality controls pressure correction and coupled convergence.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+**CFDX paths:** `src/cfdx/physics/pressure_velocity.h`, `src/cfdx/core/linalg/exact_schur.h`, `src/cfdx/core/linalg/block_schur.h`.
 
-### 3. SIMPLE
+## 3. SIMPLE
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+With approximate momentum inverse \(\tilde A^{-1}\),
+\[
+\tilde S=D\tilde A^{-1}G.
+\]
+A pressure correction is obtained from the approximate Schur system and relaxed before updating velocity and pressure. The approximation makes SIMPLE inexpensive but iterative.
 
-### 4. SIMPLEC
+## 4. SIMPLEC
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+SIMPLEC modifies the momentum-correction approximation to reduce the influence of neighbour velocity corrections. The exact algebra must follow the CFDX implementation rather than a generic label.
 
-### 5. PISO
+**CFDX path:** `src/cfdx/core/linalg/simplerc_schur.h`.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 5. PISO
 
-### 6. PIMPLE
+PISO performs multiple pressure-correction stages within a time step so that the corrected velocity satisfies continuity more tightly without a complete outer nonlinear iteration.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 6. PIMPLE
 
-### 7. Fractional step
+PIMPLE combines pressure-correction iterations with outer under-relaxed/nonlinear loops. It is particularly useful for transient problems where multiple pressure corrections and outer iterations are required.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 7. Fractional step
 
-### 8. Coupled solver
+A projection method first computes an intermediate velocity,
+\[
+\frac{u^*-u^n}{\Delta t}=N(u^n)-\nabla p^*,
+\]
+then corrects it:
+\[
+u^{n+1}=u^*-\Delta t\nabla\delta p,
+\]
+with
+\[
+\nabla^2\delta p=\frac{1}{\Delta t}\nabla\cdot u^*.
+\]
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 8. Coupled solve
 
-### 9. Rhie-Chow
+A monolithic approach solves the saddle-point system directly or through block preconditioning. This avoids some splitting errors but requires robust block linear algebra.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 9. Rhie–Chow and checkerboarding
 
-### 10. Pressure null space
+On collocated grids, pressure and velocity can decouple through a checkerboard mode. Face mass flux reconstruction must therefore couple pressure and momentum consistently. Any Rhie–Chow-like correction must be documented algebraically and verified on a pressure-mode test.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 10. Pressure null space
 
-### 11. Schur complement
+Pressure is defined only up to an additive constant for closed incompressible domains:
+\[
+p'=p+C.
+\]
+A gauge constraint such as \(\int_\Omega p\,d\Omega=0\) or one reference value removes the null space.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 11. Verification
 
-### 12. Coupling verification
+Use discrete divergence, pressure null-space, manufactured pressure-gradient, lid-driven cavity, Poiseuille and coupling-iteration diagnostics.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-## Mandatory equation template
-
-Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
-
-## Evidence vocabulary
-
-**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
-
-## Scientific figures
-
-Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
-
-## Repository traceability
-
-Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
+**Implementation:** `src/cfdx/physics/pressure_velocity.h`, `src/cfdx/physics/pressure_velocity_algorithms.h`, `src/cfdx/core/linalg/`.
