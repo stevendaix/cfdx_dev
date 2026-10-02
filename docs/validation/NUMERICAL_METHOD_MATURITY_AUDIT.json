@@ -78,10 +78,10 @@
         "tests/validation/test_convection_scheme_verification.cpp"
       ],
       "gaps": [
-        "QUICK-equivalent quadratic scheme",
-        "QUICK-equivalent quadratic scheme",
-        "multidimensional limiter policy",
-        "production transport wiring + multidimensional scheme-level V&V"
+        "general non-orthogonal/skew mesh V&V",
+        "tetrahedral/polyhedral scheme-level V&V",
+        "steep-gradient/discontinuity campaign",
+        "final measured scheme-level qualification gates"
       ]
     },
     {
