@@ -184,14 +184,14 @@
       "name": "Difficult-mesh robustness",
       "status": "partial",
       "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h",
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
         "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
         "docs/validation/CONSERVATION_BOUNDEDNESS.md"
       ],
       "gaps": [
-        "controlled quality ladder",
-        "polyhedral quantitative accuracy",
-        "solver robustness versus quality",
-        "integration with #423 fixture manifest"
+        "full smooth-field/polyhedral accuracy campaign on the N10 quality ladder",
+        "integration with #423 imported-fixture manifest and production mesh corpus"
       ]
     },
     {
