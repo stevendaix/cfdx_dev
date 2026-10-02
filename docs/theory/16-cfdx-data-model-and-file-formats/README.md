@@ -1,316 +1,149 @@
 # 16 — CFDX Data Model, Mesh Files and Case Formats
 
-**Status: IN PROGRESS — repository-grounded format chapter.**
+**Status: CODE-AUDITED against the current PR branch.**
 
-The numerical method cannot be understood independently of the discrete data on which it operates. This chapter explains topology, geometry, import, HDF5 storage and the distinction between a case and a restart.
+## 1. File roles
 
-## 1. Three file roles
+The intended distinction is:
 
-~~~text
-case.cfdx.h5
-   mesh + setup + physics + numerics + metadata
-             |
-             v
-       solver initial state
-             |
-             v
-case.dat.h5
-   checkpoint / restart state
-             |
-             v
-case_<time>.vtu
-   visualization / post-processing
-~~~
+    case.cfdx.h5  = problem definition / mesh / setup / metadata
+    case.dat.h5   = numerical checkpoint / restart state
+    case_<time>.vtu = visualisation artifact
 
-The fundamental invariant is:
+The invariant is
 
 $$
-\boxed{\text{case definition} \neq \text{numerical state}.}
+\boxed{\text{case definition}\neq\text{numerical state}}.
 $$
 
-A CFDX case is the source of truth for the problem definition. A DAT is a numerical checkpoint. A VTU is an output artifact.
+This chapter documents the implemented case-level HDF5 path. It does not claim that every future DAT/restart feature is already implemented.
 
-## 2. Topology versus geometry
+## 2. Current HDF5 schema v1
 
-Topology answers which points form a face, which cell owns a face, which cell neighbours a face, and which faces belong to a patch.
+The implementation defines:
 
-Geometry answers point coordinates, face centroid, face area, face area vector, cell centroid, cell volume and mesh-quality indicators.
+    CFDX_HDF5_FORMAT_VERSION = 1
+    CFDX_HDF5_SCHEMA_VERSION = 1
+    CFDX_VERSION = "0.7"
 
-~~~text
-points + connectivity
-        |
-        v
-     topology
-        |
-        v
- face/cell geometry
-        |
-        v
-     FVM operators
-~~~
+The format and schema versions are stored as root string attributes. They are distinct from the application version.
 
-This distinction is fundamental for reproducibility.
+### Required root datasets
 
-## 3. Actual CFDX-HDF5 v1 layout
+| Dataset | HDF5 type | Shape | Meaning |
+|---|---|---|---|
+| points | float64 | [n_points, 3] | point coordinates |
+| face_vertices | uint64 | [n_face_vertex_refs] | flattened polygon connectivity |
+| face_offsets | uint64 | [n_faces+1] | CSR face ranges |
+| owner | uint64 | [n_faces] | owner cell per face |
+| neighbour | int64 | [n_faces] | neighbour cell, -1 for boundary |
+| cell_faces | uint64 | [n_cell_face_refs] | flattened cell-face connectivity |
+| cell_offsets | uint64 | [n_cells+1] | CSR cell ranges |
 
-The implementation does **not** currently use the previously proposed hierarchical `/mesh/...`, `/physics/...` and `/numerics/...` tree as its on-disk representation. The current case-level implementation is deliberately flatter.
+The reader checks rank, integer type/sign, terminal offsets, index ranges and owner/neighbour dimensions.
 
-The authoritative root-level datasets and groups are documented in `src/cfdx/io/hdf5/case_hdf5_io.h`:
+### Field groups
 
-~~~text
-/
-├── points                         float64 [n_points, 3]
-├── face_vertices                  uint64  [n_face_vertex_refs]
-├── face_offsets                   uint64  [n_faces + 1]
-├── owner                          uint64  [n_faces]
-├── neighbour                      int64   [n_faces]
-├── cell_faces                     uint64  [n_cell_face_refs]
-├── cell_offsets                   uint64  [n_cells + 1]
-│
-├── /fields/
-│   ├── /scalar/<name>             float64 [n_cells]
-│   └── /vector/<name>             float64 [n_cells, dim]
-│
-└── root attributes
-    ├── format_version
-    ├── schema_version
-    ├── cfdx_version
-    ├── topology_hash
-    ├── geometry_hash
-    ├── mesh_hash
-    ├── creation_date
-    ├── modification_date
-    ├── dimension
-    ├── precision
-    ├── endian
-    ├── source_solver
-    ├── source_format
-    ├── source_version
-    ├── source_case_path
-    ├── source_case_name
-    ├── case_setup_json
-    ├── gap_report_json
-    ├── mesh_topology
-    └── boundary_patches (optional)
-~~~
+    /fields/scalar/<name>  float64 [n_cells]
+    /fields/vector/<name>  float64 [n_cells, 3]
 
-This distinction is important: the Theory documentation must never present a **target architecture** as though it were the current file format.
+The case-level writer creates these datasets directly. They represent cell fields in the current implementation.
 
-The current C++ implementation defines:
+## 3. CSR invariants
 
-~~~text
-CFDX_HDF5_FORMAT_VERSION = 1
-CFDX_HDF5_SCHEMA_VERSION = 1
-CFDX_VERSION = "0.7"
-~~~
-
-The format therefore has three different versioning concepts:
-
-1. **format version** — file-level interchange contract;
-2. **schema version** — interpretation of the stored datasets/attributes;
-3. **CFDX application version** — software version producing/consuming the file.
-
-A change to the serialized layout must update the appropriate compatibility contract and its tests.
-
-## 4. Schema metadata
-
-The implementation currently defines:
-
-~~~text
-CFDX_HDF5_FORMAT_VERSION = 1
-CFDX_HDF5_SCHEMA_VERSION = 1
-CFDX_VERSION = "0.7"
-~~~
-
-The schema also carries provenance such as source solver/format/version, source case information, topology identifiers and hashes.
-
-The Theory documentation must distinguish format version, schema version, application version and physical case version.
-
-## 5. Variable-length connectivity
-
-CFDX uses a CSR-like representation for polygonal connectivity:
-
-~~~text
-face_vertices
-face_vertices_offsets
-~~~
-
-For example:
-
-~~~text
-face_vertices =
-[0,1,2,3,4,5,6]
-
-face_vertices_offsets =
-[0,4,7]
-~~~
-
-Face i occupies
+For face connectivity:
 
 $$
-[offset_i,offset_{i+1}).
+0=o_0\le o_1\le\cdots\le o_{n_f},
 $$
 
-This permits arbitrary polygonal faces without fixed-size padding.
-
-## 6. Owner/neighbour orientation
-
-An internal face has owner >= 0 and neighbour >= 0.
-
-A boundary face has neighbour = -1.
-
-The orientation defines the sign of the face area vector. For an internal face:
+with
 
 $$
-\mathbf S_{f,P}=-\mathbf S_{f,N}.
+o_{n_f}=|face\_vertices|.
 $$
 
-This is a mathematical conservation invariant, not merely an implementation convention.
+Face f occupies [o_f,o_{f+1}).
 
-## 7. Boundary patches
+For cells the equivalent invariants apply to cell_offsets and cell_faces.
 
-A patch identifies a geometric set of boundary faces.
+The reader rejects non-monotone offsets and offsets beyond the flattened storage.
 
-Current semantic roles include inlet, outlet, wall, symmetry, periodic and interface.
+## 4. Owner/neighbour semantics
 
-A patch role is not itself a scalar boundary condition.
+Internal faces have owner >= 0 and neighbour >= 0.
 
-~~~text
-geometric patch
-      |
-      v
-boundary role
-      |
-      v
-field condition
-      |
-      v
-mathematical constraint
-      |
-      v
-FVM boundary contribution
-~~~
+Boundary faces use neighbour = -1.
 
-The Theory chapter must derive how Dirichlet, Neumann, mixed and coupled conditions enter the control-volume equation.
+The reader rejects neighbour values below -1 and indices outside the cell range.
 
-## 8. Case setup serialization
+## 5. Boundary patch extension
 
-The current HDF5 implementation also carries a serialized case_setup_json attribute.
+Boundary metadata is optional. When present, the current writer stores:
 
-The bridge is:
+    boundary_patches      root string attribute
+    patch_face_ids        uint64 [n_patch_face_refs]
+    patch_face_offsets    uint64 [n_patches+1]
 
-~~~text
-Python setup model
-      |
-      v
-case_setup_json
-      |
-      v
-HDF5 case
-      |
-      v
-C++ CaseSetup
-      |
-      v
-solver configuration
-~~~
+The attribute encodes patch name, starting face, count and numeric patch type. The reader checks metadata count/ranges against the CSR representation.
 
-The implementation contains a lightweight JSON parser because the setup is embedded as an HDF5 attribute.
+If boundary metadata is absent, the current reader reconstructs a conservative generic boundary patch from neighbour = -1. This compatibility behaviour must not be confused with preservation of original patch names/types.
+
+## 6. Integrity metadata
+
+The writer computes FNV-1a hashes for:
+- topology;
+- geometry;
+- complete mesh.
+
+The reader validates these when the complete integrity metadata set is present. Older files without all hashes remain readable under the compatibility path.
+
+This is integrity checking, not cryptographic provenance.
+
+## 7. Provenance and setup
+
+Current root attributes include format/schema/application version, dates, dimension, precision, endian, source solver/format/version, source case path/name, case_setup_json and gap_report_json. The implementation uses a small JSON parser for embedded setup/gap objects.
+
+The case setup therefore bridges:
+
+    setup model → case_setup_json → HDF5 → C++ CaseSetup → solver configuration
+
+## 8. Reader acceptance rules
+
+A case is rejected for missing required topology datasets, invalid ranks/types, inconsistent dimensions, invalid CSR offsets, out-of-range indices, invalid owner/neighbour values or inconsistent boundary metadata.
+
+These checks are part of the format contract and should have explicit regression tests.
 
 ## 9. Import pipeline
 
-Current import families include OpenFOAM and Gmsh native paths plus Python/meshio adapters.
+Current native families include OpenFOAM and Gmsh, with generic mesh import and VTU output paths. Import must preserve or explicitly report:
+- topology;
+- orientation;
+- boundary groups;
+- dimensional interpretation;
+- unsupported constructs;
+- source provenance.
 
-~~~text
-OpenFOAM polyMesh ----Gmsh .msh -------------+--> import / mapping
-meshio adapters -------/
-                         |
-                         v
-                   CFDX topology
-                         |
-                         v
-                   geometry build
-                         |
-                         v
-                  mesh validation
-                         |
-                         v
-                 hashes/provenance
-                         |
-                         v
-                   case.cfdx.h5
-~~~
+## 10. Compatibility rules still to close
 
-Import is a data-model transformation. Each importer must preserve connectivity, orientation, boundary groups and provenance, or report what is lost.
+The code-audit identifies future schema work rather than claiming it complete:
+- machine-readable schema validation;
+- explicit units/dimension metadata per stored field;
+- deterministic serialisation policy;
+- documented chunking/compression policy;
+- complete DAT/restart schema;
+- N-to-M restart compatibility;
+- formal schema fixtures for every reader/writer dataset.
 
-## 10. Mesh validation chain
+## 11. Source of truth
 
-~~~text
-read file
-   |
-parse topology
-   |
-construct Mesh
-   |
-validate indices/connectivity
-   |
-construct boundary patches
-   |
-compute geometry
-   |
-check volumes/orientation
-   |
-mesh quality
-   |
-hash/provenance
-   |
-accept numerical case
-~~~
+The authoritative implementation files are:
 
-The solver must not silently repair an invalid mesh by changing the mathematical discretisation.
+    src/cfdx/io/hdf5/schema.h
+    src/cfdx/io/hdf5/case_hdf5_io.h
+    src/cfdx/io/hdf5/case_hdf5_io.cpp
+    src/cfdx/io/hdf5/hdf5_reader.cpp
+    src/cfdx/io/hdf5/hdf5_writer.cpp
+    src/cfdx/io/hdf5/mini_json.h
 
-## 11. Restart semantics
-
-A DAT may contain physical time, nonlinear iteration, solution fields, temporal history, global cell identifiers and restart metadata.
-
-It must not silently redefine the physical model, boundary conditions, numerical method selection or mesh topology.
-
-Case/DAT compatibility must be checked explicitly.
-
-## 12. Implementation traceability
-
-Principal current files include:
-
-- src/cfdx/io/hdf5/schema.h
-- src/cfdx/io/hdf5/case_hdf5_io.h
-- src/cfdx/io/hdf5/case_hdf5_io.cpp
-- src/cfdx/io/hdf5/hdf5_reader.h/.cpp
-- src/cfdx/io/hdf5/hdf5_writer.h/.cpp
-- src/cfdx/io/hdf5/mini_json.h
-- src/cfdx/python/cfdx/io/hdf5_writer.py
-- src/cfdx/io/openfoam/openfoam_importer.cpp
-- src/cfdx/io/gmsh/gmsh_importer.cpp
-- src/cfdx/io/mesh/mesh_importer.cpp
-- src/cfdx/io/vtu/vtu_writer.cpp
-
-Tests of the reader/writer and conversion pipeline are part of the evidence for the format.
-
-## 13. Format chapter standard
-
-For every supported input format the final chapter will document grammar, node representation, element representation, cell mapping, face extraction, boundary semantics, orientation, dimensionality, units, unsupported constructs, conversion loss, post-import validation, CFDX destination datasets, exact importer implementation and tests.
-
-## 14. Future improvements
-
-Possible improvements are tracked separately from current support:
-
-- schema machine validation;
-- explicit dtype/shape contracts;
-- deterministic serialization;
-- stronger topology/geometry hashes;
-- richer units metadata;
-- provenance graph;
-- HDF5 chunking/compression policy;
-- parallel HDF5;
-- N-to-M restart guarantees.
-
-No proposed improvement is described as implemented until code and evidence exist.
+The documentation must be updated whenever the serialized contract changes.
