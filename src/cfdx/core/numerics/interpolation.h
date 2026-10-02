@@ -22,6 +22,7 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/mesh/ownership.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/numerics/gradient.h"
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
