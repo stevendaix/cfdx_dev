@@ -58,3 +58,10 @@ The current source tree contains CHT, FSI, radiation, VOF, multicomponent and tu
 ## V&V
 
 Each coupled model requires isolated component verification, interface conservation, coupling convergence, relaxation sensitivity, analytical/MMS subproblems where possible and independent benchmark data. Acceptance must identify independently recomputed coupling fluxes or residuals.
+
+
+## Scientific explanation standard
+
+Every major equation or method in this chapter must explain: physical/mathematical motivation; variables, units and sign conventions; derivation; FVM/discrete formulation; actual CFDX algorithm/code path; analytical or numerical example; errors, limitations and sensitivities; exact source files; executable verification tests; benchmark/V&V evidence; and bibliography with stable identifiers.
+
+Comparison tables are summaries after the mathematics, never substitutes for it. Status must remain **Implemented / Verified / Validated / Qualified** and documentation must never promote numerical maturity.
