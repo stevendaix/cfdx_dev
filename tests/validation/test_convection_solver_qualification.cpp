@@ -44,7 +44,7 @@ Mesh make_channel(std::size_t n)
     }
     m.ownership().resize(m.n_faces());
     for (std::size_t i=0;i<n;++i) {
-        cf[i]={left[i],right[i],4*i+2,4*i+3,4*i+4,4*i+5};
+        cf[i]={left[i],right[i],6*i+2,6*i+3,6*i+4,6*i+5};
         for (const auto f:cf[i]) m.ownership().set_owner(f,i);
     }
     for (std::size_t i=0;i+1<n;++i) {
