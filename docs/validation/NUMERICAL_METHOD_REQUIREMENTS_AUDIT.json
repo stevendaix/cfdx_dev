@@ -295,13 +295,16 @@
     {
       "package_id": "N4",
       "requirement": "multidimensional limiter policy",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_3d_verification.cpp"
+      ]
     },
     {
       "package_id": "N4",
       "requirement": "gradient-based limiter policy",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/interpolation.h"
       ]
@@ -318,8 +321,12 @@
     {
       "package_id": "N4",
       "requirement": "QUICK or equivalent quadratic scheme",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_convection_3d_verification.cpp"
+      ]
     },
     {
       "package_id": "N4",
