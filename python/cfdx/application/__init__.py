@@ -31,6 +31,7 @@ from .state import (
 )
 from .workflow import WorkflowStatus, WorkflowStepState, build_workflow_state, workflow_children
 from .properties import PropertyState, properties_for_selection, set_property
+from .run_center import RunCenterModel, RunCenterState
 
 __all__ = [
     "Application",
@@ -48,6 +49,8 @@ __all__ = [
     "PauseSolver",
     "ResumeSolver",
     "RunSolver",
+    "RunCenterModel",
+    "RunCenterState",
     "SelectionChanged",
     "SelectionState",
     "SetNumericalOption",

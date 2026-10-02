@@ -18,6 +18,7 @@ from .commands import (
 from .events import ApplicationStateChanged, EventBus, SelectionChanged
 from .state import ApplicationState, SelectionState, build_application_state
 from .properties import PropertyState, properties_for_selection
+from .run_center import RunCenterModel
 
 
 class Application:
@@ -39,6 +40,9 @@ class Application:
         self.diagnostics: tuple[Any, ...] = ()
         self.dirty = False
         self.events = EventBus()
+        self.run_center = RunCenterModel(controller) if controller is not None else None
+        if self.run_center is not None:
+            self.run_center.on_change = lambda _state: self._publish_state()
 
     @property
     def state(self) -> ApplicationState:
@@ -56,6 +60,9 @@ class Application:
         command.execute(self)
         if isinstance(command, (SetNumericalOption, SetProperty)):
             self.dirty = True
+        return self._publish_state()
+
+    def _publish_state(self) -> ApplicationState:
         snapshot = self.state
         self.events.publish(ApplicationStateChanged(snapshot))
         return snapshot
@@ -73,9 +80,7 @@ class Application:
 
     def set_diagnostics(self, diagnostics: Iterable[Any]) -> ApplicationState:
         self.diagnostics = tuple(diagnostics)
-        snapshot = self.state
-        self.events.publish(ApplicationStateChanged(snapshot))
-        return snapshot
+        return self._publish_state()
 
     def validate(self, validator, mesh=None) -> ApplicationState:
         report = validator(self.session.case, mesh)

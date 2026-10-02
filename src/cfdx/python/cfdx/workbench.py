@@ -30,6 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 if QMainWindow is not object:
+    from .run_center_panel import RunCenterPanel
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
@@ -101,10 +102,8 @@ if QMainWindow is not object:
             properties = self._build_properties_panel()
             self._add_dock("Properties", "workbench.dock.properties", properties, Qt.DockWidgetArea.RightDockWidgetArea)
 
-            monitor = QTextEdit()
+            monitor = RunCenterPanel(self.application)
             monitor.setObjectName("workbench.monitor")
-            monitor.setReadOnly(True)
-            monitor.setPlainText("MONITORS\nNo execution attached")
             self._add_dock("Monitors / Console", "workbench.dock.monitor", monitor, Qt.DockWidgetArea.BottomDockWidgetArea)
 
         def _build_properties_panel(self) -> QWidget:
@@ -189,7 +188,8 @@ if QMainWindow is not object:
                     root.addChild(item)
                 root.setExpanded(True)
 
-        def _state_changed(self, state) -> None:
+        def _state_changed(self, event) -> None:
+            state = event.state
             self._application_state = state
             self._refresh_workflow(state)
             self.statusBar().showMessage(
