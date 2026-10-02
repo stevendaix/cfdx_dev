@@ -11,6 +11,7 @@ CFDX documentation is organised as four complementary domains:
 
 ```{toctree}
 :maxdepth: 2
+:caption: Documentation domains
 
 theory/README
 user/README
@@ -22,6 +23,8 @@ vv/README
 
 ```{toctree}
 :maxdepth: 2
+:caption: Numerical methods
+
 theory/00-foundations/README
 theory/01-conservation-laws/README
 theory/02-finite-volume-method/README
