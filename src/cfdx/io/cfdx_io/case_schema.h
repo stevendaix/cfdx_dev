@@ -8,6 +8,7 @@
 #pragma once
 
 #include "io_interface.h"
+#include "cfdx/core/numerics/case_numerics_config.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -193,6 +194,13 @@ struct CaseSetup {
 
     // Numerical schemes
     NumericalScheme numerics;
+
+    // Canonical N1 selection path. When present, the HDF5 case loader resolves
+    // these keys against the registry and rejects missing/ambiguous selections
+    // before the solver can start. Legacy case files may omit this block.
+    cfdx::core::CaseNumericsConfig numerical_config;
+    cfdx::core::CaseNumericsReport numerical_report;
+    bool has_explicit_numerics = false;
 
     // Reference values
     double ref_length = 1.0;
