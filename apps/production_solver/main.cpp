@@ -193,6 +193,8 @@ int main(int argc, char** argv)
         controls.convergence.max_iterations = options.iterations;
         if (is_case_hdf5) {
             apply_explicit_case_numerics(case_setup, controls);
+            std::cout << "Resolved numerical selections:\n"
+                      << cfdx::core::format_numerics_report(case_setup.numerical_report);
             if (case_setup.numerics.max_iterations > 0)
                 controls.convergence.max_iterations =
                     std::min<std::size_t>(
