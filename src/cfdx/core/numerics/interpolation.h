@@ -151,6 +151,8 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
         if (!std::isfinite(blend_linear) || blend_linear < 0.0 || blend_linear > 1.0)
             throw std::invalid_argument("interpolate_cell_to_face: blend_linear must be in [0, 1]");
     }
+    if ((scheme == InterpScheme::QUICK || scheme == InterpScheme::QUICK_BOUNDED) && !face_flux)
+        throw std::runtime_error("interpolate_cell_to_face: QUICK requires face_flux");
     if (scheme == InterpScheme::UPWIND && !face_flux)
         throw std::runtime_error("interpolate_cell_to_face: UPWIND requires face_flux");
     if (scheme == InterpScheme::LIMITED) {
