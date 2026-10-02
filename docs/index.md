@@ -19,6 +19,10 @@ developer/README
 vv/README
 ```
 
+## Complete Theory reference
+
+The full mathematical reference is [COMPLETE_THEORY.md](theory/COMPLETE_THEORY). It is the quickest route from a governing equation to the corresponding CFDX source and verification test.
+
 ## Theory course
 
 ```{toctree}
