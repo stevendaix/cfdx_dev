@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "src" / "cfdx" / "python"))
 import h5py
 
 from cfdx.io.converter import convert
-from cfdx.io.numerical_selection import build_numerical_selection
+from cfdx.io.numerical_selection import build_numerical_selection, validate_numerical_selection
 from cfdx.io.schema import NumericalScheme
 
 
@@ -49,6 +49,17 @@ def test_unmapped_source_value_is_not_silently_rewritten():
     scheme = NumericalScheme(momentum_scheme="source_specific_unknown")
     selection = build_numerical_selection(scheme)
     assert all(e.family != "convection" for e in selection.entries)
+    errors = validate_numerical_selection(scheme)
+    assert errors == ["unmapped numerical setting for convection: 'source_specific_unknown'"]
+
+
+def test_known_source_values_have_no_mapping_gaps():
+    scheme = NumericalScheme(
+        gradient_operator="green_gauss_cell",
+        momentum_scheme="upwind",
+        coupled_solver="SIMPLE",
+    )
+    assert validate_numerical_selection(scheme) == []
 
 
 def test_converted_case_contains_canonical_selection(tmp_path):
