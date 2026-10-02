@@ -100,6 +100,20 @@ class InitialCondition(BaseModel):
     scalar_fields: dict[str, float] = Field(default_factory=dict)
 
 
+class NumericalSelection(BaseModel):
+    """One explicit CFDX numerical registry selection."""
+
+    family: str
+    configuration_key: str
+
+
+class NumericalSelectionConfig(BaseModel):
+    """Canonical case-level numerical selection block."""
+
+    entries: list[NumericalSelection] = Field(default_factory=list)
+    required_families: list[str] = Field(default_factory=list)
+
+
 class NumericalScheme(BaseModel):
     momentum_scheme: str = "first_order"
     pressure_scheme: str = "standard"
@@ -113,6 +127,8 @@ class NumericalScheme(BaseModel):
     residual_target: str = "1e-5"
     max_iterations: int = 500
     raw_settings: dict[str, str] = Field(default_factory=dict)
+    # Canonical N1 registry selections. Adapters populate this explicitly.
+    selection: NumericalSelectionConfig = Field(default_factory=NumericalSelectionConfig)
 
 
 class MeshMetadata(BaseModel):
