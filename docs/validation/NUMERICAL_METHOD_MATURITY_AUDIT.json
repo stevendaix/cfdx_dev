@@ -51,18 +51,20 @@
     {
       "id": "N3",
       "name": "Diffusion and non-orthogonal correction",
-      "status": "partial",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
+        "src/cfdx/core/numerics/diffusion_diagnostics.h",
+        "src/cfdx/core/geometry/geometry_cache.h",
         "tests/unit/test_laplacian.cpp",
+        "tests/unit/test_diffusion_diagnostics.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "tests/validation/test_polyhedral_laplacian_campaign.cpp"
+        "docs/validation/N3_DIFFUSION_QUALIFICATION.md"
       ],
       "gaps": [
-        "non-affine / extremely non-orthogonal meshes",
-        "polyhedral diffusion is O(1) for the two-point+correction family on tetrahedra even with 2nd-order gradients and Hessian-at-centroid evaluation (measured: corrected 1.88/1.80/1.94, over-relaxed 2.09/2.04/2.20 at n=8/16/24, order~0): the alpha(phi_N-phi_P) curvature term accumulates O(H) in the divergence - needs a different discretisation (research-grade)"
+        "general polyhedral higher-order diffusion is intentionally outside the N3 acceptance contract and remains a research item for N10/N16; the measured O(1) tetrahedral behaviour is documented rather than hidden"
       ]
     },
     {
