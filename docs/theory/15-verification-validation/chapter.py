@@ -1,52 +1,56 @@
 # %% [markdown]
-"""# Verification and Validation
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- E_h=||u_h-u_exact||
-- p_obs=log(E_h/E_2h)/log(2)
-- GCI=Fs |e_a|/(r^p-1)
-- iterative error must be small compared with discretisation error
-- MMS chooses exact u and derives source S=L(u)
-- validation compares CFDX QoIs to independent physical/reference data
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Verification and Validation
+#
+# ## 15.1 Definitions
+# Verification asks whether the numerical implementation solves the specified mathematical model correctly. Validation asks whether the mathematical/physical model represents the target physical system adequately. Qualification is a declared engineering scope with explicit acceptance criteria and retained evidence.
+#
+# ## 15.2 Code verification
+# Use unit tests, algebraic identities, dimensional checks, exact polynomial fields and manufactured solutions.
+#
+# ## 15.3 Solution verification
+# Separate spatial, temporal and iterative errors. If
+# \[
+# E_h\approx Ch^p,
+# \]
+# then
+# \[
+# p_{obs}=\frac{\ln(E_h/E_{h/r})}{\ln r}.
+# \]
+# A GCI-style estimate is
+# \[
+# GCI_{12}=F_s\frac{|u_1-u_2|}{|u_1|}\frac1{r^p-1}.
+# \]
+# The safety factor, refinement ratio, p and assumptions must be retained.
+#
+# ## 15.4 MMS
+# Select \(u_{exact}\) and derive
+# \[
+# S_{MMS}=L(u_{exact}).
+# \]
+# The numerical solution is then compared directly with the exact field.
+#
+# ## 15.5 Conservation verification
+# \[
+# R_C=\text{inflow}-\text{outflow}+\text{source}-dQ/dt.
+# \]
+# Report a normalized defect and its reference scale.
+#
+# ## 15.6 Validation
+# Independent analytical or experimental references and uncertainty are required. Agreement with another CFD code alone is not physical validation.
+#
+# ## 15.7 Evidence
+# Retain mesh, physical parameters, numerical settings, stopping criteria, software revision, raw diagnostics and post-processing definitions.
+#
+# ## 15.8 CFDX paths
+# tests/unit/  
+# tests/numerical/  
+# tests/validation/  
+# docs/validation/
+#
+# Qualification must be inferred only from retained evidence and declared acceptance gates.
+#
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
-errors=np.array([1e-2,2.5e-3,6.25e-4]); p=np.log(errors[:-1]/errors[1:])/np.log(2); assert np.allclose(p,2.0)
+E=np.array([1e-2,2.5e-3,6.25e-4])
+assert np.allclose(np.log(E[:-1]/E[1:])/np.log(2),2.0)
