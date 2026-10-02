@@ -424,13 +424,9 @@ int main() {
         };
         setup.numerical_config.required_families = {NumericalMethodFamily::Gradient};
 
-        EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
-
-        Mesh loaded;
-        SourceInfo loaded_source;
-        CaseSetup loaded_setup;
-        GapAnalysis loaded_gap;
-        EXPECT_FALSE(read_case_cfdx_h5(filename, loaded, loaded_source, loaded_setup, loaded_gap));
+        // The case writer applies the same N1 gate as the loader, so an
+        // ambiguous explicit family cannot enter the case pipeline.
+        EXPECT_FALSE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
 
         std::remove(filename.c_str());
     });
