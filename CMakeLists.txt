@@ -627,7 +627,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_gradient_verification tests/validation/test_gradient_verification.cpp)
     add_cfdx_test(test_polyhedral_gradient_campaign tests/validation/test_polyhedral_gradient_campaign.cpp)
     add_cfdx_test(test_n10_difficult_mesh_robustness tests/validation/test_n10_difficult_mesh_robustness.cpp)
-    set_tests_properties(test_n10_difficult_mesh_robustness PROPERTIES LABELS "validation;qualification;n10")
+    set_tests_properties(
+        test_n10_difficult_mesh_robustness
+        test_nonorthogonal_skew_campaign
+        test_nonorthogonal_laplacian_campaign
+        test_polyhedral_laplacian_campaign
+        test_gradient_verification
+        test_polyhedral_gradient_campaign
+        PROPERTIES LABELS "validation;qualification;n10")
     add_cfdx_test(test_convection_polyhedral_campaign tests/validation/test_convection_polyhedral_campaign.cpp)
     add_cfdx_test(test_convection_solver_qualification tests/validation/test_convection_solver_qualification.cpp)
     set_tests_properties(test_convection_solver_qualification PROPERTIES LABELS "phase13;validation;qualification")
