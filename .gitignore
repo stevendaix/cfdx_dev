@@ -27,3 +27,6 @@ __pycache__/
 *.swp
 
 prompt.mdbuild_san/
+
+# Executable documentation sources are plain Python/Jupytext; notebooks are generated locally only.
+*.ipynb
