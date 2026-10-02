@@ -44,7 +44,11 @@ enum class ConvectionScheme {
     UPWIND,
     SECOND_ORDER_UPWIND,
     // Monotone TVD reconstruction using a minmod limiter on the MUSCL slope.
-    TVD
+    TVD,
+    CENTRAL,
+    BLENDED,
+    QUICK,
+    QUICK_BOUNDED
 };
 
 struct ScalarBoundaryFaceValues {
@@ -257,12 +261,31 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
-    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-        convection_scheme == ConvectionScheme::TVD) {
+    cfdx::core::Field<double, cfdx::core::Location::FACE> reconstructed_face;
+    const bool needs_field_reconstruction =
+        convection_scheme != ConvectionScheme::UPWIND;
+    if (needs_field_reconstruction) {
         if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
             throw std::invalid_argument(
-                "assemble_scalar_equation: higher-order convection requires a scalar convected field");
+                "assemble_scalar_equation: selected convection scheme requires a scalar convected field");
+    }
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+        convection_scheme == ConvectionScheme::TVD) {
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+    }
+    if (convection_scheme == ConvectionScheme::CENTRAL ||
+        convection_scheme == ConvectionScheme::BLENDED ||
+        convection_scheme == ConvectionScheme::QUICK ||
+        convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
+        const auto geometry_cache = cfdx::core::make_geometry_cache(mesh);
+        const auto core_scheme =
+            convection_scheme == ConvectionScheme::CENTRAL ? cfdx::core::InterpScheme::LINEAR :
+            convection_scheme == ConvectionScheme::BLENDED ? cfdx::core::InterpScheme::BLENDED :
+            convection_scheme == ConvectionScheme::QUICK ? cfdx::core::InterpScheme::QUICK :
+            cfdx::core::InterpScheme::QUICK_BOUNDED;
+        reconstructed_face = cfdx::core::interpolate_cell_to_face(
+            *convected_field, mesh, geometry_cache, core_scheme, &face_flux,
+            cfdx::core::LimiterType::NONE, nullptr, 0.75);
     }
 
     const auto& own = mesh.ownership();
@@ -314,7 +337,11 @@ inline ScalarEquation assemble_scalar_equation(
             div_phi[n] -= F;
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-                convection_scheme == ConvectionScheme::TVD) {
+                convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::CENTRAL ||
+                convection_scheme == ConvectionScheme::BLENDED ||
+                convection_scheme == ConvectionScheme::QUICK ||
+                convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t upwind = F >= 0.0 ? o : n;
                 const std::size_t downwind = F >= 0.0 ? n : o;
                 const double phi_up = (*convected_field)(upwind);
@@ -334,7 +361,7 @@ inline ScalarEquation assemble_scalar_equation(
                     // Keep the historical bounded SOU reconstruction.
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
-                } else {
+                } else if (convection_scheme == ConvectionScheme::TVD) {
                     // Darwish-Moukalled successive-slope ratio for an
                     // unstructured cell-centred face. The gradient must be
                     // projected over the full upwind-to-downwind centre
@@ -355,6 +382,13 @@ inline ScalarEquation assemble_scalar_equation(
                     phi_high = phi_up + limiter * high_increment;
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                } else {
+                    // Central, blended and quadratic schemes are explicit
+                    // deferred corrections around the conservative upwind
+                    // matrix. The face value itself is produced by the core
+                    // reconstruction library, so assembly and post-solve
+                    // flux reconstruction share exactly the same scheme.
+                    phi_high = reconstructed_face(f);
                 }
 
                 const double correction = F * (phi_high - phi_up);
