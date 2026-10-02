@@ -1221,6 +1221,10 @@ bool write_case_cfdx_h5(const std::string& filename,
 
     // --- Gap report JSON ---
     write_attr_str(file, "gap_report_json", gap.to_json());
+    if (setup.has_explicit_numerics) {
+        write_attr_str(file, "numerical_selection_report",
+                       cfdx::core::format_numerics_report(setup.numerical_report));
+    }
 
     // --- Points ---
     {
