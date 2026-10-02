@@ -563,9 +563,24 @@ reconstruct_scalar_transport_flux(
 
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     Field<double, Location::CELL> grad;
+    Field<double, Location::FACE> reconstructed_face;
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD)
         grad = compute_gradient_gauss(field, mesh);
+    if (convection_scheme == ConvectionScheme::CENTRAL ||
+        convection_scheme == ConvectionScheme::BLENDED ||
+        convection_scheme == ConvectionScheme::QUICK ||
+        convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
+        const auto geometry_cache = cfdx::core::make_geometry_cache(mesh);
+        const auto core_scheme =
+            convection_scheme == ConvectionScheme::CENTRAL ? cfdx::core::InterpScheme::LINEAR :
+            convection_scheme == ConvectionScheme::BLENDED ? cfdx::core::InterpScheme::BLENDED :
+            convection_scheme == ConvectionScheme::QUICK ? cfdx::core::InterpScheme::QUICK :
+            cfdx::core::InterpScheme::QUICK_BOUNDED;
+        reconstructed_face = cfdx::core::interpolate_cell_to_face(
+            field, mesh, geometry_cache, core_scheme, &face_flux,
+            cfdx::core::LimiterType::NONE, nullptr, 0.75);
+    }
 
     const auto& own = mesh.ownership();
     for (std::size_t f = 0; f < nf; ++f) {
@@ -594,7 +609,11 @@ reconstruct_scalar_transport_flux(
             const double up = F >= 0.0 ? field(o) : field(n);
             psi_face = up;
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-                convection_scheme == ConvectionScheme::TVD) {
+                convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::CENTRAL ||
+                convection_scheme == ConvectionScheme::BLENDED ||
+                convection_scheme == ConvectionScheme::QUICK ||
+                convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
                 const double gx=grad.component_data(0)[u];
@@ -611,9 +630,14 @@ reconstruct_scalar_transport_flux(
                     const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
                     high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
                 }
-                psi_face=bounded_convection
-                    ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
-                    : high;
+                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                    convection_scheme == ConvectionScheme::TVD) {
+                    psi_face=bounded_convection
+                        ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
+                        : high;
+                } else {
+                    psi_face = reconstructed_face(f);
+                }
             }
             result(f)=F*psi_face - gamma*area/d*(field(n)-field(o));
         } else {
