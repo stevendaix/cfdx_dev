@@ -262,20 +262,23 @@ int main()
     // Common physical matrix: Couette, pressure-driven Poiseuille and lid-driven
     // cavity. The same meshes, BCs, viscosity and convergence contract are used
     // for all six pressure-velocity paths.
-    std::array<Run,6> couette;
-    std::array<Run,6> poiseuille;
-    std::array<Run,6> cavity;
+    std::vector<Run> couette;
+    std::vector<Run> poiseuille;
+    std::vector<Run> cavity;
+    couette.reserve(algs.size());
+    poiseuille.reserve(algs.size());
+    cavity.reserve(algs.size());
 
     const auto u_channel=channel_velocity_bc(1.0);
     const auto p_channel=channel_pressure_bc();
 
     for (std::size_t k=0;k<algs.size();++k) {
-        couette[k]=solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0);
+        couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0));
         require_physical_convergence(couette[k],"Couette");
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
-        poiseuille[k]=solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0);
+        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
         require_physical_convergence(poiseuille[k],"Poiseuille");
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
@@ -285,7 +288,7 @@ int main()
         cavity_bc["outlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["bottom"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
-        cavity[k]=solve_case(make_cavity_mesh(16,16),algs[k],cavity_bc,p_channel,0.0);
+        cavity.push_back(solve_case(make_cavity_mesh(16,16),algs[k],cavity_bc,p_channel,0.0));
         require_physical_convergence(cavity[k],"cavity");
     }
 
