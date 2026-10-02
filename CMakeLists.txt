@@ -445,6 +445,7 @@ if(CFDX_BUILD_TESTS)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
+    add_cfdx_test(test_diffusion_diagnostics tests/unit/test_diffusion_diagnostics.cpp)
     add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
 add_cfdx_test(test_phase12_radiation_vv tests/validation/test_phase12_radiation_vv.cpp)
 set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;validation")
