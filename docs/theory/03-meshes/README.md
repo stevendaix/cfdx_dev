@@ -1,175 +1,80 @@
-# Meshes
+# 03 — Meshes
 
-This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
+A CFD mesh is a discrete geometric model, not merely a list of coordinates. CFDX needs topology, orientation, geometry, boundary ownership and quality information before numerical operators are meaningful.
 
-## Detailed course structure
+## 1. Topology
 
-### 1. Mesh concepts
+The basic entities are points \(P_i\), oriented faces \(f\), and cells \(P\). A face stores its vertex cycle and owner/neighbour relation. Boundary faces have an owner and no internal neighbour.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+**CFDX paths:** `src/cfdx/core/mesh/mesh.h`, `src/cfdx/core/mesh/mesh.cpp`, `src/cfdx/core/mesh/boundary.cpp`.
 
-### 2. Points, edges, faces and cells
+## 2. Face orientation
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+For a face with area vector
+\[
+\mathbf S_f=A_f\mathbf n_f,
+\]
+the normal must be outward from the owner cell. For an internal neighbour,
+\[
+\mathbf S_{f,N}=-\mathbf S_{f,P}.
+\]
+A sign error here changes convection, diffusion and pressure forces simultaneously.
 
-### 3. Orientation
+## 3. Cell volume
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+For a closed polyhedron, the volume can be evaluated through oriented tetrahedral decomposition or a divergence identity. A convenient identity is
+\[
+V=\frac13\oint_{\partial V}\mathbf x\cdot\mathbf n\,dA
+\approx\frac13\sum_f\mathbf C_f\cdot\mathbf S_f.
+\]
+The implementation must use a geometrically consistent face-centre convention.
 
-### 4. Cell geometry
+## 4. Geometric invariants
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+For every valid closed cell:
+\[
+V>0,\qquad\sum_f\mathbf S_f=0.
+\]
+For an internal face, owner and neighbour centres must be distinct unless a degenerate mesh is deliberately supported.
 
-### 5. Quality metrics
+## 5. Quality
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+Useful measures include
+\[
+\theta_{nonorth}=\cos^{-1}
+\left(
+\frac{\mathbf d_{PN}\cdot\mathbf S_f}
+{|\mathbf d_{PN}||\mathbf S_f|}
+\right),
+\]
+skewness, aspect ratio, volume ratio and face-area imbalance. A quality metric is diagnostic, not a universal acceptance threshold: each numerical method has its own sensitivity.
 
-### 6. Polyhedral cells
+## 6. Non-planar faces
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+A polyhedral face may not be exactly planar. Area-vector construction and face-centre calculation must use a documented convention. Numerical operators must not silently assume a planar polygon if the mesh importer permits general polyhedra.
 
-### 7. Non-planar faces
+## 7. Boundary patches
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+A patch groups boundary faces sharing a physical condition. Patch identity is therefore part of the physics model.
 
-### 8. Boundary patches
+**CFDX paths:** `src/cfdx/core/mesh/boundary.cpp`, `src/cfdx/core/boundary/boundary_condition.h`.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 8. Mesh import
 
-### 9. Mesh import
+The import chain is
+\[
+\text{external mesh}\rightarrow\text{topology mapping}
+\rightarrow\text{orientation/geometry reconstruction}
+\rightarrow\text{validation}\rightarrow\text{solver mesh}.
+\]
+Relevant importers include `src/cfdx/io/gmsh/gmsh_importer.h` and `src/cfdx/io/mesh/mesh_importer.h`.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 9. Mesh rejection
 
-### 10. Mesh rejection
+A mesh should be rejected when mandatory invariants fail: invalid indices, open cells where closed cells are required, inconsistent owner/neighbour references, non-positive volume or irreconcilable face orientation. Silent repair is dangerous because it can change the physical problem.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
+## 10. Verification
 
-### 11. Mesh verification
+A mesh verification report should contain entity counts, boundary counts, volume range, area range, closure residuals, orientation diagnostics, quality distributions and import provenance.
 
-- Physical motivation and scope.
-- Definitions, symbols, dimensions and SI units.
-- Assumptions and domain of validity.
-- Continuous mathematical formulation.
-- Control-volume and finite-volume formulation where applicable.
-- Discrete/algebraic formulation and sign conventions.
-- Conservation, consistency, stability, boundedness and accuracy properties.
-- Exact CFDX implementation path and source files.
-- Executable verification experiment or test.
-- Benchmark/reference evidence where applicable.
-- Limitations, failure modes and improvement paths.
-
-## Mandatory equation template
-
-Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
-
-## Evidence vocabulary
-
-**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
-
-## Scientific figures
-
-Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
-
-## Repository traceability
-
-Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
+**Tests / tools:** `tests/unit/`, `apps/cfdx_convert/main.cpp`, `src/cfdx/runtime/dynamic_mesh.h`.
