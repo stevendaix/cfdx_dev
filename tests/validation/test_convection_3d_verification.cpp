@@ -402,6 +402,56 @@ void check_limiter_gradient_variants()
     }
 }
 
+void check_quick_and_diagnostics()
+{
+    const Grid grid = make_cartesian_cube(12);
+    const auto flux = positive_flux(grid, 1.0);
+    const auto smooth = cell_field(grid, sample(grid, smooth_value));
+
+    // The quadratic fit is exact for the quadratic manufactured field on the
+    // affine Cartesian grid, so the multidimensional QUICK-equivalent
+    // reconstruction must reproduce the analytical face value to roundoff.
+    const auto quick = interpolate_cell_to_face(
+        smooth, grid.mesh, grid.geometry, InterpScheme::QUICK, &flux);
+    const auto eq = face_error(grid, quick, smooth_value, true);
+    require(eq.linf <= 1e-9, "QUICK-equivalent reconstruction must be quadratic-exact on Cartesian cells");
+
+    // The bounded variant is a separate explicit policy: it clips only the
+    // reconstructed face value and never changes the raw QUICK path.
+    const auto step = cell_field(grid, sample(grid, step_value));
+    const auto bounded = interpolate_cell_to_face(
+        step, grid.mesh, grid.geometry, InterpScheme::QUICK_BOUNDED, &flux);
+    const auto& own = grid.mesh.ownership();
+    for (const std::size_t f : grid.all_faces) {
+        const std::size_t o = own.owner(f);
+        const std::size_t n = static_cast<std::size_t>(own.neighbour(f));
+        require(bounded(f) >= std::min(step(o), step(n)) - 1e-12 &&
+                bounded(f) <= std::max(step(o), step(n)) + 1e-12,
+                "bounded QUICK must remain in the adjacent-cell envelope");
+    }
+
+    ConvectionDiagnostics d{};
+    const auto conv = compute_convection(
+        step, flux, grid.mesh, InterpScheme::QUICK_BOUNDED,
+        LimiterType::NONE, &grid.geometry, GradientScheme::GAUSS_TWO_POINT,
+        0.75, &d);
+    (void)conv;
+    require(d.limited_faces > 0, "bounded QUICK diagnostics must report bounded internal faces");
+    require(d.unbounded_faces == 0, "bounded QUICK diagnostics must report zero unbounded faces");
+
+    ConvectionDiagnostics raw{};
+    const auto raw_conv = compute_convection(
+        smooth, flux, grid.mesh, InterpScheme::QUICK,
+        LimiterType::NONE, &grid.geometry, GradientScheme::LEAST_SQUARES,
+        0.75, &raw);
+    (void)raw_conv;
+    require(raw.reconstruction_failures == 0, "QUICK diagnostics must report no reconstruction failures");
+
+    std::cout << "CONV3D_QUICK Linf=" << eq.linf
+              << " bounded_faces=" << d.limited_faces
+              << " raw_unbounded_faces=" << raw.unbounded_faces << "\n";
+}
+
 void check_constant_advection()
 {
     const Grid grid = make_cartesian_cube(10);
@@ -423,6 +473,7 @@ int main()
         check_boundedness_linear();
         check_order();
         check_limiter_gradient_variants();
+        check_quick_and_diagnostics();
         check_constant_advection();
         std::cout << "CONVECTION_3D_VERIFICATION: PASS\n";
         return 0;
