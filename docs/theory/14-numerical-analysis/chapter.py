@@ -1,16 +1,53 @@
 # %% [markdown]
 """# Numerical Analysis
 
-## Scientific objective
+## Scientific purpose
 
-Consistency means L_h(u)-L(u) tends to zero as h tends to zero. If E_h is approximately C*h^p, observed order is log(E_h/E_hr)/log(r). Accuracy, stability, conservation, boundedness and conditioning are distinct. Error interpretation must separate discretisation, iterative, roundoff, model and input effects.
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
 
-## Status
+## Required structure
 
-Implementation, verification, validation and qualification remain separate claims.
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
+
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
+
+## Core equations
+
+- L_h u_h = P_h L u + O(h^p)
+- E_h=||u_h-u_exact||
+- p_obs=log(E_h/E_h2)/log(2)
+- consistency means truncation error tends to zero
+- stability bounds perturbation growth
+- bounded schemes enforce admissible extrema
+- kappa(A) controls amplification of algebraic perturbations
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
 from __future__ import annotations
+import numpy as np
 
-import numpy as np; e=np.array([4e-2,1e-2,2.5e-3]); p=np.log(e[:-1]/e[1:])/np.log(2.); assert np.allclose(p,2.)
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
+errors=np.array([1e-2,2.5e-3,6.25e-4]); p=np.log(errors[:-1]/errors[1:])/np.log(2); assert np.allclose(p,2.0)
