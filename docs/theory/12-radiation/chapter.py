@@ -1,52 +1,44 @@
 # %% [markdown]
-"""# Radiation
-
-## Scientific purpose
-
-This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
-
-## Required structure
-
-1. Physical motivation and problem definition.
-2. Variables, dimensions, units and sign conventions.
-3. Governing equations and assumptions.
-4. Control-volume formulation.
-5. Discrete formulation and algebraic consequences.
-6. Consistency, conservation, stability, boundedness and accuracy.
-7. CFDX implementation mapping.
-8. Executable verification and benchmark evidence.
-9. Limitations and improvement paths.
-10. References.
-
-The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
-
-## Core equations
-
-- q_bb=sigma T^4
-- q_net=epsilon sigma T^4 - q_inc
-- A_i F_ij=A_j F_ji
-- sum_j F_ij=1 for a closed enclosure
-- S2S radiosity: J=epsilon E_b +(1-epsilon)G
-- P1: div((1/(3 beta))grad G)-beta G+4 beta E_b=0
-
-## Scientific checks
-
-The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
-
-## CFDX traceability
-
-The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
-
-## References
-
-Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
-"""
-
+# Radiation
+#
+# ## 12.1 Emission
+# \[
+# E_b=\sigma T^4,\qquad E=\varepsilon\sigma T^4.
+# \]
+#
+# ## 12.2 Radiosity
+# \[
+# J=E+(1-\varepsilon)G,\qquad q''=J-G.
+# \]
+#
+# ## 12.3 View factors
+# \[
+# A_iF_{ij}=A_jF_{ji},\qquad \sum_jF_{ij}=1
+# \]
+# for a closed enclosure. These identities are independent verification targets.
+#
+# ## 12.4 S2S
+# Surface-to-surface radiation forms a coupled radiosity system. Geometry, areas and view factors must satisfy reciprocity and closure.
+#
+# ## 12.5 P1
+# Under a common convention:
+# \[
+# -\nabla\cdot\left(\frac{1}{3\beta}\nabla G\right)+\beta G=4\beta\sigma T^4.
+# \]
+# The exact source/scattering terms depend on the optical model.
+#
+# ## 12.6 DOM
+# Discrete ordinates replace angular transport by a finite set of directions and quadrature weights. Angular moments are reconstructed from these directional solutions.
+#
+# ## 12.7 CFDX traceability
+# src/cfdx/physics/radiation.h  
+# src/cfdx/physics/radiation_s2s.h  
+# src/cfdx/physics/radiation_solver.h  
+# src/cfdx/physics/radiation_models.h  
+# Tests: tests/validation/test_radiation_vv.cpp, tests/validation/test_s2s_radiation_vv.cpp, tests/validation/test_phase12_radiation_vv.cpp
+#
 # %%
 from __future__ import annotations
 import numpy as np
-
-# Deterministic mathematical sanity checks
-x = np.linspace(0.0, 1.0, 5)
-assert np.all(np.isfinite(x))
-sigma=5.670374419e-8; assert np.isclose(sigma*(300.0**4),459.300326939)
+sigma=5.670374419e-8
+assert np.isclose(sigma*300.0**4,459.300326939)
