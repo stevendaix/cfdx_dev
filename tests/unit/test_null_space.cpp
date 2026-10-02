@@ -155,6 +155,37 @@ int main() {
         EXPECT_TRUE(std::isfinite(scaled.matrix(0, 1)));
     });
 
+    run_case("failure_classification_is_diagnostic_only", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(0, 1, -1.0);
+        A.push_back(1, 0, -1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        auto diagnostics = diagnose_matrix(A);
+        SolverResult max_iter;
+        max_iter.status = SolverStatus::MAX_ITER_REACHED;
+        max_iter.residual = 1.0;
+        max_iter.residual_relative = 1.0;
+        max_iter.min_true_residual = 1.0;
+        max_iter.max_true_residual = 1.01;
+
+        EXPECT_TRUE(classify_solver_failure(max_iter, diagnostics, true, 0.95) ==
+                    SolverFailureClass::Stagnation);
+        EXPECT_TRUE(classify_solver_failure(max_iter, diagnostics, false) ==
+                    SolverFailureClass::IncompatibleRhs);
+
+        SolverResult diverged;
+        diverged.status = SolverStatus::DIVERGED;
+        diverged.residual = 10.0;
+        diverged.residual_relative = 10.0;
+        EXPECT_TRUE(classify_solver_failure(diverged, diagnostics) ==
+                    SolverFailureClass::Divergence);
+        EXPECT_TRUE(std::string(to_string(SolverFailureClass::MatrixPathology)) ==
+                    "matrix_pathology");
+    });
+
     run_case("dispatcher_exposes_constant_pressure_null_space", [] {
         const auto matrix = make_neumann_laplacian(5);
         Vector exact(5);
