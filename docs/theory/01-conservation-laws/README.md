@@ -1,76 +1,161 @@
-> **Executable source:** [chapter.py](chapter.py)  
-> This README is the chapter navigation and contract. Quantitative theory and executable experiments belong to the Python percent source; this page must not duplicate numerical results.
-
 # Conservation Laws
 
-**Status: TOPO — detailed course chapter not yet migrated.**
+This chapter is a scientific course, not an API catalogue. It follows the chain: physical motivation → variables and units → assumptions → governing equations → integral formulation → discrete formulation → numerical properties → CFDX implementation → executable experiment → V&V evidence → limitations → improvements → references.
 
-## Planned course
-1. Reynolds transport theorem
-2. Mass conservation
-3. Momentum conservation
-4. Total and internal energy
-5. Scalar/species transport
-6. Source terms
-7. Conservative and non-conservative forms
-8. Boundary fluxes
-9. Dimensional analysis
-10. Finite-volume conservation requirements
+## Detailed course structure
 
-## Verification
-Integral balances, manufactured source terms and internal face-flux antisymmetry.
+### 1. Control-volume balance
 
-## Scientific explanation standard
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-This chapter is part of the CFDX Theory course. A short descriptive statement or comparison table is not sufficient for a major numerical or physical method.
+### 2. Mass conservation
 
-For every important equation or method, the final documentation must follow this chain:
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-$$
-\boxed{
-\text{motivation}
-\rightarrow
-\text{definitions}
-\rightarrow
-\text{derivation}
-\rightarrow
-\text{FVM/discretisation}
-\rightarrow
-\text{CFDX algorithm}
-\rightarrow
-\text{example}
-\rightarrow
-\text{error/limitations}
-\rightarrow
-\text{tests}
-\rightarrow
-\text{benchmark/V\&V}
-\rightarrow
-\text{bibliography}
-}
-$$
+### 3. Momentum conservation
 
-### Required explanation
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-1. Explain why the equation or method is needed and what physical/mathematical problem it solves.
-2. Define every symbol, tensor/vector/scalar, unit and sign convention.
-3. Derive the formula sufficiently for a reader to reproduce the result.
-4. Show the finite-volume or discrete transformation where applicable.
-5. Explain the actual CFDX computational sequence, not only the textbook algorithm.
-6. Give a small analytical, manufactured-solution or numerical example whenever meaningful.
-7. Explain truncation error, consistency, stability, conditioning, boundedness, conservation and sensitivity as applicable.
-8. Identify the exact implementation files and the data passed between stages.
-9. Link the mathematical property to executable verification tests.
-10. Identify the benchmark and V&V evidence, including scope and limitations.
-11. Cite the scientific literature and record stable bibliographic identifiers in the project bibliography.
+### 4. Energy conservation
 
-Comparison tables remain useful, but they are summaries **after** the mathematical explanation and never substitutes for it.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-### Evidence vocabulary
+### 5. Species conservation
 
-- **Implemented** — an executable code path exists.
-- **Verified** — a defined mathematical/software property has executable evidence.
-- **Validated** — comparison exists against an independent physical or trusted reference.
-- **Qualified** — the declared capability is demonstrated over an explicit scope.
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
 
-A chapter may be scientifically complete while a capability remains unqualified. Documentation must never promote numerical maturity.
+### 6. Fluxes and sources
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 7. Boundary integrals
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 8. Local versus global conservation
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 9. Conservation after discretisation
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+### 10. Conservation verification
+
+- Physical motivation and scope.
+- Definitions, symbols, dimensions and SI units.
+- Assumptions and domain of validity.
+- Continuous mathematical formulation.
+- Control-volume and finite-volume formulation where applicable.
+- Discrete/algebraic formulation and sign conventions.
+- Conservation, consistency, stability, boundedness and accuracy properties.
+- Exact CFDX implementation path and source files.
+- Executable verification experiment or test.
+- Benchmark/reference evidence where applicable.
+- Limitations, failure modes and improvement paths.
+
+## Mandatory equation template
+
+Every important equation must state its physical origin, assumptions, variables and units, coordinate/sign convention, continuous form, integral form, discrete approximation, algebraic contribution, numerical properties, implementation path, executable verification, benchmark/reference, limitations and bibliography.
+
+## Evidence vocabulary
+
+**Implemented** means a code path exists. **Verified** means a defined mathematical property has executable evidence. **Validated** means the computed physical result has been compared against an appropriate independent reference/experiment. **Qualified** means the declared V&V population and acceptance gates support the intended scope. These states must never be conflated.
+
+## Scientific figures
+
+Use generated figures for geometry, control volumes, stencils, matrix/block structure, convergence and error studies. Figures are outputs of executable sources and are never the source of truth. Interactive Plotly/Altair/PyVista material should have a static interpretation where practical.
+
+## Repository traceability
+
+Every implementation claim must point to the actual CFDX source and test evidence discovered during audit. Missing or partial functionality must be marked explicitly; no undocumented API or numerical result may be invented.
