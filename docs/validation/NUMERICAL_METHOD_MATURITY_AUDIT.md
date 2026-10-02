@@ -20,7 +20,7 @@ An implementation registry entry never implies validation.
 | Package | Status | Main evidence / gap |
 |---|---|---|
 | N1 contracts | PARTIAL | registry, explicit resolver + case-level resolution report (`resolve_case_numerics` / `format_numerics_report`, deterministic) exist; wiring every case loader and the common-scheme/contracts items remain |
-| N2 gradients/reconstruction | PARTIAL | cell/vertex/point-linear GG + linear/weighted/quadratic least-squares with stencil-quality and conditioning diagnostics (independent spectral reference), Dirichlet/Neumann/mixed boundary reconstruction, orthogonal/skewed/stretched/distorted-tetrahedral V&V; quadratic LS ~2nd order on tets asserted; remaining: limiter integration, two-point GG consistency on tets, general non-affine polyhedra |
+| N2 gradients/reconstruction | QUALIFIED* | production-qualified point-linear Green–Gauss + LS/WLS/quadratic-LS families with stencil-quality/rank/conditioning diagnostics, explicit Dirichlet/Neumann/mixed boundary reconstruction, and orthogonal/skewed/stretched/distorted/non-affine tetrahedral V&V; quadratic LS has an executable ~2nd-order gate on the non-affine family. Two-point cell Green–Gauss is explicitly restricted to its affine/centre-line-consistent domain; vertex GG remains a secondary method with a narrower verified domain. Limiter qualification belongs to N4, not N2. *Promotion after exact CI run for the new non-affine campaign. |
 | N3 diffusion | PARTIAL | orthogonal/corrected/limited/over-relaxed with explicit skewness-correction contract and quantified skew ladder (order ~2; uncorrected non-convergent under skew); tetrahedra: corrected operator linear-exact only with LS-family gradients (Linf ~5e-13) but the smooth Laplacian is O(1)-inconsistent (plateau ~2.1, order ~0, even deep) — face gradient evaluated off the face centroid; a Hessian-aware face evaluation would be needed |
 | N4 convection | PARTIAL | selectable upwind/TVD (MUSCL, 5 limiters), central and blended (β=central fraction; face-bounded, order ~1→2 as β→1) with 1-D/3-D boundedness/linear-exactness/order/conservation V&V; QUICK, multidimensional policy and production wiring incomplete |
 | N5 temporal | PARTIAL | measured order matrix (Euler~1, CN~2, BDF2~2, RK2~2, RK3~3) verified; variable-step BDF2 (ω-ratio coefficients) + history lifecycle + restart semantics implemented and tested; RK2 first-order helper fixed; full transient-MMS matrix still open |
@@ -48,6 +48,14 @@ The turbulence work in #473/#474 already uses the stronger separation:
 equation verification, solver verification and physical validation.
 
 The same discipline must be applied to the complete #461 matrix.
+
+### N2 qualification boundary
+
+N2 is considered closed only for gradient/reconstruction methods whose applicability domain is explicitly stated and covered by executable evidence. The two-point cell-centred Green–Gauss operator is **not** a general polyhedral gradient: on tetrahedra the owner/neighbour centre-line interpolation is not face-centroid consistent and is therefore retained as an implemented, domain-restricted method rather than being artificially promoted. The point-linear Green–Gauss operator is the polyhedral Green–Gauss path used for skew/non-affine meshes.
+
+Gradient limiting is deliberately not a remaining N2 gate. Limiters are part of the N4 convection/reconstruction qualification and must be qualified at scheme level, not as a gradient-kernel property.
+
+The new non-affine tetrahedral campaign perturbs the interior geometry with a smooth boundary-preserving deformation whose amplitude scales with h. It checks point-linear Green–Gauss, extended WLS and quadratic LS under non-affine geometry, with a strict second-order gate for quadratic LS.
 
 ### Limiter kernels are not complete convection schemes
 
