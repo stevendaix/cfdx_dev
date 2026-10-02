@@ -124,6 +124,7 @@ class NumericalScheme(BaseModel):
     under_relaxation_pressure: float = 0.3
     coupled_solver: str = "SIMPLE"
     preconditioner: str = ""
+    linear_solver: str = ""
     residual_target: str = "1e-5"
     max_iterations: int = 500
     raw_settings: dict[str, str] = Field(default_factory=dict)
