@@ -45,7 +45,9 @@ Mesh make_channel(std::size_t n)
     m.ownership().resize(m.n_faces());
     for (std::size_t i=0;i<n;++i) {
         cf[i]={left[i],right[i],6*i+2,6*i+3,6*i+4,6*i+5};
-        for (const auto f:cf[i]) m.ownership().set_owner(f,i);
+        if (i==0) m.ownership().set_owner(left[i],i);
+        if (i+1==n) m.ownership().set_owner(right[i],i);
+        for (std::size_t k=2;k<6;++k) m.ownership().set_owner(cf[i][k],i);
     }
     for (std::size_t i=0;i+1<n;++i) {
         m.ownership().set_owner(internal[i],i);
@@ -100,7 +102,8 @@ Result solve_case(std::size_t n, ConvectionScheme scheme)
         out.min_value=std::min(out.min_value,sol(c));
         out.max_value=std::max(out.max_value,sol(c));
     }
-    out.outlet_flux=flux(2)*sol(n-1);
+    const std::size_t outlet_face=6*(n-1)+1;
+    out.outlet_flux=flux(outlet_face)*sol(n-1);
     return out;
 }
 
