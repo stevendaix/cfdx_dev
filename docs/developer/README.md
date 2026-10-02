@@ -1,36 +1,21 @@
-# CFDX Developer Documentation
+# CFDX Developer Guide
 
-Developer documentation describes how CFDX is built, structured, tested and extended.
+**Status: PARTIAL — architecture exists; detailed migration is ongoing.**
 
-It is the contract between the scientific design and the software implementation.
+## Developer domains
 
-## Structure
+```{toctree}
+:maxdepth: 2
 
-```text
-architecture/
-development/
-implementation/
-api/
-contributing/
+architecture/README
+development/README
+implementation/README
+api/README
+contributing/README
 ```
 
-## Theory boundary
+## Existing implementation material
 
-Developer pages may state mathematical contracts, but the full derivation belongs to Theory.
+Existing documents under `docs/development/` remain migration sources until their information has been reconciled with the new structure.
 
-A developer page should answer:
-
-- what interface exists;
-- what invariants it guarantees;
-- what data it consumes and produces;
-- what ownership/lifetime rules apply;
-- what errors are reported;
-- how it is tested.
-
-It should link to Theory for the numerical method and to V&V for the evidence.
-
-## Implementation contract
-
-A numerical implementation document should identify the mathematical method, software component, inputs/outputs, invariants, supported and unsupported configurations, verification hooks, relevant tests and related issue/PR.
-
-Implementation presence is never equivalent to qualification.
+Developer documentation must describe actual repository architecture and implementation contracts. It must not invent support for planned numerical methods.
