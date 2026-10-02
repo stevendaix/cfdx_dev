@@ -9,7 +9,7 @@
 4. Energy and scalar fluxes
 5. Central and upwind schemes
 6. Higher-order schemes
-7. Limiting
+7. Flux limiting
 8. Boundedness and positivity
 9. Face interpolation versus gradient reconstruction
 10. Flux consistency and antisymmetry
