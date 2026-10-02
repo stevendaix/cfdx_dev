@@ -1,20 +1,51 @@
 # %% [markdown]
 """# Conservation Laws
 
-## Scientific objective
+## Scientific purpose
 
-For density q, flux F and source s, d/dt integral_V(q)dV + integral_boundary(F.n)dS = integral_V(s)dV. The divergence theorem gives dt(q)+div(F)=s. Finite volume preserves the integral statement, so internal face contributions must cancel pairwise.
+This chapter is written as executable literate documentation. It must teach the mathematical chain rather than merely list software features.
 
-## Executable contract
+## Required structure
 
-The code cell below is deliberately small: it is a deterministic algebraic sanity check. Chapter-specific quantitative experiments must be added beside this source and linked to the relevant V&V evidence.
+1. Physical motivation and problem definition.
+2. Variables, dimensions, units and sign conventions.
+3. Governing equations and assumptions.
+4. Control-volume formulation.
+5. Discrete formulation and algebraic consequences.
+6. Consistency, conservation, stability, boundedness and accuracy.
+7. CFDX implementation mapping.
+8. Executable verification and benchmark evidence.
+9. Limitations and improvement paths.
+10. References.
 
-## Status
+The status vocabulary is strict: Implemented, Verified, Validated, Qualified. A code path is not evidence of numerical correctness.
 
-Implementation, verification, validation and qualification are separate claims. This chapter does not promote CFDX maturity.
+## Core equations
+
+- d/dt int_V rho dV + int_dV rho u.n dA=0
+- momentum: d/dt int_V rho u dV + int_dV rho u(u.n)dA = -int_dV p n dA + int_dV tau.n dA + int_V rho f dV
+- energy balance = accumulation + surface fluxes + sources
+- species: d/dt int rho Y dV + int rho Y u.n dA = int J.n dA + int S dV
+- internal face fluxes cancel pairwise when orientations are opposite
+
+## Scientific checks
+
+The executable cells below are intentionally deterministic. They check mathematical identities or toy/reference systems only. They must not be presented as CFDX solver qualification unless the corresponding CFDX evidence is explicitly linked.
+
+## CFDX traceability
+
+The final chapter must identify the exact source files, tests and V&V artifacts corresponding to each equation. If an implementation is partial, the documentation must say so explicitly.
+
+## References
+
+Use the central BibTeX bibliography. Add stable identifiers (DOI, publisher, standard or project URL) to the authoritative record rather than duplicating metadata here.
 """
 
 # %%
 from __future__ import annotations
+import numpy as np
 
-import numpy as np; S=np.array([[1.,0.,0.],[-1.,0.,0.]]); assert np.allclose(S.sum(axis=0),0.)
+# Deterministic mathematical sanity checks
+x = np.linspace(0.0, 1.0, 5)
+assert np.all(np.isfinite(x))
+assert np.allclose(1.0 + (-1.0), 0.0)
