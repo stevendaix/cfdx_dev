@@ -63,7 +63,7 @@ which is what a case-loading or validation pipeline records. `tests/unit/test_ca
 covers determinism, error trapping, cross-family rejection and a full-registry round trip at the
 case level. The native CFDX HDF5 case path now supports a canonical `numerics.selection` block. It contains explicit registry configuration keys plus a case-local list of required families. `read_case_cfdx_h5` resolves that block before returning a loaded case and rejects empty, unknown, cross-family, missing-required or duplicate-family selections. The same contract is enforced by `write_case_cfdx_h5`, and the deterministic resolved report is persisted as `numerical_selection_report` in the case artifact. Legacy HDF5 files without the explicit selection block remain readable during migration; they are not considered N1-qualified until migrated to the explicit path.
 
-The remaining production migration task is therefore to populate `numerics.selection` from every external/Python case adapter and to make the runtime solver consume the resolved selections rather than legacy scheme strings or defaults.
+The Python adapter normalization boundary now populates `numerics.selection` for the numerical families currently consumed by the production runtime. The production solver loads `.cfdx.h5` through the case loader and consumes the resolved pressure-velocity, convection and supported gradient selections; explicit linear-solver and preconditioner selections are consumed when present. Unsupported runtime selections are rejected rather than silently falling back. Remaining qualification work is end-to-end CI evidence and source-specific extraction for linear-solver choices.
 
 ## Initial migration targets
 
