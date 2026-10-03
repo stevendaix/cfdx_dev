@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/physics/dual_time_adaptive.h"
+#include "cfdx/physics/dual_time_stepping.h"
 #include <cmath>
 #include <functional>
 #include <stdexcept>
@@ -19,10 +20,7 @@ struct DualTimeFieldHistory {
     DualTimeFieldHistory() = default;
 
     explicit DualTimeFieldHistory(const ScalarField& initial)
-        : current(initial),
-          previous(initial),
-          has_previous(false),
-          dt_previous(0.0) {}
+        : current(initial), previous(initial), has_previous(false), dt_previous(0.0) {}
 
     void initialize(const ScalarField& initial) {
         current = initial;
