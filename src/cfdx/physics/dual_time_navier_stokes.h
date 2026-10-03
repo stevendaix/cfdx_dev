@@ -43,6 +43,7 @@ struct DualTimeNavierStokesStepReport {
     double dt_requested = 0.0;
     double dt_accepted = 0.0;
     double temporal_error = 0.0;
+    double dt_proposed = 0.0;
     int retries = 0;
 };
 
@@ -148,8 +149,15 @@ public:
                 dt_previous_ = dt;
                 physical_time_ = time_before + dt;
                 ++step_;
+                double factor = controls.dt_growth;
+                if (error > 0.0 && std::isfinite(error))
+                    factor = std::min(
+                        controls.dt_growth,
+                        std::max(1.0, 0.9 * std::pow(1.0 / error, 1.0 / 2.0)));
+                const double dt_proposed = std::clamp(
+                    dt * factor, controls.dt_min, controls.dt_max);
                 return {std::move(high_result), time_before, physical_time_,
-                        dt_requested, dt, error, retries};
+                        dt_requested, dt, error, dt_proposed, retries};
             }
 
             U_ = accepted_U;
