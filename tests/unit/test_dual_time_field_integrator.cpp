@@ -7,7 +7,7 @@ int main() {
     using namespace cfdx::core;
     using namespace cfdx::physics;
 
-    ScalarCellField state(1, "u", "1", 1);
+    DualTimeField state(1, "u", "1", 1);
     state(0) = 1.0;
 
     DualTimeFieldSolveControls controls;
@@ -22,13 +22,13 @@ int main() {
     controls.physical_dt_max = 0.2;
     controls.temporal_absolute_tolerance = 1.0e-2;
     controls.temporal_relative_tolerance = 1.0e-2;
-    controls.physical_admissibility = [](const ScalarCellField& field) {
+    controls.physical_admissibility = [](const DualTimeField& field) {
         return std::isfinite(field(0)) && field(0) > 0.0;
     };
 
     DualTimeFieldIntegrator integrator(state);
 
-    auto rhs = [](const ScalarCellField& u, ScalarCellField& out) {
+    auto rhs = [](const DualTimeField& u, DualTimeField& out) {
         out(0) = -u(0);
     };
 
@@ -54,7 +54,7 @@ int main() {
         throw std::runtime_error("dual-time BDF2 decay is outside verification bound");
 
     bool rejected = false;
-    controls.physical_admissibility = [](const ScalarCellField&) { return false; };
+    controls.physical_admissibility = [](const DualTimeField&) { return false; };
     try {
         (void)integrator.advance(0.05, controls, rhs);
     } catch (const DualTimeConvergenceFailure&) {
