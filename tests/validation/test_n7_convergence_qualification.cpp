@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
@@ -95,7 +96,8 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 }
 
 struct Solution {
-    Field<double,Location::CELL> U;
+    Field<double,Location::CELL> U_direct;
+    Field<double,Location::CELL> U_continuation;
     IncompressibleSolveResult direct;
     ContinuationSolveResult continuation;
     FvGeometry geometry;
@@ -169,7 +171,7 @@ Solution solve_n7_case()
     if (!continuation_result.converged)
         throw std::runtime_error("N7 continuation solve did not converge");
 
-    return {std::move(U),direct,std::move(continuation_result),build_fv_geometry(mesh)};
+    return {std::move(U),std::move(U_cont),direct,std::move(continuation_result),build_fv_geometry(mesh)};
 }
 
 double kinetic_energy(const Field<double,Location::CELL>& U,const FvGeometry& geometry)
@@ -220,21 +222,15 @@ int main()
                 throw std::runtime_error("N7 continuation stage is not qualified");
         }
 
-        const double direct_energy=kinetic_energy(result.U,result.geometry);
-        const double continuation_energy=kinetic_energy(
-            result.continuation.final_solver_result.history.empty()
-                ? result.U : result.U,result.geometry);
+        const double direct_energy=kinetic_energy(result.U_direct,result.geometry);
+        const double continuation_energy=kinetic_energy(result.U_continuation,result.geometry);
         if (!std::isfinite(direct_energy) || !std::isfinite(continuation_energy))
             throw std::runtime_error("N7 independent QoI is non-finite");
 
-        const double direct_u=centre_component(result.U,true);
-        const double direct_v=centre_component(result.U,false);
-        const double continuation_u=centre_component(
-            result.continuation.final_solver_result.history.empty()
-                ? result.U : result.U,true);
-        const double continuation_v=centre_component(
-            result.continuation.final_solver_result.history.empty()
-                ? result.U : result.U,false);
+        const double direct_u=centre_component(result.U_direct,true);
+        const double direct_v=centre_component(result.U_direct,false);
+        const double continuation_u=centre_component(result.U_continuation,true);
+        const double continuation_v=centre_component(result.U_continuation,false);
 
         // Independent QoI: the converged Re=100 cavity centre velocity remains
         // close to the published Ghia reference while continuation/adaptive
