@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -436,12 +437,12 @@ int main()
                     cp.phi_curr.push_back(p(c));
                     cp.phi_prev.push_back(ctx.phi_prev(c));
                 }
-                const std::string path = "/tmp/kilo/n5c_checkpoint.txt";
+                const std::string path = (std::filesystem::temp_directory_path() / "n5c_checkpoint.txt").string();
                 cp.save(path);
                 std::cout << "N5C_CHECKPOINT saved at step=" << ck_step << "\n";
             }
             CheckpointFile r;
-            r.load("/tmp/kilo/n5c_checkpoint.txt");
+            r.load((std::filesystem::temp_directory_path() / "n5c_checkpoint.txt").string());
             std::cout << "N5C_CHECKPOINT restored step=" << r.step
                       << " history_valid=" << (r.history_valid ? 1 : 0) << "\n";
             Field<double, Location::CELL> ephi =
