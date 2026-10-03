@@ -68,3 +68,22 @@ tests/unit/test_timestep_control.cpp verifies:
 ## Qualification boundary
 
 The N6 acceptance claim is limited to the implemented deterministic control and diagnostic layer. Compressible acoustic CFL, dual-time stepping and full production solver retry integration remain explicitly unclaimed until their production contracts exist.
+
+
+## Production nonlinear retry integration
+
+The steady incompressible production solver now owns a transactional nonlinear retry boundary. At the start of each outer nonlinear iteration it snapshots velocity and pressure. A recoverable numerical `std::runtime_error` rolls both fields back, clears transient frozen-state diagnostics, reduces the velocity/pressure relaxation factors deterministically, and retries the same nonlinear iteration. The retry count is bounded by `NonlinearRetryControls::max_retries`.
+
+A retry is never a silent fallback: every rejection is emitted with iteration, retry number and effective relaxation factors. Once the retry budget is exhausted, the original failure is propagated.
+
+This is a nonlinear continuation/retry mechanism for the steady solver; it is not claimed as physical-time rollback or dual-time stepping.
+
+## Local pseudo-time stagnant-cell policy
+
+`compute_local_time_step` computes the local pseudo-time scale from the conservative absolute face-mass-flux sum:
+
+dt_i = CFL * rho_i / sum_f |Phi_f|.
+
+When the cell is stagnant with sum_f |Phi_f| = 0, there is no convective CFL restriction. CFDX therefore assigns the explicit configured `dt_max` rather than a hidden infinity, arbitrary epsilon velocity, or artificial fallback speed. Invalid density and non-finite fluxes remain hard errors.
+
+This makes the stagnant-cell policy deterministic, finite and auditable while preserving the distinction between a convective pseudo-time constraint and other possible physics-based restrictions.
