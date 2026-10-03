@@ -27,7 +27,7 @@ class QueryIndexTests(unittest.TestCase):
                 CREATE TABLE files(id INTEGER PRIMARY KEY, path TEXT, content_hash TEXT);
                 CREATE TABLE symbols(id INTEGER PRIMARY KEY, file_id INTEGER, kind TEXT,
                     qualified_name TEXT, name TEXT, line_start INTEGER, column_start INTEGER);
-                CREATE TABLE references(id INTEGER PRIMARY KEY, source_symbol_id INTEGER,
+                CREATE TABLE code_references(id INTEGER PRIMARY KEY, source_symbol_id INTEGER,
                     target_symbol_id INTEGER, file_id INTEGER, kind TEXT, line INTEGER, column INTEGER);
                 CREATE TABLE dependencies(id INTEGER PRIMARY KEY, source_file_id INTEGER,
                     target_path TEXT, kind TEXT);

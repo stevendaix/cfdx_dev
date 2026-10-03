@@ -55,7 +55,10 @@ def _clang_arguments(command: CompileCommand) -> list[str]:
         if arg in {"-c", "-o"}:
             skip = arg == "-o"
             continue
-        if arg == str(command.file) or pathlib.Path(arg).resolve() == command.file:
+        candidate = pathlib.Path(arg)
+        if not candidate.is_absolute():
+            candidate = command.directory / candidate
+        if candidate.resolve() == command.file:
             continue
         filtered.append(arg)
     return filtered
@@ -164,7 +167,7 @@ def index_clang(root: pathlib.Path, db_path: pathlib.Path, compile_commands: pat
                             )
                             if target is not None:
                                 db.execute(
-                                    """INSERT INTO references(
+                                    """INSERT INTO code_references(
                                        source_symbol_id, target_symbol_id, file_id,
                                        kind, line, column)
                                        VALUES (?, ?, ?, ?, ?, ?)""",

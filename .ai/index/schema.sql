@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS symbols (
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_qualified_name ON symbols(qualified_name);
 
-CREATE TABLE IF NOT EXISTS references (
+CREATE TABLE IF NOT EXISTS code_references (
     id INTEGER PRIMARY KEY,
     source_symbol_id INTEGER REFERENCES symbols(id) ON DELETE CASCADE,
     target_symbol_id INTEGER REFERENCES symbols(id) ON DELETE CASCADE,
@@ -43,9 +43,9 @@ CREATE TABLE IF NOT EXISTS references (
     column INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_references_source ON references(source_symbol_id);
-CREATE INDEX IF NOT EXISTS idx_references_target ON references(target_symbol_id);
-CREATE INDEX IF NOT EXISTS idx_references_file ON references(file_id);
+CREATE INDEX IF NOT EXISTS idx_code_references_source ON code_references(source_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_code_references_target ON code_references(target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_code_references_file ON code_references(file_id);
 
 CREATE TABLE IF NOT EXISTS dependencies (
     id INTEGER PRIMARY KEY,
