@@ -601,6 +601,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     endif()
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)
+    add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
