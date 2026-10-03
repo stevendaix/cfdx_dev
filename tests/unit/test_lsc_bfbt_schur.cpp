@@ -199,7 +199,7 @@ int main() {
         EXPECT_TRUE(pre.setup(blocks));
 
         const auto G_changed = make_sparse(2, 2, {
-            {0, 0, 1.0}, {0, 1, 0.75}, {1, 0, 0.25}, {1, 1, 1.0}
+            {0, 0, 1.0}, {0, 1, 0.75}, {1, 0, 0.25}
         });
         const BlockOperator changed(Auu, G_changed, D, C);
         EXPECT_TRUE(!pre.update_values(changed));
