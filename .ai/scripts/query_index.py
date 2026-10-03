@@ -63,7 +63,7 @@ def refs(db: sqlite3.Connection, pattern: str) -> list[tuple]:
     return db.execute(
         """SELECT r.kind, files.path, r.line, r.column,
                   target.name, target.qualified_name
-           FROM references r
+           FROM code_references r
            JOIN symbols target ON target.id = r.target_symbol_id
            JOIN files ON files.id = r.file_id
            WHERE target.name LIKE ? OR target.qualified_name LIKE ?
