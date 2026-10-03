@@ -82,6 +82,36 @@ def deps(db: sqlite3.Connection, pattern: str) -> list[tuple]:
     ).fetchall()
 
 
+def tests(db: sqlite3.Connection, pattern: str) -> list[tuple]:
+    return db.execute(
+        """SELECT tests.name, tests.framework, files.path,
+                  symbols.kind, symbols.qualified_name, test_links.relation
+           FROM tests
+           JOIN files ON files.id = tests.file_id
+           LEFT JOIN test_links ON test_links.test_id = tests.id
+           LEFT JOIN symbols ON symbols.id = test_links.symbol_id
+           WHERE tests.name LIKE ? OR files.path LIKE ?
+           ORDER BY files.path, tests.name, symbols.line_start, symbols.column_start""",
+        (f"%{pattern}%", f"%{pattern}%"),
+    ).fetchall()
+
+
+def validations(db: sqlite3.Connection, pattern: str) -> list[tuple]:
+    return db.execute(
+        """SELECT validation_cases.name, validation_cases.path,
+                  validation_cases.category, validation_cases.status,
+                  symbols.kind, symbols.qualified_name, validation_links.relation
+           FROM validation_cases
+           LEFT JOIN validation_links
+             ON validation_links.validation_case_id = validation_cases.id
+           LEFT JOIN symbols ON symbols.id = validation_links.symbol_id
+           WHERE validation_cases.name LIKE ? OR validation_cases.path LIKE ?
+           ORDER BY validation_cases.path, validation_cases.name,
+                    symbols.line_start, symbols.column_start""",
+        (f"%{pattern}%", f"%{pattern}%"),
+    ).fetchall()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=pathlib.Path, required=True)
@@ -91,6 +121,8 @@ def main() -> int:
     group.add_argument("--symbol")
     group.add_argument("--references")
     group.add_argument("--dependency")
+    group.add_argument("--test")
+    group.add_argument("--validation")
     args = parser.parse_args()
 
     root = args.root.resolve()
@@ -110,6 +142,10 @@ def main() -> int:
             rows = refs(db, args.references)
         elif args.dependency:
             rows = deps(db, args.dependency)
+        elif args.test:
+            rows = tests(db, args.test)
+        elif args.validation:
+            rows = validations(db, args.validation)
         else:
             parser.error("one query option or --validate is required")
 
