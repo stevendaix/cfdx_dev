@@ -172,9 +172,23 @@ Solution solve_n7_case()
         solve_steady_incompressible(mesh, Ua, pa, ubc, pbc, adaptive_controls);
     if (!adaptive_res.converged ||
         adaptive_res.convergence_status != cfdx::core::ConvergenceStatus::CONVERGED ||
-        adaptive_res.history.empty())
-        throw std::runtime_error(
-            "N7 adaptive relaxation did not reach the production convergence contract");
+        adaptive_res.history.empty()) {
+        std::ostringstream message;
+        message << "N7 adaptive relaxation did not reach the production convergence contract"
+                << " status=" << cfdx::core::to_string(adaptive_res.convergence_status)
+                << " reason=" << adaptive_res.convergence_reason
+                << " iterations=" << adaptive_res.iterations;
+        if (!adaptive_res.history.empty()) {
+            const auto& h = adaptive_res.history.back();
+            message << " metric=" << h.nonlinear_convergence_metric
+                    << " momentum=" << h.momentum_equation_residual
+                    << " momentum_rel=" << h.momentum_equation_residual_relative
+                    << " continuity=" << h.continuity_normalized
+                    << " alpha_u=" << h.effective_alpha_u
+                    << " alpha_p=" << h.effective_alpha_p;
+        }
+        throw std::runtime_error(message.str());
+    }
     const auto& adaptive_final = adaptive_res.history.back();
     if (adaptive_final.continuity_linf > controls.convergence.continuity_tolerance ||
         adaptive_final.momentum_equation_residual > controls.convergence.relative_tolerance)
