@@ -1032,6 +1032,15 @@
         "src/cfdx/physics/timestep_control.h",
         "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "stagnant/degenerate characteristic scale handling",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
     }
   ]
 }
