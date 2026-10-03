@@ -1,16 +1,35 @@
 # %% [markdown]
 # # Backward-facing step
 #
-# The sudden expansion produces a separated shear layer and recirculation. The case tests convection, pressure recovery, separation, reattachment and, for turbulent configurations, the turbulence closure.
+# The backward-facing step is a separated-flow benchmark. Its value is not a single reattachment-length number: the separated shear layer, pressure recovery, wall shear and velocity field must be considered together.
 #
-# A Reynolds number must follow the selected reference convention, for example
+# ## Frozen definition
 #
-# \[
-# Re=U_bh/\nu.
-# \]
+# Record the exact step height (h), channel dimensions, inlet profile, bulk/centreline velocity definition, viscosity, Reynolds-number convention, outlet condition and wall treatment.
 #
-# Quantities: reattachment length x_r/h, wall pressure, velocity profiles, mass conservation and turbulence quantities when applicable.
+# [
+# Re=rac{U_bh}{
+u}
+# ]
+# is only meaningful when (U_b) and (h) follow the declared reference convention.
 #
-# Controls: inlet profile, step dimensions, domain extent, outlet condition, near-step mesh, wall treatment and exact Reynolds-number definition.
+# ## Quantities
 #
-# Reattachment length alone cannot qualify a turbulence model.
+# Primary quantities may include:
+#
+# - reattachment length (x_r/h);
+# - wall-pressure distribution;
+# - wall-shear sign and separation/reattachment locations;
+# - velocity profiles at prescribed stations;
+# - mass conservation;
+# - turbulence quantities when a turbulent population is selected.
+#
+# Reattachment length should be extracted from the sign change of wall shear or an explicitly frozen reference definition, not inferred visually from a contour.
+#
+# ## Numerical sensitivity
+#
+# The campaign must record step-region mesh resolution, streamwise expansion ratio, near-wall treatment, convection scheme, pressure-velocity coupling and inlet profile. Coarse meshes can produce apparently plausible recirculation while moving (x_r/h) materially.
+#
+# ## Qualification boundary
+#
+# Reattachment-length agreement alone does not qualify a turbulence model or pressure-velocity algorithm. Field, balance and convergence evidence remain required.
