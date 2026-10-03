@@ -187,6 +187,24 @@ int main() {
         EXPECT_NEAR(norm2(z - ref), 0.0, 1e-12);
     });
 
+    run_case("numeric_refresh_rejects_graph_change", [&] {
+        const std::vector<double> qdiag{2.0, 5.0};
+        auto solve_P = [](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) z(i) = rhs(i);
+            return true;
+        };
+        LscBfbtSchurApproximation pre(
+            LscBfbtSchurApproximation::Mode::BFBT, solve_P, qdiag);
+        EXPECT_TRUE(pre.setup(blocks));
+
+        const auto G_changed = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, 0.75}, {1, 0, 0.25}, {1, 1, 1.0}
+        });
+        const BlockOperator changed(Auu, G_changed, D, C);
+        EXPECT_TRUE(!pre.update_values(changed));
+    });
+
     run_case("bfbt_uses_explicit_velocity_scaling", [&] {
         const std::vector<double> qdiag{2.0, 5.0};
         const auto z = run_mode(LscBfbtSchurApproximation::Mode::BFBT, qdiag);
