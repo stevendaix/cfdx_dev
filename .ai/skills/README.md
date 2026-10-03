@@ -22,6 +22,13 @@ The `.ai/skills/` tree contains small, vendor-neutral, composable skills used by
 - `face-interpolation-fluxes` — face values, numerical fluxes, conservation and boundedness.
 - `numerical-evidence` — implementation → testing → verification → validation → qualification evidence ladder.
 
+## Solver and time skills
+
+- `pressure-velocity-coupling` — pressure correction, continuity, flux correction, nullspaces and coupled formulations.
+- `temporal-discretisation` — physical/pseudo-time schemes, stability, restart and temporal-order verification.
+- `linear-nonlinear-solvers` — matrix properties, Krylov/preconditioning, nonlinear convergence and stopping criteria.
+- `amg-schur-preconditioning` — block Schur complements, AMG hierarchy, Galerkin consistency and energy/error evidence.
+
 ## Composition and evidence
 
 Skills are deliberately small and composable. Agents may combine them for a task instead of relying on a monolithic prompt. Skills do not own repository state and do not replace the canonical CFDX source tree.
@@ -30,4 +37,4 @@ Every numerical skill must distinguish implementation, testing, verification, va
 
 ## Next
 
-Further CFD/numerical skills will cover pressure–velocity coupling, temporal discretisation, linear/nonlinear solvers, AMG/Schur/preconditioning, turbulence, wall distance, multiphysics, conservation/boundedness and V&V workflows.
+Further CFD/numerical skills will cover turbulence, wall distance, multiphysics, conservation/boundedness and V&V workflows.
