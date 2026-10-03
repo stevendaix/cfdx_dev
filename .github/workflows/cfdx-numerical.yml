@@ -36,7 +36,7 @@ jobs:
           - { level: N11, regex: '^(test_conservation_boundedness|test_transport_conservation|test_conservation_assembly)$' }
           - { level: N12, regex: '^(test_mms_scalar_diffusion|test_discretization_verification|test_transient_mms|test_transient_mms_closure)$' }
           - { level: N13, regex: '^(test_mpi_deterministic|test_matrix_free_fv_operator|test_restart_mapping|test_phase8_mpi_poisson)$' }
-          - { level: N14, regex: '^(test_fluent_vmfl_reference|test_benchmark_matrix|test_reference_code|test_cross_import_equivalence)$' }
+          - { level: N14, regex: '^(test_fluent_vmfl_reference|test_benchmark_matrix|test_cross_import_equivalence)$' }
           - { level: N15, regex: '^(test_performance_foundations|test_performance_runtime|test_phase6_memory_benchmark)$' }
           - { level: N16, regex: '^$' }
 
