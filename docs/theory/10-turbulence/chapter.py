@@ -163,3 +163,24 @@
 import numpy as np
 uprime=np.array([-1.,1.,0.,2.,-2.])
 assert np.isclose(np.mean(uprime),0.0)
+
+
+# %% [markdown]
+# ## 10.x Equation-level qualification contract
+#
+# A turbulence model is not qualified merely because its transport equations compile or a solver can instantiate the model. For each catalogue entry, retain:
+#
+# 1. exact equations and assumptions;
+# 2. model constants and source references;
+# 3. dimensional consistency of every term;
+# 4. positivity/admissibility constraints;
+# 5. wall-distance and wall-treatment dependencies;
+# 6. term-by-term regression tests;
+# 7. MMS or manufactured checks where meaningful;
+# 8. solver-level convergence evidence;
+# 9. physical benchmark evidence;
+# 10. mesh/resolution and (y^+) sensitivity where applicable.
+#
+# Issue #473 defines the common 13-model qualification population. Wall-distance verification is a separate dependency: it may block a model path that requires it, but a wall-distance result must never be counted as turbulence-model validation.
+#
+# The Theory chapter therefore describes the equations and assumptions; the actual maturity decision belongs to the V&V/qualification matrix.
