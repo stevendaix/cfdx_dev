@@ -2027,6 +2027,36 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
 
+        // The final nonlinear acceptance residual must represent the same
+        // production equation that was solved. For transient runs the
+        // physical-time derivative is part of that equation; omitting it here
+        // would measure only the steady spatial operator and reject every
+        // legitimate transient state whose temporal acceleration balances the
+        // spatial momentum residual. Reuse the exact production mass-term
+        // assembly, including variable-step BDF2 coefficients and the accepted
+        // history, so the acceptance metric is algebraically consistent with
+        // the coupled solve above.
+        if (controls.transient.enabled) {
+            const auto& u_n = *controls.transient.previous;
+            const auto& u_nm1 = controls.transient.history_valid
+                ? *controls.transient.previous_previous : u_n;
+            const bool use_bdf2 =
+                controls.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+                controls.transient.history_valid;
+            add_dual_time_mass_term(
+                final_ex, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 0);
+            add_dual_time_mass_term(
+                final_ey, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 1);
+            add_dual_time_mass_term(
+                final_ez, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 2);
+        }
+
         Vector final_ux(mesh.n_cells()), final_uy(mesh.n_cells()), final_uz(mesh.n_cells());
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             final_ux(c) = U.component_data(0)[c];
