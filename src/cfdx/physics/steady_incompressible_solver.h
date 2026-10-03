@@ -15,6 +15,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/solver_control.h"
+#include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include <algorithm>
 #include <array>
@@ -92,6 +93,7 @@ struct IncompressibleSolverControls {
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
     DiagnosticsControls diagnostics;
+    NonlinearRetryControls nonlinear_retry;
     std::vector<IncompressiblePointProbe> probes;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
@@ -177,6 +179,7 @@ inline void validate_incompressible_controls(
     validate_coupling_controls(c.coupling);
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
+    validate_nonlinear_retry_controls(c.nonlinear_retry);
     if (!(c.density > 0.0) || !(c.kinematic_viscosity >= 0.0) ||
         !(c.turbulent_viscosity >= 0.0))
         throw std::invalid_argument("invalid incompressible material properties");
@@ -1410,6 +1413,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     bool frozen_state_valid = false;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        bool stop_after_iteration = false;
+        NonlinearRetryController retry_controller(controls.nonlinear_retry);
+        NonlinearStateRollback transaction(U, p);
+        bool iteration_completed = false;
+        while (!iteration_completed) {
+            transaction.begin();
+            try {
         double linear_tolerance = controls.linear_tolerance;
         if (controls.acceleration.adaptive_linear_tolerance) {
             const auto& forcing = controls.acceleration.linear_forcing;
@@ -1539,10 +1549,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 for (std::size_t d = 0; d < 3; ++d)
                     U.component_data(d)[c] =
                         U_old.component_data(d)[c] +
-                        controls.coupling.alpha_u *
+                        retry_controller.alpha_u(controls.coupling.alpha_u) *
                         (U.component_data(d)[c] - U_old.component_data(d)[c]);
                 p(c) = p_old(c) +
-                    controls.coupling.alpha_p * (p(c) - p_old(c));
+                    retry_controller.alpha_p(controls.coupling.alpha_p) * (p(c) - p_old(c));
             }
 
             // The coupled solve has already enforced the discrete continuity
@@ -1562,9 +1572,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The independent nonlinear momentum residual below remains the
             // final physical acceptance metric.
         } else {
-        relax_momentum_equation(ex, ux_old, controls.coupling.alpha_u);
-        relax_momentum_equation(ey, uy_old, controls.coupling.alpha_u);
-        relax_momentum_equation(ez, uz_old, controls.coupling.alpha_u);
+        relax_momentum_equation(ex, ux_old, retry_controller.alpha_u(controls.coupling.alpha_u));
+        relax_momentum_equation(ey, uy_old, retry_controller.alpha_u(controls.coupling.alpha_u));
+        relax_momentum_equation(ez, uz_old, retry_controller.alpha_u(controls.coupling.alpha_u));
 
         // Equation relaxation is already part of the matrix. The Krylov solve
         // therefore returns the solution of the relaxed equation directly;
@@ -1844,7 +1854,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Relax the physical pressure exactly once. The reference is a
             // gauge: enforce it by a uniform shift, never by overwriting one
             // cell and creating an artificial local pressure jump.
-            const double alpha_p = controls.coupling.alpha_p;
+            const double alpha_p = retry_controller.alpha_p(controls.coupling.alpha_p);
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += alpha_p * p_corr(c);
             if (!has_fixed_pressure_boundary) {
@@ -2622,9 +2632,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (converged_now) {
             result.converged = true;
             result.iterations = iter;
-            break;
+            stop_after_iteration = true;
         }
         result.iterations = iter;
+            transaction.commit();
+            iteration_completed = true;
+            } catch (const std::runtime_error& error) {
+                transaction.reject();
+                frozen_state_valid = false;
+                if (!retry_controller.can_retry())
+                    throw;
+                retry_controller.reject();
+                std::cerr << "CFDX nonlinear iteration " << iter
+                          << " rejected; retry=" << retry_controller.retries()
+                          << " alpha_u=" << retry_controller.alpha_u(retry_controller.alpha_u(controls.coupling.alpha_u))
+                          << " alpha_p=" << retry_controller.alpha_p(retry_controller.alpha_p(controls.coupling.alpha_p))
+                          << " reason=" << error.what() << "\n";
+            }
+        }
+        if (stop_after_iteration)
+            break;
     }
 
     if (pressure_context)
