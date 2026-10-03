@@ -857,50 +857,58 @@
     {
       "package_id": "N13",
       "requirement": "MPI deterministic tests",
-      "status": "verified",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_mpi_deterministic.cpp"
+        "tests/unit/test_mpi_deterministic.cpp",
+        "tests/validation/test_n13_mpi_equivalence.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "MPI numerical equivalence campaign",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_mpi_deterministic.cpp",
-        "tests/unit/test_mpi_partition.cpp"
+        "tests/validation/test_n13_mpi_equivalence.cpp",
+        "tests/unit/test_mpi_partition.cpp",
+        "tests/validation/test_phase8_mpi_poisson.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "assembled/matrix-free equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_matrix_free_fv_operator.cpp"
+        "tests/unit/test_matrix_free_fv_operator.cpp",
+        "tests/unit/test_backend_equivalence.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "CPU/CUDA numerical equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "tests/validation/test_n13_cuda_equivalence.cpp",
         "src/cfdx/runtime/gpu/gpu_execution.h"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "restart equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_restart_mapping.cpp"
+        "tests/validation/test_n13_restart_equivalence.cpp",
+        "tests/unit/test_restart_mapping.cpp",
+        "tests/unit/test_temporal_history.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "N-to-M MPI restart",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_phase5_restart_reader.cpp"
+        "tests/unit/test_phase5_restart_writer.cpp",
+        "tests/unit/test_phase5_restart_reader.cpp",
+        "tests/validation/test_n13_restart_equivalence.cpp"
       ]
     },
     {
