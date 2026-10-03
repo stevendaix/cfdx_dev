@@ -89,7 +89,7 @@ int main() {
 
         Vector rhs(2, 0.0);
         rhs(0) = 0.75;
-        rhs(1) = -0.75;
+        rhs(1) = -0.75; // compatible with the constant pressure null-space
         Vector pressure(2, 0.0);
         EXPECT_TRUE(bfbt.apply(rhs, pressure));
         EXPECT_NEAR(pressure(0) + pressure(1), 0.0, 1e-14);
