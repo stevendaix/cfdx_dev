@@ -63,6 +63,19 @@ std::string face_key(std::vector<std::size_t> vertices)
     return out.str();
 }
 
+// validate_mesh() requires every boundary face to belong to a patch, so each
+// generated mesh has to register its boundary explicitly.
+void add_boundary_patches(Mesh& mesh, const std::string& name)
+{
+    Patch patch{name, PatchType::WALL, {}};
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+        if (mesh.ownership().neighbour(f) == FaceOwnership::BOUNDARY)
+            patch.face_ids.push_back(f);
+    if (patch.face_ids.empty())
+        throw std::runtime_error("generated mesh has no boundary faces");
+    mesh.boundary().add_patch(patch);
+}
+
 Grid make_hex_grid(std::size_t n, double shear, double stretch)
 {
     if (n < 2) throw std::invalid_argument("make_hex_grid: n must be >= 2");
@@ -153,6 +166,8 @@ Grid make_hex_grid(std::size_t n, double shear, double stretch)
 
     for (const auto& faces : cell_faces) mesh.cells().push_cell(faces);
 
+    add_boundary_patches(mesh, "boundary");
+
     Grid grid{std::move(mesh), {}};
     grid.geometry = make_geometry_cache(grid.mesh);
     return grid;
@@ -190,10 +205,23 @@ TetraGrid make_tetra_grid(std::size_t n)
     std::vector<std::vector<std::size_t>> cell_faces;
     std::vector<std::vector<std::size_t>> face_cells;
 
-    auto get_face = [&](std::size_t a, std::size_t b, std::size_t c) {
+    auto get_face = [&](std::size_t a, std::size_t b, std::size_t c,
+                            const Vec3& owner_centre) {
         const auto key = face_key({a,b,c});
         const auto it = face_ids.find(key);
         if (it != face_ids.end()) return it->second;
+        const Vec3 A{mesh.points().x(a), mesh.points().y(a), mesh.points().z(a)};
+        const Vec3 B{mesh.points().x(b), mesh.points().y(b), mesh.points().z(b)};
+        const Vec3 C{mesh.points().x(c), mesh.points().y(c), mesh.points().z(c)};
+        // Half of the Kuhn subdivision tets are left-handed, so the vertex
+        // order of a face is not by itself an outward orientation. Store the
+        // winding that points away from the owning cell: compute_cell_geometry_
+        // oriented() negates it for the neighbour, so one global winding per
+        // face is enough to give every cell a positive signed volume.
+        const Vec3 n = (B - A).cross(C - A);
+        const Vec3 face_centre = (A + B + C) * (1.0 / 3.0);
+        if (n.dot(face_centre - owner_centre) < 0.0)
+            std::swap(b, c);
         const std::size_t id = mesh.faces().n_faces();
         mesh.faces().push_face({a,b,c});
         face_ids.emplace(key, id);
@@ -217,11 +245,17 @@ TetraGrid make_tetra_grid(std::size_t n)
                         corner[tet[0]], corner[tet[1]],
                         corner[tet[2]], corner[tet[3]]
                     }};
+                    const Vec3 tet_centre =
+                        (Vec3{mesh.points().x(v[0]), mesh.points().y(v[0]), mesh.points().z(v[0])} +
+                         Vec3{mesh.points().x(v[1]), mesh.points().y(v[1]), mesh.points().z(v[1])} +
+                         Vec3{mesh.points().x(v[2]), mesh.points().y(v[2]), mesh.points().z(v[2])} +
+                         Vec3{mesh.points().x(v[3]), mesh.points().y(v[3]), mesh.points().z(v[3])}) *
+                        0.25;
                     const std::array<std::size_t,4> faces = {{
-                        get_face(v[0],v[1],v[2]),
-                        get_face(v[0],v[1],v[3]),
-                        get_face(v[0],v[2],v[3]),
-                        get_face(v[1],v[2],v[3])
+                        get_face(v[0],v[1],v[2],tet_centre),
+                        get_face(v[0],v[1],v[3],tet_centre),
+                        get_face(v[0],v[2],v[3],tet_centre),
+                        get_face(v[1],v[2],v[3],tet_centre)
                     }};
                     const std::size_t c = cell_faces.size();
                     cell_faces.push_back({faces.begin(), faces.end()});
@@ -240,6 +274,8 @@ TetraGrid make_tetra_grid(std::size_t n)
                 : static_cast<std::int64_t>(face_cells[f][1]));
     }
     for (const auto& faces : cell_faces) mesh.cells().push_cell(faces);
+
+    add_boundary_patches(mesh, "boundary");
 
     TetraGrid grid{std::move(mesh), {}};
     grid.geometry = make_geometry_cache(grid.mesh);
@@ -442,13 +478,26 @@ void check_polyhedral_quality()
                - 3.0 * grid.geometry.cell_centres[c].y
                + 0.5 * grid.geometry.cell_centres[c].z;
 
-    const auto grad = compute_gradient_least_squares(phi, grid.mesh);
+const auto grad = compute_gradient_least_squares(phi, grid.mesh);
+    // Linear-exactness is only meaningful on interior cells. Boundary tets keep
+    // a one-sided stencil (boundary faces are excluded), so their least-squares
+    // system is rank-deficient and cannot reproduce the gradient.
+    const std::size_t n = 4;
     double max_error = 0.0;
-    for (std::size_t c = 0; c < grid.mesh.n_cells(); ++c) {
-        const Vec3 got{grad(c,0), grad(c,1), grad(c,2)};
-        max_error = std::max(max_error,
-                             (got - Vec3{2.0,-3.0,0.5}).mag());
-    }
+    std::size_t checked = 0;
+    for (std::size_t k = 1; k + 1 < n; ++k)
+        for (std::size_t j = 1; j + 1 < n; ++j)
+            for (std::size_t i = 1; i + 1 < n; ++i) {
+                const std::size_t base = 6 * (i + n * (j + n * k));
+                for (std::size_t t = 0; t < 6; ++t) {
+                    const std::size_t c = base + t;
+                    const Vec3 got{grad(c,0), grad(c,1), grad(c,2)};
+                    max_error = std::max(max_error,
+                                         (got - Vec3{2.0,-3.0,0.5}).mag());
+                    ++checked;
+                }
+            }
+    EXPECT_TRUE(checked > 0);
     EXPECT_TRUE(std::isfinite(max_error));
     EXPECT_TRUE(max_error < 1e-8);
 
@@ -480,21 +529,23 @@ void check_invalid_rejection()
     Grid grid = make_hex_grid(2, 0.0, 1.0);
     const auto face = grid.mesh.cells().faces_data()[0];
     const auto offset = grid.mesh.faces().face_offset(face);
+    const auto size = grid.mesh.faces().face_size(face);
     const auto first = grid.mesh.faces().vertices_data()[offset];
-    grid.mesh.points().set(first,
-                           grid.mesh.points().x(first),
-                           grid.mesh.points().y(first),
-                           grid.mesh.points().z(first));
+    const double x = grid.mesh.points().x(first);
+    const double y = grid.mesh.points().y(first);
+    const double z = grid.mesh.points().z(first);
 
-    // Collapse the first face by making two of its vertices coincide.
-    const auto second = grid.mesh.faces().vertices_data()[offset + 1];
-    grid.mesh.points().set(second,
-                           grid.mesh.points().x(first),
-                           grid.mesh.points().y(first),
-                           grid.mesh.points().z(first));
+    // Collapse every vertex of the face onto a single point. Merging only two
+    // of them would leave a non-degenerate triangle, which validate_mesh()
+    // accepts, so the whole face has to be collapsed to get a zero-area face.
+    for (std::size_t q = 0; q < size; ++q) {
+        const auto v = grid.mesh.faces().vertices_data()[offset + q];
+        grid.mesh.points().set(v, x, y, z);
+    }
 
     const auto report = validate_mesh(grid.mesh);
     EXPECT_FALSE(report.ok);
+    EXPECT_TRUE(!report.errors.empty());
     std::cout << "N10_INVALID rejected_errors=" << report.errors.size() << "\n";
 }
 
