@@ -271,8 +271,9 @@ int main() {
     });
 
     run_case("exact_schur_explicit_pressure_null_space", [&] {
-        // Auu = I, G = [1 -1], D = G^T gives S = -G^T G.
-        // The constant pressure mode is therefore an exact null mode.
+        // Auu = I, G = [1 -1], D = -G^T gives S = G^T G.
+        // The constant pressure mode is therefore an exact null mode and the
+        // compatible pressure operator is SPD on the projected subspace.
         const auto Auu_ns = make_sparse(2, 2, {
             {0, 0, 1.0}, {1, 1, 1.0}
         });
@@ -280,7 +281,7 @@ int main() {
             {0, 0, 1.0}, {0, 1, -1.0}
         });
         const auto D_ns = make_sparse(2, 2, {
-            {0, 0, 1.0}, {1, 0, -1.0}
+            {0, 0, -1.0}, {1, 0, 1.0}
         });
         const BlockOperator ns_blocks(Auu_ns, G_ns, D_ns, C);
         NullSpaceProjector pressure_null_space = NullSpaceProjector::constant(2);
