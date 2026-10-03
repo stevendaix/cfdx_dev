@@ -56,6 +56,25 @@ int main()
         EXPECT_TRUE(summary.limiting_cell == 0);
     });
 
+    run_case("stagnant_cell_has_zero_cfl_without_hidden_fallback", [] {
+        Mesh m = thin_box();
+        Field<double, Location::FACE> flux(6, "phi", "m3/s", 1);
+        flux.fill(0.0);
+        const auto local = compute_local_convective_cfl(m, flux, {0.02}, 0.1);
+        EXPECT_NEAR(local[0], 0.0, 1e-14);
+        const auto summary = summarize_cfl(local);
+        EXPECT_NEAR(summary.global_cfl, 0.0, 1e-14);
+    });
+
+    run_case("invalid_cell_volume_is_rejected", [] {
+        Mesh m = thin_box();
+        Field<double, Location::FACE> flux(6, "phi", "m3/s", 1);
+        flux.fill(0.1);
+        EXPECT_THROW(
+            compute_local_convective_cfl(m, flux, {0.0}, 0.1),
+            std::invalid_argument);
+    });
+
     run_case("controller_is_deterministic_and_bounded", [] {
         TimeStepControllerControls c;
         c.target_cfl = 1.0;
