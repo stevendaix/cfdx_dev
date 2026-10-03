@@ -2,7 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
-#include <stdexcept>
+#include <stdexcept>\n#include <functional>
 #include <string>
 #include <vector>
 
@@ -63,6 +63,39 @@ inline double dual_time_norm(const std::vector<double>& r) {
         sum += static_cast<long double>(value) * static_cast<long double>(value);
     }
     return std::sqrt(static_cast<double>(sum));
+}
+
+} // namespace cfdx::physics
+
+
+inline std::vector<double> dual_time_physical_residual(
+    const std::vector<double>& state,
+    const std::vector<double>& state_n,
+    const std::vector<double>& state_nm1,
+    double dt,
+    DualTimePhysicalScheme scheme,
+    const std::function<std::vector<double>(const std::vector<double>&)>& rhs)
+{
+    if (!(dt > 0.0) || !std::isfinite(dt))
+        throw std::invalid_argument("dual-time physical dt must be finite and positive");
+    if (state.size() != state_n.size())
+        throw std::invalid_argument("dual-time state/history size mismatch");
+    if (scheme == DualTimePhysicalScheme::BDF2 && state.size() != state_nm1.size())
+        throw std::invalid_argument("dual-time BDF2 history size mismatch");
+    const auto f = rhs(state);
+    if (f.size() != state.size())
+        throw std::invalid_argument("dual-time RHS size mismatch");
+
+    std::vector<double> residual(state.size(), 0.0);
+    if (scheme == DualTimePhysicalScheme::BACKWARD_EULER) {
+        for (std::size_t i = 0; i < state.size(); ++i)
+            residual[i] = state[i] - state_n[i] - dt * f[i];
+    } else {
+        for (std::size_t i = 0; i < state.size(); ++i)
+            residual[i] = 1.5 * state[i] - 2.0 * state_n[i]
+                        + 0.5 * state_nm1[i] - dt * f[i];
+    }
+    return residual;
 }
 
 } // namespace cfdx::physics
