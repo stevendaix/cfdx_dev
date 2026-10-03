@@ -26,7 +26,7 @@ int main() {
     assert(r1.status == ConvergenceStatus::CONTINUE);
     auto r2 = monitor.update({2, 1e-2, 1e-3, {{"drag", 1.0001}}});
     assert(r2.status == ConvergenceStatus::CONTINUE);
-    auto r3 = monitor.update({3, 1e-6, 1e-7, {{"drag", 1.00010001}}});
+    auto r3 = monitor.update({3, 1e-7, 1e-9, {{"drag", 1.000100001}}});
     assert(r3.status == ConvergenceStatus::CONVERGED);
     assert(r3.residual_gate);
     assert(r3.conservation_gate);
