@@ -37,6 +37,9 @@ jobs:
       - name: Run query tooling tests
         run: python .ai/scripts/test_query_index.py
 
+      - name: Run test and validation inventory tests
+        run: python .ai/scripts/test_index_test_validation.py
+
       - name: Run end-to-end index pipeline test
         run: python .ai/scripts/test_index_pipeline.py
 
@@ -47,6 +50,10 @@ jobs:
       - name: Add structural symbols and dependencies
         run: |
           python .ai/scripts/index_structural.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
+
+      - name: Add test and validation inventory
+        run: |
+          python .ai/scripts/index_test_validation.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
 
       - name: Validate generated index
         run: |
