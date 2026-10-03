@@ -31,6 +31,7 @@ class RunCenterModel:
         self.controller = controller
         self.max_output_lines = max_output_lines
         self.output: list[str] = []
+        self._latest_metrics = getattr(controller, "latest_metrics", None)
         self.on_change: Callable[[RunCenterState], None] | None = None
         self._previous_output = getattr(controller, "on_output", None)
         self._previous_metrics = getattr(controller, "on_metrics", None)
@@ -46,7 +47,7 @@ class RunCenterModel:
             session.state,
             session.iteration,
             session.time,
-            getattr(self.controller, "latest_metrics", None),
+            self._latest_metrics,
             tuple(self.output),
             getattr(self.controller, "error", None),
         )
@@ -71,6 +72,7 @@ class RunCenterModel:
         self._changed()
 
     def _on_metrics(self, metrics: SolverMetrics) -> None:
+        self._latest_metrics = metrics
         if self._previous_metrics:
             self._previous_metrics(metrics)
         self._changed()

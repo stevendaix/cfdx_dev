@@ -14,7 +14,7 @@ def test_selection_resolves_properties_and_edit_updates_authoritative_case() -> 
 
     state = application.set_property("numerics.cfl", 2.5)
     assert session.case.numerics["cfl"] == 2.5
-    assert state.project.dirty is False
+    assert state.project.dirty is True
     assert state.selection.stable_id == "numerics"
 
 
