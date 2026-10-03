@@ -444,27 +444,32 @@
     {
       "package_id": "N6",
       "requirement": "adaptive CFL controller",
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/adaptive_cfl.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_adaptive_cfl.cpp",
+        "tests/unit/test_timestep_control.cpp"
       ]
     },
     {
       "package_id": "N6",
       "requirement": "pseudo-transient CFL",
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/adaptive_cfl.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_adaptive_cfl.cpp"
       ]
     },
     {
       "package_id": "N6",
       "requirement": "robust anisotropic/skew characteristic length",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     },
     {
@@ -478,15 +483,21 @@
     {
       "package_id": "N6",
       "requirement": "rollback on nonlinear failure",
-      "status": "missing",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
     },
     {
       "package_id": "N6",
       "requirement": "auditable timestep/CFL reason logging",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     },
     {
@@ -1007,6 +1018,43 @@
       "status": "partial",
       "evidence": [
         "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "global/local convective CFL diagnostics",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "incompressible convective CFL",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "stagnant/degenerate characteristic scale handling",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "local pseudo-time policy with safe handling of stagnant cells",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/local_time_stepping.h",
+        "tests/unit/test_local_time_stepping.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     }
   ]

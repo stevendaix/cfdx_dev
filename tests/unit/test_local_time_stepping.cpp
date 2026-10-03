@@ -15,6 +15,7 @@ static Mesh unit_mesh() {
 }
 int main(){
  run_case("local_dt_matches_mass_flux_cfl",[](){auto m=unit_mesh();Field<double,Location::FACE> mf(6,"mf","kg/s",1);mf.fill(1.0);Field<double,Location::CELL> rho(1,"rho","kg/m3",1);rho(0)=2.0;Field<double,Location::CELL> dt;LocalTimeStepControls c;c.cfl=0.5;compute_local_time_step(m,mf,rho,dt,c);EXPECT_NEAR(dt(0),1.0/6.0,1e-14);});
+ run_case("stagnant_cell_uses_explicit_bounded_dt_max",[](){auto m=unit_mesh();Field<double,Location::FACE> mf(6,"mf","kg/s",1);mf.fill(0.0);Field<double,Location::CELL> rho(1,"rho","kg/m3",1);rho(0)=2.0;Field<double,Location::CELL> dt;LocalTimeStepControls c;c.cfl=0.5;c.dt_max=10.0;compute_local_time_step(m,mf,rho,dt,c);EXPECT_NEAR(dt(0),10.0,1e-14);});
  run_case("local_dt_rejects_invalid_density",[](){auto m=unit_mesh();Field<double,Location::FACE> mf(6,"mf","kg/s",1);mf.fill(1.0);Field<double,Location::CELL> rho(1,"rho","kg/m3",1);rho(0)=0.0;Field<double,Location::CELL> dt;EXPECT_THROW(compute_local_time_step(m,mf,rho,dt),std::invalid_argument);});
  run_case("local_dt_rejects_nonfinite_flux",[](){auto m=unit_mesh();Field<double,Location::FACE> mf(6,"mf","kg/s",1);mf.fill(1.0);mf(0)=std::numeric_limits<double>::quiet_NaN();Field<double,Location::CELL> rho(1,"rho","kg/m3",1);rho(0)=1.0;Field<double,Location::CELL> dt;EXPECT_THROW(compute_local_time_step(m,mf,rho,dt),std::invalid_argument);});
  return run_all();}
