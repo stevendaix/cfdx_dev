@@ -922,16 +922,40 @@
     {
       "package_id": "N14",
       "requirement": "method-level formulation comparison",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json",
+        "docs/validation/reference_codes/N14_REFERENCE_CODE_MATRIX.md",
+        "docs/validation/reference_codes/openfoam.md",
+        "docs/validation/reference_codes/su2.md",
+        "docs/validation/reference_codes/fluent.md",
+        "docs/validation/reference_codes/cfx.md",
+        "docs/validation/reference_codes/starccm.md"
       ]
     },
     {
       "package_id": "N14",
       "requirement": "same/similar/different classification",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "machine-readable comparison schema",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "benchmark cross-reference",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/reference_codes/N14_BENCHMARK_CROSS_REFERENCE.md"
+      ]
     },
     {
       "package_id": "N15",
