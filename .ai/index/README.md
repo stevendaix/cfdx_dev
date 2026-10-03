@@ -48,6 +48,8 @@ This distinction is intentional: inventory is evidence of repository artifacts, 
 - `--symbol PATTERN`
 - `--references PATTERN`
 - `--dependency PATTERN`
+- `--test PATTERN` — reports discovered test artifacts and only explicit test-to-symbol links;
+- `--validation PATTERN` — reports validation cases and only explicit validation-to-symbol links;
 - `--validate`
 
 `--validate` compares indexed content hashes with current files and, where available, the repository revision. A non-zero result means the index must not be treated as current.
@@ -72,11 +74,11 @@ The query tool uses only Python's standard library and has no CFDX runtime depen
 4. references/call/dependency extraction;
 5. test and V&V inventory;
 6. semantic test/validation linkage;
-7. incremental updates and query tooling;
+7. incremental updates and agent-facing evidence queries;
 8. reproducible AI tooling workflow and MCP query interface.
 
 ## Semantic test/V&V linkage
 
 The linkage layer is deliberately evidence-driven. It creates links only from explicit repository references, such as a literal test source path in CMake registration or a validation manifest. Filename similarity, directory proximity, symbol-name similarity, and inferred execution coverage are not evidence and must not create links.
 
-Each link records provenance in test_links.link_type. An absent link means no explicit evidence was found, not that the test is unrelated. The current implementation does not claim test-to-symbol coverage.
+Each link records provenance in the `relation` column of `test_links` or `validation_links`. The query tool exposes these relations without upgrading them into execution or coverage claims. An absent link means no explicit evidence was found, not that the test is unrelated.
