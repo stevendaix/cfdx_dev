@@ -98,12 +98,12 @@ IncompressibleSolverControls base_controls()
     c.coupling.alpha_u = 0.7;
     c.coupling.alpha_p = 0.3;
     c.coupling.coupled_max_iterations = 300;
-    c.coupling.coupled_linear_tolerance = 1e-9;
+    c.coupling.coupled_linear_tolerance = 1e-10;
     c.convergence.max_iterations = 300;
     c.convergence.relative_tolerance = 1e-7;
     c.convergence.continuity_tolerance = 1e-7;
     c.linear_max_iterations = 300;
-    c.linear_tolerance = 1e-9;
+    c.linear_tolerance = 1e-10;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
     c.use_bounded_convection = true;
@@ -112,8 +112,6 @@ IncompressibleSolverControls base_controls()
     c.pressure_reference_value = 0.0;
     c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
     c.coupled_linear_solver.preconditioner = PreconditionerModel::CoupledBlockSchur;
-    c.diagnostics.coupled_matrix_summary = true;
-    c.diagnostics.debug_cell = 5;
     return c;
 }
 
