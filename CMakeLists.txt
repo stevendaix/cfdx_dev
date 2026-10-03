@@ -495,6 +495,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
     add_cfdx_test(test_convergence_monitor tests/unit/test_convergence_monitor.cpp)
+    add_executable(test_n7_convergence_qualification tests/validation/test_n7_convergence_qualification.cpp)
+    target_link_libraries(test_n7_convergence_qualification PRIVATE cfdx_core)
+    target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
+    set_tests_properties(test_n7_convergence_qualification PROPERTIES
+        LABELS "n7;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
