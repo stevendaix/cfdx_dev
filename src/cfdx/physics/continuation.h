@@ -122,8 +122,6 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
         return result;
     }
 
-    const auto initial_U = U;
-    const auto initial_p = p;
     const auto scale_velocity_bcs = [&](double parameter) {
         VelocityBoundaryConditions scaled = velocity_bcs;
         for (auto& [name, bc] : scaled) {
