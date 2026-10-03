@@ -157,22 +157,60 @@ int main() {
         const std::size_t n = 64;
         const auto A = make_representative_coupled(n);
         auto A_updated = make_representative_coupled(n);
-        for (std::size_t c = 0; c < n; ++c) {
-            // Preserve the graph and change only a velocity-block value.
-            const std::size_t row = c;
-            (void)row;
+
+        // Preserve the exact CSR graph while changing a velocity-block
+        // coefficient. Direct value access is intentional here: the test
+        // exercises the values-only refresh contract, not matrix assembly.
+        const std::size_t target_row = 0;
+        const std::size_t target_col = 0;
+        bool changed = false;
+        const auto* columns = A_updated.columns_data();
+        auto* values = A_updated.values_data();
+        for (std::size_t k = A_updated.row_offsets_data()[target_row];
+             k < A_updated.row_offsets_data()[target_row + 1]; ++k) {
+            if (columns[k] == target_col) {
+                values[k] *= 1.10;
+                changed = true;
+                break;
+            }
         }
+        EXPECT_TRUE(changed);
+        EXPECT_TRUE(A_updated(target_row, target_col) !=
+                    A(target_row, target_col));
 
         CoupledBlockSchurAMGPreconditioner pc(n);
         EXPECT_TRUE(pc.setup(A));
+        const auto hierarchy_builds_before = pc.pressure_hierarchy_builds();
         EXPECT_TRUE(pc.update_values(A_updated));
-        EXPECT_TRUE(pc.pressure_hierarchy_builds() == 1);
+        EXPECT_TRUE(pc.pressure_hierarchy_builds() == hierarchy_builds_before);
         EXPECT_TRUE(pc.pressure_numeric_updates() == 1);
+
+        // The refreshed preconditioner must remain usable with the updated
+        // operator; convergence is checked with an independently recomputed
+        // residual, so this is not merely a counter assertion.
+        Vector exact_updated(4 * n);
+        for (std::size_t i = 0; i < exact_updated.size(); ++i)
+            exact_updated(i) =
+                std::sin(0.031 * static_cast<double>(i + 1));
+        const auto b_updated = matvec(A_updated, exact_updated);
+        Vector x_updated(4 * n, 0.0);
+        const auto updated_result = solve_gmres(
+            A_updated, b_updated, x_updated, 20, 400, 1e-10, &pc);
+        const double updated_rr =
+            true_relative_residual(A_updated, x_updated, b_updated);
+        EXPECT_TRUE(updated_result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(std::isfinite(updated_rr));
+        EXPECT_TRUE(updated_rr < 1e-9);
 
         std::cout << "n8_schur_benchmark_lifecycle"
                   << " cells=" << n
-                  << " hierarchy_builds=" << pc.pressure_hierarchy_builds()
+                  << " coefficient_changed=true"
+                  << " hierarchy_builds_before=" << hierarchy_builds_before
+                  << " hierarchy_builds_after="
+                  << pc.pressure_hierarchy_builds()
                   << " numeric_updates=" << pc.pressure_numeric_updates()
+                  << " updated_iterations=" << updated_result.iterations
+                  << " updated_true_residual=" << updated_rr
                   << " graph_change_rebuild=explicit_setup_required"
                   << '\n';
     });
