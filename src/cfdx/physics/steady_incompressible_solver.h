@@ -197,7 +197,6 @@ inline void validate_incompressible_controls(
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
-    validate_nonlinear_retry_controls(c.nonlinear_retry);
     if (c.transient.enabled) {
         if (!(c.transient.dt > 0.0) || !std::isfinite(c.transient.dt))
             throw std::invalid_argument("transient dual-time dt must be finite and positive");
