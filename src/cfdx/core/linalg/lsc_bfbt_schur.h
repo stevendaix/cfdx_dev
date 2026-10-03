@@ -94,15 +94,12 @@ public:
         }
 
         blocks_ = &blocks;
+        graph_signature_ = graph_signature(blocks);
         return true;
     }
 
     bool update_values(const BlockOperator& blocks) override {
-        // A numerical refresh is valid only for the same algebraic dimensions.
-        // The caller owns CSR graph-generation checks; a different graph must
-        // use setup() explicitly rather than being silently rebuilt here.
-        if (!blocks_ || blocks.velocity_size() != blocks_->velocity_size() ||
-            blocks.pressure_size() != blocks_->pressure_size())
+        if (!blocks_ || graph_signature(blocks) != graph_signature_)
             return false;
         return setup(blocks);
     }
@@ -138,6 +135,38 @@ public:
     bool uses_default_scaling() const noexcept { return q_diagonal_.empty(); }
 
 private:
+    struct GraphSignature {
+        std::size_t hash = 0;
+        bool operator==(const GraphSignature& other) const noexcept {
+            return hash == other.hash;
+        }
+        bool operator!=(const GraphSignature& other) const noexcept {
+            return !(*this == other);
+        }
+    };
+
+    static GraphSignature graph_signature(const BlockOperator& blocks) {
+        std::size_t h = 1469598103934665603ULL;
+        const auto mix = [&h](std::size_t value) {
+            h ^= value;
+            h *= 1099511628211ULL;
+        };
+        const auto add = [&mix](const SparseMatrix& A) {
+            mix(A.n_rows());
+            mix(A.n_cols());
+            mix(A.nnz());
+            for (std::size_t i = 0; i < A.n_rows() + 1; ++i)
+                mix(A.row_offsets_data()[i]);
+            for (std::size_t k = 0; k < A.nnz(); ++k)
+                mix(A.columns_data()[k]);
+        };
+        add(blocks.Auu());
+        add(blocks.G());
+        add(blocks.D());
+        add(blocks.C());
+        return GraphSignature{h};
+    }
+
     Mode mode_;
     const BlockOperator* blocks_ = nullptr;
     PressureSolve pressure_solve_;
