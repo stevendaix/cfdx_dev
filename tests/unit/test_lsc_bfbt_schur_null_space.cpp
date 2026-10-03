@@ -99,7 +99,7 @@ int main() {
     run_case("null_space_policy_rejects_incompatible_pressure_rhs", [&] {
         LscBfbtSchurApproximation lsc(
             LscBfbtSchurApproximation::Mode::LSC,
-            pressure_solve,
+            lsc_pressure_solve,
             {},
             null_space);
         EXPECT_TRUE(lsc.setup(blocks));
@@ -114,7 +114,7 @@ int main() {
         const auto wrong_null_space = NullSpaceProjector::constant(3);
         LscBfbtSchurApproximation lsc(
             LscBfbtSchurApproximation::Mode::LSC,
-            pressure_solve,
+            lsc_pressure_solve,
             {},
             wrong_null_space);
         EXPECT_TRUE(!lsc.setup(blocks));
