@@ -98,6 +98,10 @@ public:
         const double time_before = physical_time_;
         double dt = std::clamp(dt_requested, controls.dt_min, controls.dt_max);
         int retries = 0;
+        IncompressibleSolveResult last_high_result;
+        IncompressibleSolveResult last_low_result;
+        double last_temporal_error = std::numeric_limits<double>::infinity();
+        bool last_physical_ok = false;
 
         for (;;) {
             const auto accepted_U = U_;
@@ -141,6 +145,10 @@ public:
             const bool nonlinear_ok = high_result.converged;
             const bool physical_ok = fields_finite_and_admissible(high_U, high_p);
             const bool temporal_ok = error <= 1.0;
+            last_high_result = high_result;
+            last_low_result = low_result;
+            last_temporal_error = error;
+            last_physical_ok = physical_ok;
 
             if (nonlinear_ok && physical_ok && temporal_ok) {
                 U_ = std::move(high_U);
@@ -167,9 +175,28 @@ public:
             history_valid_ = accepted_history;
             dt_previous_ = accepted_dt_previous;
 
-            if (retries >= controls.max_retries)
-                throw std::runtime_error(
-                    "dual-time Navier-Stokes physical step rejected after bounded retries");
+            if (retries >= controls.max_retries) {
+                std::ostringstream detail;
+                detail << "dual-time Navier-Stokes physical step rejected after bounded retries"
+                       << ": dt_last=" << dt
+                       << " retries=" << retries
+                       << " high_converged=" << std::boolalpha << last_high_result.converged
+                       << " high_iterations=" << last_high_result.iterations
+                       << " low_converged=" << last_low_result.converged
+                       << " low_iterations=" << last_low_result.iterations
+                       << " physical_ok=" << last_physical_ok
+                       << " temporal_error=" << last_temporal_error;
+                if (!last_high_result.history.empty()) {
+                    const auto& h = last_high_result.history.back();
+                    detail << " last_momentum=" << h.momentum_residual
+                           << " last_momentum_eq_rel=" << h.momentum_equation_residual_relative
+                           << " last_pressure=" << h.pressure_residual
+                           << " last_continuity=" << h.continuity_normalized
+                           << " last_du_inf=" << h.velocity_change_inf
+                           << " last_dp_inf=" << h.pressure_change_inf;
+                }
+                throw std::runtime_error(detail.str());
+            }
 
             dt = std::max(controls.dt_min, dt * controls.dt_shrink);
             ++retries;
