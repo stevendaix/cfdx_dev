@@ -11,10 +11,11 @@ using cfdx::core::WENO5ZDiagnostics;
 using cfdx::core::weno5z_reconstruct_right;
 using cfdx::core::weno5z_reconstruct_right_bounded;
 namespace {
+constexpr double pi = 3.141592653589793238462643383279502884;
 void require(bool ok,const std::string& msg){if(!ok) throw std::runtime_error(msg);}
 double order(double e0,double e1){return std::log(e0/e1)/std::log(2.0);}
 double sine_average(double x,double h){
-    return (std::cos(2.0*pi*x)-std::cos(2.0*M_PI*(x+h)))/(2.0*M_PI*h);
+    return (std::cos(2.0*pi*x)-std::cos(2.0*pi*(x+h)))/(2.0*pi*h);
 }
 void exactness(){
     const std::array<double,5> c{{3.25,3.25,3.25,3.25,3.25}};
@@ -35,7 +36,7 @@ void smooth_order(){
         double s=0.0; std::size_t count=0;
         for(std::size_t i=2;i+2<n;++i){
             const std::array<double,5> u{{a[i-2],a[i-1],a[i],a[i+1],a[i+2]}};
-            const double exact=std::sin(2.0*M_PI*(static_cast<double>(i)+1.0)*h);
+            const double exact=std::sin(2.0*pi*(static_cast<double>(i)+1.0)*h);
             const double err=weno5z_reconstruct_right(u)-exact;
             s+=err*err; ++count;
         }
