@@ -23,3 +23,14 @@ A green CI result is evidence that the configured CI checks passed. It is not by
 ## Missing evidence
 
 Missing or unavailable evidence must be reported explicitly rather than inferred.
+## Claim discipline
+
+Agents must distinguish observed facts from interpretation and unresolved risk. They must never fill an evidence gap with model memory or assumption. When evidence is unavailable, contradictory or produced by a failed tool, the report must say so explicitly.
+
+## Status vocabulary
+
+Use precise status terms such as `implemented`, `tested`, `verified`, `validated`, `qualified`, `partial`, `experimental`, `optional`, `blocked` and `unknown` according to the evidence actually available. Do not use `pass` as a synonym for qualification.
+
+## Negative evidence
+
+Failed tests, non-convergent refinements, skipped checks, unsupported paths and known limitations are first-class evidence and must be preserved until explicitly resolved.
