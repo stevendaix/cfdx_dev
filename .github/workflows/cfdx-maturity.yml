@@ -21,4 +21,7 @@ jobs:
           python-version: "3.11"
       - name: Validate #461 audits
         run: |
-          python scripts/validate_numerical_maturity_audit.py             docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json             docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+          python scripts/validate_numerical_maturity_audit.py \
+            docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json \
+            docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+          python scripts/validate_n14_reference_matrix.py
