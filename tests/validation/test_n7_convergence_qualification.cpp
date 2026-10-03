@@ -7,6 +7,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <vector>
 
 using namespace cfdx::core;
@@ -168,8 +169,23 @@ Solution solve_n7_case()
     const auto continuation_result =
         solve_steady_incompressible_continuation(
             mesh,U_cont,p_cont,ubc,pbc,controls,continuation);
-    if (!continuation_result.converged)
-        throw std::runtime_error("N7 continuation solve did not converge");
+    if (!continuation_result.converged) {
+        std::ostringstream message;
+        message << "N7 continuation solve did not converge: "
+                << continuation_result.reason
+                << " final_parameter=" << continuation_result.final_parameter
+                << " attempts=" << continuation_result.total_attempts;
+        if (!continuation_result.stages.empty()) {
+            const auto& stage = continuation_result.stages.back();
+            message << " last_stage=" << stage.stage_index
+                    << " target=" << stage.parameter
+                    << " step=" << stage.step
+                    << " attempts=" << stage.attempts
+                    << " status=" << cfdx::core::to_string(stage.status)
+                    << " reason=" << stage.reason;
+        }
+        throw std::runtime_error(message.str());
+    }
 
     return {std::move(U),std::move(U_cont),direct,std::move(continuation_result),build_fv_geometry(mesh)};
 }
