@@ -159,12 +159,12 @@ Solution solve_n7_case()
     ContinuationControls continuation;
     continuation.enabled=true;
     continuation.initial_step=0.25;
-    continuation.minimum_step=0.125;
+    continuation.minimum_step=0.03125;
     continuation.maximum_step=0.5;
     continuation.step_growth=1.5;
     continuation.step_reduction=0.5;
-    continuation.max_stage_attempts=8;
-    continuation.max_stages=16;
+    continuation.max_stage_attempts=10;
+    continuation.max_stages=32;
 
     const auto continuation_result =
         solve_steady_incompressible_continuation(
@@ -182,7 +182,16 @@ Solution solve_n7_case()
                     << " step=" << stage.step
                     << " attempts=" << stage.attempts
                     << " status=" << cfdx::core::to_string(stage.status)
-                    << " reason=" << stage.reason;
+                    << " reason=" << stage.reason
+                    << " last_iter=" << stage.solver_result.iterations;
+            if (!stage.solver_result.history.empty()) {
+                const auto& h = stage.solver_result.history.back();
+                message << " residual=" << h.nonlinear_convergence_metric
+                        << " continuity=" << h.continuity_normalized
+                        << " momentum=" << h.momentum_equation_residual_relative
+                        << " dU=" << h.velocity_change_inf
+                        << " dP=" << h.pressure_change_inf;
+            }
         }
         throw std::runtime_error(message.str());
     }
