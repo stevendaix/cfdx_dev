@@ -1,12 +1,14 @@
 #pragma once
 
 #include "cfdx/core/linalg/block_operator.h"
+#include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/schur_approximation.h"
 #include "cfdx/core/linalg/vector.h"
 
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -56,10 +58,12 @@ public:
 
     LscBfbtSchurApproximation(Mode mode,
                               PressureSolve pressure_solve,
-                              std::vector<double> q_diagonal = {})
+                              std::vector<double> q_diagonal = {},
+                              std::optional<NullSpaceProjector> pressure_null_space = std::nullopt)
         : mode_(mode),
           pressure_solve_(std::move(pressure_solve)),
-          q_diagonal_(std::move(q_diagonal)) {}
+          q_diagonal_(std::move(q_diagonal)),
+          pressure_null_space_(std::move(pressure_null_space)) {}
 
     const char* name() const noexcept override {
         return mode_ == Mode::LSC ? "lsc_schur" : "bfbt_schur";
@@ -69,6 +73,8 @@ public:
         if (!blocks.is_valid() || !pressure_solve_) return false;
         const std::size_t nu = blocks.velocity_size();
         if (nu == 0 || blocks.pressure_size() == 0) return false;
+        if (pressure_null_space_ && pressure_null_space_->dimension() != blocks.pressure_size())
+            return false;
 
         q_inverse_.assign(nu, 1.0);
         if (q_diagonal_.empty()) {
@@ -109,8 +115,16 @@ public:
         const std::size_t np = blocks_->pressure_size();
         if (rhs_p.size() != np) return false;
 
+        Vector projected_rhs = rhs_p;
+        if (pressure_null_space_) {
+            if (!pressure_null_space_->is_compatible(projected_rhs))
+                return false;
+            pressure_null_space_->remove(projected_rhs);
+        }
+
         Vector y(np, 0.0);
-        if (!pressure_solve_(rhs_p, y)) return false;
+        if (!pressure_solve_(projected_rhs, y)) return false;
+        if (pressure_null_space_) pressure_null_space_->remove(y);
 
         // E*y = D Q^-1 Auu Q^-1 G*y.
         const auto Gy = blocks_->G().matvec(y);
@@ -124,15 +138,22 @@ public:
         const auto Eq = blocks_->D().matvec(qAqg);
         Vector z(np, 0.0);
         for (std::size_t i = 0; i < np; ++i) z(i) = Eq[i];
+        if (pressure_null_space_) pressure_null_space_->remove(z);
 
         if (!pressure_solve_(z, pressure)) return false;
+        if (pressure_null_space_) pressure_null_space_->remove(pressure);
         for (std::size_t i = 0; i < np; ++i) pressure(i) = -pressure(i);
+        if (pressure_null_space_) pressure_null_space_->remove(pressure);
         return true;
     }
 
     Mode mode() const noexcept { return mode_; }
 
     bool uses_default_scaling() const noexcept { return q_diagonal_.empty(); }
+
+    bool has_pressure_null_space_policy() const noexcept {
+        return pressure_null_space_.has_value();
+    }
 
 private:
     struct GraphSignature {
@@ -172,6 +193,7 @@ private:
     PressureSolve pressure_solve_;
     std::vector<double> q_diagonal_;
     std::vector<double> q_inverse_;
+    std::optional<NullSpaceProjector> pressure_null_space_;
     GraphSignature graph_signature_{};
 };
 
