@@ -313,7 +313,11 @@ int main()
 
         // 2. Analytical decay rate through a production transient run.
         {
-            const double T = 0.05;
+            // The final-time value is arbitrary for the spatial-order measurement.
+            // Keep the same refinement ratios while using a shorter horizon so the
+            // production operator is exercised without spending most of fast CI in
+            // thousands of redundant transient steps.
+            const double T = 0.02;
             std::vector<double> errs;
             for (const std::size_t n : {32u, 64u, 128u, 256u}) {
                 const Grid g = make_slab(n);
