@@ -129,7 +129,10 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
         for (auto& [name, bc] : scaled) {
             (void)name;
             if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
-                bc.value = cfdx::core::Vec3{\n                    bc.value.x * parameter,\n                    bc.value.y * parameter,\n                    bc.value.z * parameter};
+                bc.value = cfdx::core::Vec3{
+                    bc.value.x * parameter,
+                    bc.value.y * parameter,
+                    bc.value.z * parameter};
         }
         return scaled;
     };
@@ -145,11 +148,11 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
             throw std::runtime_error(
                 "continuation exceeded the configured maximum number of stages");
 
-        const double target = continuation_next_target(parameter, step);
         std::size_t attempts = 0;
         bool accepted = false;
 
         while (!accepted) {
+            const double target = continuation_next_target(parameter, step);
             if (++attempts > continuation.max_stage_attempts) {
                 U = initial_U;
                 p = initial_p;
