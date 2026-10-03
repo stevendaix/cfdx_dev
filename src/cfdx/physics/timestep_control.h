@@ -216,7 +216,9 @@ public:
         else if (candidate == dt)
             reason = TimeStepChangeReason::NoChange;
 
-        return {dt, candidate, measured_cfl, reason};
+        const TimeStepDecision decision{dt, candidate, measured_cfl, reason};
+        record(decision);
+        return decision;
     }
 
     TimeStepDecision rollback(double dt, std::size_t retry)
@@ -227,8 +229,11 @@ public:
             throw std::invalid_argument("invalid deterministic timestep retry index");
 
         const double candidate = std::max(controls_.min_dt, dt * controls_.shrink_limit);
-        return {dt, candidate, std::numeric_limits<double>::quiet_NaN(),
-                TimeStepChangeReason::NonlinearFailureRollback};
+        const TimeStepDecision decision{
+            dt, candidate, std::numeric_limits<double>::quiet_NaN(),
+            TimeStepChangeReason::NonlinearFailureRollback};
+        record(decision);
+        return decision;
     }
 
     void record(const TimeStepDecision& decision)
