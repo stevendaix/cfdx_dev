@@ -235,3 +235,45 @@ the existing lifecycle regression.
 
 No tolerance is relaxed, no validation case is disabled, and no performance
 winner is selected by the CI gate.
+
+
+## N8.5 — Matrix-characteristic solver selection
+
+CFDX now exposes an explicit matrix-characteristic policy through
+`MatrixCharacteristics` and `select_linear_solver(problem, characteristics, request)`.
+
+The policy consumes only characteristics that are explicitly supplied by the
+assembly/diagnostic layer:
+
+- square/non-square structure;
+- equation count;
+- numerical symmetry;
+- diagonal dominance;
+- coefficient scaling;
+- saddle-point classification;
+- anisotropy metadata.
+
+No property is inferred from matrix size alone. The existing size-only API remains
+as a backward-compatible conservative wrapper and supplies only the properties
+that are structurally implied by the selected problem class.
+
+The current qualified decision rules are deliberately conservative:
+
+- verified symmetric + diagonally-dominant pressure/diffusion systems →
+  CG, with Jacobi for tiny systems and native AMG for larger systems;
+- elliptic systems without a verified SPD signature → GMRES with Jacobi/ILU0;
+- momentum/scalar systems → BiCGStab + Jacobi/ILU0, switching to FGMRES when
+  explicit strong coefficient scaling is reported;
+- explicitly classified coupled saddle-point systems → FGMRES + coupled block Schur;
+- anisotropy is surfaced in the selection reason but does not claim anisotropic
+  AMG qualification.
+
+This layer is a deterministic recommendation policy, not a convergence guarantee.
+Production promotion still requires independent true-residual, difficult-matrix,
+performance and scaling evidence. In particular, anisotropy and strong-scaling
+campaigns remain open N8 qualification work.
+
+The design follows the standard numerical distinction between SPD systems,
+general/nonsymmetric systems and saddle-point systems; PETSc documents the same
+constraint that CG requires an SPD matrix and SPD preconditioner, while GMRES is
+intended for nonsymmetric systems. 
