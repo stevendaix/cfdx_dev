@@ -270,6 +270,49 @@ int main() {
         EXPECT_NEAR(norm2(preserved - after), 0.0, 1e-14);
     });
 
+    run_case("exact_schur_explicit_pressure_null_space", [&] {
+        // Auu = I, G = [1 -1], D = G^T gives S = -G^T G.
+        // The constant pressure mode is therefore an exact null mode.
+        const auto Auu_ns = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto G_ns = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, -1.0}
+        });
+        const auto D_ns = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 0, -1.0}
+        });
+        const BlockOperator ns_blocks(Auu_ns, G_ns, D_ns, C);
+        NullSpaceProjector pressure_null_space = NullSpaceProjector::constant(2);
+
+        ExactSchurApproximation exact(
+            [](const Vector& rhs, Vector& y) {
+                if (y.size() != rhs.size()) y = Vector(rhs.size(), 0.0);
+                for (std::size_t i = 0; i < rhs.size(); ++i) y(i) = rhs(i);
+                return true;
+            },
+            ExactSchurApproximation::Controls{100, 1e-12},
+            pressure_null_space);
+
+        EXPECT_TRUE(exact.setup(ns_blocks));
+
+        Vector compatible_rhs(2, 0.0);
+        compatible_rhs(0) = 1.0;
+        compatible_rhs(1) = -1.0;
+        Vector pressure(2, 0.0);
+        EXPECT_TRUE(exact.apply(compatible_rhs, pressure));
+        EXPECT_NEAR(pressure(0) + pressure(1), 0.0, 1e-12);
+
+        Vector incompatible_rhs(2, 1.0);
+        Vector rejected_pressure(2, 0.0);
+        EXPECT_TRUE(!exact.apply(incompatible_rhs, rejected_pressure));
+
+        Vector null_mode(2, 1.0);
+        Vector projected(2, 0.0);
+        EXPECT_TRUE(exact.apply_schur(null_mode, projected));
+        EXPECT_NEAR(norm2(projected), 0.0, 1e-14);
+    });
+
     run_case("bfbt_uses_explicit_velocity_scaling", [&] {
         const std::vector<double> qdiag{2.0, 5.0};
         const auto z = run_mode(LscBfbtSchurApproximation::Mode::BFBT, qdiag);
