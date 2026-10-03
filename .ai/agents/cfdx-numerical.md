@@ -20,3 +20,12 @@ FVM, gradients, reconstruction, interpolation, fluxes, pressure-velocity couplin
 ## Output
 
 Mathematical basis, implementation impact, test/V&V plan, evidence and unresolved risks.
+## Additional mandatory rules
+
+- Follow `.ai/AGENTS.md` and the applicable numerical skills.
+- Establish the continuous formulation, discrete formulation and implementation path before judging a numerical method.
+- Separate model-form error, discretisation error, solver error and implementation error where possible.
+- Use controlled limiting cases and refinement studies rather than relying on a single benchmark.
+- Never change tolerances, model constants, clipping or acceptance criteria merely to improve a result.
+- Never infer qualification from residual convergence or a green CI run.
+- Preserve failed cases and negative evidence.
