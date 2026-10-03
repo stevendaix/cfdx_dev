@@ -199,3 +199,39 @@ no fallback is introduced.
 The qualification executable evaluates Direct-CF and Smoothed Aggregation independently, so a failure in one interpolation family cannot short-circuit the qualification of the other. The smoother gate uses a representative high-frequency manufactured mode rather than the lowest-frequency mode. The two-grid acceptance metric is the same A-energy error norm used by the V-cycle criterion; Euclidean residual ratios are retained for diagnosis only because residual and error-energy norms are not equivalent.
 
 **Gershgorin tolerance:** Direct-CF maintains strict M-matrix structure (diagonal dominance) from fine to coarse and is qualified with a tight floating-point round-off envelope (`±100·ε`). Smoothed Aggregation with Jacobi smoothing (Vaněk, Mandel, Brezina 2001) does not preserve M-matrix structure: coarse operators may have positive off-diagonals even when the fine operator is strictly diagonally dominant. A small negative Gershgorin bound (up to `-0.15`) at irregular aggregate boundaries is expected algebraic behavior documented in the SA literature and does not indicate loss of symmetry, positive-definiteness, or V-cycle instability—only loss of strict diagonal dominance. SA qualification therefore uses a relaxed tolerance of `0.15` while Direct-CF retains the strict round-off gate.
+
+
+## N8.4 — reproducible Schur production-path benchmark
+
+The executable `test_n8_schur_production_benchmark` provides the next N8
+evidence layer after the exact-Schur, numeric-update and serial null-space
+contracts.
+
+For a controlled assembled 4N coupled matrix family it records, per problem
+size:
+
+- number of cells and unknowns;
+- input and Schur NNZ;
+- estimated CSR storage for the matrix and Schur matrix;
+- factorization and velocity-block approximation;
+- Krylov solver and convergence status;
+- reported and independently recomputed true residual;
+- Krylov iteration count;
+- setup and solve wall time;
+- pressure coarse-space size;
+- AMG hierarchy build and numeric-update counts.
+
+The storage quantity is an explicit CSR byte estimate, not process RSS. Timing
+is diagnostic and is not a CI performance threshold.
+
+The benchmark is intentionally an **algebraic production-path benchmark**.
+It does not claim Couette, Poiseuille or Ghia physical qualification. Those
+cases remain a separate production-physics campaign and must use their own
+independent QoI, conservation and convergence evidence.
+
+The lifecycle portion also verifies that a value-refresh update reuses the
+existing symbolic pressure hierarchy. Graph-change rejection remains owned by
+the existing lifecycle regression.
+
+No tolerance is relaxed, no validation case is disabled, and no performance
+winner is selected by the CI gate.

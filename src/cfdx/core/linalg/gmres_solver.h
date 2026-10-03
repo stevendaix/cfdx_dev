@@ -340,7 +340,8 @@ inline SolverResult solve_gmres(
     double tolerance,
     Preconditioner* preconditioner,
     KrylovControls controls,
-    PrecisionPolicy precision = {}) {
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
     op.apply = [&A, precision](const Vector& in, Vector& out) {
@@ -356,7 +357,7 @@ inline SolverResult solve_gmres(
             out(i) = sum;
         }
     };
-    if (preconditioner && !preconditioner->setup(A)) {
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
         SolverResult result;
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
@@ -372,11 +373,12 @@ inline SolverResult solve_gmres(
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
     Preconditioner* preconditioner = nullptr,
-    PrecisionPolicy precision = {})
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
 {
     return solve_gmres(
         A, b, x, restart, max_iter, tolerance, preconditioner,
-        KrylovControls{}, precision);
+        KrylovControls{}, precision, setup_preconditioner);
 }
 
 } // namespace cfdx::core
