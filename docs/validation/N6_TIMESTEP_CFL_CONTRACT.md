@@ -72,7 +72,7 @@ The N6 acceptance claim is limited to the implemented deterministic control and 
 
 ## Production nonlinear retry integration
 
-The steady incompressible production solver now owns a transactional nonlinear retry boundary. At the start of each outer nonlinear iteration it snapshots velocity and pressure. A recoverable numerical `std::runtime_error` rolls both fields back, clears transient frozen-state diagnostics, reduces the velocity/pressure relaxation factors deterministically, and retries the same nonlinear iteration. The retry count is bounded by `NonlinearRetryControls::max_retries`.
+The steady incompressible production solver now owns a transactional nonlinear retry boundary. At the start of each outer nonlinear iteration it snapshots velocity and pressure. A classified `NonlinearRetryableFailure` rolls both fields back, clears transient frozen-state diagnostics, reduces the velocity/pressure relaxation factors deterministically, and retries the same nonlinear iteration. Permanent `std::runtime_error` failures (for example invalid geometry, data, or diagnostics) are not retried and propagate immediately. The retry count is bounded by `NonlinearRetryControls::max_retries`.
 
 A retry is never a silent fallback: every rejection is emitted with iteration, retry number and effective relaxation factors. Once the retry budget is exhausted, the original failure is propagated.
 
