@@ -127,3 +127,63 @@ Documentation completeness never changes numerical maturity.
 | 18 | Source-tree audit | Equation-to-code-to-test traceability |
 
 See docs/references/bibliography.bib for the maintained bibliography.
+
+
+## Second-pass closure audit — preparation for the next numerical-method PRs
+
+The chapters are now a coherent mathematical baseline, but the documentation must stay ahead of implementation without claiming qualification. The next pass should close the following explicit gaps, using the open engineering issues as the planning authority.
+
+### 1. Mathematical depth to add before claiming a method is fully documented
+
+| Area | Documentation additions needed | Main engineering dependency |
+|---|---|---|
+| Mesh geometry | orientation contract, signed/positive volume, non-planar faces, quality metrics, invalid-cell policy | #59, #423 |
+| Gradients/reconstruction | WLS weighting, rank/conditioning criteria, boundary stencil policy, face reconstruction independence, limiter interaction | #461 N2 |
+| Convection | multidimensional boundedness, limiter assumptions, deferred correction, consistency with mass flux, high-resolution failure modes | #461 N4 |
+| Diffusion | explicit non-orthogonal/skew decomposition, correction limiting, high-quality vs difficult-mesh regimes | #461 N3, #423 |
+| Time integration | BDF2 history/bootstrap, variable-step consistency, restart history and CFL semantics | #60, #461 N5/N6 |
+| Pressure–velocity | exact algorithmic distinction between SIMPLE/SIMPLEC/PISO/PIMPLE/projection/coupled, pressure gauge and collocated flux consistency | #390, #461 N9 |
+| Linear algebra | true residual vs preconditioned residual, null spaces, conditioning, block systems, AMG diagnostics | #492, #461 N8 |
+| Turbulence | equation-level contracts, constants, wall-distance dependency and model-specific admissibility | #473, #461 N17 |
+| Thermal/CHT | energy-form consistency, property derivatives, interface conservation, nonlinear source linearisation | #60, #382, #388 |
+| Radiation | angular quadrature accuracy, optical-thickness regimes, S2S/P1/DOM model boundaries and coupling error | #461, #118 |
+| Data/restart | schema compatibility, provenance, case/mesh/physics/numerics revision coupling and restart determinism | #60 |
+| V&V | claim → oracle → metric → criterion → artifact traceability and qualification population boundaries | #118, #531 |
+
+### 2. Source-to-document traceability
+
+Chapter source mappings must be treated as auditable links, not illustrative filenames. Before the next documentation release, every mapped path should be checked against the repository and each important numerical claim should identify its executable verification or validation artifact.
+
+### 3. Executable theory experiments
+
+The current chapters contain small executable invariants. The next step is to add quantitative experiments where they materially improve understanding:
+
+- observed-order regression for gradients, diffusion and convection;
+- amplification-factor plots/tables for temporal schemes;
+- Schur/AMG energy-contraction experiments;
+- limiter response on smooth and steep fields;
+- conservation/antisymmetry checks;
+- radiation view-factor closure/reciprocity;
+- CHT interface balance;
+- dimensionless-number sanity checks.
+
+These experiments are educational/verification evidence only; they must not be presented as solver qualification unless they execute the real CFDX implementation.
+
+### 4. Scientific reference closure
+
+Each chapter should distinguish:
+- analytical oracle;
+- manufactured oracle;
+- discrete-exact oracle;
+- published benchmark;
+- external-code comparison.
+
+The reference value itself is never CFDX evidence.
+
+### 5. Planned next theory pass
+
+The recommended order is:
+
+**geometry/orientation → N2 gradients → N4 convection → N5/N6 time integration → N7–N9 solver/coupling → N10 difficult meshes → N11–N12 conservation/MMS → N17 turbulence → thermal/radiation → data/restart → final source-tree audit.**
+
+This order follows the numerical dependency graph rather than the visual chapter numbering.
