@@ -1,20 +1,25 @@
 # %% [markdown]
 # # Plane Poiseuille flow
 #
-# Fully developed pressure-driven channel flow gives an analytical profile and flow rate.
+# Fully developed pressure-driven channel flow gives an analytical velocity profile and flow rate:
 #
-# \[
-# \mu d^2u/dy^2=dp/dx,
-# \qquad
-# u(y)=\frac{1}{2\mu}\frac{dp}{dx}y(y-H).
-# \]
+# [
+# murac{d^2u}{dy^2}=rac{dp}{dx},
+# qquad
+# u(y)=rac{1}{2mu}rac{dp}{dx}y(y-H).
+# ]
 #
 # The exact flow rate per unit span is
+# [
+# Q=-rac{H^3}{12mu}rac{dp}{dx}.
+# ]
 #
-# \[
-# Q=-H^3(dp/dx)/(12\mu).
-# \]
+# ## Evidence
 #
-# Verify pressure-gradient/source treatment, diffusion, wall conditions, conservation and convergence.
+# Verify pressure-gradient/source treatment, diffusion, wall conditions, conservation and matrix/solver behaviour independently. Retain velocity profile error, flow-rate error, wall shear, mass imbalance, independently reconstructed fluxes and true residual.
 #
-# Campaign: systematic mesh refinement; velocity L2 error; flow-rate error; wall shear; mass imbalance; observed order. The N=8,16,32,64 structure may be retained as a campaign, but current values must be regenerated from the current revision.
+# A systematic mesh campaign should contain at least three levels for observed-order claims. The historical N=8,16,32,64 sequence may be retained as provenance, but quantitative values must be regenerated from the current revision before being reused as current evidence.
+#
+# ## Scope
+#
+# This is primarily a scalar/viscous FV verification target. It must not be used as sole evidence that the complete SIMPLE/PISO/PIMPLE/COUPLED pressure-velocity architecture is qualified.
