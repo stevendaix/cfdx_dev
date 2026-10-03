@@ -177,7 +177,7 @@ Solution solve_n7_case()
                 << " attempts=" << continuation_result.total_attempts;
         if (!continuation_result.stages.empty()) {
             const auto& stage = continuation_result.stages.back();
-            message << " last_stage=" << stage.stage_index
+            message << " last_stage=" << stage.stage
                     << " target=" << stage.parameter
                     << " step=" << stage.step
                     << " attempts=" << stage.attempts
