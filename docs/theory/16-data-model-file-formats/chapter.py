@@ -102,3 +102,32 @@ x=np.arange(12,dtype=float).reshape(3,4)
 serialized=x.copy()
 restored=serialized.copy()
 assert np.array_equal(restored,x)
+
+
+# %% [markdown]
+# ## 16.13 Second-pass schema and restart contracts
+#
+# The semantic separation is necessary but not sufficient for reproducibility. A checkpoint must also bind its state to the case, mesh, physics and numerical-method revisions that produced it.
+#
+# A useful provenance tuple is
+# [
+# P=(r_{case},r_{mesh},r_{physics},r_{numerics},r_{solver},r_{software}).
+# ]
+# A restart reader should reject incompatible combinations rather than silently interpreting state under a different numerical contract.
+#
+# Schema evolution must distinguish:
+#
+# - compatible extension;
+# - required migration;
+# - unsupported future schema;
+# - corrupted/incomplete data.
+#
+# Optional datasets may be absent only when the semantic contract explicitly allows them. Dropping unknown physics/numerics data during a read is not a safe compatibility mechanism.
+#
+# For a deterministic restart,
+# [
+# U^{n+1}_{restart}approx U^{n+1}_{continuous}
+# ]
+# under the same executable revision and numerical configuration, up to explicitly documented floating-point/reduction differences.
+#
+# The repository audit still has open requirements around complete case/geometry hashes and full environment metadata. These belong to the evidence/reproducibility workstream and must not be represented as closed merely because HDF5 round-trip tests pass.
