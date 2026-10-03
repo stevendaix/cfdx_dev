@@ -77,9 +77,9 @@ int main()
         EXPECT_NEAR(retry.new_dt, 0.2, 1e-14);
         EXPECT_TRUE(retry.reason == TimeStepChangeReason::NonlinearFailureRollback);
 
-        controller.record(a);
-        controller.record(retry);
-        EXPECT_TRUE(controller.history().size() == 2);
+        EXPECT_TRUE(controller.history().size() == 4);
+        EXPECT_TRUE(controller.history().front().reason == TimeStepChangeReason::TargetCfl);
+        EXPECT_TRUE(controller.history().back().reason == TimeStepChangeReason::NonlinearFailureRollback);
     });
 
     run_case("rollback_restores_state_and_temporal_history", [] {
