@@ -22,9 +22,10 @@ jobs:
       - name: Install documentation dependencies
         run: python -m pip install -r docs/requirements.txt
       - name: Check executable theory syntax
-        run: python -m compileall -q docs/theory
-      - name: Check Jupytext percent source
-        run: python -m jupytext --test docs/theory/00-foundations/chapter.py --to py:percent
+        run: python -m compileall -q docs/theory docs/developer docs/vv
+      - name: Check Jupytext percent sources
+        run: |
+          find docs/theory docs/developer docs/vv -name 'chapter.py' -print0 | xargs -0 -n1 python -m jupytext --test --to py:percent
       - name: Run N2 reference self-check
         working-directory: docs/theory/04-gradients-reconstruction/experiments
         run: python self_check.py
