@@ -84,6 +84,13 @@ inline double adapt_relaxation_factor(
         return std::min(max_alpha, safe_alpha * 1.10);
     if (ratio >= 1.0 + controls.degradation_threshold)
         return std::max(min_alpha, safe_alpha * 0.50);
+    // Slow-but-monotone improvement: creep up so a factor collapsed near the
+    // minimum by an early transient can recover once convergence resumes.
+    // Without this, a permanently-low alpha (e.g. after a transient jump) keeps
+    // the solver in an ultra-slow regime and the monotone residual decrease
+    // (ratio slightly below 1) never triggers the strong-improvement branch.
+    if (ratio < 1.0)
+        return std::min(max_alpha, safe_alpha * 1.05);
     return safe_alpha;
 }
 
