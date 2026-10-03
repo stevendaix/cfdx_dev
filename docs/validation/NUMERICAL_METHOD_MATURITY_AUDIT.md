@@ -31,7 +31,7 @@ An implementation registry entry never implies validation.
 | N10 difficult meshes | PARTIAL | #423 supplies mesh robustness infrastructure; numerical degradation campaign is not fully integrated |
 | N11 conservation/boundedness | PARTIAL | #479/#480 provide strong diagnostics; full benchmark campaign remains |
 | N12 MMS | PARTIAL | scalar diffusion and analytical campaigns exist; reusable all-equation MMS laboratory is incomplete |
-| N13 cross-backend | PARTIAL | MPI/matrix-free/GPU foundations exist; equivalence campaign is incomplete |
+| N13 cross-backend | IMPLEMENTED — PENDING EXECUTION | Equivalence contract, serial/MPI campaign, assembled/matrix-free operator campaign, deterministic/normal reduction campaign, restart campaign, N-to-M evidence wiring and explicit CUDA BLOCKED semantics are implemented; final status remains execution-dependent and CUDA requires real hardware |
 | N14 reference matrix | PARTIAL | Fluent/VMFL and solver-comparison documents exist; method-level evidence matrix is incomplete |
 | N15 performance | MISSING | scattered benchmarks exist, but no complete reproducible maturity campaign |
 | N16 advanced methods | PLANNED | intentionally deferred by #461 |
