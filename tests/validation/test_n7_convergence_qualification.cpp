@@ -99,7 +99,9 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 struct Solution {
     Field<double,Location::CELL> U_direct;
     Field<double,Location::CELL> U_continuation;
+    Field<double,Location::CELL> U_adaptive;
     IncompressibleSolveResult direct;
+    IncompressibleSolveResult adaptive;
     ContinuationSolveResult continuation;
     std::vector<IncompressibleIteration> adaptive_history;
     FvGeometry geometry;
@@ -161,13 +163,23 @@ Solution solve_n7_case()
     adaptive_controls.adaptive_relaxation.max_alpha_u=0.9;
     adaptive_controls.adaptive_relaxation.min_alpha_p=0.1;
     adaptive_controls.adaptive_relaxation.max_alpha_p=0.5;
-    adaptive_controls.convergence.max_iterations = 300;
+    adaptive_controls.convergence.max_iterations = controls.convergence.max_iterations;
     adaptive_controls.diagnostics.iteration_trace = false;
     Field<double,Location::CELL> Ua(mesh.n_cells(),"U","m/s",3);
     Field<double,Location::CELL> pa(mesh.n_cells(),"p","Pa",1);
     Ua.fill(0.0); pa.fill(0.0);
     const auto adaptive_res =
         solve_steady_incompressible(mesh, Ua, pa, ubc, pbc, adaptive_controls);
+    if (!adaptive_res.converged ||
+        adaptive_res.convergence_status != cfdx::core::ConvergenceStatus::CONVERGED ||
+        adaptive_res.history.empty())
+        throw std::runtime_error(
+            "N7 adaptive relaxation did not reach the production convergence contract");
+    const auto& adaptive_final = adaptive_res.history.back();
+    if (adaptive_final.continuity_linf > controls.convergence.continuity_tolerance ||
+        adaptive_final.momentum_equation_residual > controls.convergence.relative_tolerance)
+        throw std::runtime_error(
+            "N7 adaptive relaxation final physical convergence gates failed");
     controls.adaptive_relaxation.enabled=false;
 
     Field<double,Location::CELL> U_cont(mesh.n_cells(),"U","m/s",3);
@@ -216,8 +228,8 @@ Solution solve_n7_case()
         throw std::runtime_error(message.str());
     }
 
-    return {std::move(U),std::move(U_cont),direct,std::move(continuation_result),
-            adaptive_res.history, build_fv_geometry(mesh)};
+    return {std::move(U),std::move(U_cont),std::move(Ua),direct,adaptive_res,
+            std::move(continuation_result),adaptive_res.history,build_fv_geometry(mesh)};
 }
 
 double kinetic_energy(const Field<double,Location::CELL>& U,const FvGeometry& geometry)
@@ -234,9 +246,13 @@ double kinetic_energy(const Field<double,Location::CELL>& U,const FvGeometry& ge
 double centre_component(const Field<double,Location::CELL>& U,bool x_component)
 {
     constexpr std::size_t n=32;
-    const std::size_t i=n/2-1;
-    const std::size_t j=n/2-1;
-    return U.component_data(x_component ? 0 : 1)[j*n+i];
+    const std::size_t i0=n/2-1;
+    const std::size_t i1=n/2;
+    const std::size_t j0=n/2-1;
+    const std::size_t j1=n/2;
+    const double* values=U.component_data(x_component ? 0 : 1);
+    return 0.25*(values[j0*n+i0]+values[j0*n+i1]+
+                 values[j1*n+i0]+values[j1*n+i1]);
 }
 
 } // namespace
@@ -277,6 +293,8 @@ int main()
         const double direct_v=centre_component(result.U_direct,false);
         const double continuation_u=centre_component(result.U_continuation,true);
         const double continuation_v=centre_component(result.U_continuation,false);
+        const double adaptive_u=centre_component(result.U_adaptive,true);
+        const double adaptive_v=centre_component(result.U_adaptive,false);
 
         // Independent QoI: the converged Re=100 cavity centre velocity remains
         // close to the published Ghia reference while continuation/adaptive
@@ -287,9 +305,16 @@ int main()
 
         constexpr double ghia_u=-0.20581;
         constexpr double ghia_v=0.05454;
+        // The QoI is sampled at the physical domain centre from the four
+        // surrounding cell centres. Keep the reference tolerance explicit and
+        // unchanged here; it is a reference-comparison gate, not a convergence
+        // tolerance, and must be tightened only from measured resolution evidence.
         if (std::abs(continuation_u-ghia_u) > 0.15 ||
             std::abs(continuation_v-ghia_v) > 0.15)
             throw std::runtime_error("N7 Ghia centre-velocity QoI gate failed");
+        if (std::abs(adaptive_u-direct_u) > 2e-5 ||
+            std::abs(adaptive_v-direct_v) > 2e-5)
+            throw std::runtime_error("N7 adaptive-relaxation QoI mismatch");
 
         std::size_t adaptive_changes=0;
         const auto& adaptive_history = result.adaptive_history;
