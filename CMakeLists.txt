@@ -692,6 +692,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # without conflating unit/regression coverage with numerical verification.
     add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
     set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
+    set_tests_properties(test_backend_equivalence test_n13_restart_equivalence
+        PROPERTIES LABELS "phase13;validation;n13")
     set_tests_properties(test_mms_scalar_diffusion
         test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
         test_thermal_vv test_radiation_vv test_s2s_radiation_vv test_thermal_radiation_model_matrix
