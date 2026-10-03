@@ -205,6 +205,71 @@ int main() {
         EXPECT_TRUE(!pre.update_values(changed));
     });
 
+    run_case("numeric_refresh_updates_values_without_rebuild", [&] {
+        const std::vector<double> qdiag{2.0, 5.0};
+        auto solve_P = [](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) z(i) = rhs(i);
+            return true;
+        };
+
+        LscBfbtSchurApproximation pre(
+            LscBfbtSchurApproximation::Mode::BFBT, solve_P, qdiag);
+        EXPECT_TRUE(pre.setup(blocks));
+
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.4;
+        Vector before(2, 0.0);
+        EXPECT_TRUE(pre.apply(rhs, before));
+
+        const auto D_changed = make_sparse(2, 2, {
+            {0, 0, 1.2}, {0, 1, 0.25}, {1, 0, 0.5}, {1, 1, 1.0}
+        });
+        const BlockOperator changed(Auu, G, D_changed, C);
+        EXPECT_TRUE(pre.update_values(changed));
+
+        Vector after(2, 0.0);
+        EXPECT_TRUE(pre.apply(rhs, after));
+        EXPECT_TRUE(norm2(after - before) > 1e-12);
+    });
+
+    run_case("exact_schur_numeric_refresh_contract", [&] {
+        ExactSchurApproximation exact(
+            [](const Vector& rhs, Vector& y) {
+                if (y.size() != rhs.size()) y = Vector(rhs.size(), 0.0);
+                for (std::size_t i = 0; i < rhs.size(); ++i) y(i) = rhs(i) / 2.0;
+                return true;
+            });
+
+        EXPECT_TRUE(exact.setup(blocks));
+        Vector p(2, 0.0);
+        p(0) = 1.0;
+        p(1) = -0.5;
+        Vector before(2, 0.0);
+        EXPECT_TRUE(exact.apply_schur(p, before));
+
+        const auto D_changed = make_sparse(2, 2, {
+            {0, 0, 1.2}, {0, 1, 0.25}, {1, 0, 0.5}, {1, 1, 1.0}
+        });
+        const BlockOperator changed(Auu, G, D_changed, C);
+        EXPECT_TRUE(exact.update_values(changed));
+
+        Vector after(2, 0.0);
+        EXPECT_TRUE(exact.apply_schur(p, after));
+        EXPECT_TRUE(norm2(after - before) > 1e-12);
+
+        const auto G_changed = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, 0.5}, {1, 0, 0.25}
+        });
+        const BlockOperator graph_changed(Auu, G_changed, D_changed, C);
+        EXPECT_TRUE(!exact.update_values(graph_changed));
+
+        Vector preserved(2, 0.0);
+        EXPECT_TRUE(exact.apply_schur(p, preserved));
+        EXPECT_NEAR(norm2(preserved - after), 0.0, 1e-14);
+    });
+
     run_case("bfbt_uses_explicit_velocity_scaling", [&] {
         const std::vector<double> qdiag{2.0, 5.0};
         const auto z = run_mode(LscBfbtSchurApproximation::Mode::BFBT, qdiag);
