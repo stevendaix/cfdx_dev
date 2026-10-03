@@ -2052,10 +2052,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // momentum response instead of falling to round-off.
             const auto corrected_grad_p =
                 gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+            const std::array<const Vector*,3> component_field = {
+                &ux, &uy, &uz};
             for (std::size_t d = 0; d < 3; ++d) {
                 hbya[d].assign(mesh.n_cells(), 0.0);
                 for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-                    hbya[d][c] = ux(c) +
+                    hbya[d][c] = (*component_field[d])(c) +
                         rAU[d][c] * corrected_grad_p.component_data(d)[c] *
                             geometry.cell_volumes[c];
             }

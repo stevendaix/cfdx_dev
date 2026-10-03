@@ -146,7 +146,16 @@ IncompressibleSolverControls controls_for(
     c.coupling.n_fractional_steps =
         algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
     c.coupling.coupled_max_iterations = 1000;
-    c.coupling.coupled_linear_tolerance = 1e-9;
+    // The block solve must be at least two orders tighter than the nonlinear
+    // gate it feeds. solve_gmres stops on a 2-norm relative residual while the
+    // acceptance gate is an infinity-norm momentum residual scaled by the RHS
+    // magnitude, so a 1e-9 block tolerance leaves an absolute momentum residual
+    // of order 1e-8 and COUPLED cannot satisfy a 1e-8 relative gate on
+    // Poiseuille no matter how many outer iterations it is given: the state is
+    // frozen and the residual floor is set by the Krylov solve, not the
+    // nonlinearity. The block solve is a direct solve of the coupled system, so
+    // the tolerance is tightened rather than the gate relaxed.
+    c.coupling.coupled_linear_tolerance = 1e-12;
     c.convergence.max_iterations = 1500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;

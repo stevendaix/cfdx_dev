@@ -176,7 +176,7 @@ The failed code has been removed; the current tree contains the precomputation i
 HOMOCOUNT dev_after_2_block_solves=1.0461e-01
 ```
 
-## 5. Current state of the tree
+## 5. Tree state after the first session
 
 Everything in this section is verified against the working tree unless explicitly marked otherwise.
 
@@ -233,7 +233,7 @@ These are code observations, not measured results, and none of them is part of t
 - **Orthogonal area.** The block and the segregated pressure matrix both use `area/d` for the implicit orthogonal coefficient (`:1048`, `:1978`), while the flux uses `(p_N-p_P)/d * A_ortho` with `A_ortho = Sf . e` (`:367`, `:386-388`). Same situation: cross-algorithm consistent, not flux-consistent on non-orthogonal faces.
 - **Volume factor on the boundary pressure diagonal.** `directional_face_coefficient` includes `V` (`:1618-1626`) and the block's fixed-pressure boundary branch includes `V` (`:1155-1163`), but the segregated pressure matrix's fixed-pressure boundary diagonal does not (`:2003-2007`). This is a units-level inconsistency between two operators that the three current benchmarks do not exercise, because `channel_pressure_bc()` is `ZERO_GRADIENT` on every patch (`test_n9_physical_matrix.cpp:176-182`). It would show on any case with a prescribed pressure boundary, Poiseuille-with-outlet-pressure being the obvious internal candidate.
 
-## 6. Verification harness state
+## 6. Verification harness state after the first session
 
 `tests/validation/test_n9_physical_matrix.cpp` is currently instrumented with temporary debug output that is not part of the intended test:
 
@@ -337,39 +337,52 @@ Recorded on the 16x16 cavity, starting `COUPLED` from `SIMPLE`'s converged state
 
 One fact is now established firmly, and it constrains everything else: **the assembled continuity row is the exact operator.** An instrumented comparison of `(A x - b)` against `div(make_rhie_chow_mass_flux(HbyA, p, rAU))` with `HbyA = U + rAU*V*grad p`, evaluated per cell over the whole block, matched to round-off (`worst = 1.2e-9`) on every cell except the gauge reference cell, where the eliminated pressure column makes the comparison meaningless by construction. Since both sides are affine in the unknowns, the block is not assembling the wrong thing.
 
-## 9. Test-suite status of this tree
+## 9. Root cause of the open defect: a component index in the reconstruction
 
-| test | `HEAD` | this tree |
-| --- | --- | --- |
-| `test_n9_physical_matrix` | aborts: "cavity did not converge" | aborts: "Couette did not converge" |
-| `test_couette_quick` | pass | **fail**, `COUPLED/BlockSchur` and `COUPLED/MGR` only |
-| `test_dual_time_navier_stokes` | pass | **fail**, physical step rejected after bounded retries |
-| the other 145 tests | pass | pass |
+`HbyA` on the coupled path was reconstructed as
 
-The two new failures are confined to the `COUPLED` path and are the same defect as section 10, seen more clearly. `test_couette_quick` reports the signature directly: momentum relative residual 8.3e-11, `dU = 0`, `dp = 0`, `reconstructed_velocity_continuity = 2.5e-12`, and `corrected_flux_continuity = flux_velocity_mismatch = 0.0978`. The velocity field is divergence-free and momentum-converged; only the Rhie-Chow flux carries the residual. The block sits on a state it considers converged while the flux operator says otherwise.
+```cpp
+for (std::size_t d = 0; d < 3; ++d)
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+        hbya[d][c] = ux(c) + rAU[d][c] * grad_p_d[c] * V_c;
+```
 
-Isolated by bisection: the failures are **not** caused by 7.7, which was disabled and re-tested. They come from one of the changes that affect only `COUPLED` — 7.1, 7.2, 7.3, 7.5 or 7.6.
+`ux(c)` is the **x** component for every `d`. The y and z rows of the reconstructed field were therefore `u_x` plus a y-momentum pressure response, instead of `u_y` plus it. The reconstruction is the field the continuity residual is measured on and the field the next iteration's momentum assembly consumes, so the outer loop was being driven by a flux whose transverse components were wrong by the full streamwise velocity. On Couette that is a 100% error in the transverse flux, which is why `flux_velocity_mismatch` was 0.0978 while `reconstructed_velocity_continuity` was 2.5e-12.
 
-## 10. Open defect: the block satisfies its system but the measured continuity residual does not
+This is why sections 8 and 10 looked contradictory. The block rows were exact and satisfied; the quantity the outer loop measured was built from a corrupted field, so it was a different operator from the one the block enforces. Both premises were true and they were about different things.
 
-This is the remaining blocker and it is not yet explained.
+Fixed by selecting the component field per direction (`ux`, `uy`, `uz`). With that one line corrected, `test_couette_quick` and `test_dual_time_navier_stokes` both pass again, and the coupled cavity residual falls to the same order as the segregated paths.
 
-After a converged block solve the outer loop rebuilds `mass_flux` from `HbyA = U + rAU*V*grad p` and reports `div(mass_flux)` as the continuity residual. That residual stays at 0.04 to 0.10 while the block's own rows are satisfied: `COUPLED_LINEAR_TRUE_RESIDUAL` reports `||b - A x||` relative below the requested 1e-9, in 20 to 34 GMRES iterations, and the post-solve gate re-derives that residual independently.
+## 10. Second blocker: the block Krylov tolerance was looser than the nonlinear gate
 
-The two operators were shown to be the same affine function on the pre-solve state (section 8). Two affine functions that agree at one point agree everywhere, so one of the two premises must be wrong. Candidates, with the evidence against each:
+After the reconstruction fix, `COUPLED` converged on Couette and on the cavity but not on Poiseuille. The history is unambiguous and is not a convergence problem at all:
 
-- **The gauge reference cell.** `reference_value = 0`, the constraint row pins `p(0) = 0` exactly, and the dropped column contributes nothing. Ruled out for the cavity (all boundary fluxes vanish there, so `sum_c div_c = 0` forces `div_0 = 0` once the others are satisfied), and the worst cell is 249, not 0. Not fully ruled out for a channel with prescribed through-flow, where `sum_c div_c` equals the net boundary mass flux rather than zero.
-- **Duplicate `(row, col)` entries.** The momentum response pushes each pressure column twice per face. `SparseMatrix::finalize` keeps duplicates unsummed, but every consumer sums them, and the pre-solve comparison was exact.
-- **The frozen non-orthogonal remainder.** Identically zero on the cavity (orthogonal mesh), so it cannot explain a post-solve difference there.
-- **`rAU`.** Both the block and the outer loop take it from the same relaxed diagonal.
-- **The momentum rows.** The pre-solve momentum residual is 3.4e-4, and `momentum_equation_residual_relative` is measured against `result.reference_momentum_residual`, captured from the *pre-solve* state at iteration 1. A gate that compares a residual against itself can report convergence while the absolute residual is orders of magnitude above tolerance. If the converged `SIMPLE` state satisfies the momentum equations only to 3.4e-4 absolute, a block that solves them exactly *must* move the field, and the 2.1e-2 deviation is that move rather than an assembly error. That would make section 10 and the `HOMOCOUNT` gate a question about what "the same fixed point" means for an algorithm whose momentum solve is not under-relaxed, not about the continuity operator.
+```
+it=1500 cont=2.02e-10 contnorm=3.20e-11 mom=7.08e-08 momrel=7.08e-08 vel=0 dp=0
+```
 
-## 11. Ordered next steps
+Continuity is converged by seven orders of magnitude, the state is frozen (`vel = 0`, `dp = 0`), and only the momentum residual sits at 7.1e-8 against a 1e-8 gate. A frozen state means the outer Picard iteration has nothing left to do: the floor is set by the block's own linear solve.
 
-1. Settle section 10 before touching anything else. The cheapest discriminator: run the same `COUPLED` case with 7.5 disabled (no momentum relaxation in the block). If the measured residual goes to zero, the momentum rows and the pressure operator are inconsistent with each other inside the block and 7.5 was masking it rather than causing it. If it does not, the disagreement is in the flux reconstruction and the post-solve `(A x - b)` versus `div(phi)` comparison has to be run at the block's solution rather than at its input.
-2. Report the reference cell explicitly. `corrected_flux_continuity_linf` currently mixes a constrained maximum with one unconstrained cell. Either exclude `pressure_reference_cell` from the reported continuity measures, or enforce its divergence by moving the gauge constraint onto the pressure level instead of onto a continuity row. Decide this before any convergence gate is trusted.
-3. Make `coupled_matrix_summary` usable: drop the unused `rau3` and `wd`, fix the literal `\n` in the `COUPLED_PRECONDITIONER` line, and drop `rhie_chow_schur_vs_algebraic_diag_delta` — the supplied diagonal is overwritten with 1.0 at the reference cell before the preconditioner call, so that metric is contaminated by the gauge row.
-4. Re-run the skew campaign. Neither `docs/validation/PHASE3_6_SKEW_CAMPAIGN.md` (a Laplacian operator sweep, no pressure-velocity coverage) nor `docs/validation/LEVEL_C_COUPLED.md` (turbulence/radiation/CHT) covers `COUPLED`. The only skew exposure in the repository is `make_channel_mesh(12,16,0.25)` inside the N9 test. Sections 7.3 and 7.4 are exactly what skewed meshes expose.
-5. Once `COUPLED` converges, restore the full cross-algorithm matrix and check the segregated paths for regressions from 7.4, the skew cases in particular, since that is the only place the Jacobian change bites.
+The cause is a norm mismatch between the two contracts. `solve_gmres` stops on a 2-norm relative residual; the acceptance gate compares an infinity-norm momentum residual against a tolerance scaled by the momentum RHS magnitude. On this case `||b||_2 ~ 5.5` while `rhs_scale ~ 0.197`, so `coupled_linear_tolerance = 1e-9` permits an absolute residual of order 3e-8 per row — three times what the nonlinear gate allows. No number of outer iterations can close that.
 
-Status: in progress. Sections 7.1 to 7.7 are fixed and measured; section 10 is open. The test suite has two new `COUPLED` failures, section 9. `tests/validation/test_n9_physical_matrix.cpp` is back to its committed form.
+The block solve is a direct solve of the coupled system and simply has to be asked for more accuracy, so the fix is on the solver's input, not on the gate: `coupled_linear_tolerance` in the N9 contract goes from 1e-9 to 1e-12, with the reason recorded at the site. `COUPLED` then converges on Poiseuille in 652 outer iterations, fewer than `SIMPLE`'s 780.
+
+## 11. Result
+
+`test_n9_physical_matrix` passes for the first time on this branch. It was red at `HEAD`, where it aborted with "cavity did not converge" and never reached the cross-algorithm equivalence section. The full suite is **169/169**.
+
+What the gate now checks and passes, for all six algorithms:
+
+- physical convergence on Couette, Poiseuille and cavity, with `continuity_linf` and `momentum_residual` both under 1e-7;
+- analytic L2 against the exact profiles, 2e-3 on Couette and 5e-3 on Poiseuille, independent of the algorithm;
+- cross-algorithm physical equivalence against `SIMPLE`: 2e-4 on Couette, 2e-4 on Poiseuille, 5e-3 on the cavity — this is the requirement the whole campaign exists for, and `COUPLED` now satisfies it;
+- the controlled skew campaign at `make_channel_mesh(12,16,0.25)` for all six algorithms: convergence, 2e-2 analytic L2, and 3e-2 physical equivalence with the unskewed reference.
+
+No tolerance was relaxed and no gate was weakened. The only contract change is the tightened block Krylov tolerance, which is a solver input.
+
+## 12. What is still worth doing
+
+1. Report the reference cell explicitly. `corrected_flux_continuity_linf` currently mixes a constrained maximum with one unconstrained cell: the block replaces the reference continuity row with the pressure gauge, so `div` there is not enforced by anything. It is currently masked by mass conservation at a converged state, and the N9 benchmarks happen to have vanishing net boundary flux, but a channel with prescribed through-flow is not guaranteed to. Either exclude `pressure_reference_cell` from the reported continuity measures or enforce its divergence by putting the gauge constraint on the pressure level instead of on a continuity row.
+2. Make `coupled_matrix_summary` usable: drop the unused `rau3` and `wd`, fix the literal `\n` in the `COUPLED_PRECONDITIONER` line, and drop `rhie_chow_schur_vs_algebraic_diag_delta` — the supplied diagonal is overwritten with 1.0 at the reference cell before the preconditioner call, so that metric is contaminated by the gauge row.
+3. Give the block linear tolerance a floor relative to the nonlinear gate. The Poiseuille failure of section 10 was a contract mismatch between a 2-norm Krylov stop and an infinity-norm acceptance measure. The N9 contract now carries the correct value, but nothing in the solver enforces that the block solve is tighter than the gate it feeds, and a default that can be set too loose will reproduce this failure on the next case.
+4. Extend the campaign. Neither `docs/validation/PHASE3_6_SKEW_CAMPAIGN.md` (a Laplacian operator sweep, no pressure-velocity coverage) nor `docs/validation/LEVEL_C_COUPLED.md` (turbulence/radiation/CHT) covers `COUPLED`; the only skew exposure in the repository is the single case inside the N9 test. A pressure-driven channel with a fixed outlet pressure would exercise the fixed-pressure boundary branch of 7.4, which the current three benchmarks never touch because they all use zero-gradient pressure.
