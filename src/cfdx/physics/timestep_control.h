@@ -15,6 +15,15 @@
 
 namespace cfdx::physics {
 
+// Failure class used only for bounded nonlinear continuation. Permanent
+// geometry/data/diagnostic errors remain std::runtime_error (or more specific
+// standard exceptions) and must never be hidden by the retry controller.
+class NonlinearRetryableFailure : public std::runtime_error {
+public:
+    explicit NonlinearRetryableFailure(const std::string& message)
+        : std::runtime_error(message) {}
+};
+
 enum class TimeStepChangeReason {
     Initial,
     TargetCfl,
