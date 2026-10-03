@@ -96,14 +96,15 @@
         "tests/unit/test_temporal_history.cpp",
         "tests/validation/test_discretization_verification.cpp",
         "tests/validation/test_temporal_order_matrix.cpp",
-        "tests/validation/test_transient_mms.cpp"
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ],
       "gaps": [
         "explicit history lifecycle",
         "restart-history evidence",
         "variable-step consistency",
         "RK2/RK3 decision/implementation",
-        "full 3-D transient MMS matrix and a stiff Newton-based temporal sweep (implicit Picard of advance_time is limited to dt=O(h) on spatially fine operators)"
+        "3-D transient MMS + stiff Newton-based temporal sweep (production-FVM 1-D transient MMS, Richardson-on-solutions order gates and exact history restart are closed)"
       ]
     },
     {
