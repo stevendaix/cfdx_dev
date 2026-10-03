@@ -172,6 +172,7 @@ private:
     PressureSolve pressure_solve_;
     std::vector<double> q_diagonal_;
     std::vector<double> q_inverse_;
+    GraphSignature graph_signature_{};
 };
 
 using LeastSquaresCommutatorSchurApproximation = LscBfbtSchurApproximation;
