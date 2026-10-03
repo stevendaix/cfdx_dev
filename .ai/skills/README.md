@@ -1,8 +1,8 @@
-# CFDX Core Skills
+# CFDX Skills
 
-Phase B provides concrete reusable, vendor-neutral skills used by the CFDX agents.
+The `.ai/skills/` tree contains small, vendor-neutral, composable skills used by CFDX agents.
 
-## Core skills
+## Core engineering skills
 
 - `repository-navigation` — establish authoritative repository context.
 - `code-search` — layered textual/structural search.
@@ -13,14 +13,21 @@ Phase B provides concrete reusable, vendor-neutral skills used by the CFDX agent
 - `ci-analysis` — GitHub Actions diagnosis.
 - `code-review` — independent change/evidence review.
 
-## Skill composition
+## Foundational CFD/numerical skills
 
-Core skills are deliberately small and composable. Agents may combine them with later CFD/numerical skills. Skills do not own repository state and do not replace the canonical source tree.
+- `fvm-fundamentals` — conservative finite-volume formulation and discrete balance.
+- `mesh-topology-quality` — topology, geometry, metrics and mesh-quality reasoning.
+- `gradients-reconstruction` — Green–Gauss, least-squares, weighted LS, conditioning and reconstruction separation.
+- `boundary-conditions` — mathematical BC semantics and discrete boundary contributions.
+- `face-interpolation-fluxes` — face values, numerical fluxes, conservation and boundedness.
+- `numerical-evidence` — implementation → testing → verification → validation → qualification evidence ladder.
 
-## Evidence
+## Composition and evidence
 
-Every skill must distinguish implementation, testing, verification, validation and qualification. Numerical claims require the applicable numerical/V&V evidence rather than inference from software behavior alone.
+Skills are deliberately small and composable. Agents may combine them for a task instead of relying on a monolithic prompt. Skills do not own repository state and do not replace the canonical CFDX source tree.
+
+Every numerical skill must distinguish implementation, testing, verification, validation and qualification. Numerical claims require explicit evidence: method/configuration, mesh/refinement, metric/reference, tolerance, commit/PR and limitations.
 
 ## Next
 
-The next skill layer is CFD/numerical: FVM, gradients/reconstruction, mesh, boundary conditions, interpolation/fluxes, pressure-velocity coupling, temporal discretisation, linear/nonlinear solvers, turbulence, wall distance, multiphysics, conservation/boundedness and validation.
+Further CFD/numerical skills will cover pressure–velocity coupling, temporal discretisation, linear/nonlinear solvers, AMG/Schur/preconditioning, turbulence, wall distance, multiphysics, conservation/boundedness and V&V workflows.
