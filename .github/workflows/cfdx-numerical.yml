@@ -67,14 +67,16 @@ jobs:
             grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 150 || true
           fi
 
+      - name: Package numerical build
+        if: steps.build.outcome == 'success'
+        run: tar -czf numerical-build.tar.gz build build.log
+
       - name: Upload numerical build
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: cfdx-numerical-build-${{ github.sha }}
-          path: |
-            build/
-            build.log
+          path: numerical-build.tar.gz
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -142,6 +144,9 @@ jobs:
         with:
           name: cfdx-numerical-build-${{ github.sha }}
           path: .
+
+      - name: Restore numerical build permissions
+        run: tar -xzf numerical-build.tar.gz
 
       - name: Run ${{ matrix.level }} tests
         id: level_tests
