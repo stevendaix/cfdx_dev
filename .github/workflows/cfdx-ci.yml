@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
 
       - name: Restore compiler cache
         uses: actions/cache@v4
@@ -44,6 +44,14 @@ jobs:
         run: |
           ccache --zero-stats
           ccache --max-size=1G
+
+      - name: Restore Python package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cfdx-pip-${{ runner.os }}-${{ hashFiles('tests/python/**', 'scripts/**') }}
+          restore-keys: |
+            cfdx-pip-${{ runner.os }}-
 
       - name: Install Python mesh/I/O stack
         run: |
