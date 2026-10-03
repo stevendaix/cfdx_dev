@@ -79,7 +79,7 @@ def main():
     for path in known:
         row = conn.execute("SELECT id FROM tests WHERE file_id IN (SELECT id FROM files WHERE path=?)", (path,)).fetchone()
         if row: test_id[path] = row[0]
-    validation_id = {r["path"]: r["id"] for r in conn.execute("SELECT id,path FROM validation_cases").fetchall()}
+    validation_id = {path: vid for vid, path in conn.execute("SELECT id,path FROM validation_cases").fetchall()}
 
     # A test source explicitly defines the symbols in that same source file.
     # This is traceability, not execution/coverage proof.
