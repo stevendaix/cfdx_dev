@@ -168,6 +168,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/dual_time_physical_lifecycle.h
     src/cfdx/physics/dual_time_navier_stokes.h
     src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/continuation.h
     src/cfdx/physics/forces.h
     src/cfdx/physics/local_time_stepping.h
     src/cfdx/physics/low_mach.h
@@ -503,11 +504,19 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
+    add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
+    add_cfdx_test(test_convergence_monitor tests/unit/test_convergence_monitor.cpp)
+    add_executable(test_n7_convergence_qualification tests/validation/test_n7_convergence_qualification.cpp)
+    target_link_libraries(test_n7_convergence_qualification PRIVATE cfdx_core)
+    target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
+    set_tests_properties(test_n7_convergence_qualification PROPERTIES
+        LABELS "n7;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
