@@ -1,6 +1,5 @@
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
-#include "cfdx/core/mesh.h"
 #include "common/test_harness.h"
 
 using namespace cfdx::physics;
