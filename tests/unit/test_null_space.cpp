@@ -151,7 +151,9 @@ int main() {
         EXPECT_TRUE(scaled.applied);
         EXPECT_TRUE(scaled.row_scale[0] > 1.0e7);
         EXPECT_TRUE(scaled.row_scale[1] < 1.0e-3);
-        EXPECT_TRUE(scaled.column_scale[0] < 1.0e-3);
+        // Column 0 also carries the O(1e3) entry A(1,0), so its maximum sets
+        // the scale to exactly 1e-3 rather than the tiny A(0,0) magnitude.
+        EXPECT_NEAR(scaled.column_scale[0], 1.0e-3, 1.0e-15);
         EXPECT_TRUE(std::isfinite(scaled.matrix(0, 1)));
     });
 
