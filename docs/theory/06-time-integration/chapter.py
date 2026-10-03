@@ -152,3 +152,23 @@ GE = 1-lam*dt
 GI = 1/(1+lam*dt)
 GCN = (1-0.5*lam*dt)/(1+0.5*lam*dt)
 assert abs(GE) <= 1 and abs(GI) <= 1 and abs(GCN) <= 1
+
+
+# %% [markdown]
+# ## 6.14 Second-pass temporal contracts
+#
+# The temporal method is not fully defined by its coefficient formula. The implementation contract also includes history lifecycle, bootstrap, variable-step behaviour, restart state and timestep-control semantics.
+#
+# For BDF2 with constant (Delta t),
+# [
+# rac{3U^{n+1}-4U^n+U^{n-1}}{2Delta t}=mathcal R(U^{n+1}).
+# ]
+# The first step requires a declared bootstrap method; it must not silently access uninitialised history.
+#
+# For variable time step, the BDF coefficients depend on the step ratio (r=Delta t_n/Delta t_{n-1}). A variable-step implementation must therefore document the actual coefficient formula and verify it against polynomial exactness.
+#
+# Restart completeness requires all history fields and controller state needed by the selected method. Replacing (U^{n-1}) by (U^n) after restart changes the numerical method even if the instantaneous field is identical.
+#
+# Adaptive CFL/timestep changes must record both the selected value and the reason for the change. Stagnant or degenerate cells must have an explicit policy; an artificial huge characteristic time must not silently alter the global controller.
+#
+# These contracts are tracked with Issue #60 and N5/N6 of Issue #461.
