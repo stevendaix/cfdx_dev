@@ -168,9 +168,24 @@ The next PR should be considered complete when it provides:
 
 This PR intentionally stops at the campaign design and evidence wiring. It does not claim N8 qualification before the executable production campaign has been run.
 
+## Complete solver/preconditioner model matrix
+
+N8 closure now treats the campaign as a **model qualification matrix**, not only a set of physical smoke cases. The executable campaign requires all of the following families to be present and passing:
+
+- full pressure-velocity matrix: SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and COUPLED;
+- linear solver families: CG, BiCGStab, GMRES and FGMRES;
+- AMG/preconditioner families: native AMG, smoothed aggregation AMG, FieldSplit, coupled Block-Schur and MGR;
+- Schur families: exact oracle, SIMPLE/SIMPLEC, LSC and BFBt, including null-space and quantitative comparison tests;
+- production 4N Schur/AMG benchmark;
+- Couette, Poiseuille, Ghia Re=100 and controlled skew/non-orthogonal physical cases.
+
+The full pressure-velocity executable is registered separately as `test_n8_pressure_velocity_matrix`; it intentionally runs `test_phase9_acceptance` **without** `--quick`, because the quick PR smoke test does not exercise SIMPLEC, PIMPLE and fractional-step.
+
+A missing model test is an **INCOMPLETE** campaign, never an implicit pass. The resulting JSON report records the model families covered in addition to individual CTest results.
+
 ## Executable campaign layer
 
-This PR now contains the first executable qualification layer in addition to the campaign specification.
+This PR now contains the executable qualification layer and the complete N8 model-coverage gate in addition to the campaign specification.
 
 - `scripts/n8_physical_qualification.py` reuses the existing CTest validation executables; it does not duplicate their physics or solver implementations.
 - CMake registers `test_n8_physical_qualification` when Python is available.
@@ -179,4 +194,4 @@ This PR now contains the first executable qualification layer in addition to the
 - The report is written to `<build-dir>/n8_physical_qualification.json` and records pass/fail, elapsed time, captured output, and campaign policy metadata.
 - No numerical tolerance is changed, no validation case is disabled, and no solver fallback is introduced by the campaign layer.
 
-This is intentionally a first executable layer. The next iterations should extend the machine-readable evidence with explicit solver/preconditioner metadata and quantitative LSC/BFBt-vs-exact-Schur and difficult-matrix AMG evidence, using the existing tests as the numerical oracles.
+The campaign is intentionally strict about model presence: it cannot pass while an exposed N8 solver/preconditioner family is absent from the CTest matrix. The quantitative tests remain the numerical oracles for Schur approximation quality and AMG robustness; the campaign does not invent new tolerances or replace those oracles.
