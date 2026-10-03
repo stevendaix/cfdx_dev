@@ -248,6 +248,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/source_term.h
     src/cfdx/core/numerics/temporal.h
     src/cfdx/core/numerics/convection.h
+    src/cfdx/core/numerics/backend_equivalence.h
     src/cfdx/physics/incompressible.h
     src/cfdx/physics/pressure_velocity.h
     src/cfdx/physics/pressure_velocity_algorithms.h
@@ -450,6 +451,10 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
+    add_cfdx_test(test_backend_equivalence tests/unit/test_backend_equivalence.cpp)
+    add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+    target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
+    add_cfdx_test(test_n13_restart_equivalence tests/validation/test_n13_restart_equivalence.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
@@ -685,6 +690,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
+    add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
+    set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
+    set_tests_properties(test_backend_equivalence test_n13_restart_equivalence
+        PROPERTIES LABELS "phase13;validation;n13")
     set_tests_properties(test_mms_scalar_diffusion
         test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
         test_thermal_vv test_radiation_vv test_s2s_radiation_vv test_thermal_radiation_model_matrix
@@ -708,6 +717,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+        add_executable(test_n13_mpi_equivalence tests/validation/test_n13_mpi_equivalence.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
         add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
@@ -727,10 +737,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         endif()
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n13_mpi_equivalence PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_krylov_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_phase8_mpi_poisson PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_n13_mpi_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_krylov_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
@@ -740,6 +752,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_mpi_deterministic
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n13_mpi_equivalence
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n13_mpi_equivalence> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n13_mpi_equivalence PROPERTIES LABELS "phase13;validation;n13")
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
