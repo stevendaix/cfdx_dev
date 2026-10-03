@@ -159,10 +159,10 @@ Solution solve_n7_case()
     // with the fixed coupling factors.
     IncompressibleSolverControls adaptive_controls = controls;
     adaptive_controls.adaptive_relaxation.enabled = true;
-    adaptive_controls.adaptive_relaxation.min_alpha_u=0.2;
-    adaptive_controls.adaptive_relaxation.max_alpha_u=0.9;
-    adaptive_controls.adaptive_relaxation.min_alpha_p=0.1;
-    adaptive_controls.adaptive_relaxation.max_alpha_p=0.5;
+    adaptive_controls.adaptive_relaxation.min_alpha_u=0.6;
+    adaptive_controls.adaptive_relaxation.max_alpha_u=0.8;
+    adaptive_controls.adaptive_relaxation.min_alpha_p=0.25;
+    adaptive_controls.adaptive_relaxation.max_alpha_p=0.35;
     adaptive_controls.convergence.max_iterations = controls.convergence.max_iterations;
     adaptive_controls.diagnostics.iteration_trace = false;
     Field<double,Location::CELL> Ua(mesh.n_cells(),"U","m/s",3);
@@ -335,8 +335,8 @@ int main()
         if (adaptive_history.size() < 3)
             throw std::runtime_error("N7 adaptive relaxation produced no history");
         for (const auto& h : adaptive_history) {
-            if (h.effective_alpha_u < 0.2 || h.effective_alpha_u > 0.9 ||
-                h.effective_alpha_p < 0.1 || h.effective_alpha_p > 0.5 ||
+            if (h.effective_alpha_u < 0.6 || h.effective_alpha_u > 0.8 ||
+                h.effective_alpha_p < 0.25 || h.effective_alpha_p > 0.35 ||
                 !std::isfinite(h.nonlinear_convergence_metric))
                 throw std::runtime_error("N7 adaptive relaxation bounds/history failed");
             if (std::abs(h.effective_alpha_u-0.7) > 1e-12 ||
