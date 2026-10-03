@@ -35,6 +35,13 @@ Skills are deliberately small and composable. Agents may combine them for a task
 
 Every numerical skill must distinguish implementation, testing, verification, validation and qualification. Numerical claims require explicit evidence: method/configuration, mesh/refinement, metric/reference, tolerance, commit/PR and limitations.
 
+## Domain numerical skills
+
+- `turbulence-modelling` — turbulence equations, closure terms, wall treatment and model evidence.
+- `wall-distance` — distance-field accuracy, monotonicity, positivity and reconstruction evidence.
+- `multiphysics-coupling` — coupled-field equations, exchange conservation and coupling verification.
+- `conservation-boundedness` — discrete conservation, flux antisymmetry, positivity and boundedness.
+
 ## Next
 
-Further CFD/numerical skills will cover turbulence, wall distance, multiphysics, conservation/boundedness and V&V workflows.
+Further skills will cover V&V workflows, code intelligence, MCP operation, GUI/TUI and runtime/development agents.
