@@ -37,6 +37,7 @@ theory/README
 user/README
 developer/README
 vv/README
+validation/README
 ```
 
 ## Theory course
@@ -100,3 +101,65 @@ Existing Markdown under `docs/application`, `docs/development`, `docs/validation
 ## Publication rule
 
 Generated HTML, figures, tables and reports are outputs. Source equations, source data and executable experiments remain version-controlled inputs. V&V status comes from evidence, not manually copied prose.
+
+
+## Developer Guide chapters
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+developer/00-development-philosophy/chapter
+developer/01-repository-architecture/chapter
+developer/02-build-system/chapter
+developer/03-code-architecture/chapter
+developer/04-cpp-guidelines/chapter
+developer/05-python-bindings/chapter
+developer/06-data-model-and-io/chapter
+developer/07-numerical-method-registry/chapter
+developer/08-physics-development/chapter
+developer/09-mesh-and-geometry-development/chapter
+developer/10-linear-algebra-development/chapter
+developer/11-solver-development/chapter
+developer/12-testing/chapter
+developer/13-debugging/chapter
+developer/14-performance/chapter
+developer/15-parallelism/chapter
+developer/16-gpu/chapter
+developer/17-ci-cd/chapter
+developer/18-pr-workflow/chapter
+developer/19-release-and-maintenance/chapter
+```
+
+## V&V Guide chapters
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+vv/00-vv-governance/chapter
+vv/01-requirements-and-claims/chapter
+vv/02-code-verification/chapter
+vv/03-solution-verification/chapter
+vv/04-mms/chapter
+vv/05-spatial-convergence/chapter
+vv/06-temporal-convergence/chapter
+vv/07-conservation/chapter
+vv/08-boundedness/chapter
+vv/09-linear-solver-verification/chapter
+vv/10-pressure-velocity-verification/chapter
+vv/11-gradient-verification/chapter
+vv/12-diffusion-verification/chapter
+vv/13-convection-verification/chapter
+vv/14-turbulence-verification/chapter
+vv/15-thermal-verification/chapter
+vv/16-radiation-verification/chapter
+vv/17-multiphysics-verification/chapter
+vv/18-benchmark-validation/chapter
+vv/19-qualification-matrix/chapter
+vv/20-evidence-and-reproducibility/chapter
+```
+
+## Executed validation evidence
+
+The methodology in `docs/vv/` is deliberately separated from executed evidence in `docs/validation/`. Validation artifacts must identify the revision, setup, mesh, numerical method, oracle, metric, acceptance criterion and execution environment.
