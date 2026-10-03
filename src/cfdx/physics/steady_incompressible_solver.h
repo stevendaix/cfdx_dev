@@ -18,6 +18,7 @@
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
+#include "cfdx/cfdx/core/utils/convergence_monitor.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -183,6 +184,8 @@ struct IncompressibleSolveResult {
     std::vector<IncompressibleIteration> history;
     double reference_momentum_residual = 0.0;
     cfdx::core::LinearSolverContextStats pressure_linear_context;
+    cfdx::core::ConvergenceStatus convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+    std::string convergence_reason;
 };
 
 inline void validate_incompressible_controls(
@@ -1357,6 +1360,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     const FvGeometry geometry = build_fv_geometry(mesh);
     const double mu_eff = controls.density *
         (controls.kinematic_viscosity + controls.turbulent_viscosity);
+    cfdx::core::ConvergenceMonitorControls monitor_controls;
+    monitor_controls.residual.absolute_tolerance = controls.convergence.relative_tolerance;
+    monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
+    monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
+    monitor_controls.minimum_iterations = controls.convergence.minimum_iterations;
+    monitor_controls.max_iterations = controls.convergence.max_iterations;
+    // Conservative defaults: stagnation is diagnostic, not a shortcut around
+    // the configured residual/conservation gates. Divergence is detected only
+    // after repeated growth and never by relaxing a tolerance.
+    monitor_controls.stagnation_window = 10;
+    monitor_controls.stagnation_relative_improvement = 1e-3;
+    monitor_controls.divergence_window = 3;
+    monitor_controls.divergence_growth_factor = 10.0;
+    cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
 
     bool has_fixed_pressure_boundary = false;
     for (const auto& [name, bc] : pressure_bcs) {
@@ -2301,14 +2318,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         else if (debug_cell_enabled)
             debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
+        const double nonlinear_metric = std::max({
+            h.momentum_residual,
+            h.momentum_equation_residual_relative,
+            h.pressure_residual,
+            h.velocity_change_inf,
+            h.pressure_change_inf});
+        const auto convergence_report = convergence_monitor.update({
+            iter,
+            nonlinear_metric,
+            h.continuity_normalized,
+            {}});
         const bool converged_now =
-            iter >= minimum_outer_correctors && iter > 1 &&
-            h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
-            h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_normalized <= controls.convergence.continuity_tolerance &&
-            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
-            h.pressure_change_inf <= controls.convergence.relative_tolerance;
+            iter >= minimum_outer_correctors &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
@@ -2751,10 +2774,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             stop_after_iteration = true;
         }
 
+        result.convergence_status = convergence_report.status;
+        result.convergence_reason = convergence_report.reason;
         if (converged_now) {
             result.converged = true;
             result.iterations = iter;
             stop_after_iteration = true;
+        }
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
+            convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED) {
+            result.iterations = iter;
+            break;
         }
         result.iterations = iter;
             transaction.commit();
