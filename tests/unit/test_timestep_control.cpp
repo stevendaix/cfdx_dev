@@ -101,6 +101,40 @@ int main()
         EXPECT_TRUE(controller.history().back().reason == TimeStepChangeReason::NonlinearFailureRollback);
     });
 
+    run_case("nonlinear_retry_reduces_relaxation_deterministically", [] {
+        NonlinearRetryControls c;
+        c.max_retries = 2;
+        c.relaxation_shrink = 0.5;
+        c.minimum_alpha_u = 0.1;
+        c.minimum_alpha_p = 0.05;
+        NonlinearRetryController retry(c);
+        EXPECT_NEAR(retry.alpha_u(0.8), 0.8, 1e-14);
+        EXPECT_TRUE(retry.can_retry());
+        retry.reject();
+        EXPECT_NEAR(retry.alpha_u(0.8), 0.4, 1e-14);
+        EXPECT_NEAR(retry.alpha_p(0.3), 0.15, 1e-14);
+        retry.reject();
+        EXPECT_NEAR(retry.alpha_u(0.8), 0.2, 1e-14);
+        EXPECT_TRUE(!retry.can_retry());
+    });
+
+    run_case("nonlinear_state_rollback_restores_velocity_and_pressure", [] {
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        U.fill(1.0);
+        p.fill(2.0);
+        NonlinearStateRollback transaction(U, p);
+        transaction.begin();
+        U(0, 0) = 9.0;
+        U(1, 1) = 8.0;
+        p(0) = 7.0;
+        transaction.reject();
+        EXPECT_NEAR(U(0, 0), 1.0, 1e-14);
+        EXPECT_NEAR(U(1, 1), 1.0, 1e-14);
+        EXPECT_NEAR(p(0), 2.0, 1e-14);
+        EXPECT_TRUE(!transaction.active());
+    });
+
     run_case("rollback_restores_state_and_temporal_history", [] {
         Field<double, Location::CELL> phi(2, "phi", "1", 1);
         phi(0) = 1.0;
