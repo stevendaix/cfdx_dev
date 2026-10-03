@@ -164,7 +164,10 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
             const auto previous_U = U;
             const auto previous_p = p;
             IncompressibleSolverControls stage_controls = controls;
-            stage_controls.body_force = cfdx::core::Vec3{\n                controls.body_force.x * target,\n                controls.body_force.y * target,\n                controls.body_force.z * target};
+            stage_controls.body_force = cfdx::core::Vec3{
+                controls.body_force.x * target,
+                controls.body_force.y * target,
+                controls.body_force.z * target};
             const auto stage_velocity_bcs = scale_velocity_bcs(target);
 
             IncompressibleSolveResult solver_result;
