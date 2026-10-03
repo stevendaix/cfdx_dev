@@ -482,6 +482,7 @@
       "status": "verified",
       "evidence": [
         "src/cfdx/physics/timestep_control.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_timestep_control.cpp"
       ]
     },
@@ -1040,6 +1041,16 @@
       "evidence": [
         "src/cfdx/physics/timestep_control.h",
         "tests/unit/test_timestep_control.cpp"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "local pseudo-time policy with safe handling of stagnant cells",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/local_time_stepping.h",
+        "tests/unit/test_local_time_stepping.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     }
   ]
