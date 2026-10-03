@@ -195,17 +195,23 @@ int main()
         ScalarBoundaryConditions pbc;
         make_zero_velocity_bcs(ubc, pbc);
 
+        const std::array<std::vector<double>, 3> nan_rAU{
+            std::vector<double>{std::numeric_limits<double>::quiet_NaN()},
+            std::vector<double>{0.25},
+            std::vector<double>{0.25}};
         EXPECT_THROW(
             make_rhie_chow_mass_flux(
-                m, geometry, U, p,
-                {std::numeric_limits<double>::quiet_NaN()},
+                m, geometry, U, p, nan_rAU,
                 1.0, ubc, pbc),
             std::invalid_argument);
 
+        const std::array<std::vector<double>, 3> zero_rAU{
+            std::vector<double>{0.0},
+            std::vector<double>{0.25},
+            std::vector<double>{0.25}};
         EXPECT_THROW(
             make_rhie_chow_mass_flux(
-                m, geometry, U, p,
-                {0.0},
+                m, geometry, U, p, zero_rAU,
                 1.0, ubc, pbc),
             std::invalid_argument);
     });
