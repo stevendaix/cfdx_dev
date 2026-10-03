@@ -207,7 +207,7 @@ public:
             controls.temporal_absolute_tolerance,
             controls.temporal_relative_tolerance);
 
-        const bool temporal_ok = !controls.use_embedded_be_estimator || error.accepted();
+        const bool temporal_ok = !controls.use_embedded_be_estimator || error.normalized_error <= 1.0;
         const bool nonlinear_ok = high.second.converged;
         const bool physical_ok = controls.physical_admissibility
             ? controls.physical_admissibility(high.first)
