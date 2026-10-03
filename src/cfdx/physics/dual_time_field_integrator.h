@@ -29,6 +29,7 @@ struct DualTimeFieldSolveControls {
     double temporal_absolute_tolerance = 1.0e-6;
     double temporal_relative_tolerance = 1.0e-3;
     bool use_embedded_be_estimator = true;
+    std::function<bool(const DualTimeField&)> physical_admissibility;
 };
 
 struct DualTimeFieldStepReport {
@@ -176,8 +177,12 @@ public:
         DualTimeField state_nm1 = history.has_previous
             ? history.previous : history.current;
 
+        DualTimeFieldSolveControls high_controls = controls;
+        high_controls.pseudo_time.physical_scheme = history.has_previous
+            ? controls.pseudo_time.physical_scheme
+            : DualTimePhysicalScheme::BACKWARD_EULER;
         const auto high = solve_one(
-            history.current, history.current, state_nm1, dt, controls, rhs);
+            history.current, history.current, state_nm1, dt, high_controls, rhs);
 
         DualTimeStepControls low_controls = controls.pseudo_time;
         low_controls.physical_scheme = DualTimePhysicalScheme::BACKWARD_EULER;
@@ -191,7 +196,8 @@ public:
                 controls.physical_dt_shrink,
                 controls.temporal_absolute_tolerance,
                 controls.temporal_relative_tolerance,
-                controls.use_embedded_be_estimator
+                controls.use_embedded_be_estimator,
+                controls.physical_admissibility
             }, rhs);
 
         const auto high_values = flatten(high.first);
@@ -203,7 +209,11 @@ public:
 
         const bool temporal_ok = !controls.use_embedded_be_estimator || error.accepted();
         const bool nonlinear_ok = high.second.converged;
-        const bool physical_ok = true;
+        const bool physical_ok = controls.physical_admissibility
+            ? controls.physical_admissibility(high.first)
+            : true;
+        if (!physical_ok)
+            throw DualTimeConvergenceFailure("dual-time physical step rejected by admissibility callback");
 
         DualTimeStepAcceptance gates{temporal_ok, nonlinear_ok, physical_ok};
         const auto accepted = accept_dual_time_field_step(
@@ -211,14 +221,12 @@ public:
             controls.temporal_absolute_tolerance,
             controls.temporal_relative_tolerance);
 
-        double dt_proposed = dt;
-        if (temporal_ok && nonlinear_ok) {
-            dt_proposed = std::min(
-                controls.physical_dt_max, dt * controls.physical_dt_growth);
-        } else {
-            dt_proposed = std::max(
-                controls.physical_dt_min, dt * controls.physical_dt_shrink);
-        }
+        const int method_order = high_controls.pseudo_time.physical_scheme ==
+            DualTimePhysicalScheme::BDF2 ? 2 : 1;
+        const auto proposal = propose_dual_time_physical_step(
+            dt, error.normalized_error, method_order,
+            controls.physical_dt_min, controls.physical_dt_max);
+        const double dt_proposed = proposal.dt;
 
         history.accept(accepted.state, dt);
 
