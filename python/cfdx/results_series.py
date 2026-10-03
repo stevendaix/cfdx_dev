@@ -64,7 +64,7 @@ def validate_physical_time_provenance(series: ResultSeries) -> None:
     missing = [
         frame.path.name
         for frame in series.frames
-        if frame.complete and frame.time_source != "metadata"
+        if frame.time_source != "metadata"
     ]
     if missing:
         raise ValueError(
@@ -93,6 +93,8 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False, req
             try:
                 import pyvista as pv
                 dataset=pv.read(p)
+                if getattr(dataset, "n_points", 0) == 0 and getattr(dataset, "n_cells", 0) == 0:
+                    complete = False
                 fields=tuple(sorted(set(dataset.point_data.keys()) | set(dataset.cell_data.keys())))
                 iteration_value = _metadata_scalar(dataset.field_data, ("iteration","Iteration","step","Step"))
                 metadata_time = _metadata_scalar(dataset.field_data, ("physical_time","PhysicalTime","time","Time","timeValue","TIME"))
