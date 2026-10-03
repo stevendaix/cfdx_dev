@@ -74,7 +74,15 @@ int main(int argc, char** argv)
     if (size != 2) {
         if (rank == 0)
             std::fprintf(stderr, "test_n13_mpi_equivalence requires exactly 2 MPI ranks\n");
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+        // OpenMPI also retains libevent/Open RTE allocations during MPI_Finalize.
+        // They are third-party teardown allocations, not CFDX allocations.
+        __lsan_disable();
+#endif
         mpi_finalize();
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+        __lsan_enable();
+#endif
         return 2;
     }
 
@@ -118,7 +126,16 @@ int main(int argc, char** argv)
 
     const int global_ok = mpi_allreduce_min(local_ok ? 1 : 0);
     if (!global_ok) {
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+        // See the MPI_Init guard above: OpenMPI/Open RTE may allocate during
+        // MPI_Finalize and leave those third-party allocations reachable/leaked
+        // under LeakSanitizer. Keep LSan active for all CFDX work.
+        __lsan_disable();
+#endif
         mpi_finalize();
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+        __lsan_enable();
+#endif
         return 1;
     }
 
@@ -132,6 +149,14 @@ int main(int argc, char** argv)
 
     const int reduction_ok = mpi_allreduce_min(
         (reduction_delta <= 1e-14) ? 1 : 0);
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+    // OpenMPI/Open RTE finalization can retain internal libevent allocations
+    // after MPI_Finalize. Exclude only this third-party teardown phase from LSan.
+    __lsan_disable();
+#endif
     mpi_finalize();
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+    __lsan_enable();
+#endif
     return (reduction_ok && global_ok) ? 0 : 1;
 }
