@@ -166,9 +166,14 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
 
             IncompressibleSolveResult solver_result;
             try {
+                const stage_restart_path =
+                    (stage_index == 1 && attempts == 1) ? restart_path : std::string{};
+                const auto stage_restart_fields =
+                    (stage_index == 1 && attempts == 1)
+                        ? restart_fields : cfdx::io::DatRestartFields{};
                 solver_result = solve_steady_incompressible(
                     mesh, U, p, stage_velocity_bcs, pressure_bcs,
-                    stage_controls, {}, {});
+                    stage_controls, stage_restart_path, stage_restart_fields);
             } catch (const std::runtime_error& error) {
                 U = previous_U;
                 p = previous_p;
