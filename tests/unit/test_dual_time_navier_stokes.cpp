@@ -178,7 +178,7 @@ int main()
         for(std::size_t c=0;c<U.size();++c) {
             for(std::size_t d=0;d<3;++d)
                 max_du=std::max(max_du,std::abs(restarted.U().component_data(d)[c]-reference.U().component_data(d)[c]));
-            max_dp=std::max(max_dp,std::abs(restarted.p(c)-reference.p(c)));
+            max_dp=std::max(max_dp,std::abs(restarted.p()(c)-reference.p()(c)));
         }
         require(max_du<1e-12 && max_dp<1e-12,"restart continuation must reproduce the accepted solution");
         require(a.high_order.converged && b.high_order.converged,"restart solves must converge");
