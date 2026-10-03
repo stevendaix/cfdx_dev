@@ -1,0 +1,108 @@
+name: CFDX CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: cfdx-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, DebugSanitizers]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
+
+      - name: Run fast CTest
+        id: ctest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Run Python regression
+        id: python
+        if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
+        continue-on-error: true
+        run: |
+          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_validation_report.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "build=${{ steps.build.outcome }}"
+          echo "ctest=${{ steps.ctest.outcome }}"
+          echo "python=${{ steps.python.outcome }}"
+          if [[ -f build.log ]]; then
+            echo "=== Build diagnostics ==="
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
+          fi
+          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
+            echo "=== CTest diagnostics ==="
+            tail -n 500 build/Testing/Temporary/LastTest.log
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-ci-${{ matrix.build_type }}-diagnostics
+          path: |
+            build/Testing/
+            build/**/*.log
+            build/compile_commands.json
+            build.log
+          if-no-files-found: ignore
+
+      - name: Final CI gate
+        if: always()
+        run: |
+          if [[ "${{ steps.build.outcome }}" != "success" ||
+                "${{ steps.ctest.outcome }}" != "success" ||
+                "${{ steps.python.outcome }}" == "failure" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+          echo "CFDX CI FINAL DECISION: PASS"
