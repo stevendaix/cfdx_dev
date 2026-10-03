@@ -53,3 +53,75 @@
 # run_campaign.py deliberately never emits PASS or QUALIFIED. Qualification is
 # a V&V decision based on the retained evidence, not a process-exit-code alias.
 #
+
+# %% [markdown]
+# ## Cross-benchmark evidence contract
+#
+# Every campaign record should be sufficient for an independent reviewer to reconstruct what was actually tested.
+#
+# ### A. Frozen case definition
+#
+# Record software revision/build configuration; exact geometry and dimensionality; fluid/material properties and units; governing dimensionless groups; boundary and initial conditions; mesh source/revision/hash and quality metrics; spatial/temporal schemes; gradient/reconstruction and limiter; pressure-velocity algorithm; linear solver/preconditioner; relaxation/CFL/time-step policy; and convergence/stopping criteria.
+#
+# A benchmark name is not a sufficient case definition.
+#
+# ### B. Independent observables
+#
+# Separate solver convergence, conservation/balance, field error or reference-QoI error, mesh/time/model sensitivity, and runtime/performance diagnostics.
+#
+# A physical QoI must never be the only convergence indicator.
+#
+# ### C. Reference provenance
+#
+# Each oracle must be labelled analytical, manufactured, discrete-exact, published experimental/reference data, published CFD/reference-code result, or internal regression baseline.
+#
+# Published CFD values are comparison data, not proof of CFDX correctness. If a reference code is used, preserve its model, mesh assumptions, physical parameters and extraction definition.
+#
+# ### D. Error definitions
+#
+# \[
+# e_Q=\frac{|Q_{CFDX}-Q_{ref}|}{Q_{scale}},
+# \qquad
+# \Delta Q=Q_{CFDX}-Q_{ref}.
+# \]
+#
+# The scale must be declared and the raw CFDX quantity retained.
+#
+# For profiles, retain pointwise errors and norms where appropriate:
+# \[
+# L_2=\left(\frac1N\sum_i e_i^2\right)^{1/2},
+# \qquad
+# L_\infty=\max_i|e_i|.
+# \]
+#
+# ### E. Refinement requirements
+#
+# A steady spatial campaign should normally contain at least three systematically related meshes when observed order is claimed. Temporal order requires at least three relevant time-step levels. Radiation transport claims additionally require angular/model-space refinement when that discretisation controls the error.
+#
+# Coarse/medium/fine must identify actual mesh/time-step identifiers, not labels alone.
+#
+# ### F. Force and flux extraction
+#
+# Force, heat-flux and radiation QoIs must be extracted from CFDX fields independently of any hard-coded expected result. Record pressure and viscous contributions separately whenever both exist.
+#
+# \[
+# \mathbf F=\int_S(-p\mathbf n+\boldsymbol\tau\mathbf n)\,dA.
+# \]
+#
+# The projected coefficient definition, reference area and sign convention must be frozen with the benchmark.
+#
+# ### G. Qualification boundary
+#
+# \`EXECUTED\` means the solver ran and produced an artifact; it is not a physical PASS.
+#
+# \`PASS\` requires the retained artifact to satisfy all declared gates for that benchmark population.
+#
+# \`QUALIFIED\` is a higher-level decision over the declared population. A single successful mesh or parameter point cannot qualify a broader model family.
+#
+# ### H. Next campaign priorities
+#
+# The benchmark suite should be completed in dependency order:
+#
+# **Couette/Poiseuille/Ghia resynchronisation → VMFL036 → NACA0012/BFS → thermal/CHT → radiation → broader turbulence/external-flow populations.**
+#
+# This follows the qualification authority in Issue #118 and the numerical-method dependencies in Issue #461. Open implementation blockers remain visible rather than becoming documentation PASS states.
