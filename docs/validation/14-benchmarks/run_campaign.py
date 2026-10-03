@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the canonical CFDX benchmark campaign and emit machine-readable evidence.
+"""Run the canonical CFDX benchmark campaign and emit machine-readable evidence.\n\nThe campaign is intended to be replayed on a configured validation build or by CI.
 
 This driver does not invent or infer qualification.  It executes the repository's
 existing validation entry points, captures stdout/stderr and records a maturity
