@@ -6,6 +6,7 @@ import importlib.util
 import json
 import pathlib
 import sqlite3
+import sys
 import tempfile
 import unittest
 
@@ -14,6 +15,7 @@ SCRIPT = pathlib.Path(__file__).with_name("index_clang.py")
 SPEC = importlib.util.spec_from_file_location("index_clang", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
