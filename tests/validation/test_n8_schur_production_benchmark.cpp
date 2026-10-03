@@ -109,7 +109,7 @@ int main() {
 
             const auto solve_begin = std::chrono::steady_clock::now();
             const auto result = solve_gmres(
-                A, b, x, 20, 400, 1e-10, &pc);
+                A, b, x, 20, 400, 1e-10, &pc, {}, false);
             const auto solve_end = std::chrono::steady_clock::now();
 
             const double rr = true_relative_residual(A, x, b);
