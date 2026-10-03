@@ -259,6 +259,9 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/finite_volume_transport.h
     src/cfdx/physics/boundary_constraint_fvm.h
     src/cfdx/physics/steady_incompressible_solver.h
+    src/cfdx/physics/dual_time_driver.h
+    src/cfdx/physics/dual_time_adaptive.h
+    src/cfdx/physics/dual_time_field_driver.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
     src/cfdx/physics/sst_solver.h
@@ -462,6 +465,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_mesh_family_volumes tests/numerical/test_mesh_family_volumes.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
+    add_cfdx_test(test_dual_time_stepping tests/unit/test_dual_time_stepping.cpp)
+    add_cfdx_test(test_dual_time_adaptive tests/unit/test_dual_time_adaptive.cpp)
+    add_cfdx_test(test_dual_time_field_driver tests/unit/test_dual_time_field_driver.cpp)
     add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
     add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
