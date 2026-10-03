@@ -31,10 +31,20 @@ class QueryIndexTests(unittest.TestCase):
                     target_symbol_id INTEGER, file_id INTEGER, kind TEXT, line INTEGER, column INTEGER);
                 CREATE TABLE dependencies(id INTEGER PRIMARY KEY, source_file_id INTEGER,
                     target_path TEXT, kind TEXT);
+                CREATE TABLE tests(id INTEGER PRIMARY KEY, file_id INTEGER, name TEXT,
+                    framework TEXT, line_start INTEGER, line_end INTEGER);
+                CREATE TABLE validation_cases(id INTEGER PRIMARY KEY, path TEXT, name TEXT,
+                    category TEXT, status TEXT, source_revision TEXT);
+                CREATE TABLE test_links(test_id INTEGER, symbol_id INTEGER, relation TEXT);
+                CREATE TABLE validation_links(validation_case_id INTEGER, symbol_id INTEGER, relation TEXT);
             """)
             db.execute("INSERT INTO index_metadata VALUES ('repository_revision','unknown')")
             db.execute("INSERT INTO files VALUES (1,'a.py',?)", (MODULE.sha256(source),))
             db.execute("INSERT INTO symbols VALUES (1,1,'function','alpha','alpha',1,4)")
+            db.execute("INSERT INTO tests VALUES (1,1,'alpha_test','python',1,3)")
+            db.execute("INSERT INTO validation_cases VALUES (1,'tests/validation/alpha','Alpha case','unit','verified','unknown')")
+            db.execute("INSERT INTO test_links VALUES (1,1,'defines-symbol')")
+            db.execute("INSERT INTO validation_links VALUES (1,1,'explicit-test-reference')")
             db.commit()
         return db_path
 
@@ -61,6 +71,26 @@ class QueryIndexTests(unittest.TestCase):
             with sqlite3.connect(db) as conn:
                 rows = MODULE.symbols(conn, "alp")
             self.assertEqual(rows[0][1], "alpha")
+
+    def test_test_query_reports_explicit_symbol_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            db = self._db(root)
+            with sqlite3.connect(db) as conn:
+                rows = MODULE.tests(conn, "alpha")
+            self.assertEqual(rows[0][0:3], ("alpha_test", "python", "a.py"))
+            self.assertEqual(rows[0][4], "alpha")
+            self.assertEqual(rows[0][5], "defines-symbol")
+
+    def test_validation_query_reports_explicit_symbol_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            db = self._db(root)
+            with sqlite3.connect(db) as conn:
+                rows = MODULE.validations(conn, "Alpha")
+            self.assertEqual(rows[0][0:4], ("Alpha case", "tests/validation/alpha", "unit", "verified"))
+            self.assertEqual(rows[0][5], "alpha")
+            self.assertEqual(rows[0][6], "explicit-test-reference")
 
 
 if __name__ == "__main__":
