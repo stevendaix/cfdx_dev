@@ -38,6 +38,7 @@ user/README
 developer/README
 vv/README
 validation/README
+references/README
 ```
 
 ## Theory course
