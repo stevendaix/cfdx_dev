@@ -33,7 +33,7 @@
 namespace cfdx {
 namespace io {
 
-static hid_t create_file_access_plist()
+static hid_t writer_create_file_access_plist()
 {
     hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
     if (plist < 0) return -1;
@@ -52,14 +52,14 @@ static hid_t create_file_access_plist()
     return plist;
 }
 
-static hid_t open_file_access_plist()
+static hid_t writer_open_file_access_plist()
 {
-    return create_file_access_plist();
+    return writer_create_file_access_plist();
 }
 
-static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value);
+static herr_t writer_write_attr_str(hid_t loc_id, const char* name, const std::string& value);
 
-static std::uint64_t fnv1a_update(
+static std::uint64_t writer_fnv1a_update(
     std::uint64_t hash, const void* data, std::size_t size)
 {
     const auto* bytes = static_cast<const std::uint8_t*>(data);
@@ -71,7 +71,7 @@ static std::uint64_t fnv1a_update(
 }
 
 template<class T>
-static std::uint64_t fnv1a_update_vector(
+static std::uint64_t writer_fnv1a_update_vector(
     std::uint64_t hash, const T* data, std::size_t count)
 {
     // Empty CFDX containers may expose a null data pointer even when their
@@ -79,17 +79,17 @@ static std::uint64_t fnv1a_update_vector(
     // such a pointer while constructing schema hashes.
     if (count == 0 || data == nullptr)
         return hash;
-    return fnv1a_update(hash, data, count * sizeof(T));
+    return writer_fnv1a_update(hash, data, count * sizeof(T));
 }
 
-static std::string hash_hex(std::uint64_t hash)
+static std::string writer_hash_hex(std::uint64_t hash)
 {
     std::ostringstream os;
     os << std::hex << std::setw(16) << std::setfill('0') << hash;
     return os.str();
 }
 
-static std::string utc_timestamp()
+static std::string writer_utc_timestamp()
 {
     const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm tm{};
@@ -103,41 +103,41 @@ static std::string utc_timestamp()
     return os.str();
 }
 
-static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
+static void writer_write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh)
 {
-    write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
-    write_attr_str(file, "schema_version", std::to_string(CFDX_HDF5_SCHEMA_VERSION));
-    write_attr_str(file, "cfdx_version", CFDX_VERSION);
+    writer_write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
+    writer_write_attr_str(file, "schema_version", std::to_string(CFDX_HDF5_SCHEMA_VERSION));
+    writer_write_attr_str(file, "cfdx_version", CFDX_VERSION);
 
     std::uint64_t topology = 1469598103934665603ULL;
-    topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
-    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
-    topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
-    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
-    write_attr_str(file, "topology_hash", hash_hex(topology));
+    topology = writer_fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
+    topology = writer_fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
+    topology = writer_fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
+    topology = writer_fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
+    topology = writer_fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
+    topology = writer_fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
+    writer_write_attr_str(file, "topology_hash", writer_hash_hex(topology));
 
     std::uint64_t geometry = 1469598103934665603ULL;
-    geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
-    write_attr_str(file, "geometry_hash", hash_hex(geometry));
+    geometry = writer_fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
+    geometry = writer_fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
+    geometry = writer_fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
+    writer_write_attr_str(file, "geometry_hash", writer_hash_hex(geometry));
 
     std::uint64_t mesh_hash = topology;
-    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().x_data(), mesh.n_points());
-    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().y_data(), mesh.n_points());
-    mesh_hash = fnv1a_update_vector(mesh_hash, mesh.points().z_data(), mesh.n_points());
-    write_attr_str(file, "mesh_hash", hash_hex(mesh_hash));
+    mesh_hash = writer_fnv1a_update_vector(mesh_hash, mesh.points().x_data(), mesh.n_points());
+    mesh_hash = writer_fnv1a_update_vector(mesh_hash, mesh.points().y_data(), mesh.n_points());
+    mesh_hash = writer_fnv1a_update_vector(mesh_hash, mesh.points().z_data(), mesh.n_points());
+    writer_write_attr_str(file, "mesh_hash", writer_hash_hex(mesh_hash));
 
-    write_attr_str(file, "creation_date", utc_timestamp());
-    write_attr_str(file, "modification_date", utc_timestamp());
-    write_attr_str(file, "dimension", "3");
-    write_attr_str(file, "precision", "float64");
-    write_attr_str(file, "endian", "native");
+    writer_write_attr_str(file, "creation_date", writer_utc_timestamp());
+    writer_write_attr_str(file, "modification_date", writer_utc_timestamp());
+    writer_write_attr_str(file, "dimension", "3");
+    writer_write_attr_str(file, "precision", "float64");
+    writer_write_attr_str(file, "endian", "native");
 }
 
-static herr_t write_dataset(hid_t loc_id, const char* name,
+static herr_t writer_write_dataset(hid_t loc_id, const char* name,
                             const void* data, const hsize_t* dims, int rank) {
     hsize_t total = 1;
     for (int i = 0; i < rank; ++i) total *= dims[i];
@@ -165,7 +165,7 @@ static herr_t write_dataset(hid_t loc_id, const char* name,
     return status;
 }
 
-static herr_t write_dataset_u64(hid_t file_id, const char* name,
+static herr_t writer_write_dataset_u64(hid_t file_id, const char* name,
                                 const std::uint64_t* data, hsize_t n) {
     if (n == 0) {
         hid_t space = H5Screate_simple(1, &n, nullptr);
@@ -191,7 +191,7 @@ static herr_t write_dataset_u64(hid_t file_id, const char* name,
     return status;
 }
 
-static herr_t write_dataset_i64(hid_t file_id, const char* name,
+static herr_t writer_write_dataset_i64(hid_t file_id, const char* name,
                                 const std::int64_t* data, hsize_t n) {
     if (n == 0) {
         hid_t space = H5Screate_simple(1, &n, nullptr);
@@ -217,7 +217,7 @@ static herr_t write_dataset_i64(hid_t file_id, const char* name,
     return status;
 }
 
-static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value) {
+static herr_t writer_write_attr_str(hid_t loc_id, const char* name, const std::string& value) {
     hid_t space = H5Screate(H5S_SCALAR);
     if (space < 0) return -1;
     hid_t atype = H5Tcopy(H5T_C_S1);
@@ -232,7 +232,7 @@ static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& 
     return status;
 }
 
-static bool ensure_group(hid_t file_id, const std::string& path) {
+static bool writer_ensure_group(hid_t file_id, const std::string& path) {
     std::vector<std::string> parts;
     size_t start = 0;
     if (!path.empty() && path[0] == '/') start = 1;
@@ -263,17 +263,17 @@ static bool ensure_group(hid_t file_id, const std::string& path) {
 }
 
 bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = writer_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
-    write_schema_attributes(file, mesh);
+    writer_write_schema_attributes(file, mesh);
 
-    write_attr_str(file, "n_points", std::to_string(mesh.n_points()));
-    write_attr_str(file, "n_faces", std::to_string(mesh.n_faces()));
-    write_attr_str(file, "n_cells", std::to_string(mesh.n_cells()));
+    writer_write_attr_str(file, "n_points", std::to_string(mesh.n_points()));
+    writer_write_attr_str(file, "n_faces", std::to_string(mesh.n_faces()));
+    writer_write_attr_str(file, "n_cells", std::to_string(mesh.n_cells()));
 
     // Points (n_points x 3).
     {
@@ -285,28 +285,28 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
             pts[i * 3 + 1] = pc.y(i);
             pts[i * 3 + 2] = pc.z(i);
         }
-        write_dataset(file, "points", pts.data(), dims, 2);
+        writer_write_dataset(file, "points", pts.data(), dims, 2);
     }
 
     // Faces (CSR) : vertices + offsets.
     {
         const cfdx::core::FaceConnectivity& fc = mesh.faces();
-        write_dataset_u64(file, "face_vertices", fc.vertices_data(), fc.n_vertices());
-        write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
+        writer_write_dataset_u64(file, "face_vertices", fc.vertices_data(), fc.n_vertices());
+        writer_write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
     }
 
     // Owner / neighbour.
     {
         const cfdx::core::FaceOwnership& own = mesh.ownership();
-        write_dataset_u64(file, "owner", own.owner_data(), own.size());
-        write_dataset_i64(file, "neighbour", own.neighbour_data(), own.size());
+        writer_write_dataset_u64(file, "owner", own.owner_data(), own.size());
+        writer_write_dataset_i64(file, "neighbour", own.neighbour_data(), own.size());
     }
 
     // Cell faces (CSR).
     {
         const cfdx::core::CellConnectivity& cc = mesh.cells();
-        write_dataset_u64(file, "cell_faces", cc.faces_data(), cc.n_face_refs());
-        write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
+        writer_write_dataset_u64(file, "cell_faces", cc.faces_data(), cc.n_face_refs());
+        writer_write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
     }
 
     // Boundary patches.
@@ -337,7 +337,7 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
                 patches_str += patch_names[i] + ":" + std::to_string(patch_starts[i]) + ":" +
                                std::to_string(patch_counts[i]) + ":" + std::to_string(patch_types[i]);
             }
-            write_attr_str(file, "boundary_patches", patches_str);
+            writer_write_attr_str(file, "boundary_patches", patches_str);
 
             std::vector<std::uint64_t> all_face_ids;
             for (std::size_t i = 0; i < n_patches; ++i) {
@@ -349,9 +349,9 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
             for (std::size_t i = 0; i < n_patches; ++i) {
                 patch_face_offsets[i + 1] = patch_face_offsets[i] + patch_counts[i];
             }
-            if (write_dataset_u64(file, "patch_face_ids", all_face_ids.data(),
+            if (writer_write_dataset_u64(file, "patch_face_ids", all_face_ids.data(),
                                   all_face_ids.size()) < 0 ||
-                write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(),
+                writer_write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(),
                                   patch_face_offsets.size()) < 0) {
                 H5Fclose(file);
                 return false;
@@ -365,14 +365,14 @@ bool write_mesh_hdf5(const std::string& filename, const cfdx::core::Mesh& mesh) 
 
 bool write_field_hdf5(const std::string& filename,
                        const cfdx::core::Field<double, cfdx::core::Location::CELL>& field) {
-    hid_t fapl = open_file_access_plist();
+    hid_t fapl = writer_open_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
     // Fixed group path: "fields"
-    if (!ensure_group(file, "fields")) {
+    if (!writer_ensure_group(file, "fields")) {
         H5Fclose(file);
         return false;
     }
@@ -380,9 +380,9 @@ bool write_field_hdf5(const std::string& filename,
     hid_t grp = H5Gopen2(file, "fields", H5P_DEFAULT);
     if (grp < 0) { H5Fclose(file); return false; }
 
-    write_attr_str(grp, "name", field.name());
-    write_attr_str(grp, "unit", field.metadata().unit);
-    write_attr_str(grp, "dimension", std::to_string(field.dimension()));
+    writer_write_attr_str(grp, "name", field.name());
+    writer_write_attr_str(grp, "unit", field.metadata().unit);
+    writer_write_attr_str(grp, "dimension", std::to_string(field.dimension()));
 
     // Field uses SoA layout: need to interleave components for flat storage
     const std::size_t n = field.size();
@@ -396,7 +396,7 @@ bool write_field_hdf5(const std::string& filename,
     }
 
     const hsize_t dims[1] = {flat_values.size()};
-    write_dataset(grp, "values", flat_values.data(), dims, 1);
+    writer_write_dataset(grp, "values", flat_values.data(), dims, 1);
 
     H5Gclose(grp);
     H5Fclose(file);
