@@ -112,6 +112,8 @@ def make_parser()->argparse.ArgumentParser:
 
 def main()->int:
     args=make_parser().parse_args()
+    if getattr(args, "command", None) and args.command[0] == "--":
+        args.command = args.command[1:]
     if args.mode=="run":
         if not args.command: raise SystemExit("run requires a command after '--'")
         result=run_once(args,load_json(Path(args.case))); write_json(result,Path(args.output)); return 0 if result["status"]=="PASS" else 1
