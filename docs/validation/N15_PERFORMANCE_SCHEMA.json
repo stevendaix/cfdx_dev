@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CFDX N15 performance result",
+  "type": "object",
+  "required": ["schema_version","provenance","software","hardware","mesh","numerics","performance","status"],
+  "properties": {
+    "schema_version": {"const":"1.0"},
+    "provenance": {"type":"object","required":["git_sha","timestamp_start_utc","timestamp_end_utc","command","returncode"]},
+    "software": {"type":"object","required":["build_type"]},
+    "hardware": {"type":"object","required":["logical_cpus"]},
+    "mesh": {"type":"object"},
+    "numerics": {"type":"object"},
+    "performance": {"type":"object","required":["total"]},
+    "status": {"enum":["PASS","FAIL","BLOCKED"]}
+  }
+}
