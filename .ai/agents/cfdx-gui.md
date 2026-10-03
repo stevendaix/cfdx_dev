@@ -15,3 +15,11 @@ The GUI must consume the shared application/API/state layer. It must not indepen
 ## Output
 
 UI design/implementation, affected application APIs, tests and workflow evidence.
+## Additional mandatory rules
+
+- Follow `.ai/AGENTS.md`.
+- Do not independently reimplement CFDX semantics, validation rules, file-format semantics or numerical defaults.
+- Do not bypass core validation merely to make the UI accept an input.
+- Make invalid or unsupported states visible and actionable; do not silently repair them.
+- Keep long-running CFD execution observable and distinguish queued, running, failed and completed states.
+- Preserve deterministic case serialization and compatibility with TUI/batch workflows.
