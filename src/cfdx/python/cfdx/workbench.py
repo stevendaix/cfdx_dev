@@ -117,6 +117,16 @@ if QMainWindow is not object:
                     action.triggered.connect(self._stop)
                     self.stop_action = action
             toolbar.addSeparator()
+            for label in ("Contour", "Slice", "Glyph"):
+                action = QAction(label, self)
+                action.setObjectName(f"workbench.action.{label.lower()}")
+                action.setEnabled(False)
+                action.triggered.connect(
+                    lambda _checked=False, mode=label.lower(): self._postprocess(mode)
+                )
+                toolbar.addAction(action)
+                setattr(self, f"{label.lower()}_action", action)
+            toolbar.addSeparator()
             search = QAction("Search", self)
             search.setObjectName("workbench.action.search")
             search.setEnabled(False)
@@ -305,6 +315,32 @@ if QMainWindow is not object:
                     self.view3d.set_field(event.state.results.selected_field)
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
+            self._refresh_postprocess_actions(event.state)
+
+        def _refresh_postprocess_actions(self, state) -> None:
+            enabled = self.view3d is not None and state.results.selected_frame is not None
+            for name in ("contour_action", "slice_action", "glyph_action"):
+                if hasattr(self, name):
+                    getattr(self, name).setEnabled(enabled)
+
+        def _postprocess(self, mode: str) -> None:
+            if self.view3d is None:
+                return
+            field = self._application_state.results.selected_field
+            try:
+                if mode == "contour":
+                    if not field:
+                        raise ValueError("select a scalar result field before Contour")
+                    self.view3d.contour(field)
+                elif mode == "slice":
+                    self.view3d.slice()
+                elif mode == "glyph":
+                    if not field:
+                        raise ValueError("select a vector result field before Glyph")
+                    self.view3d.glyph(field)
+                self.statusBar().showMessage(f"Post-processing: {mode}")
+            except (KeyError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Post-processing error: {exc}")
 
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":
