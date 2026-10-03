@@ -11,7 +11,6 @@ CAMPAIGNS = {
     "assembled_matrix_free": ["test_matrix_free_fv_operator", "test_backend_equivalence"],
     "deterministic_reduction": ["test_n13_mpi_equivalence", "test_mpi_deterministic"],
     "restart": ["test_n13_restart_equivalence", "test_restart_mapping"],
-    "cuda": ["test_n13_cuda_equivalence"],
 }
 
 def run_test(build_dir: Path, name: str) -> tuple[str, int]:
@@ -20,6 +19,13 @@ def run_test(build_dir: Path, name: str) -> tuple[str, int]:
         check=False,
     )
     return name, proc.returncode
+
+def run_cuda_test(build_dir: Path) -> tuple[str, int]:
+    exe = build_dir / "test_n13_cuda_equivalence"
+    if not exe.exists():
+        return "test_n13_cuda_equivalence", 2
+    proc = subprocess.run([str(exe)], check=False)
+    return "test_n13_cuda_equivalence", proc.returncode
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -46,11 +52,21 @@ def main() -> int:
         entries = []
         for test in tests:
             name, rc = run_test(args.build_dir, test)
-            status = "PASS" if rc == 0 else ("BLOCKED" if campaign == "cuda" else "FAIL")
+            status = "PASS" if rc == 0 else "FAIL"
             entries.append({"test": name, "status": status, "exit_code": rc})
             if status == "FAIL":
                 failures += 1
         report["campaigns"][campaign] = entries
+
+    name, rc = run_cuda_test(args.build_dir)
+    report["campaigns"]["cuda"] = [{
+        "test": name,
+        "status": "PASS" if rc == 0 else ("BLOCKED" if rc == 2 else "FAIL"),
+        "exit_code": rc,
+    }]
+    if rc not in (0, 2):
+        failures += 1
+
     report["closure"] = "PASS" if failures == 0 else "FAIL"
     report["note"] = "CUDA is a separate hardware gate; unavailable CUDA hardware is BLOCKED, never PASS."
     args.json.parent.mkdir(parents=True, exist_ok=True)
