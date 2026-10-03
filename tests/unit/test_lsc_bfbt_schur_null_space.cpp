@@ -44,20 +44,26 @@ int main() {
 
     const auto null_space = NullSpaceProjector::constant(2);
 
-    // P = G^2 = 2G. Its inverse on the compatible subspace maps
-    // [1,-1] -> [1/4,-1/4].
-    auto pressure_solve = [](const Vector& rhs, Vector& z) {
-        if (rhs.size() != 2) return false;
-        if (z.size() != 2) z = Vector(2, 0.0);
-        z(0) = 0.25 * (rhs(0) - rhs(1));
-        z(1) = -0.25 * (rhs(0) - rhs(1));
-        return true;
+    // Build the exact pressure-side solve on the compatible subspace for
+    // P = D Q^-1 G. The constant mode is singular and is removed explicitly.
+    const auto make_pressure_solve = [](double q0, double q1) {
+        const double lambda = q0 + q1;
+        return [lambda](const Vector& rhs, Vector& z) {
+            if (rhs.size() != 2) return false;
+            if (z.size() != 2) z = Vector(2, 0.0);
+            const double mode = 0.5 * (rhs(0) - rhs(1));
+            z(0) = mode / lambda;
+            z(1) = -mode / lambda;
+            return true;
+        };
     };
+    const auto lsc_pressure_solve = make_pressure_solve(0.25, 1.0 / 3.0);
+    const auto bfbt_pressure_solve = make_pressure_solve(1.0, 1.0);
 
     run_case("lsc_declares_and_applies_pressure_null_space_policy", [&] {
         LscBfbtSchurApproximation lsc(
             LscBfbtSchurApproximation::Mode::LSC,
-            pressure_solve,
+            lsc_pressure_solve,
             {},
             null_space);
         EXPECT_TRUE(lsc.setup(blocks));
@@ -75,7 +81,7 @@ int main() {
     run_case("bfbt_declares_and_applies_pressure_null_space_policy", [&] {
         LscBfbtSchurApproximation bfbt(
             LscBfbtSchurApproximation::Mode::BFBT,
-            pressure_solve,
+            bfbt_pressure_solve,
             {1.0, 1.0},
             null_space);
         EXPECT_TRUE(bfbt.setup(blocks));
