@@ -106,7 +106,7 @@ def validate_physical_time_provenance(series: ResultSeries) -> None:
     missing = [
         frame.path.name
         for frame in series.frames
-        if frame.complete and frame.time_source != "metadata"
+        if frame.time_source != "metadata"
     ]
     if missing:
         raise ValueError(

@@ -53,7 +53,12 @@ def test_application_routes_execution_to_controller_and_publishes_state() -> Non
     assert session.state is SimulationState.STOPPED
     assert application.state.simulation_state is SimulationState.STOPPED
     assert len(states) == 4
-    assert all(event.state.simulation_state is session.state for event in states)
+    assert [event.state.simulation_state for event in states] == [
+        SimulationState.RUNNING,
+        SimulationState.PAUSED,
+        SimulationState.RUNNING,
+        SimulationState.STOPPED,
+    ]
 
 
 def test_execution_command_requires_controller() -> None:

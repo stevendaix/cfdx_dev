@@ -55,6 +55,11 @@ class ApplicationState:
     workflow: tuple[WorkflowStepState, ...]
     results: ResultsState
 
+    @property
+    def dirty(self) -> bool:
+        """Compatibility shorthand for the project persistence state."""
+        return self.project.dirty
+
 
 def build_application_state(
     session: CFDXSession,
@@ -73,9 +78,10 @@ def build_application_state(
     latest_metrics = None
     execution_error = None
     if controller is not None:
-        latest_metrics = controller.latest_metrics
-        execution_error = controller.error
-        monitor_count = len(controller.monitor_series.samples)
+        latest_metrics = getattr(controller, "latest_metrics", None)
+        execution_error = getattr(controller, "error", None)
+        monitor_series = getattr(controller, "monitor_series", None)
+        monitor_count = len(getattr(monitor_series, "samples", ()))
 
     return ApplicationState(
         project=ProjectState(
