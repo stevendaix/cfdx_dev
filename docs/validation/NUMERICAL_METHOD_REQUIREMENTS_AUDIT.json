@@ -688,9 +688,11 @@
     {
       "package_id": "N9",
       "requirement": "Rhie-Chow/pressure consistency",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PHASE9_ACCEPTANCE.md"
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/validation/test_n9_pressure_velocity_closure.cpp"
       ]
     },
     {
@@ -698,6 +700,7 @@
       "requirement": "common Couette/Poiseuille/cavity/external/skew matrix",
       "status": "partial",
       "evidence": [
+        "tests/validation/test_n9_physical_matrix.cpp",
         "tests/validation/test_phase9_acceptance.cpp"
       ]
     },
