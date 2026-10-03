@@ -113,14 +113,21 @@
       "name": "Time-step, CFL and pseudo-time",
       "status": "partial",
       "evidence": [
+        "docs/validation/N6_DUAL_TIME_PHYSICAL_LIFECYCLE.md",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md",
+        "src/cfdx/physics/adaptive_cfl.h",
         "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/dual_time_field_integrator.h",
+        "src/cfdx/physics/dual_time_physical_lifecycle.h",
+        "src/cfdx/physics/local_time_stepping.h",
+        "src/cfdx/physics/solver_control.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_dual_time_physical_lifecycle.cpp",
+        "tests/unit/test_timestep_control.cpp"
       ],
       "gaps": [
-        "complete CFL characteristic-length contract",
-        "stagnant-cell handling evidence",
-        "rollback",
-        "auditable controller reason logging"
+        "nonlinear Newton-based implicit solve (advance_time/timestep control use Picard; tracked at the solver level)",
+        "production coupling of dual-time physical lifecycle to a full PDE solver case (field-level lifecycle verified)"
       ]
     },
     {
