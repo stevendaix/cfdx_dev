@@ -1,0 +1,33 @@
+name: N15 performance infrastructure
+
+on:
+  push:
+    paths:
+      - "scripts/n15_benchmark.py"
+      - "tests/python/test_n15_benchmark.py"
+      - "benchmarks/n15/**"
+      - "docs/validation/N15_PERFORMANCE*"
+      - ".github/workflows/n15-performance.yml"
+  pull_request:
+    paths:
+      - "scripts/n15_benchmark.py"
+      - "tests/python/test_n15_benchmark.py"
+      - "benchmarks/n15/**"
+      - "docs/validation/N15_PERFORMANCE*"
+      - ".github/workflows/n15-performance.yml"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run N15 benchmark infrastructure self-tests
+        run: python tests/python/test_n15_benchmark.py
+      - name: Verify runner help
+        run: python scripts/n15_benchmark.py --help
+
+# This workflow deliberately does not claim MPI/GPU performance evidence.
+# Dedicated campaigns must run on the corresponding hardware and retain JSON artifacts.
