@@ -408,6 +408,20 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # N8 physical/production qualification reuses the existing validation
+    # executables and records a machine-readable campaign report. It is
+    # intentionally a separate CTest entry so the individual physical or
+    # algebraic tests remain independently visible in CI.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n8_physical_qualification
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/n8_physical_qualification.py
+                         --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n8_physical_qualification PROPERTIES
+            LABELS "n8;qualification;validation"
+            RUN_SERIAL TRUE)
+    endif()
+
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
