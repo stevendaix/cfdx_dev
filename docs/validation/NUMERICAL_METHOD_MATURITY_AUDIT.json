@@ -249,16 +249,22 @@
     {
       "id": "N14",
       "name": "Reference-code comparison",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/validation/FLUENT_VMFL_MATRIX.md",
-        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md",
-        "src/cfdx/io/cfdx_io/mapping_rules.cpp"
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json",
+        "docs/validation/reference_codes/N14_REFERENCE_CODE_MATRIX.md",
+        "docs/validation/reference_codes/openfoam.md",
+        "docs/validation/reference_codes/su2.md",
+        "docs/validation/reference_codes/fluent.md",
+        "docs/validation/reference_codes/cfx.md",
+        "docs/validation/reference_codes/starccm.md",
+        "docs/validation/reference_codes/N14_BENCHMARK_CROSS_REFERENCE.md",
+        "docs/validation/FLUENT_VMFL_MATRIX.md"
       ],
       "gaps": [
-        "method-level formulation matrix",
-        "evidence per method",
-        "same/similar/different classification"
+        "equation-level equivalence is intentionally not claimed for proprietary/reference methods unless public evidence establishes it",
+        "quantitative cross-code benchmark execution remains incomplete and belongs to the relevant N12/N13/validation campaigns",
+        "CFDX qualification status remains independent of reference-code feature presence"
       ]
     },
     {
