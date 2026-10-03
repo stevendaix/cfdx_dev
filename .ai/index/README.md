@@ -16,7 +16,7 @@ A missing result does not prove absence. Stale or partial coverage must be repor
 - symbols — functions, methods, classes, structs, namespaces and other definitions;
 - references — symbol-to-symbol references;
 - dependencies — include/import/build relationships;
-- tests — test source and implementation symbols when known;
+- tests — discovered test sources and implementation symbols when known;
 - validation_cases — documented/executable V&V cases and implementation links when known.
 
 SQLite is an implementation target for AI tooling, not part of the CFDX runtime ABI.
@@ -29,6 +29,17 @@ SQLite is an implementation target for AI tooling, not part of the CFDX runtime 
 - Parser provenance, coverage, parse failures and diagnostics are retained in `index_metadata`.
 
 Semantic coverage is only valid for successfully parsed translation units. It does not establish whole-program completeness, complete macro semantics or complete virtual-dispatch analysis.
+
+## Test and V&V inventory
+
+`.ai/scripts/index_test_validation.py` adds a conservative inventory layer:
+
+- test sources are discovered from `tests/` using explicit filename conventions;
+- validation cases are discovered from `tests/validation/` directories and supported manifest files;
+- discovery provenance is stored explicitly;
+- no test-to-symbol or validation-to-symbol relationship is inferred by this layer.
+
+This distinction is intentional: inventory is evidence of repository artifacts, not proof of coverage.
 
 ## Query tooling
 
@@ -59,6 +70,7 @@ The query tool uses only Python's standard library and has no CFDX runtime depen
 2. deterministic repository metadata/index builder;
 3. structural and semantic parser backends;
 4. references/call/dependency extraction;
-5. test and V&V linkage;
-6. incremental updates and query tooling;
-7. reproducible AI tooling workflow and MCP query interface.
+5. test and V&V inventory;
+6. semantic test/validation linkage;
+7. incremental updates and query tooling;
+8. reproducible AI tooling workflow and MCP query interface.
