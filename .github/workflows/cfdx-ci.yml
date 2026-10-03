@@ -30,7 +30,20 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+          sudo apt-get install -y cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ matrix.build_type }}-
+
+      - name: Configure compiler cache
+        run: |
+          ccache --zero-stats
+          ccache --max-size=1G
 
       - name: Install Python mesh/I/O stack
         run: |
@@ -41,7 +54,10 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
 
       - name: Build
         id: build
@@ -68,6 +84,11 @@ jobs:
           python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_validation_report.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+
+      - name: Compiler cache diagnostics
+        if: always()
+        run: |
+          ccache --show-stats || true
 
       - name: Diagnostics
         if: always()
