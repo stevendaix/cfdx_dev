@@ -164,7 +164,7 @@ def index_clang(root: pathlib.Path, db_path: pathlib.Path, compile_commands: pat
                             )
                             if target is not None:
                                 db.execute(
-                                    """INSERT INTO references(
+                                    """INSERT INTO code_references(
                                        source_symbol_id, target_symbol_id, file_id,
                                        kind, line, column)
                                        VALUES (?, ?, ?, ?, ?, ?)""",
