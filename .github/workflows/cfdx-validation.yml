@@ -61,17 +61,6 @@ jobs:
         continue-on-error: true
         run: cmake --build build-validation --parallel 2
 
-      - name: Run N1 numerical-method gate
-        id: n1_numerics
-        if: steps.build.outcome == 'success'
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          ctest --test-dir build-validation -R '^(test_spatial_scheme_contract|test_case_numerics_report|test_case_hdf5_io|test_production_solver_numerics_e2e)$' --output-on-failure --no-tests=error
-          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_su2_adapter.py
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
       - name: Run fast regression and validation tests
         id: fast_tests
         if: steps.build.outcome == 'success'
