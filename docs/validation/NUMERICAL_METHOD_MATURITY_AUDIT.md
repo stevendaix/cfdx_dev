@@ -33,7 +33,7 @@ An implementation registry entry never implies validation.
 | N12 MMS | PARTIAL | scalar diffusion and analytical campaigns exist; reusable all-equation MMS laboratory is incomplete |
 | N13 cross-backend | IMPLEMENTED — PENDING EXECUTION | Equivalence contract, serial/MPI campaign, assembled/matrix-free operator campaign, deterministic/normal reduction campaign, restart campaign, N-to-M evidence wiring and explicit CUDA BLOCKED semantics are implemented; final status remains execution-dependent and CUDA requires real hardware |
 | N14 reference matrix | IMPLEMENTED | Machine-readable method matrix, five reference dossiers, explicit comparison categories and benchmark cross-reference are now present; quantitative cross-code campaigns remain external evidence work |
-| N15 performance | MISSING | scattered benchmarks exist, but no complete reproducible maturity campaign |
+| N15 performance | PARTIAL | reproducible benchmark runner, result schema, provenance, strong/weak scaling orchestration and regression analysis added; real MPI/GPU/AMG/matrix-free/mixed-precision campaigns still require execution on appropriate hardware and solver instrumentation |
 | N16 advanced methods | PLANNED | intentionally deferred by #461 |
 | N17 turbulence | PARTIAL | 13-model registry/qualification work exists; physical qualification is incomplete |
 
