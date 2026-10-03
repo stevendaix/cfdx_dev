@@ -47,46 +47,6 @@ struct CflDiagnostics {
 inline std::vector<double> compute_local_convective_cfl(
     const cfdx::core::Mesh& mesh,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& volumetric_flux,
-    double dt)
-{
-    if (!(dt > 0.0) || !std::isfinite(dt))
-        throw std::invalid_argument("CFL dt must be finite and strictly positive");
-    if (volumetric_flux.size() != mesh.n_faces())
-        throw std::invalid_argument("CFL flux field does not match mesh");
-
-    const std::size_t n_cells = mesh.n_cells();
-    const auto& cells = mesh.cells();
-    const auto* faces = cells.faces_data();
-    const auto* offsets = cells.offsets_data();
-    std::vector<double> local(n_cells, 0.0);
-
-    for (std::size_t cell = 0; cell < n_cells; ++cell) {
-        const auto off = offsets[cell];
-        const auto count = offsets[cell + 1] - off;
-        double flux_sum = 0.0;
-        for (std::size_t k = 0; k < count; ++k) {
-            const double flux = volumetric_flux(faces[off + k]);
-            if (!std::isfinite(flux))
-                throw std::invalid_argument("CFL flux contains a non-finite value");
-            flux_sum += std::abs(flux);
-        }
-
-        double volume = 0.0;
-        // Geometry is computed below through the public characteristic-length
-        // routine. The ratio is reconstructed from h=2V/A there, so the
-        // production mesh adapter should use the dedicated overload below.
-        (void)volume;
-        local[cell] = flux_sum;
-    }
-
-    // This overload is intentionally not used for production CFL values
-    // because it lacks the cell volume required by the mathematical contract.
-    throw std::logic_error("use compute_local_convective_cfl(mesh, flux, volumes, dt)");
-}
-
-inline std::vector<double> compute_local_convective_cfl(
-    const cfdx::core::Mesh& mesh,
-    const cfdx::core::Field<double, cfdx::core::Location::FACE>& volumetric_flux,
     const std::vector<double>& cell_volume,
     double dt)
 {
