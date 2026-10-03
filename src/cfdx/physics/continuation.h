@@ -172,7 +172,7 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
 
             IncompressibleSolveResult solver_result;
             try {
-                const stage_restart_path =
+                const auto stage_restart_path =
                     (stage_index == 1 && attempts == 1) ? restart_path : std::string{};
                 const auto stage_restart_fields =
                     (stage_index == 1 && attempts == 1)
