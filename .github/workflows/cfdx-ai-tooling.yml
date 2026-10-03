@@ -22,43 +22,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Run indexer unit tests
         run: python .ai/scripts/test_index_repository.py
-
       - name: Run semantic backend contract tests
         run: python .ai/scripts/test_index_clang.py
-
       - name: Run query tooling tests
         run: python .ai/scripts/test_query_index.py
-
       - name: Run test and validation inventory tests
         run: python .ai/scripts/test_index_test_validation.py
-
+      - name: Run semantic linkage tests
+        run: python .ai/scripts/test_link_test_validation.py
       - name: Run end-to-end index pipeline test
         run: python .ai/scripts/test_index_pipeline.py
-
       - name: Build repository index
         run: |
-          python .ai/scripts/index_repository.py             --root .             --output "$RUNNER_TEMP/cfdx-ai-index.sqlite"
-
+          python .ai/scripts/index_repository.py --root . --output "$RUNNER_TEMP/cfdx-ai-index.sqlite"
       - name: Add structural symbols and dependencies
         run: |
-          python .ai/scripts/index_structural.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
-
+          python .ai/scripts/index_structural.py --root . --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
       - name: Add test and validation inventory
         run: |
-          python .ai/scripts/index_test_validation.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
-
+          python .ai/scripts/index_test_validation.py --root . --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
+      - name: Add explicit semantic test/V&V links
+        run: |
+          python .ai/scripts/link_test_validation.py --root . --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"
       - name: Validate generated index
         run: |
-          python .ai/scripts/query_index.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"             --validate
-
+          python .ai/scripts/query_index.py --root . --index "$RUNNER_TEMP/cfdx-ai-index.sqlite" --validate
       - name: Exercise deterministic symbol query
         run: |
-          python .ai/scripts/query_index.py             --root .             --index "$RUNNER_TEMP/cfdx-ai-index.sqlite"             --symbol "index_repository"
+          python .ai/scripts/query_index.py --root . --index "$RUNNER_TEMP/cfdx-ai-index.sqlite" --symbol "index_repository"
