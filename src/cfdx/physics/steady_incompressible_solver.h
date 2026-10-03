@@ -1361,10 +1361,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     const double mu_eff = controls.density *
         (controls.kinematic_viscosity + controls.turbulent_viscosity);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
-    monitor_controls.residual.absolute_tolerance = controls.convergence.relative_tolerance;
+    monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
     monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
-    monitor_controls.minimum_iterations = controls.convergence.minimum_iterations;
+    monitor_controls.minimum_iterations = 1;
     monitor_controls.max_iterations = controls.convergence.max_iterations;
     // Conservative defaults: stagnation is diagnostic, not a shortcut around
     // the configured residual/conservation gates. Divergence is detected only
