@@ -154,8 +154,12 @@ int main()
         const auto checkpoint=lifecycle.checkpoint();
 
         const auto second=lifecycle.advance(0.08,solver,tc);
+        require(second.retries > 0,"tight temporal gate must exercise physical retry");
+        require(second.dt_accepted < 0.08,"retry must reduce the accepted physical dt");
         require(second.dt_accepted <= 0.08,"accepted dt must not exceed requested dt");
         require(second.temporal_error <= 1.0,"accepted temporal error gate must pass");
+        require(second.dt_proposed >= tc.dt_min && second.dt_proposed <= tc.dt_max,
+                "adaptive dt proposal must remain bounded");
         require(lifecycle.step()==2,"accepted step counter must advance exactly once");
         require(lifecycle.physical_time()>checkpoint.physical_time,"physical time must advance only on acceptance");
 
