@@ -166,6 +166,7 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/adaptive_cfl.h
     src/cfdx/physics/timestep_control.h
     src/cfdx/physics/dual_time_physical_lifecycle.h
+    src/cfdx/physics/dual_time_navier_stokes.h
     src/cfdx/physics/advanced_convergence.h
     src/cfdx/physics/forces.h
     src/cfdx/physics/local_time_stepping.h
@@ -264,6 +265,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/dual_time_adaptive.h
     src/cfdx/physics/dual_time_field_driver.h
     src/cfdx/physics/dual_time_field_integrator.h
+    src/cfdx/physics/dual_time_navier_stokes.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
     src/cfdx/physics/sst_solver.h
@@ -472,6 +474,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_dual_time_field_driver tests/unit/test_dual_time_field_driver.cpp)
     add_cfdx_test(test_dual_time_field_integrator tests/unit/test_dual_time_field_integrator.cpp)
     add_cfdx_test(test_dual_time_physical_lifecycle tests/unit/test_dual_time_physical_lifecycle.cpp)
+    add_cfdx_test(test_dual_time_navier_stokes tests/unit/test_dual_time_navier_stokes.cpp)
     add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
     add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)

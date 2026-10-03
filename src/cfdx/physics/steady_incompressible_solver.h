@@ -17,6 +17,7 @@
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
+#include "cfdx/core/numerics/temporal.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -74,8 +75,19 @@ struct DiagnosticsControls {
     std::size_t iteration_trace_frequency = 50;
 };
 
+struct IncompressibleTransientControls {
+    bool enabled = false;
+    cfdx::core::TimeScheme scheme = cfdx::core::TimeScheme::BDF2;
+    double dt = 0.0;
+    double dt_previous = 0.0;
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* previous = nullptr;
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* previous_previous = nullptr;
+    bool history_valid = false;
+};
+
 struct IncompressibleSolverControls {
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
+    IncompressibleTransientControls transient;
     CouplingControls coupling;
     ConvergenceCriteria convergence;
     std::size_t linear_max_iterations = 1000;
@@ -180,6 +192,21 @@ inline void validate_incompressible_controls(
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    if (c.transient.enabled) {
+        if (!(c.transient.dt > 0.0) || !std::isfinite(c.transient.dt))
+            throw std::invalid_argument("transient dual-time dt must be finite and positive");
+        if (c.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+            c.transient.history_valid &&
+            (!(c.transient.dt_previous > 0.0) || !std::isfinite(c.transient.dt_previous)))
+            throw std::invalid_argument("transient BDF2 previous dt must be finite and positive");
+        if (!c.transient.previous || c.transient.previous->size() != n_cells ||
+            c.transient.previous->dimension() != 3)
+            throw std::invalid_argument("transient dual-time previous velocity history is missing or invalid");
+        if (c.transient.scheme == cfdx::core::TimeScheme::BDF2 && c.transient.history_valid &&
+            (!c.transient.previous_previous || c.transient.previous_previous->size() != n_cells ||
+             c.transient.previous_previous->dimension() != 3))
+            throw std::invalid_argument("transient BDF2 second velocity history is missing or invalid");
+    }
     if (!(c.density > 0.0) || !(c.kinematic_viscosity >= 0.0) ||
         !(c.turbulent_viscosity >= 0.0))
         throw std::invalid_argument("invalid incompressible material properties");
@@ -555,6 +582,54 @@ inline ScalarEquation assemble_momentum_component(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,
         convection_scheme, convected_field, &face_conditions);
+}
+
+inline void add_dual_time_mass_term(
+    ScalarEquation& equation,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& u_n,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& u_nm1,
+    const FvGeometry& geometry,
+    double rho,
+    double dt,
+    double dt_previous,
+    bool bdf2,
+    std::size_t component)
+{
+    if (!(dt > 0.0) || !std::isfinite(dt) || !(rho > 0.0) || !std::isfinite(rho))
+        throw std::invalid_argument("add_dual_time_mass_term: invalid rho/dt");
+    if (u_n.dimension() != 3 || u_nm1.dimension() != 3 ||
+        u_n.size() != equation.rhs.size() || u_nm1.size() != equation.rhs.size())
+        throw std::invalid_argument("add_dual_time_mass_term: history shape mismatch");
+    if (component >= 3) throw std::invalid_argument("add_dual_time_mass_term: invalid component");
+
+    double a0 = 1.0, a1 = 0.0, denom = 1.0, b = dt;
+    if (bdf2) {
+        if (!(dt_previous > 0.0) || !std::isfinite(dt_previous))
+            throw std::invalid_argument("add_dual_time_mass_term: invalid previous dt for BDF2");
+        cfdx::core::bdf2_coefficients(dt_previous, dt, a0, a1, denom, b);
+    }
+    for (std::size_t c = 0; c < equation.rhs.size(); ++c) {
+        const double mass = rho * geometry.cell_volumes[c] * denom / b;
+        const double source = rho * geometry.cell_volumes[c] *
+            (a0 * u_n.component_data(component)[c] -
+             a1 * u_nm1.component_data(component)[c]) / b;
+        if (!(mass > 0.0) || !std::isfinite(mass) || !std::isfinite(source))
+            throw std::runtime_error("add_dual_time_mass_term: non-finite temporal coefficient");
+        auto* rows = equation.matrix.row_offsets_data();
+        auto* cols = equation.matrix.columns_data();
+        auto* values = equation.matrix.values_data();
+        bool found = false;
+        for (std::uint32_t k = rows[c]; k < rows[c + 1]; ++k) {
+            if (cols[k] == c) {
+                values[k] += mass;
+                found = true;
+                break;
+            }
+        }
+        if (!found) throw std::runtime_error("add_dual_time_mass_term: missing momentum diagonal");
+        equation.diagonal[c] += mass;
+        equation.rhs(c) += source;
+    }
 }
 
 inline void apply_velocity_boundary_conditions(
@@ -1504,6 +1579,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
 
+        if (controls.transient.enabled) {
+            const auto& u_n = *controls.transient.previous;
+            const auto& u_nm1 = controls.transient.history_valid
+                ? *controls.transient.previous_previous : u_n;
+            const bool use_bdf2 = controls.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+                                  controls.transient.history_valid;
+            add_dual_time_mass_term(ex, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 0);
+            add_dual_time_mass_term(ey, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 1);
+            add_dual_time_mass_term(ez, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 2);
+        }
+
         // Preserve the pre-solve velocity for equation relaxation. HbyA is
         // reconstructed after the momentum solve from the solved neighbour
         // values, which is the algebraic H/A split of the assembled equation.
@@ -1934,6 +2026,36 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto final_ez = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
+
+        // The final nonlinear acceptance residual must represent the same
+        // production equation that was solved. For transient runs the
+        // physical-time derivative is part of that equation; omitting it here
+        // would measure only the steady spatial operator and reject every
+        // legitimate transient state whose temporal acceleration balances the
+        // spatial momentum residual. Reuse the exact production mass-term
+        // assembly, including variable-step BDF2 coefficients and the accepted
+        // history, so the acceptance metric is algebraically consistent with
+        // the coupled solve above.
+        if (controls.transient.enabled) {
+            const auto& u_n = *controls.transient.previous;
+            const auto& u_nm1 = controls.transient.history_valid
+                ? *controls.transient.previous_previous : u_n;
+            const bool use_bdf2 =
+                controls.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+                controls.transient.history_valid;
+            add_dual_time_mass_term(
+                final_ex, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 0);
+            add_dual_time_mass_term(
+                final_ey, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 1);
+            add_dual_time_mass_term(
+                final_ez, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 2);
+        }
 
         Vector final_ux(mesh.n_cells()), final_uy(mesh.n_cells()), final_uz(mesh.n_cells());
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
