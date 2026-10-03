@@ -155,6 +155,8 @@ Solution solve_n7_case()
     controls.adaptive_relaxation.max_alpha_u=0.9;
     controls.adaptive_relaxation.min_alpha_p=0.1;
     controls.adaptive_relaxation.max_alpha_p=0.5;
+    controls.diagnostics.iteration_trace=true;
+    controls.diagnostics.iteration_trace_frequency=500;
 
     ContinuationControls continuation;
     continuation.enabled=true;
