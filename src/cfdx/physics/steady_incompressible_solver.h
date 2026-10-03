@@ -1367,7 +1367,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
     monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
-    monitor_controls.minimum_iterations = 2;
+    monitor_controls.minimum_iterations = std::min<std::size_t>(2, controls.convergence.max_iterations);
     monitor_controls.max_iterations = controls.convergence.max_iterations;
     // Conservative defaults: stagnation is diagnostic, not a shortcut around
     // the configured residual/conservation gates. Divergence is detected only
