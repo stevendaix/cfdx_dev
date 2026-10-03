@@ -54,24 +54,28 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_UNITY_BUILD=${{ matrix.build_type == 'DebugSanitizers' && 'ON' || 'OFF' }}
 
       - name: Build
         id: build
         continue-on-error: true
         run: |
           set -o pipefail
-          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
+          cmake --build build --parallel 4 2>&1 | tee build.log
 
       - name: Run fast CTest
         id: ctest
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
-          ctest --test-dir build -LE long --output-on-failure --no-tests=error
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
@@ -81,7 +85,7 @@ jobs:
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
         continue-on-error: true
         run: |
-          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_validation_report.py
+          python -m pytest -q -n auto tests/python/test_numerical_selection.py tests/python/test_validation_report.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
