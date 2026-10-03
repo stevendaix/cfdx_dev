@@ -408,6 +408,20 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # N8 physical/production qualification reuses the existing validation
+    # executables and records a machine-readable campaign report. It is
+    # intentionally a separate CTest entry so the individual physical or
+    # algebraic tests remain independently visible in CI.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n8_physical_qualification
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/n8_physical_qualification.py
+                         --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n8_physical_qualification PROPERTIES
+            LABELS "n8;qualification;validation"
+            RUN_SERIAL TRUE)
+    endif()
+
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
@@ -510,6 +524,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
     target_link_libraries(test_phase9_acceptance PRIVATE cfdx_core)
     target_include_directories(test_phase9_acceptance PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    # Full N8 pressure-velocity matrix: deliberately not the --quick smoke test.
+    # This exercises SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and COUPLED.
+    add_test(NAME test_n8_pressure_velocity_matrix COMMAND test_phase9_acceptance)
+    set_tests_properties(test_n8_pressure_velocity_matrix PROPERTIES
+        LABELS "n8;qualification;validation"
+        RUN_SERIAL TRUE)
     add_test(NAME test_couette_quick COMMAND test_phase9_acceptance --quick)
     # Phase 9 diagnostics must be deterministic under CTest. The validation
     # workflow may set these variables at the shell level, but CTest test
