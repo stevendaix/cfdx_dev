@@ -24,8 +24,18 @@ The pseudo-time iterations solve this physical residual. They do not advance phy
 - src/cfdx/physics/dual_time_stepping.h defines the physical residual, convergence controls, diagnostics and failure type.
 - src/cfdx/physics/dual_time_driver.h provides the deterministic pseudo-time loop.
 - tests/unit/test_dual_time_stepping.cpp verifies implicit BDF2 and backward-Euler roots and deterministic non-convergence failure.
-- Pseudo-time adaptation is bounded and based only on residual evolution.
+- src/cfdx/physics/dual_time_adaptive.h adds a deterministic temporal-error estimator, physical-step accept/reject proposal, residual-contraction pseudo-time controller, and explicit admissibility gate.
+- tests/unit/test_dual_time_adaptive.cpp verifies physical-step growth/shrink, pseudo-time contraction response, temporal-error normalization, and rejection of inadmissible states.
+- Pseudo-time adaptation is bounded and based on residual contraction; physical-time adaptation is driven by a normalized temporal-error estimate.
 - No convergence is accepted merely because the iteration budget was reached.
+
+## Adaptive-control contract
+
+The high-order physical solution can be compared with a lower-order solution on the same accepted physical step. The difference is normalized with `ATOL + RTOL ||U||`, producing a dimensionless temporal-error ratio. A ratio `<= 1` is eligible for acceptance; a ratio `> 1` rejects the step and proposes a bounded smaller `dt`.
+
+The pseudo-time controller is deliberately separate: it observes nonlinear residual contraction and proposes a bounded pseudo-time step toward a target contraction. The two controllers therefore do not conflate physical temporal accuracy with nonlinear convergence.
+
+A physical step is accepted only when all three gates are true: temporal error is within tolerance, the nonlinear dual-time solve converged, and the caller reports physical admissibility. This is an integration contract; the current unit test uses a scalar model and does not claim field-level FVM qualification.
 
 ## Scope boundary
 
