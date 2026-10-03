@@ -14,7 +14,7 @@ namespace {
 void require(bool ok,const std::string& msg){if(!ok) throw std::runtime_error(msg);}
 double order(double e0,double e1){return std::log(e0/e1)/std::log(2.0);}
 double sine_average(double x,double h){
-    return (std::cos(2.0*M_PI*x)-std::cos(2.0*M_PI*(x+h)))/(2.0*M_PI*h);
+    return (std::cos(2.0*pi*x)-std::cos(2.0*M_PI*(x+h)))/(2.0*M_PI*h);
 }
 void exactness(){
     const std::array<double,5> c{{3.25,3.25,3.25,3.25,3.25}};
