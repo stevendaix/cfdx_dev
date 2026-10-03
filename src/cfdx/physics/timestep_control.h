@@ -293,4 +293,99 @@ private:
     bool active_ = false;
 };
 
+class NonlinearStateRollback {
+public:
+    NonlinearStateRollback(
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure)
+        : velocity_(velocity), pressure_(pressure) {}
+
+    void begin()
+    {
+        velocity_snapshot_ = velocity_;
+        pressure_snapshot_ = pressure_;
+        active_ = true;
+    }
+
+    void reject()
+    {
+        if (!active_)
+            throw std::logic_error("cannot rollback nonlinear state without an active transaction");
+        velocity_ = velocity_snapshot_;
+        pressure_ = pressure_snapshot_;
+        active_ = false;
+    }
+
+    void commit() { active_ = false; }
+    bool active() const { return active_; }
+
+private:
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> velocity_snapshot_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> pressure_snapshot_;
+    bool active_ = false;
+};
+
+struct NonlinearRetryControls {
+    std::size_t max_retries = 3;
+    double relaxation_shrink = 0.5;
+    double minimum_alpha_u = 0.1;
+    double minimum_alpha_p = 0.05;
+};
+
+inline void validate_nonlinear_retry_controls(const NonlinearRetryControls& c)
+{
+    if (c.max_retries == 0 ||
+        !std::isfinite(c.relaxation_shrink) || !(c.relaxation_shrink > 0.0) ||
+        c.relaxation_shrink >= 1.0 ||
+        !std::isfinite(c.minimum_alpha_u) || !(c.minimum_alpha_u > 0.0) ||
+        c.minimum_alpha_u > 1.0 ||
+        !std::isfinite(c.minimum_alpha_p) || !(c.minimum_alpha_p > 0.0) ||
+        c.minimum_alpha_p > 1.0)
+        throw std::invalid_argument("invalid nonlinear retry controls");
+}
+
+class NonlinearRetryController {
+public:
+    explicit NonlinearRetryController(NonlinearRetryControls controls = {})
+        : controls_(controls)
+    {
+        validate_nonlinear_retry_controls(controls_);
+    }
+
+    void reset()
+    {
+        retry_count_ = 0;
+        alpha_scale_ = 1.0;
+    }
+
+    bool can_retry() const { return retry_count_ < controls_.max_retries; }
+
+    void reject()
+    {
+        if (!can_retry())
+            throw std::runtime_error("nonlinear retry limit exhausted");
+        ++retry_count_;
+        alpha_scale_ *= controls_.relaxation_shrink;
+    }
+
+    double alpha_u(double base) const
+    {
+        return std::max(controls_.minimum_alpha_u, base * alpha_scale_);
+    }
+
+    double alpha_p(double base) const
+    {
+        return std::max(controls_.minimum_alpha_p, base * alpha_scale_);
+    }
+
+    std::size_t retries() const { return retry_count_; }
+
+private:
+    NonlinearRetryControls controls_;
+    std::size_t retry_count_ = 0;
+    double alpha_scale_ = 1.0;
+};
+
 } // namespace cfdx::physics
