@@ -141,6 +141,8 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
     double step = continuation.initial_step;
     std::size_t stage_index = 0;
     std::size_t total_attempts = 0;
+    auto last_accepted_U = U;
+    auto last_accepted_p = p;
     IncompressibleSolveResult last_solver_result;
 
     while (parameter < 1.0) {
@@ -154,8 +156,11 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
         while (!accepted) {
             const double target = continuation_next_target(parameter, step);
             if (++attempts > continuation.max_stage_attempts) {
-                U = initial_U;
-                p = initial_p;
+                U = last_accepted_U;
+                p = last_accepted_p;
+                result.final_parameter = parameter;
+                result.total_attempts = total_attempts;
+                result.final_solver_result = last_solver_result;
                 throw std::runtime_error(
                     "continuation exhausted the configured stage-attempt budget");
             }
@@ -202,6 +207,8 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
 
             if (stage_ok) {
                 parameter = target;
+                last_accepted_U = U;
+                last_accepted_p = p;
                 accepted = true;
                 result.stages.push_back(ContinuationStageReport{
                     stage_index, attempts, parameter, step, true,
