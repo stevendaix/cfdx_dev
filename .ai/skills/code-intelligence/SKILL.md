@@ -20,6 +20,14 @@ This skill does not define a specific vendor, editor, LLM, parser or MCP impleme
 6. Preserve uncertainty when parsing is partial, stale or ambiguous.
 7. Report source locations supporting the conclusion.
 
+## Current executable coverage
+
+- Repository inventory is deterministic and hash-based.
+- Python files are structurally parsed with the standard-library AST module for classes, functions and import dependencies.
+- C/C++ files currently use a deliberately conservative declaration/include scanner. This is useful for coarse navigation only and is **not** semantic C++ parsing.
+- Parser provenance is stored in index_metadata; parse failures are recorded rather than silently treated as empty files.
+- C++ semantic references, overload resolution, templates, inheritance and macro-aware analysis remain future work and must not be inferred from the heuristic scanner.
+
 ## Evidence rules
 
 - An index result is derived evidence, not source truth.
