@@ -1,15 +1,18 @@
-"""Dockable CFDX Workbench shell.
+"""Dockable CFDX Workbench composition root.
 
-The shell deliberately contains presentation placeholders only. Domain actions
-remain owned by the application/session layer and the existing GUI adapters.
+Domain actions remain owned by the application/session layer; Qt wires those
+contracts to the optional mesh and result renderer adapters.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from .application import Application, ApplicationStateChanged, WorkflowStatus, workflow_children
+from .application import Application, ApplicationStateChanged, ResultsChanged, WorkflowStatus, workflow_children
 from .case_io import read_case, save_case
 from .execution import ExecutionController
+from .gui_3d import PyVistaQtView
+from .mesh_browser_panel import MeshBrowserPanel
+from .mesh_model import read_mesh_catalog
 from .runner import SolverRunner
 from .session import CFDXSession
 from .validation import validate_case
@@ -57,6 +60,7 @@ if QMainWindow is not object:
             self.session = self.application.session
             self._application_state = self.application.state
             self.application.events.subscribe(ApplicationStateChanged, self._state_changed)
+            self.application.events.subscribe(ResultsChanged, self._results_changed)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -74,7 +78,7 @@ if QMainWindow is not object:
             toolbar.setMovable(False)
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
-            for label in ("New Project", "Open", "Save"):
+            for label in ("New Project", "Open", "Save", "Open Mesh"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower().replace(' ', '_')}")
                 toolbar.addAction(action)
@@ -84,6 +88,9 @@ if QMainWindow is not object:
                 elif label == "Open":
                     action.triggered.connect(self._open_case)
                     self.open_case_action = action
+                elif label == "Open Mesh":
+                    action.triggered.connect(self._open_mesh)
+                    self.open_mesh_action = action
                 else:
                     action.triggered.connect(self._save_case)
                     self.save_case_action = action
@@ -191,13 +198,20 @@ if QMainWindow is not object:
             self.workflow_tree.itemSelectionChanged.connect(self._selection_changed)
             self._add_dock("Workflow", "workbench.dock.workflow", self.workflow_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
             self._refresh_workflow(self._application_state)
+            self.mesh_browser = MeshBrowserPanel()
+            self.mesh_browser.selection_changed.connect(self._mesh_selection_changed)
+            self._add_dock("Mesh", "workbench.dock.mesh", self.mesh_browser, Qt.DockWidgetArea.LeftDockWidgetArea)
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
             self._add_dock("Results", "workbench.dock.results", self.results_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
 
-            viewport = QLabel("3D VIEWPORT\n\nRenderer adapter placeholder")
+            try:
+                viewport = PyVistaQtView()
+                self.view3d = viewport
+            except RuntimeError as exc:
+                viewport = QLabel(f"3D renderer unavailable\n\n{exc}")
+                self.view3d = None
             viewport.setObjectName("workbench.viewport")
-            viewport.setAlignment(Qt.AlignmentFlag.AlignCenter)
             viewport.setMinimumSize(480, 320)
             self.setCentralWidget(viewport)
 
@@ -226,6 +240,36 @@ if QMainWindow is not object:
                 self.application.open_results(directory)
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Results error: {exc}")
+
+        def _open_mesh(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(self, "Open CFDX Mesh", "", "CFDX mesh (*.h5);;All files (*)")
+            if not path:
+                return
+            try:
+                self.mesh_browser.set_catalog(read_mesh_catalog(Path(path)))
+                if self.view3d is not None:
+                    self.view3d.load_cfdx_mesh(path)
+                self.statusBar().showMessage(f"Mesh loaded: {path}")
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Mesh error: {exc}")
+
+        def _results_changed(self, event) -> None:
+            result = event.state.results.selected_frame
+            if self.view3d is None or result is None or not result.complete:
+                return
+            try:
+                self.view3d.load(result.path)
+                if event.state.results.selected_field:
+                    self.view3d.set_field(event.state.results.selected_field)
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
+                self.statusBar().showMessage(f"Renderer error: {exc}")
+
+        def _mesh_selection_changed(self, selection) -> None:
+            if self.view3d is not None and selection.kind == "patch":
+                try:
+                    self.view3d.select(selection.stable_id or f"patch:{selection.index}")
+                except KeyError:
+                    pass
 
         def _refresh_properties(self) -> None:
             if not hasattr(self, "properties_panel"):
