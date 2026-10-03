@@ -15,6 +15,7 @@ from .gui_3d import PyVistaQtView
 from .mesh_browser_panel import MeshBrowserPanel
 from .mesh_model import read_mesh_catalog
 from .runner import SolverRunner
+from .setup_panel import CaseSetupPanel
 from .session import CFDXSession
 from .validation import validate_case
 
@@ -137,6 +138,7 @@ if QMainWindow is not object:
             self.application.replace_session(CFDXSession())
             self.session = self.application.session
             self._restart_dat = None
+            self._refresh_setup_case()
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
 
         def _open_case(self) -> None:
@@ -147,6 +149,7 @@ if QMainWindow is not object:
                 self.application.replace_session(read_case(Path(path)), project_path=path)
                 self.session = self.application.session
                 self._restart_dat = None
+                self._refresh_setup_case()
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
@@ -229,6 +232,11 @@ if QMainWindow is not object:
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
             self._add_dock("Results", "workbench.dock.results", self.results_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
+
+            self.setup_panel = CaseSetupPanel(self.session.case)
+            self.setup_panel.setObjectName("workbench.setup_panel")
+            self.setup_panel.changed.connect(self._setup_changed)
+            self._add_dock("Case Setup", "workbench.dock.setup", self.setup_panel, Qt.DockWidgetArea.RightDockWidgetArea)
 
             try:
                 viewport = PyVistaQtView()
@@ -370,6 +378,14 @@ if QMainWindow is not object:
                 button.clicked.connect(lambda _checked=False, p=prop, e=editor: self._apply_property(p.key, e.text()))
                 form.addRow(prop.label, editor)
                 form.addRow("", button)
+
+        def _setup_changed(self) -> None:
+            """Propagate specialized setup edits through the application state."""
+            self.application.set_project_path(self.application.project_path, dirty=True)
+
+        def _refresh_setup_case(self) -> None:
+            if hasattr(self, "setup_panel"):
+                self.setup_panel.set_case(self.session.case)
 
         def _apply_property(self, key: str, raw_value: str) -> None:
             try:
