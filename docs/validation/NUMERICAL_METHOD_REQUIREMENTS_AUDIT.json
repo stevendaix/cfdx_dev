@@ -355,7 +355,8 @@
       "requirement": "explicit Euler",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -363,7 +364,8 @@
       "requirement": "implicit Euler",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -371,7 +373,8 @@
       "requirement": "Crank-Nicolson",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -379,7 +382,8 @@
       "requirement": "BDF2",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -392,6 +396,7 @@
         "tests/unit/test_temporal.cpp",
         "tests/unit/test_temporal_history.cpp",
         "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
         "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
@@ -404,6 +409,7 @@
         "tests/unit/test_restart_mapping.cpp",
         "tests/unit/test_temporal_history.cpp",
         "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
         "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
@@ -416,6 +422,7 @@
         "src/cfdx/physics/temporal.h",
         "tests/unit/test_temporal_history.cpp",
         "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
         "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
@@ -428,6 +435,7 @@
         "tests/validation/test_discretization_verification.cpp",
         "tests/validation/test_temporal_order_matrix.cpp",
         "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
         "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
@@ -438,7 +446,8 @@
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/physics/low_storage_time_integration.h",
-        "tests/validation/test_temporal_order_matrix.cpp"
+        "tests/validation/test_temporal_order_matrix.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
