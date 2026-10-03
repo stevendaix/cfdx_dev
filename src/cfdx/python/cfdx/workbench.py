@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .application import Application, ApplicationStateChanged, ResultsChanged, WorkflowStatus, workflow_children
 from .case_io import read_case, save_case
+from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .gui_3d import PyVistaQtView
 from .mesh_browser_panel import MeshBrowserPanel
@@ -58,6 +59,7 @@ if QMainWindow is not object:
             super().__init__()
             self.application = application or Application(session or CFDXSession())
             self.session = self.application.session
+            self._restart_dat: Path | None = None
             self._application_state = self.application.state
             self.application.events.subscribe(ApplicationStateChanged, self._state_changed)
             self.application.events.subscribe(ResultsChanged, self._results_changed)
@@ -78,7 +80,7 @@ if QMainWindow is not object:
             toolbar.setMovable(False)
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
-            for label in ("New Project", "Open", "Save", "Open Mesh"):
+            for label in ("New Project", "Open", "Save", "Open Mesh", "Open DAT Result", "Open DAT Checkpoint"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower().replace(' ', '_')}")
                 toolbar.addAction(action)
@@ -91,6 +93,12 @@ if QMainWindow is not object:
                 elif label == "Open Mesh":
                     action.triggered.connect(self._open_mesh)
                     self.open_mesh_action = action
+                elif label == "Open DAT Result":
+                    action.triggered.connect(lambda _checked=False: self._open_dat(use_for_restart=False))
+                    self.open_dat_result_action = action
+                elif label == "Open DAT Checkpoint":
+                    action.triggered.connect(lambda _checked=False: self._open_dat(use_for_restart=True))
+                    self.open_dat_checkpoint_action = action
                 else:
                     action.triggered.connect(self._save_case)
                     self.save_case_action = action
@@ -118,6 +126,7 @@ if QMainWindow is not object:
         def _new_project(self) -> None:
             self.application.replace_session(CFDXSession())
             self.session = self.application.session
+            self._restart_dat = None
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
 
         def _open_case(self) -> None:
@@ -127,6 +136,7 @@ if QMainWindow is not object:
             try:
                 self.application.replace_session(read_case(Path(path)), project_path=path)
                 self.session = self.application.session
+                self._restart_dat = None
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
@@ -157,6 +167,11 @@ if QMainWindow is not object:
             if not solver:
                 raise ValueError("execution.solver must be configured before Run")
             command = [solver, str(self.application.project_path)]
+            if self._restart_dat is not None:
+                restart_option = self.session.case.execution.restart_option
+                if not restart_option:
+                    raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
+                command.extend([restart_option, str(self._restart_dat)])
             if self.session.case.execution.mpi_ranks > 1:
                 command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
             controller = ExecutionController(
@@ -252,6 +267,33 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
+
+        def _open_dat(self, *, use_for_restart: bool) -> None:
+            if self.application.project_path is None:
+                self.statusBar().showMessage("Save or open a CFDX case before loading a DAT file")
+                return
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open DAT Checkpoint" if use_for_restart else "Open DAT Result",
+                str(Path(self.application.project_path).parent),
+                "CFDX DAT (*.dat *.dat.h5 *.h5);;All files (*)",
+            )
+            if not path:
+                return
+            try:
+                loaded = read_dat_restart(Path(path))
+                fields = []
+                if self.view3d is not None:
+                    fields = self.view3d.load_cfdx_dat(str(self.application.project_path), path)
+                if use_for_restart:
+                    self._restart_dat = Path(path)
+                self.statusBar().showMessage(
+                    f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
+                    f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
+                    + (" | restart enabled" if use_for_restart else "")
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"DAT error: {exc}")
 
         def _results_changed(self, event) -> None:
             result = event.state.results.selected_frame
