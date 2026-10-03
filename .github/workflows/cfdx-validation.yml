@@ -1,5 +1,10 @@
 name: CFDX total validation
 
+# Long/expensive validation is deliberately separated from the fast PR gate.
+# Add the `validation-total` label to a PR to run this workflow; it can also
+# be started explicitly with workflow_dispatch. Ordinary PR synchronization
+# does not execute the expensive job unless that label is present.
+
 on:
   workflow_dispatch:
   pull_request:
