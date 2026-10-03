@@ -20,12 +20,32 @@ from pathlib import Path
 
 
 REQUIRED_TESTS = (
-    "test_couette_quick",
+    # Physical production paths: use the full pressure-velocity matrix, not
+    # only the short PR smoke test, so every exposed coupling algorithm is
+    # exercised (SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step, COUPLED).
+    "test_phase9_acceptance",
     "test_poiseuille_quick",
     "test_ghia_cavity_quick",
     "test_nonorthogonal_skew_campaign",
-    "test_n8_schur_production_benchmark",
+    # Linear solver families used by N8.
+    "test_cg_solver",
+    "test_bicgstab_solver",
+    "test_gmres_solver",
+    "test_krylov_preconditioning",
+    # N8 preconditioner / Schur families.
     "test_amg_preconditioner_qualification",
+    "test_advanced_preconditioners",
+    "test_schur_preconditioner",
+    "test_schur_infrastructure",
+    "test_exact_schur",
+    "test_simplerc_schur",
+    "test_lsc_bfbt_schur",
+    "test_lsc_bfbt_schur_null_space",
+    "test_schur_approximation_comparison",
+    "test_schur_quantitative_qualification",
+    "test_mgr_preconditioner",
+    "test_coupled_block_schur_amg",
+    "test_n8_schur_production_benchmark",
 )
 
 
@@ -100,7 +120,7 @@ def main() -> int:
     missing = [name for name in REQUIRED_TESTS if name not in available]
     if missing:
         report = {
-            "campaign": "N8 physical qualification",
+            "campaign": "N8 complete solver/preconditioner qualification",
             "status": "INCOMPLETE",
             "required_tests": list(REQUIRED_TESTS),
             "missing_tests": missing,
@@ -129,6 +149,22 @@ def main() -> int:
         "completed_tests": completed,
         "failed_tests": failed,
         "results": results,
+        "coverage": {
+            "pressure_velocity": [
+                "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",
+                "FRACTIONAL_STEP", "COUPLED"
+            ],
+            "linear_solvers": ["CG", "BiCGStab", "GMRES", "FGMRES"],
+            "preconditioners": [
+                "Native AMG", "Smoothed Aggregation AMG",
+                "Native FieldSplit", "Coupled Block Schur", "MGR"
+            ],
+            "schur": [
+                "Exact", "SIMPLE/SIMPLEC", "LSC", "BFBt",
+                "null-space", "quantitative comparison"
+            ],
+            "physical_cases": ["Couette", "Poiseuille", "Ghia Re=100", "skew/non-orthogonal"]
+        },
         "policy": {
             "reuses_existing_ctest_tests": True,
             "changes_numerical_tolerances": False,
