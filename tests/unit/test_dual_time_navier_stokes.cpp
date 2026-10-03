@@ -112,6 +112,8 @@ IncompressibleSolverControls base_controls()
     c.pressure_reference_value = 0.0;
     c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
     c.coupled_linear_solver.preconditioner = PreconditionerModel::CoupledBlockSchur;
+    c.diagnostics.coupled_matrix_summary = true;
+    c.diagnostics.debug_cell = 5;
     return c;
 }
 
