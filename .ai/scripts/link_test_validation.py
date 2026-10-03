@@ -80,14 +80,20 @@ def main():
         row = conn.execute("SELECT id FROM tests WHERE file_id IN (SELECT id FROM files WHERE path=?)", (path,)).fetchone()
         if row: test_id[path] = row[0]
     validation_id = {r["path"]: r["id"] for r in conn.execute("SELECT id,path FROM validation_cases").fetchall()}
-    for path, source, evidence in explicit_test_links(root, known):
-        if path in test_id:
-            conn.execute("INSERT OR IGNORE INTO test_links(test_id, symbol_id, link_type) VALUES (?, NULL, ?)", (test_id[path], evidence + ":" + source))
+
+    # A test source explicitly defines the symbols in that same source file.
+    # This is traceability, not execution/coverage proof.
+    for path, tid in test_id.items():
+        rows = conn.execute("SELECT s.id FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=?", (path,)).fetchall()
+        for (sid,) in rows:
+            conn.execute("INSERT OR IGNORE INTO test_links(test_id, symbol_id, relation) VALUES (?, ?, ?)", (tid, sid, "defines-symbol"))
+
     for vpath, tpath, evidence in validation_links(root, known):
         vid = validation_id.get(vpath)
-        tid = test_id.get(tpath)
-        if vid and tid:
-            conn.execute("INSERT OR IGNORE INTO test_links(test_id, symbol_id, link_type) VALUES (?, NULL, ?)", (tid, evidence + ":" + vpath))
+        if vid and tpath in test_id:
+            rows = conn.execute("SELECT s.id FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=?", (tpath,)).fetchall()
+            for (sid,) in rows:
+                conn.execute("INSERT OR IGNORE INTO validation_links(validation_case_id, symbol_id, relation) VALUES (?, ?, ?)", (vid, sid, "explicit-test-reference"))
     conn.execute("INSERT OR REPLACE INTO index_metadata(key,value) VALUES(?,?)", ("semantic_linkage", "explicit-evidence-only-v1"))
     conn.commit(); conn.close()
 
