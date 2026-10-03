@@ -151,6 +151,15 @@ if(CFDX_HAS_HDF5)
     list(APPEND CFDX_IO_SOURCES
         src/cfdx/io/hdf5/case_hdf5_io.cpp
     )
+    # These translation units intentionally contain file-local helper symbols
+    # with identical names. Keep them separate when CMake Unity Build is used
+    # for DebugSanitizers; otherwise unity concatenation creates redefinitions.
+    set_source_files_properties(
+        src/cfdx/io/hdf5/hdf5_writer.cpp
+        src/cfdx/io/hdf5/hdf5_reader.cpp
+        src/cfdx/io/hdf5/case_hdf5_io.cpp
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+    )
 else()
     list(APPEND CFDX_IO_SOURCES src/cfdx/io/hdf5/hdf5_unavailable.cpp)
 endif()
