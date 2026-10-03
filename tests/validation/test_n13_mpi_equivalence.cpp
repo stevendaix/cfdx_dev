@@ -6,6 +6,16 @@
 #include <cstdio>
 #include <vector>
 
+#if defined(__SANITIZE_ADDRESS__) && __has_include(<sanitizer/lsan_interface.h>)
+#include <sanitizer/lsan_interface.h>
+#define CFDX_N13_LSAN_MPI_INIT_GUARD 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) && __has_include(<sanitizer/lsan_interface.h>)
+#include <sanitizer/lsan_interface.h>
+#define CFDX_N13_LSAN_MPI_INIT_GUARD 1
+#endif
+#endif
+
 using namespace cfdx::core;
 using namespace cfdx::core::numerics;
 using namespace cfdx::core::parallel;
@@ -47,7 +57,17 @@ static Mesh two_cell_channel()
 
 int main(int argc, char** argv)
 {
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+    // OpenMPI may retain internal operator-selection allocations after MPI_Finalize
+    // under LeakSanitizer. They originate inside MPI_Init (libmpi.so), not CFDX.
+    // Keep the sanitizer active for all CFDX allocations while excluding only the
+    // third-party MPI initialization phase from leak accounting.
+    __lsan_disable();
+#endif
     mpi_init(&argc, &argv);
+#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
+    __lsan_enable();
+#endif
     const int rank = mpi_rank();
     const int size = mpi_size();
 
