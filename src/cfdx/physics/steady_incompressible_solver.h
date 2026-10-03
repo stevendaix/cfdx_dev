@@ -1534,7 +1534,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupled_linear_solver,
                 U, p);
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
-                throw std::runtime_error(
+                throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
                     ", iterations=" + std::to_string(coupled_result.iterations) +
@@ -1599,7 +1599,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         << ", residual=" << std::scientific << std::setprecision(3)
                         << solve.residual
                         << ", relative=" << solve.residual_relative << ")";
-                throw std::runtime_error(message.str());
+                throw NonlinearRetryableFailure(message.str());
             }
         };
         require_linear_convergence("Ux", rx);
@@ -1844,7 +1844,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED)
-                throw std::runtime_error(
+                throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: pressure-correction solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(rp.status)) +
                     ", iterations=" + std::to_string(rp.iterations) +
@@ -2637,7 +2637,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         result.iterations = iter;
             transaction.commit();
             iteration_completed = true;
-            } catch (const std::runtime_error& error) {
+            } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
                 frozen_state_valid = false;
                 if (!retry_controller.can_retry())
