@@ -1,34 +1,41 @@
 # %% [markdown]
 # # Thermal benchmark family
 #
-# ## One-dimensional conduction
+# Thermal evidence is split into conduction, convection, CHT and coupled thermal-radiation populations.
 #
-# \[
-# d^2T/dx^2=0,
-# \qquad
-# T(x)=T_0+(T_L-T_0)x/L,
-# \]
+# ## 1-D conduction
 #
-# and
+# [
+# rac{d^2T}{dx^2}=0,
+# qquad
+# T(x)=T_0+rac{T_L-T_0}{L}x,
+# ]
+# [
+# q_x=-krac{T_L-T_0}{L}.
+# ]
 #
-# \[
-# q_x=-k(T_L-T_0)/L.
-# \]
+# Verify both temperature error and integrated heat-flux balance. Mesh refinement should recover the expected spatial order of the selected discretisation.
 #
-# This isolates thermal diffusion and temperature boundary conditions.
+# ## Convection/energy balance
 #
-# ## Conjugate heat transfer
+# For a fully developed heated channel,
+# [
+# dot m c_p(T_b-T_{b,0})=Q_{wall}.
+# ]
+# The bulk-temperature definition and wall heat-input convention must be frozen.
+#
+# ## CHT
 #
 # Perfect contact requires
+# [
+# T_s=T_f,qquad q_s''+q_f''=0.
+# ]
+# Finite contact conductance gives
+# [
+# q''=G(T_1-T_2).
+# ]
+# Report interface temperature jump, heat flux on both sides, global energy imbalance and coupling-iteration error independently.
 #
-# \[
-# q_s=q_f,\qquad T_s=T_f.
-# \]
+# ## Qualification boundary
 #
-# With contact resistance Rc,
-#
-# \[
-# q=(T_1-T_2)/R_c.
-# \]
-#
-# Verify temperature error, heat-flux error, interface conservation and coupling iteration error. Thermal validation is separated into conduction, convection and CHT populations rather than treated as one generic pass.
+# A converged temperature field is not sufficient. Property-model correctness, energy conservation, interface conservation and mesh/time sensitivity are separate evidence layers.
