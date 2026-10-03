@@ -45,3 +45,12 @@ Every numerical skill must distinguish implementation, testing, verification, va
 ## Next
 
 Further skills will cover V&V workflows, code intelligence, MCP operation, GUI/TUI and runtime/development agents.
+
+
+## V&V workflow skills
+
+- `vv-workflow` — reproducible verification/validation workflow
+- `mms-verification` — manufactured-solution verification
+- `refinement-convergence` — mesh/time refinement and observed-order analysis
+- `benchmark-reference` — benchmark and independent-reference comparison
+- `qualification-matrix` — auditable maturity/qualification mapping
