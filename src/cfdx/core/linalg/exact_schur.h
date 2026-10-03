@@ -59,11 +59,15 @@ public:
     bool setup(const BlockOperator& blocks) override {
         if (!blocks.is_valid() || !auu_solve_) return false;
         blocks_ = &blocks;
+        graph_signature_ = graph_signature(blocks);
         return true;
     }
 
     bool update_values(const BlockOperator& blocks) override {
-        return setup(blocks);
+        if (!blocks_ || graph_signature(blocks) != graph_signature_)
+            return false;
+        blocks_ = &blocks;
+        return true;
     }
 
     bool apply(const Vector& rhs_p, Vector& pressure) const override {
@@ -131,9 +135,42 @@ public:
     }
 
 private:
+    struct GraphSignature {
+        std::size_t hash = 0;
+        bool operator==(const GraphSignature& other) const noexcept {
+            return hash == other.hash;
+        }
+        bool operator!=(const GraphSignature& other) const noexcept {
+            return !(*this == other);
+        }
+    };
+
+    static GraphSignature graph_signature(const BlockOperator& blocks) {
+        std::size_t h = 1469598103934665603ULL;
+        const auto mix = [&h](std::size_t value) {
+            h ^= value;
+            h *= 1099511628211ULL;
+        };
+        const auto add = [&mix](const SparseMatrix& A) {
+            mix(A.n_rows());
+            mix(A.n_cols());
+            mix(A.nnz());
+            for (std::size_t i = 0; i < A.n_rows() + 1; ++i)
+                mix(A.row_offsets_data()[i]);
+            for (std::size_t k = 0; k < A.nnz(); ++k)
+                mix(A.columns_data()[k]);
+        };
+        add(blocks.Auu());
+        add(blocks.G());
+        add(blocks.D());
+        add(blocks.C());
+        return GraphSignature{h};
+    }
+
     const BlockOperator* blocks_ = nullptr;
     AuuSolve auu_solve_;
     Controls controls_;
+    GraphSignature graph_signature_{};
 };
 
 } // namespace cfdx::core
