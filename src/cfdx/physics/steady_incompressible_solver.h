@@ -2626,7 +2626,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (controls.iteration_output_callback &&
             !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
             result.iterations = iter;
-            break;
+            stop_after_iteration = true;
         }
 
         if (converged_now) {
@@ -2645,8 +2645,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 retry_controller.reject();
                 std::cerr << "CFDX nonlinear iteration " << iter
                           << " rejected; retry=" << retry_controller.retries()
-                          << " alpha_u=" << retry_controller.alpha_u(retry_controller.alpha_u(controls.coupling.alpha_u))
-                          << " alpha_p=" << retry_controller.alpha_p(retry_controller.alpha_p(controls.coupling.alpha_p))
+                          << " alpha_u=" << retry_controller.alpha_u(controls.coupling.alpha_u)
+                          << " alpha_p=" << retry_controller.alpha_p(controls.coupling.alpha_p)
                           << " reason=" << error.what() << "\n";
             }
         }
