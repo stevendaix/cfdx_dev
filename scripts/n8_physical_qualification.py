@@ -23,7 +23,7 @@ REQUIRED_TESTS = (
     # Physical production paths: use the full pressure-velocity matrix, not
     # only the short PR smoke test, so every exposed coupling algorithm is
     # exercised (SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step, COUPLED).
-    "test_phase9_acceptance",
+    "test_n8_pressure_velocity_matrix",
     "test_poiseuille_quick",
     "test_ghia_cavity_quick",
     "test_nonorthogonal_skew_campaign",
@@ -143,7 +143,7 @@ def main() -> int:
     failed = [r["name"] for r in results if r["status"] == "FAIL"]
     completed = len(results)
     report = {
-        "campaign": "N8 physical qualification",
+        "campaign": "N8 complete solver/preconditioner qualification",
         "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
         "required_tests": list(REQUIRED_TESTS),
         "completed_tests": completed,
