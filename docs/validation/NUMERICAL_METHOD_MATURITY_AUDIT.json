@@ -184,14 +184,19 @@
       "name": "Difficult-mesh robustness",
       "status": "partial",
       "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h",
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "tests/validation/test_gradient_verification.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp",
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "tests/validation/test_polyhedral_laplacian_campaign.cpp",
         "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
         "docs/validation/CONSERVATION_BOUNDEDNESS.md"
       ],
       "gaps": [
-        "controlled quality ladder",
-        "polyhedral quantitative accuracy",
-        "solver robustness versus quality",
-        "integration with #423 fixture manifest"
+        "integration with #423 imported-fixture manifest and production mesh corpus",
+        "retained quantitative evidence from the exact CI HEAD for the complete N10-labelled subset"
       ]
     },
     {
