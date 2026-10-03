@@ -122,6 +122,12 @@ int main() {
             EXPECT_TRUE(std::isfinite(rr));
             EXPECT_TRUE(rr < 1e-9);
             EXPECT_TRUE(pc.is_ready());
+            std::cout << "n8_schur_lifecycle_probe"
+                      << " cells=" << n
+                      << " hierarchy_builds=" << pc.pressure_hierarchy_builds()
+                      << " numeric_updates=" << pc.pressure_numeric_updates()
+                      << " coarse_size=" << pc.pressure_coarse_size()
+                      << " ready=" << pc.is_ready() << '\\n';
             EXPECT_TRUE(pc.pressure_hierarchy_builds() == 1);
             EXPECT_TRUE(pc.pressure_numeric_updates() == 0);
             EXPECT_TRUE(pc.schur_matrix().nnz() > 0);
