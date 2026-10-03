@@ -960,46 +960,68 @@
     {
       "package_id": "N15",
       "requirement": "reproducible solver benchmark schema",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE_SCHEMA.json",
+        "benchmarks/n15/poisson_baseline.json",
+        "tests/python/test_n15_benchmark.py"
       ]
     },
     {
       "package_id": "N15",
       "requirement": "MPI strong scaling",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "MPI weak scaling",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "GPU speedup benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "AMG setup/solve breakdown",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE_SCHEMA.json",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "matrix-free vs assembled benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "mixed-precision benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N16",
