@@ -102,6 +102,7 @@ public:
         for (;;) {
             const auto accepted_U = U_;
             const auto accepted_p = p_;
+            const auto accepted_U_previous = U_previous_;
             const bool accepted_history = history_valid_;
             const double accepted_dt_previous = dt_previous_;
 
@@ -162,7 +163,7 @@ public:
 
             U_ = accepted_U;
             p_ = accepted_p;
-            U_previous_ = accepted_U;
+            U_previous_ = accepted_U_previous;
             history_valid_ = accepted_history;
             dt_previous_ = accepted_dt_previous;
 
