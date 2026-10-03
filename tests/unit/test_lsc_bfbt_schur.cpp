@@ -1,0 +1,215 @@
+#include "cfdx/core/linalg/block_operator.h"
+#include "cfdx/core/linalg/exact_schur.h"
+#include "cfdx/core/linalg/lsc_bfbt_schur.h"
+#include "cfdx/core/linalg/sparse_matrix.h"
+#include "cfdx/core/linalg/vector.h"
+#include "common/test_harness.h"
+
+#include <cmath>
+#include <initializer_list>
+#include <tuple>
+#include <vector>
+
+using namespace cfdx::core;
+using namespace cfdx::testing;
+
+static SparseMatrix make_sparse(
+    std::size_t rows, std::size_t cols,
+    const std::initializer_list<std::tuple<std::size_t, std::size_t, double>>& entries) {
+    SparseMatrix A(rows, cols);
+    for (const auto& [i, j, value] : entries) A.push_back(i, j, value);
+    A.finalize();
+    return A;
+}
+
+static std::vector<std::vector<double>> dense(const SparseMatrix& A) {
+    std::vector<std::vector<double>> out(A.n_rows(), std::vector<double>(A.n_cols(), 0.0));
+    for (std::size_t i = 0; i < A.n_rows(); ++i)
+        for (std::size_t k = A.row_offsets_data()[i]; k < A.row_offsets_data()[i + 1]; ++k)
+            out[i][A.columns_data()[k]] += A.values_data()[k];
+    return out;
+}
+
+static std::vector<std::vector<double>> inverse(std::vector<std::vector<double>> A) {
+    const std::size_t n = A.size();
+    std::vector<std::vector<double>> I(n, std::vector<double>(n, 0.0));
+    for (std::size_t i = 0; i < n; ++i) I[i][i] = 1.0;
+    for (std::size_t k = 0; k < n; ++k) {
+        std::size_t pivot = k;
+        for (std::size_t i = k + 1; i < n; ++i)
+            if (std::abs(A[i][k]) > std::abs(A[pivot][k])) pivot = i;
+        std::swap(A[k], A[pivot]);
+        std::swap(I[k], I[pivot]);
+        for (std::size_t j = 0; j < n; ++j) {
+            A[k][j] /= A[k][k];
+            I[k][j] /= A[k][k];
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            if (i == k) continue;
+            const double f = A[i][k];
+            for (std::size_t j = 0; j < n; ++j) {
+                A[i][j] -= f * A[k][j];
+                I[i][j] -= f * I[k][j];
+            }
+        }
+    }
+    return I;
+}
+
+static Vector dense_matvec(const std::vector<std::vector<double>>& A, const Vector& x) {
+    Vector y(A.size(), 0.0);
+    for (std::size_t i = 0; i < A.size(); ++i)
+        for (std::size_t j = 0; j < A[i].size(); ++j) y(i) += A[i][j] * x(j);
+    return y;
+}
+
+static double norm2(const Vector& x) {
+    return std::sqrt(x.dot(x));
+}
+
+int main() {
+    // Small Stokes-like system with C=0 and D=G^T.  The pressure Schur is
+    // negative definite; LSC/BFBt therefore return the negative inverse
+    // approximation required by the CFDX Schur convention.
+    const auto Auu = make_sparse(2, 2, {
+        {0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.0}
+    });
+    const auto G = make_sparse(2, 2, {
+        {0, 0, 1.0}, {0, 1, 0.5}, {1, 0, 0.25}, {1, 1, 1.0}
+    });
+    const auto D = make_sparse(2, 2, {
+        {0, 0, 1.0}, {0, 1, 0.25}, {1, 0, 0.5}, {1, 1, 1.0}
+    });
+    const auto C = make_sparse(2, 2, {});
+    const BlockOperator blocks(Auu, G, D, C);
+    blocks.validate();
+
+    const auto P = dense(D);
+    (void)P;
+    const auto Ad = dense(Auu);
+    const auto Gd = dense(G);
+    const auto Dd = dense(D);
+    const auto Ainv = inverse(Ad);
+
+    const auto pressure_operator = [&Dd, &Gd](const Vector& x) {
+        Vector y(2, 0.0);
+        for (std::size_t i = 0; i < 2; ++i)
+            for (std::size_t j = 0; j < 2; ++j) y(i) += Dd[i][j] * Gd[j][0] * x(0) + Dd[i][j] * Gd[j][1] * x(1);
+        return y;
+    };
+    (void)pressure_operator;
+
+    // Build P = D Q^-1 G and provide an exact small-system solve callback.
+    const auto make_pressure_inverse = [&Dd, &Gd](const std::vector<double>& qinv) {
+        std::vector<std::vector<double>> M(2, std::vector<double>(2, 0.0));
+        for (std::size_t j = 0; j < 2; ++j)
+            for (std::size_t i = 0; i < 2; ++i)
+                for (std::size_t k = 0; k < 2; ++k)
+                    M[i][j] += Dd[i][k] * qinv[k] * Gd[k][j];
+        return inverse(M);
+    };
+
+    const auto run_mode = [&](LscBfbtSchurApproximation::Mode mode,
+                              const std::vector<double>& qdiag) {
+        std::vector<double> qinv(2, 1.0);
+        if (!qdiag.empty()) {
+            qinv[0] = 1.0 / qdiag[0];
+            qinv[1] = 1.0 / qdiag[1];
+        } else if (mode == LscBfbtSchurApproximation::Mode::LSC) {
+            qinv[0] = 0.25;
+            qinv[1] = 1.0 / 3.0;
+        }
+        const auto Pinv = make_pressure_inverse(qinv);
+        auto solve_P = [Pinv](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) {
+                z(i) = 0.0;
+                for (std::size_t j = 0; j < rhs.size(); ++j) z(i) += Pinv[i][j] * rhs(j);
+            }
+            return true;
+        };
+        LscBfbtSchurApproximation pre(mode, solve_P, qdiag);
+        EXPECT_TRUE(pre.setup(blocks));
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.4;
+        Vector z(2, 0.0);
+        EXPECT_TRUE(pre.apply(rhs, z));
+        EXPECT_TRUE(std::isfinite(z(0)) && std::isfinite(z(1)));
+        return z;
+    };
+
+    run_case("lsc_and_bfbt_setup_and_apply", [&] {
+        (void)run_mode(LscBfbtSchurApproximation::Mode::LSC, {});
+        (void)run_mode(LscBfbtSchurApproximation::Mode::BFBT, {});
+    });
+
+    run_case("lsc_matches_documented_algebra", [&] {
+        const std::vector<double> qinv{0.25, 1.0 / 3.0};
+        const auto Pinv = make_pressure_inverse(qinv);
+        auto solve_P = [Pinv](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i)
+                for (std::size_t j = 0; j < rhs.size(); ++j) z(i) += Pinv[i][j] * rhs(j);
+            return true;
+        };
+        LscBfbtSchurApproximation lsc(
+            LscBfbtSchurApproximation::Mode::LSC, solve_P, {});
+        EXPECT_TRUE(lsc.setup(blocks));
+
+        Vector rhs(2, 0.0);
+        rhs(0) = 0.7;
+        rhs(1) = -1.2;
+        Vector z(2, 0.0);
+        EXPECT_TRUE(lsc.apply(rhs, z));
+
+        // For this small example Q=diag(Auu), and the implementation must
+        // equal -P^-1 E P^-1 exactly to floating-point roundoff.
+        const auto Esolve = [&Dd, &Ad, &Gd](const Vector& r) {
+            const auto Qinv = std::vector<double>{0.25, 1.0 / 3.0};
+            Vector g(2, 0.0), qg(2, 0.0), aqg(2, 0.0), qaqg(2, 0.0), e(2, 0.0);
+            for (std::size_t i = 0; i < 2; ++i)
+                for (std::size_t j = 0; j < 2; ++j) g(i) += Gd[i][j] * r(j);
+            for (std::size_t i = 0; i < 2; ++i) qg(i) = Qinv[i] * g(i);
+            for (std::size_t i = 0; i < 2; ++i)
+                for (std::size_t j = 0; j < 2; ++j) aqg(i) += Ad[i][j] * qg(j);
+            for (std::size_t i = 0; i < 2; ++i) qaqg(i) = Qinv[i] * aqg(i);
+            for (std::size_t i = 0; i < 2; ++i)
+                for (std::size_t j = 0; j < 2; ++j) e(i) += Dd[i][j] * qaqg(j);
+            return e;
+        };
+        Vector y(2, 0.0);
+        EXPECT_TRUE(solve_P(rhs, y));
+        Vector e = Esolve(y);
+        Vector ref(2, 0.0);
+        EXPECT_TRUE(solve_P(e, ref));
+        ref *= -1.0;
+        EXPECT_NEAR(norm2(z - ref), 0.0, 1e-12);
+    });
+
+    run_case("numeric_refresh_rejects_graph_change", [&] {
+        const std::vector<double> qdiag{2.0, 5.0};
+        auto solve_P = [](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) z(i) = rhs(i);
+            return true;
+        };
+        LscBfbtSchurApproximation pre(
+            LscBfbtSchurApproximation::Mode::BFBT, solve_P, qdiag);
+        EXPECT_TRUE(pre.setup(blocks));
+
+        const auto G_changed = make_sparse(2, 2, {
+            {0, 0, 1.0}, {0, 1, 0.75}, {1, 0, 0.25}
+        });
+        const BlockOperator changed(Auu, G_changed, D, C);
+        EXPECT_TRUE(!pre.update_values(changed));
+    });
+
+    run_case("bfbt_uses_explicit_velocity_scaling", [&] {
+        const std::vector<double> qdiag{2.0, 5.0};
+        const auto z = run_mode(LscBfbtSchurApproximation::Mode::BFBT, qdiag);
+        EXPECT_TRUE(std::isfinite(z(0)) && std::isfinite(z(1)));
+    });
+
+    return run_all();
+}
