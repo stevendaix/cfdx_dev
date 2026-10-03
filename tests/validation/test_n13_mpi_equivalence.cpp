@@ -105,7 +105,6 @@ int main(int argc, char** argv)
     const double local_sum = static_cast<double>(rank + 1);
     const double normal_sum = mpi_allreduce_sum(local_sum);
     const double deterministic_sum = mpi_deterministic_sum(local_sum);
-    const double expected = 3.0;
     const double reduction_delta = std::abs(normal_sum - deterministic_sum);
 
     if (rank == 0 && reduction_delta > 1e-14)
