@@ -1,25 +1,36 @@
 # %% [markdown]
 # # NACA0012
 #
-# NACA0012 is a curved-wall external-aerodynamics benchmark. It exercises geometry, surface gradients, boundary layers, pressure distribution and, when used, turbulence/transition modelling.
+# NACA0012 is a curved-wall external-aerodynamics benchmark. It exercises geometry, surface reconstruction, boundary layers, pressure distribution and, depending on the population, transition/turbulence modelling.
 #
-# The symmetric NACA four-digit thickness law is
+# ## Geometry
 #
-# \[
-# y_t=5tc[0.2969\sqrt{x/c}-0.1260(x/c)-0.3516(x/c)^2+0.2843(x/c)^3-0.1015(x/c)^4].
-# \]
+# The symmetric four-digit thickness law is
 #
-# For NACA0012, t=0.12.
+# [
+# y_t=5tcleft[0.2969sqrt{x/c}-0.1260(x/c)-0.3516(x/c)^2+0.2843(x/c)^3-0.1015(x/c)^4ight],
+# ]
 #
-# Aerodynamic coefficients:
+# with (t=0.12). The exact trailing-edge convention must be frozen because the coefficient affects the geometry.
 #
-# \[
-# C_L=L/(0.5\rho U_\infty^2c),\quad
-# C_D=D/(0.5\rho U_\infty^2c).
-# \]
+# ## Aerodynamic coefficients
 #
-# Depending on the reference, also compare C_M, surface C_p and separation.
+# [
+# C_L=rac{L}{	frac12ho U_infty^2c},
+# qquad
+# C_D=rac{D}{	frac12ho U_infty^2c},
+# qquad
+# C_M=rac{M}{	frac12ho U_infty^2c^2}.
+# ]
 #
-# Exact angle of attack, Reynolds number, Mach/compressibility treatment, transition/turbulence model and far-field boundary conditions must match the reference.
+# Also retain (C_p(x/c)), surface pressure and, where relevant, skin-friction/separation data.
 #
-# Curved-wall mesh convergence is mandatory. One coefficient on one mesh is insufficient qualification.
+# ## Frozen reference parameters
+#
+# Each population must explicitly state angle of attack, Reynolds number, Mach/compressibility treatment, turbulence/transition model, far-field location, wall treatment and force reference point.
+#
+# ## Mesh and extraction
+#
+# Use at least three systematically refined curved-wall meshes for a mesh-convergence claim. Record first-cell height, wall-normal growth, surface spacing, wake refinement and mesh-quality metrics. Pressure and viscous force contributions must be extracted independently.
+#
+# One coefficient on one mesh is insufficient qualification.
