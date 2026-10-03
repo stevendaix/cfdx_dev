@@ -167,3 +167,16 @@ The next PR should be considered complete when it provides:
 - [ ] CI integration without suppressing existing gates.
 
 This PR intentionally stops at the campaign design and evidence wiring. It does not claim N8 qualification before the executable production campaign has been run.
+
+## Executable campaign layer
+
+This PR now contains the first executable qualification layer in addition to the campaign specification.
+
+- `scripts/n8_physical_qualification.py` reuses the existing CTest validation executables; it does not duplicate their physics or solver implementations.
+- CMake registers `test_n8_physical_qualification` when Python is available.
+- The campaign requires the existing Couette, Poiseuille, Ghia, controlled skew/non-orthogonal, Schur production benchmark, and AMG qualification tests to be present. A missing required test is reported as **INCOMPLETE**, not silently skipped.
+- Tests are executed sequentially and the first failing gate stops the campaign while retaining its complete output in the JSON report.
+- The report is written to `<build-dir>/n8_physical_qualification.json` and records pass/fail, elapsed time, captured output, and campaign policy metadata.
+- No numerical tolerance is changed, no validation case is disabled, and no solver fallback is introduced by the campaign layer.
+
+This is intentionally a first executable layer. The next iterations should extend the machine-readable evidence with explicit solver/preconditioner metadata and quantitative LSC/BFBt-vs-exact-Schur and difficult-matrix AMG evidence, using the existing tests as the numerical oracles.
