@@ -129,7 +129,7 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
         for (auto& [name, bc] : scaled) {
             (void)name;
             if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
-                bc.value = bc.value * parameter;
+                bc.value = cfdx::core::Vec3{\n                    bc.value.x * parameter,\n                    bc.value.y * parameter,\n                    bc.value.z * parameter};
         }
         return scaled;
     };
@@ -161,7 +161,7 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
             const auto previous_U = U;
             const auto previous_p = p;
             IncompressibleSolverControls stage_controls = controls;
-            stage_controls.body_force = controls.body_force * target;
+            stage_controls.body_force = cfdx::core::Vec3{\n                controls.body_force.x * target,\n                controls.body_force.y * target,\n                controls.body_force.z * target};
             const auto stage_velocity_bcs = scale_velocity_bcs(target);
 
             IncompressibleSolveResult solver_result;
