@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "package": "N13",
+  "name": "Cross-backend numerical equivalence",
+  "contract": {
+    "relative_l2": "<= 1e-12",
+    "relative_linf": "<= 1e-12",
+    "deterministic_reduction": "<= 1e-14",
+    "restart": "exact for remapped stored values"
+  },
+  "comparisons": [
+    "serial_vs_mpi",
+    "assembled_vs_matrix_free",
+    "cpu_vs_cuda",
+    "deterministic_vs_normal_reduction",
+    "restart",
+    "n_to_m_mpi_restart"
+  ],
+  "gpu": {
+    "functional_execution": "independent gate",
+    "numerical_equivalence": "independent gate",
+    "performance": "N15",
+    "memory": "N15",
+    "silent_cpu_fallback": false,
+    "unavailable_hardware_status": "BLOCKED"
+  },
+  "evidence_requirements": [
+    "commit_sha",
+    "compiler",
+    "build_type",
+    "mpi",
+    "cuda_device_if_applicable",
+    "mesh",
+    "numerics",
+    "tolerance",
+    "field_or_operator_metrics",
+    "conservation",
+    "true_residual",
+    "restart_metadata"
+  ]
+}
