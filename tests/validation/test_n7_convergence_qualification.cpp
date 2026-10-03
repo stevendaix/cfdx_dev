@@ -246,17 +246,21 @@ int main()
             throw std::runtime_error("N7 Ghia centre-velocity QoI gate failed");
 
         std::size_t adaptive_changes=0;
-        for (const auto& h : final.history) {
-            if (std::abs(h.effective_alpha_u-0.7) > 1e-12 ||
-                std::abs(h.effective_alpha_p-0.3) > 1e-12)
-                ++adaptive_changes;
-            if (h.effective_alpha_u < 0.2 || h.effective_alpha_u > 0.9 ||
-                h.effective_alpha_p < 0.1 || h.effective_alpha_p > 0.5 ||
-                !std::isfinite(h.nonlinear_convergence_metric))
-                throw std::runtime_error("N7 adaptive relaxation bounds/history failed");
+        std::size_t adaptive_history_samples=0;
+        for (const auto& stage : result.continuation.stages) {
+            for (const auto& h : stage.solver_result.history) {
+                ++adaptive_history_samples;
+                if (std::abs(h.effective_alpha_u-0.7) > 1e-12 ||
+                    std::abs(h.effective_alpha_p-0.3) > 1e-12)
+                    ++adaptive_changes;
+                if (h.effective_alpha_u < 0.2 || h.effective_alpha_u > 0.9 ||
+                    h.effective_alpha_p < 0.1 || h.effective_alpha_p > 0.5 ||
+                    !std::isfinite(h.nonlinear_convergence_metric))
+                    throw std::runtime_error("N7 adaptive relaxation bounds/history failed");
+            }
         }
-        if (adaptive_changes == 0)
-            throw std::runtime_error("N7 adaptive relaxation never activated");
+        if (adaptive_history_samples < 3 || adaptive_changes == 0)
+            throw std::runtime_error("N7 adaptive relaxation did not produce qualified history");
 
         if (std::abs(continuation_energy-direct_energy) > 2e-5)
             throw std::runtime_error("N7 kinetic-energy QoI mismatch");
