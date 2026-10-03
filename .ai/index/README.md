@@ -74,3 +74,9 @@ The query tool uses only Python's standard library and has no CFDX runtime depen
 6. semantic test/validation linkage;
 7. incremental updates and query tooling;
 8. reproducible AI tooling workflow and MCP query interface.
+
+## Semantic test/V&V linkage
+
+The linkage layer is deliberately evidence-driven. It creates links only from explicit repository references, such as a literal test source path in CMake registration or a validation manifest. Filename similarity, directory proximity, symbol-name similarity, and inferred execution coverage are not evidence and must not create links.
+
+Each link records provenance in test_links.link_type. An absent link means no explicit evidence was found, not that the test is unrelated. The current implementation does not claim test-to-symbol coverage.
