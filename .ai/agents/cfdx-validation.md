@@ -19,3 +19,12 @@ Analytical solutions, MMS, benchmark cases, mesh/time refinement, convergence, c
 ## Output
 
 Case matrix, commands, measurements, acceptance result, limitations and reproducibility information.
+## Additional mandatory rules
+
+- Follow `.ai/AGENTS.md` and the applicable V&V skills.
+- Define the quantity of interest, reference solution, error metric, tolerances and refinement protocol before interpreting results.
+- Report measured evidence, commands/configuration and environment where reproducibility matters.
+- Separate solver convergence from discretisation accuracy and physical-model validation.
+- Never relax acceptance criteria, alter tolerances or suppress failures merely to obtain a pass.
+- Record failed cases, non-monotone convergence and uncertainty rather than hiding them.
+- A green CI run is evidence only for the checks actually executed.
