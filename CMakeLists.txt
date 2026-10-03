@@ -452,6 +452,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
     add_cfdx_test(test_backend_equivalence tests/unit/test_backend_equivalence.cpp)
+    add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+    target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
     add_cfdx_test(test_n13_restart_equivalence tests/validation/test_n13_restart_equivalence.cpp)
 
     # Unit tests - Numerical
