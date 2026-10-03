@@ -37,7 +37,7 @@ namespace io {
 // ---------------------------------------------------------------------------
 // File-access helper (parallel-aware, mirrors hdf5_reader/writer)
 // ---------------------------------------------------------------------------
-static hid_t create_file_access_plist() {
+static hid_t case_create_file_access_plist() {
     hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
     if (plist < 0) return -1;
 #ifdef CFDX_ENABLE_PARALLEL_HDF5
@@ -58,7 +58,7 @@ static hid_t create_file_access_plist() {
 // ---------------------------------------------------------------------------
 // Low-level dataset readers (mirrors hdf5_reader.cpp)
 // ---------------------------------------------------------------------------
-static bool read_dataset_double(hid_t loc_id, const char* name,
+static bool case_read_dataset_double(hid_t loc_id, const char* name,
                                 std::vector<double>& out, int expected_rank = -1) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
@@ -87,7 +87,7 @@ static bool read_dataset_double(hid_t loc_id, const char* name,
     return status >= 0;
 }
 
-static bool read_dataset_u64(hid_t loc_id, const char* name,
+static bool case_read_dataset_u64(hid_t loc_id, const char* name,
                              std::vector<std::uint64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
@@ -115,7 +115,7 @@ static bool read_dataset_u64(hid_t loc_id, const char* name,
     return status >= 0;
 }
 
-static bool read_dataset_i64(hid_t loc_id, const char* name,
+static bool case_read_dataset_i64(hid_t loc_id, const char* name,
                              std::vector<std::int64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
@@ -146,7 +146,7 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
 // ---------------------------------------------------------------------------
 // Attribute reader
 // ---------------------------------------------------------------------------
-static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
+static bool case_read_attr_str(hid_t loc_id, const char* name, std::string& out) {
     if (H5Aexists(loc_id, name) <= 0) return false;
     hid_t attr = H5Aopen(loc_id, name, H5P_DEFAULT);
     if (attr < 0) return false;
@@ -177,7 +177,7 @@ static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
 // ---------------------------------------------------------------------------
 // FNV-1a hashing (mirrors hdf5_reader/writer.cpp)
 // ---------------------------------------------------------------------------
-static std::uint64_t fnv1a_update(std::uint64_t hash, const void* data, std::size_t size) {
+static std::uint64_t case_fnv1a_update(std::uint64_t hash, const void* data, std::size_t size) {
     const auto* bytes = static_cast<const std::uint8_t*>(data);
     for (std::size_t i = 0; i < size; ++i) {
         hash ^= bytes[i];
@@ -187,12 +187,12 @@ static std::uint64_t fnv1a_update(std::uint64_t hash, const void* data, std::siz
 }
 
 template<class T>
-static std::uint64_t fnv1a_update_vector(std::uint64_t hash, const T* data, std::size_t count) {
+static std::uint64_t case_fnv1a_update_vector(std::uint64_t hash, const T* data, std::size_t count) {
     if (count == 0 || data == nullptr) return hash;
-    return fnv1a_update(hash, data, count * sizeof(T));
+    return case_fnv1a_update(hash, data, count * sizeof(T));
 }
 
-static std::string hash_hex(std::uint64_t hash) {
+static std::string case_hash_hex(std::uint64_t hash) {
     std::ostringstream os;
     os << std::hex << std::setw(16) << std::setfill('0') << hash;
     return os.str();
@@ -201,7 +201,7 @@ static std::string hash_hex(std::uint64_t hash) {
 // ---------------------------------------------------------------------------
 // Dataset writers (mirrors hdf5_writer.cpp)
 // ---------------------------------------------------------------------------
-static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& value) {
+static herr_t case_write_attr_str(hid_t loc_id, const char* name, const std::string& value) {
     hid_t space = H5Screate(H5S_SCALAR);
     if (space < 0) return -1;
     hid_t atype = H5Tcopy(H5T_C_S1);
@@ -215,7 +215,7 @@ static herr_t write_attr_str(hid_t loc_id, const char* name, const std::string& 
     return status;
 }
 
-static herr_t write_dataset_u64(hid_t file_id, const char* name,
+static herr_t case_write_dataset_u64(hid_t file_id, const char* name,
                                 const std::uint64_t* data, hsize_t n) {
     if (n == 0) {
         hsize_t zero = 0;
@@ -236,7 +236,7 @@ static herr_t write_dataset_u64(hid_t file_id, const char* name,
     return status;
 }
 
-static herr_t write_dataset_i64(hid_t file_id, const char* name,
+static herr_t case_write_dataset_i64(hid_t file_id, const char* name,
                                 const std::int64_t* data, hsize_t n) {
     if (n == 0) {
         hsize_t zero = 0;
@@ -282,7 +282,7 @@ static herr_t write_dataset_double_2d(hid_t file_id, const char* name,
 // ---------------------------------------------------------------------------
 // Patch metadata parsing
 // ---------------------------------------------------------------------------
-static std::vector<std::string> parse_patch_metadata(const std::string& patches_str) {
+static std::vector<std::string> case_parse_patch_metadata(const std::string& patches_str) {
     std::vector<std::string> result;
     if (patches_str.empty()) return result;
     size_t start = 0;
@@ -857,7 +857,7 @@ bool read_case_cfdx_h5(const std::string& filename,
                        SourceInfo& source,
                        CaseSetup& setup,
                        GapAnalysis& gap) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
@@ -871,15 +871,15 @@ bool read_case_cfdx_h5(const std::string& filename,
     };
 
     // --- Source info (attributes that may be absent in mesh-only files) ---
-    read_attr_str(file, "source_solver", source.solver);
-    read_attr_str(file, "source_format", source.format);
-    read_attr_str(file, "source_version", source.version);
-    read_attr_str(file, "source_case_path", source.case_path);
-    read_attr_str(file, "source_case_name", source.case_name);
+    case_read_attr_str(file, "source_solver", source.solver);
+    case_read_attr_str(file, "source_format", source.format);
+    case_read_attr_str(file, "source_version", source.version);
+    case_read_attr_str(file, "source_case_path", source.case_path);
+    case_read_attr_str(file, "source_case_name", source.case_name);
 
     // --- Case setup JSON (if present) ---
     std::string case_setup_json;
-    if (read_attr_str(file, "case_setup_json", case_setup_json)) {
+    if (case_read_attr_str(file, "case_setup_json", case_setup_json)) {
         mini_json::value root = mini_json::value::parse_safe(case_setup_json);
         if (root.is_object()) {
             case_setup_from_json(root, setup);
@@ -906,7 +906,7 @@ bool read_case_cfdx_h5(const std::string& filename,
 
     // --- Gap report JSON (if present) ---
     std::string gap_json;
-    if (read_attr_str(file, "gap_report_json", gap_json)) {
+    if (case_read_attr_str(file, "gap_report_json", gap_json)) {
         mini_json::value root = mini_json::value::parse_safe(gap_json);
         if (root.is_object()) {
             gap_analysis_from_json(root, gap);
@@ -916,11 +916,11 @@ bool read_case_cfdx_h5(const std::string& filename,
     // --- Mesh topology ---
     // Read integrity attributes (may be absent in Python-written files)
     std::string format_version, schema_version, topology_hash, geometry_hash, mesh_hash;
-    const bool has_format = read_attr_str(file, "format_version", format_version);
-    const bool has_schema = read_attr_str(file, "schema_version", schema_version);
-    const bool has_topology = read_attr_str(file, "topology_hash", topology_hash);
-    const bool has_geometry = read_attr_str(file, "geometry_hash", geometry_hash);
-    const bool has_mesh = read_attr_str(file, "mesh_hash", mesh_hash);
+    const bool has_format = case_read_attr_str(file, "format_version", format_version);
+    const bool has_schema = case_read_attr_str(file, "schema_version", schema_version);
+    const bool has_topology = case_read_attr_str(file, "topology_hash", topology_hash);
+    const bool has_geometry = case_read_attr_str(file, "geometry_hash", geometry_hash);
+    const bool has_mesh = case_read_attr_str(file, "mesh_hash", mesh_hash);
 
     // Validate versions if present
     if (has_format || has_schema) {
@@ -947,13 +947,13 @@ bool read_case_cfdx_h5(const std::string& filename,
     std::vector<std::uint64_t> fv, fo, owner, cf, co;
     std::vector<std::int64_t> neighbour;
 
-    if (!read_dataset_double(file, "points", pts, 2) ||
-        !read_dataset_u64(file, "face_vertices", fv) ||
-        !read_dataset_u64(file, "face_offsets", fo) ||
-        !read_dataset_u64(file, "owner", owner) ||
-        !read_dataset_i64(file, "neighbour", neighbour) ||
-        !read_dataset_u64(file, "cell_faces", cf) ||
-        !read_dataset_u64(file, "cell_offsets", co)) {
+    if (!case_read_dataset_double(file, "points", pts, 2) ||
+        !case_read_dataset_u64(file, "face_vertices", fv) ||
+        !case_read_dataset_u64(file, "face_offsets", fo) ||
+        !case_read_dataset_u64(file, "owner", owner) ||
+        !case_read_dataset_i64(file, "neighbour", neighbour) ||
+        !case_read_dataset_u64(file, "cell_faces", cf) ||
+        !case_read_dataset_u64(file, "cell_offsets", co)) {
         return fail("missing required topology dataset");
     }
 
@@ -990,13 +990,13 @@ bool read_case_cfdx_h5(const std::string& filename,
 
     if (has_all_hashes) {
         std::uint64_t topology = 1469598103934665603ULL;
-        topology = fnv1a_update_vector(topology, fv.data(), fv.size());
-        if (n_faces > 0) topology = fnv1a_update_vector(topology, fo.data(), fo.size());
-        topology = fnv1a_update_vector(topology, owner.data(), owner.size());
-        topology = fnv1a_update_vector(topology, neighbour.data(), neighbour.size());
-        topology = fnv1a_update_vector(topology, cf.data(), cf.size());
-        if (n_cells > 0) topology = fnv1a_update_vector(topology, co.data(), co.size());
-        if (topology_hash != hash_hex(topology))
+        topology = case_fnv1a_update_vector(topology, fv.data(), fv.size());
+        if (n_faces > 0) topology = case_fnv1a_update_vector(topology, fo.data(), fo.size());
+        topology = case_fnv1a_update_vector(topology, owner.data(), owner.size());
+        topology = case_fnv1a_update_vector(topology, neighbour.data(), neighbour.size());
+        topology = case_fnv1a_update_vector(topology, cf.data(), cf.size());
+        if (n_cells > 0) topology = case_fnv1a_update_vector(topology, co.data(), co.size());
+        if (topology_hash != case_hash_hex(topology))
             return fail("topology integrity hash mismatch");
 
         std::vector<double> xs, ys, zs;
@@ -1008,17 +1008,17 @@ bool read_case_cfdx_h5(const std::string& filename,
         }
 
         std::uint64_t geometry = 1469598103934665603ULL;
-        geometry = fnv1a_update_vector(geometry, xs.data(), xs.size());
-        geometry = fnv1a_update_vector(geometry, ys.data(), ys.size());
-        geometry = fnv1a_update_vector(geometry, zs.data(), zs.size());
-        if (geometry_hash != hash_hex(geometry))
+        geometry = case_fnv1a_update_vector(geometry, xs.data(), xs.size());
+        geometry = case_fnv1a_update_vector(geometry, ys.data(), ys.size());
+        geometry = case_fnv1a_update_vector(geometry, zs.data(), zs.size());
+        if (geometry_hash != case_hash_hex(geometry))
             return fail("geometry integrity hash mismatch");
 
         std::uint64_t full_mesh = topology;
-        full_mesh = fnv1a_update_vector(full_mesh, xs.data(), xs.size());
-        full_mesh = fnv1a_update_vector(full_mesh, ys.data(), ys.size());
-        full_mesh = fnv1a_update_vector(full_mesh, zs.data(), zs.size());
-        if (mesh_hash != hash_hex(full_mesh))
+        full_mesh = case_fnv1a_update_vector(full_mesh, xs.data(), xs.size());
+        full_mesh = case_fnv1a_update_vector(full_mesh, ys.data(), ys.size());
+        full_mesh = case_fnv1a_update_vector(full_mesh, zs.data(), zs.size());
+        if (mesh_hash != case_hash_hex(full_mesh))
             return fail("mesh integrity hash mismatch");
     }
 
@@ -1077,11 +1077,11 @@ bool read_case_cfdx_h5(const std::string& filename,
 
     // Boundary patches
     std::string patches_str;
-    if (read_attr_str(file, "boundary_patches", patches_str)) {
-        const auto patch_entries = parse_patch_metadata(patches_str);
+    if (case_read_attr_str(file, "boundary_patches", patches_str)) {
+        const auto patch_entries = case_parse_patch_metadata(patches_str);
         std::vector<std::uint64_t> patch_face_ids, patch_face_offsets;
-        if (!read_dataset_u64(file, "patch_face_ids", patch_face_ids) ||
-            !read_dataset_u64(file, "patch_face_offsets", patch_face_offsets) ||
+        if (!case_read_dataset_u64(file, "patch_face_ids", patch_face_ids) ||
+            !case_read_dataset_u64(file, "patch_face_offsets", patch_face_offsets) ||
             patch_face_offsets.empty() ||
             patch_face_offsets.front() != 0 ||
             patch_face_offsets.back() != patch_face_ids.size() ||
@@ -1172,37 +1172,37 @@ static std::string utc_timestamp() {
 }
 
 static void write_schema_attributes(hid_t file, const cfdx::core::Mesh& mesh) {
-    write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
-    write_attr_str(file, "schema_version", std::to_string(CFDX_HDF5_SCHEMA_VERSION));
-    write_attr_str(file, "cfdx_version", CFDX_VERSION);
+    case_write_attr_str(file, "format_version", std::to_string(CFDX_HDF5_FORMAT_VERSION));
+    case_write_attr_str(file, "schema_version", std::to_string(CFDX_HDF5_SCHEMA_VERSION));
+    case_write_attr_str(file, "cfdx_version", CFDX_VERSION);
 
     std::uint64_t topology = 1469598103934665603ULL;
-    topology = fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
-    topology = fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
-    topology = fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
-    topology = fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
-    topology = fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
-    write_attr_str(file, "topology_hash", hash_hex(topology));
+    topology = case_fnv1a_update_vector(topology, mesh.faces().vertices_data(), mesh.faces().n_vertices());
+    topology = case_fnv1a_update_vector(topology, mesh.faces().offsets_data(), mesh.faces().n_faces() + 1);
+    topology = case_fnv1a_update_vector(topology, mesh.ownership().owner_data(), mesh.ownership().size());
+    topology = case_fnv1a_update_vector(topology, mesh.ownership().neighbour_data(), mesh.ownership().size());
+    topology = case_fnv1a_update_vector(topology, mesh.cells().faces_data(), mesh.cells().n_face_refs());
+    topology = case_fnv1a_update_vector(topology, mesh.cells().offsets_data(), mesh.cells().n_cells() + 1);
+    case_write_attr_str(file, "topology_hash", case_hash_hex(topology));
 
     std::uint64_t geometry = 1469598103934665603ULL;
-    geometry = fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
-    geometry = fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
-    write_attr_str(file, "geometry_hash", hash_hex(geometry));
+    geometry = case_fnv1a_update_vector(geometry, mesh.points().x_data(), mesh.n_points());
+    geometry = case_fnv1a_update_vector(geometry, mesh.points().y_data(), mesh.n_points());
+    geometry = case_fnv1a_update_vector(geometry, mesh.points().z_data(), mesh.n_points());
+    case_write_attr_str(file, "geometry_hash", case_hash_hex(geometry));
 
     std::uint64_t full_mesh = topology;
-    full_mesh = fnv1a_update_vector(full_mesh, mesh.points().x_data(), mesh.n_points());
-    full_mesh = fnv1a_update_vector(full_mesh, mesh.points().y_data(), mesh.n_points());
-    full_mesh = fnv1a_update_vector(full_mesh, mesh.points().z_data(), mesh.n_points());
-    write_attr_str(file, "mesh_hash", hash_hex(full_mesh));
+    full_mesh = case_fnv1a_update_vector(full_mesh, mesh.points().x_data(), mesh.n_points());
+    full_mesh = case_fnv1a_update_vector(full_mesh, mesh.points().y_data(), mesh.n_points());
+    full_mesh = case_fnv1a_update_vector(full_mesh, mesh.points().z_data(), mesh.n_points());
+    case_write_attr_str(file, "mesh_hash", case_hash_hex(full_mesh));
 
-    write_attr_str(file, "creation_date", utc_timestamp());
-    write_attr_str(file, "modification_date", utc_timestamp());
-    write_attr_str(file, "dimension", "3");
-    write_attr_str(file, "precision", "float64");
-    write_attr_str(file, "endian", "native");
-    write_attr_str(file, "mesh_topology", "cfdx-csr-v1");
+    case_write_attr_str(file, "creation_date", utc_timestamp());
+    case_write_attr_str(file, "modification_date", utc_timestamp());
+    case_write_attr_str(file, "dimension", "3");
+    case_write_attr_str(file, "precision", "float64");
+    case_write_attr_str(file, "endian", "native");
+    case_write_attr_str(file, "mesh_topology", "cfdx-csr-v1");
 }
 
 bool write_case_cfdx_h5(const std::string& filename,
@@ -1218,7 +1218,7 @@ bool write_case_cfdx_h5(const std::string& filename,
         if (!numerical_report.valid()) return false;
     }
 
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
@@ -1228,26 +1228,26 @@ bool write_case_cfdx_h5(const std::string& filename,
     write_schema_attributes(file, mesh);
 
     // --- Mesh counts ---
-    write_attr_str(file, "n_points", std::to_string(mesh.n_points()));
-    write_attr_str(file, "n_faces", std::to_string(mesh.n_faces()));
-    write_attr_str(file, "n_cells", std::to_string(mesh.n_cells()));
+    case_write_attr_str(file, "n_points", std::to_string(mesh.n_points()));
+    case_write_attr_str(file, "n_faces", std::to_string(mesh.n_faces()));
+    case_write_attr_str(file, "n_cells", std::to_string(mesh.n_cells()));
 
     // --- Source info ---
-    write_attr_str(file, "source_solver", source.solver);
-    write_attr_str(file, "source_format", source.format);
-    write_attr_str(file, "source_version", source.version);
-    write_attr_str(file, "source_case_path", source.case_path);
-    write_attr_str(file, "source_case_name", source.case_name);
+    case_write_attr_str(file, "source_solver", source.solver);
+    case_write_attr_str(file, "source_format", source.format);
+    case_write_attr_str(file, "source_version", source.version);
+    case_write_attr_str(file, "source_case_path", source.case_path);
+    case_write_attr_str(file, "source_case_name", source.case_name);
 
     // --- Case setup JSON ---
     mini_json::value setup_json;
     case_setup_to_json(setup, setup_json);
-    write_attr_str(file, "case_setup_json", setup_json.serialize());
+    case_write_attr_str(file, "case_setup_json", setup_json.serialize());
 
     // --- Gap report JSON ---
-    write_attr_str(file, "gap_report_json", gap.to_json());
+    case_write_attr_str(file, "gap_report_json", gap.to_json());
     if (setup.has_explicit_numerics) {
-        write_attr_str(file, "numerical_selection_report",
+        case_write_attr_str(file, "numerical_selection_report",
                        cfdx::core::format_numerics_report(numerical_report));
     }
 
@@ -1278,22 +1278,22 @@ bool write_case_cfdx_h5(const std::string& filename,
     // --- Faces (CSR) ---
     {
         const cfdx::core::FaceConnectivity& fc = mesh.faces();
-        write_dataset_u64(file, "face_vertices", fc.vertices_data(), fc.n_vertices());
-        write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
+        case_write_dataset_u64(file, "face_vertices", fc.vertices_data(), fc.n_vertices());
+        case_write_dataset_u64(file, "face_offsets", fc.offsets_data(), fc.n_faces() + 1);
     }
 
     // --- Owner / neighbour ---
     {
         const cfdx::core::FaceOwnership& own = mesh.ownership();
-        write_dataset_u64(file, "owner", own.owner_data(), own.size());
-        write_dataset_i64(file, "neighbour", own.neighbour_data(), own.size());
+        case_write_dataset_u64(file, "owner", own.owner_data(), own.size());
+        case_write_dataset_i64(file, "neighbour", own.neighbour_data(), own.size());
     }
 
     // --- Cell faces (CSR) ---
     {
         const cfdx::core::CellConnectivity& cc = mesh.cells();
-        write_dataset_u64(file, "cell_faces", cc.faces_data(), cc.n_face_refs());
-        write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
+        case_write_dataset_u64(file, "cell_faces", cc.faces_data(), cc.n_face_refs());
+        case_write_dataset_u64(file, "cell_offsets", cc.offsets_data(), cc.n_cells() + 1);
     }
 
     // --- Boundary patches ---
@@ -1310,7 +1310,7 @@ bool write_case_cfdx_h5(const std::string& filename,
                     std::to_string(patch.face_ids.size()) + ":" +
                     std::to_string(static_cast<std::uint32_t>(patch.type));
             }
-            write_attr_str(file, "boundary_patches", patches_str);
+            case_write_attr_str(file, "boundary_patches", patches_str);
 
             std::vector<std::uint64_t> all_face_ids;
             for (std::size_t i = 0; i < n_patches; ++i) {
@@ -1322,8 +1322,8 @@ bool write_case_cfdx_h5(const std::string& filename,
             for (std::size_t i = 0; i < n_patches; ++i) {
                 patch_face_offsets[i + 1] = patch_face_offsets[i] + bp.patch(i).face_ids.size();
             }
-            write_dataset_u64(file, "patch_face_ids", all_face_ids.data(), all_face_ids.size());
-            write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(), patch_face_offsets.size());
+            case_write_dataset_u64(file, "patch_face_ids", all_face_ids.data(), all_face_ids.size());
+            case_write_dataset_u64(file, "patch_face_offsets", patch_face_offsets.data(), patch_face_offsets.size());
         }
     }
 
@@ -1335,7 +1335,7 @@ bool write_case_cfdx_h5(const std::string& filename,
 // Field read/write helpers
 // ===========================================================================
 
-static bool ensure_group(hid_t file_id, const std::string& path) {
+static bool case_ensure_group(hid_t file_id, const std::string& path) {
     std::vector<std::string> parts;
     size_t start = 0;
     if (!path.empty() && path[0] == '/') start = 1;
@@ -1364,7 +1364,7 @@ static bool ensure_group(hid_t file_id, const std::string& path) {
 
 bool read_scalar_fields_hdf5(const std::string& filename,
                              std::vector<std::pair<std::string, cfdx::core::ScalarCellField>>& fields) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
@@ -1415,7 +1415,7 @@ bool read_scalar_fields_hdf5(const std::string& filename,
 
 bool read_vector_fields_hdf5(const std::string& filename,
                              std::vector<std::pair<std::string, cfdx::core::Vec3CellField>>& fields) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
@@ -1478,17 +1478,17 @@ bool read_vector_fields_hdf5(const std::string& filename,
 bool write_fields_hdf5(const std::string& filename,
                        const std::vector<cfdx::core::ScalarCellField>& scalars,
                        const std::vector<cfdx::core::Vec3CellField>& vectors) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
-    if (!ensure_group(file, "fields/scalar")) {
+    if (!case_ensure_group(file, "fields/scalar")) {
         H5Fclose(file);
         return false;
     }
-    if (!ensure_group(file, "fields/vector")) {
+    if (!case_ensure_group(file, "fields/vector")) {
         H5Fclose(file);
         return false;
     }
