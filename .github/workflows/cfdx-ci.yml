@@ -75,7 +75,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          cmake --build build --parallel 4 2>&1 | tee build.log
+          cmake --build build --parallel 8 2>&1 | tee build.log
 
       - name: Run fast CTest
         id: ctest
@@ -86,7 +86,7 @@ jobs:
             # The complex wall-distance benchmark is a performance/validation
             # workload, not a sanitizer regression test. It currently costs
             # ~273 s under ASan/UBSan and is covered by long validation.
-            ctest --test-dir build -LE 'long|benchmark' --output-on-failure --no-tests=error --parallel 4
+            ctest --test-dir build -LE 'long|benchmark' --output-on-failure --no-tests=error --parallel 6
           else
             ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
           fi

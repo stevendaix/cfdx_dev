@@ -14,11 +14,94 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  BUILD_TYPE: Release
+
 jobs:
-  numerical:
-    name: ${{ matrix.level }}
+  build:
+    name: Build numerical test suite
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: cfdx-numerical-ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', '**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: |
+            cfdx-numerical-ccache-${{ runner.os }}-
+
+      - name: Cache Python packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cfdx-numerical-pip-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'requirements*.txt', '**/requirements*.txt') }}
+          restore-keys: |
+            cfdx-numerical-pip-${{ runner.os }}-
+
+      - name: Install Python dependencies for CMake-discovered tools
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          ccache --zero-stats
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DPython3_EXECUTABLE=$PWD/.venv/bin/python             -DCMAKE_C_COMPILER_LAUNCHER=ccache             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build numerical test suite
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
+
+      - name: Build diagnostics
+        if: always()
+        run: |
+          ccache --show-stats || true
+          if [[ -f build.log ]]; then
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 150 || true
+          fi
+
+      - name: Package numerical build
+        if: steps.build.outcome == 'success'
+        run: tar -czf numerical-build.tar.gz build build.log
+
+      - name: Upload numerical build
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-numerical-build-${{ github.sha }}
+          path: numerical-build.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Final build gate
+        if: always()
+        run: |
+          if [[ "${{ steps.build.outcome }}" != "success" ]]; then
+            echo "numerical build: FAIL"
+            exit 1
+          fi
+          echo "numerical build: PASS"
+
+  numerical:
+    name: ${{ matrix.level }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -38,16 +121,23 @@ jobs:
           - { level: N13, regex: '^(test_mpi_deterministic|test_matrix_free_fv_operator|test_restart_mapping|test_phase8_mpi_poisson)$' }
           - { level: N14, regex: '^(test_fluent_vmfl_reference|test_benchmark_matrix|test_cross_import_equivalence)$' }
           - { level: N15, regex: '^(test_performance_foundations|test_performance_runtime|test_phase6_memory_benchmark)$' }
-          - { level: N16, regex: '^$' }
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install runtime dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Cache Python packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cfdx-numerical-pip-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'requirements*.txt', '**/requirements*.txt') }}
+          restore-keys: |
+            cfdx-numerical-pip-${{ runner.os }}-
 
       - name: Install Python dependencies
         run: |
@@ -56,43 +146,32 @@ jobs:
           .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF
+      - name: Download numerical build
+        uses: actions/download-artifact@v4
+        with:
+          name: cfdx-numerical-build-${{ github.sha }}
+          path: .
 
-      - name: Build numerical test suite
-        id: build
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
+      - name: Restore numerical build permissions
+        run: tar -xzf numerical-build.tar.gz
 
       - name: Run ${{ matrix.level }} tests
         id: level_tests
-        if: steps.build.outcome == 'success' && matrix.level != 'N16'
         continue-on-error: true
         run: |
-          ctest --test-dir build             -R '${{ matrix.regex }}'             --output-on-failure             --no-tests=error
-
-      - name: Validate deferred N16 scope
-        id: n16_scope
-        if: steps.build.outcome == 'success' && matrix.level == 'N16'
-        run: |
-          python3 scripts/validate_numerical_maturity_audit.py             docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json             docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
-          echo "N16 has no mandatory executable gate: advanced methods remain explicitly deferred by the maturity audit."
+          set -o pipefail
+          ctest --test-dir build             -R '${{ matrix.regex }}'             --output-on-failure             --no-tests=error             --parallel 4 2>&1 | tee ctest.log
 
       - name: Diagnostics
         if: always()
         run: |
           echo "level=${{ matrix.level }}"
-          echo "build=${{ steps.build.outcome }}"
           echo "tests=${{ steps.level_tests.outcome }}"
-          echo "n16_scope=${{ steps.n16_scope.outcome }}"
-          if [[ -f build.log ]]; then
-            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 150 || true
-          fi
           if [[ -f build/Testing/Temporary/LastTest.log ]]; then
             tail -n 350 build/Testing/Temporary/LastTest.log
+          fi
+          if [[ -f ctest.log ]]; then
+            grep -E -B2 -A5 'FAILED|Fail|error|Error' ctest.log | tail -n 200 || true
           fi
 
       - name: Upload ${{ matrix.level }} evidence
@@ -103,19 +182,38 @@ jobs:
           path: |
             build/Testing/
             build/**/*.log
-            build.log
+            ctest.log
           if-no-files-found: ignore
 
       - name: Final ${{ matrix.level }} gate
         if: always()
         run: |
-          if [[ "${{ steps.build.outcome }}" != "success" ]]; then
-            echo "${{ matrix.level }}: FAIL (build)"
+          if [[ "${{ steps.level_tests.outcome }}" != "success" ]]; then
+            echo "${{ matrix.level }}: FAIL"
             exit 1
           fi
-          if [[ "${{ matrix.level }}" == "N16" ]]; then
-            [[ "${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1
-          else
-            [[ "${{ steps.level_tests.outcome }}" == "success" ]] || exit 1
-          fi
           echo "${{ matrix.level }}: PASS"
+
+  n16-audit:
+    name: N16 audit
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        run: sudo apt-get update && sudo apt-get install -y python3
+
+      - name: Validate deferred N16 scope
+        id: n16_scope
+        run: |
+          python3 scripts/validate_numerical_maturity_audit.py             docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json             docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+          echo "N16 has no mandatory executable gate: advanced methods remain explicitly deferred by the maturity audit."
+
+      - name: Final N16 gate
+        if: always()
+        run: |
+          [[ "${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1
+          echo "N16: PASS"
