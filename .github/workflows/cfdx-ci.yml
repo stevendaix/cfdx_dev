@@ -75,7 +75,14 @@ jobs:
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
-          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+          if [[ "${{ matrix.build_type }}" == "DebugSanitizers" ]]; then
+            # The complex wall-distance benchmark is a performance/validation
+            # workload, not a sanitizer regression test. It currently costs
+            # ~273 s under ASan/UBSan and is covered by long validation.
+            ctest --test-dir build -LE 'long|benchmark' --output-on-failure --no-tests=error --parallel 4
+          else
+            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+          fi
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
