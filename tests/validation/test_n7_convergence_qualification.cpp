@@ -130,7 +130,7 @@ Solution solve_n7_case()
     controls.density=1.0;
     controls.kinematic_viscosity=0.01; // Re=100, U=1, L=1.
     controls.linear_max_iterations=10000;
-    controls.linear_tolerance=1e-8;
+    // Keep the linear solve tighter than the nonlinear qualification gate.\n    // A 1e-8 inner tolerance is too close to the 1e-8 nonlinear target and\n    // can leave SIMPLE iterations at a false nonlinear plateau.\n    controls.linear_tolerance=1e-10;
     controls.pressure_reference_cell=(n/2)*n+(n/2);
     controls.pressure_reference_value=0.0;
     controls.use_bounded_convection=true;
