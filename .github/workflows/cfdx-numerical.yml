@@ -47,10 +47,17 @@ jobs:
           restore-keys: |
             cfdx-numerical-pip-${{ runner.os }}-
 
+      - name: Install Python dependencies for CMake-discovered tools
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
       - name: Configure
         run: |
           ccache --zero-stats
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DCMAKE_C_COMPILER_LAUNCHER=ccache             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DPython3_EXECUTABLE=$PWD/.venv/bin/python             -DCMAKE_C_COMPILER_LAUNCHER=ccache             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build numerical test suite
         id: build
