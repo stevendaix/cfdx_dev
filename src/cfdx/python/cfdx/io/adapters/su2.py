@@ -56,6 +56,89 @@ _SU2_ELEM_TYPES: dict[int, tuple[str, int]] = {
 }
 
 
+# SU2 spells the second-order reconstruction across several keys, and renamed
+# MUSCL to SLOPE_LIMITER in v8.  MUSCL_FLOW / SLOPE_LIMITER_FLOW_FLOW switch it
+# on for the flow equations; MUSCL_LIMITER_FLOW, MUSCL_LIMITER, SLOPE_LIMITER and
+# SLOPE_LIMITER_FLOW name the limiter.  The CFDX convection registry keys
+# describe exactly that reconstruction — "MUSCL with psi=<limiter>" — so the
+# limiter drives the mapping.
+_SU2_MUSCL_LIMITERS: dict[str, str] = {
+    "VAN_ALBADA": "tvd_vanalbada",
+    "MINMOD": "tvd_minmod",
+    "VAN_LEER": "tvd_vanleer",
+    "SUPERBEE": "tvd_superbee",
+    "MONOTONIZED_CENTRAL": "tvd_mc",
+}
+
+# SU2 limiter keys, most specific first.
+_SU2_LIMITER_KEYS = (
+    "MUSCL_LIMITER_FLOW",
+    "SLOPE_LIMITER_FLOW",
+    "MUSCL_LIMITER",
+    "SLOPE_LIMITER",
+)
+
+# SU2 keys that enable the second-order reconstruction for the flow equations.
+_SU2_MUSCL_ON_KEYS = ("MUSCL_FLOW", "MUSCL", "SLOPE_LIMITER_FLOW")
+
+# SU2 default limiter when the reconstruction is enabled and no limiter key is
+# present.
+_SU2_DEFAULT_MUSCL_LIMITER = "VAN_ALBADA"
+
+# SU2 convection families that carry no reconstruction at all.
+_SU2_CENTRAL_SCHEMES = {"NO_UPWIND", "NO_CONV"}
+
+# SU2 flux families that are plain first-order upwind when no second-order
+# reconstruction is requested, so they map onto the CFDX upwind key.  Families
+# with inherent sensor-based limiting (AUSM family, SLAU/SLAU2) and centre-based
+# reconstructions (JST, FDS) are deliberately absent: none of them is
+# first-order upwind, and CFDX has no equivalent key.
+_SU2_FIRST_ORDER_UPWIND_SCHEMES = {"ROE", "HLLC", "HLLEM"}
+
+_TRUE_VALUES = {"yes", "true", "1"}
+
+
+def _first_param(params: dict[str, str], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = params.get(key, "")
+        if value.strip():
+            return value
+    return ""
+
+
+def _canonical_convection_scheme(params: dict[str, str]) -> str:
+    """Resolve SU2 convection settings onto a canonical CFDX convection family.
+
+    SU2 splits the scheme over CONV_NUM_METHOD_FLOW (flux/scheme family), the
+    MUSCL/SLOPE_LIMITER enable flag and the limiter name.  The CFDX registry
+    keys describe the reconstruction and its limiter rather than the numerical
+    flux, so an active MUSCL reconstruction maps through its limiter and a plain
+    Roe-like flux maps to first-order upwind.
+
+    Everything else is returned unresolved: centre-based and sensor-based
+    families (JST, FDS, AUSM family, SLAU) and unbounded MUSCL.  CFDX has no
+    ``numerics.convection`` key for any of them, and every key it does have
+    carries an explicit boundedness claim, so mapping them would misstate the
+    discretisation.  The caller turns an unresolved family into a blocking
+    conversion gap.
+    """
+    scheme = params.get("CONV_NUM_METHOD_FLOW", "").strip().upper()
+    if scheme in _SU2_CENTRAL_SCHEMES:
+        return "central"
+
+    if _first_param(params, _SU2_MUSCL_ON_KEYS).strip().lower() in _TRUE_VALUES:
+        limiter = _first_param(params, _SU2_LIMITER_KEYS).strip().upper()
+        if not limiter:
+            limiter = _SU2_DEFAULT_MUSCL_LIMITER
+        return _SU2_MUSCL_LIMITERS.get(limiter, "")
+
+    if scheme:
+        if scheme in _SU2_FIRST_ORDER_UPWIND_SCHEMES:
+            return "upwind"
+        return ""
+    return ""
+
+
 class Su2Adapter(SolverAdapter):
     solver_name = "SU2"
     format_name = "su2"
@@ -426,8 +509,12 @@ class Su2Adapter(SolverAdapter):
             mapped = self.rules.map_scheme(p["NUM_METHOD_GRAD"])
             self.setup.numerics.gradient_operator = mapped if mapped else "green_gauss_cell"
         if "CONV_NUM_METHOD_FLOW" in p:
-            scheme_val = p["CONV_NUM_METHOD_FLOW"]
-            self.setup.numerics.momentum_scheme = scheme_val.lower()
+            self.setup.numerics.momentum_scheme = _canonical_convection_scheme(p)
+            if not self.setup.numerics.momentum_scheme:
+                self.setup.numerics.unmapped_settings.append(
+                    f"convection: {p['CONV_NUM_METHOD_FLOW'].strip()!r} "
+                    f"(no faithful CFDX convection registry equivalent)"
+                )
         if "LINEAR_SOLVER" in p:
             self.setup.numerics.linear_solver = p["LINEAR_SOLVER"].strip().lower()
         if "TIME_DISCRE_FLOW" in p:
@@ -436,9 +523,6 @@ class Su2Adapter(SolverAdapter):
             if "runge" in td:
                 self.setup.transient = True
                 self.setup.solver_mode = "transient"
-        if "MUSCL" in p:
-            if p["MUSCL"].lower() in ("yes", "true", "1"):
-                self.setup.numerics.momentum_scheme = "MUSCL"
         if "ITER" in p:
             try:
                 self.setup.numerics.max_iterations = int(float(p["ITER"]))
