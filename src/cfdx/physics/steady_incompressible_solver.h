@@ -962,6 +962,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     double rho,
+    double kinematic_viscosity,
     std::size_t reference_cell,
     double reference_value,
     std::size_t max_iterations,
@@ -1479,7 +1480,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (use_pcd) {
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
-                mesh, geometry, U_old, rho, 1.0, velocity_bcs, pressure_bcs,
+                mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
                 reference_cell, ConvectionScheme::UPWIND));
 
         auto solve_kp = [pcd_ops, max_iterations, tolerance](
@@ -1949,6 +1950,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
+                controls.kinematic_viscosity,
                 controls.pressure_reference_cell,
                 controls.pressure_reference_value,
                 controls.coupling.coupled_max_iterations,
