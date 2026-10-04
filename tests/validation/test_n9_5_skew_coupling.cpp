@@ -203,7 +203,12 @@ Run run_case(PressureVelocityAlgorithm algorithm,
     c.linear_tolerance = 1e-12;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
-    c.pressure_reference_cell = 0;
+    // Use an interior gauge cell. On the skewed mesh, cell 0 is at the
+    // inlet/bottom corner where two boundary conditions meet; anchoring the
+    // pressure there contaminates the pressure-correction equation locally.
+    // The gauge is arbitrary physically, so keep it away from boundary
+    // intersections as in the Ghia qualification case.
+    c.pressure_reference_cell = (16 / 2) * 8 + (8 / 2);
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = true;
     c.convection_scheme = ConvectionScheme::UPWIND;
