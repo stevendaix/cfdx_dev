@@ -22,8 +22,15 @@ from .session import CFDXSession
 _FORMAT = "CFDX"
 _SCHEMA_VERSION = 1
 _CASE_DATASET = "case/config"
-_CHECKPOINT_GROUP = "runtime/checkpoint"
-_RESTART_GROUP = "runtime/restart"
+_RUNTIME_ROOT = "runtime"
+# Top-level names that carry solver runtime state. Numerical iteration/time and
+# field state belongs exclusively to the paired DAT artifact, so their presence
+# in a .cfdx.h5 bundle means the two artifacts were not separated.
+_RUNTIME_STATE_NAMES = frozenset({
+    "checkpoint", "history", "iteration", "iterations", "monitor",
+    "monitor_series", "residual", "residuals", "restart", "solution",
+    "solution_history", "time", "times",
+})
 
 
 def _sha256(path: Path) -> str:
@@ -161,7 +168,14 @@ def _read_session(path: Path) -> CFDXSession:
 
 
 def validate_case_bundle(path: Path) -> dict[str, bool]:
-    """Validate one self-contained CFDX HDF5 case artifact."""
+    """Validate one self-contained CFDX HDF5 case artifact.
+
+    ``runtime_separated`` reports that the bundle carries setup and mesh only:
+    no ``runtime`` subtree and no top-level member named after solver runtime
+    state. It recognises the runtime vocabulary this codebase writes, so an
+    artifact that invents an unrelated synonym for iteration state would not be
+    flagged by it.
+    """
     case_path = _validate_path(path)
     if not case_path.is_file():
         raise FileNotFoundError(case_path)
@@ -197,14 +211,21 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
         if not isinstance(data.get("numerics"), dict):
             raise ValueError("numerics configuration is missing")
         # Numerical iteration/time/field state belongs exclusively to the
-        # paired DAT artifact, so a well-formed case never carries a runtime
-        # group. The separator holds when the case group holds the setup and no
-        # checkpoint/restart state leaked into it.
+        # paired DAT artifact, so a well-formed case never carries runtime
+        # state. Checking the two historical checkpoint/restart paths alone only
+        # proved those two names were absent: an arbitrary runtime/* group, or
+        # a top-level iteration/time/solution dataset, leaked state past it.
+        # Any runtime subtree is therefore rejected outright, as is any
+        # top-level member named after solver runtime state.
+        unexpected_runtime = [
+            name for name in h5
+            if name == _RUNTIME_ROOT
+            or name.rsplit("/", 1)[-1] in _RUNTIME_STATE_NAMES
+        ]
         runtime_separated = (
             "case" in h5
             and _CASE_DATASET.rsplit("/", 1)[-1] in h5["case"]
-            and _CHECKPOINT_GROUP not in h5
-            and _RESTART_GROUP not in h5
+            and not unexpected_runtime
         )
     return {"mesh": True, "fields": True, "physics": True, "numerics": True, "runtime_separated": runtime_separated}
 
