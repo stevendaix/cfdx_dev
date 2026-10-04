@@ -62,7 +62,7 @@ def test_read_su2_naca0012_validation_case(tmp_path, request):
     # adapter must report that explicitly as non-blocking rather than
     # accepting the repository's intentionally incompatible 10-row fixture.
     assert any(
-        f.feature == "solution_csv" and f.severity.value.endswith("nonblock")
+        f.feature == "solution_csv" and f.severity.value.endswith("nonblocking")
         for f in result.gap_report.findings
     )
     assert not result.gap_report.has_blocking()

@@ -22,7 +22,7 @@ class TestSu2Adapter:
 
     @pytest.fixture
     def solution_file(self):
-        return os.path.join(pytest.DATA_DIR, "su2", "solution.csv")
+        return os.path.join(pytest.DATA_DIR, "su2", "mismatched_solution.csv")
 
     def test_adapter_metadata(self):
         adapter = Su2Adapter()

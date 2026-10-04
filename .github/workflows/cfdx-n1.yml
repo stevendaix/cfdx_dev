@@ -125,4 +125,5 @@ jobs:
             --output-on-failure \
             --no-tests=error
       - name: Final N1 gate
-        run: echo "CFDX N1 CI: PASS"
+        run: |
+          echo "CFDX N1 CI: PASS"
