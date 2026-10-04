@@ -71,6 +71,7 @@ _PRECONDITIONER_KEYS = {
     "smoothed_aggregation_amg": "preconditioner.smoothed_aggregation_amg",
     "native_fieldsplit": "preconditioner.native_fieldsplit",
     "coupled_block_schur": "preconditioner.coupled_block_schur",
+    "pcd": "preconditioner.pcd",
 }
 
 

@@ -42,6 +42,7 @@ REQUIRED_TESTS = (
     "test_exact_schur",
     "test_simplerc_schur",
     "test_lsc_bfbt_schur",
+    "test_pcd_schur",
     "test_lsc_bfbt_schur_null_space",
     "test_schur_approximation_comparison",
     "test_schur_quantitative_qualification",
@@ -407,6 +408,75 @@ def _model_names(records: list[object], key: str) -> list[str]:
     return names
 
 
+def audit_preconditioner_identity(evidence: dict[str, object]) -> dict[str, object]:
+    """Cross-check each recorded preconditioner name against its enum ordinal.
+
+    The acceptance test reports ``preconditioner_id`` next to the preconditioner
+    name it used. Nothing else in this report reads that ordinal, so inserting a
+    value into ``PreconditionerModel`` shifts every later ordinal and leaves the
+    evidence silently reporting a wrong identifier for a correctly-named method.
+    This audit makes that drift visible instead of leaving it in the artifact.
+
+    The table is the declaration order of ``PreconditionerModel`` in
+    ``src/cfdx/core/linalg/linear_solver_models.h``.
+    """
+
+    catalogue = {
+        "auto": 0,
+        "none": 1,
+        "jacobi": 2,
+        "gauss_seidel": 3,
+        "ilu0": 4,
+        "ilut": 5,
+        "native_amg": 6,
+        "smoothed_aggregation_amg": 7,
+        "fsai": 8,
+        "ras": 9,
+        "native_fieldsplit": 10,
+        "coupled_block_schur": 11,
+        "pcd": 12,
+        "lsc": 13,
+        "mgr": 14,
+    }
+
+    records = evidence.get("run_configuration", [])
+    records = records if isinstance(records, list) else []
+
+    mismatches: list[dict[str, object]] = []
+    unknown: list[str] = []
+    checked = 0
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        name = record.get("preconditioner")
+        identifier = record.get("preconditioner_id")
+        if not isinstance(name, str) or not isinstance(identifier, int):
+            continue
+        checked += 1
+        expected = catalogue.get(name)
+        if expected is None:
+            unknown.append(name)
+        elif expected != identifier:
+            mismatches.append(
+                {
+                    "model": record.get("algorithm"),
+                    "preconditioner": name,
+                    "reported_id": identifier,
+                    "expected_id": expected,
+                }
+            )
+
+    consistent = not mismatches and not unknown
+    return {
+        "status": "COMPLETE" if consistent else "INCOMPLETE",
+        "records_checked": checked,
+        "identifier_mismatches": mismatches,
+        "unknown_preconditioners": sorted(set(unknown)),
+        "catalogue": catalogue,
+        "policy": "diagnostic_only",
+    }
+
+
 def audit_model_resolution(evidence: dict[str, object]) -> dict[str, object]:
     """Check that every configured physical model produced a verdict record.
 
@@ -686,6 +756,7 @@ def main() -> int:
     evidence = extract_n8_evidence(results)
     evidence_coverage = audit_evidence_coverage(evidence)
     model_resolution = audit_model_resolution(evidence)
+    preconditioner_identity = audit_preconditioner_identity(evidence)
     linear_plan = audit_linear_plan(evidence)
     # The one enforced gate of this report: an explicitly requested linear
     # method must be the method that ran. It is a contract, not a tolerance, so
@@ -709,6 +780,7 @@ def main() -> int:
         "evidence": evidence,
         "evidence_coverage": evidence_coverage,
         "model_resolution": model_resolution,
+        "preconditioner_identity": preconditioner_identity,
         "linear_plan": linear_plan,
         "coverage": {
             "pressure_velocity": [

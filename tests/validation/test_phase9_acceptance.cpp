@@ -383,6 +383,12 @@ int main(int argc, char** argv)
             {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
              PreconditionerModel::MGR},
+            // PCD is the pressure-convection-diffusion Schur approximation. It is
+            // selected from the same resolved plan as the other coupled Schur
+            // methods, so it carries the identical physical gate set below.
+            {"COUPLED/PCD/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::PCD},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
@@ -574,11 +580,18 @@ int main(int argc, char** argv)
                         if (!result.solve.coupled_linear_plan_resolved)
                             gates.push_back("coupled_linear_plan_unresolved");
                         if (result.solve.coupled_linear_plan_resolved) {
-                            if (test.coupled_preconditioner ==
-                                    PreconditionerModel::CoupledBlockSchur &&
+                            // Both Schur approximations are variable operators
+                            // inside one Krylov solve: the pressure side is an
+                            // inner solve truncated at a tolerance, so plain
+                            // GMRES would apply a nonlinear preconditioner
+                            // without augmenting the basis for it.
+                            if ((test.coupled_preconditioner ==
+                                     PreconditionerModel::CoupledBlockSchur ||
+                                 test.coupled_preconditioner ==
+                                     PreconditionerModel::PCD) &&
                                 result.solve.coupled_linear_plan.krylov !=
                                     KrylovModel::FGMRES)
-                                gates.push_back("n8_block_schur_not_fgmres");
+                                gates.push_back("n8_coupled_schur_not_fgmres");
                             if (result.solve.coupled_linear_plan.preconditioner !=
                                 test.coupled_preconditioner)
                                 gates.push_back("n8_coupled_preconditioner_mismatch");

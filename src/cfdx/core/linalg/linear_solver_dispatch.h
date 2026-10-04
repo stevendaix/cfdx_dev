@@ -50,7 +50,9 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::RAS:
         case PreconditionerModel::LSC:
         case PreconditionerModel::MGR:
-            throw std::invalid_argument("preconditioner is not available in scalar dispatch");
+        case PreconditionerModel::PCD:
+            throw std::invalid_argument(
+                "PCD requires the coupled pressure-velocity API with explicit pressure operators");
     }
     throw std::invalid_argument("unknown preconditioner model");
 }
@@ -72,6 +74,9 @@ inline LinearSolveReport solve_linear_system(
         if (report.plan.preconditioner == PreconditionerModel::CoupledBlockSchur)
             preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
                 matrix.n_rows() / 4);
+        else if (report.plan.preconditioner == PreconditionerModel::PCD)
+            throw std::invalid_argument(
+                "PCD requires explicit pressure operators; use the coupled physics solver API");
         else
             throw std::invalid_argument("coupled dispatch requires an explicit coupled block preconditioner");
     } else {

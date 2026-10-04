@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -880,6 +881,81 @@ inline void relax_momentum_equation(
     }
 }
 
+struct PcdPressureOperators {
+    cfdx::core::SparseMatrix mass;
+    cfdx::core::SparseMatrix laplacian;
+    cfdx::core::SparseMatrix convection_diffusion;
+};
+
+inline cfdx::core::SparseMatrix impose_pcd_reference_row(
+    const cfdx::core::SparseMatrix& input, std::size_t reference_cell)
+{
+    const std::size_t n = input.n_rows();
+    if (n == 0 || reference_cell >= n)
+        throw std::invalid_argument("PCD reference cell is outside pressure operator");
+    cfdx::core::SparseMatrix result(n, n);
+    const auto* ro = input.row_offsets_data();
+    const auto* co = input.columns_data();
+    const auto* va = input.values_data();
+    for (std::size_t r = 0; r < n; ++r) {
+        if (r == reference_cell) {
+            result.push_back(r, r, 1.0);
+            continue;
+        }
+        for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
+            result.push_back(r, co[k], va[k]);
+    }
+    result.finalize();
+    return result;
+}
+
+inline PcdPressureOperators assemble_pcd_pressure_operators(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    double rho,
+    double kinematic_viscosity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    std::size_t reference_cell,
+    ConvectionScheme /*convection_scheme*/)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells();
+    if (velocity.size() != nc || velocity.dimension() != 3)
+        throw std::invalid_argument("PCD pressure operator assembly: invalid velocity field");
+    if (!(rho > 0.0) || !std::isfinite(rho) ||
+        !(kinematic_viscosity >= 0.0) || !std::isfinite(kinematic_viscosity))
+        throw std::invalid_argument("PCD pressure operator assembly: invalid fluid properties");
+
+    PcdPressureOperators result;
+    result.mass = SparseMatrix(nc, nc);
+    for (std::size_t c = 0; c < nc; ++c)
+        result.mass.push_back(c, c, geometry.cell_volumes[c]);
+    result.mass.finalize();
+
+    Field<double, Location::FACE> zero_flux(mesh.n_faces(), "pcd_zero_flux", "", 1);
+    auto mass_flux = make_mass_flux(mesh, geometry, velocity, rho, velocity_bcs);
+
+    Field<double, Location::CELL> zero_source(nc, "pcd_zero_source", "", 1);
+    Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
+
+    const auto diffusion = assemble_scalar_equation(
+        mesh, geometry, zero_flux, 1.0,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+
+    const auto convection_diffusion = assemble_scalar_equation(
+        mesh, geometry, mass_flux, rho * kinematic_viscosity,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+
+    result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
+    result.convection_diffusion =
+        impose_pcd_reference_row(convection_diffusion.matrix, reference_cell);
+    return result;
+}
+
 inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -891,6 +967,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     double rho,
+    double kinematic_viscosity,
     std::size_t reference_cell,
     double reference_value,
     std::size_t max_iterations,
@@ -1387,19 +1464,94 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         solver_plan.krylov != KrylovModel::FGMRES)
         throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
     if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
+        solver_plan.preconditioner != PreconditionerModel::PCD &&
         solver_plan.preconditioner != PreconditionerModel::MGR)
         throw std::invalid_argument(
-            "coupled solver requires coupled_block_schur or mgr");
+            "coupled solver requires coupled_block_schur, pcd, or mgr");
 
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use
     // the N8 AMG-backed Schur implementation rather than the legacy scalar
     // preconditioner. MGR remains a separate N8-qualified path until its
     // coupled dispatch metadata is integrated.
+    //
+    // Selection reads the *resolved* plan, not the request, so an automatically
+    // resolved policy takes the same branch an explicit one would.
     const bool use_n8_block_schur =
         solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+    const bool use_pcd =
+        solver_plan.preconditioner == PreconditionerModel::PCD;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
-    if (use_n8_block_schur) {
+    if (use_pcd) {
+        auto pcd_ops = std::make_shared<PcdPressureOperators>(
+            assemble_pcd_pressure_operators(
+                mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
+                reference_cell, ConvectionScheme::UPWIND));
+
+        auto solve_kp = [pcd_ops, max_iterations, tolerance](
+            const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->laplacian;
+            LinearOperator op{
+                matrix.n_rows(),
+                [&matrix](const Vector& input, Vector& output) {
+                    const auto values = matrix.matvec(input);
+                    if (output.size() != values.size())
+                        output.resize(values.size());
+                    for (std::size_t i = 0; i < values.size(); ++i)
+                        output(i) = values[i];
+                }};
+            const auto result = solve_gmres(
+                op, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
+                max_iterations, tolerance);
+            return result.status == SolverStatus::CONVERGED;
+        };
+        auto solve_fp = [pcd_ops, max_iterations, tolerance](
+            const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->convection_diffusion;
+            LinearOperator op{
+                matrix.n_rows(),
+                [&matrix](const Vector& input, Vector& output) {
+                    const auto values = matrix.matvec(input);
+                    if (output.size() != values.size())
+                        output.resize(values.size());
+                    for (std::size_t i = 0; i < values.size(); ++i)
+                        output(i) = values[i];
+                }};
+            const auto result = solve_fgmres(
+                op, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
+                max_iterations, tolerance);
+            return result.status == SolverStatus::CONVERGED;
+        };
+
+        auto pcd = std::make_unique<PcdSchurApproximation>(
+            pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
+            std::move(solve_kp), std::move(solve_fp),
+            std::nullopt, reference_cell);
+
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation = CoupledSchurApproximationModel::PCD;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        schur->set_pcd_schur(std::move(pcd));
+        // Set the preconditioner up here for the same reason the BlockSchur
+        // branch below does. solve_fgmres also calls setup() on its
+        // preconditioner before the first apply, so this is not what makes PCD
+        // reachable; performing it explicitly is what makes a setup failure
+        // report its own cause. Without it, a rejected PCD setup surfaces only
+        // as SolverStatus::NOT_APPLICABLE from the Krylov driver and the
+        // PcdSchurApproximation last_error() is lost. reset() preserves
+        // pcd_schur_, so the driver's second setup is clean.
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled PCD Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_n8_block_schur) {
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(
@@ -1417,11 +1569,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 std::move(fine_variables), std::move(coarse_variables));
     }
 
-    // N8 owns the linear-solver/preconditioner policy. The coupled FV
-    // assembler remains N9-owned, but an explicit BlockSchur request must use
-    // the N8 AMG-backed Schur implementation rather than the legacy scalar
-    // preconditioner. MGR remains a separate N8-qualified path until its
-    // coupled dispatch metadata is integrated.
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
@@ -1836,6 +1983,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
+                controls.kinematic_viscosity,
                 controls.pressure_reference_cell,
                 controls.pressure_reference_value,
                 controls.coupling.coupled_max_iterations,
