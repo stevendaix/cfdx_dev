@@ -256,6 +256,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("native FieldSplit requires a coupled pressure-velocity profile");
     if ((plan.preconditioner == PreconditionerModel::CoupledBlockSchur ||
+         plan.preconditioner == PreconditionerModel::PCD ||
          plan.preconditioner == PreconditionerModel::MGR) &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument(
