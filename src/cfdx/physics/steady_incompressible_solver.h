@@ -912,7 +912,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     std::size_t reference_cell,
-    ConvectionScheme convection_scheme)
+    ConvectionScheme /*convection_scheme*/)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -937,7 +937,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const auto diffusion = assemble_scalar_equation(
         mesh, geometry, zero_flux, rho * kinematic_viscosity,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, convection_scheme, &velocity);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
 
     const auto convection_diffusion = assemble_scalar_equation(
         mesh, geometry, mass_flux, rho * kinematic_viscosity,
