@@ -708,6 +708,12 @@ int main(int argc, char** argv)
                     continue;
 
                 const auto& candidate = results[k];
+                double candidate_pressure_mean = 0.0;
+                for (std::size_t c = 0; c < candidate.p.size(); ++c)
+                    candidate_pressure_mean += candidate.p(c);
+                candidate_pressure_mean /=
+                    static_cast<double>(candidate.p.size());
+
                 double max_du = 0.0;
                 double max_dp_gauge = 0.0;
                 for (std::size_t c = 0; c < candidate.U.size(); ++c) {
@@ -722,7 +728,7 @@ int main(int argc, char** argv)
                         max_dp_gauge,
                         std::abs(
                             (candidate.p(c) -
-                             reference_pressure_mean) -
+                             candidate_pressure_mean) -
                             (reference.p(c) -
                              reference_pressure_mean)));
                 }
