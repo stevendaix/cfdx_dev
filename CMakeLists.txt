@@ -528,6 +528,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_test(NAME test_ghia_cavity_quick COMMAND test_ghia_cavity --quick)
     set_tests_properties(test_ghia_cavity_quick PROPERTIES
         LABELS "phase13;validation")
+    # Merge-gated observed-order tripwire. Three resolutions at 16/32/64 give a
+    # Richardson-style order in about 90s, so observed-order evidence now gates
+    # every merge instead of running only in the skipped long-validation
+    # workflow. The 32/64/128 campaign stays behind CFDX_ENABLE_LONG_VALIDATION.
+    add_test(NAME test_ghia_cavity_order COMMAND test_ghia_cavity --gate)
+    set_tests_properties(test_ghia_cavity_order PROPERTIES
+        LABELS "phase13;validation"
+        TIMEOUT 900)
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_ghia_cavity COMMAND test_ghia_cavity)
         set_tests_properties(test_ghia_cavity PROPERTIES

@@ -310,8 +310,51 @@ int main(int argc, char** argv)
 {
     try {
         const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
-        if (argc > 1 && !quick)
-            throw std::invalid_argument("usage: test_ghia_cavity [--quick]");
+        const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
+        if (argc > 1 && !quick && !gate)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate]");
+
+        // Merge-gated observed-order smoke check. Three resolutions are the
+        // minimum for a Richardson-style order from successive differences, so
+        // this runs 16/32/64 rather than 32/64/128: the 128x128 solve alone
+        // dominates the full campaign. This is a regression tripwire on
+        // monotonic convergence and positive order, not a substitute for the
+        // full campaign, which stays behind CFDX_ENABLE_LONG_VALIDATION.
+        if (gate) {
+            const auto r16 = run_case({100.0,16,16,2500});
+            const auto r32 = run_case({100.0,32,32,2500});
+            const auto r64 = run_case({100.0,64,64,5000});
+
+            const auto profile16 = sample_profile(r16.solution, 16, 16);
+            const auto profile32 = sample_profile(r32.solution, 32, 32);
+            const auto profile64 = sample_profile(r64.solution, 64, 64);
+
+            const double u_rms_16_32 = rms_difference(profile16.u, profile32.u);
+            const double u_rms_32_64 = rms_difference(profile32.u, profile64.u);
+            const double v_rms_16_32 = rms_difference(profile16.v, profile32.v);
+            const double v_rms_32_64 = rms_difference(profile32.v, profile64.v);
+            const double u_max_16_32 = max_difference(profile16.u, profile32.u);
+            const double u_max_32_64 = max_difference(profile32.u, profile64.u);
+
+            const double p_u_rms = observed_order(u_rms_16_32, u_rms_32_64);
+            const double p_v_rms = observed_order(v_rms_16_32, v_rms_32_64);
+            const double p_u_max = observed_order(u_max_16_32, u_max_32_64);
+            std::cout << "GHIA_ORDER_GATE Re=100 grid=16/32/64"
+                      << " observed_order U_RMS=" << p_u_rms
+                      << " V_RMS=" << p_v_rms
+                      << " U_max=" << p_u_max
+                      << " dU_RMS(16,32)=" << u_rms_16_32
+                      << " dU_RMS(32,64)=" << u_rms_32_64
+                      << " dV_RMS(16,32)=" << v_rms_16_32
+                      << " dV_RMS(32,64)=" << v_rms_32_64 << "\n";
+            if (!(u_rms_32_64 < u_rms_16_32) ||
+                !(v_rms_32_64 < v_rms_16_32) ||
+                !(u_max_32_64 < u_max_16_32) ||
+                !(p_u_rms > 0.50) || !(p_v_rms > 0.50) || !(p_u_max > 0.50))
+                throw std::runtime_error("Ghia merge-gated observed order is insufficient");
+            std::cout << "GHIA_ORDER_GATE: PASS\n";
+            return 0;
+        }
 
         const auto r32 = run_case({100.0,32,32,2500});
         if (quick) {
