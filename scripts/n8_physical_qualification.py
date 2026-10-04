@@ -32,6 +32,7 @@ REQUIRED_TESTS = (
     "test_cg_solver",
     "test_bicgstab_solver",
     "test_gmres_solver",
+    "test_fgmres_solver",
     "test_krylov_preconditioning",
     # N8 preconditioner / Schur families.
     "test_amg_preconditioner_qualification",
