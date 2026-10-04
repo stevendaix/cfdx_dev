@@ -245,5 +245,5 @@ def read_case_with_dat(
     candidate = Path(dat_path) if dat_path is not None else _paired_dat_path(case_path)
     if not candidate.is_file():
         raise FileNotFoundError(candidate)
-    read_dat_restart(candidate)
-    return session, candidate
+    restart = read_dat_restart(candidate)
+    # Iteration/time are first-class session metadata and already have a\n    # defined destination. Restore them from the DAT without pretending that\n    # the session can yet own/remap the checkpoint field arrays.\n    session.iteration = restart.iteration\n    session.time = restart.time\n    return session, candidate
