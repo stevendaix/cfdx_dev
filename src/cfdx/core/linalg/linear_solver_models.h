@@ -84,7 +84,13 @@ inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog
         {"ras", ModelAvailability::Planned, false, true},
         {"native_fieldsplit", ModelAvailability::Available, false, false},
         {"coupled_block_schur", ModelAvailability::Available, false, false},
-        {"pcd", ModelAvailability::Planned, false, false},
+        // PCD is requestable so the production coupled branch it is wired into
+        // is reachable and can be exercised. This flag is the dispatch gate read
+        // by select_linear_solver; it is not a qualification claim. PCD maturity
+        // is tracked separately in numerical_method_registry.h
+        // (preconditioner.pcd = Planned) and NUMERICAL_METHOD_CAPABILITY_MATRIX.json
+        // (status: partial), and neither is advanced by this entry.
+        {"pcd", ModelAvailability::Available, false, false},
         {"lsc", ModelAvailability::Planned, false, false},
         {"mgr", ModelAvailability::Available, false, false}
     }};

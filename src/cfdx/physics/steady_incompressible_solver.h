@@ -1532,6 +1532,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
         auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
         schur->set_pcd_schur(std::move(pcd));
+        // Set the preconditioner up here for the same reason the BlockSchur
+        // branch below does. solve_fgmres also calls setup() on its
+        // preconditioner before the first apply, so this is not what makes PCD
+        // reachable; performing it explicitly is what makes a setup failure
+        // report its own cause. Without it, a rejected PCD setup surfaces only
+        // as SolverStatus::NOT_APPLICABLE from the Krylov driver and the
+        // PcdSchurApproximation last_error() is lost. reset() preserves
+        // pcd_schur_, so the driver's second setup is clean.
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled PCD Schur setup failed: ") +
+                schur->last_error());
+        }
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
