@@ -192,6 +192,39 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
     return evidence
 
 
+def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
+    """Report whether structured N8 evidence contains the required fields.
+
+    This is an evidence-integrity audit, not a numerical acceptance gate: it
+    never invents values and never changes a source test verdict.
+    """
+    requirements = {
+        "physical_model_results": ("model", "solver_converged", "iterations", "gates_failed"),
+        "schur_quantitative": ("case", "cond_inf_Auu", "exact_solve_backward_error", "machine_epsilon"),
+        "schur_production": ("cells", "unknowns", "nnz", "schur_nnz", "true_residual", "iterations", "setup_us", "solve_us", "pressure_coarse_size", "hierarchy_builds", "numeric_updates"),
+    }
+    missing: dict[str, list[dict[str, object]]] = {}
+    checked = complete = 0
+    for category, fields in requirements.items():
+        records = evidence.get(category, [])
+        if not isinstance(records, list):
+            records = []
+        category_missing = []
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                category_missing.append({"index": index, "fields": list(fields)})
+                continue
+            checked += 1
+            absent = [field for field in fields if field not in record]
+            if absent:
+                category_missing.append({"index": index, "fields": absent})
+            else:
+                complete += 1
+        if category_missing:
+            missing[category] = category_missing
+    return {"status": "COMPLETE" if not missing else "INCOMPLETE", "records_checked": checked, "records_complete": complete, "missing_fields": missing, "policy": "diagnostic_only"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
