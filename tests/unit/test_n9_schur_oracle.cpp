@@ -206,9 +206,6 @@ int main() {
         const std::vector<double> rhs = {1.1,-0.3,0.7,0.4,-0.8};
         const auto direct = n9_3_dense_solve(A3, rhs);
 
-        const auto Ax = matvec(A3, Vector(rhs.size(), 0.0));
-        (void)Ax; // The independent residual below uses the same dense operator.
-
         std::vector<double> direct_Ax(A3.size(), 0.0);
         for (std::size_t i = 0; i < A3.size(); ++i)
             for (std::size_t j = 0; j < A3[i].size(); ++j) direct_Ax[i] += A3[i][j] * direct[j];
