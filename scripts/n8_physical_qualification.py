@@ -112,20 +112,20 @@ def _parse_value(value: str) -> object:
 
 
 def parse_key_value_records(output: str, prefix: str) -> list[dict[str, object]]:
-    """Extract structured key=value records emitted by an existing validation test.
-
-    Values are deliberately kept as strings when they are not unambiguously
-    numeric/boolean; this avoids changing the test's textual contract while
-    making the JSON report directly consumable by analysis tools.
-    """
+    """Extract structured key=value records emitted by an existing validation test."""
     records: list[dict[str, object]] = []
-    pattern = re.compile(r"^" + re.escape(prefix) + r"\\s+(.*)$")
+    pattern = re.compile(r"^" + re.escape(prefix) + r"\s+(.*)$")
     for line in output.splitlines():
         match = pattern.match(line)
         if not match:
             continue
+        payload = match.group(1).strip()
+        tokens = payload.split()
         record: dict[str, object] = {}
-        for key, value in re.findall(r"(\\w+)=([^\\s]+)", match.group(1)):
+        if tokens and "=" not in tokens[0]:
+            record["model"] = tokens[0]
+            payload = " ".join(tokens[1:])
+        for key, value in re.findall(r"(\w+)=([^\s]+)", payload):
             record[key] = _parse_value(value)
         if record:
             records.append(record)
