@@ -1,0 +1,92 @@
+# N10 external/reference mesh fixture manifest
+#
+# External bytes are not vendored here. Each public fixture is pinned to an
+# immutable upstream commit/path. A fixture becomes mandatory CI only after
+# its exact bytes, SHA-256 and redistribution status are independently verified.
+#
+# ANSYS VMFL material is proprietary and must never be redistributed by CFDX.
+
+version: 1
+schema: 1
+
+sources:
+  - id: meshio
+    project: meshio
+    repository: https://github.com/nschloe/meshio
+    ref: b2ee99842e119901349fdeee06b5bf61e01f450a
+    license_status: verify
+    redistribution: pending
+  - id: openfoam-dev
+    project: OpenFOAM-dev
+    repository: https://github.com/OpenFOAM/OpenFOAM-dev
+    ref: fbbf59ba819f0ab4ccfa2c02c39d357c96cd2633
+    license_status: verify
+    redistribution: pending
+  - id: gmsh
+    project: Gmsh
+    repository: https://gitlab.onelab.info/gmsh/gmsh
+    ref: pin_required
+    license_status: verify
+    redistribution: pending
+  - id: ansys-vmfl
+    project: ANSYS Fluent Verification Manual
+    repository: null
+    ref: authorized_artifact_only
+    license_status: proprietary
+    redistribution: prohibited
+
+fixtures:
+  - id: meshio-su2-square
+    source: meshio
+    path: tests/meshes/su2/square.su2
+    sha256: null
+    category: su2
+    intended_test: meshio_import
+    mandatory_ci: false
+    reference_only: true
+    acquisition: pinned_raw
+    status: pending_hash_and_license_verification
+
+  - id: meshio-gmsh-insulated-2-2
+    source: meshio
+    path: tests/meshes/msh/insulated-2.2.msh
+    sha256: null
+    category: gmsh
+    intended_test: meshio_import
+    mandatory_ci: false
+    reference_only: true
+    acquisition: pinned_raw
+    status: pending_hash_and_license_verification
+
+  - id: meshio-vtk-unstructured
+    source: meshio
+    path: tests/meshes/vtk/06_unstructured.vtk
+    sha256: null
+    category: vtk
+    intended_test: meshio_import
+    mandatory_ci: false
+    reference_only: true
+    acquisition: pinned_raw
+    status: pending_hash_and_license_verification
+
+  - id: openfoam-airfoil2d
+    source: openfoam-dev
+    path: tutorials/incompressibleFluid/airFoil2D/constant/polyMesh
+    sha256: null
+    category: openfoam_polyMesh
+    intended_test: openfoam_import
+    mandatory_ci: false
+    reference_only: true
+    acquisition: pinned_repository_subtree
+    status: pending_hash_and_license_verification
+
+  - id: ansys-vmfl078
+    source: ansys-vmfl
+    path: VMFL078
+    sha256: null
+    category: industrial_polyhedral
+    intended_test: vmfl078_validation
+    mandatory_ci: false
+    reference_only: true
+    acquisition: authorized_artifact
+    status: authorized_external_only
