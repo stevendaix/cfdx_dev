@@ -3034,6 +3034,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         result.iterations = iter;
             transaction.commit();
+            // Only publish a face flux after the nonlinear transaction has
+            // accepted the corresponding U/p state. mass_flux is mutable during
+            // a tentative iteration and is not part of NonlinearStateRollback;
+            // publishing it after a rejected attempt would therefore expose a
+            // flux belonging to a state that was rolled back.
+            result.authoritative_mass_flux = mass_flux;
             iteration_completed = true;
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
@@ -3052,10 +3058,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             break;
     }
 
-    // Preserve the exact final face flux that was used by the authoritative
-    // continuity operator. Do not rebuild it from U here: the latter omits the
-    // pressure-dependent Rhie-Chow correction.
-    result.authoritative_mass_flux = mass_flux;
+    // authoritative_mass_flux is updated only after an accepted nonlinear
+    // transaction above. In particular, a rejected retry cannot overwrite the
+    // evidence for the last accepted U/p state. Do not reconstruct it from U.
     if (pressure_context)
         result.pressure_linear_context = pressure_context->stats();
     return result;
