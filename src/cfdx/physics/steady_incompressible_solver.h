@@ -936,7 +936,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
 
     const auto diffusion = assemble_scalar_equation(
-        mesh, geometry, zero_flux, rho * kinematic_viscosity,
+        mesh, geometry, zero_flux, 1.0,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
         nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
 
