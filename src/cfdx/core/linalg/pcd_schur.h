@@ -4,10 +4,13 @@
 #include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/schur_approximation.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/core/linalg/preconditioner.h"
 
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -166,6 +169,35 @@ public:
     bool has_pressure_null_space_policy() const noexcept {
         return pressure_null_space_.has_value();
     }
+
+    // Production adapter: expose the pressure Schur approximation through the
+    // generic preconditioner interface once the caller has assembled the three
+    // pressure-side operators. The pressure solve callbacks remain explicit so
+    // PCD never silently substitutes an unrelated scalar preconditioner.
+    class PressureAdapter final : public Preconditioner {
+    public:
+        PressureAdapter(PcdSchurApproximation approximation,
+                        std::size_t pressure_size)
+            : approximation_(std::move(approximation)),
+              pressure_size_(pressure_size) {}
+
+        bool setup(const SparseMatrix& A) override {
+            return A.n_rows() == pressure_size_ &&
+                   A.n_cols() == pressure_size_ && A.is_consistent();
+        }
+
+        bool apply(const Vector& r, Vector& z) const override {
+            if (r.size() != pressure_size_ || z.size() != pressure_size_)
+                return false;
+            return approximation_.apply(r, z);
+        }
+
+        const char* name() const override { return approximation_.name(); }
+
+    private:
+        PcdSchurApproximation approximation_;
+        std::size_t pressure_size_{0};
+    };
 
 private:
     static bool valid_pressure_operator(const SparseMatrix& matrix,
