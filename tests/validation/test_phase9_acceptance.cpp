@@ -693,6 +693,10 @@ int main(int argc, char** argv)
                 static_cast<std::size_t>(
                     std::distance(successful_models.begin(), reference_it));
             const auto& reference = results[reference_index];
+            if (reference.authoritative_mass_flux.size() !=
+                reference.geometry.face_area_vectors.size())
+                throw std::runtime_error(
+                    "SIMPLE reference has no complete authoritative mass flux");
 
             double reference_pressure_mean = 0.0;
             for (std::size_t c = 0; c < reference.p.size(); ++c)
@@ -716,6 +720,27 @@ int main(int argc, char** argv)
 
                 double max_du = 0.0;
                 double max_dp_gauge = 0.0;
+                double max_dphi = 0.0;
+                double reference_phi_linf = 0.0;
+                double candidate_phi_linf = 0.0;
+                if (candidate.authoritative_mass_flux.size() !=
+                    reference.authoritative_mass_flux.size())
+                    throw std::runtime_error(
+                        successful_models[k] + ": authoritative mass-flux size mismatch");
+                for (std::size_t face = 0;
+                     face < reference.authoritative_mass_flux.size(); ++face) {
+                    const double phi_ref = reference.authoritative_mass_flux(face);
+                    const double phi_candidate = candidate.authoritative_mass_flux(face);
+                    if (!std::isfinite(phi_ref) || !std::isfinite(phi_candidate))
+                        throw std::runtime_error(
+                            successful_models[k] + ": non-finite authoritative mass flux");
+                    max_dphi = std::max(max_dphi, std::abs(phi_candidate - phi_ref));
+                    reference_phi_linf = std::max(reference_phi_linf, std::abs(phi_ref));
+                    candidate_phi_linf = std::max(candidate_phi_linf, std::abs(phi_candidate));
+                }
+                const double flux_scale =
+                    std::max({1.0, reference_phi_linf, candidate_phi_linf});
+                const double flux_equivalence = max_dphi / flux_scale;
                 for (std::size_t c = 0; c < candidate.U.size(); ++c) {
                     for (std::size_t component = 0; component < 3; ++component) {
                         max_du = std::max(
@@ -745,6 +770,8 @@ int main(int argc, char** argv)
                           << " vs=SIMPLE/upwind/bounded"
                           << " max_abs_dU=" << max_du
                           << " max_abs_dp_gauge=" << max_dp_gauge
+                          << " max_abs_dphi=" << max_dphi
+                          << " flux_equivalence=" << flux_equivalence
                           << " continuity_ratio=" << continuity_ratio
                           << "\n";
 
@@ -754,6 +781,12 @@ int main(int argc, char** argv)
                 if (!(max_dp_gauge < 1.0e-5))
                     failed_models.push_back(
                         successful_models[k] + ":algorithm_pressure_invariance");
+                // Compare the actual face flux used by continuity, not a
+                // reconstructed U-only flux. The normalized gate is strict and
+                // independent of nonlinear/linear residual reporting.
+                if (!(flux_equivalence < 1.0e-8))
+                    failed_models.push_back(
+                        successful_models[k] + ":algorithm_flux_invariance");
             }
         }
 
