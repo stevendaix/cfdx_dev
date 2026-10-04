@@ -145,7 +145,7 @@
 #
 # N2 remains PARTIAL / not qualified. In particular, a successful constant/linear test on an affine mesh does not qualify second-order polyhedral accuracy. The qualification must cover skewed/polyhedral meshes, rank/conditioning diagnostics, boundary stencils, face reconstruction and controlled refinement.
 #
-# %% 
+# %%
 from __future__ import annotations
 import numpy as np
 d=np.array([[1.,0.],[0.,1.],[-1.,0.],[0.,-1.]])
