@@ -1373,6 +1373,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // complement. The Rhie-Chow Schur diagnostic is kept separate from this
     // algebraic preconditioner quantity.
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
+    const bool use_n8_block_schur =
+        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
     if (use_n8_block_schur) {
         coupled_preconditioner =
@@ -1405,8 +1407,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // the N8 AMG-backed Schur implementation rather than the legacy scalar
     // preconditioner. MGR remains a separate N8-qualified path until its
     // coupled dispatch metadata is integrated.
-    const bool use_n8_block_schur =
-        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
