@@ -21,6 +21,9 @@ def make_index(root: pathlib.Path, index: pathlib.Path) -> None:
     # be a real repository with demo.cpp staged.
     subprocess.run(["git", "init", "--quiet", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "src/demo.cpp"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "cfdx-ai@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "CFDX AI Test"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "--quiet", "-m", "fixture"], check=True)
     with sqlite3.connect(index) as db:
         db.executescript(
             """
