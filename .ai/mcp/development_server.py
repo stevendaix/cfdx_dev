@@ -113,6 +113,23 @@ def _query(
     }
 
 
+def _git_ls_files(root: pathlib.Path, path: str) -> dict[str, object]:
+    if path.startswith("/") or ".." in pathlib.PurePosixPath(path).parts:
+        return {"ok": False, "errors": ["path must remain inside the repository"], "files": []}
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", path or "."],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        return {"ok": False, "errors": [str(exc)], "files": []}
+    if completed.returncode != 0:
+        return {"ok": False, "errors": [completed.stderr.strip() or "git ls-files failed"], "files": []}
+    return {"ok": True, "files": completed.stdout.splitlines()}
+
+
 def create_server(root: str | None = None, index: str | None = None) -> MCPServer:
     repository, database = _config(root, index)
     server = MCPServer(
