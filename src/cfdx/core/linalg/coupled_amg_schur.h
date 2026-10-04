@@ -134,10 +134,47 @@ public:
         }
 
         if (!same_pattern(schur_, candidate.schur_)) {
-            // A changed Schur graph invalidates the symbolic AMG hierarchy.
-            // Do not silently rebuild or substitute a different preconditioner:
-            // the caller must explicitly request setup() for the new graph.
+            // A changed Schur graph invalidates the symbolic hierarchy.
             return fail_update("Schur CSR pattern changed; explicit setup() required");
+        }
+
+        if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
+            if (!pcd_ready_ || !pcd_schur_)
+                return fail_update("PCD Schur approximation is not initialized");
+            const SparseMatrix new_Auu =
+                extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            const SparseMatrix new_G =
+                extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            const SparseMatrix new_D =
+                extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            const SparseMatrix new_C =
+                extract_block(A, 1, 1, n_cells_, n_cells_);
+            if (!same_pattern(Auu_, new_Auu) ||
+                !same_pattern(G_, new_G) ||
+                !same_pattern(D_, new_D) ||
+                !same_pattern(C_, new_C))
+                return fail_update("PCD coupled block graph changed; explicit setup() required");
+
+            std::copy(new_Auu.values_data(),
+                      new_Auu.values_data() + new_Auu.nnz(), Auu_.values_data());
+            std::copy(new_G.values_data(),
+                      new_G.values_data() + new_G.nnz(), G_.values_data());
+            std::copy(new_D.values_data(),
+                      new_D.values_data() + new_D.nnz(), D_.values_data());
+            std::copy(new_C.values_data(),
+                      new_C.values_data() + new_C.nnz(), C_.values_data());
+
+            BlockOperator blocks(Auu_, G_, D_, C_);
+            if (!pcd_schur_->update_values(blocks))
+                return fail_update("PCD Schur numeric update failed");
+
+            velocity_inv_ = std::move(candidate.velocity_inv_);
+            velocity_inv_diag_ = std::move(candidate.velocity_inv_diag_);
+            row_ = std::move(candidate.row_);
+            col_ = std::move(candidate.col_);
+            val_ = std::move(candidate.val_);
+            schur_ = std::move(candidate.schur_);
+            return true;
         }
 
         if (!pressure_amg_.update_values(candidate.schur_)) {
