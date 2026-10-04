@@ -527,7 +527,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; no spatial accuracy claim from this test; single Re=100 lid-driven cavity corridor at 32x32x2. Observed-order evidence for the cavity corridor exists separately in tests/validation/test_ghia_cavity.cpp (Re=100 at 32/64/128, plus Re=400 and Re=1000; measured order U_RMS=0.96, V_RMS=1.03) but runs only under CFDX_ENABLE_LONG_VALIDATION in the CFDX validation workflow, so it has never gated a merge and does not cover the continuation or adaptive paths"
     },
     {
       "package_id": "N7",
@@ -542,7 +542,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; no spatial accuracy claim from this test; single Re=100 lid-driven cavity corridor at 32x32x2. Observed-order evidence for the cavity corridor exists separately in tests/validation/test_ghia_cavity.cpp (Re=100 at 32/64/128, plus Re=400 and Re=1000; measured order U_RMS=0.96, V_RMS=1.03) but runs only under CFDX_ENABLE_LONG_VALIDATION in the CFDX validation workflow, so it has never gated a merge and does not cover the continuation or adaptive paths"
     },
     {
       "package_id": "N7",
@@ -556,7 +556,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; no spatial accuracy claim from this test; single Re=100 lid-driven cavity corridor at 32x32x2. Observed-order evidence for the cavity corridor exists separately in tests/validation/test_ghia_cavity.cpp (Re=100 at 32/64/128, plus Re=400 and Re=1000; measured order U_RMS=0.96, V_RMS=1.03) but runs only under CFDX_ENABLE_LONG_VALIDATION in the CFDX validation workflow, so it has never gated a merge and does not cover the continuation or adaptive paths"
     },
     {
       "package_id": "N7",
@@ -583,7 +583,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; no spatial accuracy claim from this test; single Re=100 lid-driven cavity corridor at 32x32x2. Observed-order evidence for the cavity corridor exists separately in tests/validation/test_ghia_cavity.cpp (Re=100 at 32/64/128, plus Re=400 and Re=1000; measured order U_RMS=0.96, V_RMS=1.03) but runs only under CFDX_ENABLE_LONG_VALIDATION in the CFDX validation workflow, so it has never gated a merge and does not cover the continuation or adaptive paths"
     },
     {
       "package_id": "N7",
@@ -596,7 +596,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; no spatial accuracy claim from this test; single Re=100 lid-driven cavity corridor at 32x32x2. Observed-order evidence for the cavity corridor exists separately in tests/validation/test_ghia_cavity.cpp (Re=100 at 32/64/128, plus Re=400 and Re=1000; measured order U_RMS=0.96, V_RMS=1.03) but runs only under CFDX_ENABLE_LONG_VALIDATION in the CFDX validation workflow, so it has never gated a merge and does not cover the continuation or adaptive paths"
     },
     {
       "package_id": "N7",
