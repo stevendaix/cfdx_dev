@@ -32,7 +32,10 @@ Mesh make_skew_channel_mesh(std::size_t nx, std::size_t ny)
 
     // Preserve all boundary vertices exactly. The interior displacement is a
     // smooth manufactured mesh deformation, so the physical patch locations
-    // and boundary conditions remain those of the planar Couette problem.
+    // and boundary conditions remain those of the planar Couette problem. The
+    // deformation is deliberately moderate: this qualification targets
+    // pressure-velocity equivalence on a skew/non-orthogonal mesh, not a
+    // high-distortion mesh-robustness limit (covered separately by N10).
     for (std::size_t j = 0; j <= ny; ++j) {
         for (std::size_t i = 0; i <= nx; ++i) {
             const double x0 = static_cast<double>(i) / static_cast<double>(nx);
@@ -40,10 +43,10 @@ Mesh make_skew_channel_mesh(std::size_t nx, std::size_t ny)
             const bool boundary = i == 0 || i == nx || j == 0 || j == ny;
             const double sx = boundary
                 ? 0.0
-                : 0.12 * std::sin(pi * x0) * std::sin(pi * y0);
+                : 0.03 * std::sin(pi * x0) * std::sin(pi * y0);
             const double sy = boundary
                 ? 0.0
-                : 0.06 * std::sin(2.0 * pi * x0) * std::sin(pi * y0);
+                : 0.015 * std::sin(2.0 * pi * x0) * std::sin(pi * y0);
             for (std::size_t k = 0; k < 2; ++k)
                 mesh.points().set(id(i, j, k), x0 + sx, y0 + sy, static_cast<double>(k));
         }
