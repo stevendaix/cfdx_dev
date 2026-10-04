@@ -89,6 +89,36 @@ public:
         return setup(blocks);
     }
 
+    // Refresh the three pressure-side operators explicitly. The common
+    // SchurApproximation interface only carries the saddle-point blocks, so
+    // this overload makes the additional PCD state update auditable rather
+    // than pretending that those operators are part of BlockOperator.
+    bool update_pressure_values(const BlockOperator& blocks,
+                                const SparseMatrix& pressure_mass,
+                                const SparseMatrix& pressure_laplacian,
+                                const SparseMatrix& pressure_convection_diffusion) {
+        if (!blocks_ || graph_signature(blocks) != graph_signature_)
+            return false;
+
+        const std::size_t np = blocks.pressure_size();
+        if (!valid_pressure_operator(pressure_mass, np) ||
+            !valid_pressure_operator(pressure_laplacian, np) ||
+            !valid_pressure_operator(pressure_convection_diffusion, np))
+            return false;
+
+        if (!same_pattern(*pressure_mass_, pressure_mass) ||
+            !same_pattern(*pressure_laplacian_, pressure_laplacian) ||
+            !same_pattern(*pressure_convection_diffusion_,
+                           pressure_convection_diffusion))
+            return false;
+
+        pressure_mass_ = &pressure_mass;
+        pressure_laplacian_ = &pressure_laplacian;
+        pressure_convection_diffusion_ = &pressure_convection_diffusion;
+        graph_signature_ = graph_signature(blocks);
+        return true;
+    }
+
     bool apply(const Vector& rhs_p, Vector& pressure) const override {
         if (!blocks_ || !pressure_mass_ || !pressure_laplacian_ ||
             !pressure_convection_diffusion_ || !laplacian_solve_ ||
@@ -158,6 +188,19 @@ private:
             return !(*this == other);
         }
     };
+
+    static bool same_pattern(const SparseMatrix& a, const SparseMatrix& b) noexcept {
+        if (a.n_rows() != b.n_rows() || a.n_cols() != b.n_cols() ||
+            a.nnz() != b.nnz())
+            return false;
+        for (std::size_t i = 0; i <= a.n_rows(); ++i)
+            if (a.row_offsets_data()[i] != b.row_offsets_data()[i])
+                return false;
+        for (std::size_t k = 0; k < a.nnz(); ++k)
+            if (a.columns_data()[k] != b.columns_data()[k])
+                return false;
+        return true;
+    }
 
     static GraphSignature graph_signature(const BlockOperator& blocks) {
         std::size_t h = 1469598103934665603ULL;
