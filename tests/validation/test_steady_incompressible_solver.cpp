@@ -591,5 +591,70 @@ int main()
         EXPECT_TRUE(!transaction.active());
     });
 
+    run_case("convergence_qoi_gate_is_enforced_by_the_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 40;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+        c.body_force = cfdx::core::Vec3{0.0,0.0,-1.0};
+        // Gate a probe against a target the solve cannot reach. The residual
+        // and continuity criteria are satisfiable on this mesh, so if the QoI
+        // gate did not participate in the acceptance decision the solve would
+        // report convergence and this case would fail.
+        c.probes.push_back(IncompressiblePointProbe{
+            "centre_p", cfdx::core::Vec3{0.5,0.5,0.5},
+            IncompressibleProbeField::PRESSURE});
+        c.qoi_gates.push_back(cfdx::core::QoIGate{
+            "centre_p", 1e-6, 1e-9, 1.0e6, true});
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        EXPECT_TRUE(!result.converged);
+    });
+
+    run_case("convergence_qoi_gate_must_name_a_configured_probe", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 2;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        // A gate naming nothing would be silently unsatisfiable forever, so it
+        // must be rejected instead of degrading the solve to never-converged.
+        c.qoi_gates.push_back(cfdx::core::QoIGate{
+            "absent_probe", 1e-12, 1e-14, 0.0, false});
+        bool rejected = false;
+        try {
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     return run_all();
 }
