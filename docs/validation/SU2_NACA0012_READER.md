@@ -58,9 +58,11 @@ It verifies:
 
 ## Results are deliberately not used
 
-The repository's small `solution.csv` fixture contains only 10 rows while
-the NACA0012 mesh contains 10216 cells. It is therefore not a valid solution
-for this mesh.
+The repository's small `mismatched_solution.csv` fixture contains only 10 rows
+while the NACA0012 mesh contains 10216 cells. It is therefore not a valid
+solution for this mesh, and it is deliberately kept out of the mesh directory
+so the adapter does not auto-discover it and block every conversion of this
+case.
 
 The test does **not** weaken the cardinality check and does not use that
 fixture as validation evidence. Missing solution output is recorded as a

@@ -83,12 +83,16 @@ def openfoam_case(tmp_path):
 
 @pytest.fixture
 def su2_case(tmp_path):
-    """SU2 mesh + config copied into a temp dir with matching stems."""
+    """SU2 mesh + config copied into a temp dir with matching stems.
+
+    No solution file is staged next to the mesh: the repository fixture holds
+    10 rows against 10216 cells, which is a deliberate blocking cardinality
+    mismatch. Result-import handling is covered by tests/python/test_su2_adapter.py.
+    """
     src = os.path.join(DATA_DIR, "su2")
     case = tmp_path / "case.su2"
     shutil.copy(os.path.join(src, "mesh_NACA0012_inv.su2"), case)
     shutil.copy(os.path.join(src, "inv_NACA0012_basic.cfg"), tmp_path / "case.cfg")
-    shutil.copy(os.path.join(src, "solution.csv"), tmp_path / "case_solution.csv")
     return case
 
 
