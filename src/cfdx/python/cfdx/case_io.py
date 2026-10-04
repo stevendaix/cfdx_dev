@@ -253,4 +253,7 @@ def read_case_with_dat(
     restart = read_dat_restart(candidate)
     # Iteration/time are first-class session metadata and already have a
     # defined destination. Restore them from the DAT without pretending that
-    # the session can yet own/remap the checkpoint field arrays.\n    session.iteration = restart.iteration\n    session.time = restart.time\n    return session, candidate
+    # the session can yet own/remap the checkpoint field arrays.
+    session.iteration = restart.iteration
+    session.time = restart.time
+    return session, candidate
