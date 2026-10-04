@@ -942,7 +942,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const auto convection_diffusion = assemble_scalar_equation(
         mesh, geometry, mass_flux, rho * kinematic_viscosity,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, convection_scheme, &velocity);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
 
     result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
     result.convection_diffusion =
