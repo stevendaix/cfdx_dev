@@ -173,12 +173,23 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
                 controls.body_force.z * target};
             const auto stage_velocity_bcs = scale_velocity_bcs(target);
 
+            // Stage 0 initializes the ramp from the declared strategy. Every
+            // later attempt inherits the last accepted state (Provided), so a
+            // restart is re-read only on the first attempt of the first stage
+            // and cannot silently overwrite a converged stage.
+            const bool first_attempt_of_first_stage =
+                (stage_index == 1 && attempts == 1);
+            if (!first_attempt_of_first_stage) {
+                stage_controls.initialization.mode = InitializationMode::Provided;
+                stage_controls.initialization.restart_path.clear();
+            }
+
             IncompressibleSolveResult solver_result;
             try {
                 const auto stage_restart_path =
-                    (stage_index == 1 && attempts == 1) ? restart_path : std::string{};
+                    first_attempt_of_first_stage ? restart_path : std::string{};
                 const auto stage_restart_fields =
-                    (stage_index == 1 && attempts == 1)
+                    first_attempt_of_first_stage
                         ? restart_fields : cfdx::io::DatRestartFields{};
                 solver_result = solve_steady_incompressible(
                     mesh, U, p, stage_velocity_bcs, pressure_bcs,

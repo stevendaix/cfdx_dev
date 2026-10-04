@@ -85,7 +85,59 @@ struct IncompressibleTransientControls {
     bool history_valid = false;
 };
 
+// ---------------------------------------------------------------------------
+// Initialization contract (N7)
+// ---------------------------------------------------------------------------
+// The initial state is part of the numerical method: it fixes the denominator
+// of every relative residual reported by the solve, because
+// result.reference_momentum_residual is taken from the first iteration. The
+// strategy is therefore declared explicitly and validated rather than inferred
+// from whether a restart path happens to be non-empty.
+//
+// Automatic selection is deliberately NOT implemented. Choosing a strategy by
+// probing the filesystem or mesh quality would change the initial state, and
+// therefore the relative-residual reference, without the resulting convergence
+// being attributable to a declared numerical method.
+enum class InitializationMode {
+    // Caller-provided fields are used unchanged. The caller is responsible for
+    // having produced a meaningful state.
+    Provided,
+    // Fields are reset to a uniform state before the solve.
+    Uniform,
+    // Fields are overwritten from a CFDX-DAT checkpoint. Requires
+    // controls.initialization.restart_path to be non-empty.
+    Restart
+};
+
+inline const char* to_string(InitializationMode mode) {
+    switch (mode) {
+        case InitializationMode::Provided: return "provided";
+        case InitializationMode::Uniform: return "uniform";
+        case InitializationMode::Restart: return "restart";
+    }
+    return "unknown";
+}
+
+// Parses an initialization mode name. Returns false for an unrecognised name so
+// that callers reject it instead of silently defaulting.
+inline bool parse_initialization_mode(const std::string& name, InitializationMode& out) {
+    if (name == "provided") { out = InitializationMode::Provided; return true; }
+    if (name == "uniform") { out = InitializationMode::Uniform; return true; }
+    if (name == "restart") { out = InitializationMode::Restart; return true; }
+    return false;
+}
+
+struct InitializationControls {
+    InitializationMode mode = InitializationMode::Provided;
+    // Uniform state applied when mode == Uniform.
+    cfdx::core::Vec3 uniform_velocity{0.0, 0.0, 0.0};
+    double uniform_pressure = 0.0;
+    // Checkpoint path applied when mode == Restart.
+    std::string restart_path;
+};
+
 struct IncompressibleSolverControls {
+    InitializationControls initialization;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     IncompressibleTransientControls transient;
     CouplingControls coupling;
@@ -190,9 +242,71 @@ struct IncompressibleSolveResult {
     std::string convergence_reason;
 };
 
+// Applies the declared initialization strategy to the caller's fields.
+//
+// legacy_restart_path is the positional restart argument of
+// solve_steady_incompressible. It supplies the checkpoint for a declared
+// Restart mode, so existing callers that only pass the positional argument keep
+// working. A caller that declares Provided or Uniform while also passing a
+// legacy path gets the path ignored rather than silently applied, because that
+// would make the initial state depend on an undeclared input.
+inline void apply_initialization(
+    const InitializationControls& init,
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    cfdx::io::DatRestartFields& restart_fields,
+    const std::string& legacy_restart_path)
+{
+    using namespace cfdx::core;
+    const std::string& restart_source =
+        init.restart_path.empty() ? legacy_restart_path : init.restart_path;
+    switch (init.mode) {
+        case InitializationMode::Provided:
+            // Caller-owned state is used as-is.
+            break;
+        case InitializationMode::Uniform:
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                U.component_data(0)[c] = init.uniform_velocity.x;
+                U.component_data(1)[c] = init.uniform_velocity.y;
+                U.component_data(2)[c] = init.uniform_velocity.z;
+                p(c) = init.uniform_pressure;
+            }
+            break;
+        case InitializationMode::Restart: {
+            if (restart_source.empty())
+                throw std::invalid_argument(
+                    "initialization mode 'restart' requires a checkpoint path");
+            (void)cfdx::io::read_dat_restart_fields(
+                restart_source, mesh, U, p, restart_fields);
+            break;
+        }
+    }
+}
+
+inline void validate_initialization_controls(const InitializationControls& init) {
+    switch (init.mode) {
+        case InitializationMode::Provided:
+            break;
+        case InitializationMode::Uniform:
+            if (!std::isfinite(init.uniform_pressure) ||
+                !std::isfinite(init.uniform_velocity.x) ||
+                !std::isfinite(init.uniform_velocity.y) ||
+                !std::isfinite(init.uniform_velocity.z))
+                throw std::invalid_argument(
+                    "uniform initialization state must be finite");
+            break;
+        case InitializationMode::Restart:
+            // The checkpoint may come from init.restart_path or from the
+            // positional argument; apply_initialization resolves which.
+            break;
+    }
+}
+
 inline void validate_incompressible_controls(
     const IncompressibleSolverControls& c, std::size_t n_cells)
 {
+    validate_initialization_controls(c.initialization);
     validate_coupling_controls(c.coupling);
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
@@ -1355,10 +1469,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
 
-    if (!restart_path.empty())
-        (void)cfdx::io::read_dat_restart_fields(restart_path, mesh, U, p, restart_fields);
-
+    // Initialization is applied here, before any residual or flux is formed, and
+    // is validated first so an invalid strategy cannot mutate the caller's state.
     validate_incompressible_controls(controls, mesh.n_cells());
+    apply_initialization(
+        controls.initialization, mesh, U, p, restart_fields, restart_path);
+
     const FvGeometry geometry = build_fv_geometry(mesh);
     const double mu_eff = controls.density *
         (controls.kinematic_viscosity + controls.turbulent_viscosity);
