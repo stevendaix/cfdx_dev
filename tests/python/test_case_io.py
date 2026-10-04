@@ -160,3 +160,24 @@ def test_read_case_with_dat_rejects_idless_dat_for_identified_mesh(tmp_path: Pat
 
     with pytest.raises(ValueError, match="persistent cell ids"):
         read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_different_cell_id_sets(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat"
+    write_dat_hdf5(
+        source,
+        DatRestart(
+            version=2,
+            cells=2,
+            iteration=9,
+            time=0.75,
+            fields={"p": DatField("p", 1, [100.0, 200.0])},
+            cell_ids=(10, 30),
+        ),
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+    with h5py.File(case_path, "a") as h5:
+        h5.create_dataset("cell_ids", data=[10, 20])
+
+    with pytest.raises(ValueError, match="absent from target mesh"):
+        read_case_with_dat(case_path, source)
