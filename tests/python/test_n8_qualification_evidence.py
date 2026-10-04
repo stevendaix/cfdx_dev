@@ -16,16 +16,32 @@ SPEC.loader.exec_module(MODULE)
 
 CTEST_OUTPUT = """    Start 21: test_n8_pressure_velocity_matrix
 21: Test command: /build/test_phase9_acceptance
+21: MODEL_CONFIG algorithm=COUPLED/BlockSchur/upwind/bounded nx=8 ny=16 bounded=true preconditioner=coupled_block_schur preconditioner_id=11 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
+21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true preconditioner=mgr preconditioner_id=13 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
 21: MODEL_RESULT COUPLED/BlockSchur/upwind/bounded solver_converged=true iterations=17 profile_L2=1.3586e-09 Umax=0.96875 |Uy|max=5.95589e-10 |Uz|max=0 gates_failed=0
-21: MODEL_FAILURES PISO/upwind/bounded continuity_linf Umax
-22: MODEL_RESULT Couette solver_converged=false iterations=3 gates_failed=2
-22: MODEL_FAILURES Couette solver_not_converged execution_exception
-23: N8_SCHUR case=0 cond_inf_Auu=1.51309 exact_oracle_discrepancy=0.658375 exact_solve_backward_error=5.64312e-17 machine_epsilon=2.22045e-16
-23: N8_SCHUR case=0 method=LSC algebra_error=3.08719e-16 exact_schur_error=8.5631
-23: n8_schur_benchmark cells=64 unknowns=256 nnz=766 schur_nnz=190 true_residual=1.47002e-16 iterations=1 setup_us=44 solve_us=259 pressure_coarse_size=64 hierarchy_builds=1 numeric_updates=0 factorization=ilut
-23: n8_schur_benchmark_lifecycle cells=64 coefficient_changed=true hierarchy_builds_before=1 hierarchy_builds_after=2 numeric_updates=1 updated_iterations=1 updated_true_residual=1.41362e-16 graph_change_rebuild=explicit_setup_required
+21: MODEL_FAILURES COUPLED/MGR/upwind/bounded continuity_linf Umax
+21: MODEL_RESULT Couette solver_converged=false iterations=3 gates_failed=2
+21: MODEL_FAILURES Couette solver_not_converged execution_exception
+21: MODEL_SUMMARY successful=1 failed=2
+22: N8_SCHUR case=0 cond_inf_Auu=1.51309 exact_oracle_discrepancy=0.658375 exact_solve_backward_error=5.64312e-17 machine_epsilon=2.22045e-16
+22: N8_SCHUR case=0 method=LSC algebra_error=3.08719e-16 exact_schur_error=8.5631
+22: n8_schur_benchmark cells=64 unknowns=256 nnz=766 schur_nnz=190 true_residual=1.47002e-16 iterations=1 setup_us=44 solve_us=259 pressure_coarse_size=64 hierarchy_builds=1 numeric_updates=0 factorization=ilut
+22: n8_schur_benchmark_lifecycle cells=64 coefficient_changed=true hierarchy_builds_before=1 hierarchy_builds_after=2 numeric_updates=1 updated_iterations=1 updated_true_residual=1.41362e-16 graph_change_rebuild=explicit_setup_required
 1/3 Test #21: test_n8_pressure_velocity_matrix ....***Passed    1.23 sec
 """
+
+MODEL_CONFIGURATION = {
+    "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+    "nx": 8,
+    "ny": 16,
+    "bounded": True,
+    "preconditioner": "coupled_block_schur",
+    "preconditioner_id": 11,
+    "alpha_u": 0.7,
+    "alpha_p": 0.3,
+    "pressure_correctors": 1,
+    "fractional_steps": 1,
+}
 
 
 def test_model_results_keep_distinct_pipe_prefixed_keys() -> None:
@@ -43,7 +59,7 @@ def test_model_results_keep_distinct_pipe_prefixed_keys() -> None:
 def test_model_failures_retain_reported_gate_names() -> None:
     failures = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_FAILURES")
     assert failures == [
-        {"model": "PISO/upwind/bounded", "gates": ["continuity_linf", "Umax"]},
+        {"model": "COUPLED/MGR/upwind/bounded", "gates": ["continuity_linf", "Umax"]},
         {"model": "Couette", "gates": ["solver_not_converged", "execution_exception"]},
     ]
 
@@ -52,8 +68,23 @@ def test_records_without_a_payload_are_ignored() -> None:
     assert MODULE.parse_key_value_records("MODEL_RESULT\nMODEL_FAILURES\n", "MODEL_RESULT") == []
 
 
+def test_run_configuration_names_the_requested_preconditioner() -> None:
+    records = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_CONFIG")
+    assert records[0] == MODEL_CONFIGURATION
+    assert records[1]["algorithm"] == "COUPLED/MGR/upwind/bounded"
+    assert records[1]["preconditioner"] == "mgr"
+    assert MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_SUMMARY") == [
+        {"successful": 1, "failed": 2}
+    ]
+
+
 def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
+    assert evidence["run_configuration"] == [
+        MODEL_CONFIGURATION,
+        {**MODEL_CONFIGURATION, "algorithm": "COUPLED/MGR/upwind/bounded",
+         "preconditioner": "mgr", "preconditioner_id": 13},
+    ]
     assert [record["model"] for record in evidence["physical_model_results"]] == [
         "COUPLED/BlockSchur/upwind/bounded",
         "Couette",
@@ -70,6 +101,56 @@ def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     assert [record["cells"] for record in evidence["schur_production"]] == [64, 64]
     assert evidence["schur_production"][0]["factorization"] == "ilut"
     assert evidence["schur_production"][1]["coefficient_changed"] is True
+
+
+def test_model_resolution_accepts_a_fully_accounted_campaign() -> None:
+    evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
+    resolution = MODULE.audit_model_resolution(evidence)
+    # Couette is resolved but never configured, so the audit stays incomplete.
+    assert resolution["status"] == "INCOMPLETE"
+    assert resolution["undeclared_models"] == ["Couette"]
+    assert resolution["unresolved_models"] == []
+    assert resolution["tallies_agree"] is True
+    assert resolution["policy"] == "diagnostic_only"
+
+
+def test_model_resolution_flags_a_configured_model_without_a_verdict() -> None:
+    evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
+    del evidence["physical_model_results"][:]
+    del evidence["physical_model_failures"][:]
+    resolution = MODULE.audit_model_resolution(evidence)
+    assert resolution["status"] == "INCOMPLETE"
+    assert resolution["unresolved_models"] == [
+        "COUPLED/BlockSchur/upwind/bounded",
+        "COUPLED/MGR/upwind/bounded",
+    ]
+    assert resolution["tallies_agree"] is False
+
+
+def test_model_resolution_detects_a_truncated_capture() -> None:
+    evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
+    # One failure record disappears from the capture: the model still has its
+    # result record, so the observed failure count drops below the printed tally.
+    del evidence["physical_model_failures"][1]
+    resolution = MODULE.audit_model_resolution(evidence)
+    assert resolution["status"] == "INCOMPLETE"
+    assert resolution["observed_tally"] == {"resolved": 3, "failed": 1, "total": 3}
+    assert resolution["reported_tally"] == {"successful": 1, "failed": 2, "total": 3}
+    assert resolution["tallies_agree"] is False
+
+
+def test_model_resolution_is_complete_without_a_reported_tally() -> None:
+    evidence = {
+        "run_configuration": [MODEL_CONFIGURATION],
+        "physical_model_results": [{"model": MODEL_CONFIGURATION["algorithm"]}],
+        "physical_model_failures": [],
+    }
+    resolution = MODULE.audit_model_resolution(evidence)
+    assert resolution["status"] == "COMPLETE"
+    assert resolution["models_configured"] == 1
+    assert resolution["models_resolved"] == 1
+    assert resolution["reported_tally"] is None
+    assert resolution["tallies_agree"] is None
 
 
 def test_plain_output_without_the_ctest_prefix_is_parsed() -> None:
@@ -138,6 +219,7 @@ LIFECYCLE_RECORD = {
 
 def complete_evidence() -> dict[str, object]:
     return {
+        "run_configuration": [MODEL_CONFIGURATION],
         "physical_model_results": [
             {
                 "model": "Couette",
@@ -154,8 +236,8 @@ def complete_evidence() -> dict[str, object]:
 def test_evidence_coverage_accepts_complete_structured_records() -> None:
     coverage = MODULE.audit_evidence_coverage(complete_evidence())
     assert coverage["status"] == "COMPLETE"
-    assert coverage["records_checked"] == 5
-    assert coverage["records_complete"] == 5
+    assert coverage["records_checked"] == 6
+    assert coverage["records_complete"] == 6
     assert coverage["missing_fields"] == {}
     assert coverage["categories_without_records"] == []
     assert coverage["malformed_records"] == {}
@@ -179,8 +261,8 @@ def test_evidence_coverage_reports_missing_fields_without_reinterpreting_results
     ]
     coverage = MODULE.audit_evidence_coverage(evidence)
     assert coverage["status"] == "INCOMPLETE"
-    assert coverage["records_checked"] == 6
-    assert coverage["records_complete"] == 5
+    assert coverage["records_checked"] == 7
+    assert coverage["records_complete"] == 6
     assert coverage["missing_fields"]["physical_model_results"] == [
         {"index": 1, "fields": ["iterations", "gates_failed"]}
     ]
@@ -192,6 +274,7 @@ def test_evidence_coverage_flags_categories_without_records() -> None:
     assert coverage["status"] == "INCOMPLETE"
     assert coverage["records_checked"] == 0
     assert coverage["categories_without_records"] == [
+        "run_configuration",
         "physical_model_results",
         "schur_quantitative_oracle",
         "schur_quantitative_method",
@@ -208,6 +291,7 @@ def test_evidence_coverage_reports_a_truncated_campaign() -> None:
     assert coverage["status"] == "INCOMPLETE"
     assert coverage["records_checked"] == 2
     assert coverage["categories_without_records"] == [
+        "run_configuration",
         "physical_model_results",
         "schur_production",
         "schur_lifecycle",
@@ -226,6 +310,7 @@ def test_evidence_coverage_tolerates_a_non_list_evidence_section() -> None:
     coverage = MODULE.audit_evidence_coverage({"physical_model_results": "oops"})
     assert coverage["status"] == "INCOMPLETE"
     assert coverage["categories_without_records"] == [
+        "run_configuration",
         "physical_model_results",
         "schur_quantitative_oracle",
         "schur_quantitative_method",
