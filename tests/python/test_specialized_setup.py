@@ -38,3 +38,20 @@ def test_setup_panel_turbulence_filters_to_solver_ready_models():
     assert "SMAGORINSKY" not in models
     panel.close()
     app.processEvents()
+
+
+def test_setup_panel_routes_physics_diagnostic_to_field_widget():
+    from PySide6.QtWidgets import QApplication
+    from cfdx.setup_model import SetupDiagnostic
+    from cfdx.setup_panel import CaseSetupPanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = CaseSetupPanel(CFDXSession().case)
+    panel.set_diagnostics(
+        [SetupDiagnostic("error", "PHYSICS_VALUE", "density is invalid", "physics.incompressible.density")]
+    )
+
+    assert "1 error(s)" in panel.validation_summary.text()
+    assert "density is invalid" in panel.physics_fields["density"].toolTip()
+    panel.close()
+    app.processEvents()

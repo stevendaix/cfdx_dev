@@ -456,6 +456,8 @@ if QMainWindow is not object:
                 f"Time: {state.execution.time:g}"
             )
             self._refresh_properties()
+            if hasattr(self, "setup_panel"):
+                self.setup_panel.set_diagnostics(state.diagnostics)
             if hasattr(self, "run_action"):
                 running = state.simulation_state.value == "RUNNING"
                 paused = state.simulation_state.value == "PAUSED"

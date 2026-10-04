@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
@@ -40,6 +41,9 @@ class CaseSetupPanel(QWidget):
         tabs.addTab(self._boundary_tab(), "Boundaries")
         tabs.addTab(self._initialization_tab(), "Initialization")
         layout = QVBoxLayout(self)
+        self.validation_summary = QLabel("No validation diagnostics")
+        self.validation_summary.setWordWrap(True)
+        layout.addWidget(self.validation_summary)
         layout.addWidget(tabs)
 
     @staticmethod
@@ -267,6 +271,40 @@ class CaseSetupPanel(QWidget):
         self.case = case
         self._rebuild_physics_fields(self.physics_model.currentText())
         self._refresh_boundaries()
+
+    def set_diagnostics(self, diagnostics) -> None:
+        """Show validation feedback and highlight the matching editor when visible."""
+        diagnostics = tuple(diagnostics)
+        if not diagnostics:
+            self.validation_summary.setText("No validation diagnostics")
+            self.validation_summary.setStyleSheet("")
+            return
+        errors = sum(item.severity == "error" for item in diagnostics)
+        self.validation_summary.setText(
+            f"Validation: {errors} error(s), {len(diagnostics) - errors} warning(s)"
+            + " — " + "; ".join(item.message for item in diagnostics[:3])
+        )
+        self.validation_summary.setStyleSheet(
+            "color: #a40000;" if errors else "color: #8a5a00;"
+        )
+        for widget in self.physics_fields.values():
+            widget.setStyleSheet("")
+        for item in diagnostics:
+            target = None
+            parts = item.path.split(".")
+            if len(parts) == 3 and parts[0] == "physics":
+                if parts[1] == self.physics_model.currentText():
+                    target = self.physics_fields.get(parts[2])
+            elif item.path == "materials":
+                target = self.material_name
+            elif item.path.startswith("boundaries."):
+                target = self.boundary_name
+            if target is not None:
+                target.setToolTip(f"{item.code}: {item.message}")
+                target.setStyleSheet(
+                    "border: 1px solid #a40000;" if item.severity == "error"
+                    else "border: 1px solid #c58a00;"
+                )
 
     def _apply_material(self) -> None:
         name = self.material_name.text().strip()
