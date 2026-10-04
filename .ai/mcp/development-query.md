@@ -9,6 +9,13 @@ Expose the reproducible CFDX code-intelligence index through a narrow read-only 
 - `repository.file_structure`: list tracked repository files below an optional relative path.
 - `repository.status`: inspect the current Git branch/status without modifying repository state.
 
+## Documentation operations
+
+- `documentation.search`: search tracked repository text by pattern, optionally scoped to a repository-relative path.
+- `documentation.read`: read a tracked repository file at `HEAD`.
+
+Both operations are descriptive only and never modify repository state.
+
 ## Operations
 
 - `index.validate`: validate repository revision and indexed file hashes.
