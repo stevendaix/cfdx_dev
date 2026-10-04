@@ -140,7 +140,7 @@ Key sources audited:
 - src/cfdx/physics/temporal.h
 - src/cfdx/physics/advanced_convergence.h
 - src/cfdx/core/numerics/conservation.h
-- docs/validation/CONSERVATION_BOUNDEDNESS.md
+- docs/validation/03-conservation/chapter.py
 - docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json
 - docs/validation/NUMERICAL_MODEL_VERIFICATION_MATRIX.md
 - docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md

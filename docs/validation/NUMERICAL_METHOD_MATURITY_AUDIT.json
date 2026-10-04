@@ -197,7 +197,7 @@
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
         "tests/validation/test_polyhedral_laplacian_campaign.cpp",
         "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py"
       ],
       "gaps": [
         "integration with #423 imported-fixture manifest and production mesh corpus",
@@ -210,7 +210,7 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md",
+        "docs/validation/03-conservation/chapter.py",
         "tests/unit/test_conservation_boundedness.cpp"
       ],
       "gaps": [

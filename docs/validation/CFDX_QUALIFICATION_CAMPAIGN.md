@@ -8,30 +8,13 @@ The campaign answers one engineering question:
 
 > Can CFDX execute a reproducible CFD case, conserve the governing quantities, converge the numerical solution, reproduce an independent reference quantity, demonstrate mesh behaviour, and keep that evidence under regression control?
 
-## 1. Qualification matrix
+## 1. Qualification registry
 
-The machine-readable source of truth is `CFDX_QUALIFICATION_REGISTRY.json`. The following matrix is the human-facing programme.
+The machine-readable source of truth is `CFDX_QUALIFICATION_REGISTRY.json`. Human-facing status must not be duplicated in this document: the registry is the only authoritative case-status table.
 
-| ID | Domain | Case | Current state | Primary QoI |
-|---|---|---|---|---|
-| LAM-COUETTE | Laminaire | Couette | PASS | velocity profile, mean velocity |
-| LAM-POISEUILLE | Laminaire | Poiseuille | PASS | velocity profile, flow rate |
-| INC-GHIA | Incompressible | Ghia cavity | DIAGNOSTIC | centreline velocity, vortices |
-| VER-MMS | Conservation | MMS | READY | L2/Linf field error, conservation |
-| FORCE-VMFL036 | Force | Sphere Re=100 | READY / #441 | pressure/viscous/total drag, Cd |
-| EXT-NACA0012 | External flow | NACA0012 | PLANNED | CL, CD, Cm, Cp |
-| INT-CHANNEL | Internal flow | Channel | READY | profile, pressure gradient, friction |
-| SEP-BFS | Separation | Backward-facing step | PLANNED | reattachment length, Cp, wall shear |
-| TUR-FLATPLATE | Turbulence | Flat plate | PLANNED | Cf, thicknesses, profiles |
-| TUR-CHANNEL | Turbulence | Channel | PLANNED | mean velocity, Cf, Reynolds stresses |
-| TUR-NACA0012 | Turbulence | NACA0012 | PLANNED | CL, CD, Cm, Cp |
-| TH-CONV | Thermal | Conduction/convection | READY | T, heat rate, Nu |
-| CHT-INTERFACE | CHT | Solid/fluid interface | READY | interface T and heat flux |
-| RAD-P1 | Radiation | P1 | READY | wall heat flux, radiative source |
-| RAD-DOM | Radiation | DOM | READY | wall heat flux, radiative source |
-| RAD-S2S | Radiation | S2S | READY | view factors, net heat rate |
+The registry distinguishes PLANNED, READY, RUNNING, DIAGNOSTIC, PASS and BLOCKED. In particular, **READY is not PASS**, and a historical report or green CI job is not sufficient to promote a case.
 
-**Important:** READY means that a case can be implemented/executed; it is not a numerical PASS. DIAGNOSTIC means that an executable exists but the evidence is not yet sufficient for qualification.
+The executable benchmark campaigns under `docs/validation/14-benchmarks/*/chapter.py` contain the scientific case definitions and reproducible data-reduction logic. Their retained execution artifacts provide the evidence used for promotion.
 
 ## 2. Required evidence for every case
 
