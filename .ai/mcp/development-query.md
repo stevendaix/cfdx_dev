@@ -4,6 +4,11 @@
 
 Expose the reproducible CFDX code-intelligence index through a narrow read-only MCP surface without changing the evidence semantics of the underlying tools.
 
+## Repository operations
+
+- `repository.file_structure`: list tracked repository files below an optional relative path.
+- `repository.status`: inspect the current Git branch/status without modifying repository state.
+
 ## Operations
 
 - `index.validate`: validate repository revision and indexed file hashes.

@@ -20,6 +20,17 @@ Operations over CFDX itself: create/configure cases, inspect cases, mesh/import,
 6. MCP never claims success when the underlying operation failed.
 7. Development and runtime permissions remain separable.
 
+## Read-only Development MCP repository surface
+
+The read-only Development MCP also exposes repository inspection without modifying Git state:
+
+| Operation | Input | Result |
+|---|---|---|
+| `repository.file_structure` | optional relative path | tracked repository files below that path |
+| `repository.status` | none | current Git branch/status lines |
+
+The file-structure operation uses tracked files only, and rejects paths that escape the repository. These operations are descriptive and do not imply build, test, validation, or qualification evidence.
+
 ## Read-only Development MCP query surface
 
 The first implemented Development MCP surface is deliberately read-only. It maps to the reproducible index/query layer and preserves the evidence contract.

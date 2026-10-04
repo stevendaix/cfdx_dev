@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import pathlib
 import sqlite3
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -16,6 +17,10 @@ def make_index(root: pathlib.Path, index: pathlib.Path) -> None:
     source = root / "src" / "demo.cpp"
     source.parent.mkdir(parents=True)
     source.write_text("int demo() { return 1; }\n", encoding="utf-8")
+    # repository.file_structure reads tracked files via git, so the fixture must
+    # be a real repository with demo.cpp staged.
+    subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "src/demo.cpp"], check=True)
     with sqlite3.connect(index) as db:
         db.executescript(
             """
@@ -115,6 +120,15 @@ async def exercise() -> None:
                 "code.dependencies",
                 "evidence.test",
                 "evidence.validation",
+                "repository.file_structure",
+                "repository.status",
+            }
+            # Repository inspection tools take a path, not a search pattern, and
+            # are exercised individually below.
+            pattern_names = expected_names - {
+                "index.validate",
+                "repository.file_structure",
+                "repository.status",
             }
             assert names == expected_names
             for tool in listed.tools:
@@ -122,11 +136,25 @@ async def exercise() -> None:
                 assert annotations["readOnlyHint"] is True
                 assert annotations["openWorldHint"] is False
 
+            structure = await client.call_tool("repository.file_structure", {"path": "src"})
+            assert structure.is_error is False
+            assert structure.structured_content["ok"] is True
+            assert structure.structured_content["files"] == ["src/demo.cpp"]
+
+            status = await client.call_tool("repository.status", {})
+            assert status.is_error is False
+            assert status.structured_content["ok"] is True
+            assert any(line.startswith("## ") for line in status.structured_content["status"])
+            escaped = await client.call_tool("repository.file_structure", {"path": "../outside"})
+            assert escaped.is_error is False
+            assert escaped.structured_content["ok"] is False
+            assert escaped.structured_content["files"] == []
+
             stale = await client.call_tool("index.validate", {})
             assert stale.is_error is False
             assert stale.structured_content["freshness"] == "stale"
 
-            for name in sorted(expected_names - {"index.validate"}):
+            for name in sorted(pattern_names):
                 result = await client.call_tool(name, {"pattern": "demo"})
                 assert result.is_error is False
                 assert result.structured_content["freshness"] == "stale"

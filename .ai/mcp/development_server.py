@@ -113,6 +113,23 @@ def _query(
     }
 
 
+def _git_ls_files(root: pathlib.Path, path: str) -> dict[str, object]:
+    if path.startswith("/") or ".." in pathlib.PurePosixPath(path).parts:
+        return {"ok": False, "errors": ["path must remain inside the repository"], "files": []}
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", path or "."],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        return {"ok": False, "errors": [str(exc)], "files": []}
+    if completed.returncode != 0:
+        return {"ok": False, "errors": [completed.stderr.strip() or "git ls-files failed"], "files": []}
+    return {"ok": True, "files": completed.stdout.splitlines()}
+
+
 def create_server(root: str | None = None, index: str | None = None) -> MCPServer:
     repository, database = _config(root, index)
     server = MCPServer(
@@ -222,6 +239,39 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
                 "relation",
             ),
         )
+
+    @server.tool(
+        name="repository.file_structure",
+        title="List tracked repository files",
+        annotations=annotations,
+    )
+    def repository_file_structure(path: str = "") -> dict[str, object]:
+        """List tracked Git files below an optional repository-relative path."""
+        return _git_ls_files(repository, path)
+
+    @server.tool(
+        name="repository.status",
+        title="Inspect repository status",
+        annotations=annotations,
+    )
+    def repository_status() -> dict[str, object]:
+        """Inspect the current Git branch/status without modifying repository state."""
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(repository), "status", "--short", "--branch"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {"ok": False, "errors": [str(exc)], "status": []}
+        if completed.returncode != 0:
+            return {
+                "ok": False,
+                "errors": [completed.stderr.strip() or "git status failed"],
+                "status": [],
+            }
+        return {"ok": True, "errors": [], "status": completed.stdout.splitlines()}
 
     return server
 
