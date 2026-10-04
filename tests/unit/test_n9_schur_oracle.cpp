@@ -232,14 +232,14 @@ int main() {
         pressure_rhs(0) = rhs[3];
         pressure_rhs(1) = rhs[4];
         const Vector Dm_bu = matvec(Dd3, m_inv_bu);
-        for (std::size_t i = 0; i < 2; ++i) pressure_rhs(i) -= Dm_bu[i];
+        for (std::size_t i = 0; i < 2; ++i) pressure_rhs(i) -= Dm_bu(i);
 
         Vector pressure(2, 0.0);
         EXPECT_TRUE(schur.apply(pressure_rhs, pressure));
 
         Vector velocity_rhs(3, 0.0);
         const Vector Gp = matvec(Gd3, pressure);
-        for (std::size_t i = 0; i < 3; ++i) velocity_rhs(i) = bu(i) - Gp[i];
+        for (std::size_t i = 0; i < 3; ++i) velocity_rhs(i) = bu(i) - Gp(i);
         Vector velocity(3, 0.0);
         EXPECT_TRUE(solve_M3(velocity_rhs, velocity));
 
