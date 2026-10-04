@@ -7,6 +7,7 @@ import os
 import pathlib
 import subprocess
 import sys
+from pydantic import BaseModel
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -168,6 +169,12 @@ def _git_read(root: pathlib.Path, path: str) -> dict[str, object]:
     return {"ok": True, "errors": [], "path": path, "content": completed.stdout}
 
 
+class DocumentationReadArguments(BaseModel):
+    """Arguments accepted by the documentation.read MCP tool."""
+
+    file_path: str
+
+
 def create_server(root: str | None = None, index: str | None = None) -> MCPServer:
     repository, database = _config(root, index)
     server = MCPServer(
@@ -325,9 +332,9 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
         title="Read tracked documentation file",
         annotations=annotations,
     )
-    def documentation_read(file_path: str) -> dict[str, object]:
+    def documentation_read(arguments: DocumentationReadArguments) -> dict[str, object]:
         """Read a tracked repository file at HEAD without modifying repository state."""
-        return _git_read(repository, file_path)
+        return _git_read(repository, arguments.file_path)
 
     return server
 
