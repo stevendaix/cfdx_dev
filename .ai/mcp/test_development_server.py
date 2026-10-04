@@ -108,7 +108,7 @@ async def exercise() -> None:
         async with client:
             listed = await client.list_tools()
             names = {tool.name for tool in listed.tools}
-            assert names == {
+            expected_names = {
                 "index.validate",
                 "code.symbol",
                 "code.references",
@@ -116,15 +116,21 @@ async def exercise() -> None:
                 "evidence.test",
                 "evidence.validation",
             }
+            assert names == expected_names
+            for tool in listed.tools:
+                annotations = tool.model_dump(by_alias=True).get("annotations", {})
+                assert annotations["readOnlyHint"] is True
+                assert annotations["openWorldHint"] is False
 
             stale = await client.call_tool("index.validate", {})
             assert stale.is_error is False
             assert stale.structured_content["freshness"] == "stale"
 
-            result = await client.call_tool("code.symbol", {"pattern": "demo"})
-            assert result.is_error is False
-            assert result.structured_content["freshness"] == "stale"
-            assert result.structured_content["rows"] == []
+            for name in sorted(expected_names - {"index.validate"}):
+                result = await client.call_tool(name, {"pattern": "demo"})
+                assert result.is_error is False
+                assert result.structured_content["freshness"] == "stale"
+                assert result.structured_content["rows"] == []
 
 
 if __name__ == "__main__":
