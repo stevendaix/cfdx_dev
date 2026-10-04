@@ -38,7 +38,7 @@
 # \rightarrow
 # discrete\ operators.
 # $
-# Source family: [core/geometry](../../../src/cfdx/core/geometry/) and [core/mesh](../../../src/cfdx/core/mesh/).
+# Source family: [core/geometry](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/) and [core/mesh](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/mesh/).
 #
 # ## 18.4 Gradient/reconstruction family
 #
@@ -46,7 +46,7 @@
 # \nabla\phi
 # \in\{Green\!-\!Gauss,LS,WLS,vertex\}
 # $
-# feeds face reconstruction and non-orthogonal diffusion. Primary sources: [gradient.h](../../../src/cfdx/core/numerics/gradient.h), [gradient_stencil.h](../../../src/cfdx/core/numerics/gradient_stencil.h), [least_squares_gradient.h](../../../src/cfdx/core/fvm/least_squares_gradient.h), [interpolation.h](../../../src/cfdx/core/numerics/interpolation.h).
+# feeds face reconstruction and non-orthogonal diffusion. Primary sources: [gradient.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/numerics/gradient.h), [gradient_stencil.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/numerics/gradient_stencil.h), [least_squares_gradient.h](../../../src/cfdx/core/fvm/least_squares_gradient.h), [interpolation.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/numerics/interpolation.h).
 #
 # ## 18.5 Flux/FVM family
 #
@@ -66,11 +66,11 @@
 # \rightarrow
 # AMG/MGR/Krylov.
 # $
-# Source families: [core/linalg](../../../src/cfdx/core/linalg/) and [physics/pressure_velocity.h](../../../src/cfdx/physics/pressure_velocity.h).
+# Source families: [core/linalg](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/linalg/) and [physics/pressure_velocity.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/physics/pressure_velocity.h).
 #
 # ## 18.7 Turbulence family
 #
-# RANS, LES and hybrid models introduce closure equations and/or constitutive relations. Wall distance is a model dependency for SA/SST/hybrid methods. Source family: [physics](../../../src/cfdx/physics/), especially turbulence and wall-distance modules.
+# RANS, LES and hybrid models introduce closure equations and/or constitutive relations. Wall distance is a model dependency for SA/SST/hybrid methods. Source family: [physics](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/physics/), especially turbulence and wall-distance modules.
 #
 # ## 18.8 Thermal/radiation family
 #
