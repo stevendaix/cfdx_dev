@@ -27,7 +27,9 @@
         "src/cfdx/python/cfdx/io/numerical_selection.py",
         "src/cfdx/python/cfdx/io/converter.py"
       ],
-      "gaps": []
+      "gaps": [
+        "operational confirmation of the exact current HEAD in the dedicated N1 CI gate"
+      ]
     },
     {
       "id": "N2",
@@ -84,7 +86,9 @@
         "tests/validation/test_convection_solver_qualification.cpp"
       ],
       "gaps": [
-        "CI execution and retained quantitative evidence for the latest qualification HEAD"
+        "general-mesh V&V (skew/non-orthogonal/tetrahedral/polyhedral)",
+        "steep-gradient/discontinuity matrix",
+        "final measured scheme-level qualification gates"
       ]
     },
     {
@@ -103,11 +107,8 @@
         "tests/validation/test_transient_mms_closure.cpp"
       ],
       "gaps": [
-        "explicit history lifecycle",
-        "restart-history evidence",
-        "variable-step consistency",
-        "RK2/RK3 decision/implementation",
-        "production advance_time still uses an implicit Picard iteration (dt limited to O(h) on spatially fine operators); the schemes' stiff temporal orders are verified via exact linear solves (test_transient_mms_3d_stiff) and a Newton-based implicit solve is tracked at the solver level (N7/N8)"
+        "production `advance_time` still uses an implicit Picard iteration and is therefore limited to `dt = O(h)` on spatially fine operators; this is a production implicit-solver robustness limitation, not a missing temporal-order verification",
+        "broader production transient qualification beyond the current closure corridor"
       ]
     },
     {
@@ -128,8 +129,7 @@
         "tests/unit/test_timestep_control.cpp"
       ],
       "gaps": [
-        "nonlinear Newton-based implicit solve (advance_time/timestep control use Picard; tracked at the solver level)",
-        "production coupling of dual-time physical lifecycle to a full PDE solver case (field-level lifecycle verified)"
+        "broader production time-step/CFL qualification beyond the currently verified controller and dual-time lifecycle corridor"
       ]
     },
     {
@@ -147,10 +147,10 @@
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
       "gaps": [
-        "unified QoI/conservation gates",
-        "adaptive URF qualification",
-        "deterministic final convergence report",
-        "production PDE corridors beyond the Re=100 lid-driven cavity (continuation/adaptive qualified on that corridor only; no spatial accuracy claim, mesh refinement study outstanding)"
+        "automatic initialization strategies remain intentionally unqualified; provided/uniform/restart are the declared validated modes",
+        "continuation failure/recovery remains unit-qualified but is not yet part of the canonical Re=100 qualification corridor",
+        "qualification breadth beyond the Re=100 lid-driven cavity, including broader geometries/meshes and parameter corridors",
+        "the Ghia refinement study is registered only in the long-validation workflow and is not a merge-gating N7 campaign"
       ]
     },
     {
