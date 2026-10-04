@@ -122,6 +122,8 @@ async def exercise() -> None:
                 "evidence.validation",
                 "repository.file_structure",
                 "repository.status",
+                "documentation.search",
+                "documentation.read",
             }
             # Repository inspection tools take a path, not a search pattern, and
             # are exercised individually below.
@@ -129,6 +131,8 @@ async def exercise() -> None:
                 "index.validate",
                 "repository.file_structure",
                 "repository.status",
+                "documentation.search",
+                "documentation.read",
             }
             assert names == expected_names
             for tool in listed.tools:
@@ -145,6 +149,17 @@ async def exercise() -> None:
             assert status.is_error is False
             assert status.structured_content["ok"] is True
             assert any(line.startswith("## ") for line in status.structured_content["status"])
+            doc_search = await client.call_tool("documentation.search", {"pattern": "demo", "path": "src"})
+            assert doc_search.is_error is False
+            assert doc_search.structured_content["ok"] is True
+            assert doc_search.structured_content["matches"][0]["path"] == "src/demo.cpp"
+            doc_read = await client.call_tool("documentation.read", {"path": "src/demo.cpp"})
+            assert doc_read.is_error is False
+            assert doc_read.structured_content["ok"] is True
+            assert "int demo()" in doc_read.structured_content["content"]
+            doc_escape = await client.call_tool("documentation.read", {"path": "../outside"})
+            assert doc_escape.is_error is False
+            assert doc_escape.structured_content["ok"] is False
             escaped = await client.call_tool("repository.file_structure", {"path": "../outside"})
             assert escaped.is_error is False
             assert escaped.structured_content["ok"] is False
