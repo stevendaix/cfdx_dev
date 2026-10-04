@@ -124,6 +124,8 @@ void apply_explicit_case_numerics(
                 model = PreconditionerModel::NativeFieldSplit;
             else if (selection.method_id == "preconditioner.coupled_block_schur")
                 model = PreconditionerModel::CoupledBlockSchur;
+            else if (selection.method_id == "preconditioner.pcd")
+                model = PreconditionerModel::PCD;
             else
                 throw std::invalid_argument(
                     "unsupported resolved preconditioner selection: " +
