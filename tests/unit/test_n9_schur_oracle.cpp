@@ -5,8 +5,10 @@
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
