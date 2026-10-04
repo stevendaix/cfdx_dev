@@ -86,7 +86,10 @@ def discover_tests(build_dir: Path) -> set[str]:
 
 def run_test(build_dir: Path, name: str) -> dict[str, object]:
     start = time.monotonic()
-    result = ctest(build_dir, "--output-on-failure", "--tests-regex", f"^{name}$")
+    # -V is required, not --output-on-failure: CTest only echoes the stdout of
+    # failing tests, so a passing campaign would capture no records at all and the
+    # structured evidence section would be empty for every successful run.
+    result = ctest(build_dir, "-V", "--output-on-failure", "--tests-regex", f"^{name}$")
     elapsed = time.monotonic() - start
     return {
         "name": name,
@@ -95,6 +98,98 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
         "elapsed_s": round(elapsed, 3),
         "output": result.stdout,
     }
+
+
+_KEY = re.compile(r"[\w.|]+")
+_CTEST_LINE_PREFIX = re.compile(r"^\d+: ?")
+
+
+def _parse_value(value: str) -> object:
+    if value in {"true", "false"}:
+        return value == "true"
+    try:
+        if any(ch in value for ch in ".eE"):
+            return float(value)
+        return int(value)
+    except ValueError:
+        return value
+
+
+def parse_key_value_records(output: str, prefix: str) -> list[dict[str, object]]:
+    """Extract structured key=value records emitted by an existing validation test.
+
+    The first token is recorded as ``model`` when it carries no ``=``. Remaining
+    bare tokens are recorded as ``gates`` so that a failure record keeps the gate
+    names the test reported instead of only the model that failed.
+    """
+    records: list[dict[str, object]] = []
+    pattern = re.compile(r"^" + re.escape(prefix) + r"\s+(.*)$")
+    for raw_line in output.splitlines():
+        # CTest prefixes every captured line with the test index ("21: ...").
+        line = _CTEST_LINE_PREFIX.sub("", raw_line, count=1)
+        match = pattern.match(line)
+        if not match:
+            continue
+        tokens = match.group(1).split()
+        record: dict[str, object] = {}
+        if tokens and "=" not in tokens[0]:
+            record["model"] = tokens[0]
+            tokens = tokens[1:]
+        gates: list[str] = []
+        position = 0
+        while position < len(tokens):
+            token = tokens[position]
+            key, separator, value = token.partition("=")
+            position += 1
+            if not separator or not _KEY.fullmatch(key):
+                gates.append(token)
+                continue
+            parsed = _parse_value(value)
+            trailing = tokens[position:]
+            if isinstance(parsed, str) and trailing and not any("=" in item for item in trailing):
+                parsed = " ".join([value, *trailing])
+                position = len(tokens)
+            record[key] = parsed
+        if gates:
+            record["gates"] = gates
+        if record:
+            records.append(record)
+    return records
+
+
+def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
+    """Normalize structured evidence already emitted by N8 validation tests.
+
+    The source tests remain the numerical oracles. This function only parses
+    their existing stdout; it does not invent gates, alter tolerances, or
+    reinterpret failures as passes.
+    """
+    evidence: dict[str, object] = {
+        "physical_model_results": [],
+        "physical_model_failures": [],
+        "schur_quantitative": [],
+        "schur_production": [],
+    }
+
+    for result in results:
+        output = str(result["output"])
+        evidence["physical_model_results"].extend(
+            parse_key_value_records(output, "MODEL_RESULT")
+        )
+        evidence["physical_model_failures"].extend(
+            parse_key_value_records(output, "MODEL_FAILURES")
+        )
+        evidence["schur_quantitative"].extend(
+            parse_key_value_records(output, "N8_SCHUR")
+        )
+        evidence["schur_production"].extend(
+            parse_key_value_records(output, "n8_schur_benchmark")
+        )
+        evidence["schur_production"].extend(
+            parse_key_value_records(output, "n8_schur_benchmark_lifecycle")
+        )
+
+    return evidence
 
 
 def main() -> int:
@@ -146,6 +241,7 @@ def main() -> int:
 
     failed = [r["name"] for r in results if r["status"] == "FAIL"]
     completed = len(results)
+    evidence = extract_n8_evidence(results)
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
         "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
@@ -153,6 +249,7 @@ def main() -> int:
         "completed_tests": completed,
         "failed_tests": failed,
         "results": results,
+        "evidence": evidence,
         "coverage": {
             "pressure_velocity": [
                 "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",

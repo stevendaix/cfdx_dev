@@ -99,7 +99,7 @@ jobs:
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
         continue-on-error: true
         run: |
-          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_validation_report.py
+          python -m pytest -q tests/python/test_numerical_selection.py tests/python/test_validation_report.py tests/python/test_n8_qualification_evidence.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
