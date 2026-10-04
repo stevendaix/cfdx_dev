@@ -26,6 +26,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install Development MCP SDK
+        run: python -m pip install -r .ai/mcp/requirements.txt
+      - name: Run Development MCP contract tests
+        run: python .ai/mcp/test_development_server.py
       - name: Run indexer unit tests
         run: python .ai/scripts/test_index_repository.py
       - name: Run semantic backend contract tests
