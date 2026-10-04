@@ -279,7 +279,7 @@
     {
       "id": "N15",
       "name": "Performance and scalability",
-      "status": "missing",
+      "status": "partial",
       "evidence": [
         "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
       ],
@@ -293,12 +293,14 @@
     {
       "id": "N16",
       "name": "Advanced numerical methods",
-      "status": "planned",
+      "status": "partial",
       "evidence": [
-        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+        "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.md"
       ],
       "gaps": [
-        "intentionally deferred until core FVM maturity"
+        "WENO5-Z remains an isolated verified kernel, not a production convection scheme",
+        "multidimensional/polyhedral higher-order reconstruction",
+        "production integration and end-to-end V&V"
       ]
     },
     {
