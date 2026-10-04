@@ -360,11 +360,9 @@
       "family": "preconditioner",
       "status": "implemented",
       "verification": [
-        "Couette",
-        "Poiseuille",
-        "Ghia",
-        "true_residual",
-        "exact_schur"
+        "algebraic_reference",
+        "coupled_block_integration",
+        "pressure_gauge"
       ]
     },
     {
