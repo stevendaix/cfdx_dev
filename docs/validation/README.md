@@ -1,31 +1,61 @@
-# CFDX Validation and V&V Evidence
+# CFDX Validation Evidence
 
-**Status: evidence-store framework — quantitative results are populated only from executed campaigns.**
+**Status: executable evidence architecture — scientific campaign content is Python/Jupytext first.**
 
-This tree stores executed evidence. It is deliberately separate from `docs/vv/`, which defines the methodology and acceptance rules.
+This tree stores **executed CFDX evidence**. The methodology and acceptance rules live in `docs/vv/`; validation does not redefine them.
 
-## Rule
+## Source-of-truth model
 
-A report may contain a PASS, FAIL, NOT QUALIFIED or NOT RUN result only when that state is backed by an identifiable execution artifact. Never invent or copy CFDX results from a reference source.
+- **`chapter.py` (Jupytext percent format)** — scientific campaign source: setup contract, equations, executable checks, data reduction, plots and quantitative gates.
+- **`README.md`** — navigation and short scope only; it must not become a second source of quantitative truth.
+- **`*.json`** — machine-readable registries and retained result records.
+- **CI artifacts / raw logs** — immutable execution evidence for a campaign revision.
 
-## Campaign classes
+A Markdown document may remain when its role is genuinely governance, provenance, migration history or navigation. Scientific campaign results should not be maintained as hand-edited Markdown tables.
 
-- code verification
-- solution verification
-- MMS
-- spatial and temporal convergence
-- conservation and boundedness
-- linear algebra
-- pressure–velocity coupling
-- gradients, diffusion and convection
-- turbulence
-- thermal and radiation
-- multiphysics
-- benchmark validation
-- qualification
+## Evidence lifecycle
 
-## Required campaign record
+```text
+requirement → campaign contract → executable Jupytext source → CFDX execution
+           → raw artifact → derived metrics → machine-readable result
+           → review → promotion in the qualification registry
+```
 
-Revision, case/setup, mesh, physics, numerics, solver criteria, oracle, metric, acceptance criterion, raw result, derived result, environment, status and limitations.
+A reference value is never a CFDX result. A green CI job is not automatically validation or qualification.
 
-The benchmark directory is the validation phase. A benchmark result does not replace lower-level verification evidence.
+## Campaign domains
+
+```{toctree}
+:maxdepth: 2
+
+00-code-verification/README
+01-mms/README
+02-convergence/README
+03-conservation/README
+04-boundedness/README
+05-linear-solvers/README
+06-pressure-velocity/README
+07-operators/README
+08-turbulence/README
+09-thermal/README
+10-radiation/README
+11-multiphysics/README
+14-benchmarks/README
+15-qualification/README
+```
+
+The numbered directories are the campaign taxonomy. A directory receives a `chapter.py` when executable evidence is actually implemented; we do not create empty Python notebooks merely to satisfy the layout.
+
+## Ownership
+
+- `docs/vv/` owns V&V methodology, terminology and acceptance-gate definitions.
+- `docs/validation/` owns executed campaign evidence and reproducible data reduction.
+- `14-benchmarks/` owns physical/reference benchmark campaigns.
+- `15-qualification/` owns qualification evidence and promotion logic; the machine-readable registry remains authoritative for status.
+- Historical plans and specialist contracts remain until their facts are absorbed and links are audited. They are not alternative status authorities.
+
+## No-false-positive rule
+
+Never change a tolerance, remove a failed case, relabel a diagnostic as qualification, or copy a reference result into a CFDX result merely to obtain a green report.
+
+Promotion requires identifiable evidence for the declared scope, revision, configuration, metric and acceptance criterion.
