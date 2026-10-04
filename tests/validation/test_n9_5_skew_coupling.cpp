@@ -8,6 +8,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <vector>
 
 using namespace cfdx::core;
@@ -220,8 +221,22 @@ Run run_case(PressureVelocityAlgorithm algorithm,
 
 void require_converged(const char* name, const Run& run)
 {
-    if (!run.solve.converged || run.solve.history.empty())
-        throw std::runtime_error(std::string(name) + ": solver did not converge");
+    if (!run.solve.converged || run.solve.history.empty()) {
+        std::ostringstream os;
+        os << name << ": solver did not converge"
+           << " iterations=" << run.solve.iterations
+           << " status=" << static_cast<int>(run.solve.convergence_status)
+           << " reason=" << run.solve.convergence_reason;
+        if (!run.solve.history.empty()) {
+            const auto& h = run.solve.history.back();
+            os << " continuity=" << h.continuity_linf
+               << " continuity_norm=" << h.continuity_normalized
+               << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+               << " velocity_change=" << h.velocity_change_inf
+               << " pressure_change=" << h.pressure_change_inf;
+        }
+        throw std::runtime_error(os.str());
+    }
 
     const auto& h = run.solve.history.back();
     if (!(h.continuity_linf < 1e-7))
