@@ -4,6 +4,29 @@ This chapter is a scientific course, not an API catalogue. It follows the chain:
 
 ## Detailed course structure
 
+```{toctree}
+:maxdepth: 1
+
+01-introduction
+02-continuous-gradient
+03-green-gauss
+04-least-squares
+05-weighted-least-squares
+06-vertex-reconstruction
+07-boundary-reconstruction
+08-face-reconstruction
+09-conditioning
+10-gradient-limiting
+11-accuracy-and-convergence
+12-comparison-of-methods
+13-cfdx-implementation
+14-verification
+15-worked-example
+16-numerical-pitfalls
+17-summary
+```
+
+
 ### 1. Role of gradients
 
 - Physical motivation and scope.
