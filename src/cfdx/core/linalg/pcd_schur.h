@@ -167,6 +167,31 @@ public:
         return pressure_null_space_.has_value();
     }
 
+    // PCD is intentionally exposed as an explicit Schur approximation object.
+    // The production coupled preconditioner must own the pressure operators and
+    // solver objects; this class only owns their non-owning views and therefore
+    // requires those objects to outlive the approximation.
+    const SparseMatrix& pressure_mass() const {
+        if (!pressure_mass_) throw std::logic_error("PCD: pressure mass operator is not configured");
+        return *pressure_mass_;
+    }
+
+    const SparseMatrix& pressure_laplacian() const {
+        if (!pressure_laplacian_) throw std::logic_error("PCD: pressure Laplacian is not configured");
+        return *pressure_laplacian_;
+    }
+
+    const SparseMatrix& pressure_convection_diffusion() const {
+        if (!pressure_convection_diffusion_)
+            throw std::logic_error("PCD: pressure convection-diffusion operator is not configured");
+        return *pressure_convection_diffusion_;
+    }
+
+    bool has_pressure_operators() const noexcept {
+        return pressure_mass_ && pressure_laplacian_ &&
+               pressure_convection_diffusion_;
+    }
+
 private:
     static bool valid_pressure_operator(const SparseMatrix& matrix,
                                         std::size_t np) {
