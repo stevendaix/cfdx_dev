@@ -68,7 +68,7 @@ Here \(\Delta t\) is numerical, not physical.
 ## 7. Restart
 A restart must preserve the discrete state at \(t_n\), including all history variables required by multi-step schemes. BDF2 therefore requires enough previous states to reconstruct its derivative.
 
-**CFDX path:** `src/cfdx/core/numerics/temporal.h`; application state/checkpoint: `src/cfdx/application/`, `python/cfdx/checkpoint.py`.
+**CFDX path:** `src/cfdx/core/numerics/temporal.h`; application state/checkpoint: `src/cfdx/application/`, `src/cfdx/python/cfdx/checkpoint.py`.
 
 ## 8. Verification
 Use a manufactured ODE, diffusion eigenmode, temporal refinement and restart equivalence. For fixed spatial error,
