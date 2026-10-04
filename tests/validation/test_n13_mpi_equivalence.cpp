@@ -6,16 +6,6 @@
 #include <cstdio>
 #include <vector>
 
-#if defined(__SANITIZE_ADDRESS__) && __has_include(<sanitizer/lsan_interface.h>)
-#include <sanitizer/lsan_interface.h>
-#define CFDX_N13_LSAN_MPI_INIT_GUARD 1
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer) && __has_include(<sanitizer/lsan_interface.h>)
-#include <sanitizer/lsan_interface.h>
-#define CFDX_N13_LSAN_MPI_INIT_GUARD 1
-#endif
-#endif
-
 using namespace cfdx::core;
 using namespace cfdx::core::numerics;
 using namespace cfdx::core::parallel;
@@ -57,32 +47,14 @@ static Mesh two_cell_channel()
 
 int main(int argc, char** argv)
 {
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-    // OpenMPI may retain internal operator-selection allocations after MPI_Finalize
-    // under LeakSanitizer. They originate inside MPI_Init (libmpi.so), not CFDX.
-    // Keep the sanitizer active for all CFDX allocations while excluding only the
-    // third-party MPI initialization phase from leak accounting.
-    __lsan_disable();
-#endif
     mpi_init(&argc, &argv);
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-    __lsan_enable();
-#endif
     const int rank = mpi_rank();
     const int size = mpi_size();
 
     if (size != 2) {
         if (rank == 0)
             std::fprintf(stderr, "test_n13_mpi_equivalence requires exactly 2 MPI ranks\n");
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-        // OpenMPI also retains libevent/Open RTE allocations during MPI_Finalize.
-        // They are third-party teardown allocations, not CFDX allocations.
-        __lsan_disable();
-#endif
         mpi_finalize();
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-        __lsan_enable();
-#endif
         return 2;
     }
 
@@ -126,16 +98,7 @@ int main(int argc, char** argv)
 
     const int global_ok = mpi_allreduce_min(local_ok ? 1 : 0);
     if (!global_ok) {
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-        // See the MPI_Init guard above: OpenMPI/Open RTE may allocate during
-        // MPI_Finalize and leave those third-party allocations reachable/leaked
-        // under LeakSanitizer. Keep LSan active for all CFDX work.
-        __lsan_disable();
-#endif
         mpi_finalize();
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-        __lsan_enable();
-#endif
         return 1;
     }
 
@@ -149,14 +112,6 @@ int main(int argc, char** argv)
 
     const int reduction_ok = mpi_allreduce_min(
         (reduction_delta <= 1e-14) ? 1 : 0);
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-    // OpenMPI/Open RTE finalization can retain internal libevent allocations
-    // after MPI_Finalize. Exclude only this third-party teardown phase from LSan.
-    __lsan_disable();
-#endif
     mpi_finalize();
-#if defined(CFDX_N13_LSAN_MPI_INIT_GUARD)
-    __lsan_enable();
-#endif
     return (reduction_ok && global_ok) ? 0 : 1;
 }
