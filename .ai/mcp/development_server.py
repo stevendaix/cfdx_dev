@@ -311,6 +311,7 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
                 "status": [],
             }
         return {"ok": True, "errors": [], "status": completed.stdout.splitlines()}
+
     @server.tool(
         name="documentation.search",
         title="Search tracked documentation",
