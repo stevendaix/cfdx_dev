@@ -2147,10 +2147,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 rows[n][o] -= coeff;
             }
 
-            for (std::size_t c = 0; c < nc; ++c) {
+            for (std::size_t c = 0; c < nc; ++c)
                 rows[c][c] += diag[c];
-                b(c) = -continuity[c];
-            }
 
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 if (mesh.ownership().neighbour(f) >= 0) continue;
@@ -2181,7 +2179,29 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     rAU[1][o]*e.y*e.y +
                     rAU[2][o]*e.z*e.z);
                 rows[o][o] += controls.density * rfn * Sf.dot(e) / distance;
+                // The right-hand side must be the divergence of the flux the
+                // correction is applied to, which is the CONVERGENT
+                // Rhie-Chow flux. At a prescribed pressure the boundary face
+                // flux carries an explicit term rho*rfn*(p_bc - p_o)*Sf.e/d
+                // that make_rhie_chow_mass_flux includes and the interior loop
+                // above cannot see, because there is no interior face there.
+                // Leaving it out makes the pressure correction satisfy
+                // div(HbyA flux) - div(interior pressure flux) = 0, whose fixed
+                // point leaves the conservative flux with a divergence equal to
+                // the negative of this term. The iteration then freezes on a
+                // state that satisfies momentum but is not divergence-free, by
+                // exactly the size of the omitted boundary contribution. The
+                // internal benchmarks cannot see it because they prescribe no
+                // static pressure anywhere.
+                // make_rhie_chow_mass_flux subtracts this term from the face
+                // flux, so it enters the divergence with that sign.
+                continuity[o] -= controls.density * rfn *
+                    (it->second.value - p(o)) * Sf.dot(e) / distance;
             }
+
+            // Assigned only now: the boundary loop above adds to continuity.
+            for (std::size_t c = 0; c < nc; ++c)
+                b(c) = -continuity[c];
 
             Vector p_corr(nc, 0.0);
             cfdx::core::SolverResult rp;
