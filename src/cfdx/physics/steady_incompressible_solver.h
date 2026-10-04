@@ -1485,17 +1485,37 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
         auto solve_kp = [pcd_ops, max_iterations, tolerance](
             const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->laplacian;
+            LinearOperator op{
+                matrix.n_rows(),
+                [&matrix](const Vector& input, Vector& output) {
+                    const auto values = matrix.matvec(input);
+                    if (output.size() != values.size())
+                        output.resize(values.size());
+                    for (std::size_t i = 0; i < values.size(); ++i)
+                        output(i) = values[i];
+                }};
             const auto result = solve_gmres(
-                pcd_ops->laplacian, rhs, x,
-                static_cast<int>(std::min<std::size_t>(128, pcd_ops->laplacian.n_rows())),
+                op, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
                 max_iterations, tolerance);
             return result.status == SolverStatus::CONVERGED;
         };
         auto solve_fp = [pcd_ops, max_iterations, tolerance](
             const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->convection_diffusion;
+            LinearOperator op{
+                matrix.n_rows(),
+                [&matrix](const Vector& input, Vector& output) {
+                    const auto values = matrix.matvec(input);
+                    if (output.size() != values.size())
+                        output.resize(values.size());
+                    for (std::size_t i = 0; i < values.size(); ++i)
+                        output(i) = values[i];
+                }};
             const auto result = solve_fgmres(
-                pcd_ops->convection_diffusion, rhs, x,
-                static_cast<int>(std::min<std::size_t>(128, pcd_ops->convection_diffusion.n_rows())),
+                op, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
                 max_iterations, tolerance);
             return result.status == SolverStatus::CONVERGED;
         };
