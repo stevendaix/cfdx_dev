@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import shutil
 import subprocess
 import tempfile
@@ -83,15 +82,27 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_sha256(path: Path, expected: str | None, fixture_id: str) -> str:
+    actual = sha256(path)
+    if expected not in {None, "", "null"} and actual.lower() != expected.lower():
+        fail(
+            f"fixture {fixture_id}: sha256 mismatch; "
+            f"expected={expected} actual={actual}"
+        )
+    return actual
+
+
 def acquire_file(source: dict[str, str], relative_path: str, destination: Path) -> None:
     repository = source.get("repository", "")
     ref = source.get("ref", "")
     if not repository or repository == "null":
         fail(f"source {source['id']}: no public repository for {relative_path}")
+    if not ref:
+        fail(f"source {source['id']}: immutable ref required for {relative_path}")
     if repository.startswith("https://github.com/") and relative_path:
         owner_repo = repository.removeprefix("https://github.com/").rstrip("/")
         url = f"https://raw.githubusercontent.com/{owner_repo}/{ref}/{relative_path}"
-    elif repository.startswith("https://gitlab."):
+    elif repository.startswith("https://gitlab.") and relative_path:
         url = f"{repository.rstrip('/')}/-/raw/{ref}/{relative_path}"
     else:
         fail(f"source {source['id']}: unsupported repository URL {repository}")
@@ -114,18 +125,25 @@ def acquire_directory(source: dict[str, str], relative_path: str, destination: P
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="cfdx-n10-fixture-") as tmp:
         checkout = Path(tmp) / "repo"
-        cmd = [
-            "git", "clone", "--filter=blob:none", "--no-checkout",
-            "--depth", "1", "--revision", ref, repository, str(checkout)
-        ]
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             subprocess.run(
-                ["git", "-C", str(checkout), "sparse-checkout", "set", relative_path],
+                ["git", "init", "--quiet", str(checkout)],
                 check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
             subprocess.run(
-                ["git", "-C", str(checkout), "checkout", ref],
+                ["git", "-C", str(checkout), "remote", "add", "origin", repository],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "fetch", "--filter=blob:none", "--depth", "1", "origin", ref],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "sparse-checkout", "set", "--no-cone", relative_path],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"],
                 check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
@@ -163,13 +181,11 @@ def main() -> int:
         destination = args.output_root / fixture["id"]
         if fixture.get("acquisition") == "pinned_repository_subtree":
             acquire_directory(source, relative, destination)
+            print(f"{fixture['id']}: acquired directory {destination}")
         else:
             acquire_file(source, relative, destination)
-        if destination.is_file():
-            actual = sha256(destination)
+            actual = verify_sha256(destination, fixture.get("sha256"), fixture["id"])
             print(f"{fixture['id']}: sha256={actual} expected={fixture.get('sha256', 'null')}")
-        else:
-            print(f"{fixture['id']}: acquired directory {destination}")
     return 0
 
 
