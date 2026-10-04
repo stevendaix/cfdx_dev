@@ -2468,6 +2468,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.velocity_change_inf,
             h.pressure_change_inf});
         h.nonlinear_convergence_metric = nonlinear_metric;
+        // Acceptance stays per-criterion. The monitor divides its synthetic
+        // maximum by the maximum seen at the first iteration, so a metric whose
+        // absolute scale sits far below that first maximum would be exempted
+        // from the gate. nonlinear_metric is therefore a diagnostic summary and
+        // never a replacement for the individual physical criteria.
+        const bool momentum_residual_gate =
+            h.momentum_residual <= controls.convergence.relative_tolerance;
+        const bool momentum_equation_residual_gate =
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
+        const bool pressure_residual_gate =
+            h.pressure_residual <= controls.convergence.relative_tolerance;
+        const bool velocity_change_gate =
+            h.velocity_change_inf <= controls.convergence.relative_tolerance;
+        const bool pressure_change_gate =
+            h.pressure_change_inf <= controls.convergence.relative_tolerance;
+        const bool per_criterion_gates_ok =
+            momentum_residual_gate && momentum_equation_residual_gate &&
+            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
         const auto convergence_report = convergence_monitor.update({
             iter,
             nonlinear_metric,
@@ -2475,7 +2493,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             {}});
         const bool converged_now =
             iter >= minimum_outer_correctors &&
-            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED;
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
+            per_criterion_gates_ok;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
