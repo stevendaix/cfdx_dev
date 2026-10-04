@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -68,17 +69,17 @@ def discover_tests(build_dir: Path) -> set[str]:
         )
 
     names: set[str] = set()
+    # ctest right-aligns the test number in a variable-width field, so the
+    # spacing before the '#' is not fixed: "Test   #1: name" for a single digit
+    # and "Test #81: name" for two. Matching the literal prefix "Test #"
+    # therefore silently skipped every test whose index had fewer digits than
+    # the widest one, and the campaign reported those tests as missing rather
+    # than as unparsed. Anchor on the structure instead.
+    pattern = re.compile(r"^\s*Test\s+#\s*\d+\s*:\s*(\S+)")
     for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("Test #"):
-            continue
-        try:
-            # ctest -N emits e.g. "Test #81: test_gmres_solver".
-            _, indexed_name = line.split("#", 1)
-            _, name = indexed_name.split(":", 1)
-        except ValueError:
-            continue
-        names.add(name.strip())
+        match = pattern.match(line)
+        if match:
+            names.add(match.group(1))
     return names
 
 
