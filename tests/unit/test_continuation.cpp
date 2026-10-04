@@ -121,5 +121,78 @@ int main()
         }
     });
 
+    run_case("continuation_step_arithmetic_is_bounded", [] {
+        ContinuationControls c;
+        c.minimum_step = 0.05;
+        c.maximum_step = 0.5;
+        c.step_growth = 1.5;
+        c.step_reduction = 0.5;
+
+        EXPECT_NEAR(continuation_next_target(0.0, 0.25), 0.25, 1e-14);
+        EXPECT_NEAR(continuation_next_target(0.9, 0.25), 1.0, 1e-14);
+
+        EXPECT_NEAR(continuation_step_after_success(0.25, c), 0.375, 1e-14);
+        EXPECT_NEAR(continuation_step_after_success(0.4, c), 0.5, 1e-14);
+
+        EXPECT_NEAR(continuation_step_after_failure(0.25, c), 0.125, 1e-14);
+        EXPECT_NEAR(continuation_step_after_failure(0.05, c), 0.025, 1e-14);
+    });
+
+    run_case("continuation_rolls_back_every_rejected_stage_exactly", [] {
+        auto mesh = make_unit_cube_with_lid();
+        cfdx::core::Field<double, cfdx::core::Location::CELL> U(1,"U","m/s",3);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["bottom"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ubc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{1.0,0.0,0.0}};
+        ubc["sides"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["bottom"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["top"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["sides"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.body_force = cfdx::core::Vec3{0.0, 0.0, -1.0};
+        controls.coupling.alpha_u = 0.7;
+        controls.coupling.alpha_p = 0.3;
+        controls.convergence.relative_tolerance = 1e-10;
+        controls.convergence.continuity_tolerance = 1e-8;
+        controls.linear_tolerance = 1e-10;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        // One outer corrector cannot satisfy the nonlinear criteria, so every
+        // stage attempt is rejected and the continuation must give up at the
+        // minimum step without ever leaking a partial iterate.
+        controls.convergence.max_iterations = 1;
+
+        const auto u_before = U;
+        const auto p_before = p;
+
+        ContinuationControls continuation;
+        continuation.enabled = true;
+        continuation.initial_step = 0.5;
+        continuation.minimum_step = 0.125;
+        continuation.maximum_step = 0.5;
+        continuation.max_stage_attempts = 8;
+        continuation.max_stages = 4;
+
+        const auto result = solve_steady_incompressible_continuation(
+            mesh, U, p, ubc, pbc, controls, continuation);
+
+        EXPECT_TRUE(!result.converged);
+        EXPECT_TRUE(!result.stages.empty());
+        for (const auto& stage : result.stages)
+            EXPECT_TRUE(!stage.converged);
+        EXPECT_NEAR(result.stages.back().step, continuation.minimum_step, 1e-14);
+
+        // Exact rollback: no rejected attempt may leave a trace in the fields.
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            EXPECT_TRUE(p(c) == p_before(c));
+            for (std::size_t d = 0; d < 3; ++d)
+                EXPECT_TRUE(U.component_data(d)[c] == u_before.component_data(d)[c]);
+        }
+    });
+
     return run_all();
 }
