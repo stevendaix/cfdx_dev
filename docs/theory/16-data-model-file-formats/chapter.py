@@ -4,50 +4,50 @@
 # ## 16.1 Three semantic products
 #
 # CFDX distinguishes authoritative setup, restart state and visualization:
-# \[
+# $
 # \boxed{\text{case.cfdx.h5}=\text{setup}},\qquad
 # \boxed{\text{case.dat.h5}=\text{state/checkpoint}},
 # \qquad
 # \boxed{\text{case}_{t}.vtu=\text{visualization}}.
-# \]
+# $
 # A visualization file must not silently become the authoritative case definition.
 #
 # ## 16.2 Topology representation
 #
 # The v1 HDF5 case schema contains root topology datasets:
-# \[
+# $
 # points,\quad face\_vertices,\quad face\_offsets,\quad owner,\quad
 # neighbour,\quad cell\_faces,\quad cell\_offsets.
-# \]
+# $
 # The face/cell arrays form CSR-like ragged representations:
-# \[
+# $
 # face\_vertices[face\_offsets_f:face\_offsets_{f+1}]
-# \]
-# lists the vertices of face \(f\), while
-# \[
+# $
+# lists the vertices of face $f$, while
+# $
 # cell\_faces[cell\_offsets_c:cell\_offsets_{c+1}]
-# \]
-# lists the faces attached to cell \(c\).
+# $
+# lists the faces attached to cell $c$.
 #
 # ## 16.3 Topology invariants
 #
 # For every face:
-# \[
+# $
 # 0\le owner_f<N_{cell},
-# \]
+# $
 # and for internal faces
-# \[
+# $
 # 0\le neighbour_f<N_{cell},\qquad owner_f\ne neighbour_f.
-# \]
+# $
 # Boundary faces use the documented sentinel/optional boundary-patch representation. Offset arrays must be monotone and terminate at the corresponding flattened-array length.
 #
 # ## 16.4 Fields
 #
 # Cell scalar and vector fields are stored under
-# \[
+# $
 # /fields/scalar/<name>,\qquad
 # /fields/vector/<name>.
-# \]
+# $
 # A field contract must specify location, component count, units, association to a mesh and semantic name.
 #
 # ## 16.5 Metadata and compatibility
@@ -57,23 +57,23 @@
 # ## 16.6 Checkpoint state
 #
 # A restart state is not merely the latest field snapshot. If the selected temporal scheme requires history:
-# \[
+# $
 # U^n,\ U^{n-1},\ldots
-# \]
+# $
 # and if adaptive controllers require state, their controller variables are part of restart completeness.
 #
 # ## 16.7 Restart invariant
 #
-# Let \(R\) be a restart read and \(W\) a checkpoint write. For supported data:
-# \[
+# Let $R$ be a restart read and $W$ a checkpoint write. For supported data:
+# $
 # R(W(x))\equiv x
-# \]
+# $
 # up to explicitly documented floating-point/serialization differences.
 #
 # More strongly, a restarted calculation should reproduce the same next-step discrete state under deterministic execution:
-# \[
+# $
 # \mathcal S(R(W(x)))\approx\mathcal S(x).
-# \]
+# $
 #
 # ## 16.8 VTU
 #
@@ -82,9 +82,9 @@
 # ## 16.9 Provenance
 #
 # A result should be traceable to
-# \[
+# $
 # (case\ revision,\ mesh\ revision,\ physics,\ numerics,\ solver,\ software\ revision).
-# \]
+# $
 # This is essential for V&V reproducibility.
 #
 # ## 16.10 Implementation traceability
