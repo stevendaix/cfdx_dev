@@ -130,6 +130,45 @@ def _git_ls_files(root: pathlib.Path, path: str) -> dict[str, object]:
     return {"ok": True, "files": completed.stdout.splitlines()}
 
 
+
+def _git_search(root: pathlib.Path, pattern: str, path: str) -> dict[str, object]:
+    if path.startswith("/") or ".." in pathlib.PurePosixPath(path).parts:
+        return {"ok": False, "errors": ["path must remain inside the repository"], "matches": []}
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "grep", "-n", "-I", "--", pattern, path or "."],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        return {"ok": False, "errors": [str(exc)], "matches": []}
+    if completed.returncode not in (0, 1):
+        return {"ok": False, "errors": [completed.stderr.strip() or "git grep failed"], "matches": []}
+    matches = []
+    for line in completed.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3:
+            matches.append({"path": parts[0], "line": parts[1], "text": parts[2]})
+    return {"ok": True, "errors": [], "matches": matches}
+
+
+def _git_read(root: pathlib.Path, path: str) -> dict[str, object]:
+    if path.startswith("/") or ".." in pathlib.PurePosixPath(path).parts or not path:
+        return {"ok": False, "errors": ["path must be a non-empty repository-relative tracked path"], "content": ""}
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{path}"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        return {"ok": False, "errors": [str(exc)], "content": ""}
+    if completed.returncode != 0:
+        return {"ok": False, "errors": [completed.stderr.strip() or "tracked file could not be read"], "content": ""}
+    return {"ok": True, "errors": [], "path": path, "content": completed.stdout}
+
 def create_server(root: str | None = None, index: str | None = None) -> MCPServer:
     repository, database = _config(root, index)
     server = MCPServer(
@@ -272,6 +311,25 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
                 "status": [],
             }
         return {"ok": True, "errors": [], "status": completed.stdout.splitlines()}
+
+
+    @server.tool(
+        name="documentation.search",
+        title="Search tracked documentation",
+        annotations=annotations,
+    )
+    def documentation_search(pattern: str, path: str = "") -> dict[str, object]:
+        """Search tracked repository text without modifying repository state."""
+        return _git_search(repository, pattern, path)
+
+    @server.tool(
+        name="documentation.read",
+        title="Read tracked documentation file",
+        annotations=annotations,
+    )
+    def documentation_read(path: str) -> dict[str, object]:
+        """Read a tracked repository file at HEAD without modifying repository state."""
+        return _git_read(repository, path)
 
     return server
 
