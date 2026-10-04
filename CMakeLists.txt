@@ -681,6 +681,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         set_tests_properties(test_n10_qualification PROPERTIES
             LABELS "n10;qualification;validation"
             RUN_SERIAL TRUE)
+        add_test(NAME test_n10_mesh_fixture_manifest
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_mesh_fixture_manifest.py)
+        set_tests_properties(test_n10_mesh_fixture_manifest PROPERTIES
+            LABELS "n10;mesh;provenance;validation"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif()
     set_tests_properties(
         test_n10_difficult_mesh_robustness
