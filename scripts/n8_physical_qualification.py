@@ -206,13 +206,32 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
             "iterations", "setup_us", "solve_us", "pressure_coarse_size",
             "hierarchy_builds", "numeric_updates",
         ),
+        "schur_lifecycle": (
+            "cells", "coefficient_changed", "hierarchy_builds_before",
+            "hierarchy_builds_after", "numeric_updates",
+            "updated_iterations", "updated_true_residual",
+            "graph_change_rebuild",
+        ),
     }
     missing: dict[str, list[dict[str, object]]] = {}
     checked = complete = 0
+
     for category, fields in requirements.items():
-        records = evidence.get(category, [])
+        if category == "schur_lifecycle":
+            records = [
+                record for record in evidence.get("schur_production", [])
+                if isinstance(record, dict) and "coefficient_changed" in record
+            ]
+        elif category == "schur_production":
+            records = [
+                record for record in evidence.get("schur_production", [])
+                if isinstance(record, dict) and "coefficient_changed" not in record
+            ]
+        else:
+            records = evidence.get(category, [])
         if not isinstance(records, list):
             records = []
+
         category_missing: list[dict[str, object]] = []
         for index, record in enumerate(records):
             if not isinstance(record, dict):
@@ -226,6 +245,7 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
                 complete += 1
         if category_missing:
             missing[category] = category_missing
+
     return {
         "status": "COMPLETE" if not missing else "INCOMPLETE",
         "records_checked": checked,
