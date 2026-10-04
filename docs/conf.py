@@ -30,6 +30,7 @@ include_patterns = [
     "vv/README.md",
     "vv/*/chapter.py",
     "validation/README.md",
+    "references/README.md",
 ]
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
