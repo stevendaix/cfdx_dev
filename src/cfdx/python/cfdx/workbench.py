@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .application import Application, ApplicationStateChanged, ResultsChanged, WorkflowStatus, workflow_children
-from .case_io import read_case, save_case
+from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .gui_3d import PyVistaQtView
@@ -164,7 +164,16 @@ if QMainWindow is not object:
                     return
                 path = Path(selected)
             try:
-                save_case(self.session, path)
+                if self._restart_dat is not None:
+                    _, self._restart_dat = save_case_with_dat(
+                        self.session, path, self._restart_dat
+                    )
+                    self.statusBar().showMessage(
+                        f"Case and restart checkpoint saved: {path.name}"
+                    )
+                else:
+                    save_case(self.session, path)
+                    self.statusBar().showMessage(f"Case saved: {path.name}")
                 self.application.set_project_path(path, dirty=False)
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Save failed: {exc}")
