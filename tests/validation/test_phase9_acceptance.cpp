@@ -567,6 +567,16 @@ int main(int argc, char** argv)
                             gates.push_back("coupled_mass_normalized_imbalance");
                         if (!result.solve.coupled_linear_plan_resolved)
                             gates.push_back("coupled_linear_plan_unresolved");
+                        if (result.solve.coupled_linear_plan_resolved) {
+                            if (test.coupled_preconditioner ==
+                                    PreconditionerModel::CoupledBlockSchur &&
+                                result.solve.coupled_linear_plan.krylov !=
+                                    KrylovModel::FGMRES)
+                                gates.push_back("n8_block_schur_not_fgmres");
+                            if (result.solve.coupled_linear_plan.preconditioner !=
+                                test.coupled_preconditioner)
+                                gates.push_back("n8_coupled_preconditioner_mismatch");
+                        }
                     }
                     if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
                         result.solve.iterations < 2)
