@@ -3,7 +3,11 @@
 Tests .cas.h5 and .dat.h5 file reading for Fluent cases from the
 VM2025R2_Fluids.zip archive (Fluent 2025R2 validation cases).
 
-These tests require pyfluent (ansys-fluent-core) to be installed.
+These tests require pyfluent (ansys-fluent-core) to be installed, and the
+case data is not versioned either. Neither is available in CI: the workflow
+installs neither pyfluent nor the archive, so the whole module skips there.
+The Fluent .cas.h5 reader therefore has no CI coverage, and a green run
+says nothing about it. Run it locally against a directory of cases.
 """
 
 import pytest
