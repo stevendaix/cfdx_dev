@@ -65,7 +65,8 @@ static Mesh make_two_cell_channel()
 
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        m.ownership().set_owner(f, f == 2 ? 1 : 0);
+        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
     m.ownership().set_owner(1, 0);
