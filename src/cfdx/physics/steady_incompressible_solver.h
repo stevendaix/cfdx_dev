@@ -875,6 +875,81 @@ inline void relax_momentum_equation(
     }
 }
 
+struct PcdPressureOperators {
+    cfdx::core::SparseMatrix mass;
+    cfdx::core::SparseMatrix laplacian;
+    cfdx::core::SparseMatrix convection_diffusion;
+};
+
+inline cfdx::core::SparseMatrix impose_pcd_reference_row(
+    const cfdx::core::SparseMatrix& input, std::size_t reference_cell)
+{
+    const std::size_t n = input.n_rows();
+    if (n == 0 || reference_cell >= n)
+        throw std::invalid_argument("PCD reference cell is outside pressure operator");
+    cfdx::core::SparseMatrix result(n, n);
+    const auto* ro = input.row_offsets_data();
+    const auto* co = input.columns_data();
+    const auto* va = input.values_data();
+    for (std::size_t r = 0; r < n; ++r) {
+        if (r == reference_cell) {
+            result.push_back(r, r, 1.0);
+            continue;
+        }
+        for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
+            result.push_back(r, co[k], va[k]);
+    }
+    result.finalize();
+    return result;
+}
+
+inline PcdPressureOperators assemble_pcd_pressure_operators(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    double rho,
+    double kinematic_viscosity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    std::size_t reference_cell,
+    ConvectionScheme convection_scheme)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells();
+    if (velocity.size() != nc || velocity.dimension() != 3)
+        throw std::invalid_argument("PCD pressure operator assembly: invalid velocity field");
+    if (!(rho > 0.0) || !std::isfinite(rho) ||
+        !(kinematic_viscosity >= 0.0) || !std::isfinite(kinematic_viscosity))
+        throw std::invalid_argument("PCD pressure operator assembly: invalid fluid properties");
+
+    PcdPressureOperators result;
+    result.mass = SparseMatrix(nc, nc);
+    for (std::size_t c = 0; c < nc; ++c)
+        result.mass.push_back(c, c, geometry.cell_volumes[c]);
+    result.mass.finalize();
+
+    Field<double, Location::FACE> zero_flux(mesh.n_faces(), "pcd_zero_flux", "", 1);
+    auto mass_flux = make_mass_flux(mesh, geometry, velocity, rho, velocity_bcs);
+
+    Field<double, Location::CELL> zero_source(nc, "pcd_zero_source", "", 1);
+    Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
+
+    const auto diffusion = assemble_scalar_equation(
+        mesh, geometry, zero_flux, rho * kinematic_viscosity,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, convection_scheme, &velocity);
+
+    const auto convection_diffusion = assemble_scalar_equation(
+        mesh, geometry, mass_flux, rho * kinematic_viscosity,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, convection_scheme, &velocity);
+
+    result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
+    result.convection_diffusion =
+        impose_pcd_reference_row(convection_diffusion.matrix, reference_cell);
+    return result;
+}
+
 inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
