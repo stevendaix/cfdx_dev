@@ -32,7 +32,7 @@
     {
       "id": "N2",
       "name": "Gradient and reconstruction framework",
-      "status": "qualified",
+      "status": "partial",
       "evidence": [
         "src/cfdx/core/fvm/least_squares_gradient.h",
         "src/cfdx/core/numerics/gradient.h",
@@ -43,9 +43,11 @@
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ],
       "gaps": [
-        "two-point cell Green-Gauss is deliberately domain-restricted: not linear-consistent on tetrahedra because centre-line face interpolation is not face-centroid consistent",
-        "vertex-based Green-Gauss remains a secondary method with a narrower verified applicability domain; it is not promoted as a universal non-affine polyhedral method",
-        "gradient limiters are qualified under N4 convection/reconstruction and are not an N2 gradient-package gate"
+        "independent face reconstruction remains incomplete as a package-level requirement",
+        "complete controlled polyhedral/skew/non-orthogonal acceptance matrix remains incomplete",
+        "two-point cell Green-Gauss is deliberately domain-restricted; it is not linear-consistent on general tetrahedral/polyhedral meshes",
+        "vertex-based Green-Gauss remains a secondary method with a narrower verified applicability domain",
+        "gradient limiters are qualified under N4 convection/reconstruction and are not an N2 package gate"
       ]
     },
     {
@@ -156,16 +158,18 @@
       "name": "Linear solver and preconditioner ecosystem",
       "status": "partial",
       "evidence": [
-        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md",
-        "docs/validation/M1_M4_VERIFICATION_PLAN.md",
-        "src/cfdx/core/linalg/simplerc_schur.h",
-        "tests/unit/test_simplerc_schur.cpp"
+        "scripts/n8_physical_qualification.py",
+        "tests/unit/test_exact_schur.cpp",
+        "tests/unit/test_simplerc_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur_null_space.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp"
       ],
       "gaps": [
-        "exact Schur oracle",
-        "null-space policy matrix",
-        "scaling and memory campaign",
-        "attainable-accuracy floor recorded per benchmark point (see #481)"
+        "resolved automatic linear plan is not yet recorded in the campaign report",
+        "measured matrix characteristics (anisotropy, coefficient range, numerical symmetry and saddle-point structure) are not yet fed to the dispatcher from assembled matrices",
+        "anisotropic and strongly scaled AMG campaign is incomplete",
+        "Schur acceptance envelope is not yet established on representative CFD matrices"
       ]
     },
     {
