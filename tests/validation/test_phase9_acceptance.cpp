@@ -680,23 +680,80 @@ int main(int argc, char** argv)
             std::cout << "\n";
         }
 
-        // Algorithm invariance is evaluated only across models that actually
-        // produced a valid result. A failure in one model must not prevent the
-        // remaining models from running and exposing their diagnostics.
-        if (!results.empty()) {
-            for (std::size_t k = 1; k < results.size(); ++k) {
+        // N9.5 uses SIMPLE as the declared segregated reference. Do not
+        // silently select whichever algorithm happened to finish first: if the
+        // reference fails, the campaign is not allowed to pass on another model.
+        const auto reference_it = std::find(
+            successful_models.begin(), successful_models.end(),
+            std::string("SIMPLE/upwind/bounded"));
+        if (reference_it == successful_models.end()) {
+            failed_models.push_back("SIMPLE/upwind/bounded:reference_missing");
+        } else {
+            const std::size_t reference_index =
+                static_cast<std::size_t>(
+                    std::distance(successful_models.begin(), reference_it));
+            const auto& reference = results[reference_index];
+
+            double reference_pressure_mean = 0.0;
+            for (std::size_t c = 0; c < reference.p.size(); ++c)
+                reference_pressure_mean += reference.p(c);
+            reference_pressure_mean /= static_cast<double>(reference.p.size());
+
+            // Compare all algorithms against the same discrete reference,
+            // including every velocity component and pressure modulo its gauge.
+            // This is stronger than comparing only Ux and avoids making the
+            // ordering of successful models part of the qualification.
+            for (std::size_t k = 0; k < results.size(); ++k) {
+                if (k == reference_index)
+                    continue;
+
+                const auto& candidate = results[k];
+                double candidate_pressure_mean = 0.0;
+                for (std::size_t c = 0; c < candidate.p.size(); ++c)
+                    candidate_pressure_mean += candidate.p(c);
+                candidate_pressure_mean /=
+                    static_cast<double>(candidate.p.size());
+
                 double max_du = 0.0;
-                for (std::size_t c = 0; c < results[k].U.size(); ++c)
-                    max_du = std::max(
-                        max_du,
-                        std::abs(results[k].U.component_data(0)[c] -
-                                 results.front().U.component_data(0)[c]));
-                std::cout << "ALGORITHM_INVARIANCE model=" << successful_models[k]
-                          << " vs=" << successful_models.front()
-                          << " max_abs_dU=" << max_du << "\n";
+                double max_dp_gauge = 0.0;
+                for (std::size_t c = 0; c < candidate.U.size(); ++c) {
+                    for (std::size_t component = 0; component < 3; ++component) {
+                        max_du = std::max(
+                            max_du,
+                            std::abs(candidate.U.component_data(component)[c] -
+                                     reference.U.component_data(component)[c]));
+                    }
+                    // Pressure is compared modulo its arbitrary additive gauge.
+                    max_dp_gauge = std::max(
+                        max_dp_gauge,
+                        std::abs(
+                            (candidate.p(c) -
+                             candidate_pressure_mean) -
+                            (reference.p(c) -
+                             reference_pressure_mean)));
+                }
+
+                const auto& h = candidate.solve.history.back();
+                const auto& href = reference.solve.history.back();
+                const double continuity_ratio =
+                    std::max(h.continuity_linf, href.continuity_linf) /
+                    std::max(std::min(h.continuity_linf, href.continuity_linf),
+                             std::numeric_limits<double>::min());
+
+                std::cout << "ALGORITHM_INVARIANCE model="
+                          << successful_models[k]
+                          << " vs=SIMPLE/upwind/bounded"
+                          << " max_abs_dU=" << max_du
+                          << " max_abs_dp_gauge=" << max_dp_gauge
+                          << " continuity_ratio=" << continuity_ratio
+                          << "\n";
+
                 if (!(max_du < 1.0e-5))
                     failed_models.push_back(
-                        successful_models[k] + ":algorithm_invariance");
+                        successful_models[k] + ":algorithm_velocity_invariance");
+                if (!(max_dp_gauge < 1.0e-5))
+                    failed_models.push_back(
+                        successful_models[k] + ":algorithm_pressure_invariance");
             }
         }
 
