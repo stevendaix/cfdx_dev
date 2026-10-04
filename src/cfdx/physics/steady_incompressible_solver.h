@@ -1368,26 +1368,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
     // The coupled matrix is a saddle-point system. A cell-local 4x4
     // inverse is generally singular because continuity rows have no
-    // pressure-pressure diagonal. Use an approximate block-LU preconditioner
-    // with diagonal momentum solves and an explicit sparse algebraic Schur
-    // complement. The Rhie-Chow Schur diagnostic is kept separate from this
-    // algebraic preconditioner quantity.
+    // pressure-pressure diagonal. Select the N8 linear plan before constructing
+    // its preconditioner so the production path uses exactly the resolved policy.
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
-    const bool use_n8_block_schur =
-        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
-    std::unique_ptr<Preconditioner> coupled_preconditioner;
-    if (use_n8_block_schur) {
-        coupled_preconditioner =
-            std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
-    } else {
-        std::vector<std::size_t> fine_variables(nv);
-        std::vector<std::size_t> coarse_variables(np);
-        std::iota(fine_variables.begin(), fine_variables.end(), 0);
-        std::iota(coarse_variables.begin(), coarse_variables.end(), nv);
-        coupled_preconditioner =
-            std::make_unique<NativeMGRPreconditioner>(
-                std::move(fine_variables), std::move(coarse_variables));
-    }
     // The production Couette system is only 512 unknowns. A restart of
     // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
     // the assembled system is nonsingular. Use one full Krylov space for
@@ -1402,6 +1385,33 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         solver_plan.preconditioner != PreconditionerModel::MGR)
         throw std::invalid_argument(
             "coupled solver requires coupled_block_schur or mgr");
+
+    // N8 owns the linear-solver/preconditioner policy. The coupled FV
+    // assembler remains N9-owned, but an explicit BlockSchur request must use
+    // the N8 AMG-backed Schur implementation rather than the legacy scalar
+    // preconditioner. MGR remains a separate N8-qualified path until its
+    // coupled dispatch metadata is integrated.
+    const bool use_n8_block_schur =
+        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+    std::unique_ptr<Preconditioner> coupled_preconditioner;
+    if (use_n8_block_schur) {
+        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
+        if (!schur_amg->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled BlockSchur AMG setup failed: ") +
+                schur_amg->last_error());
+        }
+        coupled_preconditioner = std::move(schur_amg);
+    } else {
+        std::vector<std::size_t> fine_variables(nv);
+        std::vector<std::size_t> coarse_variables(np);
+        std::iota(fine_variables.begin(), fine_variables.end(), 0);
+        std::iota(coarse_variables.begin(), coarse_variables.end(), nv);
+        coupled_preconditioner =
+            std::make_unique<NativeMGRPreconditioner>(
+                std::move(fine_variables), std::move(coarse_variables));
+    }
+
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use
     // the N8 AMG-backed Schur implementation rather than the legacy scalar
