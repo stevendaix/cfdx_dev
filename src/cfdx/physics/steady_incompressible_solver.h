@@ -917,11 +917,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const double* old_component = U_old.component_data(component);
         for (std::size_t r = 0; r < nc; ++r) {
             const double diagonal = eq.diagonal[r];
-            if (!(diagonal > 0.0) || !std::isfinite(diagonal)) {
-                A.push_back(row_base + r, row_base + r, 1.0);
-                b(row_base + r) = old_component[r];
-                continue;
-            }
+            if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: invalid momentum diagonal at cell " +
+                    std::to_string(r) + " component " + std::to_string(component));
 
             bool has_diagonal = false;
             for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k) {
@@ -1842,12 +1841,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // equation. Rebuild the authoritative flux from the same RC
             // interpolation used by the block matrix for diagnostics and for
             // the next nonlinear iteration.
+            std::array<std::vector<double>,3> coupled_rAU;
+            coupled_rAU[0].resize(mesh.n_cells());
+            coupled_rAU[1].resize(mesh.n_cells());
+            coupled_rAU[2].resize(mesh.n_cells());
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                if (!(ex.diagonal[c] > 0.0) || !std::isfinite(ex.diagonal[c]) ||
+                    !(ey.diagonal[c] > 0.0) || !std::isfinite(ey.diagonal[c]) ||
+                    !(ez.diagonal[c] > 0.0) || !std::isfinite(ez.diagonal[c]))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: invalid coupled momentum diagonal after solve");
+                coupled_rAU[0][c] = geometry.cell_volumes[c] / ex.diagonal[c];
+                coupled_rAU[1][c] = geometry.cell_volumes[c] / ey.diagonal[c];
+                coupled_rAU[2][c] = geometry.cell_volumes[c] / ez.diagonal[c];
+            }
             mass_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, U, p,
-                std::array<std::vector<double>,3>{
-                    [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ex.diagonal[c],1e-30); return v; }(),
-                    [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ey.diagonal[c],1e-30); return v; }(),
-                    [&] { std::vector<double> v(mesh.n_cells()); for (std::size_t c=0;c<mesh.n_cells();++c) v[c]=geometry.cell_volumes[c]/std::max(ez.diagonal[c],1e-30); return v; }()},
+                mesh, geometry, U, p, coupled_rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
             // A coupled iteration has no segregated momentum/pressure Krylov
