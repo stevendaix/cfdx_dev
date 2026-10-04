@@ -667,7 +667,20 @@
     },
     {
       "package_id": "N8",
-      "requirement": "LSC/BFBt/PCD Schur approximations",
+      "requirement": "LSC/BFBt Schur approximations",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "src/cfdx/core/linalg/schur_approximation.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur_null_space.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp",
+        "tests/unit/test_schur_quantitative_qualification.cpp"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "PCD Schur approximation",
       "status": "missing",
       "evidence": []
     },

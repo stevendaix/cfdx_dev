@@ -4,6 +4,12 @@
 
 N8 implementation is substantially merged. The remaining work is to establish reproducible numerical evidence on production-relevant CFD operators and to close the documented qualification boundaries.
 
+> **Re-baselined 2026-10-04.** Section boxes below were reconciled against the merged tree. Items merged after this list was written were checked only where the current source tree evidences them; sections that remain unchecked say what is missing. Three corrections matter for reading the rest of this document:
+>
+> - **LSC and BFBt are implemented, not missing** (`src/cfdx/core/linalg/lsc_bfbt_schur.h`, #562), verified against the exact-Schur oracle (#565) and measured for conditioning and FP64 error floor (#568). Only **PCD** is unimplemented.
+> - **The generic Schur layer is not production-selectable.** No file under `src/` or `apps/` includes it and no case-file setting chooses a Schur approximation; production still uses the separate `CoupledBlockSchur*` pair. Section 7 cannot close until that changes.
+> - **SIMPLE/SIMPLEC lacks a pressure null-space policy and a graph-signature guard on `update_values`**, which the exact and LSC/BFBt approximations do have.
+
 ## 1. FGMRES gate
 
 - [x] Merge and validate PR #598.
@@ -16,10 +22,14 @@ N8 implementation is substantially merged. The remaining work is to establish re
 ## 2. Production physical campaign
 
 Cases:
-- [ ] Couette
-- [ ] Poiseuille
-- [ ] Ghia cavity, Re=100
-- [ ] Controlled skew/non-orthogonal case
+- [x] Couette
+- [x] Poiseuille
+- [x] Ghia cavity, Re=100
+- [x] Controlled skew/non-orthogonal case
+
+All four execute in the campaign and appear in `results[]` with their ctest status and output. **They do not yet emit structured numerical records.** `test_n8_pressure_velocity_matrix` emits `MODEL_CONFIG`/`MODEL_PLAN`/`MODEL_RESULT`; Poiseuille, Ghia and skew emit no records the report parses, so they contribute pass/fail and elapsed time only. Couette is covered through that matrix rather than by `test_couette_quick`, which the campaign does not require.
+
+Each is run at its `--quick` variant; the full non-quick variants are gated behind `CFDX_ENABLE_LONG_VALIDATION`, so this campaign does not exercise the long-validation acceptance paths.
 
 For each selected solver/preconditioner combination:
 - [ ] convergence status
@@ -37,14 +47,16 @@ For each selected solver/preconditioner combination:
 ## 3. Pressure-velocity algorithm matrix
 
 Explicitly execute and retain evidence for:
-- [ ] SIMPLE
-- [ ] SIMPLEC
-- [ ] PISO
-- [ ] PIMPLE
-- [ ] Fractional Step
-- [ ] COUPLED
+- [x] SIMPLE
+- [x] SIMPLEC
+- [x] PISO
+- [x] PIMPLE
+- [x] Fractional Step
+- [x] COUPLED
 
-Do not treat API availability alone as qualification.
+All six run through `test_n8_pressure_velocity_matrix` (no `--quick`), which announces each model's requested configuration, records the plan the dispatcher resolved, and reports `solver_converged`, `iterations` and `gates_failed` per model. `model_resolution` reports `tallies_agree` between the announced and observed counts. COUPLED is exercised under two preconditioners (`BlockSchur` and `MGR`), giving seven configured models.
+
+API availability alone was not treated as qualification: the evidence is the per-model resolved plan and verdict.
 
 **Exit evidence:** every claimed production algorithm has at least one representative converged case with objective numerical checks.
 
@@ -66,14 +78,14 @@ For each solver:
 Current algebraic tests are infrastructure evidence, not final CFD qualification.
 
 - [ ] Build representative pressure-velocity CFD matrices.
-- [ ] Compute exact Schur reference where tractable.
-- [ ] Compare SIMPLE/SIMPLEC, LSC and BFBT against the exact reference.
-- [ ] Measure approximation error and conditioning.
-- [ ] Include null-space handling where applicable.
-- [ ] Establish an acceptance envelope from representative matrices.
-- [ ] Identify the FP64 numerical floor from measured results.
-- [ ] Test numeric-value refresh without rebuilding the graph.
-- [ ] Document failure modes instead of weakening thresholds.
+- [x] Compute exact Schur reference where tractable. (Implicit exact-Schur oracle with a preconditioner-free CG action, #492; independent dense-assembly cross-check, #565.)
+- [x] Compare SIMPLE/SIMPLEC, LSC and BFBT against the exact reference. (`test_schur_approximation_comparison`.)
+- [x] Measure approximation error and conditioning. (Infinity-norm `cond(Auu)`, oracle discrepancy, measured FP64 backward-error floor, per-method `algebra_error`/`exact_schur_error`, #568. Approximation quality is deliberately left diagnostic: no envelope exists.)
+- [ ] Include null-space handling where applicable. Delivered for the exact and LSC/BFBt approximations (`test_lsc_bfbt_schur_null_space`, #575). Still open: `SimplerSchurApproximation` has no null-space policy, and the Schur layer offers only the constant/mean-zero projector — there is no pinned-pressure policy there.
+- [ ] Establish an acceptance envelope from representative matrices. Blocked on the first item; the controlled family measures LSC/BFBt action error at 4.8–8.6 against exact, which is why no threshold may be invented yet.
+- [x] Identify the FP64 numerical floor from measured results. (Machine epsilon and attainable backward-error floor reported per case, #568; #482 established the `tol >> eps*cond(A)` rule.)
+- [x] Test numeric-value refresh without rebuilding the graph. (`n8_schur_benchmark_lifecycle`: value-only change on an unchanged graph, `hierarchy_builds` held constant, one `numeric_update`, true residual independently recomputed.) Graph-*change* rejection is guarded for the exact and LSC/BFBt approximations; `SimplerSchurApproximation::update_values` has no such guard.
+- [x] Document failure modes instead of weakening thresholds.
 
 **Exit evidence:** representative CFD matrix dataset + quantitative comparison + justified acceptance envelope.
 
@@ -96,11 +108,15 @@ Current algebraic tests are infrastructure evidence, not final CFD qualification
 
 Qualify the production paths actually exposed by CFDX:
 
-- [ ] Native AMG
-- [ ] Smoothed Aggregation AMG
-- [ ] Native FieldSplit
-- [ ] Coupled Block Schur
-- [ ] MGR
+- [x] Native AMG
+- [x] Smoothed Aggregation AMG
+- [x] Native FieldSplit
+- [x] Coupled Block Schur
+- [x] MGR
+
+Each has a production-path test the campaign requires and runs: `test_amg_preconditioner_qualification`, `test_advanced_preconditioners`, `test_schur_preconditioner`, `test_coupled_block_schur_amg` and `test_mgr_preconditioner`.
+
+**This closes the "the path is exercised" question only.** The per-path items below are not met:
 
 For each applicable path:
 - [ ] representative operator
@@ -109,16 +125,20 @@ For each applicable path:
 - [ ] setup/solve cost
 - [ ] documented limitations
 
+The campaign records true residual, Krylov iterations, setup/solve time and NNZ for the coupled Schur *algebraic* family (`test_n8_schur_production_benchmark`), which is not the production preconditioner set, and records no per-path cost or limitation summary for the five paths above. Separately, the generic `SchurApproximation` layer (exact oracle, SIMPLE/SIMPLEC, LSC/BFBt) remains unreachable from production: no case-file or solver-options setting selects it, so the approximations qualified in section 5 are not the ones a production case can run.
+
 ## 8. Production solver policy
 
 - [ ] Explicit pressure solver policy.
 - [ ] Explicit momentum solver policy.
 - [ ] Explicit scalar solver policy.
 - [ ] Explicit coupled-system policy.
-- [ ] No silent solver substitution.
+- [x] No silent solver substitution. `audit_linear_plan` compares each announced linear request against the plan the dispatcher resolved, for the Krylov method *and* the preconditioner of both the coupled and the pressure sub-problem. `substitutions`, `models_without_plan` and `structure_mismatches` are wired into the campaign status, making `explicit_linear_request_must_be_honored` the one enforced gate in the report (#620).
 - [ ] No silent CPU/GPU fallback.
 - [ ] No automatic relaxation of numerical tolerances.
 - [ ] Unsupported combinations fail explicitly and diagnostically.
+
+The remaining three are unverified for N8 specifically. `PreconditionerModel::LSC` exists in the model enum and catalogue but `make_scalar_preconditioner` rejects block preconditioners and the scalar dispatcher throws `not available in scalar dispatch`; that is an explicit failure, but the enum entry advertising an unavailable path is itself an unresolved item rather than evidence for this section.
 
 **Exit evidence:** documented production policy and tests proving unsupported configurations do not silently change method.
 
@@ -136,14 +156,14 @@ For each applicable path:
 ## 10. Final qualification evidence
 
 - [ ] Full N8 physical campaign passes.
-- [ ] All mandatory gates are present in CTest.
+- [x] All mandatory gates are present in CTest. The campaign is registered as `test_n8_physical_qualification` (`CMakeLists.txt`), all 22 required tests resolve against `ctest -N`, and the audit validator runs in the `cfdx-maturity` workflow.
 - [ ] No validation case is disabled merely to obtain a green build.
-- [ ] No tolerance inflation.
-- [ ] No silent fallback.
+- [ ] No tolerance inflation. Both are claims about development history rather than properties of the current tree, so they are not checked here. The report asserts `changes_numerical_tolerances: false` and `disables_validation: false` in its own policy block, but a self-assertion is not independent evidence; this item stays open until reviewed against the diffs.
+- [ ] No silent fallback. No silent *solver substitution* is enforced (section 8); silent CPU/GPU fallback is unverified.
 - [ ] Numerical maturity passes on the exact HEAD.
 - [ ] Numerical maturity audit passes on the exact HEAD.
 - [ ] CFDX CI passes on the exact HEAD.
-- [ ] Machine-readable evidence artifacts are retained.
+- [x] Machine-readable evidence artifacts are retained.
 - [ ] Issue #461 is updated with implemented vs qualified status.
 - [ ] N8 is promoted to `QUALIFIED` only after all mandatory evidence is reviewed.
 
