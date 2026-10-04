@@ -681,8 +681,12 @@
     {
       "package_id": "N8",
       "requirement": "PCD Schur approximation",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/pcd_schur.h",
+        "tests/unit/test_pcd_schur.cpp"
+      ],
+      "gaps": "implemented and production-wired (#635): PcdSchurApproximation is constructed by the coupled solver, unit-tested against an oracle assembled from the definition of S = C - D Auu^{-1} G, and passes the pressure-velocity matrix with the same gates as BlockSchur and MGR. Not qualified: the -Fp^{-1} versus -Kp^{-1} ordering is untested on a non-zero-convection case, and preconditioner.pcd stays Planned in the registry"
     },
     {
       "package_id": "N8",
