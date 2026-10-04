@@ -22,8 +22,6 @@ on:
       - "src/cfdx/physics/continuation.h"
       - "src/cfdx/physics/steady_incompressible_solver.h"
       - "src/cfdx/physics/pressure_velocity_algorithms.h"
-      - "tests/unit/test_initialization.cpp"
-      - "src/cfdx/core/numerics/numerical_method_contract.h"
   pull_request:
     branches: [master, main, develop]
     paths:
@@ -49,8 +47,6 @@ on:
       - "src/cfdx/physics/continuation.h"
       - "src/cfdx/physics/steady_incompressible_solver.h"
       - "src/cfdx/physics/pressure_velocity_algorithms.h"
-      - "tests/unit/test_initialization.cpp"
-      - "src/cfdx/core/numerics/numerical_method_contract.h"
   workflow_dispatch:
 
 concurrency:
@@ -65,23 +61,19 @@ jobs:
     name: N1 numerical methods
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
-
       - name: Install Python mesh/I/O stack
         run: |
           python3 -m venv .venv-n1
           .venv-n1/bin/python -m pip install --upgrade pip
           .venv-n1/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
           echo "$PWD/.venv-n1/bin" >> "$GITHUB_PATH"
-
       - name: Configure
         run: |
           cmake -S . -B build-n1 -G Ninja \
@@ -92,7 +84,6 @@ jobs:
             -DCFDX_ENABLE_MPI=ON \
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
       - name: Build N1 targets
         run: |
           cmake --build build-n1 --parallel 4 --target \
@@ -101,39 +92,33 @@ jobs:
             test_case_hdf5_io \
             test_n7_convergence_qualification \
             cfdx_production_solver
-
       - name: Run N7 convergence qualification
         run: |
           ctest --test-dir build-n1 \
             -R '^test_n7_convergence_qualification$' \
             --output-on-failure \
             --no-tests=error
-
       - name: Run native N1 contract and case-I/O tests
         run: |
           ctest --test-dir build-n1 \
             -R '^(test_spatial_scheme_contract|test_case_numerics_report|test_case_hdf5_io)$' \
             --output-on-failure \
             --no-tests=error
-
       - name: Run canonical Python numerical-selection tests
         run: |
           python -m pytest -q tests/python/test_numerical_selection.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
-
       - name: Run SU2 adapter regression
         run: |
           python -m pytest -q tests/python/test_su2_adapter.py
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
-
       - name: Run production numerical-selection E2E
         run: |
           ctest --test-dir build-n1 \
             -R '^test_production_solver_numerics_e2e$' \
             --output-on-failure \
             --no-tests=error
-
       - name: Final N1 gate
         run: echo "CFDX N1 CI: PASS"

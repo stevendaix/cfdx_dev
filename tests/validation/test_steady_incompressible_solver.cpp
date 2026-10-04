@@ -429,5 +429,65 @@ int main()
         std::filesystem::remove(dat);
     });
 
+    run_case("nonlinear_retry_controls_are_validated_by_the_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 2;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        // The solver owns the nonlinear retry policy, so an invalid policy must
+        // be rejected at the solver boundary and not only inside the controller.
+        bool rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 0;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+
+        rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 3;
+            c.nonlinear_retry.relaxation_shrink = 1.5;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("nonlinear_state_rollback_restores_fields_exactly", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+
+        NonlinearStateRollback transaction(U, p);
+        transaction.begin();
+        U.component_data(0)[0] = 3.5;
+        U.component_data(1)[0] = -1.25;
+        p(0) = 42.0;
+        transaction.reject();
+
+        EXPECT_TRUE(U.component_data(0)[0] == 0.0);
+        EXPECT_TRUE(U.component_data(1)[0] == 0.0);
+        EXPECT_TRUE(p(0) == 0.0);
+        EXPECT_TRUE(!transaction.active());
+    });
+
     return run_all();
 }
