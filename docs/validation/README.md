@@ -31,8 +31,8 @@ A reference value is never a CFDX result. A green CI job is not automatically va
 00-code-verification/README
 01-mms/README
 02-convergence/README
-03-conservation/README
-04-boundedness/README
+03-conservation/chapter
+04-boundedness/chapter
 05-linear-solvers/README
 06-pressure-velocity/README
 07-operators/README
