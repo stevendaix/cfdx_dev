@@ -558,6 +558,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_couette_quick PROPERTIES
         LABELS "phase9;validation;coupled-ns"
         ENVIRONMENT "CFDX_DEBUG_CELL=33;CFDX_FREEZE_STATE=1;CFDX_DEBUG_COUPLED=1")
+    add_cfdx_test(test_n9_5_skew_coupling tests/validation/test_n9_5_skew_coupling.cpp)
+    set_tests_properties(test_n9_5_skew_coupling PROPERTIES
+        LABELS "n9;validation;qualification;coupled-ns"
+        RUN_SERIAL TRUE
+        TIMEOUT 900)
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_phase9_acceptance COMMAND test_phase9_acceptance)
         set_tests_properties(test_phase9_acceptance PROPERTIES
