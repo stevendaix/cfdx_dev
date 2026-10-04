@@ -54,13 +54,24 @@ struct AdaptiveRelaxationControls {
     double max_alpha_p = 0.5;
     double improvement_threshold = 0.05;
     double degradation_threshold = 0.10;
+    // Adaptive changes are additive. A multiplicative 0.50 decrease can jump
+    // straight to min_alpha and create a bang-bang limit cycle inside a narrow
+    // useful corridor. Bounded additive steps retain the current state while
+    // making recovery gradual and reversible.
+    double increase_step = 0.02;
+    double decrease_step = 0.05;
 };
 
 inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
 {
     if (c.min_alpha_u <= 0.0 || c.max_alpha_u < c.min_alpha_u || c.max_alpha_u > 1.0 ||
         c.min_alpha_p <= 0.0 || c.max_alpha_p < c.min_alpha_p || c.max_alpha_p > 1.0 ||
-        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold)
+        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold ||
+        !(c.increase_step > 0.0) || !(c.decrease_step > 0.0) ||
+        c.increase_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.decrease_step > (c.max_alpha_p - c.min_alpha_p))
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
 
@@ -81,16 +92,11 @@ inline double adapt_relaxation_factor(
         return safe_alpha;
     const double ratio = residual / previous_residual;
     if (ratio <= 1.0 - controls.improvement_threshold)
-        return std::min(max_alpha, safe_alpha * 1.10);
+        return std::min(max_alpha, safe_alpha + controls.increase_step);
     if (ratio >= 1.0 + controls.degradation_threshold)
-        return std::max(min_alpha, safe_alpha * 0.50);
-    // Slow-but-monotone improvement: creep up so a factor collapsed near the
-    // minimum by an early transient can recover once convergence resumes.
-    // Without this, a permanently-low alpha (e.g. after a transient jump) keeps
-    // the solver in an ultra-slow regime and the monotone residual decrease
-    // (ratio slightly below 1) never triggers the strong-improvement branch.
-    if (ratio < 1.0)
-        return std::min(max_alpha, safe_alpha * 1.05);
+        return std::max(min_alpha, safe_alpha - controls.decrease_step);
+    // Hysteresis band: retain the current relaxation. This filters small
+    // residual noise and gives the controller memory through alpha itself.
     return safe_alpha;
 }
 
