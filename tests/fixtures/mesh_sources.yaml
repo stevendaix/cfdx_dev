@@ -1,0 +1,50 @@
+# N10 external/reference mesh fixture manifest
+# 
+# Policy:
+# - Every external fixture is pinned to an immutable revision/path and SHA-256.
+# - license_status must be verified before CI redistribution is enabled.
+# - mandatory_ci=true is permitted only for fixtures that are legally redistributable
+#   and small/deterministic enough for normal CI.
+# - reference_only=true fixtures are never required by public CI.
+# - Generated in-repository fixtures are intentionally not listed here.
+#
+# SHA-256 values are populated only after the exact fixture bytes are acquired and
+# verified. An entry with a placeholder hash is metadata-only and MUST NOT be
+# downloaded by CI.
+
+version: 1
+schema: 1
+
+sources:
+  - id: meshio
+    project: meshio
+    repository: https://github.com/nschloe/meshio
+    ref: null
+    status: metadata_only
+    license_status: verify_at_fixture_commit
+    redistribution: pending
+  - id: openfoam-dev
+    project: OpenFOAM-dev
+    repository: https://github.com/OpenFOAM/OpenFOAM-dev
+    ref: null
+    status: metadata_only
+    license_status: verify_at_fixture_commit
+    redistribution: pending
+  - id: gmsh
+    project: Gmsh
+    repository: https://gitlab.onelab.info/gmsh/gmsh
+    ref: null
+    status: metadata_only
+    license_status: verify_at_fixture_commit
+    redistribution: pending
+  - id: ansys-vmfl
+    project: ANSYS Fluent Verification Manual
+    repository: null
+    ref: null
+    status: authorized_external_only
+    license_status: proprietary
+    redistribution: prohibited
+    mandatory_ci: false
+    reference_only: true
+
+fixtures: []
