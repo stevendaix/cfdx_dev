@@ -15,7 +15,29 @@ extensions = [
 ]
 
 templates_path = []
+
+# Publish only the maintained documentation model. Legacy migration material and
+# executable support scripts remain in the repository but are not Sphinx sources.
+include_patterns = [
+    "index.md",
+    "theory/README.md",
+    "theory/*/README.md",
+    "theory/*/chapter.py",
+    "theory/04-gradients-reconstruction/*.md",
+    "user/README.md",
+    "developer/README.md",
+    "developer/*/chapter.py",
+    "vv/README.md",
+    "vv/*/chapter.py",
+    "validation/README.md",
+]
+
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# MyST-NB parses each notebook Markdown cell independently. Section cells that
+# intentionally begin at H2 therefore trigger the generic document-level
+# heading warning even when the notebook has a valid H1 title cell.
+suppress_warnings = ["myst.header"]
 
 myst_enable_extensions = [
     "amsmath",
