@@ -1,18 +1,18 @@
 # %% [markdown]
 # # Couette flow
 #
-# Plane Couette flow isolates viscous momentum transport. Two infinite plates are separated by (H); wall velocities are (U_0) and (U_H); the flow is steady, incompressible and has zero streamwise pressure gradient.
+# Plane Couette flow isolates viscous momentum transport. Two infinite plates are separated by \(H\); wall velocities are \(U_0\) and \(U_H\); the flow is steady, incompressible and has zero streamwise pressure gradient.
 #
-# [
-# murac{d^2u}{dy^2}=0,
-# qquad
+# \[
+# \mu\frac{d^2u}{dy^2}=0,
+# \qquad
 # u(y)=U_0+(U_H-U_0)y/H.
-# ]
+# \]
 #
 # The analytical wall shear is
-# [
-# 	au_{xy}=mu(U_H-U_0)/H.
-# ]
+# \[
+# \tau_{xy}=\mu(U_H-U_0)/H.
+# \]
 #
 # The benchmark should explicitly verify velocity boundary-condition signs, gradient accuracy, viscous fluxes, pressure neutrality, continuity and wall-force extraction.
 #

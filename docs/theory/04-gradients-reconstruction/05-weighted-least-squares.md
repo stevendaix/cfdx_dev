@@ -2,17 +2,17 @@
 
 Weighted least squares uses
 
-[
-J(mathbf g)=
-sum_i w_i
-(mathbf gcdotDeltamathbf x_i-Deltaphi_i)^2.
-]
+\[
+J(\mathbf g)=
+\sum_i w_i
+(\mathbf g\cdot\Delta\mathbf x_i-\Delta\phi_i)^2.
+\]
 
 A common family uses distance-dependent weights such as
 
-[
-w_ipropto|Deltamathbf x_i|^{-p}.
-]
+\[
+w_i\propto|\Delta\mathbf x_i|^{-p}.
+\]
 
 The precise weighting law is part of the numerical-method definition and must not be treated as an undocumented implementation detail.
 

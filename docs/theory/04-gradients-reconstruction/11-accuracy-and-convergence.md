@@ -2,11 +2,11 @@
 
 For mesh sizes `h_i` and errors `E_i`, the observed order between two levels is
 
-[
+\[
 p=
-rac{log(E_1/E_2)}
-{log(h_1/h_2)}.
-]
+\frac{\log(E_1/E_2)}
+{\log(h_1/h_2)}.
+\]
 
 A meaningful refinement study defines the reference solution, mesh family, characteristic size, error norm, refinement ratio, boundary treatment, convergence criteria and numerical options.
 

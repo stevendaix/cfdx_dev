@@ -1,12 +1,11 @@
 # %% [markdown]
 # # Ghia lid-driven cavity
 #
-# A square cavity has stationary walls except for a moving lid of velocity (U). The flow is incompressible and closed, so net mass flux is zero and pressure has a constant null space.
+# A square cavity has stationary walls except for a moving lid of velocity \(U\). The flow is incompressible and closed, so net mass flux is zero and pressure has a constant null space.
 #
-# [
-# Re=UH/
-u.
-# ]
+# \[
+# Re=UH/\nu.
+# \]
 #
 # The classical Ghia, Ghia and Shin reference is used through centreline velocity profiles and vortex information.
 #

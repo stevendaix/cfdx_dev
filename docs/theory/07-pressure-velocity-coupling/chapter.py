@@ -4,154 +4,145 @@
 # ## 7.1 Governing constraint
 #
 # For constant-density incompressible flow:
-# [
-# 
-ablacdotmathbf u=0,
-# ]
-# [
-# holeft(
-# rac{partialmathbf u}{partial t}
-# +
-ablacdot(mathbf uotimesmathbf u)ight)
-# =-
-abla p+
-ablacdot(2mumathbf S)+mathbf f.
-# ]
+# \[
+# \nabla\cdot\mathbf u=0,
+# \]
+# \[
+# \rho\left(
+# \frac{\partial\mathbf u}{\partial t}
+# +\nabla\cdot(\mathbf u\otimes\mathbf u)\right)
+# =-\nabla p+\nabla\cdot(2\mu\mathbf S)+\mathbf f.
+# \]
 # The pressure is not obtained from an independent equation of state; it is the Lagrange multiplier enforcing discrete continuity.
 #
 # ## 7.2 Discrete block system and Schur complement
 #
-# [
-# egin{bmatrix}
-# A_u&G\
+# \[
+# \begin{bmatrix}
+# A_u&G\\
 # D&C
-# end{bmatrix}
-# egin{bmatrix}mathbf u\pend{bmatrix}
+# \end{bmatrix}
+# \begin{bmatrix}\mathbf u\\p\end{bmatrix}
 # =
-# egin{bmatrix}b_u\b_pend{bmatrix}.
-# ]
+# \begin{bmatrix}b_u\\b_p\end{bmatrix}.
+# \]
 # Eliminating velocity gives
-# [
+# \[
 # S=C-DA_u^{-1}G,
-# qquad
+# \qquad
 # Sp=b_p-DA_u^{-1}b_u.
-# ]
+# \]
 # This connects segregated pressure correction to the exact coupled algebraic problem.
 #
 # ## 7.3 SIMPLE derivation
 #
 # Write
-# [
-# A_umathbf u=b_u-Gp.
-# ]
-# Let (H) approximate (A_u^{-1}). Then
-# [
-# mathbf uapprox H(b_u-Gp).
-# ]
+# \[
+# A_u\mathbf u=b_u-Gp.
+# \]
+# Let \(H\) approximate \(A_u^{-1}\). Then
+# \[
+# \mathbf u\approx H(b_u-Gp).
+# \]
 # Introduce corrections
-# [
-# p^{new}=p+p',qquad
-# mathbf u^{new}=mathbf u+mathbf u',
-# ]
+# \[
+# p^{new}=p+p',\qquad
+# \mathbf u^{new}=\mathbf u+\mathbf u',
+# \]
 # with
-# [
-# mathbf u'approx-HGp'.
-# ]
+# \[
+# \mathbf u'\approx-HGp'.
+# \]
 # Continuity gives
-# [
-# Dmathbf u'=-Dmathbf u,
-# ]
+# \[
+# D\mathbf u'=-D\mathbf u,
+# \]
 # hence
-# [
-# D H G,p'=Dmathbf u.
-# ]
+# \[
+# D H G\,p'=D\mathbf u.
+# \]
 # Sign changes in this equation occur if the code defines the pressure-gradient block with the opposite sign; the implementation must be audited against the assembled row rather than against a memorised textbook formula.
 #
 # ## 7.4 SIMPLEC
 #
-# SIMPLEC changes the approximation for the velocity correction so that additional off-diagonal momentum coupling is retained. Its identity is therefore encoded in the exact approximation (H), not merely in an enum value.
+# SIMPLEC changes the approximation for the velocity correction so that additional off-diagonal momentum coupling is retained. Its identity is therefore encoded in the exact approximation \(H\), not merely in an enum value.
 #
 # ## 7.5 PISO
 #
 # Starting from a predictor
-# [
-# A_umathbf u^*=b_u-Gp^n,
-# ]
+# \[
+# A_u\mathbf u^*=b_u-Gp^n,
+# \]
 # PISO applies successive pressure corrections within the same time level. Each correction updates the face flux/velocity and generates a new continuity defect. The number of correction stages is an algorithmic parameter.
 #
 # ## 7.6 PIMPLE
 #
 # PIMPLE combines outer nonlinear iterations with pressure-correction stages:
-# [
-# oxed{	ext{outer iteration}
-# ightarrow	ext{momentum}
-# ightarrow	ext{pressure corrections}
-# ightarrow	ext{relaxation}
-# ightarrow	ext{convergence}}.
-# ]
+# \[
+# \boxed{\text{outer iteration}
+# \rightarrow\text{momentum}
+# \rightarrow\text{pressure corrections}
+# \rightarrow\text{relaxation}
+# \rightarrow\text{convergence}}.
+# \]
 # Outer iteration and inner pressure-correction convergence must be reported separately.
 #
 # ## 7.7 Fractional-step projection
 #
 # Predictor:
-# [
-# rac{mathbf u^*-mathbf u^n}{Delta t}=R(mathbf u^n).
-# ]
+# \[
+# \frac{\mathbf u^*-\mathbf u^n}{\Delta t}=R(\mathbf u^n).
+# \]
 # Pressure equation:
-# [
-# 
-abla^2p^{n+1}
-# =rac{ho}{Delta t}
-ablacdotmathbf u^*.
-# ]
+# \[
+# \nabla^2p^{n+1}
+# =\frac{\rho}{\Delta t}\nabla\cdot\mathbf u^*.
+# \]
 # Projection:
-# [
-# mathbf u^{n+1}
-# =mathbf u^*-rac{Delta t}{ho}
-abla p^{n+1}.
-# ]
+# \[
+# \mathbf u^{n+1}
+# =\mathbf u^*-\frac{\Delta t}{\rho}\nabla p^{n+1}.
+# \]
 # Taking the divergence yields
-# [
-# 
-ablacdotmathbf u^{n+1}=0
-# ]
+# \[
+# \nabla\cdot\mathbf u^{n+1}=0
+# \]
 # if the pressure equation and discrete gradient/divergence pair are exactly consistent.
 #
 # ## 7.8 Pressure gauge and compatibility
 #
 # Under pure Neumann pressure conditions,
-# [
-# pightarrow p+C
-# ]
+# \[
+# p\rightarrow p+C
+# \]
 # is a null-space transformation. The pressure Poisson equation also requires a compatibility condition:
-# [
-# int_Omega b_p,dV
-# =int_{partialOmega}rac{partial p}{partial n},dA
-# ]
+# \[
+# \int_\Omega b_p\,dV
+# =\int_{\partial\Omega}\frac{\partial p}{\partial n}\,dA
+# \]
 # in the continuous case. A discrete incompatibility can prevent convergence even when the operator itself is correct.
 #
 # ## 7.9 Collocated face mass flux
 #
 # A collocated scheme needs a pressure-velocity interpolation that avoids an odd-even pressure mode. A Rhie–Chow-type flux has the generic structure
-# [
-# dot m_f=
-# dot m_f^{interp}
-# -D_fleft[
-# (p_N-p_P)-(
-abla p)_fcdotmathbf d_{PN}
-# ight],
-# ]
-# where (D_f) is derived from the momentum diagonal/coefficient. The exact CFDX formula, including signs and boundary handling, must be taken from the implementation.
+# \[
+# \dot m_f=
+# \dot m_f^{interp}
+# -D_f\left[
+# (p_N-p_P)-(\nabla p)_f\cdot\mathbf d_{PN}
+# \right],
+# \]
+# where \(D_f\) is derived from the momentum diagonal/coefficient. The exact CFDX formula, including signs and boundary handling, must be taken from the implementation.
 #
 # ## 7.10 Coupling qualification
 #
-# A complete test is not just (|r|ightarrow0). It should include
-# [
-# |Dmathbf u|,quad
-# |r_u|,quad
-# |r_p|,quad
-# Delta p	ext{ gauge invariance},
-# ]
+# A complete test is not just \(\|r\|\rightarrow0\). It should include
+# \[
+# \|D\mathbf u\|,\quad
+# \|r_u\|,\quad
+# \|r_p\|,\quad
+# \Delta p\text{ gauge invariance},
+# \]
 # plus conservation and canonical flow quantities. The coupling method must be tested on more than one initial condition because a single converged state can hide a checkerboard or null-space defect.
 #
 # ## 7.11 CFDX implementation

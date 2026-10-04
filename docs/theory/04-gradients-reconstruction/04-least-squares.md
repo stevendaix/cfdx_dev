@@ -2,40 +2,40 @@
 
 For cell `P` and neighbours `N_i`,
 
-[
-phi_{N_i}-phi_P
-approx
+\[
+\phi_{N_i}-\phi_P
+\approx
 
-ablaphi_Pcdot(mathbf x_{N_i}-mathbf x_P).
-]
+\nabla\phi_P\cdot(\mathbf x_{N_i}-\mathbf x_P).
+\]
 
 Define
 
-[
-Deltamathbf x_i=mathbf x_{N_i}-mathbf x_P,
-qquad
-Deltaphi_i=phi_{N_i}-phi_P.
-]
+\[
+\Delta\mathbf x_i=\mathbf x_{N_i}-\mathbf x_P,
+\qquad
+\Delta\phi_i=\phi_{N_i}-\phi_P.
+\]
 
 The gradient is obtained by minimising
 
-[
-J(mathbf g)=
-sum_i w_i
-(mathbf gcdotDeltamathbf x_i-Deltaphi_i)^2.
-]
+\[
+J(\mathbf g)=
+\sum_i w_i
+(\mathbf g\cdot\Delta\mathbf x_i-\Delta\phi_i)^2.
+\]
 
 With design matrix `A`, weights `W` and data `b`,
 
-[
-J(mathbf g)=|W^{1/2}(Amathbf g-mathbf b)|_2^2,
-]
+\[
+J(\mathbf g)=|W^{1/2}(A\mathbf g-\mathbf b)|_2^2,
+\]
 
 leading formally to
 
-[
-(A^TWA)mathbf g=A^TWmathbf b.
-]
+\[
+(A^TWA)\mathbf g=A^TW\mathbf b.
+\]
 
 The method is attractive for unstructured and polyhedral meshes because it uses local point geometry directly.
 

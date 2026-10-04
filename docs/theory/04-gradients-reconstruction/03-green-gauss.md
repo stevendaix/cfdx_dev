@@ -2,34 +2,34 @@
 
 The divergence theorem gives
 
-[
-int_V
-ablaphi,dV
+\[
+\int_V
+\nabla\phi\,dV
 =
-oint_{partial V}phi,mathbf n,dS.
-]
+\oint_{\partial V}\phi\,\mathbf n\,dS.
+\]
 
 Approximating the gradient as sufficiently smooth over a control volume gives
 
-[
+\[
 
-ablaphi_P
-approx
-rac{1}{V_P}
-oint_{partial V_P}phi,mathbf n,dS.
-]
+\nabla\phi_P
+\approx
+\frac{1}{V_P}
+\oint_{\partial V_P}\phi\,\mathbf n\,dS.
+\]
 
 For a polyhedral cell,
 
-[
+\[
 
-ablaphi_P
-approx
-rac{1}{V_P}
-sum_f phi_fmathbf S_f,
-qquad
-mathbf S_f=mathbf n_f A_f.
-]
+\nabla\phi_P
+\approx
+\frac{1}{V_P}
+\sum_f \phi_f\mathbf S_f,
+\qquad
+\mathbf S_f=\mathbf n_f A_f.
+\]
 
 The practical method depends critically on how `φ_f` is reconstructed.
 

@@ -4,12 +4,12 @@ Gradient computation and face-value reconstruction are related but distinct oper
 
 A typical linear reconstruction is
 
-[
-phi_f=
-phi_P+
+\[
+\phi_f=
+\phi_P+
 
-ablaphi_Pcdot(mathbf x_f-mathbf x_P).
-]
+\nabla\phi_P\cdot(\mathbf x_f-\mathbf x_P).
+\]
 
 The gradient may come from Green–Gauss, least squares, weighted least squares or another method.
 

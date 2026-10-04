@@ -3,16 +3,16 @@
 #
 # Fully developed pressure-driven channel flow gives an analytical velocity profile and flow rate:
 #
-# [
-# murac{d^2u}{dy^2}=rac{dp}{dx},
-# qquad
-# u(y)=rac{1}{2mu}rac{dp}{dx}y(y-H).
-# ]
+# \[
+# \mu\frac{d^2u}{dy^2}=\frac{dp}{dx},
+# \qquad
+# u(y)=\frac{1}{2\mu}\frac{dp}{dx}y(y-H).
+# \]
 #
 # The exact flow rate per unit span is
-# [
-# Q=-rac{H^3}{12mu}rac{dp}{dx}.
-# ]
+# \[
+# Q=-\frac{H^3}{12\mu}\frac{dp}{dx}.
+# \]
 #
 # ## Evidence
 #

@@ -7,23 +7,23 @@
 #
 # The symmetric four-digit thickness law is
 #
-# [
-# y_t=5tcleft[0.2969sqrt{x/c}-0.1260(x/c)-0.3516(x/c)^2+0.2843(x/c)^3-0.1015(x/c)^4ight],
-# ]
+# \[
+# y_t=5tc\left[0.2969\sqrt{x/c}-0.1260(x/c)-0.3516(x/c)^2+0.2843(x/c)^3-0.1015(x/c)^4\right],
+# \]
 #
-# with (t=0.12). The exact trailing-edge convention must be frozen because the coefficient affects the geometry.
+# with \(t=0.12\). The exact trailing-edge convention must be frozen because the coefficient affects the geometry.
 #
 # ## Aerodynamic coefficients
 #
-# [
-# C_L=rac{L}{	frac12ho U_infty^2c},
-# qquad
-# C_D=rac{D}{	frac12ho U_infty^2c},
-# qquad
-# C_M=rac{M}{	frac12ho U_infty^2c^2}.
-# ]
+# \[
+# C_L=\frac{L}{\tfrac12\rho U_\infty^2c},
+# \qquad
+# C_D=\frac{D}{\tfrac12\rho U_\infty^2c},
+# \qquad
+# C_M=\frac{M}{\tfrac12\rho U_\infty^2c^2}.
+# \]
 #
-# Also retain (C_p(x/c)), surface pressure and, where relevant, skin-friction/separation data.
+# Also retain \(C_p(x/c)\), surface pressure and, where relevant, skin-friction/separation data.
 #
 # ## Frozen reference parameters
 #

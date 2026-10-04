@@ -2,22 +2,22 @@
 
 For a sufficiently smooth scalar field `φ(x)` in `Ω ⊂ ℝᵈ`,
 
-[
+\[
 
-ablaphi =
-egin{bmatrix}
-partialphi/partial x_1\
-dots\
-partialphi/partial x_d
-end{bmatrix}.
-]
+\nabla\phi =
+\begin{bmatrix}
+\partial\phi/\partial x_1\\
+\ddots\\
+\partial\phi/\partial x_d
+\end{bmatrix}.
+\]
 
 For a direction `d`, the directional derivative is
 
-[
-D_{mathbf d}phi=
-ablaphicdotmathbf d.
-]
+\[
+D_{\mathbf d}\phi=
+\nabla\phi\cdot\mathbf d.
+\]
 
 Thus the gradient contains the complete first-order spatial variation of a scalar field.
 
@@ -25,13 +25,13 @@ Thus the gradient contains the complete first-order spatial variation of a scala
 
 Around `x_P`,
 
-[
-phi(mathbf x_P+Deltamathbf x)
+\[
+\phi(\mathbf x_P+\Delta\mathbf x)
 =
-phi_P+
-ablaphi_PcdotDeltamathbf x
-+mathcal O(|Deltamathbf x|^2).
-]
+\phi_P+
+\nabla\phi_P\cdot\Delta\mathbf x
++\mathcal{O}(|\Delta\mathbf x|^2).
+\]
 
 This relation is the basis of cell-centred reconstruction: neighbouring values provide information from which the unknown gradient can be inferred.
 

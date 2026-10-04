@@ -141,15 +141,15 @@ native interpolation families — **Direct-CF (Ruge–Stüben)** and
 **Smoothed Aggregation** — the qualification executable must inspect every
 constructed transfer level.
 
-For every level (l) with prolongation (P_l) and coarse operator
-(A_{l+1}), the campaign checks:
+For every level \(l\) with prolongation \(P_l\) and coarse operator
+\(A_{l+1}\), the campaign checks:
 
 1. **Real multilevel hierarchy:** more than two levels are constructed on the
    production qualification problem; no single-level/direct-coarse shortcut is
    accepted for this gate.
 2. **Galerkin identity:** the stored coarse matrix satisfies
-   (A_{l+1}=P_l^T A_l P_l) to a numerical reconstruction tolerance.
-3. **Constant preservation:** every prolongation row satisfies (P_l 1=1)
+   \(A_{l+1}=P_l^T A_l P_l\) to a numerical reconstruction tolerance.
+3. **Constant preservation:** every prolongation row satisfies \(P_l 1=1\)
    to machine-level tolerance for the elliptic null/near-nullspace contract.
 4. **Coarse-space coverage:** every coarse column has at least one fine
    representative; zero-column transfers fail.
@@ -163,15 +163,15 @@ For every level (l) with prolongation (P_l) and coarse operator
    Euclidean residual ratio remains diagnostic only; it is not an acceptance gate.
 8. **Full V-cycle energy:** the A-energy error ratio must be strictly below one,
    using
-   [
-   ho_E =
-   sqrt{\frac{e^T A e}{e_0^T A e_0}} < 1.
-   ]
+   \[
+   \rho_E =
+   \sqrt{\frac{e^T A e}{e_0^T A e_0}} < 1.
+   \]
    Euclidean residual reduction is retained as diagnostic evidence and is not
    used as a substitute for this energy criterion.
 
 The same gates are applied independently to Direct-CF and Smoothed Aggregation
-on the same (N=4096) 1-D Dirichlet Poisson hierarchy. Existing anisotropic
+on the same \(N=4096\) 1-D Dirichlet Poisson hierarchy. Existing anisotropic
 and FVM-diffusion tests remain complementary robustness gates.
 
 The Ruge–Stüben implementation also explicitly uses the complete strong

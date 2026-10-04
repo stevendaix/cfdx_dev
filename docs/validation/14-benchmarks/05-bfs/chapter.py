@@ -5,19 +5,18 @@
 #
 # ## Frozen definition
 #
-# Record the exact step height (h), channel dimensions, inlet profile, bulk/centreline velocity definition, viscosity, Reynolds-number convention, outlet condition and wall treatment.
+# Record the exact step height \(h\), channel dimensions, inlet profile, bulk/centreline velocity definition, viscosity, Reynolds-number convention, outlet condition and wall treatment.
 #
-# [
-# Re=rac{U_bh}{
-u}
-# ]
-# is only meaningful when (U_b) and (h) follow the declared reference convention.
+# \[
+# Re=\frac{U_bh}{\nu}
+# \]
+# is only meaningful when \(U_b\) and \(h\) follow the declared reference convention.
 #
 # ## Quantities
 #
 # Primary quantities may include:
 #
-# - reattachment length (x_r/h);
+# - reattachment length \(x_r/h\);
 # - wall-pressure distribution;
 # - wall-shear sign and separation/reattachment locations;
 # - velocity profiles at prescribed stations;
@@ -28,7 +27,7 @@ u}
 #
 # ## Numerical sensitivity
 #
-# The campaign must record step-region mesh resolution, streamwise expansion ratio, near-wall treatment, convection scheme, pressure-velocity coupling and inlet profile. Coarse meshes can produce apparently plausible recirculation while moving (x_r/h) materially.
+# The campaign must record step-region mesh resolution, streamwise expansion ratio, near-wall treatment, convection scheme, pressure-velocity coupling and inlet profile. Coarse meshes can produce apparently plausible recirculation while moving \(x_r/h\) materially.
 #
 # ## Qualification boundary
 #
