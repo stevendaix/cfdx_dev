@@ -534,7 +534,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # workflow. The 32/64/128 campaign stays behind CFDX_ENABLE_LONG_VALIDATION.
     add_test(NAME test_ghia_cavity_order COMMAND test_ghia_cavity --gate)
     set_tests_properties(test_ghia_cavity_order PROPERTIES
-        LABELS "phase13;validation"
+        LABELS "phase13;validation;campaign"
         TIMEOUT 900)
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_ghia_cavity COMMAND test_ghia_cavity)
