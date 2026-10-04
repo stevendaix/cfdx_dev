@@ -81,12 +81,12 @@ async def exercise() -> None:
             assert doc_search.structured_content["ok"] is True
             assert doc_search.structured_content["matches"][0]["path"] == "src/demo.cpp"
 
-            doc_read = await client.call_tool("documentation.read", {"file_path": "src/demo.cpp"})
+            doc_read = await client.call_tool("documentation.read", {"path": "src/demo.cpp"})
             assert doc_read.is_error is False
             assert doc_read.structured_content["ok"] is True
             assert "int demo()" in doc_read.structured_content["content"]
 
-            doc_escape = await client.call_tool("documentation.read", {"file_path": "../outside"})
+            doc_escape = await client.call_tool("documentation.read", {"path": "../outside"})
             assert doc_escape.is_error is False
             assert doc_escape.structured_content["ok"] is False
 
@@ -94,7 +94,7 @@ async def exercise() -> None:
             assert doc_search_escape.is_error is False
             assert doc_search_escape.structured_content["ok"] is False
 
-            doc_absolute = await client.call_tool("documentation.read", {"file_path": "/etc/passwd"})
+            doc_absolute = await client.call_tool("documentation.read", {"path": "/etc/passwd"})
             assert doc_absolute.is_error is False
             assert doc_absolute.structured_content["ok"] is False
 
