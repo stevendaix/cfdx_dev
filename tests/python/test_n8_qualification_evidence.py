@@ -92,3 +92,26 @@ def test_non_numeric_values_stay_strings_when_records_follow() -> None:
     assert MODULE.parse_key_value_records(line, "n8_schur_benchmark") == [
         {"factorization": "ilut", "cells": 10, "krylov": "FGMRES"}
     ]
+
+
+def test_evidence_coverage_accepts_complete_structured_records() -> None:
+    evidence = {
+        "physical_model_results": [{"model": "Couette", "solver_converged": True, "iterations": 10, "gates_failed": 0}],
+        "schur_quantitative": [{"case": 0, "cond_inf_Auu": 1.5, "exact_solve_backward_error": 1e-16, "machine_epsilon": 2.22e-16}],
+        "schur_production": [{"cells": 64, "unknowns": 256, "nnz": 1000, "schur_nnz": 200, "true_residual": 1e-12, "iterations": 4, "setup_us": 10, "solve_us": 20, "pressure_coarse_size": 8, "hierarchy_builds": 1, "numeric_updates": 0}],
+    }
+    coverage = MODULE.audit_evidence_coverage(evidence)
+    assert coverage["status"] == "COMPLETE"
+    assert coverage["records_checked"] == 3
+    assert coverage["records_complete"] == 3
+    assert coverage["missing_fields"] == {}
+
+
+def test_evidence_coverage_reports_missing_fields_without_reinterpreting_results() -> None:
+    evidence = {"physical_model_results": [{"model": "Couette", "solver_converged": True}], "schur_quantitative": [], "schur_production": []}
+    coverage = MODULE.audit_evidence_coverage(evidence)
+    assert coverage["status"] == "INCOMPLETE"
+    assert coverage["records_checked"] == 1
+    assert coverage["records_complete"] == 0
+    assert coverage["missing_fields"]["physical_model_results"] == [{"index": 0, "fields": ["iterations", "gates_failed"]}]
+    assert coverage["policy"] == "diagnostic_only"
