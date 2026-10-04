@@ -8,7 +8,6 @@ author = "CFDX contributors"
 release = "0.7"
 
 extensions = [
-    "myst_parser",
     "myst_nb",
     "sphinx.ext.mathjax",
     "sphinxcontrib.bibtex",
