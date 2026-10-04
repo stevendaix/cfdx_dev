@@ -47,6 +47,12 @@ public:
         return mode_ == SimplerSchurMode::SIMPLE ? "simple_schur" : "simplec_schur";
     }
 
+    // apply() returns C rhs_p - D Ad^{-1} G rhs_p = S~ rhs_p: the approximated
+    // Schur operator itself, not its inverse. This differs from the exact and
+    // LSC/BFBt approximations, which apply an inverse action, and is why
+    // SchurApproximation::action() is part of the contract.
+    SchurAction action() const noexcept override { return SchurAction::Operator; }
+
     bool setup(const BlockOperator& blocks) override {
         if (!blocks.is_valid()) return false;
         const SparseMatrix& auu = blocks.Auu();
