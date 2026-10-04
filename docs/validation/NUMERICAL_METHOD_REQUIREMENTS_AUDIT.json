@@ -131,14 +131,6 @@
     },
     {
       "package_id": "N2",
-      "requirement": "gradient limiting infrastructure",
-      "status": "partial",
-      "evidence": [
-        "src/cfdx/core/numerics/interpolation.h"
-      ]
-    },
-    {
-      "package_id": "N2",
       "requirement": "complete skew/non-orthogonal/high-aspect-ratio/polyhedral V&V",
       "status": "partial",
       "evidence": [
