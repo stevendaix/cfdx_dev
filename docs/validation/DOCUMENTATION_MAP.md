@@ -1,37 +1,39 @@
-# CFDX Validation Documentation Map
+# Validation Evidence Map
 
-This map defines **ownership and migration**, not numerical status.
+This file is retained as a migration map. It is **not** a numerical status matrix.
 
-## Canonical architecture
+## Canonical ownership
 
-| Area | Primary source | Human-facing layer | Machine/evidence layer |
-|---|---|---|---|
-| V&V methodology | `docs/vv/*/chapter.py` | `docs/vv/README.md` | executable checks / CI |
-| Validation campaigns | `docs/validation/**/chapter.py` | directory `README.md` | JSON + retained artifacts |
-| Benchmark cases | `14-benchmarks/*/chapter.py` | `14-benchmarks/README.md` | campaign artifacts |
-| Qualification | executable qualification campaign | `15-qualification/README.md` | `CFDX_QUALIFICATION_REGISTRY.json` |
-| Capability catalogue | — | concise generated/summary view | `NUMERICAL_METHOD_CAPABILITY_MATRIX.json` |
-| #461 maturity audit | executable evidence + registry | audit summary | `NUMERICAL_METHOD_MATURITY_AUDIT.json` |
-| Reporting | `scripts/validation_report.py` | `VALIDATION_REPORT.md` | `results.json` / CI artifacts |
+- V&V methodology: `docs/vv/*/chapter.py`.
+- Executed validation campaigns: `docs/validation/**/chapter.py`.
+- Benchmark campaigns: `docs/validation/14-benchmarks/*/chapter.py`.
+- Qualification status: `CFDX_QUALIFICATION_REGISTRY.json`, backed by retained executable evidence.
+- Capability/maturity catalogues: their JSON registries.
+- Report mechanics: `scripts/validation_report.py`.
 
-## Markdown policy
+## Migration decisions
 
-Markdown remains appropriate for navigation and directory READMEs, governance/policy that is not an executable scientific campaign, provenance/reference descriptions, and migration/history documents that have not yet been absorbed.
+| Existing material | Decision |
+|---|---|
+| Numbered directory README files | Keep as navigation/scope. |
+| Benchmark `chapter.py` files | Keep as canonical executable campaign sources. |
+| Qualification registry JSON | Keep as machine-readable status source. |
+| V&V governance Markdown | Keep only as governance/provenance while methodology remains in `docs/vv/`. |
+| Specialist qualification/campaign Markdown | Audit and migrate facts incrementally; do not delete evidence blindly. |
+| Hand-maintained quantitative matrices | Treat as migration/reporting views, not new sources of truth. |
+| Reference-code descriptions | Keep as provenance/reference material. |
+| Report-generation documentation | Keep as user/developer documentation for the reporting pipeline, not campaign evidence. |
 
-Markdown is **not** the preferred source for new quantitative campaign results, observed-order claims, benchmark measurements, or qualification status.
+## Conversion rule
 
-## Current migration
+When a specialist Markdown file contains executable mathematics, quantitative acceptance criteria, measured results, or reproducible data reduction, its **new canonical form** should be a Jupytext percent-format `chapter.py`. The Markdown may then become a short pointer or be removed after all inbound links and ownership are audited.
 
-Validation directories 00–11 currently contain short READMEs but no campaign `chapter.py`. That is acceptable until executable evidence exists. When a campaign is implemented, add a Jupytext `chapter.py` and keep the README as navigation.
+Do not fabricate a campaign notebook from prose alone. Migration creates executable source only when the underlying evidence or computation can actually be reproduced.
 
-The benchmark family already follows the desired model: each case has an executable `chapter.py`, while the family README provides scope and navigation.
+## Current priority
 
-## Legacy flat documents
-
-The flat specialist Markdown files under `docs/validation/` are **not deleted by this cleanup**. They are migration candidates. Before removal, classify their facts as V&V methodology (link to `docs/vv/`), executable campaign (migrate to `chapter.py`), machine-readable status (move into JSON), provenance/reference material (retain), or historical plan (retain explicitly until no longer useful).
-
-No duplicate is deleted solely because a newer file exists.
-
-## Status ownership
-
-PASS/FAIL/READY/QUALIFIED state must come from executable evidence and the machine-readable registry. Human-facing Markdown may explain the state and scope, but must not become a manually maintained competing status matrix.
+1. Benchmark campaigns — already Python-first; standardize their common evidence contract.
+2. Lower-level verification campaigns 00–11 — add executable chapters when corresponding tests/evidence exist.
+3. Qualification — make the executable campaign/report and JSON registry authoritative; keep prose as a view.
+4. Legacy specialist Markdown — classify, migrate or retire one document at a time.
+5. CI — publish the executable sources and machine-readable evidence, while excluding standalone support scripts from the Sphinx source set.
