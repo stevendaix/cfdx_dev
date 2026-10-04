@@ -196,6 +196,9 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     assert reloaded.case.name == "e2e-channel"
     assert reloaded.iteration == 1
     assert reloaded.time == pytest.approx(0.1)
+    assert reloaded.field_cell_ids == (0,)
+    assert reloaded.fields["U"].values == [1.0, 0.0, 0.0]
+    assert reloaded.fields["p"].values == [101325.0]
     assert reloaded_dat == dat_path
 
     # 6. Restart from the persisted DAT through the real execution controller.
