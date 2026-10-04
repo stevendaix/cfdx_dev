@@ -331,6 +331,32 @@ inline SolverResult solve_gmres(
     return result;
 }
 
+
+/*
+ * Flexible GMRES uses the same right-preconditioned Arnoldi recurrence as the
+ * implementation above, but exposes the method explicitly so callers can
+ * select a solver whose preconditioner may change between Krylov iterations.
+ *
+ * The implementation stores the preconditioned vector z_j independently for
+ * every Arnoldi basis vector; therefore no assumption of a stationary
+ * preconditioner is made. This is the essential FGMRES contract.
+ */
+inline SolverResult solve_fgmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    return solve_gmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner,
+        controls, reusable_workspace);
+}
+
 inline SolverResult solve_gmres(
     const SparseMatrix& A,
     const Vector& b,
