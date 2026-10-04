@@ -122,6 +122,16 @@ async def exercise() -> None:
                 assert annotations["readOnlyHint"] is True
                 assert annotations["openWorldHint"] is False
 
+            structure = await client.call_tool("repository.file_structure", {"path": "src"})
+            assert structure.is_error is False
+            assert structure.structured_content["ok"] is True
+            assert structure.structured_content["files"] == ["src/demo.cpp"]
+
+            status = await client.call_tool("repository.status", {})
+            assert status.is_error is False
+            assert status.structured_content["ok"] is True
+            assert any(line.startswith("## ") for line in status.structured_content["status"])
+
             stale = await client.call_tool("index.validate", {})
             assert stale.is_error is False
             assert stale.structured_content["freshness"] == "stale"
