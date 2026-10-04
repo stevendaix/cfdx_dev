@@ -730,6 +730,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
     add_cfdx_test(test_exact_schur tests/unit/test_exact_schur.cpp)
+    add_cfdx_test(test_n9_schur_oracle tests/unit/test_n9_schur_oracle.cpp)
     add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur_null_space tests/unit/test_lsc_bfbt_schur_null_space.cpp)
