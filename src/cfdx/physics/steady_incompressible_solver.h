@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -1457,19 +1458,60 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         solver_plan.krylov != KrylovModel::FGMRES)
         throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
     if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
+        solver_plan.preconditioner != PreconditionerModel::PCD &&
         solver_plan.preconditioner != PreconditionerModel::MGR)
         throw std::invalid_argument(
-            "coupled solver requires coupled_block_schur or mgr");
+            "coupled solver requires coupled_block_schur, pcd, or mgr");
 
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use
     // the N8 AMG-backed Schur implementation rather than the legacy scalar
     // preconditioner. MGR remains a separate N8-qualified path until its
     // coupled dispatch metadata is integrated.
+    //
+    // Selection reads the *resolved* plan, not the request, so an automatically
+    // resolved policy takes the same branch an explicit one would.
     const bool use_n8_block_schur =
         solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+    const bool use_pcd =
+        solver_plan.preconditioner == PreconditionerModel::PCD;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
-    if (use_n8_block_schur) {
+    if (use_pcd) {
+        auto pcd_ops = std::make_shared<PcdPressureOperators>(
+            assemble_pcd_pressure_operators(
+                mesh, geometry, U_old, rho, 1.0, velocity_bcs, pressure_bcs,
+                reference_cell, ConvectionScheme::UPWIND));
+
+        auto solve_kp = [pcd_ops, max_iterations, tolerance](
+            const Vector& rhs, Vector& x) {
+            const auto result = solve_gmres(
+                pcd_ops->laplacian, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, pcd_ops->laplacian.n_rows())),
+                max_iterations, tolerance);
+            return result.status == SolverStatus::CONVERGED;
+        };
+        auto solve_fp = [pcd_ops, max_iterations, tolerance](
+            const Vector& rhs, Vector& x) {
+            const auto result = solve_fgmres(
+                pcd_ops->convection_diffusion, rhs, x,
+                static_cast<int>(std::min<std::size_t>(128, pcd_ops->convection_diffusion.n_rows())),
+                max_iterations, tolerance);
+            return result.status == SolverStatus::CONVERGED;
+        };
+
+        auto pcd = std::make_unique<PcdSchurApproximation>(
+            pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
+            std::move(solve_kp), std::move(solve_fp));
+
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation = CoupledSchurApproximationModel::PCD;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        schur->set_pcd_schur(std::move(pcd));
+        coupled_preconditioner = std::move(schur);
+    } else if (use_n8_block_schur) {
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(
@@ -1492,6 +1534,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // the N8 AMG-backed Schur implementation rather than the legacy scalar
     // preconditioner. MGR remains a separate N8-qualified path until its
     // coupled dispatch metadata is integrated.
+=======
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
