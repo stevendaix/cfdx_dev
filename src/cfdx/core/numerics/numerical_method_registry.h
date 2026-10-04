@@ -101,6 +101,8 @@ inline std::vector<NumericalMethodContract> numerical_method_registry()
          "Block field split for coupled pressure-velocity systems","preconditioner.native_fieldsplit",{"block_exact_small_system","Schur_variants"}},
         {"preconditioner.coupled_block_schur","Coupled block Schur",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
          "Velocity block plus pressure Schur approximation","preconditioner.coupled_block_schur",{"block_exact_small_system","true_residual","Schur_variants"}},
+        {"preconditioner.pcd","PCD Schur",F::Preconditioner,S::Implemented,C::NotApplicable,false,false,false,0,0,
+         "Pressure-convection-diffusion Schur approximation","preconditioner.pcd",{"Couette","Poiseuille","Ghia","true_residual","exact_schur"}}
         {"pressure_velocity.simple","SIMPLE",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
          "segregated pressure correction","pressure_velocity.simple",{"Couette","Poiseuille","cavity","skew_mesh"}},
         {"pressure_velocity.simplec","SIMPLEC",F::PressureVelocity,S::Implemented,C::GloballyConservative,false,false,false,0,0,
