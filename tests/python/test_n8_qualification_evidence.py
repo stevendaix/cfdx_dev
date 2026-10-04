@@ -18,6 +18,8 @@ CTEST_OUTPUT = """    Start 21: test_n8_pressure_velocity_matrix
 21: Test command: /build/test_phase9_acceptance
 21: MODEL_CONFIG algorithm=COUPLED/BlockSchur/upwind/bounded nx=8 ny=16 bounded=true preconditioner=coupled_block_schur preconditioner_id=11 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
 21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true preconditioner=mgr preconditioner_id=13 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
+21: MODEL_PLAN algorithm=COUPLED/BlockSchur/upwind/bounded pressure_requested_krylov=auto pressure_requested_preconditioner=auto coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=coupled_block_schur pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
+21: MODEL_PLAN algorithm=COUPLED/MGR/upwind/bounded pressure_requested_krylov=auto pressure_requested_preconditioner=native_amg coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=mgr pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
 21: MODEL_RESULT COUPLED/BlockSchur/upwind/bounded solver_converged=true iterations=17 profile_L2=1.3586e-09 Umax=0.96875 |Uy|max=5.95589e-10 |Uz|max=0 gates_failed=0
 21: MODEL_FAILURES COUPLED/MGR/upwind/bounded continuity_linf Umax
 21: MODEL_RESULT Couette solver_converged=false iterations=3 gates_failed=2
@@ -217,9 +219,24 @@ LIFECYCLE_RECORD = {
 }
 
 
+RESOLVED_PLAN = {
+    "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+    "pressure_requested_krylov": "auto",
+    "pressure_requested_preconditioner": "auto",
+    "coupled_resolved": True,
+    "coupled_krylov": "fgmres",
+    "coupled_preconditioner": "coupled_block_schur",
+    "pressure_resolved": False,
+    "pressure_krylov": "none",
+    "pressure_preconditioner": "none",
+    "pressure_null_space": "none",
+}
+
+
 def complete_evidence() -> dict[str, object]:
     return {
         "run_configuration": [MODEL_CONFIGURATION],
+        "resolved_plans": [RESOLVED_PLAN],
         "physical_model_results": [
             {
                 "model": "Couette",
@@ -236,8 +253,8 @@ def complete_evidence() -> dict[str, object]:
 def test_evidence_coverage_accepts_complete_structured_records() -> None:
     coverage = MODULE.audit_evidence_coverage(complete_evidence())
     assert coverage["status"] == "COMPLETE"
-    assert coverage["records_checked"] == 6
-    assert coverage["records_complete"] == 6
+    assert coverage["records_checked"] == 7
+    assert coverage["records_complete"] == 7
     assert coverage["missing_fields"] == {}
     assert coverage["categories_without_records"] == []
     assert coverage["malformed_records"] == {}
@@ -261,8 +278,8 @@ def test_evidence_coverage_reports_missing_fields_without_reinterpreting_results
     ]
     coverage = MODULE.audit_evidence_coverage(evidence)
     assert coverage["status"] == "INCOMPLETE"
-    assert coverage["records_checked"] == 7
-    assert coverage["records_complete"] == 6
+    assert coverage["records_checked"] == 8
+    assert coverage["records_complete"] == 7
     assert coverage["missing_fields"]["physical_model_results"] == [
         {"index": 1, "fields": ["iterations", "gates_failed"]}
     ]
@@ -275,6 +292,7 @@ def test_evidence_coverage_flags_categories_without_records() -> None:
     assert coverage["records_checked"] == 0
     assert coverage["categories_without_records"] == [
         "run_configuration",
+        "resolved_plans",
         "physical_model_results",
         "schur_quantitative_oracle",
         "schur_quantitative_method",
@@ -292,6 +310,7 @@ def test_evidence_coverage_reports_a_truncated_campaign() -> None:
     assert coverage["records_checked"] == 2
     assert coverage["categories_without_records"] == [
         "run_configuration",
+        "resolved_plans",
         "physical_model_results",
         "schur_production",
         "schur_lifecycle",
@@ -311,6 +330,7 @@ def test_evidence_coverage_tolerates_a_non_list_evidence_section() -> None:
     assert coverage["status"] == "INCOMPLETE"
     assert coverage["categories_without_records"] == [
         "run_configuration",
+        "resolved_plans",
         "physical_model_results",
         "schur_quantitative_oracle",
         "schur_quantitative_method",
@@ -323,3 +343,130 @@ def test_evidence_coverage_is_complete_on_a_captured_campaign() -> None:
     evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
     assert MODULE.audit_evidence_coverage(evidence)["status"] == "COMPLETE"
 
+
+
+def test_resolved_plans_are_captured_with_both_requests() -> None:
+    records = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_PLAN")
+    assert records[0] == RESOLVED_PLAN
+    # The pressure sub-problem request is announced separately from the coupled
+    # one, so an explicit pressure request can be compared with its resolution.
+    assert records[1]["pressure_requested_preconditioner"] == "native_amg"
+    assert records[1]["coupled_preconditioner"] == "mgr"
+    assert records[1]["pressure_resolved"] is False
+    assert records[1]["pressure_preconditioner"] == "none"
+
+
+def test_linear_plan_accepts_explicit_requests_that_were_honored() -> None:
+    evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
+    plan = MODULE.audit_linear_plan(evidence)
+    assert plan["status"] == "COMPLETE"
+    assert plan["models_compared"] == 2
+    assert plan["substitutions"] == []
+    assert plan["models_without_plan"] == []
+    assert plan["automatic_resolutions"] == []
+    assert plan["policy"] == "explicit_request_must_be_honored"
+
+
+def test_linear_plan_records_an_automatic_resolution_instead_of_hiding_it() -> None:
+    # The segmented algorithms request `auto` for the pressure sub-problem and
+    # the dispatcher resolves it to native AMG. That resolution is legitimate
+    # and has to be reported rather than inferred from the request.
+    segmented = {
+        "run_configuration": [
+            {**MODEL_CONFIGURATION, "algorithm": "SIMPLE/upwind/bounded",
+             "preconditioner": "auto"},
+        ],
+        "resolved_plans": [
+            {
+                **RESOLVED_PLAN,
+                "algorithm": "SIMPLE/upwind/bounded",
+                "coupled_resolved": False,
+                "coupled_preconditioner": "none",
+                "pressure_resolved": True,
+                "pressure_krylov": "cg",
+                "pressure_preconditioner": "native_amg",
+            }
+        ],
+    }
+    plan = MODULE.audit_linear_plan(segmented)
+    assert plan["status"] == "COMPLETE"
+    assert plan["models_compared"] == 1
+    assert plan["substitutions"] == []
+    assert plan["automatic_resolutions"] == [
+        {
+            "algorithm": "SIMPLE/upwind/bounded",
+            "subproblem": "pressure",
+            "requested": "auto",
+            "resolved": "native_amg",
+        }
+    ]
+
+
+def test_linear_plan_flags_an_explicit_request_that_was_substituted() -> None:
+    evidence = {
+        "run_configuration": [
+            {**MODEL_CONFIGURATION, "preconditioner": "mgr"},
+        ],
+        "resolved_plans": [RESOLVED_PLAN],
+    }
+    plan = MODULE.audit_linear_plan(evidence)
+    assert plan["status"] == "VIOLATION"
+    assert plan["substitutions"] == [
+        {
+            "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+            "subproblem": "coupled",
+            "requested": "mgr",
+            "resolved": "coupled_block_schur",
+        }
+    ]
+
+
+def test_linear_plan_flags_a_configured_model_without_a_resolved_plan() -> None:
+    plan = MODULE.audit_linear_plan(
+        {"run_configuration": [MODEL_CONFIGURATION], "resolved_plans": []}
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["models_without_plan"] == ["COUPLED/BlockSchur/upwind/bounded"]
+    assert plan["substitutions"] == []
+
+
+def test_linear_plan_flags_a_resolution_without_an_announced_request() -> None:
+    unresolved_request = {
+        key: value
+        for key, value in RESOLVED_PLAN.items()
+        if key != "pressure_requested_preconditioner"
+    }
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [MODEL_CONFIGURATION],
+            "resolved_plans": [
+                {
+                    **unresolved_request,
+                    "pressure_resolved": True,
+                    "pressure_krylov": "cg",
+                    "pressure_preconditioner": "native_amg",
+                }
+            ],
+        }
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["substitutions"] == [
+        {
+            "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+            "subproblem": "pressure",
+            "requested": "undeclared",
+            "resolved": "native_amg",
+        }
+    ]
+
+
+def test_linear_plan_is_complete_when_an_explicit_request_is_honored() -> None:
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [MODEL_CONFIGURATION],
+            "resolved_plans": [RESOLVED_PLAN],
+        }
+    )
+    assert plan["status"] == "COMPLETE"
+    assert plan["models_compared"] == 1
+    assert plan["automatic_resolutions"] == []

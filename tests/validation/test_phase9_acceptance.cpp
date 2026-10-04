@@ -131,6 +131,10 @@ struct RunResult {
     Field<double, Location::CELL> p;
     IncompressibleSolveResult solve;
     FvGeometry geometry;
+    // The pressure sub-problem has its own request, separate from the coupled
+    // one, so both sides have to be announced to compare them.
+    KrylovModel pressure_requested_krylov = KrylovModel::Auto;
+    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto;
 };
 
 RunResult run_couette_channel(
@@ -257,7 +261,9 @@ RunResult run_couette_channel(
         };
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
-    return {std::move(U), std::move(p), solve, build_fv_geometry(mesh)};
+    return {std::move(U), std::move(p), solve, build_fv_geometry(mesh),
+            c.pressure_linear_solver.krylov,
+            c.pressure_linear_solver.preconditioner};
 }
 
 struct ProfileError {
@@ -459,6 +465,43 @@ int main(int argc, char** argv)
                     test.coupled_preconditioner);
 
                 print_history(test.name, result);
+
+                // The dispatcher resolves a requested method into another one
+                // when the request is automatic. Announce what actually ran so
+                // a report can compare request and resolution instead of
+                // trusting the request alone.
+                const auto& solve_result = result.solve;
+                // An unresolved sub-problem reports "none" rather than the
+                // default-constructed plan, so the record cannot be misread as
+                // a resolved GMRES/Jacobi choice.
+                const auto resolved_name = [](bool resolved, auto name) {
+                    return resolved ? std::string(name) : std::string("none");
+                };
+                std::cout << "MODEL_PLAN algorithm=" << test.name
+                          << " pressure_requested_krylov="
+                          << to_string(result.pressure_requested_krylov)
+                          << " pressure_requested_preconditioner="
+                          << to_string(result.pressure_requested_preconditioner)
+                          << " coupled_resolved="
+                          << (solve_result.coupled_linear_plan_resolved ? "true" : "false")
+                          << " coupled_krylov="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.krylov))
+                          << " coupled_preconditioner="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.preconditioner))
+                          << " pressure_resolved="
+                          << (solve_result.pressure_linear_plan_resolved ? "true" : "false")
+                          << " pressure_krylov="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.krylov))
+                          << " pressure_preconditioner="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.preconditioner))
+                          << " pressure_null_space="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.null_space))
+                          << "\n";
 
                 const auto error = profile_error(result, 8, 16);
                 double max_abs_uy = 0.0;

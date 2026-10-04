@@ -167,6 +167,7 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
     evidence: dict[str, object] = {
         "run_configuration": [],
         "model_summary": [],
+        "resolved_plans": [],
         "physical_model_results": [],
         "physical_model_failures": [],
         "schur_quantitative": [],
@@ -180,6 +181,9 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
         )
         evidence["model_summary"].extend(
             parse_key_value_records(output, "MODEL_SUMMARY")
+        )
+        evidence["resolved_plans"].extend(
+            parse_key_value_records(output, "MODEL_PLAN")
         )
         evidence["physical_model_results"].extend(
             parse_key_value_records(output, "MODEL_RESULT")
@@ -221,6 +225,21 @@ _EVIDENCE_REQUIREMENTS: tuple[tuple[str, str, str | None, bool | None, tuple[str
             "alpha_p",
             "pressure_correctors",
             "fractional_steps",
+        ),
+    ),
+    (
+        "resolved_plans",
+        "resolved_plans",
+        None,
+        None,
+        (
+            "algorithm",
+            "coupled_resolved",
+            "coupled_krylov",
+            "coupled_preconditioner",
+            "pressure_resolved",
+            "pressure_krylov",
+            "pressure_preconditioner",
         ),
     ),
     (
@@ -430,6 +449,105 @@ def audit_model_resolution(evidence: dict[str, object]) -> dict[str, object]:
     }
 
 
+_SUBPROBLEMS = (
+    # (sub-problem, requested field, resolved flag field, resolved field)
+    ("coupled", None, "coupled_resolved", "coupled_preconditioner"),
+    (
+        "pressure",
+        "pressure_requested_preconditioner",
+        "pressure_resolved",
+        "pressure_preconditioner",
+    ),
+)
+
+
+def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
+    """Compare the requested linear methods with the ones actually dispatched.
+
+    An automatic request may legitimately resolve to another method, and that
+    resolution is now recorded instead of being invisible. An explicit request
+    must be the method that runs: the dispatcher rejects an incompatible
+    explicit request, so a mismatch here means the report and the run disagree
+    and must not be read as a pass.
+    """
+
+    def records(source: str) -> list[object]:
+        value = evidence.get(source, [])
+        return value if isinstance(value, list) else []
+
+    coupled_request: dict[str, str] = {}
+    for record in records("run_configuration"):
+        if isinstance(record, dict) and isinstance(record.get("algorithm"), str):
+            coupled_request.setdefault(
+                str(record["algorithm"]), str(record.get("preconditioner", ""))
+            )
+
+    resolved_plans: dict[str, dict[str, object]] = {}
+    for record in records("resolved_plans"):
+        if isinstance(record, dict) and isinstance(record.get("algorithm"), str):
+            resolved_plans[str(record["algorithm"])] = record
+
+    automatic_resolutions: list[dict[str, str]] = []
+    substitutions: list[dict[str, str]] = []
+    models_without_plan: list[str] = []
+    models_compared = 0
+
+    for algorithm, requested_coupled in coupled_request.items():
+        plan = resolved_plans.get(algorithm)
+        if plan is None:
+            models_without_plan.append(algorithm)
+            continue
+        for subproblem, request_field, resolved_flag, resolved_field in _SUBPROBLEMS:
+            if plan.get(resolved_flag) is not True:
+                continue
+            resolved = str(plan.get(resolved_field, ""))
+            asked = (
+                requested_coupled
+                if request_field is None
+                else plan.get(request_field)
+            )
+            if not isinstance(asked, str) or asked == "":
+                # A resolution that cannot be attributed to an announced request
+                # is not evidence of anything.
+                substitutions.append(
+                    {
+                        "algorithm": algorithm,
+                        "subproblem": subproblem,
+                        "requested": "undeclared",
+                        "resolved": resolved,
+                    }
+                )
+                continue
+            models_compared += 1
+            if asked == "auto":
+                automatic_resolutions.append(
+                    {
+                        "algorithm": algorithm,
+                        "subproblem": subproblem,
+                        "requested": asked,
+                        "resolved": resolved,
+                    }
+                )
+            elif asked != resolved:
+                substitutions.append(
+                    {
+                        "algorithm": algorithm,
+                        "subproblem": subproblem,
+                        "requested": asked,
+                        "resolved": resolved,
+                    }
+                )
+
+    return {
+        "status": "VIOLATION" if substitutions or models_without_plan else "COMPLETE",
+        "models_compared": models_compared,
+        "automatic_resolutions": automatic_resolutions,
+        "substitutions": substitutions,
+        "models_without_plan": models_without_plan,
+        "policy": "explicit_request_must_be_honored",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
@@ -482,9 +600,18 @@ def main() -> int:
     evidence = extract_n8_evidence(results)
     evidence_coverage = audit_evidence_coverage(evidence)
     model_resolution = audit_model_resolution(evidence)
+    linear_plan = audit_linear_plan(evidence)
+    # The one enforced gate of this report: an explicitly requested linear
+    # method must be the method that ran. It is a contract, not a tolerance, so
+    # it can fail the campaign. Everything else here stays diagnostic.
+    gate_violations = linear_plan["substitutions"] or linear_plan["models_without_plan"]
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
-        "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
+        "status": (
+            "FAIL"
+            if failed or completed != len(REQUIRED_TESTS) or gate_violations
+            else "PASS"
+        ),
         "required_tests": list(REQUIRED_TESTS),
         "completed_tests": completed,
         "failed_tests": failed,
@@ -492,6 +619,7 @@ def main() -> int:
         "evidence": evidence,
         "evidence_coverage": evidence_coverage,
         "model_resolution": model_resolution,
+        "linear_plan": linear_plan,
         "coverage": {
             "pressure_velocity": [
                 "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",
@@ -515,6 +643,9 @@ def main() -> int:
             "silent_fallbacks": False,
             "independent_true_residuals": "provided by existing tests where applicable",
             "solver_vs_discretisation_separation": True,
+            "enforced_gates": [
+                "every explicitly requested linear method is the method that ran",
+            ],
         },
     }
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
