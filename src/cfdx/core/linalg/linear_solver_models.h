@@ -70,7 +70,7 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 14>& preconditioner_model_catalog() {
+inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog() {
     static const std::array<SolverModelDescriptor, 14> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
