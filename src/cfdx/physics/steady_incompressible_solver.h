@@ -160,6 +160,10 @@ struct IncompressibleSolverControls {
     DiagnosticsControls diagnostics;
     NonlinearRetryControls nonlinear_retry;
     std::vector<IncompressiblePointProbe> probes;
+    // Optional quantities of interest gated by the convergence monitor. Each
+    // gate must name a configured probe; a gate that names nothing is a
+    // misconfiguration and is rejected rather than silently never satisfied.
+    std::vector<cfdx::core::QoIGate> qoi_gates;
     AdaptiveRelaxationControls adaptive_relaxation;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
@@ -314,6 +318,21 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    if (!c.qoi_gates.empty()) {
+        validate_convergence_monitor_controls(cfdx::core::ConvergenceMonitorControls{
+            cfdx::core::ConvergenceGate{}, 1.0, 1, 1000, 1, 1.0, 1, 10.0, c.qoi_gates});
+        for (const auto& gate : c.qoi_gates) {
+            const bool declared =
+                std::any_of(c.probes.begin(), c.probes.end(),
+                            [&](const IncompressiblePointProbe& probe) {
+                                return probe.name == gate.name;
+                            });
+            if (!declared)
+                throw std::invalid_argument(
+                    "convergence QoI gate '" + gate.name +
+                    "' does not name a configured probe");
+        }
+    }
     if (c.transient.enabled) {
         if (!(c.transient.dt > 0.0) || !std::isfinite(c.transient.dt))
             throw std::invalid_argument("transient dual-time dt must be finite and positive");
@@ -1494,6 +1513,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     monitor_controls.stagnation_relative_improvement = 1e-3;
     monitor_controls.divergence_window = 3;
     monitor_controls.divergence_growth_factor = 10.0;
+    monitor_controls.qoi_gates = controls.qoi_gates;
     cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
 
     bool has_fixed_pressure_boundary = false;
@@ -2486,11 +2506,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool per_criterion_gates_ok =
             momentum_residual_gate && momentum_equation_residual_gate &&
             pressure_residual_gate && velocity_change_gate && pressure_change_gate;
+        std::map<std::string, double> qoi_values;
+        if (!controls.qoi_gates.empty()) {
+            for (const auto& gate : controls.qoi_gates)
+                qoi_values[gate.name] =
+                    sample_incompressible_probe(
+                        *std::find_if(
+                            controls.probes.begin(), controls.probes.end(),
+                            [&](const IncompressiblePointProbe& probe) {
+                                return probe.name == gate.name;
+                            }),
+                        mesh, geometry, U, p);
+        }
         const auto convergence_report = convergence_monitor.update({
             iter,
             nonlinear_metric,
             h.continuity_normalized,
-            {}});
+            std::move(qoi_values)});
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
