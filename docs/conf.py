@@ -30,6 +30,8 @@ include_patterns = [
     "vv/README.md",
     "vv/*/chapter.py",
     "validation/README.md",
+    "validation/03-conservation/chapter.py",
+    "validation/04-boundedness/chapter.py",
     "validation/14-benchmarks/README.md",
     "validation/14-benchmarks/*/README.md",
     "validation/14-benchmarks/*/chapter.py",
