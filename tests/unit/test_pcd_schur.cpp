@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <tuple>
 #include <vector>
+#include <string>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -135,27 +136,22 @@ int main() {
         EXPECT_TRUE(!pcd.setup(blocks));
     });
 
-    run_case("pcd_rejects_graph_change", [&] {
+    run_case("pcd_rejects_pressure_graph_change", [&] {
         PcdSchurApproximation pcd(Mp, Kp, Fp, solve_K, solve_F);
         EXPECT_TRUE(pcd.setup(blocks));
         const auto changed_K = make_sparse(2, 2, {
             {0, 0, 3.0}, {0, 1, -0.4}, {1, 1, 2.0}
         });
-        const BlockOperator same_blocks(Auu, G, D, C);
-        const PcdSchurApproximation changed(
-            Mp, changed_K, Fp, solve_K, solve_F);
-        EXPECT_TRUE(!changed.setup(same_blocks));
-        EXPECT_TRUE(!pcd.update_values(same_blocks));
+        EXPECT_TRUE(!pcd.update_pressure_values(blocks, Mp, changed_K, Fp));
     });
 
-    run_case("pcd_accepts_value_update_same_graph", [&] {
+    run_case("pcd_accepts_pressure_value_update_same_graph", [&] {
         PcdSchurApproximation pcd(Mp, Kp, Fp, solve_K, solve_F);
         EXPECT_TRUE(pcd.setup(blocks));
-        auto updated_F = make_sparse(2, 2, {
+        const auto updated_F = make_sparse(2, 2, {
             {0, 0, 1.9}, {0, 1, 0.3}, {1, 0, -0.15}, {1, 1, 2.2}
         });
-        PcdSchurApproximation updated(Mp, Kp, updated_F, solve_K, solve_F);
-        EXPECT_TRUE(updated.setup(same_blocks));
+        EXPECT_TRUE(pcd.update_pressure_values(blocks, Mp, Kp, updated_F));
     });
 
     run_case("pcd_requires_pressure_nullspace_compatibility", [&] {
