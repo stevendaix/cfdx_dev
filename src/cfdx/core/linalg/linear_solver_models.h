@@ -84,7 +84,7 @@ inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog
         {"ras", ModelAvailability::Planned, false, true},
         {"native_fieldsplit", ModelAvailability::Available, false, false},
         {"coupled_block_schur", ModelAvailability::Available, false, false},
-        {"pcd", ModelAvailability::Available, false, false},
+        {"pcd", ModelAvailability::Planned, false, false},
         {"lsc", ModelAvailability::Planned, false, false},
         {"mgr", ModelAvailability::Available, false, false}
     }};
