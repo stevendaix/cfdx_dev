@@ -16,10 +16,6 @@ extensions = [
 
 templates_path = []
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
-source_suffix = {
-    ".rst": "restructuredtext",
-    ".py": "jupyter_notebook",
-}
 
 myst_enable_extensions = [
     "amsmath",
