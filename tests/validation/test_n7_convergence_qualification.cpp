@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
+#include <cstdlib>
 #include <cstdio>
 #include <cstddef>
 #include <map>
@@ -96,20 +98,33 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
     return mesh;
 }
 
+struct AdaptiveOutcome {
+    bool converged = false;
+    ConvergenceStatus status = ConvergenceStatus::MAX_ITERATIONS;
+    std::string reason;
+    std::size_t iterations = 0;
+    double metric = 0.0;
+    double momentum = 0.0;
+    double continuity = 0.0;
+    double alpha_u = 0.0;
+    double alpha_p = 0.0;
+    std::vector<IncompressibleIteration> history;
+};
+
 struct Solution {
     Field<double,Location::CELL> U_direct;
     Field<double,Location::CELL> U_continuation;
     Field<double,Location::CELL> U_adaptive;
     IncompressibleSolveResult direct;
-    IncompressibleSolveResult adaptive;
+    AdaptiveOutcome adaptive;
     ContinuationSolveResult continuation;
-    std::vector<IncompressibleIteration> adaptive_history;
     FvGeometry geometry;
+    std::size_t n = 0;
+    double reynolds = 0.0;
 };
 
-Solution solve_n7_case()
+Solution solve_n7_case(std::size_t n, double nu)
 {
-    constexpr std::size_t n = 32;
     Mesh mesh = make_cavity_mesh(n,n);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
@@ -131,7 +146,7 @@ Solution solve_n7_case()
     IncompressibleSolverControls controls;
     controls.algorithm=PressureVelocityAlgorithm::SIMPLE;
     controls.density=1.0;
-    controls.kinematic_viscosity=0.01; // Re=100, U=1, L=1.
+    controls.kinematic_viscosity=nu; // U=1, L=1, so Re=1/nu.
     controls.linear_max_iterations=10000;
     // Keep the linear solve tighter than the nonlinear qualification gate:
     // a 1e-8 inner tolerance is too close to the 1e-8 nonlinear target and can
@@ -170,30 +185,27 @@ Solution solve_n7_case()
     Ua.fill(0.0); pa.fill(0.0);
     const auto adaptive_res =
         solve_steady_incompressible(mesh, Ua, pa, ubc, pbc, adaptive_controls);
-    if (!adaptive_res.converged ||
-        adaptive_res.convergence_status != cfdx::core::ConvergenceStatus::CONVERGED ||
-        adaptive_res.history.empty()) {
-        std::ostringstream message;
-        message << "N7 adaptive relaxation did not reach the production convergence contract"
-                << " status=" << cfdx::core::to_string(adaptive_res.convergence_status)
-                << " reason=" << adaptive_res.convergence_reason
-                << " iterations=" << adaptive_res.iterations;
-        if (!adaptive_res.history.empty()) {
-            const auto& h = adaptive_res.history.back();
-            message << " metric=" << h.nonlinear_convergence_metric
-                    << " momentum=" << h.momentum_equation_residual
-                    << " momentum_rel=" << h.momentum_equation_residual_relative
-                    << " continuity=" << h.continuity_normalized
-                    << " alpha_u=" << h.effective_alpha_u
-                    << " alpha_p=" << h.effective_alpha_p;
-        }
-        throw std::runtime_error(message.str());
+    AdaptiveOutcome adaptive_outcome;
+    adaptive_outcome.converged =
+        adaptive_res.converged &&
+        adaptive_res.convergence_status == cfdx::core::ConvergenceStatus::CONVERGED &&
+        !adaptive_res.history.empty();
+    adaptive_outcome.status = adaptive_res.convergence_status;
+    adaptive_outcome.reason = adaptive_res.convergence_reason;
+    adaptive_outcome.iterations = adaptive_res.iterations;
+    adaptive_outcome.history = adaptive_res.history;
+    if (!adaptive_res.history.empty()) {
+        const auto& h = adaptive_res.history.back();
+        adaptive_outcome.metric = h.nonlinear_convergence_metric;
+        adaptive_outcome.momentum = h.momentum_equation_residual;
+        adaptive_outcome.continuity = h.continuity_linf;
+        adaptive_outcome.alpha_u = h.effective_alpha_u;
+        adaptive_outcome.alpha_p = h.effective_alpha_p;
     }
-    const auto& adaptive_final = adaptive_res.history.back();
-    if (adaptive_final.continuity_linf > controls.convergence.continuity_tolerance ||
-        adaptive_final.momentum_equation_residual > controls.convergence.relative_tolerance)
-        throw std::runtime_error(
-            "N7 adaptive relaxation final physical convergence gates failed");
+    if (adaptive_outcome.converged &&
+        (adaptive_outcome.continuity > controls.convergence.continuity_tolerance ||
+         adaptive_outcome.momentum > controls.convergence.relative_tolerance))
+        adaptive_outcome.converged = false;
     controls.adaptive_relaxation.enabled=false;
 
     Field<double,Location::CELL> U_cont(mesh.n_cells(),"U","m/s",3);
@@ -242,8 +254,17 @@ Solution solve_n7_case()
         throw std::runtime_error(message.str());
     }
 
-    return {std::move(U),std::move(U_cont),std::move(Ua),direct,adaptive_res,
-            std::move(continuation_result),adaptive_res.history,build_fv_geometry(mesh)};
+    Solution solution;
+    solution.U_direct = std::move(U);
+    solution.U_continuation = std::move(U_cont);
+    solution.U_adaptive = std::move(Ua);
+    solution.direct = direct;
+    solution.adaptive = std::move(adaptive_outcome);
+    solution.continuation = std::move(continuation_result);
+    solution.geometry = build_fv_geometry(mesh);
+    solution.n = n;
+    solution.reynolds = 1.0 / nu;
+    return solution;
 }
 
 double kinetic_energy(const Field<double,Location::CELL>& U,const FvGeometry& geometry)
@@ -257,9 +278,8 @@ double kinetic_energy(const Field<double,Location::CELL>& U,const FvGeometry& ge
     return energy;
 }
 
-double centre_component(const Field<double,Location::CELL>& U,bool x_component)
+double centre_component(const Field<double,Location::CELL>& U,std::size_t n,bool x_component)
 {
-    constexpr std::size_t n=32;
     const std::size_t i0=n/2-1;
     const std::size_t i1=n/2;
     const std::size_t j0=n/2-1;
@@ -271,84 +291,246 @@ double centre_component(const Field<double,Location::CELL>& U,bool x_component)
 
 } // namespace
 
-int main()
+// The reference corridor that gates merges: production convergence and the
+// production adaptive reproduction bound apply here.
+constexpr std::size_t kGateResolution = 32;
+constexpr double kGateReynolds = 100.0;
+constexpr double kContinuationReproductionRelativeTolerance = 1e-5;
+constexpr double kAdaptiveGateReproductionRelativeTolerance = 1e-4;
+constexpr double kAdaptiveBreadthReproductionRelativeTolerance = 1e-2;
+
+// Deliberately asserted current limitation. If a solver change repairs it, the
+// assertion fails and the audit must be updated with the new measured behaviour.
+struct KnownAdaptiveStall { std::size_t n; double reynolds; };
+constexpr KnownAdaptiveStall kDocumentedAdaptiveStalls[] = {{16, 400.0}};
+
+bool is_documented_adaptive_stall(std::size_t n, double reynolds)
 {
+    for (const auto& stall : kDocumentedAdaptiveStalls)
+        if (stall.n == n && std::abs(stall.reynolds - reynolds) < 0.5)
+            return true;
+    return false;
+}
+
+struct CaseSummary {
+    double direct_u = 0.0;
+    double direct_v = 0.0;
+    double continuation_deviation = 0.0;
+    double adaptive_deviation = 0.0;
+    double energy_deviation = 0.0;
+    std::size_t stages = 0;
+    std::size_t adaptive_changes = 0;
+    bool adaptive_converged = false;
+    bool adaptive_stall_documented = false;
+};
+
+CaseSummary qualify_case(const Solution& result, bool apply_ghia_reference)
+{
+    std::ostringstream label;
+    label << " (n=" << result.n << " Re=" << result.reynolds << ")";
+    const bool is_gate =
+        result.n == kGateResolution && std::abs(result.reynolds - kGateReynolds) < 0.5;
+
+    const auto& final = result.continuation.final_solver_result;
+    const auto& history = final.history;
+    if (history.empty())
+        throw std::runtime_error("N7 continuation produced no iteration history" + label.str());
+
+    const double continuity = history.back().continuity_linf;
+    const double momentum = history.back().momentum_equation_residual;
+    if (continuity > 1e-7 || momentum > 1e-7)
+        throw std::runtime_error("N7 final physical convergence gates failed" + label.str());
+
+    if (result.continuation.final_parameter != 1.0 ||
+        result.continuation.stages.size() < 2 ||
+        result.continuation.total_attempts < result.continuation.stages.size())
+        throw std::runtime_error("N7 continuation stage contract failed" + label.str());
+
+    for (const auto& stage : result.continuation.stages) {
+        if (!stage.converged ||
+            stage.status != cfdx::core::ConvergenceStatus::CONVERGED ||
+            !std::isfinite(stage.parameter) ||
+            !std::isfinite(stage.step))
+            throw std::runtime_error("N7 continuation stage is not qualified" + label.str());
+    }
+
+    const double direct_energy = kinetic_energy(result.U_direct,result.geometry);
+    const double continuation_energy = kinetic_energy(result.U_continuation,result.geometry);
+    if (!std::isfinite(direct_energy) || !std::isfinite(continuation_energy))
+        throw std::runtime_error("N7 independent QoI is non-finite" + label.str());
+
+    CaseSummary summary;
+    summary.stages = result.continuation.stages.size();
+
+    const double direct_u = centre_component(result.U_direct,result.n,true);
+    const double direct_v = centre_component(result.U_direct,result.n,false);
+    const double continuation_u = centre_component(result.U_continuation,result.n,true);
+    const double continuation_v = centre_component(result.U_continuation,result.n,false);
+    const double adaptive_u = centre_component(result.U_adaptive,result.n,true);
+    const double adaptive_v = centre_component(result.U_adaptive,result.n,false);
+
+    summary.direct_u = direct_u;
+    summary.direct_v = direct_v;
+    const double velocity_scale = std::max({std::abs(direct_u), std::abs(direct_v), 1e-3});
+
+    const double continuation_tolerance =
+        kContinuationReproductionRelativeTolerance * velocity_scale;
+    const double continuation_deviation =
+        std::max(std::abs(continuation_u - direct_u), std::abs(continuation_v - direct_v));
+    summary.continuation_deviation = continuation_deviation;
+    if (continuation_deviation > continuation_tolerance) {
+        std::ostringstream message;
+        message << "N7 continuation changed the direct-solve QoI" << label.str()
+                << " continuation_dev=" << continuation_deviation
+                << " tolerance=" << continuation_tolerance;
+        throw std::runtime_error(message.str());
+    }
+
+    if (apply_ghia_reference) {
+        constexpr double ghia_u = -0.20581;
+        constexpr double ghia_v = 0.05454;
+        constexpr double kGhiaGrossErrorBound = 0.15;
+        const double ghia_u_error = std::abs(continuation_u - ghia_u);
+        const double ghia_v_error = std::abs(continuation_v - ghia_v);
+        std::printf(
+            "N7 Ghia centre-velocity deviation: u=%.6e v=%.6e (gross-error bound=%.3e)\n",
+            ghia_u_error, ghia_v_error, kGhiaGrossErrorBound);
+        if (ghia_u_error > kGhiaGrossErrorBound ||
+            ghia_v_error > kGhiaGrossErrorBound)
+            throw std::runtime_error("N7 Ghia centre-velocity deviates beyond the gross-error bound");
+    }
+
+    summary.adaptive_converged = result.adaptive.converged;
+    const bool stall_documented = is_documented_adaptive_stall(result.n, result.reynolds);
+    summary.adaptive_stall_documented = stall_documented;
+
+    if (stall_documented) {
+        if (result.adaptive.converged)
+            throw std::runtime_error(
+                "N7 adaptive stall corridor now converges; update the documented audit limit");
+        if (!std::isfinite(result.adaptive.metric) ||
+            result.adaptive.metric <= 1e-8 ||
+            result.adaptive.alpha_u < 0.6 || result.adaptive.alpha_u > 0.8 ||
+            result.adaptive.alpha_p < 0.25 || result.adaptive.alpha_p > 0.35) {
+            std::ostringstream message;
+            message << "N7 adaptive stall signature changed" << label.str()
+                    << " metric=" << result.adaptive.metric
+                    << " alpha_u=" << result.adaptive.alpha_u
+                    << " alpha_p=" << result.adaptive.alpha_p;
+            throw std::runtime_error(message.str());
+        }
+        std::printf(
+            "N7 documented adaptive false plateau%s metric=%.6e alpha_u=%.3f "
+            "alpha_p=%.3f iterations=%zu\n",
+            label.str().c_str(), result.adaptive.metric, result.adaptive.alpha_u,
+            result.adaptive.alpha_p, result.adaptive.iterations);
+    } else {
+        if (!result.adaptive.converged) {
+            std::ostringstream message;
+            message << "N7 adaptive relaxation did not reach the production convergence contract"
+                    << label.str()
+                    << " status=" << cfdx::core::to_string(result.adaptive.status)
+                    << " reason=" << result.adaptive.reason
+                    << " iterations=" << result.adaptive.iterations
+                    << " metric=" << result.adaptive.metric;
+            throw std::runtime_error(message.str());
+        }
+        const double adaptive_tolerance =
+            (is_gate ? kAdaptiveGateReproductionRelativeTolerance
+                     : kAdaptiveBreadthReproductionRelativeTolerance) * velocity_scale;
+        const double adaptive_deviation =
+            std::max(std::abs(adaptive_u - direct_u), std::abs(adaptive_v - direct_v));
+        summary.adaptive_deviation = adaptive_deviation;
+        if (adaptive_deviation > adaptive_tolerance) {
+            std::ostringstream message;
+            message << "N7 adaptive-relaxation QoI mismatch" << label.str()
+                    << " adaptive_dev=" << adaptive_deviation
+                    << " tolerance=" << adaptive_tolerance;
+            throw std::runtime_error(message.str());
+        }
+    }
+
+    std::size_t adaptive_changes = 0;
+    const auto& adaptive_history = result.adaptive.history;
+    if (adaptive_history.size() < 3)
+        throw std::runtime_error("N7 adaptive relaxation produced no history" + label.str());
+    for (const auto& h : adaptive_history) {
+        if (h.effective_alpha_u < 0.6 || h.effective_alpha_u > 0.8 ||
+            h.effective_alpha_p < 0.25 || h.effective_alpha_p > 0.35 ||
+            !std::isfinite(h.nonlinear_convergence_metric))
+            throw std::runtime_error("N7 adaptive relaxation bounds/history failed" + label.str());
+        if (std::abs(h.effective_alpha_u - 0.7) > 1e-12 ||
+            std::abs(h.effective_alpha_p - 0.3) > 1e-12)
+            ++adaptive_changes;
+    }
+    if (adaptive_changes == 0)
+        throw std::runtime_error("N7 adaptive relaxation did not produce qualified history" + label.str());
+    summary.adaptive_changes = adaptive_changes;
+
+    const double energy_deviation = std::abs(continuation_energy - direct_energy);
+    summary.energy_deviation = energy_deviation;
+    const double energy_tolerance = 1e-4 * std::max(direct_energy, 1e-6);
+    if (energy_deviation > energy_tolerance)
+        throw std::runtime_error("N7 kinetic-energy QoI mismatch" + label.str());
+
+    return summary;
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    const bool breadth = argc > 1 && std::string(argv[1]) == "--breadth";
     try {
-        const auto result = solve_n7_case();
-        const auto& final = result.continuation.final_solver_result;
-        const auto& history = final.history;
-        if (history.empty())
-            throw std::runtime_error("N7 continuation produced no iteration history");
-
-        const double continuity = history.back().continuity_linf;
-        const double momentum = history.back().momentum_equation_residual;
-        if (continuity > 1e-7 || momentum > 1e-7)
-            throw std::runtime_error("N7 final physical convergence gates failed");
-
-        if (result.continuation.final_parameter != 1.0 ||
-            result.continuation.stages.size() < 2 ||
-            result.continuation.total_attempts < result.continuation.stages.size())
-            throw std::runtime_error("N7 continuation stage contract failed");
-
-        for (const auto& stage : result.continuation.stages) {
-            if (!stage.converged ||
-                stage.status != cfdx::core::ConvergenceStatus::CONVERGED ||
-                !std::isfinite(stage.parameter) ||
-                !std::isfinite(stage.step))
-                throw std::runtime_error("N7 continuation stage is not qualified");
+        if (argc > 3 && std::string(argv[1]) == "--case") {
+            const auto n = static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10));
+            const auto nu = std::strtod(argv[3], nullptr);
+            const auto started = std::chrono::steady_clock::now();
+            const auto result = solve_n7_case(n, nu);
+            const auto summary = qualify_case(
+                result, n == kGateResolution && std::abs(1.0 / nu - kGateReynolds) < 0.5);
+            const double seconds = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - started).count();
+            std::printf(
+                "N7 case n=%zu Re=%.0f seconds=%.2f centre u=%.6e v=%.6e stages=%zu "
+                "adaptive_converged=%d adaptive_changes=%zu continuation_dev=%.3e "
+                "adaptive_dev=%.3e energy_dev=%.3e\n",
+                n, result.reynolds, seconds, summary.direct_u, summary.direct_v,
+                summary.stages, summary.adaptive_converged ? 1 : 0,
+                summary.adaptive_changes, summary.continuation_deviation,
+                summary.adaptive_deviation, summary.energy_deviation);
+            return 0;
         }
 
-        const double direct_energy=kinetic_energy(result.U_direct,result.geometry);
-        const double continuation_energy=kinetic_energy(result.U_continuation,result.geometry);
-        if (!std::isfinite(direct_energy) || !std::isfinite(continuation_energy))
-            throw std::runtime_error("N7 independent QoI is non-finite");
-
-        const double direct_u=centre_component(result.U_direct,true);
-        const double direct_v=centre_component(result.U_direct,false);
-        const double continuation_u=centre_component(result.U_continuation,true);
-        const double continuation_v=centre_component(result.U_continuation,false);
-        const double adaptive_u=centre_component(result.U_adaptive,true);
-        const double adaptive_v=centre_component(result.U_adaptive,false);
-
-        // Independent QoI: the converged Re=100 cavity centre velocity remains
-        // close to the published Ghia reference while continuation/adaptive
-        // controls reproduce the direct nonlinear solution.
-        if (std::abs(continuation_u - direct_u) > 2e-5 ||
-            std::abs(continuation_v - direct_v) > 2e-5)
-            throw std::runtime_error("N7 continuation changed the direct-solve QoI");
-
-        constexpr double ghia_u=-0.20581;
-        constexpr double ghia_v=0.05454;
-        // The QoI is sampled at the physical domain centre from the four
-        // surrounding cell centres. Keep the reference tolerance explicit and
-        // unchanged here; it is a reference-comparison gate, not a convergence
-        // tolerance, and must be tightened only from measured resolution evidence.
-        if (std::abs(continuation_u-ghia_u) > 0.15 ||
-            std::abs(continuation_v-ghia_v) > 0.15)
-            throw std::runtime_error("N7 Ghia centre-velocity QoI gate failed");
-        if (std::abs(adaptive_u-direct_u) > 2e-5 ||
-            std::abs(adaptive_v-direct_v) > 2e-5)
-            throw std::runtime_error("N7 adaptive-relaxation QoI mismatch");
-
-        std::size_t adaptive_changes=0;
-        const auto& adaptive_history = result.adaptive_history;
-        if (adaptive_history.size() < 3)
-            throw std::runtime_error("N7 adaptive relaxation produced no history");
-        for (const auto& h : adaptive_history) {
-            if (h.effective_alpha_u < 0.6 || h.effective_alpha_u > 0.8 ||
-                h.effective_alpha_p < 0.25 || h.effective_alpha_p > 0.35 ||
-                !std::isfinite(h.nonlinear_convergence_metric))
-                throw std::runtime_error("N7 adaptive relaxation bounds/history failed");
-            if (std::abs(h.effective_alpha_u-0.7) > 1e-12 ||
-                std::abs(h.effective_alpha_p-0.3) > 1e-12)
-                ++adaptive_changes;
+        if (breadth) {
+            struct Case { std::size_t n; double nu; };
+            const Case cases[] = {
+                {32, 0.01},
+                {16, 0.01},
+                {32, 0.0025},
+                {16, 0.0025},
+            };
+            for (const auto& c : cases) {
+                const auto started = std::chrono::steady_clock::now();
+                const auto result = solve_n7_case(c.n, c.nu);
+                const auto summary = qualify_case(
+                    result, c.n == kGateResolution && std::abs(1.0 / c.nu - kGateReynolds) < 0.5);
+                const double seconds = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - started).count();
+                std::printf(
+                    "N7 breadth n=%zu Re=%.0f seconds=%.2f centre u=%.6e v=%.6e "
+                    "stages=%zu adaptive_converged=%d adaptive_changes=%zu "
+                    "continuation_dev=%.3e adaptive_dev=%.3e energy_dev=%.3e\n",
+                    c.n, result.reynolds, seconds, summary.direct_u, summary.direct_v,
+                    summary.stages, summary.adaptive_converged ? 1 : 0,
+                    summary.adaptive_changes, summary.continuation_deviation,
+                    summary.adaptive_deviation, summary.energy_deviation);
+            }
+            return 0;
         }
-        if (adaptive_changes == 0)
-            throw std::runtime_error("N7 adaptive relaxation did not produce qualified history");
 
-        if (std::abs(continuation_energy-direct_energy) > 2e-5)
-            throw std::runtime_error("N7 kinetic-energy QoI mismatch");
-
+        const auto result = solve_n7_case(kGateResolution, 0.01);
+        qualify_case(result, true);
         return 0;
     } catch (const std::exception& e) {
         return std::fprintf(stderr,"N7_CONVERGENCE_QUALIFICATION: FAIL: %s\n",e.what()), 1;
