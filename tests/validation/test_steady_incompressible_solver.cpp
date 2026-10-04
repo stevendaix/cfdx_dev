@@ -76,12 +76,18 @@ int main()
         Field<double,Location::CELL> expected_p = loaded_p;
         (void)solve_steady_incompressible(m, expected_u, expected_p, ubc, pbc, controls);
 
+        // Declare the checkpoint as the initialization strategy rather than
+        // relying on the positional restart argument alone.
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+
         Field<double,Location::CELL> restart_u(1,"U","m/s",3);
         Field<double,Location::CELL> restart_p(1,"p","Pa",1);
         restart_u.fill(0.0);
         restart_p.fill(0.0);
         (void)solve_steady_incompressible(
-            m, restart_u, restart_p, ubc, pbc, controls, dat.string());
+            m, restart_u, restart_p, ubc, pbc, restart_controls);
 
         EXPECT_NEAR(restart_u(0,0), expected_u(0,0), 1e-14);
         EXPECT_NEAR(restart_u(0,1), expected_u(0,1), 1e-14);
@@ -117,8 +123,12 @@ int main()
         (void)solve_steady_incompressible(
             m,expected_u,expected_p,ubc,pbc,controls);
 
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+        cfdx::io::DatRestartFields restart_fields{&T,&k,&omega};
         (void)solve_steady_incompressible(
-            m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
+            m,U,p,ubc,pbc,restart_controls,"",restart_fields);
 
         EXPECT_NEAR(U(0,0),expected_u(0,0),1e-14);
         EXPECT_NEAR(U(0,1),expected_u(0,1),1e-14);

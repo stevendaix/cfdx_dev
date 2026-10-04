@@ -375,6 +375,33 @@
         "saturation",
         "boundedness"
       ]
+    },
+    {
+      "id": "initialization.provided",
+      "family": "initialization",
+      "status": "implemented",
+      "verification": [
+        "caller_state_preserved"
+      ]
+    },
+    {
+      "id": "initialization.uniform",
+      "family": "initialization",
+      "status": "implemented",
+      "verification": [
+        "overwrites_caller_state",
+        "non_finite_state_rejected"
+      ]
+    },
+    {
+      "id": "initialization.restart",
+      "family": "initialization",
+      "status": "implemented",
+      "verification": [
+        "roundtrip",
+        "missing_checkpoint_fails_loudly",
+        "undeclared_legacy_path_ignored"
+      ]
     }
   ]
 }

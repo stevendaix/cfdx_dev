@@ -22,6 +22,8 @@ on:
       - "src/cfdx/physics/continuation.h"
       - "src/cfdx/physics/steady_incompressible_solver.h"
       - "src/cfdx/physics/pressure_velocity_algorithms.h"
+      - "tests/unit/test_initialization.cpp"
+      - "src/cfdx/core/numerics/numerical_method_contract.h"
   pull_request:
     branches: [master, main, develop]
     paths:
@@ -47,6 +49,8 @@ on:
       - "src/cfdx/physics/continuation.h"
       - "src/cfdx/physics/steady_incompressible_solver.h"
       - "src/cfdx/physics/pressure_velocity_algorithms.h"
+      - "tests/unit/test_initialization.cpp"
+      - "src/cfdx/core/numerics/numerical_method_contract.h"
   workflow_dispatch:
 
 concurrency:

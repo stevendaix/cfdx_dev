@@ -615,6 +615,18 @@
       ]
     },
     {
+      "package_id": "N7",
+      "requirement": "declared initialization strategy",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_initialization.cpp",
+        "tests/validation/test_steady_incompressible_solver.cpp",
+        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+      ],
+      "note": "provided/uniform/restart are declared and validated; unknown mode names are rejected. Automatic selection remains partial: no strategy is inferred from filesystem, mesh-quality or prior-divergence probing, because the initial state fixes the reference residual of the convergence report."
+    },
+    {
       "package_id": "N8",
       "requirement": "native AMG",
       "status": "implemented",
