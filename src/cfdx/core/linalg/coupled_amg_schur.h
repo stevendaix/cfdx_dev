@@ -279,10 +279,7 @@ private:
                                       std::size_t row_size,
                                       std::size_t col_size) {
         SparseMatrix block(row_size, col_size);
-        const std::size_t row_offset = row_block == 0 ? 0 : row_size;
-        const std::size_t col_offset = col_block == 0 ? 0 : col_size;
         // For the 4N ordering [Ux,Uy,Uz,p], velocity occupies 3N rows/cols.
-        const std::size_t nv = row_block == 0 ? row_size : col_block == 0 ? col_size : 0;
         const std::size_t velocity_size = A.n_rows() * 3 / 4;
         const std::size_t roffset = row_block == 0 ? 0 : velocity_size;
         const std::size_t coffset = col_block == 0 ? 0 : velocity_size;
