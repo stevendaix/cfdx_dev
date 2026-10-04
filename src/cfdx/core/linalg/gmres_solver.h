@@ -357,6 +357,61 @@ inline SolverResult solve_fgmres(
         controls, reusable_workspace);
 }
 
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
+            mixed_precision_matvec(A, in, out, SolverPrecision::FP32);
+            return;
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_fgmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_fgmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+
 inline SolverResult solve_gmres(
     const SparseMatrix& A,
     const Vector& b,
