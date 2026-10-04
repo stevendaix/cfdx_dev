@@ -128,6 +128,11 @@ class NumericalScheme(BaseModel):
     residual_target: str = "1e-5"
     max_iterations: int = 500
     raw_settings: dict[str, str] = Field(default_factory=dict)
+    # Source numerics settings an adapter could not map onto a canonical N1
+    # registry key, as "<family>: <source value>". Reported as a blocking
+    # conversion gap by validate_numerical_selection so an unmappable source
+    # scheme can never be silently replaced by a default.
+    unmapped_settings: list[str] = Field(default_factory=list)
     # Canonical N1 registry selections. Adapters populate this explicitly.
     selection: NumericalSelectionConfig = Field(default_factory=NumericalSelectionConfig)
 

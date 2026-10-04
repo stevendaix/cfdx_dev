@@ -141,4 +141,6 @@ def validate_numerical_selection(numerics: NumericalScheme) -> list[str]:
         errors.append(f"unmapped numerical setting for linear_solver: {numerics.linear_solver!r}")
     if numerics.preconditioner and _normalise(numerics.preconditioner) not in _PRECONDITIONER_KEYS:
         errors.append(f"unmapped numerical setting for preconditioner: {numerics.preconditioner!r}")
+    for entry in numerics.unmapped_settings:
+        errors.append(f"unmapped numerical setting for {entry}")
     return errors

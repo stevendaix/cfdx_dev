@@ -62,6 +62,38 @@ def test_known_source_values_have_no_mapping_gaps():
     assert validate_numerical_selection(scheme) == []
 
 
+def test_adapter_recorded_unmapped_setting_is_reported():
+    """An adapter that cannot map a source scheme must not drop it silently.
+
+    The SU2 adapter leaves the canonical convection field empty for families
+    with no faithful CFDX counterpart and records the source value instead.
+    An empty canonical field is indistinguishable from an unspecified one, so
+    the recorded entry is what keeps the conversion blocking.
+    """
+    scheme = NumericalScheme(
+        momentum_scheme="",
+        unmapped_settings=["convection: 'JST' (no faithful CFDX convection registry equivalent)"],
+    )
+    errors = validate_numerical_selection(scheme)
+    assert errors == [
+        "unmapped numerical setting for convection: 'JST' "
+        "(no faithful CFDX convection registry equivalent)"
+    ]
+
+
+def test_converted_case_with_unmappable_scheme_is_blocking(tmp_path):
+    data_dir = Path(__file__).parent / ".." / "data" / "su2"
+    source = tmp_path / "case.su2"
+    shutil.copy(data_dir / "mesh_NACA0012_inv.su2", source)
+    shutil.copy(data_dir / "inv_NACA0012_basic.cfg", tmp_path / "case.cfg")
+
+    result = convert(source)
+
+    assert result.success is False
+    blocking = [f for f in result.gap_analysis.findings if f.severity.value == "unsupported_blocking"]
+    assert any(f.feature == "canonical_selection" and "JST" in f.detail for f in blocking)
+
+
 def test_converted_case_contains_canonical_selection(tmp_path):
     data_dir = Path(__file__).parent / ".." / "data" / "su2"
     source = tmp_path / "case.su2"

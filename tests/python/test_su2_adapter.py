@@ -4,8 +4,14 @@ import numpy as np
 import os
 from pathlib import Path
 
-from cfdx.io.adapters.su2 import Su2Adapter, _SU2_ELEM_TYPES, _to_meshio_type
+from cfdx.io.adapters.su2 import (
+    Su2Adapter,
+    _SU2_ELEM_TYPES,
+    _canonical_convection_scheme,
+    _to_meshio_type,
+)
 from cfdx.io.interfaces import ConversionResult, SourceInfo
+from cfdx.io.numerical_selection import validate_numerical_selection
 from cfdx.io.schema import BCType, CaseSetup, Severity
 
 
@@ -209,3 +215,103 @@ class TestSu2Adapter:
         finally:
             if target.exists():
                 target.unlink()
+
+
+class TestSu2ConvectionMapping:
+    """SU2 convection settings must map onto canonical CFDX registry keys.
+
+    The CFDX convection registry keys describe the reconstruction and its
+    limiter ("MUSCL with psi=<limiter>"), every one of them carrying an
+    explicit boundedness claim. A SU2 family that is not a plain first-order
+    Roe-like flux or a limiter-bounded MUSCL reconstruction therefore has no
+    faithful counterpart and must stay unresolved rather than be approximated.
+    """
+
+    @pytest.mark.parametrize(
+        "params,expected",
+        [
+            ({"CONV_NUM_METHOD_FLOW": "ROE"}, "upwind"),
+            ({"CONV_NUM_METHOD_FLOW": "HLLC"}, "upwind"),
+            ({"CONV_NUM_METHOD_FLOW": "HLLEM"}, "upwind"),
+            ({"CONV_NUM_METHOD_FLOW": "NO_UPWIND"}, "central"),
+            ({"CONV_NUM_METHOD_FLOW": "NO_CONV"}, "central"),
+            ({"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES"}, "tvd_vanalbada"),
+            (
+                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "MINMOD"},
+                "tvd_minmod",
+            ),
+            (
+                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "VAN_LEER"},
+                "tvd_vanleer",
+            ),
+            (
+                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER_FLOW": "SUPERBEE"},
+                "tvd_superbee",
+            ),
+            (
+                {
+                    "CONV_NUM_METHOD_FLOW": "FDS",
+                    "MUSCL_FLOW": "YES",
+                    "SLOPE_LIMITER_FLOW": "MONOTONIZED_CENTRAL",
+                },
+                "tvd_mc",
+            ),
+        ],
+    )
+    def test_representable_families_map_to_registry_keys(self, params, expected):
+        assert _canonical_convection_scheme(params) == expected
+
+    @pytest.mark.parametrize(
+        "params,reason",
+        [
+            ({"CONV_NUM_METHOD_FLOW": "JST"}, "centre-based JST reconstruction"),
+            ({"CONV_NUM_METHOD_FLOW": "AUSM"}, "sensor-based AUSM limiting"),
+            ({"CONV_NUM_METHOD_FLOW": "SLAU2"}, "sensor-based SLAU2 limiting"),
+            (
+                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "SLOPE_LIMITER_FLOW": "NONE"},
+                "unbounded MUSCL, while every CFDX second-order key claims boundedness",
+            ),
+            (
+                {"CONV_NUM_METHOD_FLOW": "ROE", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "BARTH_JESPERSEN"},
+                "limiter absent from the CFDX registry",
+            ),
+            ({}, "no convection setting at all"),
+        ],
+    )
+    def test_unrepresentable_families_stay_unresolved(self, params, reason):
+        assert _canonical_convection_scheme(params) == "", reason
+
+    def test_plumbing_config_maps_to_van_albada(self):
+        adapter = Su2Adapter()
+        cfg = os.path.join(pytest.DATA_DIR, "su2", "plumbing.cfg")
+        assert adapter.parse_config(cfg)
+        assert adapter.setup.numerics.momentum_scheme == "tvd_vanalbada"
+        assert adapter.setup.numerics.unmapped_settings == []
+        assert validate_numerical_selection(adapter.setup.numerics) == []
+
+    def test_real_naca0012_config_records_unmapped_scheme(self):
+        """JST has no CFDX counterpart, so it is recorded rather than replaced."""
+        adapter = Su2Adapter()
+        cfg = os.path.join(pytest.DATA_DIR, "su2", "inv_NACA0012_basic.cfg")
+        assert adapter.parse_config(cfg)
+        assert adapter.setup.numerics.momentum_scheme == ""
+        assert len(adapter.setup.numerics.unmapped_settings) == 1
+        assert "JST" in adapter.setup.numerics.unmapped_settings[0]
+        errors = validate_numerical_selection(adapter.setup.numerics)
+        assert len(errors) == 1 and "JST" in errors[0]
+
+    def test_adapter_convert_still_reads_the_unmappable_case(self):
+        """Reader qualification reads the real case; only conversion is blocked.
+
+        The blocking gap belongs to the canonical numerical selection boundary,
+        not to mesh/config reading, so docs/validation/SU2_NACA0012_READER.md
+        keeps its "conversion without blocking Gap Analysis findings" contract.
+        """
+        adapter = Su2Adapter()
+        result = ConversionResult(source=SourceInfo())
+        cfg = os.path.join(pytest.DATA_DIR, "su2", "inv_NACA0012_basic.cfg")
+        mesh = os.path.join(pytest.DATA_DIR, "su2", "mesh_NACA0012_inv.su2")
+        assert adapter.parse_mesh(mesh)
+        assert adapter.parse_config(cfg)
+        result.setup = adapter.setup.model_copy(deep=True)
+        assert not result.gap_report.has_blocking()
