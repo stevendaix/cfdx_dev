@@ -5,7 +5,7 @@
 #
 # ## 18.1 Audit relation
 #
-# \[
+# $
 # equation
 # \rightarrow discrete\ equation
 # \rightarrow implementation
@@ -13,7 +13,7 @@
 # \rightarrow verification
 # \rightarrow validation
 # \rightarrow qualification.
-# \]
+# $
 #
 # ## 18.2 What must be recorded
 #
@@ -31,41 +31,41 @@
 #
 # ## 18.3 Geometry family
 #
-# \[
+# $
 # \{\mathbf x_i\}
 # \rightarrow
 # \{\mathbf S_f,\mathbf C_f,\mathbf C_P,V_P\}
 # \rightarrow
 # discrete\ operators.
-# \]
+# $
 # Source family: [core/geometry](../../../src/cfdx/core/geometry/) and [core/mesh](../../../src/cfdx/core/mesh/).
 #
 # ## 18.4 Gradient/reconstruction family
 #
-# \[
+# $
 # \nabla\phi
 # \in\{Green\!-\!Gauss,LS,WLS,vertex\}
-# \]
+# $
 # feeds face reconstruction and non-orthogonal diffusion. Primary sources: [gradient.h](../../../src/cfdx/core/numerics/gradient.h), [gradient_stencil.h](../../../src/cfdx/core/numerics/gradient_stencil.h), [least_squares_gradient.h](../../../src/cfdx/core/fvm/least_squares_gradient.h), [interpolation.h](../../../src/cfdx/core/numerics/interpolation.h).
 #
 # ## 18.5 Flux/FVM family
 #
-# \[
+# $
 # \partial_t(\rho\phi)+\nabla\cdot F=S
 # \rightarrow
 # \frac{d}{dt}(\rho\phi V)+\sum_fF_f=S_PV.
-# \]
+# $
 # Sources include divergence, convection, laplacian, flux and finite-volume transport.
 #
 # ## 18.6 Pressure/linear algebra family
 #
-# \[
+# $
 # \begin{bmatrix}A_u&G\\D&C\end{bmatrix}
 # \rightarrow
 # Schur
 # \rightarrow
 # AMG/MGR/Krylov.
-# \]
+# $
 # Source families: [core/linalg](../../../src/cfdx/core/linalg/) and [physics/pressure_velocity.h](../../../src/cfdx/physics/pressure_velocity.h).
 #
 # ## 18.7 Turbulence family
@@ -75,23 +75,23 @@
 # ## 18.8 Thermal/radiation family
 #
 # Thermal:
-# \[
+# $
 # \rho c_pDT/Dt=\nabla\cdot(k\nabla T)+S_T.
-# \]
+# $
 # Radiation:
-# \[
+# $
 # E_b=\sigma T^4,\qquad
 # J=E+(1-\varepsilon)G.
-# \]
+# $
 # Coupled interfaces require both field and flux conservation.
 #
 # ## 18.9 Data/I/O family
 #
-# \[
+# $
 # setup\rightarrow HDF5\ case,\qquad
 # state\rightarrow checkpoint,\qquad
 # fields\rightarrow VTU.
-# \]
+# $
 # Provenance is part of reproducibility.
 #
 # ## 18.10 Evidence family
