@@ -222,6 +222,34 @@ Run run_case(PressureVelocityAlgorithm algorithm,
     return {std::move(U), std::move(p), result};
 }
 
+void print_iteration_diagnostics(const char* name, const Run& run)
+{
+    std::cout << name;
+    if (run.solve.history.empty()) {
+        std::cout << " history=empty\\n";
+        return;
+    }
+    const auto& h = run.solve.history.back();
+    std::cout << " iterations=" << run.solve.iterations
+              << " converged=" << run.solve.converged
+              << " status=" << static_cast<int>(run.solve.convergence_status)
+              << " reason=\\\"" << run.solve.convergence_reason << "\\\""
+              << " continuity=" << h.continuity_linf
+              << " continuity_norm=" << h.continuity_normalized
+              << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
+              << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
+              << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
+              << " mass_local_linf=" << h.mass_local_linf
+              << " mass_normalized=" << h.mass_normalized_imbalance
+              << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+              << " momentum_no_pressure=" << h.momentum_residual_no_pressure
+              << " momentum_pressure=" << h.momentum_pressure_contribution
+              << " pressure_grad_linf=" << h.pressure_gradient_linf
+              << " velocity_change=" << h.velocity_change_inf
+              << " pressure_change=" << h.pressure_change_inf
+              << "\\n";
+}
+
 void require_converged(const char* name, const Run& run)
 {
     if (!run.solve.converged || run.solve.history.empty()) {
@@ -275,6 +303,13 @@ int main()
             PressureVelocityAlgorithm::COUPLED,
             KrylovModel::FGMRES,
             PreconditionerModel::MGR);
+
+        // Always print the terminal diagnostics before applying acceptance gates.
+        // Keep all gates unchanged: the output is diagnostic evidence, not a
+        // relaxation of the N9.5 qualification contract.
+        print_iteration_diagnostics("SIMPLE", simple);
+        print_iteration_diagnostics("COUPLED/BlockSchur", block);
+        print_iteration_diagnostics("COUPLED/MGR", mgr);
 
         require_converged("SIMPLE", simple);
         require_converged("COUPLED/BlockSchur", block);
