@@ -74,6 +74,11 @@ def discover_tests(build_dir: Path) -> set[str]:
             continue
         try:
             _, name = line.split(":", 1)
+            # ctest -N emits e.g. "Test #81: test_gmres_solver".
+            # The first split removes the "Test #" prefix; the remaining
+            # numeric index must also be stripped before recording the name.
+            if ":" in name:
+                _, name = name.split(":", 1)
         except ValueError:
             continue
         names.add(name.strip())
