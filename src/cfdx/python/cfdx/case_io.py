@@ -15,7 +15,7 @@ from pathlib import Path
 import h5py
 
 from .case import Case, ExecutionConfig
-from .dat_io import read_dat_restart, write_dat_hdf5
+from .dat_io import read_dat_restart, remap_dat_restart, write_dat_hdf5
 from .session import CFDXSession
 
 
@@ -235,14 +235,37 @@ def read_case(path: Path) -> CFDXSession:
     return _read_session(path)
 
 
+def _read_case_cell_ids(path: Path) -> tuple[int, ...] | None:
+    """Read persistent mesh cell IDs from the case when they are available."""
+    with h5py.File(path, "r") as h5:
+        if "cell_ids" not in h5:
+            return None
+        raw_ids = h5["cell_ids"][()]
+    try:
+        ids = tuple(int(value) for value in raw_ids)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("case cell_ids must contain integer IDs for DAT restart") from exc
+    if len(set(ids)) != len(ids):
+        raise ValueError("case contains duplicate cell ids")
+    if any(value < 0 for value in ids):
+        raise ValueError("case contains negative cell ids")
+    return ids
+
+
+def read_case(path: Path) -> CFDXSession:
+    """Load only the HDF5 case; no solver restart artifact is consumed."""
+    return _read_session(path)
+
+
 def read_case_with_dat(
     path: Path, dat_path: Path | None = None
 ) -> tuple[CFDXSession, Path]:
-    """Load a case and apply paired DAT iteration/time metadata.
+    """Load a case and restore its numerical state from a DAT checkpoint.
 
-    Field values are deliberately not attached to ``CFDXSession`` here: the
-    session currently has no field store or mesh-cell mapping contract. The
-    DAT remains the authoritative owner of field values.
+    The DAT field arrays become the session's authoritative in-memory field
+    store. When both artifacts expose persistent cell IDs, field values are
+    remapped into the case mesh ordering before being attached to the session.
+    Without case IDs, DAT values are loaded in their stored order.
     """
     case_path = _validate_path(path)
     session = _read_session(case_path)
@@ -250,10 +273,23 @@ def read_case_with_dat(
     candidate = Path(dat_path) if dat_path is not None else _paired_dat_path(case_path)
     if not candidate.is_file():
         raise FileNotFoundError(candidate)
+
     restart = read_dat_restart(candidate)
-    # Iteration/time are first-class session metadata and already have a
-    # defined destination. Restore them from the DAT without pretending that
-    # the session can yet own/remap the checkpoint field arrays.
+    case_cell_ids = _read_case_cell_ids(case_path)
+    if case_cell_ids is not None:
+        if restart.cell_ids is None:
+            raise ValueError(
+                "DAT restart has no persistent cell ids; cannot safely map it to the case mesh"
+            )
+        restart = remap_dat_restart(restart, case_cell_ids)
+    elif restart.cell_ids is not None:
+        # Preserve the DAT's explicit ordering when the case does not carry a
+        # persistent mesh identity yet.
+        session.field_cell_ids = restart.cell_ids
+
     session.iteration = restart.iteration
     session.time = restart.time
+    session.fields = dict(restart.fields)
+    if case_cell_ids is not None:
+        session.field_cell_ids = case_cell_ids
     return session, candidate
