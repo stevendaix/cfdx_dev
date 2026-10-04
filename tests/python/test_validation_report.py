@@ -95,6 +95,66 @@ def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
     assert_row(r"\texttt{VMFL001}", 4)
 
 
+def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
+    """latex_escape is only useful if every caller actually routes through it.
+
+    A hostile value is injected into each dynamic field of the generated
+    document; a surviving &, %, # or $ would silently corrupt the table, and a
+    surviving tab would mean a non-raw f-string turned "\\texttt" into "\\t".
+    """
+    hostile = "VMFL_001 & 50% #1 $x_2"
+    output = tmp_path / "report.tex"
+    MODULE.write_tex(
+        output,
+        [MODULE.Case(hostile, "case & name", "READY", "50% done #1")],
+        [{
+            "re": 100.0,
+            "grid": "64x64 & 50%",
+            "continuity": 1e-12,
+            "momentum": 2e-8,
+            "u_rms": 0.01,
+            "u_max": 0.02,
+            "v_rms": 0.03,
+            "v_max": 0.04,
+        }],
+        [{
+            "name": hostile,
+            "metric": "error & bias",
+            "value": "1e-6 %",
+            "reference": "exact #1",
+        }],
+        {hostile: (0, "")},
+        {hostile: 0},
+        None,
+        "2026-09-26 00:00 UTC",
+    )
+
+    tex = output.read_text(encoding="utf-8")
+    escaped = MODULE.latex_escape(hostile)
+
+    # The capability-matrix ID column, the model name and the executable name
+    # are all \texttt cells fed by a caller.
+    assert rf"\texttt{{{escaped}}}" in tex
+    # No unescaped metacharacter from the hostile value may survive.
+    assert " & 50% " not in tex
+    assert "#1 $x_2" not in tex
+    assert "50% done" not in tex
+    assert "exact #1" not in tex
+    # "\texttt" must stay a command: a non-raw f-string would have turned the
+    # leading "\t" into a tab and left "exttt{...}".
+    assert "\t" not in tex
+    assert rf"\texttt{{{escaped}}}: return code 0." in tex
+    # The capability-matrix row keeps its four columns even though the hostile
+    # identifier itself contains an ampersand, so the table structure survives.
+    matrix_row = " & ".join([
+        rf"\texttt{{{escaped}}}",
+        MODULE.latex_escape("case & name"),
+        MODULE.latex_escape("READY"),
+        MODULE.latex_escape("50% done #1"),
+    ]) + r"\\"
+    assert matrix_row in tex.splitlines()
+
+
 def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
     output = tmp_path / "report.tex"
     cases = MODULE.parse_matrix(
