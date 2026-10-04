@@ -50,13 +50,15 @@ public:
                           const SparseMatrix& pressure_convection_diffusion,
                           PressureSolve laplacian_solve,
                           PressureSolve convection_diffusion_solve,
-                          std::optional<NullSpaceProjector> pressure_null_space = std::nullopt)
+                          std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
+                          std::optional<std::size_t> pressure_reference_cell = std::nullopt)
         : pressure_mass_(&pressure_mass),
           pressure_laplacian_(&pressure_laplacian),
           pressure_convection_diffusion_(&pressure_convection_diffusion),
           laplacian_solve_(std::move(laplacian_solve)),
           convection_diffusion_solve_(std::move(convection_diffusion_solve)),
-          pressure_null_space_(std::move(pressure_null_space)) {}
+          pressure_null_space_(std::move(pressure_null_space)),
+          pressure_reference_cell_(pressure_reference_cell) {}
 
     const char* name() const noexcept override { return "pcd_schur"; }
 
@@ -76,6 +78,9 @@ public:
 
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != np)
+            return false;
+        if (pressure_reference_cell_ &&
+            *pressure_reference_cell_ >= np)
             return false;
 
         blocks_ = &blocks;
@@ -143,6 +148,8 @@ public:
             return false;
 
         Vector rhs = rhs_p;
+        if (pressure_reference_cell_)
+            rhs(*pressure_reference_cell_) = 0.0;
         if (pressure_null_space_) {
             if (!pressure_null_space_->is_compatible(rhs))
                 return false;
@@ -272,6 +279,7 @@ private:
     PressureSolve laplacian_solve_;
     PressureSolve convection_diffusion_solve_;
     std::optional<NullSpaceProjector> pressure_null_space_;
+    std::optional<std::size_t> pressure_reference_cell_;
     GraphSignature graph_signature_{};
 };
 
