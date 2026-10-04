@@ -112,7 +112,7 @@
 #
 # ## 18.12 N2 status
 #
-# N2 is currently **PARTIAL / not qualified** until the declared polyhedral gradient accuracy, conditioning/rank-deficiency, boundary reconstruction, face reconstruction and limiting gates are demonstrated on controlled campaigns.
+# N2 is currently **PARTIAL / not qualified** until the declared polyhedral gradient accuracy, conditioning/rank-deficiency, boundary reconstruction and face reconstruction gates are demonstrated on controlled campaigns.
 #
 # ## 18.13 Audit rule
 #
