@@ -758,7 +758,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_n13_mpi_equivalence
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n13_mpi_equivalence> ${MPIEXEC_POSTFLAGS})
-        set_tests_properties(test_n13_mpi_equivalence PROPERTIES LABELS "phase13;validation;n13")
+        set_tests_properties(test_n13_mpi_equivalence PROPERTIES
+            LABELS "phase13;validation;n13"
+            ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
