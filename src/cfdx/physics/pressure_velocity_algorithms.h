@@ -59,7 +59,7 @@ struct AdaptiveRelaxationControls {
     // useful corridor. Bounded additive steps retain the current state while
     // making recovery gradual and reversible.
     double increase_step = 0.02;
-    double decrease_step = 0.05;
+    double decrease_step = 0.02;
 };
 
 inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
