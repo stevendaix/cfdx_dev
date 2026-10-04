@@ -1551,12 +1551,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 std::move(fine_variables), std::move(coarse_variables));
     }
 
-    // N8 owns the linear-solver/preconditioner policy. The coupled FV
-    // assembler remains N9-owned, but an explicit BlockSchur request must use
-    // the N8 AMG-backed Schur implementation rather than the legacy scalar
-    // preconditioner. MGR remains a separate N8-qualified path until its
-    // coupled dispatch metadata is integrated.
-=======
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)

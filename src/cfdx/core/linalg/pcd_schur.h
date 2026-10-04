@@ -62,6 +62,11 @@ public:
 
     const char* name() const noexcept override { return "pcd_schur"; }
 
+    // apply() returns -Fp^{-1} Mp Kp^{-1} rhs, which approximates S^{-1} rhs.
+    // The sign and the operator order both belong to the inverse action, so this
+    // is InverseOperator rather than the SIMPLE/SIMPLEC operator action.
+    SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
+
     bool setup(const BlockOperator& blocks) override {
         if (!blocks.is_valid() || !laplacian_solve_ || !convection_diffusion_solve_)
             return false;

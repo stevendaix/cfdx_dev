@@ -42,6 +42,7 @@ REQUIRED_TESTS = (
     "test_exact_schur",
     "test_simplerc_schur",
     "test_lsc_bfbt_schur",
+    "test_pcd_schur",
     "test_lsc_bfbt_schur_null_space",
     "test_schur_approximation_comparison",
     "test_schur_quantitative_qualification",
