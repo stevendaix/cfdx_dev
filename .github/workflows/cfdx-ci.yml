@@ -86,7 +86,10 @@ jobs:
             # The complex wall-distance benchmark is a performance/validation
             # workload, not a sanitizer regression test. It currently costs
             # ~273 s under ASan/UBSan and is covered by long validation.
-            ctest --test-dir build -LE 'long|benchmark' --output-on-failure --no-tests=error --parallel 6
+            # The observed-order campaign is excluded for the same reason: it
+            # costs ~96 s in Release and exceeds the sanitizer budget. It still
+            # gates merges through the Release job.
+            ctest --test-dir build -LE 'long|benchmark|campaign' --output-on-failure --no-tests=error --parallel 6
           else
             ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
           fi

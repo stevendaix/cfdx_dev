@@ -527,7 +527,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
@@ -542,7 +542,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
@@ -556,7 +556,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
@@ -583,7 +583,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
@@ -596,7 +596,7 @@
         "tests/unit/test_convergence_monitor.cpp",
         "tests/validation/test_n7_convergence_qualification.cpp"
       ],
-      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
