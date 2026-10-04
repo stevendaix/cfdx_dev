@@ -20,62 +20,37 @@ Operations over CFDX itself: create/configure cases, inspect cases, mesh/import,
 6. MCP never claims success when the underlying operation failed.
 7. Development and runtime permissions remain separable.
 
-The first phase specifies architecture only; the servers are later phases.
+## Read-only Development MCP query surface
 
-## Read-only Development MCP query contract
+The first implemented Development MCP surface is deliberately read-only. It maps to the reproducible index/query layer and preserves the evidence contract.
 
-The first executable MCP-facing surface is deliberately read-only. It maps to the reproducible index/query layer and must preserve the evidence contract.
-
-### Operations
-
-| Operation | Required input | Result |
+| Operation | Input | Result |
 |---|---|---|
-| `index.validate` | repository root, index path | freshness status and explicit stale reasons |
-| `code.symbol` | pattern | matching symbols with repository paths and source locations |
-| `code.references` | pattern | indexed references with source locations and target symbols |
+| `index.validate` | no tool arguments; repository/index are server configuration | freshness status and explicit stale reasons |
+| `code.symbol` | pattern | matching symbols with paths/source locations |
+| `code.references` | pattern | indexed references with source locations/targets |
 | `code.dependencies` | pattern | indexed dependency edges |
 | `evidence.test` | pattern | discovered tests plus explicit test-to-symbol relations |
 | `evidence.validation` | pattern | validation cases plus explicit validation-to-symbol relations |
 
-### Result contract
+Every response identifies freshness before presenting indexed evidence. Stale indexes are never presented as current. Empty valid queries mean “no indexed result found”; they do not prove repository absence.
 
-Every response must identify the index revision/freshness status before presenting indexed evidence. Stale indexes must not be presented as current. Empty query results mean “no indexed result found”; they do not prove repository absence.
+Evidence relations are descriptive only. An explicit test-to-symbol or validation-to-symbol relation is not execution coverage, pass/fail evidence, verification, or qualification evidence.
 
-Evidence relations are descriptive only. In particular, an explicit test-to-symbol or validation-to-symbol relation is not execution coverage, pass/fail evidence, or qualification evidence.
+## Adapter
 
-### Permission
+`.ai/mcp/development_server.py` implements the six operations using the official MCP Python SDK 2.3.0. `.ai/scripts/query_index.py` remains the executable reference for deterministic index semantics.
 
-All operations in this first surface are `READ_ONLY`. They must not modify repository, build, case, or runtime state. Development/maintainer mutation tools are separate future surfaces.
+The adapter is configured with `--root` / `--index` or the `CFDX_AI_ROOT` / `CFDX_AI_INDEX` environment variables. stdio is the default transport; Streamable HTTP is available for controlled deployments.
 
-### Transport independence
+The adapter performs freshness validation before every indexed evidence query and returns structured MCP results. It does not modify repository, build, case, or runtime state.
 
-This contract does not mandate a particular MCP SDK or transport. The CLI/index implementation remains the executable reference until a server adapter is introduced and tested against the same schemas and evidence semantics.
+## Permissions
 
-## Read-only Development MCP query contract
+All operations in this first surface are `READ_ONLY`. Tool annotations communicate the intended behavior to MCP hosts, but they are not a security boundary. Write/execute operations belong to separately permissioned Development or Runtime MCP surfaces.
 
-The first executable MCP-facing surface is deliberately read-only. It maps to the reproducible index/query layer and must preserve the evidence contract.
+## Testing
 
-### Operations
+`.ai/mcp/test_development_server.py` exercises the server in-process through the MCP client and verifies the six-tool surface, stale-index reporting, and refusal to present stale evidence.
 
-| Operation | Required input | Result |
-|---|---|---|
-| index.validate | repository root, index path | freshness status and explicit stale reasons |
-| code.symbol | pattern | matching symbols with repository paths and source locations |
-| code.references | pattern | indexed references with source locations and target symbols |
-| code.dependencies | pattern | indexed dependency edges |
-| evidence.test | pattern | discovered tests plus explicit test-to-symbol relations |
-| evidence.validation | pattern | validation cases plus explicit validation-to-symbol relations |
-
-### Result contract
-
-Every response must identify the index revision/freshness status before presenting indexed evidence. Stale indexes must not be presented as current. Empty query results mean “no indexed result found”; they do not prove repository absence.
-
-Evidence relations are descriptive only. An explicit test-to-symbol or validation-to-symbol relation is not execution coverage, pass/fail evidence, or qualification evidence.
-
-### Permission
-
-All operations in this first surface are READ_ONLY. They must not modify repository, build, case, or runtime state. Development/maintainer mutation tools are separate future surfaces.
-
-### Transport independence
-
-This contract does not mandate a particular MCP SDK or transport. The CLI/index implementation remains the executable reference until a server adapter is introduced and tested against the same schemas and evidence semantics.
+The first phase specified architecture only; this adapter is the first executable Development MCP component. Transport-specific deployment and broader MCP integration tests remain future work.
