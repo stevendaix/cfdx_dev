@@ -693,7 +693,7 @@ int main(int argc, char** argv)
                 static_cast<std::size_t>(
                     std::distance(successful_models.begin(), reference_it));
             const auto& reference = results[reference_index];
-            if (reference.authoritative_mass_flux.size() !=
+            if (reference.solve.authoritative_mass_flux.size() !=
                 reference.geometry.face_area_vectors.size())
                 throw std::runtime_error(
                     "SIMPLE reference has no complete authoritative mass flux");
@@ -723,14 +723,14 @@ int main(int argc, char** argv)
                 double max_dphi = 0.0;
                 double reference_phi_linf = 0.0;
                 double candidate_phi_linf = 0.0;
-                if (candidate.authoritative_mass_flux.size() !=
-                    reference.authoritative_mass_flux.size())
+                if (candidate.solve.authoritative_mass_flux.size() !=
+                    reference.solve.authoritative_mass_flux.size())
                     throw std::runtime_error(
                         successful_models[k] + ": authoritative mass-flux size mismatch");
                 for (std::size_t face = 0;
-                     face < reference.authoritative_mass_flux.size(); ++face) {
-                    const double phi_ref = reference.authoritative_mass_flux(face);
-                    const double phi_candidate = candidate.authoritative_mass_flux(face);
+                     face < reference.solve.authoritative_mass_flux.size(); ++face) {
+                    const double phi_ref = reference.solve.authoritative_mass_flux(face);
+                    const double phi_candidate = candidate.solve.authoritative_mass_flux(face);
                     if (!std::isfinite(phi_ref) || !std::isfinite(phi_candidate))
                         throw std::runtime_error(
                             successful_models[k] + ": non-finite authoritative mass flux");
