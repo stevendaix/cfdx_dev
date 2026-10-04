@@ -56,7 +56,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure
@@ -105,18 +105,15 @@ jobs:
       # steps.python.outcome, but the step itself reported success, which hid
       # which run had broken.
       #
-      # One module stays out until #644 lands: test_application_e2e.py fails on
-      # master because read_case_with_dat() discards the DAT it reads, so a
-      # reloaded session keeps iteration=0. Wiring it in before the fix would
-      # turn every push red on a defect that is already tracked. Nothing else
-      # is excluded: modules with unmet optional dependencies (pyvista,
-      # pyfluent) already skip themselves.
+      # Nothing is excluded. test_application_e2e.py was held back until #644
+      # was fixed, because read_case_with_dat() discarded the DAT it read and a
+      # reloaded session came back at iteration 0; #647 restores iteration and
+      # time, so the module now runs here too.
       - name: Run Python regression
         id: python
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
         run: |
-          python -m pytest -q tests/python \
-            --ignore=tests/python/test_application_e2e.py
+          python -m pytest -q tests/python
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
