@@ -119,7 +119,7 @@ int main() {
         EXPECT_TRUE(pcd.apply(rhs, actual));
 
         const Vector z = dense_matvec(Kinv, rhs);
-        const Vector y = dense(Mp).size() ? dense_matvec(dense(Mp), z) : Vector{};
+        const Vector y = dense_matvec(dense(Mp), z);
         Vector expected = dense_matvec(Finv, y);
         expected *= -1.0;
         assert_close(actual, expected);
@@ -169,4 +169,6 @@ int main() {
         EXPECT_TRUE(pcd.apply(compatible, out));
         EXPECT_TRUE(std::abs(out(0) + out(1)) <= 1e-12);
     });
+
+    return run_all();
 }
