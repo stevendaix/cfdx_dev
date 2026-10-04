@@ -518,6 +518,16 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
     set_tests_properties(test_n7_convergence_qualification PROPERTIES
         LABELS "n7;qualification;validation")
+    # Breadth matrix for the two convergence strategies: two resolutions x two
+    # Reynolds corridors, instead of the single Re=100/32^2 corridor the gate
+    # covers. It repeats the gate cell so the mode is self-contained. Labelled
+    # campaign so the sanitizer job skips it on cost grounds while the Release
+    # job still runs it on every merge, matching test_ghia_cavity_order.
+    add_test(NAME test_n7_convergence_breadth
+             COMMAND test_n7_convergence_qualification --breadth)
+    set_tests_properties(test_n7_convergence_breadth PROPERTIES
+        LABELS "n7;qualification;validation;campaign"
+        TIMEOUT 5400)
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
