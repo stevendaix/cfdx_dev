@@ -222,7 +222,7 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
                 complete += 1
         if category_missing:
             missing[category] = category_missing
-    return {"status": "COMPLETE" if not missing else "INCOMPLETE", "records_checked": checked, "records_complete": complete, "missing_fields": missing, "policy": "diagnostic_only"}
+    return {\n        "status": "COMPLETE" if not missing else "INCOMPLETE",\n        "records_checked": checked,\n        "records_complete": complete,\n        "missing_fields": missing,\n        "policy": "diagnostic_only",\n    }
 
 
 def main() -> int:
