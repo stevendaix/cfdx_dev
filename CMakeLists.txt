@@ -674,6 +674,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_gradient_verification tests/validation/test_gradient_verification.cpp)
     add_cfdx_test(test_polyhedral_gradient_campaign tests/validation/test_polyhedral_gradient_campaign.cpp)
     add_cfdx_test(test_n10_difficult_mesh_robustness tests/validation/test_n10_difficult_mesh_robustness.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n10_qualification
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/n10_qualification.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n10_qualification PROPERTIES
+            LABELS "n10;qualification;validation"
+            RUN_SERIAL TRUE)
+    endif()
     set_tests_properties(
         test_n10_difficult_mesh_robustness
         test_nonorthogonal_skew_campaign
