@@ -165,6 +165,8 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
     reinterpret failures as passes.
     """
     evidence: dict[str, object] = {
+        "run_configuration": [],
+        "model_summary": [],
         "physical_model_results": [],
         "physical_model_failures": [],
         "schur_quantitative": [],
@@ -173,6 +175,12 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
 
     for result in results:
         output = str(result["output"])
+        evidence["run_configuration"].extend(
+            parse_key_value_records(output, "MODEL_CONFIG")
+        )
+        evidence["model_summary"].extend(
+            parse_key_value_records(output, "MODEL_SUMMARY")
+        )
         evidence["physical_model_results"].extend(
             parse_key_value_records(output, "MODEL_RESULT")
         )
@@ -197,6 +205,24 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
 # Schur test and the production benchmark each print two record shapes, so a
 # discriminator keeps the requirement set aligned with the emitted layout.
 _EVIDENCE_REQUIREMENTS: tuple[tuple[str, str, str | None, bool | None, tuple[str, ...]], ...] = (
+    (
+        "run_configuration",
+        "run_configuration",
+        None,
+        None,
+        (
+            "algorithm",
+            "nx",
+            "ny",
+            "bounded",
+            "preconditioner",
+            "preconditioner_id",
+            "alpha_u",
+            "alpha_p",
+            "pressure_correctors",
+            "fractional_steps",
+        ),
+    ),
     (
         "physical_model_results",
         "physical_model_results",
@@ -325,6 +351,85 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _model_names(records: list[object], key: str) -> list[str]:
+    names: list[str] = []
+    for record in records:
+        if isinstance(record, dict):
+            value = record.get(key)
+            if isinstance(value, str) and value not in names:
+                names.append(value)
+    return names
+
+
+def audit_model_resolution(evidence: dict[str, object]) -> dict[str, object]:
+    """Check that every configured physical model produced a verdict record.
+
+    The acceptance test announces the solver and preconditioner configuration of
+    every model before running it. Pairing those announcements with the result
+    and failure records makes a dropped, replaced, or unannounced run visible
+    instead of silently shortening the campaign.
+    """
+
+    def records(source: str) -> list[object]:
+        value = evidence.get(source, [])
+        return value if isinstance(value, list) else []
+
+    configured = _model_names(records("run_configuration"), "algorithm")
+    resolved = _model_names(records("physical_model_results"), "model")
+    failed_models = _model_names(records("physical_model_failures"), "model")
+    # A model that fails still emits a result record, so the two lists overlap.
+    for name in failed_models:
+        if name not in resolved:
+            resolved.append(name)
+    unresolved = [name for name in configured if name not in resolved]
+    undeclared = [name for name in resolved if name not in configured]
+
+    summaries = [record for record in records("model_summary") if isinstance(record, dict)]
+    summary = summaries[0] if len(summaries) == 1 else None
+    reported_successful = summary.get("successful") if summary else None
+    reported_failed = summary.get("failed") if summary else None
+    reported_total = None
+    if isinstance(reported_successful, int) and isinstance(reported_failed, int):
+        reported_total = reported_successful + reported_failed
+    observed_total = len(resolved)
+    observed_failed = len(failed_models)
+    # The acceptance test tallies its own model runs. A model emits a result
+    # record whether it passes or fails, so the total number of result records
+    # and the number of failure records are what must match the printed tally;
+    # anything else means the capture is not the complete set of model runs.
+    if reported_total is None or reported_failed is None:
+        tallies_agree = None
+    else:
+        tallies_agree = (
+            reported_total == observed_total and reported_failed == observed_failed
+        )
+
+    complete = not unresolved and not undeclared and tallies_agree is not False
+    return {
+        "status": "COMPLETE" if complete else "INCOMPLETE",
+        "models_configured": len(configured),
+        "models_resolved": len([name for name in resolved if name in configured]),
+        "unresolved_models": unresolved,
+        "undeclared_models": undeclared,
+        "reported_tally": (
+            None
+            if summary is None
+            else {
+                "successful": reported_successful,
+                "failed": reported_failed,
+                "total": reported_total,
+            }
+        ),
+        "observed_tally": {
+            "resolved": observed_total,
+            "failed": observed_failed,
+            "total": observed_total,
+        },
+        "tallies_agree": tallies_agree,
+        "policy": "diagnostic_only",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
@@ -376,6 +481,7 @@ def main() -> int:
     completed = len(results)
     evidence = extract_n8_evidence(results)
     evidence_coverage = audit_evidence_coverage(evidence)
+    model_resolution = audit_model_resolution(evidence)
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
         "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
@@ -385,6 +491,7 @@ def main() -> int:
         "results": results,
         "evidence": evidence,
         "evidence_coverage": evidence_coverage,
+        "model_resolution": model_resolution,
         "coverage": {
             "pressure_velocity": [
                 "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",

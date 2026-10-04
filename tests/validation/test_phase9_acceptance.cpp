@@ -441,7 +441,10 @@ int main(int argc, char** argv)
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
-                      << " preconditioner=" << static_cast<int>(test.coupled_preconditioner)
+                      << " preconditioner="
+                      << to_string(test.coupled_preconditioner)
+                      << " preconditioner_id="
+                      << static_cast<int>(test.coupled_preconditioner)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
