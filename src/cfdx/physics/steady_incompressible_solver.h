@@ -243,6 +243,11 @@ struct IncompressibleSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
+    // Final conservative face mass flux used by the pressure-velocity
+    // continuity operator. This is exposed as evidence so validation can
+    // compare algorithms on the same authoritative face operator rather than
+    // reconstructing phi from the converged cell velocity.
+    cfdx::core::Field<double, cfdx::core::Location::FACE> authoritative_mass_flux;
     double reference_momentum_residual = 0.0;
     cfdx::core::LinearSolverContextStats pressure_linear_context;
     cfdx::core::ConvergenceStatus convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
@@ -3047,6 +3052,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             break;
     }
 
+    // Preserve the exact final face flux that was used by the authoritative
+    // continuity operator. Do not rebuild it from U here: the latter omits the
+    // pressure-dependent Rhie-Chow correction.
+    result.authoritative_mass_flux = mass_flux;
     if (pressure_context)
         result.pressure_linear_context = pressure_context->stats();
     return result;
