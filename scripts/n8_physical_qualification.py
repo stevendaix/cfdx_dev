@@ -89,8 +89,32 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     # -V is required, not --output-on-failure: CTest only echoes the stdout of
     # failing tests, so a passing campaign would capture no records at all and the
     # structured evidence section would be empty for every successful run.
-    result = ctest(build_dir, "-V", "--output-on-failure", "--tests-regex", f"^{name}$")
+    #
+    # --no-tests=error is required for correctness, not for strictness. When a
+    # --tests-regex matches nothing, ctest prints "No tests were found!!!" and
+    # exits 0. Without this flag a test renamed or removed between discovery and
+    # execution would be recorded as PASS, and a campaign that ran nothing would
+    # report status PASS with an empty evidence section.
+    result = ctest(
+        build_dir,
+        "-V",
+        "--output-on-failure",
+        "--no-tests=error",
+        "--tests-regex",
+        f"^{name}$",
+    )
     elapsed = time.monotonic() - start
+    if result.returncode == 0 and "No tests were found" in result.stdout:
+        # Defensive: a ctest build that does not honour --no-tests=error must
+        # still not be able to report a test that never ran as PASS.
+        return {
+            "name": name,
+            "returncode": 1,
+            "status": "FAIL",
+            "elapsed_s": round(elapsed, 3),
+            "output": result.stdout,
+            "error": "ctest matched no test for this name; the campaign did not execute it",
+        }
     return {
         "name": name,
         "returncode": result.returncode,

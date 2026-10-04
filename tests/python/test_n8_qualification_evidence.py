@@ -727,3 +727,59 @@ def test_linear_plan_reports_each_structure_mismatch_once_per_subproblem() -> No
         }
     )
     assert [entry["subproblem"] for entry in plan["structure_mismatches"]] == ["pressure"]
+
+
+class _FakeCompleted:
+    def __init__(self, returncode: int, stdout: str) -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+def _run_with_fake_ctest(returncode: int, stdout: str, name: str) -> tuple[dict, list[str]]:
+    captured: list[str] = []
+
+    def fake_ctest(build_dir, *args):
+        captured.extend(args)
+        return _FakeCompleted(returncode, stdout)
+
+    original = MODULE.ctest
+    MODULE.ctest = fake_ctest
+    try:
+        return MODULE.run_test(Path("/build"), name), captured
+    finally:
+        MODULE.ctest = original
+
+
+def test_run_test_refuses_to_match_nothing() -> None:
+    # ctest exits 0 when --tests-regex matches no test, so a name that no longer
+    # resolves would otherwise be recorded as a campaign step that passed.
+    result, args = _run_with_fake_ctest(
+        0, "Test project /build\nNo tests were found!!!\n", "test_absent"
+    )
+
+    assert "--no-tests=error" in args
+    assert result["status"] == "FAIL"
+    assert result["returncode"] != 0
+    assert "did not execute" in result["error"]
+
+
+def test_run_test_records_a_genuine_pass_as_pass() -> None:
+    result, args = _run_with_fake_ctest(
+        0,
+        "Start 7: test_cg_solver\n1/1 Test #7: test_cg_solver ....Passed\n",
+        "test_cg_solver",
+    )
+
+    assert "--no-tests=error" in args
+    assert result["status"] == "PASS"
+    assert result["returncode"] == 0
+    assert "error" not in result
+
+
+def test_run_test_reports_a_real_failure_as_fail() -> None:
+    result, _ = _run_with_fake_ctest(
+        8, "Test #7: test_cg_solver ....***Failed\n", "test_cg_solver"
+    )
+
+    assert result["status"] == "FAIL"
+    assert result["returncode"] == 8
