@@ -139,6 +139,7 @@ RunResult run_couette_channel(
     bool bounded,
     std::size_t nx = 8,
     std::size_t ny = 16,
+    KrylovModel coupled_requested_krylov = KrylovModel::Auto,
     PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
     KrylovModel pressure_requested_krylov = KrylovModel::Auto,
     PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto)
@@ -199,11 +200,8 @@ RunResult run_couette_channel(
     c.diagnostics.coupled_matrix_summary = true;
     c.diagnostics.freeze_state_probe = true;
     c.diagnostics.debug_cell = 33;
-    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
-        coupled_preconditioner != PreconditionerModel::Auto) {
-        c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
-        c.coupled_linear_solver.preconditioner = coupled_preconditioner;
-    }
+    c.coupled_linear_solver.krylov = coupled_requested_krylov;
+    c.coupled_linear_solver.preconditioner = coupled_preconditioner;
     // The pressure sub-problem request is a separate request. It is applied from
     // the parameters the caller announces before the run, so the announced
     // request cannot drift from the configured one.
@@ -354,9 +352,11 @@ int main(int argc, char** argv)
             PressureVelocityAlgorithm algorithm;
             ConvectionScheme scheme;
             bool bounded;
+            // Both sub-problem requests are declared by the campaign case,
+            // applied to the controls from that declaration and announced from
+            // it, so an announced request cannot drift from the configured one.
+            KrylovModel coupled_krylov = KrylovModel::Auto;
             PreconditionerModel coupled_preconditioner;
-            // Announced and applied together: the pressure sub-problem request
-            // is declared by the campaign, not read back from the solved run.
             KrylovModel pressure_krylov = KrylovModel::Auto;
             PreconditionerModel pressure_preconditioner = PreconditionerModel::Auto;
         };
@@ -366,22 +366,29 @@ int main(int argc, char** argv)
         // Physical gates remain identical in both modes.
         std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"COUPLED/BlockSchur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::CoupledBlockSchur},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::CoupledBlockSchur},
             {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::MGR},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::MGR},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
                 {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             });
         }
 
@@ -452,6 +459,8 @@ int main(int argc, char** argv)
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
+                      << " coupled_requested_krylov="
+                      << to_string(test.coupled_krylov)
                       << " preconditioner="
                       << to_string(test.coupled_preconditioner)
                       << " preconditioner_id="
@@ -471,8 +480,8 @@ int main(int argc, char** argv)
             try {
                 auto result = run_couette_channel(
                     test.algorithm, test.scheme, test.bounded, 8, 16,
-                    test.coupled_preconditioner, test.pressure_krylov,
-                    test.pressure_preconditioner);
+                    test.coupled_krylov, test.coupled_preconditioner,
+                    test.pressure_krylov, test.pressure_preconditioner);
 
                 print_history(test.name, result);
 

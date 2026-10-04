@@ -219,6 +219,7 @@ _EVIDENCE_REQUIREMENTS: tuple[tuple[str, str, str | None, bool | None, tuple[str
             "nx",
             "ny",
             "bounded",
+            "coupled_requested_krylov",
             "preconditioner",
             "preconditioner_id",
             "pressure_requested_krylov",
@@ -451,13 +452,36 @@ def audit_model_resolution(evidence: dict[str, object]) -> dict[str, object]:
     }
 
 
-_SUBPROBLEMS = (
-    # (sub-problem, requested field in the run configuration, resolved flag,
-    #  resolved field). The request is read only from the record emitted before
-    # the run; the resolved-plan record is never a source of truth for it.
-    ("coupled", "preconditioner", "coupled_resolved", "coupled_preconditioner"),
+_METHODS = (
+    # (sub-problem, method, requested field in the run configuration, resolved
+    #  flag, resolved field). The request is read only from the record emitted
+    # before the run; the resolved-plan record is never a source of truth for
+    # it. Krylov and preconditioner are gated symmetrically: a substituted
+    # Krylov method is as much a substitution as a substituted preconditioner.
+    (
+        "coupled",
+        "krylov",
+        "coupled_requested_krylov",
+        "coupled_resolved",
+        "coupled_krylov",
+    ),
+    (
+        "coupled",
+        "preconditioner",
+        "preconditioner",
+        "coupled_resolved",
+        "coupled_preconditioner",
+    ),
     (
         "pressure",
+        "krylov",
+        "pressure_requested_krylov",
+        "pressure_resolved",
+        "pressure_krylov",
+    ),
+    (
+        "pressure",
+        "preconditioner",
         "pressure_requested_preconditioner",
         "pressure_resolved",
         "pressure_preconditioner",
@@ -483,9 +507,10 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
     plans from the records emitted after it, so a resolution cannot be checked
     against a request it also reports itself. An automatic request may
     legitimately resolve to another method, and that resolution is recorded
-    instead of being invisible. An explicit request must be the method that ran:
-    the dispatcher rejects an incompatible explicit request, so a mismatch means
-    the report and the run disagree and must not be read as a pass.
+    instead of being invisible. An explicit request must be the method that ran,
+    for the Krylov method as well as for the preconditioner: the dispatcher
+    rejects an incompatible explicit request, so a mismatch means the report and
+    the run disagree and must not be read as a pass.
     """
 
     def records(source: str) -> list[object]:
@@ -506,7 +531,8 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
     substitutions: list[dict[str, str]] = []
     structure_mismatches: list[dict[str, object]] = []
     models_without_plan: list[str] = []
-    models_compared = 0
+    methods_compared = 0
+    checked_structures: set[tuple[str, str]] = set()
 
     for algorithm, configuration in configurations.items():
         plan = resolved_plans.get(algorithm)
@@ -515,17 +541,21 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
             continue
 
         expected = expected_resolved_structure(algorithm)
-        for subproblem, request_field, resolved_flag, resolved_field in _SUBPROBLEMS:
+        for subproblem, method, request_field, resolved_flag, resolved_field in _METHODS:
             resolved_here = plan.get(resolved_flag) is True
-            if resolved_here != expected[subproblem]:
-                structure_mismatches.append(
-                    {
-                        "algorithm": algorithm,
-                        "subproblem": subproblem,
-                        "expected_resolved": expected[subproblem],
-                        "resolved": resolved_here,
-                    }
-                )
+            # The resolved flag is shared by the two methods of a sub-problem,
+            # so the structure is checked once per sub-problem.
+            if (algorithm, subproblem) not in checked_structures:
+                checked_structures.add((algorithm, subproblem))
+                if resolved_here != expected[subproblem]:
+                    structure_mismatches.append(
+                        {
+                            "algorithm": algorithm,
+                            "subproblem": subproblem,
+                            "expected_resolved": expected[subproblem],
+                            "resolved": resolved_here,
+                        }
+                    )
             if not resolved_here:
                 continue
             resolved = str(plan.get(resolved_field, ""))
@@ -537,17 +567,19 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
                     {
                         "algorithm": algorithm,
                         "subproblem": subproblem,
+                        "method": method,
                         "requested": "undeclared",
                         "resolved": resolved,
                     }
                 )
                 continue
-            models_compared += 1
+            methods_compared += 1
             if asked == "auto":
                 automatic_resolutions.append(
                     {
                         "algorithm": algorithm,
                         "subproblem": subproblem,
+                        "method": method,
                         "requested": asked,
                         "resolved": resolved,
                     }
@@ -557,6 +589,7 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
                     {
                         "algorithm": algorithm,
                         "subproblem": subproblem,
+                        "method": method,
                         "requested": asked,
                         "resolved": resolved,
                     }
@@ -568,12 +601,12 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
             if substitutions or models_without_plan or structure_mismatches
             else "COMPLETE"
         ),
-        "models_compared": models_compared,
+        "methods_compared": methods_compared,
         "automatic_resolutions": automatic_resolutions,
         "substitutions": substitutions,
         "structure_mismatches": structure_mismatches,
         "models_without_plan": models_without_plan,
-        "policy": "explicit_request_must_be_honored",
+        "policy": "explicit_linear_request_must_be_honored",
     }
 
 
