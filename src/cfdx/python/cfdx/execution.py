@@ -69,7 +69,7 @@ class ExecutionController:
                 self.session.iteration = metrics.iteration
             if metrics.time is not None:
                 self.session.time = metrics.time
-            if metrics.iteration is not None or metrics.time is not None or metrics.residuals:
+            if metrics.iteration is not None or metrics.time is not None or metrics.cfl is not None or metrics.residuals:
                 with self._monitor_lock:
                     iteration = metrics.iteration if metrics.iteration is not None else (
                         self.monitor_series.samples[-1].iteration

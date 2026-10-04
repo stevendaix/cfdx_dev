@@ -5,7 +5,7 @@ import pytest
 
 from cfdx import CFDXSession
 from cfdx.case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
-from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
+from cfdx.dat_io import DatField, DatRestart, read_dat_restart, write_dat_hdf5
 
 
 def make_session() -> CFDXSession:
@@ -72,10 +72,15 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     loaded, loaded_dat = read_case_with_dat(case_path)
 
     assert loaded.case.as_dict() == make_session().case.as_dict()
-    assert loaded.iteration == 120
-    assert loaded.time == pytest.approx(2.5)
+    # Numerical state is carried by the DAT alone: the case file must not
+    # absorb it, so the session comes back at iteration 0.
+    assert loaded.iteration == 0
+    assert loaded.time == pytest.approx(0.0)
     assert loaded_dat == dat_path
     assert loaded_dat.read_bytes() == source.read_bytes()
+    restart = read_dat_restart(loaded_dat)
+    assert restart.iteration == 120
+    assert restart.time == pytest.approx(2.5)
 
 
 def test_read_case_with_dat_is_independent_of_case_state(tmp_path: Path) -> None:

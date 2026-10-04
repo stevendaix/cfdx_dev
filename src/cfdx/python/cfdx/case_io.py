@@ -196,7 +196,16 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
             raise ValueError("physics configuration is missing")
         if not isinstance(data.get("numerics"), dict):
             raise ValueError("numerics configuration is missing")
-        runtime_separated = "runtime" in h5 and "case" in h5 and "config" not in h5["runtime"]
+        # Numerical iteration/time/field state belongs exclusively to the
+        # paired DAT artifact, so a well-formed case never carries a runtime
+        # group. The separator holds when the case group holds the setup and no
+        # checkpoint/restart state leaked into it.
+        runtime_separated = (
+            "case" in h5
+            and _CASE_DATASET.rsplit("/", 1)[-1] in h5["case"]
+            and _CHECKPOINT_GROUP not in h5
+            and _RESTART_GROUP not in h5
+        )
     return {"mesh": True, "fields": True, "physics": True, "numerics": True, "runtime_separated": runtime_separated}
 
 
