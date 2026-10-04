@@ -37,8 +37,101 @@ static Mesh make_unit_cube()
     return m;
 }
 
+
+static Mesh make_two_cell_channel()
+{
+    Mesh m;
+    m.points().resize(12);
+    const double p[12][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1},
+        {2,0,0},{2,1,0},{2,0,1},{2,1,1}
+    };
+    for (std::size_t i=0; i<12; ++i)
+        m.points().set(i,p[i][0],p[i][1],p[i][2]);
+
+    m.faces().push_face({0,3,7,4});       // x = 0
+    m.faces().push_face({1,2,6,5});       // x = 1, internal
+    m.faces().push_face({8,9,11,10});     // x = 2
+    m.faces().push_face({0,1,5,4});       // y = 0, left
+    m.faces().push_face({3,7,6,2});       // y = 1, left
+    m.faces().push_face({0,3,2,1});       // z = 0, left
+    m.faces().push_face({4,5,6,7});       // z = 1, left
+    m.faces().push_face({1,8,10,5});      // y = 0, right
+    m.faces().push_face({2,6,11,9});      // y = 1, right
+    m.faces().push_face({1,2,9,8});       // z = 0, right
+    m.faces().push_face({5,10,11,6});     // z = 1, right
+
+    m.ownership().resize(11);
+    for (std::size_t f = 0; f < 11; ++f) {
+        m.ownership().set_owner(f, f == 2 ? 1 : 0);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.ownership().set_owner(1, 0);
+    m.ownership().set_neighbour(1, 1);
+
+    m.cells().push_cell({0,1,3,4,5,6});
+    m.cells().push_cell({1,2,7,8,9,10});
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {0,2,3,4,5,6,7,8,9,10};
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 int main()
 {
+    run_case("n9_2_rhie_chow_pressure_sensitivity_and_flux_reference", [] {
+        const Mesh m = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(m);
+
+        Field<double,Location::CELL> U(2,"U","m/s",3);
+        Field<double,Location::CELL> p0(2,"p","Pa",1);
+        Field<double,Location::CELL> p1(2,"p","Pa",1);
+        U.fill(0.0);
+        p0.fill(0.0);
+        p1.fill(0.0);
+        p1(1) = 2.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        const std::array<std::vector<double>,3> rAU{
+            std::vector<double>{1.0,1.0},
+            std::vector<double>{1.0,1.0},
+            std::vector<double>{1.0,1.0}};
+
+        const auto phi0 = make_rhie_chow_mass_flux(
+            m, geometry, U, p0, rAU, 1.0, ubc, pbc);
+        const auto phi1 = make_rhie_chow_mass_flux(
+            m, geometry, U, p1, rAU, 1.0, ubc, pbc);
+
+        EXPECT_NEAR(phi0(1), 0.0, 1e-14);
+        EXPECT_TRUE(std::abs(phi1(1)) > 1e-12);
+        EXPECT_NEAR(phi1(1), -2.0, 1e-12);
+        EXPECT_NEAR(phi1(0), 0.0, 1e-14);
+        EXPECT_NEAR(phi1(2), 0.0, 1e-14);
+
+        // The authoritative flux is antisymmetric across the internal face:
+        // owner cell sees phi, neighbour cell sees -phi.
+        double div0 = phi1(1);
+        double div1 = -phi1(1);
+        EXPECT_NEAR(div0 + div1, 0.0, 1e-14);
+
+        const auto contract = PressureVelocitySystemContract{
+            6, 2,
+            PressureGaugePolicy::REFERENCE_CELL,
+            ContinuityFluxPolicy::RHIE_CHOW,
+            PressureStabilizationPolicy::RHIE_CHOW,
+            true, true, true};
+        contract.validate();
+    });
+
+
     run_case("native_solver_consumes_dat_restart", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> seed_u(1,"U","m/s",3);
