@@ -72,10 +72,10 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     loaded, loaded_dat = read_case_with_dat(case_path)
 
     assert loaded.case.as_dict() == make_session().case.as_dict()
-    # Numerical state is carried by the DAT alone: the case file must not
-    # absorb it, so the session comes back at iteration 0.
-    assert loaded.iteration == 0
-    assert loaded.time == pytest.approx(0.0)
+    # Iteration/time are restored from the paired DAT; field values remain
+    # owned by the DAT until the session has a field-store/remapping contract.
+    assert loaded.iteration == 120
+    assert loaded.time == pytest.approx(2.5)
     assert loaded_dat == dat_path
     assert loaded_dat.read_bytes() == source.read_bytes()
     restart = read_dat_restart(loaded_dat)
@@ -90,8 +90,8 @@ def test_read_case_with_dat_is_independent_of_case_state(tmp_path: Path) -> None
         make_session(), tmp_path / "channel.cfdx.h5", source
     )
     loaded, loaded_dat = read_case_with_dat(case_path)
-    assert loaded.iteration == 0
-    assert loaded.time == pytest.approx(0.0)
+    assert loaded.iteration == 120
+    assert loaded.time == pytest.approx(2.5)
     assert loaded_dat == dat_path
 
 
