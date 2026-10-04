@@ -97,6 +97,76 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     }
 
 
+
+
+
+def _parse_value(value: str) -> object:
+    if value in {"true", "false"}:
+        return value == "true"
+    try:
+        if any(ch in value for ch in ".eE"):
+            return float(value)
+        return int(value)
+    except ValueError:
+        return value
+
+
+def parse_key_value_records(output: str, prefix: str) -> list[dict[str, object]]:
+    """Extract structured key=value records emitted by an existing validation test.
+
+    Values are deliberately kept as strings when they are not unambiguously
+    numeric/boolean; this avoids changing the test's textual contract while
+    making the JSON report directly consumable by analysis tools.
+    """
+    records: list[dict[str, object]] = []
+    pattern = re.compile(r"^" + re.escape(prefix) + r"\\s+(.*)$")
+    for line in output.splitlines():
+        match = pattern.match(line)
+        if not match:
+            continue
+        record: dict[str, object] = {}
+        for key, value in re.findall(r"(\\w+)=([^\\s]+)", match.group(1)):
+            record[key] = _parse_value(value)
+        if record:
+            records.append(record)
+    return records
+
+
+def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
+    """Normalize structured evidence already emitted by N8 validation tests.
+
+    The source tests remain the numerical oracles. This function only parses
+    their existing stdout; it does not invent gates, alter tolerances, or
+    reinterpret failures as passes.
+    """
+    evidence: dict[str, object] = {
+        "physical_model_results": [],
+        "physical_model_failures": [],
+        "schur_quantitative": [],
+        "schur_production": [],
+    }
+
+    for result in results:
+        output = str(result["output"])
+        evidence["physical_model_results"].extend(
+            parse_key_value_records(output, "MODEL_RESULT")
+        )
+        evidence["physical_model_failures"].extend(
+            parse_key_value_records(output, "MODEL_FAILURES")
+        )
+        evidence["schur_quantitative"].extend(
+            parse_key_value_records(output, "N8_SCHUR")
+        )
+        evidence["schur_production"].extend(
+            parse_key_value_records(output, "n8_schur_benchmark")
+        )
+        evidence["schur_production"].extend(
+            parse_key_value_records(output, "n8_schur_benchmark_lifecycle")
+        )
+
+    return evidence
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
@@ -146,6 +216,7 @@ def main() -> int:
 
     failed = [r["name"] for r in results if r["status"] == "FAIL"]
     completed = len(results)
+    evidence = extract_n8_evidence(results)
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
         "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
@@ -153,6 +224,7 @@ def main() -> int:
         "completed_tests": completed,
         "failed_tests": failed,
         "results": results,
+        "evidence": evidence,
         "coverage": {
             "pressure_velocity": [
                 "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",
