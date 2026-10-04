@@ -131,6 +131,10 @@ async def exercise() -> None:
             assert status.is_error is False
             assert status.structured_content["ok"] is True
             assert any(line.startswith("## ") for line in status.structured_content["status"])
+            escaped = await client.call_tool("repository.file_structure", {"path": "../outside"})
+            assert escaped.is_error is False
+            assert escaped.structured_content["ok"] is False
+            assert escaped.structured_content["files"] == []
 
             stale = await client.call_tool("index.validate", {})
             assert stale.is_error is False
