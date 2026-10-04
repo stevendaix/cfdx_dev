@@ -31,6 +31,17 @@ The read-only Development MCP also exposes repository inspection without modifyi
 
 The file-structure operation uses tracked files only, and rejects paths that escape the repository. These operations are descriptive and do not imply build, test, validation, or qualification evidence.
 
+## Read-only Development MCP documentation surface
+
+The read-only Development MCP exposes repository-grounded documentation lookup without modifying Git state:
+
+| Operation | Input | Result |
+|---|---|---|
+| `documentation.search` | pattern + optional relative path | tracked text matches with file/line context |
+| `documentation.read` | tracked relative path | file content at `HEAD` |
+
+Both operations reject repository-escaping paths. `documentation.read` only reads tracked files through Git and therefore does not expose arbitrary filesystem paths.
+
 ## Read-only Development MCP query surface
 
 The first implemented Development MCP surface is deliberately read-only. It maps to the reproducible index/query layer and preserves the evidence contract.
