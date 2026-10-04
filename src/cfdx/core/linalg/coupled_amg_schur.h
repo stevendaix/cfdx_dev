@@ -2,6 +2,7 @@
 
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/preconditioner.h"
+#include "cfdx/core/linalg/pcd_schur.h"
 
 #include <algorithm>
 #include <array>
@@ -31,11 +32,18 @@ enum class CoupledSchurVelocityApproximation {
     Diagonal
 };
 
+enum class CoupledSchurApproximationModel {
+    BlockLocal,
+    PCD
+};
+
 struct CoupledBlockSchurOptions {
     CoupledSchurFactorization factorization =
         CoupledSchurFactorization::Full;
     CoupledSchurVelocityApproximation velocity_approximation =
         CoupledSchurVelocityApproximation::Block;
+    CoupledSchurApproximationModel schur_approximation =
+        CoupledSchurApproximationModel::BlockLocal;
     // PETSc flips the sign of the Schur solve for the diagonal saddle-point
     // form by default. CFDX does not assume that sign convention: it is an
     // explicit opt-in because CFDX pressure matrices may already be sign
@@ -68,6 +76,10 @@ public:
         : n_cells_(n_cells), nv_(3 * n_cells),
           options_(options), pressure_amg_(false) {}
 
+    void set_pcd_schur(std::unique_ptr<PcdSchurApproximation> pcd) {
+        pcd_schur_ = std::move(pcd);
+    }
+
     bool setup(const SparseMatrix& A) override {
         reset();
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
@@ -75,6 +87,20 @@ public:
             return fail("expected a square 4N coupled matrix");
 
         if (!prepare_numeric_state(A)) return false;
+        if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
+            if (!pcd_schur_)
+                return fail("PCD Schur approximation was not configured");
+            Auu_ = extract_block(A, 0, 0, n_cells_, n_cells_);
+            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            BlockOperator blocks(Auu_, G_, D_, C_);
+            if (!pcd_schur_->setup(blocks))
+                return fail("PCD Schur approximation setup failed");
+            pcd_ready_ = true;
+            ready_ = true;
+            return true;
+        }
         if (!pressure_amg_.setup(schur_)) {
             return fail(std::string("pressure Schur AMG setup failed: ") +
                         pressure_amg_.last_error());
@@ -158,7 +184,11 @@ public:
         };
 
         const auto solve_pressure = [&](const Vector& pressure_rhs, Vector& pressure) {
-            if (!pressure_amg_.apply(pressure_rhs, pressure)) return false;
+            if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
+                if (!pcd_ready_ || !pcd_schur_ ||
+                    !pcd_schur_->apply(pressure_rhs, pressure))
+                    return false;
+            } else if (!pressure_amg_.apply(pressure_rhs, pressure)) return false;
             if (options_.diagonal_schur_sign_flip) {
                 for (std::size_t c = 0; c < n_cells_; ++c)
                     pressure(c) = -pressure(c);
@@ -243,6 +273,32 @@ public:
     const std::string& last_error() const noexcept { return last_error_; }
 
 private:
+    static SparseMatrix extract_block(const SparseMatrix& A,
+                                      std::size_t row_block,
+                                      std::size_t col_block,
+                                      std::size_t row_size,
+                                      std::size_t col_size) {
+        SparseMatrix block(row_size, col_size);
+        const std::size_t row_offset = row_block == 0 ? 0 : row_size;
+        const std::size_t col_offset = col_block == 0 ? 0 : col_size;
+        // For the 4N ordering [Ux,Uy,Uz,p], velocity occupies 3N rows/cols.
+        const std::size_t nv = row_block == 0 ? row_size : col_block == 0 ? col_size : 0;
+        const std::size_t velocity_size = A.n_rows() * 3 / 4;
+        const std::size_t roffset = row_block == 0 ? 0 : velocity_size;
+        const std::size_t coffset = col_block == 0 ? 0 : velocity_size;
+        for (std::size_t r = 0; r < row_size; ++r) {
+            const std::size_t gr = roffset + r;
+            for (std::uint32_t k = A.row_offsets_data()[gr];
+                 k < A.row_offsets_data()[gr + 1]; ++k) {
+                const std::size_t gc = A.columns_data()[k];
+                if (gc < coffset || gc >= coffset + col_size) continue;
+                block.push_back(r, gc - coffset, A.values_data()[k]);
+            }
+        }
+        block.finalize();
+        return block;
+    }
+
     static bool invert3x3(const std::array<double, 9>& a,
                           std::array<double, 9>& inv) {
         const double det =
@@ -454,7 +510,7 @@ private:
     }
 
     void reset() {
-        ready_=false; last_error_.clear(); velocity_inv_.clear();
+        ready_=false; pcd_ready_=false; last_error_.clear(); velocity_inv_.clear();
         velocity_inv_diag_.clear();
         row_.clear(); col_.clear(); val_.clear(); schur_=SparseMatrix();
     }
@@ -467,7 +523,13 @@ private:
     std::vector<std::uint32_t> col_;
     std::vector<double> val_;
     SparseMatrix schur_;
+    SparseMatrix Auu_;
+    SparseMatrix G_;
+    SparseMatrix D_;
+    SparseMatrix C_;
     NativeBoomerAMGPreconditioner pressure_amg_;
+    std::unique_ptr<PcdSchurApproximation> pcd_schur_;
+    bool pcd_ready_{false};
     bool ready_{false};
     std::string last_error_;
 };
