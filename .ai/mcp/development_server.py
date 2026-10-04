@@ -7,9 +7,6 @@ import os
 import pathlib
 import subprocess
 import sys
-from typing import Annotated
-
-from pydantic import Field
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -328,11 +325,9 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
         title="Read tracked documentation file",
         annotations=annotations,
     )
-    def documentation_read(
-        path: Annotated[str, Field(validation_alias="file_path")]
-    ) -> dict[str, object]:
+    def documentation_read(file_path: str) -> dict[str, object]:
         """Read a tracked repository file at HEAD without modifying repository state."""
-        return _git_read(repository, path)
+        return _git_read(repository, file_path)
 
     return server
 
