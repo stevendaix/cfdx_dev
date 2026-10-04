@@ -86,7 +86,10 @@ def discover_tests(build_dir: Path) -> set[str]:
 
 def run_test(build_dir: Path, name: str) -> dict[str, object]:
     start = time.monotonic()
-    result = ctest(build_dir, "--output-on-failure", "--tests-regex", f"^{name}$")
+    # -V is required, not --output-on-failure: CTest only echoes the stdout of
+    # failing tests, so a passing campaign would capture no records at all and the
+    # structured evidence section would be empty for every successful run.
+    result = ctest(build_dir, "-V", "--output-on-failure", "--tests-regex", f"^{name}$")
     elapsed = time.monotonic() - start
     return {
         "name": name,
@@ -97,7 +100,8 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     }
 
 
-
+_KEY = re.compile(r"[\w.|]+")
+_CTEST_LINE_PREFIX = re.compile(r"^\d+: ?")
 
 
 def _parse_value(value: str) -> object:
@@ -112,21 +116,42 @@ def _parse_value(value: str) -> object:
 
 
 def parse_key_value_records(output: str, prefix: str) -> list[dict[str, object]]:
-    """Extract structured key=value records emitted by an existing validation test."""
+    """Extract structured key=value records emitted by an existing validation test.
+
+    The first token is recorded as ``model`` when it carries no ``=``. Remaining
+    bare tokens are recorded as ``gates`` so that a failure record keeps the gate
+    names the test reported instead of only the model that failed.
+    """
     records: list[dict[str, object]] = []
     pattern = re.compile(r"^" + re.escape(prefix) + r"\s+(.*)$")
-    for line in output.splitlines():
+    for raw_line in output.splitlines():
+        # CTest prefixes every captured line with the test index ("21: ...").
+        line = _CTEST_LINE_PREFIX.sub("", raw_line, count=1)
         match = pattern.match(line)
         if not match:
             continue
-        payload = match.group(1).strip()
-        tokens = payload.split()
+        tokens = match.group(1).split()
         record: dict[str, object] = {}
         if tokens and "=" not in tokens[0]:
             record["model"] = tokens[0]
-            payload = " ".join(tokens[1:])
-        for key, value in re.findall(r"(\w+)=([^\s]+)", payload):
-            record[key] = _parse_value(value)
+            tokens = tokens[1:]
+        gates: list[str] = []
+        position = 0
+        while position < len(tokens):
+            token = tokens[position]
+            key, separator, value = token.partition("=")
+            position += 1
+            if not separator or not _KEY.fullmatch(key):
+                gates.append(token)
+                continue
+            parsed = _parse_value(value)
+            trailing = tokens[position:]
+            if isinstance(parsed, str) and trailing and not any("=" in item for item in trailing):
+                parsed = " ".join([value, *trailing])
+                position = len(tokens)
+            record[key] = parsed
+        if gates:
+            record["gates"] = gates
         if record:
             records.append(record)
     return records
