@@ -8,7 +8,7 @@ N8 implementation is substantially merged. The remaining work is to establish re
 >
 > - **LSC and BFBt are implemented, not missing** (`src/cfdx/core/linalg/lsc_bfbt_schur.h`, #562), verified against the exact-Schur oracle (#565) and measured for conditioning and FP64 error floor (#568). Only **PCD** is unimplemented.
 > - **The generic Schur layer is not production-selectable.** No file under `src/` or `apps/` includes it and no case-file setting chooses a Schur approximation; production still uses the separate `CoupledBlockSchur*` pair. Section 7 cannot close until that changes.
-> - **SIMPLE/SIMPLEC lacks a pressure null-space policy and a graph-signature guard on `update_values`**, which the exact and LSC/BFBt approximations do have.
+> - **SIMPLE/SIMPLEC lacked a pressure null-space policy and a graph-signature guard on `update_values`**; #634 gives it both, matching the exact and LSC/BFBt approximations.
 
 ## 1. FGMRES gate
 
@@ -81,10 +81,10 @@ Current algebraic tests are infrastructure evidence, not final CFD qualification
 - [x] Compute exact Schur reference where tractable. (Implicit exact-Schur oracle with a preconditioner-free CG action, #492; independent dense-assembly cross-check, #565.)
 - [x] Compare SIMPLE/SIMPLEC, LSC and BFBT against the exact reference. (`test_schur_approximation_comparison`.)
 - [x] Measure approximation error and conditioning. (Infinity-norm `cond(Auu)`, oracle discrepancy, measured FP64 backward-error floor, per-method `algebra_error`/`exact_schur_error`, #568. Approximation quality is deliberately left diagnostic: no envelope exists.)
-- [ ] Include null-space handling where applicable. Delivered for the exact and LSC/BFBt approximations (`test_lsc_bfbt_schur_null_space`, #575). Still open: `SimplerSchurApproximation` has no null-space policy, and the Schur layer offers only the constant/mean-zero projector — there is no pinned-pressure policy there.
+- [x] Include null-space handling where applicable. Delivered for the exact and LSC/BFBt approximations (`test_lsc_bfbt_schur_null_space`, #575) and for SIMPLE/SIMPLEC (#634). The Schur layer still offers only the constant/mean-zero projector — there is no pinned-pressure policy there, so that part remains open.
 - [ ] Establish an acceptance envelope from representative matrices. Blocked on the first item; the controlled family measures LSC/BFBt action error at 4.8–8.6 against exact, which is why no threshold may be invented yet.
 - [x] Identify the FP64 numerical floor from measured results. (Machine epsilon and attainable backward-error floor reported per case, #568; #482 established the `tol >> eps*cond(A)` rule.)
-- [x] Test numeric-value refresh without rebuilding the graph. (`n8_schur_benchmark_lifecycle`: value-only change on an unchanged graph, `hierarchy_builds` held constant, one `numeric_update`, true residual independently recomputed.) Graph-*change* rejection is guarded for the exact and LSC/BFBt approximations; `SimplerSchurApproximation::update_values` has no such guard.
+- [x] Test numeric-value refresh without rebuilding the graph. (`n8_schur_benchmark_lifecycle`: value-only change on an unchanged graph, `hierarchy_builds` held constant, one `numeric_update`, true residual independently recomputed.) Graph-*change* rejection is guarded for the exact, LSC/BFBt and SIMPLE/SIMPLEC approximations.
 - [x] Document failure modes instead of weakening thresholds.
 
 **Exit evidence:** representative CFD matrix dataset + quantitative comparison + justified acceptance envelope.
