@@ -25,7 +25,7 @@ sources:
   - id: gmsh
     project: Gmsh
     repository: https://gitlab.onelab.info/gmsh/gmsh
-    ref: pin_required
+    ref: 4b39815125c0dd524fc57222aec2ec27e3ee2279
     license_status: verify
     redistribution: pending
   - id: ansys-vmfl
