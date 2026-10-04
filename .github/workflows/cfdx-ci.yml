@@ -140,7 +140,7 @@ jobs:
         run: |
           if [[ "${{ steps.build.outcome }}" != "success" ||
                 "${{ steps.ctest.outcome }}" != "success" ||
-                ( "${{ matrix.build_type }}" == "Release" && "${{ steps.python.outcome }}" != "success" ) ]]; then
+                "${{ steps.python.outcome }}" == "failure" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
