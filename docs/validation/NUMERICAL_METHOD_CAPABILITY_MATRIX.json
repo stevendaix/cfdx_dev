@@ -356,6 +356,16 @@
       ]
     },
     {
+      "id": "preconditioner.pcd",
+      "family": "preconditioner",
+      "status": "partial",
+      "verification": [
+        "algebraic_reference",
+        "coupled_block_integration",
+        "pressure_gauge"
+      ]
+    },
+    {
       "id": "time_step.adaptive_cfl",
       "family": "time_step",
       "status": "implemented",

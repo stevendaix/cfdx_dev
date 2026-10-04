@@ -54,7 +54,9 @@ Explicitly execute and retain evidence for:
 - [x] Fractional Step
 - [x] COUPLED
 
-All six run through `test_n8_pressure_velocity_matrix` (no `--quick`), which announces each model's requested configuration, records the plan the dispatcher resolved, and reports `solver_converged`, `iterations` and `gates_failed` per model. `model_resolution` reports `tallies_agree` between the announced and observed counts. COUPLED is exercised under two preconditioners (`BlockSchur` and `MGR`), giving seven configured models.
+All six run through `test_n8_pressure_velocity_matrix` (no `--quick`), which announces each model's requested configuration, records the plan the dispatcher resolved, and reports `solver_converged`, `iterations` and `gates_failed` per model. `model_resolution` reports `tallies_agree` between the announced and observed counts. COUPLED is exercised under three preconditioners (`BlockSchur`, `MGR` and `PCD`), giving eight configured models.
+
+`PCD` passes this matrix, with the same gates as the other coupled preconditioners. Its action and reference-cell gauge were corrected after the case was first exercised; see [PCD_SCHUR_QUALIFICATION.md](PCD_SCHUR_QUALIFICATION.md#production-path-evidence). Its operator ordering remains unqualified on a non-zero-convection case.
 
 API availability alone was not treated as qualification: the evidence is the per-model resolved plan and verdict.
 

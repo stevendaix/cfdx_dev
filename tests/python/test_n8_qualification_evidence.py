@@ -17,7 +17,7 @@ SPEC.loader.exec_module(MODULE)
 CTEST_OUTPUT = """    Start 21: test_n8_pressure_velocity_matrix
 21: Test command: /build/test_phase9_acceptance
 21: MODEL_CONFIG algorithm=COUPLED/BlockSchur/upwind/bounded nx=8 ny=16 bounded=true coupled_requested_krylov=fgmres preconditioner=coupled_block_schur preconditioner_id=11 pressure_requested_krylov=auto pressure_requested_preconditioner=native_amg alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
-21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true coupled_requested_krylov=fgmres preconditioner=mgr preconditioner_id=13 pressure_requested_krylov=auto pressure_requested_preconditioner=auto alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
+21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true coupled_requested_krylov=fgmres preconditioner=mgr preconditioner_id=14 pressure_requested_krylov=auto pressure_requested_preconditioner=auto alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
 21: MODEL_PLAN algorithm=COUPLED/BlockSchur/upwind/bounded coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=coupled_block_schur pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
 21: MODEL_PLAN algorithm=COUPLED/MGR/upwind/bounded coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=mgr pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
 21: MODEL_RESULT COUPLED/BlockSchur/upwind/bounded solver_converged=true iterations=17 profile_L2=1.3586e-09 Umax=0.96875 |Uy|max=5.95589e-10 |Uz|max=0 gates_failed=0
@@ -88,7 +88,7 @@ def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     assert evidence["run_configuration"] == [
         MODEL_CONFIGURATION,
         {**MODEL_CONFIGURATION, "algorithm": "COUPLED/MGR/upwind/bounded",
-         "preconditioner": "mgr", "preconditioner_id": 13,
+         "preconditioner": "mgr", "preconditioner_id": 14,
          "pressure_requested_preconditioner": "auto"},
     ]
     assert [record["model"] for record in evidence["physical_model_results"]] == [
@@ -783,3 +783,47 @@ def test_run_test_reports_a_real_failure_as_fail() -> None:
 
     assert result["status"] == "FAIL"
     assert result["returncode"] == 8
+
+
+def test_preconditioner_identity_accepts_ordinals_matching_the_enum() -> None:
+    result = MODULE.audit_preconditioner_identity(
+        {
+            "run_configuration": [
+                {**MODEL_CONFIGURATION},
+                {**MODEL_CONFIGURATION, "preconditioner": "mgr", "preconditioner_id": 14},
+            ]
+        }
+    )
+    assert result["status"] == "COMPLETE"
+    assert result["records_checked"] == 2
+    assert result["identifier_mismatches"] == []
+
+
+def test_preconditioner_identity_reports_an_ordinal_that_no_longer_matches() -> None:
+    # Inserting a value into PreconditionerModel shifts every later ordinal. The
+    # name stays correct while the recorded identifier drifts, so only a
+    # cross-check of the two catches it.
+    result = MODULE.audit_preconditioner_identity(
+        {
+            "run_configuration": [
+                {**MODEL_CONFIGURATION, "preconditioner": "mgr", "preconditioner_id": 13}
+            ]
+        }
+    )
+    assert result["status"] == "INCOMPLETE"
+    assert result["identifier_mismatches"] == [
+        {
+            "model": MODEL_CONFIGURATION["algorithm"],
+            "preconditioner": "mgr",
+            "reported_id": 13,
+            "expected_id": 14,
+        }
+    ]
+
+
+def test_preconditioner_identity_flags_a_name_outside_the_catalogue() -> None:
+    result = MODULE.audit_preconditioner_identity(
+        {"run_configuration": [{**MODEL_CONFIGURATION, "preconditioner": "not_a_model"}]}
+    )
+    assert result["status"] == "INCOMPLETE"
+    assert result["unknown_preconditioners"] == ["not_a_model"]

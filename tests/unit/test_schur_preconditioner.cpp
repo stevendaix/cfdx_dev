@@ -1,4 +1,6 @@
 #include "cfdx/core/linalg/block_preconditioner.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
@@ -120,6 +122,43 @@ int main() {
         EXPECT_NEAR(z(0), -(p0 + 0.5 * p1) / 4.0, 1e-12);
         EXPECT_NEAR(z(1), -(0.5 * p0 + p1) / 4.0, 1e-12);
         EXPECT_TRUE(std::isfinite(z.norm_inf()));
+    });
+
+    run_case("coupled_pcd_schur_setup_and_apply", [] {
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 2.0); A.push_back(0, 3, 1.0);
+        A.push_back(1, 1, 3.0); A.push_back(1, 3, 2.0);
+        A.push_back(2, 2, 4.0); A.push_back(2, 3, 3.0);
+        A.push_back(3, 0, -1.0); A.push_back(3, 1, -2.0);
+        A.push_back(3, 2, -3.0);
+        A.finalize();
+
+        SparseMatrix M(1, 1), K(1, 1), F(1, 1);
+        M.push_back(0, 0, 1.0); K.push_back(0, 0, 1.0); F.push_back(0, 0, 1.0);
+        M.finalize(); K.finalize(); F.finalize();
+
+        auto solve_identity = [](const Vector& rhs, Vector& x) {
+            x = rhs;
+            return x.is_valid();
+        };
+        auto pcd = std::make_unique<PcdSchurApproximation>(
+            M, K, F, solve_identity, solve_identity);
+
+        CoupledBlockSchurOptions options;
+        options.schur_approximation = CoupledSchurApproximationModel::PCD;
+        CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+        preconditioner.set_pcd_schur(std::move(pcd));
+        EXPECT_TRUE(preconditioner.setup(A));
+
+        Vector r(4, 0.0);
+        r(3) = 1.0;
+        Vector z(4, 0.0);
+        EXPECT_TRUE(preconditioner.apply(r, z));
+
+        EXPECT_NEAR(z(3), -1.0, 1e-12);
+        EXPECT_NEAR(z(0), 0.5, 1e-12);
+        EXPECT_NEAR(z(1), 2.0 / 3.0, 1e-12);
+        EXPECT_NEAR(z(2), 0.75, 1e-12);
     });
 
     run_case("coupled_block_schur_accepts_pressure_gauge_row", [] {
