@@ -238,7 +238,7 @@ def read_case(path: Path) -> CFDXSession:
 def read_case_with_dat(
     path: Path, dat_path: Path | None = None
 ) -> tuple[CFDXSession, Path]:
-    """Load a case and validate its paired solver DAT artifact."""
+    """Load a case and apply paired DAT iteration/time metadata.\n\n    Field values are deliberately not attached to ``CFDXSession`` here: the\n    session currently has no field store or mesh-cell mapping contract. The\n    DAT remains the authoritative owner of field values.\n    """
     case_path = _validate_path(path)
     session = _read_session(case_path)
 
