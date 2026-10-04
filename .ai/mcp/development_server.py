@@ -325,7 +325,7 @@ def create_server(root: str | None = None, index: str | None = None) -> MCPServe
         title="Read tracked documentation file",
         annotations=annotations,
     )
-    def documentation_read(path: str) -> dict[str, object]:
+    def documentation_read(file_path: str) -> dict[str, object]:
         """Read a tracked repository file at HEAD without modifying repository state."""
         return _git_read(repository, path)
 
