@@ -61,6 +61,12 @@ async def exercise() -> None:
             }
             pattern_names = expected_names - {"index.validate", "repository.file_structure", "repository.status"}
             assert names == expected_names
+            tool_map = {tool.name: tool for tool in listed.tools}
+            read_schema = tool_map["documentation.read"].input_schema
+            assert read_schema["type"] == "object"
+            assert set(read_schema["properties"]) == {"file_path"}
+            assert read_schema["properties"]["file_path"]["type"] == "string"
+            assert read_schema["required"] == ["file_path"]
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
