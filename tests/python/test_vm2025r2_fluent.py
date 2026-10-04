@@ -17,11 +17,16 @@ if _pkg_root not in sys.path:
     sys.path.insert(0, _pkg_root)
 
 _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-# The VM2025R2_Fluents archive is not versioned, so where it was extracted is a
-# property of the machine, not of the repository.
+# The VM2025R2_Fluids archive is not versioned, so where it was extracted is a
+# property of the machine, not of the repository. Two layouts are in use: the
+# fully extracted archive tree, and a directory holding the individual cases
+# that were taken out of it.
 _FLUENT_DIR_ENV = "CFDX_VM2025R2_FLUENT_DIR"
-_DEFAULT_FLUENT_DIR = os.path.join(
-    _repo_root, "validation", "extracted", "VM2025R2_Fluents", "VM2025R2-Fluent"
+_DEFAULT_FLUENT_DIRS = (
+    os.path.join(
+        _repo_root, "validation", "extracted", "VM2025R2_Fluids", "VM2025R2-Fluent"
+    ),
+    os.path.join(_repo_root, "validation", "cases_fluent"),
 )
 
 from cfdx.io.adapters.fluent import FluentAdapter
@@ -46,12 +51,11 @@ class TestVM2025R2FluentCases:
 
     @pytest.fixture(scope="class")
     def base_dir(self):
-        """Base directory for extracted validation cases.
+        """Base directory for the Fluent validation cases.
 
         An absolute path baked into the test could only ever resolve on the
-        machine that wrote it, and CI has no such directory at all. The
-        location is therefore taken from the environment, falling back to the
-        conventional place inside the working tree.
+        machine that wrote it. The location comes from the environment when
+        set, otherwise the first known layout that exists is used.
         """
         configured = os.environ.get(_FLUENT_DIR_ENV)
         candidates = (configured,) if configured else _DEFAULT_FLUENT_DIRS
@@ -82,7 +86,7 @@ class TestVM2025R2FluentCases:
         """Locate a case that exists only in the fully extracted archive.
 
         A working directory may hold just the cases taken out of the archive,
-        which is enough for the data-driven tests but not for the ones
+        which is enough for the data-driven tests above but not for the ones
         addressing a specific archive member by path.
         """
         cas_file = Path(base_dir) / relative
@@ -132,14 +136,31 @@ class TestVM2025R2FluentCases:
             assert len(adapter.setup.materials) >= 1, f"No materials for {cas_file}"
 
     def test_cas_h5_reference_values(self, cas_h5_files):
-        """Test reference values extraction."""
+        """Test reference values extraction.
+
+        The adapter must reproduce what the case file declares, so the values
+        are compared against the case itself. Asserting they are positive was
+        wrong: Fluent's ``reference-pressure`` is the nondimensionalisation
+        reference, not its operating pressure, and Fluent stores 0 for
+        absolute-pressure formulations. VMFL002 does exactly that, with
+        ``reference-pressure = 0`` and ``operating-pressure = 101325``.
+        """
+        from ansys.fluent.core.filereader.case_file import CaseFile
+
         for cas_file in cas_h5_files:
+            declared = CaseFile(case_file_name=str(cas_file)).rp_vars()
             adapter = FluentAdapter()
             adapter.parse_cas_h5(str(cas_file))
-            assert adapter.setup.ref_density > 0
-            assert adapter.setup.ref_velocity > 0
-            assert adapter.setup.ref_temperature > 0
-            assert adapter.setup.ref_pressure > 0
+            for field, rp_var in (
+                ("ref_density", "reference-density"),
+                ("ref_velocity", "reference-velocity"),
+                ("ref_temperature", "reference-temperature"),
+                ("ref_pressure", "reference-pressure"),
+            ):
+                assert rp_var in declared, f"{rp_var} absent from {cas_file}"
+                assert getattr(adapter.setup, field) == float(declared[rp_var]), (
+                    f"{field} does not match {rp_var} declared by {cas_file}"
+                )
 
     def test_cas_h5_boundary_conditions(self, cas_h5_files):
         """Test boundary condition mapping from zones."""
