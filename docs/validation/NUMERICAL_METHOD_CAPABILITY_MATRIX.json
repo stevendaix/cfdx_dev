@@ -358,7 +358,7 @@
     {
       "id": "preconditioner.pcd",
       "family": "preconditioner",
-      "status": "implemented",
+      "status": "partial",
       "verification": [
         "algebraic_reference",
         "coupled_block_integration",
