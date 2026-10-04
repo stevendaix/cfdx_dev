@@ -192,67 +192,138 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
     return evidence
 
 
-def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
-    """Report whether structured N8 evidence contains the required fields."""
-    requirements = {
-        "physical_model_results": (
-            "model", "solver_converged", "iterations", "gates_failed"
+# Required evidence fields, as (category, source list, discriminator field,
+# whether the discriminator is expected, required fields). The quantitative
+# Schur test and the production benchmark each print two record shapes, so a
+# discriminator keeps the requirement set aligned with the emitted layout.
+_EVIDENCE_REQUIREMENTS: tuple[tuple[str, str, str | None, bool | None, tuple[str, ...]], ...] = (
+    (
+        "physical_model_results",
+        "physical_model_results",
+        None,
+        None,
+        ("model", "solver_converged", "iterations", "gates_failed"),
+    ),
+    (
+        "schur_quantitative_oracle",
+        "schur_quantitative",
+        "method",
+        False,
+        (
+            "case",
+            "cond_inf_Auu",
+            "exact_oracle_discrepancy",
+            "exact_solve_backward_error",
+            "machine_epsilon",
         ),
-        "schur_quantitative": (
-            "case", "cond_inf_Auu", "exact_solve_backward_error", "machine_epsilon"
+    ),
+    (
+        "schur_quantitative_method",
+        "schur_quantitative",
+        "method",
+        True,
+        ("case", "method", "algebra_error", "exact_schur_error"),
+    ),
+    (
+        "schur_production",
+        "schur_production",
+        "coefficient_changed",
+        False,
+        (
+            "cells",
+            "unknowns",
+            "nnz",
+            "schur_nnz",
+            "true_residual",
+            "iterations",
+            "setup_us",
+            "solve_us",
+            "pressure_coarse_size",
+            "hierarchy_builds",
+            "numeric_updates",
         ),
-        "schur_production": (
-            "cells", "unknowns", "nnz", "schur_nnz", "true_residual",
-            "iterations", "setup_us", "solve_us", "pressure_coarse_size",
-            "hierarchy_builds", "numeric_updates",
-        ),
-        "schur_lifecycle": (
-            "cells", "coefficient_changed", "hierarchy_builds_before",
-            "hierarchy_builds_after", "numeric_updates",
-            "updated_iterations", "updated_true_residual",
+    ),
+    (
+        "schur_lifecycle",
+        "schur_production",
+        "coefficient_changed",
+        True,
+        (
+            "cells",
+            "coefficient_changed",
+            "hierarchy_builds_before",
+            "hierarchy_builds_after",
+            "numeric_updates",
+            "updated_iterations",
+            "updated_true_residual",
             "graph_change_rebuild",
         ),
-    }
+    ),
+)
+
+
+def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
+    """Report whether structured N8 evidence contains the required fields.
+
+    The audit is descriptive: it never recomputes a gate, a tolerance, or a
+    verdict. One source list can hold two record shapes, so each category is
+    selected by a discriminator field instead of assuming a single layout. A
+    category that produced no record is reported as well, because an empty
+    evidence list is not evidence of completeness.
+    """
+    sources: dict[str, list[object]] = {}
+    malformed_records: dict[str, list[int]] = {}
+    for _, source, _, _, _ in _EVIDENCE_REQUIREMENTS:
+        if source in sources:
+            continue
+        records = evidence.get(source, [])
+        records = records if isinstance(records, list) else []
+        sources[source] = records
+        # Two categories can share one source list, so malformed entries are
+        # collected once per source instead of once per category.
+        malformed = [
+            index for index, record in enumerate(records) if not isinstance(record, dict)
+        ]
+        if malformed:
+            malformed_records[source] = malformed
+
     missing: dict[str, list[dict[str, object]]] = {}
+    categories_without_records: list[str] = []
     checked = complete = 0
 
-    for category, fields in requirements.items():
-        if category == "schur_lifecycle":
-            records = [
-                record for record in evidence.get("schur_production", [])
-                if isinstance(record, dict) and "coefficient_changed" in record
-            ]
-        elif category == "schur_production":
-            records = [
-                record for record in evidence.get("schur_production", [])
-                if isinstance(record, dict) and "coefficient_changed" not in record
-            ]
-        else:
-            records = evidence.get(category, [])
-        if not isinstance(records, list):
-            records = []
+    for category, source, discriminator, expected, fields in _EVIDENCE_REQUIREMENTS:
+        selected: list[tuple[int, dict[str, object]]] = []
+        for index, record in enumerate(sources[source]):
+            if not isinstance(record, dict):
+                continue
+            if discriminator is not None and (discriminator in record) is not expected:
+                continue
+            selected.append((index, record))
+        if not selected:
+            categories_without_records.append(category)
 
         category_missing: list[dict[str, object]] = []
-        for index, record in enumerate(records):
-            if not isinstance(record, dict):
-                category_missing.append({"index": index, "fields": list(fields)})
-                continue
+        for source_index, record in selected:
             checked += 1
             absent = [field for field in fields if field not in record]
             if absent:
-                category_missing.append({"index": index, "fields": absent})
+                category_missing.append({"index": source_index, "fields": absent})
             else:
                 complete += 1
         if category_missing:
             missing[category] = category_missing
 
+    incomplete = bool(missing or categories_without_records or malformed_records)
     return {
-        "status": "COMPLETE" if not missing else "INCOMPLETE",
+        "status": "INCOMPLETE" if incomplete else "COMPLETE",
         "records_checked": checked,
         "records_complete": complete,
         "missing_fields": missing,
+        "categories_without_records": categories_without_records,
+        "malformed_records": malformed_records,
         "policy": "diagnostic_only",
     }
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
