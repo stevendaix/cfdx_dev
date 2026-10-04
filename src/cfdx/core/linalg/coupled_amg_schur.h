@@ -90,7 +90,7 @@ public:
         if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
             if (!pcd_schur_)
                 return fail("PCD Schur approximation was not configured");
-            Auu_ = extract_block(A, 0, 0, n_cells_, n_cells_);
+            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
             G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
             D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
             C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
