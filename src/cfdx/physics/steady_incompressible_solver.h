@@ -246,6 +246,13 @@ struct IncompressibleSolveResult {
     cfdx::core::LinearSolverContextStats pressure_linear_context;
     cfdx::core::ConvergenceStatus convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
     std::string convergence_reason;
+    // The plans the dispatcher actually resolved, not just the request. A
+    // requested method can legitimately resolve to another one, and a report
+    // cannot show that unless the resolved plan is recorded here.
+    cfdx::core::LinearSolverPlan pressure_linear_plan;
+    bool pressure_linear_plan_resolved = false;
+    cfdx::core::LinearSolverPlan coupled_linear_plan;
+    bool coupled_linear_plan_resolved = false;
 };
 
 // Applies the declared initialization strategy to the caller's fields.
@@ -885,7 +892,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const DiagnosticsControls& diagnostics,
     const cfdx::core::LinearSolverRequest& solver_request,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -1395,6 +1403,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             "coupled solver requires coupled_block_schur or mgr");
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
+    if (resolved_linear_plan != nullptr)
+        *resolved_linear_plan = solver_plan;
     const int gmres_restart = automatic_coupled
         ? static_cast<int>(std::min<std::size_t>(A.n_rows(), 512))
         : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
@@ -1555,6 +1565,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             LinearProblemKind::PressurePoisson,
             reduce_pressure_gauge ? mesh.n_cells() - 1 : mesh.n_cells(),
             controls.pressure_linear_solver);
+        result.pressure_linear_plan = pressure_plan;
+        result.pressure_linear_plan_resolved = true;
         if (pressure_plan.krylov == KrylovModel::CG) {
             pressure_preconditioner =
                 make_scalar_preconditioner(
@@ -1802,7 +1814,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.coupled_linear_tolerance,
                 controls.diagnostics,
                 controls.coupled_linear_solver,
-                U, p);
+                U, p, &result.coupled_linear_plan);
+            result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: coupled momentum-continuity solve did not converge "

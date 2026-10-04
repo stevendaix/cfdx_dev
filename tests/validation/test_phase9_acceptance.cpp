@@ -139,7 +139,10 @@ RunResult run_couette_channel(
     bool bounded,
     std::size_t nx = 8,
     std::size_t ny = 16,
-    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto)
+    KrylovModel coupled_requested_krylov = KrylovModel::Auto,
+    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
+    KrylovModel pressure_requested_krylov = KrylovModel::Auto,
+    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -197,11 +200,13 @@ RunResult run_couette_channel(
     c.diagnostics.coupled_matrix_summary = true;
     c.diagnostics.freeze_state_probe = true;
     c.diagnostics.debug_cell = 33;
-    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
-        coupled_preconditioner != PreconditionerModel::Auto) {
-        c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
-        c.coupled_linear_solver.preconditioner = coupled_preconditioner;
-    }
+    c.coupled_linear_solver.krylov = coupled_requested_krylov;
+    c.coupled_linear_solver.preconditioner = coupled_preconditioner;
+    // The pressure sub-problem request is a separate request. It is applied from
+    // the parameters the caller announces before the run, so the announced
+    // request cannot drift from the configured one.
+    c.pressure_linear_solver.krylov = pressure_requested_krylov;
+    c.pressure_linear_solver.preconditioner = pressure_requested_preconditioner;
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
@@ -347,7 +352,13 @@ int main(int argc, char** argv)
             PressureVelocityAlgorithm algorithm;
             ConvectionScheme scheme;
             bool bounded;
+            // Both sub-problem requests are declared by the campaign case,
+            // applied to the controls from that declaration and announced from
+            // it, so an announced request cannot drift from the configured one.
+            KrylovModel coupled_krylov = KrylovModel::Auto;
             PreconditionerModel coupled_preconditioner;
+            KrylovModel pressure_krylov = KrylovModel::Auto;
+            PreconditionerModel pressure_preconditioner = PreconditionerModel::Auto;
         };
 
         // The smoke set spans segregated, multi-corrector and monolithic
@@ -355,22 +366,29 @@ int main(int argc, char** argv)
         // Physical gates remain identical in both modes.
         std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"COUPLED/BlockSchur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::CoupledBlockSchur},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::CoupledBlockSchur},
             {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::MGR},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::MGR},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
                 {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             });
         }
 
@@ -441,10 +459,16 @@ int main(int argc, char** argv)
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
+                      << " coupled_requested_krylov="
+                      << to_string(test.coupled_krylov)
                       << " preconditioner="
                       << to_string(test.coupled_preconditioner)
                       << " preconditioner_id="
                       << static_cast<int>(test.coupled_preconditioner)
+                      << " pressure_requested_krylov="
+                      << to_string(test.pressure_krylov)
+                      << " pressure_requested_preconditioner="
+                      << to_string(test.pressure_preconditioner)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -456,9 +480,46 @@ int main(int argc, char** argv)
             try {
                 auto result = run_couette_channel(
                     test.algorithm, test.scheme, test.bounded, 8, 16,
-                    test.coupled_preconditioner);
+                    test.coupled_krylov, test.coupled_preconditioner,
+                    test.pressure_krylov, test.pressure_preconditioner);
 
                 print_history(test.name, result);
+
+                // The dispatcher resolves a requested method into another one
+                // when the request is automatic. Announce what actually ran so
+                // a report can compare request and resolution instead of
+                // trusting the request alone.
+                const auto& solve_result = result.solve;
+                // An unresolved sub-problem reports "none" rather than the
+                // default-constructed plan, so the record cannot be misread as
+                // a resolved GMRES/Jacobi choice.
+                const auto resolved_name = [](bool resolved, auto name) {
+                    return resolved ? std::string(name) : std::string("none");
+                };
+                // Resolution only. The requests were announced before the run
+                // in MODEL_CONFIG; repeating them here would let the record
+                // agree with itself instead of with the announced request.
+                std::cout << "MODEL_PLAN algorithm=" << test.name
+                          << " coupled_resolved="
+                          << (solve_result.coupled_linear_plan_resolved ? "true" : "false")
+                          << " coupled_krylov="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.krylov))
+                          << " coupled_preconditioner="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.preconditioner))
+                          << " pressure_resolved="
+                          << (solve_result.pressure_linear_plan_resolved ? "true" : "false")
+                          << " pressure_krylov="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.krylov))
+                          << " pressure_preconditioner="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.preconditioner))
+                          << " pressure_null_space="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.null_space))
+                          << "\n";
 
                 const auto error = profile_error(result, 8, 16);
                 double max_abs_uy = 0.0;
