@@ -16,6 +16,14 @@ _pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src",
 if _pkg_root not in sys.path:
     sys.path.insert(0, _pkg_root)
 
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# The VM2025R2_Fluents archive is not versioned, so where it was extracted is a
+# property of the machine, not of the repository.
+_FLUENT_DIR_ENV = "CFDX_VM2025R2_FLUENT_DIR"
+_DEFAULT_FLUENT_DIR = os.path.join(
+    _repo_root, "validation", "extracted", "VM2025R2_Fluents", "VM2025R2-Fluent"
+)
+
 from cfdx.io.adapters.fluent import FluentAdapter
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 
@@ -38,10 +46,19 @@ class TestVM2025R2FluentCases:
 
     @pytest.fixture(scope="class")
     def base_dir(self):
-        """Base directory for extracted validation cases."""
-        path = Path("/home/steven/cfdx_dev/validation/extracted/VM2025R2_Fluids/VM2025R2-Fluent")
-        if not path.exists():
-            pytest.skip("Validation cases not extracted. Run scripts/extract_validation.py first.")
+        """Base directory for extracted validation cases.
+
+        An absolute path baked into the test could only ever resolve on the
+        machine that wrote it, and CI has no such directory at all. The
+        location is therefore taken from the environment, falling back to the
+        conventional place inside the working tree.
+        """
+        path = Path(os.environ.get(_FLUENT_DIR_ENV) or _DEFAULT_FLUENT_DIR)
+        if not path.is_dir():
+            pytest.skip(
+                "VM2025R2 Fluent cases are not available; set "
+                f"{_FLUENT_DIR_ENV} to the extracted VM2025R2-Fluent directory"
+            )
         return path
 
     @pytest.fixture(scope="class")
