@@ -79,7 +79,9 @@ def test_physical_time_acceptance_rejects_filename_fallback(tmp_path):
     from cfdx.results_series import discover_result_series
     series = discover_result_series(tmp_path)
     assert series.frames == ()
-    (tmp_path / "step_1.vtu").write_text("", encoding="utf-8")
+    # Non-empty on purpose: an empty file is an incomplete frame, and the
+    # acceptance gate only governs frames the reader could actually load.
+    (tmp_path / "step_1.vtu").write_text("not-a-vtk-file", encoding="utf-8")
     series = discover_result_series(tmp_path)
     from cfdx.results_series import validate_physical_time_provenance
     import pytest

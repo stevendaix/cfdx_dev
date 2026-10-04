@@ -4,10 +4,15 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 # This test intentionally imports only the canonical I/O package tree.
 def test_production_solver_explicit_cfdx_case_e2e(tmp_path: Path) -> None:
-    solver = Path(os.environ["CFDX_PRODUCTION_SOLVER"])
+    solver_path = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    if not solver_path:
+        pytest.skip("CFDX_PRODUCTION_SOLVER is provided by ctest")
+    solver = Path(solver_path)
     assert solver.is_file()
 
     root = Path(__file__).resolve().parents[2]

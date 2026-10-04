@@ -54,6 +54,17 @@ def _metadata_scalar(field_data, names: tuple[str, ...]) -> float | None:
             return value
     return None
 
+def _dataset_is_empty(dataset) -> bool:
+    """Report whether a reader produced no points and no cells.
+
+    Missing attributes are treated as unknown rather than empty: readers that
+    expose neither count cannot be judged, so the frame is not penalised.
+    """
+    return (
+        getattr(dataset, "n_points", None) == 0
+        and getattr(dataset, "n_cells", None) == 0
+    )
+
 def validate_physical_time_provenance(series: ResultSeries) -> None:
     """Require every non-empty result frame to carry authoritative physical time.
 
@@ -93,6 +104,11 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False, req
             try:
                 import pyvista as pv
                 dataset=pv.read(p)
+                # pyvista does not raise on a structurally broken file: the VTK
+                # reader logs, warns and hands back an empty dataset. An empty
+                # dataset is therefore the only usable unreadability signal.
+                if _dataset_is_empty(dataset):
+                    complete=False
                 fields=tuple(sorted(set(dataset.point_data.keys()) | set(dataset.cell_data.keys())))
                 iteration_value = _metadata_scalar(dataset.field_data, ("iteration","Iteration","step","Step"))
                 metadata_time = _metadata_scalar(dataset.field_data, ("physical_time","PhysicalTime","time","Time","timeValue","TIME"))

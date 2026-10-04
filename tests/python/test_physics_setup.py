@@ -72,8 +72,20 @@ def test_legacy_turbulence_settings_normalize_to_structured_schema():
 def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
     from cfdx.physics_setup import validate_turbulence_selection
 
+    # Guard precedence matters here. Every KERNEL_ONLY closure is LES or
+    # HYBRID, so the default steady solver type trips the transient guard
+    # first and the user is told the actionable reason. Production readiness
+    # is the only remaining objection once a transient driver is selected.
     try:
         validate_turbulence_selection({"model": "DES"})
+    except ValueError as exc:
+        assert "transient 3-D" in str(exc)
+        assert "kernel_only" not in str(exc)
+    else:
+        raise AssertionError("kernel-only turbulence model must not be production-selectable")
+
+    try:
+        validate_turbulence_selection({"model": "DES", "solver_type": "transient"})
     except ValueError as exc:
         assert "kernel_only" in str(exc)
     else:

@@ -4,6 +4,8 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from cfdx import CFDXSession, ExecutionController, SolverRunner
 from cfdx.dat_io import read_dat_restart
 
@@ -27,8 +29,10 @@ def _run(controller: ExecutionController) -> None:
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
     mesh = os.environ.get("CFDX_PRODUCTION_MESH")
-    assert solver and Path(solver).is_file()
-    assert mesh and Path(mesh).is_file()
+    if not solver or not mesh:
+        pytest.skip("CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest")
+    assert Path(solver).is_file()
+    assert Path(mesh).is_file()
 
     first_dir = tmp_path / "first"
     session = CFDXSession()
