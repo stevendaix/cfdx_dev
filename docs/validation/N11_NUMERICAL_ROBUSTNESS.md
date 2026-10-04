@@ -41,16 +41,16 @@ Scaling returns the actual row/column factors and reports zero rows/columns. A z
 
 For
 
-[
-A x=b,
-]
+\[
+A\mathbf{x}=\mathbf{b},
+\]
 
 row/column scaling is represented explicitly as
 
-[
-D_r A D_c hat{x}=D_r b,
-qquad x=D_chat{x}.
-]
+\[
+D_r A D_c\hat{\mathbf{x}}=D_r\mathbf{b},
+\qquad \mathbf{x}=D_c\hat{\mathbf{x}}.
+\]
 
 The implementation currently exposes the matrix factors; production solver wiring remains a separate step so that existing numerical paths are not changed implicitly.
 
