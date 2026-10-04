@@ -41,6 +41,14 @@ A reference value is never a CFDX result. A green CI job is not automatically va
 10-radiation/README
 11-multiphysics/README
 14-benchmarks/README
+14-benchmarks/01-couette/chapter
+14-benchmarks/02-poiseuille/chapter
+14-benchmarks/03-ghia/chapter
+14-benchmarks/04-vmfl036/chapter
+14-benchmarks/05-bfs/chapter
+14-benchmarks/06-naca0012/chapter
+14-benchmarks/07-thermal/chapter
+14-benchmarks/08-radiation/chapter
 15-qualification/README
 ```
 
