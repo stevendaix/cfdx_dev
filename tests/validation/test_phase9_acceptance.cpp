@@ -131,10 +131,6 @@ struct RunResult {
     Field<double, Location::CELL> p;
     IncompressibleSolveResult solve;
     FvGeometry geometry;
-    // The pressure sub-problem has its own request, separate from the coupled
-    // one, so both sides have to be announced to compare them.
-    KrylovModel pressure_requested_krylov = KrylovModel::Auto;
-    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto;
 };
 
 RunResult run_couette_channel(
@@ -143,7 +139,9 @@ RunResult run_couette_channel(
     bool bounded,
     std::size_t nx = 8,
     std::size_t ny = 16,
-    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto)
+    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
+    KrylovModel pressure_requested_krylov = KrylovModel::Auto,
+    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -206,6 +204,11 @@ RunResult run_couette_channel(
         c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
         c.coupled_linear_solver.preconditioner = coupled_preconditioner;
     }
+    // The pressure sub-problem request is a separate request. It is applied from
+    // the parameters the caller announces before the run, so the announced
+    // request cannot drift from the configured one.
+    c.pressure_linear_solver.krylov = pressure_requested_krylov;
+    c.pressure_linear_solver.preconditioner = pressure_requested_preconditioner;
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
@@ -261,9 +264,7 @@ RunResult run_couette_channel(
         };
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
-    return {std::move(U), std::move(p), solve, build_fv_geometry(mesh),
-            c.pressure_linear_solver.krylov,
-            c.pressure_linear_solver.preconditioner};
+    return {std::move(U), std::move(p), solve, build_fv_geometry(mesh)};
 }
 
 struct ProfileError {
@@ -354,6 +355,10 @@ int main(int argc, char** argv)
             ConvectionScheme scheme;
             bool bounded;
             PreconditionerModel coupled_preconditioner;
+            // Announced and applied together: the pressure sub-problem request
+            // is declared by the campaign, not read back from the solved run.
+            KrylovModel pressure_krylov = KrylovModel::Auto;
+            PreconditionerModel pressure_preconditioner = PreconditionerModel::Auto;
         };
 
         // The smoke set spans segregated, multi-corrector and monolithic
@@ -451,6 +456,10 @@ int main(int argc, char** argv)
                       << to_string(test.coupled_preconditioner)
                       << " preconditioner_id="
                       << static_cast<int>(test.coupled_preconditioner)
+                      << " pressure_requested_krylov="
+                      << to_string(test.pressure_krylov)
+                      << " pressure_requested_preconditioner="
+                      << to_string(test.pressure_preconditioner)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -462,7 +471,8 @@ int main(int argc, char** argv)
             try {
                 auto result = run_couette_channel(
                     test.algorithm, test.scheme, test.bounded, 8, 16,
-                    test.coupled_preconditioner);
+                    test.coupled_preconditioner, test.pressure_krylov,
+                    test.pressure_preconditioner);
 
                 print_history(test.name, result);
 
@@ -477,11 +487,10 @@ int main(int argc, char** argv)
                 const auto resolved_name = [](bool resolved, auto name) {
                     return resolved ? std::string(name) : std::string("none");
                 };
+                // Resolution only. The requests were announced before the run
+                // in MODEL_CONFIG; repeating them here would let the record
+                // agree with itself instead of with the announced request.
                 std::cout << "MODEL_PLAN algorithm=" << test.name
-                          << " pressure_requested_krylov="
-                          << to_string(result.pressure_requested_krylov)
-                          << " pressure_requested_preconditioner="
-                          << to_string(result.pressure_requested_preconditioner)
                           << " coupled_resolved="
                           << (solve_result.coupled_linear_plan_resolved ? "true" : "false")
                           << " coupled_krylov="

@@ -16,10 +16,10 @@ SPEC.loader.exec_module(MODULE)
 
 CTEST_OUTPUT = """    Start 21: test_n8_pressure_velocity_matrix
 21: Test command: /build/test_phase9_acceptance
-21: MODEL_CONFIG algorithm=COUPLED/BlockSchur/upwind/bounded nx=8 ny=16 bounded=true preconditioner=coupled_block_schur preconditioner_id=11 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
-21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true preconditioner=mgr preconditioner_id=13 alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
-21: MODEL_PLAN algorithm=COUPLED/BlockSchur/upwind/bounded pressure_requested_krylov=auto pressure_requested_preconditioner=auto coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=coupled_block_schur pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
-21: MODEL_PLAN algorithm=COUPLED/MGR/upwind/bounded pressure_requested_krylov=auto pressure_requested_preconditioner=native_amg coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=mgr pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
+21: MODEL_CONFIG algorithm=COUPLED/BlockSchur/upwind/bounded nx=8 ny=16 bounded=true preconditioner=coupled_block_schur preconditioner_id=11 pressure_requested_krylov=auto pressure_requested_preconditioner=native_amg alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
+21: MODEL_CONFIG algorithm=COUPLED/MGR/upwind/bounded nx=8 ny=16 bounded=true preconditioner=mgr preconditioner_id=13 pressure_requested_krylov=auto pressure_requested_preconditioner=auto alpha_u=0.7 alpha_p=0.3 pressure_correctors=1 fractional_steps=1
+21: MODEL_PLAN algorithm=COUPLED/BlockSchur/upwind/bounded coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=coupled_block_schur pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
+21: MODEL_PLAN algorithm=COUPLED/MGR/upwind/bounded coupled_resolved=true coupled_krylov=fgmres coupled_preconditioner=mgr pressure_resolved=false pressure_krylov=none pressure_preconditioner=none pressure_null_space=none
 21: MODEL_RESULT COUPLED/BlockSchur/upwind/bounded solver_converged=true iterations=17 profile_L2=1.3586e-09 Umax=0.96875 |Uy|max=5.95589e-10 |Uz|max=0 gates_failed=0
 21: MODEL_FAILURES COUPLED/MGR/upwind/bounded continuity_linf Umax
 21: MODEL_RESULT Couette solver_converged=false iterations=3 gates_failed=2
@@ -39,6 +39,8 @@ MODEL_CONFIGURATION = {
     "bounded": True,
     "preconditioner": "coupled_block_schur",
     "preconditioner_id": 11,
+    "pressure_requested_krylov": "auto",
+    "pressure_requested_preconditioner": "native_amg",
     "alpha_u": 0.7,
     "alpha_p": 0.3,
     "pressure_correctors": 1,
@@ -85,7 +87,8 @@ def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     assert evidence["run_configuration"] == [
         MODEL_CONFIGURATION,
         {**MODEL_CONFIGURATION, "algorithm": "COUPLED/MGR/upwind/bounded",
-         "preconditioner": "mgr", "preconditioner_id": 13},
+         "preconditioner": "mgr", "preconditioner_id": 13,
+         "pressure_requested_preconditioner": "auto"},
     ]
     assert [record["model"] for record in evidence["physical_model_results"]] == [
         "COUPLED/BlockSchur/upwind/bounded",
@@ -221,8 +224,6 @@ LIFECYCLE_RECORD = {
 
 RESOLVED_PLAN = {
     "algorithm": "COUPLED/BlockSchur/upwind/bounded",
-    "pressure_requested_krylov": "auto",
-    "pressure_requested_preconditioner": "auto",
     "coupled_resolved": True,
     "coupled_krylov": "fgmres",
     "coupled_preconditioner": "coupled_block_schur",
@@ -345,15 +346,24 @@ def test_evidence_coverage_is_complete_on_a_captured_campaign() -> None:
 
 
 
-def test_resolved_plans_are_captured_with_both_requests() -> None:
+def test_resolved_plans_carry_resolution_only() -> None:
     records = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_PLAN")
     assert records[0] == RESOLVED_PLAN
-    # The pressure sub-problem request is announced separately from the coupled
-    # one, so an explicit pressure request can be compared with its resolution.
-    assert records[1]["pressure_requested_preconditioner"] == "native_amg"
     assert records[1]["coupled_preconditioner"] == "mgr"
     assert records[1]["pressure_resolved"] is False
     assert records[1]["pressure_preconditioner"] == "none"
+    # The resolution record must never restate the request: that would let it
+    # agree with itself instead of with the announced configuration.
+    for record in records:
+        assert not [key for key in record if "requested" in key]
+
+
+def test_both_requests_are_announced_before_the_run() -> None:
+    configurations = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_CONFIG")
+    assert configurations[0]["pressure_requested_krylov"] == "auto"
+    assert configurations[0]["pressure_requested_preconditioner"] == "native_amg"
+    assert configurations[1]["preconditioner"] == "mgr"
+    assert configurations[1]["pressure_requested_preconditioner"] == "auto"
 
 
 def test_linear_plan_accepts_explicit_requests_that_were_honored() -> None:
@@ -374,7 +384,8 @@ def test_linear_plan_records_an_automatic_resolution_instead_of_hiding_it() -> N
     segmented = {
         "run_configuration": [
             {**MODEL_CONFIGURATION, "algorithm": "SIMPLE/upwind/bounded",
-             "preconditioner": "auto"},
+             "preconditioner": "auto",
+             "pressure_requested_preconditioner": "auto"},
         ],
         "resolved_plans": [
             {
@@ -431,17 +442,17 @@ def test_linear_plan_flags_a_configured_model_without_a_resolved_plan() -> None:
 
 
 def test_linear_plan_flags_a_resolution_without_an_announced_request() -> None:
-    unresolved_request = {
+    undeclared = {
         key: value
-        for key, value in RESOLVED_PLAN.items()
+        for key, value in MODEL_CONFIGURATION.items()
         if key != "pressure_requested_preconditioner"
     }
     plan = MODULE.audit_linear_plan(
         {
-            "run_configuration": [MODEL_CONFIGURATION],
+            "run_configuration": [undeclared],
             "resolved_plans": [
                 {
-                    **unresolved_request,
+                    **RESOLVED_PLAN,
                     "pressure_resolved": True,
                     "pressure_krylov": "cg",
                     "pressure_preconditioner": "native_amg",
@@ -470,3 +481,134 @@ def test_linear_plan_is_complete_when_an_explicit_request_is_honored() -> None:
     assert plan["status"] == "COMPLETE"
     assert plan["models_compared"] == 1
     assert plan["automatic_resolutions"] == []
+
+
+def test_linear_plan_never_trusts_a_request_restated_by_the_resolution_record() -> None:
+    # The announced configuration asks for mgr. The resolution record claims the
+    # request was auto and reports mgr as resolved, so it agrees with itself. The
+    # audit must still fail: the request comes from the pre-run record only.
+    lying_plan = {
+        **RESOLVED_PLAN,
+        "pressure_requested_preconditioner": "auto",
+        "coupled_requested_preconditioner": "auto",
+    }
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [{**MODEL_CONFIGURATION, "preconditioner": "mgr"}],
+            "resolved_plans": [lying_plan],
+        }
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["substitutions"] == [
+        {
+            "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+            "subproblem": "coupled",
+            "requested": "mgr",
+            "resolved": "coupled_block_schur",
+        }
+    ]
+
+
+def test_linear_plan_rejects_an_unannounced_pressure_request_in_the_plan() -> None:
+    # A pressure request that exists only in the resolution record is not a
+    # request at all; the resolution cannot be attributed to it.
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [
+                {
+                    key: value
+                    for key, value in MODEL_CONFIGURATION.items()
+                    if key != "pressure_requested_preconditioner"
+                }
+            ],
+            "resolved_plans": [
+                {
+                    **RESOLVED_PLAN,
+                    "pressure_requested_preconditioner": "auto",
+                    "pressure_resolved": True,
+                    "pressure_krylov": "cg",
+                    "pressure_preconditioner": "native_amg",
+                }
+            ],
+        }
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["substitutions"] == [
+        {
+            "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+            "subproblem": "pressure",
+            "requested": "undeclared",
+            "resolved": "native_amg",
+        }
+    ]
+
+
+def test_expected_resolved_structure_follows_the_declared_algorithm() -> None:
+    assert MODULE.expected_resolved_structure("COUPLED/BlockSchur/upwind/bounded") == {
+        "coupled": True,
+        "pressure": False,
+    }
+    assert MODULE.expected_resolved_structure("SIMPLE/upwind/bounded") == {
+        "coupled": False,
+        "pressure": True,
+    }
+
+
+def test_linear_plan_flags_a_coupled_model_that_also_resolved_pressure() -> None:
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [MODEL_CONFIGURATION],
+            "resolved_plans": [
+                {
+                    **RESOLVED_PLAN,
+                    "pressure_resolved": True,
+                    "pressure_krylov": "cg",
+                    "pressure_preconditioner": "native_amg",
+                }
+            ],
+        }
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["structure_mismatches"] == [
+        {
+            "algorithm": "COUPLED/BlockSchur/upwind/bounded",
+            "subproblem": "pressure",
+            "expected_resolved": False,
+            "resolved": True,
+        }
+    ]
+
+
+def test_linear_plan_flags_a_segmented_model_that_resolved_coupled() -> None:
+    plan = MODULE.audit_linear_plan(
+        {
+            "run_configuration": [
+                {
+                    **MODEL_CONFIGURATION,
+                    "algorithm": "SIMPLE/upwind/bounded",
+                    "preconditioner": "auto",
+                    "pressure_requested_preconditioner": "auto",
+                }
+            ],
+            "resolved_plans": [
+                {
+                    **RESOLVED_PLAN,
+                    "algorithm": "SIMPLE/upwind/bounded",
+                    "coupled_resolved": True,
+                    "coupled_preconditioner": "coupled_block_schur",
+                    "pressure_resolved": True,
+                    "pressure_krylov": "cg",
+                    "pressure_preconditioner": "native_amg",
+                }
+            ],
+        }
+    )
+    assert plan["status"] == "VIOLATION"
+    assert plan["structure_mismatches"] == [
+        {
+            "algorithm": "SIMPLE/upwind/bounded",
+            "subproblem": "coupled",
+            "expected_resolved": False,
+            "resolved": True,
+        }
+    ]

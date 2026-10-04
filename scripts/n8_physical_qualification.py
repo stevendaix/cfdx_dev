@@ -221,6 +221,8 @@ _EVIDENCE_REQUIREMENTS: tuple[tuple[str, str, str | None, bool | None, tuple[str
             "bounded",
             "preconditioner",
             "preconditioner_id",
+            "pressure_requested_krylov",
+            "pressure_requested_preconditioner",
             "alpha_u",
             "alpha_p",
             "pressure_correctors",
@@ -450,8 +452,10 @@ def audit_model_resolution(evidence: dict[str, object]) -> dict[str, object]:
 
 
 _SUBPROBLEMS = (
-    # (sub-problem, requested field, resolved flag field, resolved field)
-    ("coupled", None, "coupled_resolved", "coupled_preconditioner"),
+    # (sub-problem, requested field in the run configuration, resolved flag,
+    #  resolved field). The request is read only from the record emitted before
+    # the run; the resolved-plan record is never a source of truth for it.
+    ("coupled", "preconditioner", "coupled_resolved", "coupled_preconditioner"),
     (
         "pressure",
         "pressure_requested_preconditioner",
@@ -460,27 +464,38 @@ _SUBPROBLEMS = (
     ),
 )
 
+# A coupled algorithm solves the 4N system and never runs the segregated
+# pressure sub-problem; a segmented one does the opposite. The declared
+# algorithm taxonomy is what the report checks the resolved structure against.
+_COUPLED_ALGORITHM_PREFIX = "COUPLED/"
+
+
+def expected_resolved_structure(algorithm: str) -> dict[str, bool]:
+    """Return which sub-problems a declared algorithm is expected to resolve."""
+    coupled = algorithm.startswith(_COUPLED_ALGORITHM_PREFIX)
+    return {"coupled": coupled, "pressure": not coupled}
+
 
 def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
-    """Compare the requested linear methods with the ones actually dispatched.
+    """Compare the announced requests with the plans the dispatcher resolved.
 
-    An automatic request may legitimately resolve to another method, and that
-    resolution is now recorded instead of being invisible. An explicit request
-    must be the method that runs: the dispatcher rejects an incompatible
-    explicit request, so a mismatch here means the report and the run disagree
-    and must not be read as a pass.
+    The requests come from the records emitted before each run and the resolved
+    plans from the records emitted after it, so a resolution cannot be checked
+    against a request it also reports itself. An automatic request may
+    legitimately resolve to another method, and that resolution is recorded
+    instead of being invisible. An explicit request must be the method that ran:
+    the dispatcher rejects an incompatible explicit request, so a mismatch means
+    the report and the run disagree and must not be read as a pass.
     """
 
     def records(source: str) -> list[object]:
         value = evidence.get(source, [])
         return value if isinstance(value, list) else []
 
-    coupled_request: dict[str, str] = {}
+    configurations: dict[str, dict[str, object]] = {}
     for record in records("run_configuration"):
         if isinstance(record, dict) and isinstance(record.get("algorithm"), str):
-            coupled_request.setdefault(
-                str(record["algorithm"]), str(record.get("preconditioner", ""))
-            )
+            configurations.setdefault(str(record["algorithm"]), record)
 
     resolved_plans: dict[str, dict[str, object]] = {}
     for record in records("resolved_plans"):
@@ -489,23 +504,32 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
 
     automatic_resolutions: list[dict[str, str]] = []
     substitutions: list[dict[str, str]] = []
+    structure_mismatches: list[dict[str, object]] = []
     models_without_plan: list[str] = []
     models_compared = 0
 
-    for algorithm, requested_coupled in coupled_request.items():
+    for algorithm, configuration in configurations.items():
         plan = resolved_plans.get(algorithm)
         if plan is None:
             models_without_plan.append(algorithm)
             continue
+
+        expected = expected_resolved_structure(algorithm)
         for subproblem, request_field, resolved_flag, resolved_field in _SUBPROBLEMS:
-            if plan.get(resolved_flag) is not True:
+            resolved_here = plan.get(resolved_flag) is True
+            if resolved_here != expected[subproblem]:
+                structure_mismatches.append(
+                    {
+                        "algorithm": algorithm,
+                        "subproblem": subproblem,
+                        "expected_resolved": expected[subproblem],
+                        "resolved": resolved_here,
+                    }
+                )
+            if not resolved_here:
                 continue
             resolved = str(plan.get(resolved_field, ""))
-            asked = (
-                requested_coupled
-                if request_field is None
-                else plan.get(request_field)
-            )
+            asked = configuration.get(request_field)
             if not isinstance(asked, str) or asked == "":
                 # A resolution that cannot be attributed to an announced request
                 # is not evidence of anything.
@@ -539,10 +563,15 @@ def audit_linear_plan(evidence: dict[str, object]) -> dict[str, object]:
                 )
 
     return {
-        "status": "VIOLATION" if substitutions or models_without_plan else "COMPLETE",
+        "status": (
+            "VIOLATION"
+            if substitutions or models_without_plan or structure_mismatches
+            else "COMPLETE"
+        ),
         "models_compared": models_compared,
         "automatic_resolutions": automatic_resolutions,
         "substitutions": substitutions,
+        "structure_mismatches": structure_mismatches,
         "models_without_plan": models_without_plan,
         "policy": "explicit_request_must_be_honored",
     }
@@ -604,7 +633,11 @@ def main() -> int:
     # The one enforced gate of this report: an explicitly requested linear
     # method must be the method that ran. It is a contract, not a tolerance, so
     # it can fail the campaign. Everything else here stays diagnostic.
-    gate_violations = linear_plan["substitutions"] or linear_plan["models_without_plan"]
+    gate_violations = (
+        linear_plan["substitutions"]
+        or linear_plan["models_without_plan"]
+        or linear_plan["structure_mismatches"]
+    )
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
         "status": (
