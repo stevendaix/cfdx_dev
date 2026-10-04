@@ -90,6 +90,14 @@ async def exercise() -> None:
             assert doc_escape.is_error is False
             assert doc_escape.structured_content["ok"] is False
 
+            doc_search_escape = await client.call_tool("documentation.search", {"pattern": "demo", "path": "../outside"})
+            assert doc_search_escape.is_error is False
+            assert doc_search_escape.structured_content["ok"] is False
+
+            doc_absolute = await client.call_tool("documentation.read", {"file_path": "/etc/passwd"})
+            assert doc_absolute.is_error is False
+            assert doc_absolute.structured_content["ok"] is False
+
             escaped = await client.call_tool("repository.file_structure", {"path": "../outside"})
             assert escaped.is_error is False
             assert escaped.structured_content["ok"] is False
