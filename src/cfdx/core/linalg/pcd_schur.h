@@ -163,8 +163,11 @@ public:
         if (pressure_null_space_)
             pressure_null_space_->remove(z);
 
-        // y = Mp z.
-        Vector y = pressure_mass_->matvec(z);
+        // y = Mp z. SparseMatrix::matvec returns a raw std::vector, so the
+        // result is copied into the Vector type the rest of the class uses.
+        const auto Mp_z = pressure_mass_->matvec(z);
+        Vector y(np, 0.0);
+        for (std::size_t i = 0; i < np; ++i) y(i) = Mp_z[i];
         if (y.size() != np || !y.is_valid())
             return false;
         if (pressure_null_space_)
@@ -249,7 +252,7 @@ private:
         return true;
     }
 
-    static GraphSignature graph_signature(const BlockOperator& blocks) {
+    GraphSignature graph_signature(const BlockOperator& blocks) const {
         std::size_t h = 1469598103934665603ULL;
         const auto mix = [&h](std::size_t value) {
             h ^= value;
