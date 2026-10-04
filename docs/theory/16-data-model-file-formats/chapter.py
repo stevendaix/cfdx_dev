@@ -89,7 +89,7 @@
 #
 # ## 16.10 Implementation traceability
 #
-# HDF5 implementation is under [src/cfdx/io/hdf5](../../../src/cfdx/io/hdf5/); case schema under [src/cfdx/io/cfdx_io](../../../src/cfdx/io/cfdx_io/); VTU output under [src/cfdx/io/vtu](../../../src/cfdx/io/vtu/). Exact dataset definitions must remain synchronized with the reader/writer and schema tests.
+# HDF5 implementation is under [src/cfdx/io/hdf5](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/hdf5/); case schema under [src/cfdx/io/cfdx_io](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/cfdx_io/); VTU output under [src/cfdx/io/vtu](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/vtu/). Exact dataset definitions must remain synchronized with the reader/writer and schema tests.
 #
 # ## 16.11 Verification
 #

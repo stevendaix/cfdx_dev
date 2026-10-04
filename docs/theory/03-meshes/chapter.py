@@ -142,7 +142,7 @@
 #
 # ## 3.12 CFDX implementation
 #
-# The relevant source family is [mesh](../../../src/cfdx/core/mesh/), [face_geometry.h](../../../src/cfdx/core/geometry/face_geometry.h), [cell_geometry.h](../../../src/cfdx/core/geometry/cell_geometry.h), [geometry_cache.h](../../../src/cfdx/core/geometry/geometry_cache.h), [mesh_quality.h](../../../src/cfdx/core/geometry/mesh_quality.h) and [mesh_validator.h](../../../src/cfdx/core/geometry/mesh_validator.h).
+# The relevant source family is [mesh](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/mesh/), [face_geometry.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/face_geometry.h), [cell_geometry.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/cell_geometry.h), [geometry_cache.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/geometry_cache.h), [mesh_quality.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/mesh_quality.h) and [mesh_validator.h](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/mesh_validator.h).
 #
 # ## 3.13 Verification ladder
 #

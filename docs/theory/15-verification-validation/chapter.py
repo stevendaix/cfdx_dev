@@ -131,7 +131,7 @@
 #
 # ## 15.12 CFDX evidence locations
 #
-# Executable checks live in [tests/unit](../../../tests/unit/), [tests/numerical](../../../tests/numerical/) and [tests/validation](../../../tests/validation/). Current evidence is retained under [docs/validation](../../validation/). Stable V&V publication/navigation is under [docs/vv](../../vv/).
+# Executable checks live in [tests/unit](https://github.com/stevendaix/cfdx_dev/tree/master/tests/unit/), [tests/numerical](https://github.com/stevendaix/cfdx_dev/tree/master/tests/numerical/) and [tests/validation](https://github.com/stevendaix/cfdx_dev/tree/master/tests/validation/). Current evidence is retained under [docs/validation](https://github.com/stevendaix/cfdx_dev/tree/master/docs/validation/). Stable V&V publication/navigation is under [docs/vv](https://github.com/stevendaix/cfdx_dev/tree/master/docs/vv/).
 #
 # ## 15.13 Executable order check
 # %%
