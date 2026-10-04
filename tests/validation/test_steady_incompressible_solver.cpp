@@ -91,6 +91,8 @@ int main()
         Field<double,Location::CELL> p0(2,"p","Pa",1);
         Field<double,Location::CELL> p1(2,"p","Pa",1);
         U.fill(0.0);
+        U.set(0,2.0,0.0,0.0);
+        U.set(1,2.0,0.0,0.0);
         p0.fill(0.0);
         p1.fill(0.0);
         p1(1) = 2.0;
@@ -105,22 +107,27 @@ int main()
             std::vector<double>{1.0,1.0},
             std::vector<double>{1.0,1.0}};
 
+        const auto phi_cell = make_mass_flux(
+            m, geometry, U, 1.0, ubc);
         const auto phi0 = make_rhie_chow_mass_flux(
             m, geometry, U, p0, rAU, 1.0, ubc, pbc);
         const auto phi1 = make_rhie_chow_mass_flux(
             m, geometry, U, p1, rAU, 1.0, ubc, pbc);
 
-        EXPECT_NEAR(phi0(1), 0.0, 1e-14);
-        EXPECT_TRUE(std::abs(phi1(1)) > 1e-12);
-        EXPECT_NEAR(phi1(1), -2.0, 1e-12);
+        EXPECT_NEAR(phi_cell(1), 2.0, 1e-12);
+        EXPECT_NEAR(phi0(1), 2.0, 1e-12);
+        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
+        EXPECT_TRUE(std::abs(phi0(1)) > std::abs(phi1(1)));
+        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
         EXPECT_NEAR(phi1(0), 0.0, 1e-14);
         EXPECT_NEAR(phi1(2), 0.0, 1e-14);
 
         // The authoritative flux is antisymmetric across the internal face:
         // owner cell sees phi, neighbour cell sees -phi.
-        double div0 = phi1(1);
-        double div1 = -phi1(1);
-        EXPECT_NEAR(div0 + div1, 0.0, 1e-14);
+        double corrected_div0 = phi1(1);
+        double corrected_div1 = -phi1(1);
+        EXPECT_NEAR(corrected_div0 + corrected_div1, 0.0, 1e-14);
+        EXPECT_NEAR(std::abs(corrected_div0), 0.0, 1e-12);
 
         const auto contract = PressureVelocitySystemContract{
             6, 2,
