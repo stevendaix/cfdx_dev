@@ -356,6 +356,18 @@
       ]
     },
     {
+      "id": "preconditioner.pcd",
+      "family": "preconditioner",
+      "status": "implemented",
+      "verification": [
+        "Couette",
+        "Poiseuille",
+        "Ghia",
+        "true_residual",
+        "exact_schur"
+      ]
+    },
+    {
       "id": "time_step.adaptive_cfl",
       "family": "time_step",
       "status": "implemented",
