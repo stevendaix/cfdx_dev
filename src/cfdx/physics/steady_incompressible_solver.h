@@ -243,6 +243,11 @@ struct IncompressibleSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
+    // Final conservative face mass flux used by the pressure-velocity
+    // continuity operator. This is exposed as evidence so validation can
+    // compare algorithms on the same authoritative face operator rather than
+    // reconstructing phi from the converged cell velocity.
+    cfdx::core::Field<double, cfdx::core::Location::FACE> authoritative_mass_flux;
     double reference_momentum_residual = 0.0;
     cfdx::core::LinearSolverContextStats pressure_linear_context;
     cfdx::core::ConvergenceStatus convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
@@ -3029,6 +3034,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         result.iterations = iter;
             transaction.commit();
+            // Only publish a face flux after the nonlinear transaction has
+            // accepted the corresponding U/p state. mass_flux is mutable during
+            // a tentative iteration and is not part of NonlinearStateRollback;
+            // publishing it after a rejected attempt would therefore expose a
+            // flux belonging to a state that was rolled back.
+            result.authoritative_mass_flux = mass_flux;
             iteration_completed = true;
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
@@ -3047,6 +3058,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             break;
     }
 
+    // authoritative_mass_flux is updated only after an accepted nonlinear
+    // transaction above. In particular, a rejected retry cannot overwrite the
+    // evidence for the last accepted U/p state. Do not reconstruct it from U.
     if (pressure_context)
         result.pressure_linear_context = pressure_context->stats();
     return result;
