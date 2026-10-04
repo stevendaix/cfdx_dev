@@ -533,8 +533,9 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp (nonlinear convergence only; no spatial accuracy claim)"
-      ]
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
@@ -547,8 +548,9 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp (nonlinear convergence only; no spatial accuracy claim)"
-      ]
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
@@ -560,8 +562,9 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp (nonlinear convergence only; no spatial accuracy claim)"
-      ]
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
@@ -586,8 +589,9 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp (nonlinear convergence only; no spatial accuracy claim)"
-      ]
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
@@ -598,8 +602,9 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp (nonlinear convergence only; no spatial accuracy claim)"
-      ]
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
