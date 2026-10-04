@@ -232,7 +232,7 @@
 #
 # ## 0.18 Source traceability
 #
-# Physics lives mainly in [src/cfdx/physics](../../../src/cfdx/physics/), with thermodynamic and transport closures, while field/mesh/numerics provide the discretisation infrastructure. This chapter defines the equations; later chapters define their discrete implementation.
+# Physics lives mainly in [src/cfdx/physics](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/physics/), with thermodynamic and transport closures, while field/mesh/numerics provide the discretisation infrastructure. This chapter defines the equations; later chapters define their discrete implementation.
 #
 # ## 0.19 Executable Reynolds check
 # %%
