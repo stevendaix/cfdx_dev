@@ -182,14 +182,20 @@ RunResult run_couette_channel(
     c.coupling.n_fractional_steps =
         algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
     c.coupling.coupled_max_iterations = 2000;
-    c.coupling.coupled_linear_tolerance = 1e-10;
+    // The invariance gate is 1e-8 on the normalized face flux. The nonlinear
+    // convergence contract must therefore be materially tighter than that gate;
+    // otherwise two algorithms can legitimately stop at different points on
+    // the same discrete fixed point while still satisfying their individual
+    // residual gates. This is a stricter qualification condition, not a relaxed
+    // acceptance threshold.
+    c.coupling.coupled_linear_tolerance = 1e-12;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
     c.convergence.max_iterations = 3000;
-    c.convergence.relative_tolerance = 1e-8;
-    c.convergence.continuity_tolerance = 1e-8;
+    c.convergence.relative_tolerance = 1e-10;
+    c.convergence.continuity_tolerance = 1e-10;
     c.linear_max_iterations = 2000;
-    c.linear_tolerance = 1e-10;
+    c.linear_tolerance = 1e-12;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
     c.body_force = {0.0, 0.0, 0.0};
