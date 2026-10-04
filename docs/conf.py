@@ -12,6 +12,7 @@ extensions = [
     "myst_nb",
     "sphinx.ext.mathjax",
     "sphinxcontrib.bibtex",
+    "sphinx.ext.githubpages",
 ]
 
 templates_path = []
@@ -41,3 +42,6 @@ bibtex_default_style = "unsrt"
 html_theme = "pydata_sphinx_theme"
 html_title = "CFDX Documentation"
 html_theme_options = {"show_toc_level": 2}
+
+# Pin MathJax v3 for deterministic rendering across the documentation toolchain.
+mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
