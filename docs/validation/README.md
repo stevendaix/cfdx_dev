@@ -28,19 +28,10 @@ A reference value is never a CFDX result. A green CI job is not automatically va
 ```{toctree}
 :maxdepth: 2
 
-00-code-verification/README
-01-mms/README
-02-convergence/README
 03-conservation/chapter
 04-boundedness/chapter
-05-linear-solvers/README
-06-pressure-velocity/README
-07-operators/README
-08-turbulence/README
-09-thermal/README
-10-radiation/README
-11-multiphysics/README
 14-benchmarks/README
+14-benchmarks/00-benchmark-protocol/chapter
 14-benchmarks/01-couette/chapter
 14-benchmarks/02-poiseuille/chapter
 14-benchmarks/03-ghia/chapter
