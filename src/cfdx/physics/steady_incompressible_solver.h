@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
@@ -1373,7 +1374,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // algebraic preconditioner quantity.
     coupled_pressure_schur_diagonal[reference_cell] = 1.0;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
-    if (solver_request.preconditioner == PreconditionerModel::MGR) {
+    if (use_n8_block_schur) {
+        coupled_preconditioner =
+            std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
+    } else {
         std::vector<std::size_t> fine_variables(nv);
         std::vector<std::size_t> coarse_variables(np);
         std::iota(fine_variables.begin(), fine_variables.end(), 0);
@@ -1381,10 +1385,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         coupled_preconditioner =
             std::make_unique<NativeMGRPreconditioner>(
                 std::move(fine_variables), std::move(coarse_variables));
-    } else {
-        auto schur = std::make_unique<CoupledBlockSchurPreconditioner>(nc);
-        schur->set_pressure_schur_diagonal(coupled_pressure_schur_diagonal);
-        coupled_preconditioner = std::move(schur);
     }
     // The production Couette system is only 512 unknowns. A restart of
     // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
@@ -1400,6 +1400,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         solver_plan.preconditioner != PreconditionerModel::MGR)
         throw std::invalid_argument(
             "coupled solver requires coupled_block_schur or mgr");
+    // N8 owns the linear-solver/preconditioner policy. The coupled FV
+    // assembler remains N9-owned, but an explicit BlockSchur request must use
+    // the N8 AMG-backed Schur implementation rather than the legacy scalar
+    // preconditioner. MGR remains a separate N8-qualified path until its
+    // coupled dispatch metadata is integrated.
+    const bool use_n8_block_schur =
+        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
     const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
         solver_request.preconditioner == PreconditionerModel::Auto;
     if (resolved_linear_plan != nullptr)
@@ -1421,9 +1428,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
     }
-    auto result = solve_gmres(
-        A, b, x, gmres_restart, max_iterations, tolerance,
-        coupled_preconditioner.get(), coupled_gmres_controls);
+    SolverResult result;
+    if (solver_plan.krylov == KrylovModel::FGMRES) {
+        result = solve_fgmres(
+            A, b, x, gmres_restart, max_iterations, tolerance,
+            coupled_preconditioner.get(), coupled_gmres_controls);
+    } else {
+        result = solve_gmres(
+            A, b, x, gmres_restart, max_iterations, tolerance,
+            coupled_preconditioner.get(), coupled_gmres_controls);
+    }
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
     // setup by identity-preconditioned GMRES: that would hide the defect in
