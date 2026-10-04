@@ -138,7 +138,7 @@
 #
 # ## 14.12 CFDX traceability
 #
-# Numerical operators live under [core/numerics](../../../src/cfdx/core/numerics/) and [core/linalg](../../../src/cfdx/core/linalg/). Representative validation includes [test_mesh_refinement_order.cpp](../../../tests/validation/test_mesh_refinement_order.cpp), [test_mms_scalar_diffusion.cpp](../../../tests/validation/test_mms_scalar_diffusion.cpp) and conservation/boundedness tests.
+# Numerical operators live under [core/numerics](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/numerics/) and [core/linalg](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/linalg/). Representative validation includes [test_mesh_refinement_order.cpp](https://github.com/stevendaix/cfdx_dev/tree/master/tests/validation/test_mesh_refinement_order.cpp), [test_mms_scalar_diffusion.cpp](https://github.com/stevendaix/cfdx_dev/tree/master/tests/validation/test_mms_scalar_diffusion.cpp) and conservation/boundedness tests.
 #
 # ## 14.13 Executable observed-order check
 # %%
