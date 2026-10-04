@@ -1,5 +1,6 @@
 #include "cfdx/core/linalg/block_operator.h"
 #include "cfdx/core/linalg/exact_schur.h"
+#include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/schur_approximation.h"
 #include "cfdx/core/linalg/simplerc_schur.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -8,6 +9,7 @@
 
 #include <cmath>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -194,6 +196,102 @@ int main() {
         EXPECT_TRUE(e_simple <= 2.0 * linf(d_exact));
         EXPECT_TRUE(e_simplec <= 2.0 * linf(d_exact));
         EXPECT_TRUE(e_simplec < e_simple);
+    });
+
+    // --- Numeric update lifecycle -------------------------------------------------
+    // A numeric refresh on an unchanged graph is accepted; a CSR graph change is
+    // rejected so the diagonal and offdiagonal sums cannot be silently recomputed
+    // from a different sparsity pattern.
+    run_case("simplerc_update_values_accepts_a_value_refresh", [&] {
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(s.setup(blocks));
+
+        // Same graph, one coefficient changed: Auu[0][1] 1.0 -> 0.5.
+        const auto Auu_v2 = make_sparse(2, 2, {
+            {0, 0, 4.0}, {0, 1, 0.5}, {1, 0, 1.0}, {1, 1, 3.0}
+        });
+        const BlockOperator blocks_v2(Auu_v2, G, D, C);
+        EXPECT_TRUE(s.update_values(blocks_v2));
+
+        // The refresh must be visible in the applied operator, which is what
+        // distinguishes an accepted refresh from stale cached denominators.
+        // SIMPLEC denominator = diag - row_offdiag: row 0 becomes 4 - 0.5 = 3.5,
+        // row 1 stays 3 - 1 = 2.
+        const Dense S_simplec_v2 = approx_dense({1.0 / 3.5, 1.0 / 2.0});
+        Vector out(2, 0.0);
+        EXPECT_TRUE(s.apply(p, out));
+        const Vector ref = dense_matvec(S_simplec_v2, p);
+        EXPECT_NEAR(out(0), ref(0), 1e-12);
+        EXPECT_NEAR(out(1), ref(1), 1e-12);
+
+        // The refreshed operator must differ from the pre-refresh one; otherwise
+        // the assertions above would also hold against stale values.
+        Vector stale(2, 0.0);
+        EXPECT_TRUE(s.apply(p, stale));
+        const Vector stale_ref = dense_matvec(S_simplec_dense, p);
+        EXPECT_TRUE(std::abs(stale(0) - stale_ref(0)) > 1e-9);
+    });
+
+    run_case("simplerc_update_values_rejects_a_graph_change", [&] {
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(s.setup(blocks));
+
+        // Same dimensions and same nnz, but a different sparsity pattern: the
+        // off-diagonal entries are present and the diagonal ones are not, so the
+        // column indices differ from the original C.
+        const auto C_transposed_pattern = make_sparse(2, 2, {
+            {0, 1, 0.5}, {1, 0, 0.5}
+        });
+        const BlockOperator blocks_pattern(Auu, G, D, C_transposed_pattern);
+        EXPECT_TRUE(!s.update_values(blocks_pattern));
+
+        // A different nnz: the Auu off-diagonal entries are gone.
+        const auto Auu_diagonal_only = make_sparse(2, 2, {
+            {0, 0, 4.0}, {1, 1, 3.0}
+        });
+        const BlockOperator blocks_sparse(Auu_diagonal_only, G, D, C);
+        EXPECT_TRUE(!s.update_values(blocks_sparse));
+    });
+
+    run_case("simplerc_update_values_requires_setup_first", [&] {
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(!s.update_values(blocks));
+    });
+
+    // --- Pressure null-space policy -----------------------------------------------
+    run_case("simplerc_null_space_projects_the_pressure_side", [&] {
+        const auto projector = NullSpaceProjector::constant(2);
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC, projector);
+        EXPECT_TRUE(s.has_pressure_null_space_policy());
+        EXPECT_TRUE(s.setup(blocks));
+
+        // rhs_p must be compatible with the declared null space, otherwise apply
+        // refuses rather than silently projecting an incompatible right-hand side.
+        Vector compatible(2, 0.0);
+        compatible(0) = 2.0;
+        compatible(1) = -2.0;   // zero-sum: compatible with the constant mode
+        Vector out(2, 0.0);
+        EXPECT_TRUE(s.apply(compatible, out));
+        EXPECT_NEAR(projector.component_norm(out), 0.0, 1e-12);
+
+        Vector incompatible(2, 0.0);
+        incompatible(0) = 1.0;
+        incompatible(1) = 1.0;   // carries a constant component
+        Vector out2(2, 0.0);
+        EXPECT_TRUE(!s.apply(incompatible, out2));
+
+        // A null-space-free instance keeps its previous behaviour: no policy.
+        SimplerSchurApproximation plain(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(!plain.has_pressure_null_space_policy());
+        EXPECT_TRUE(plain.setup(blocks));
+        Vector out3(2, 0.0);
+        EXPECT_TRUE(plain.apply(incompatible, out3));
+    });
+
+    run_case("simplerc_null_space_dimension_mismatch_is_rejected", [&] {
+        const auto projector = NullSpaceProjector::constant(3);
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC, projector);
+        EXPECT_TRUE(!s.setup(blocks));
     });
 
     return run_all();
