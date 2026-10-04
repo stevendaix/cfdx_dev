@@ -6,32 +6,61 @@ Expose the reproducible CFDX code-intelligence index through a narrow read-only 
 
 ## Operations
 
-- index.validate: validate repository revision and indexed file hashes.
-- code.symbol: query indexed symbols by name/qualified-name pattern.
-- code.references: query indexed references by target symbol pattern.
-- code.dependencies: query indexed dependency edges by path pattern.
-- evidence.test: query discovered tests and explicit test-to-symbol relations.
-- evidence.validation: query validation cases and explicit validation-to-symbol relations.
+- `index.validate`: validate repository revision and indexed file hashes.
+- `code.symbol`: query indexed symbols by name/qualified-name pattern.
+- `code.references`: query indexed references by target symbol pattern.
+- `code.dependencies`: query indexed dependency edges by path pattern.
+- `evidence.test`: query discovered tests and explicit test-to-symbol relations.
+- `evidence.validation`: query validation cases and explicit validation-to-symbol relations.
+
+## Server configuration
+
+The server is bound to one repository/index pair at startup. Configuration can be supplied with:
+
+- `--root` / `CFDX_AI_ROOT`: repository root.
+- `--index` / `CFDX_AI_INDEX`: SQLite index path.
+
+The MCP tool inputs therefore remain narrow: `index.validate` has no arguments and the five query operations accept only `pattern`.
 
 ## Required response fields
 
-Each operation must return:
+Each operation returns:
+
 - operation identifier;
 - index freshness status;
-- repository/index revision when available;
+- repository revision when available;
 - deterministic result rows;
 - explicit errors, if any.
 
-A stale index is an error condition for evidence use. An empty result is not proof of absence.
+A stale index is an error condition for evidence use. Query operations return no indexed rows when the index is stale. An empty result on a valid index is not proof of repository absence.
 
-## Safety
+## Permission
 
-The initial surface is READ_ONLY. It must not mutate repository files, Git history, CFDX cases, build trees, or runtime state. Expensive execution and all mutation belong to separately permissioned MCP surfaces.
+The first server surface is `READ_ONLY`. All six tools are annotated as read-only and do not modify repository files, Git history, CFDX cases, build trees, or runtime state. Development/maintainer mutation tools are separate future surfaces.
+
+Tool annotations are advisory metadata, not a security boundary; host policy must enforce permissions independently.
+
+## Transport
+
+The reference adapter uses the official MCP Python SDK 2.3.0 and supports the standard `stdio` transport by default. Streamable HTTP is available for controlled local/server deployments. No SSE-specific implementation is added.
+
+## Reference implementation
+
+`.ai/mcp/development_server.py` is the MCP adapter. `.ai/scripts/query_index.py` remains the executable evidence/query reference underneath it.
+
+The adapter validates freshness before every evidence query and converts the deterministic tabular CLI results into structured MCP output.
 
 ## Evidence limitations
 
 Indexed relationships are not execution traces. Test-to-symbol and validation-to-symbol links do not establish test coverage, pass/fail status, verification, or qualification. Agents must confirm source, tests, documentation, and current CI/V&V evidence before drawing conclusions.
 
-## Reference implementation
+## Testing
 
-.ai/scripts/query_index.py is the current executable reference. An MCP adapter must preserve its deterministic query semantics and freshness checks.
+`.ai/mcp/test_development_server.py` uses the MCP SDK's in-process client/server path to verify:
+
+1. the complete six-tool surface is exposed;
+2. tools are read-only annotated;
+3. stale indexes are explicitly reported;
+4. stale evidence queries do not present indexed rows.
+
+Transport-level smoke testing remains a separate concern; the contract tests do not require a network port.
