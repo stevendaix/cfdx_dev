@@ -542,7 +542,7 @@
       "requirement": "continuity/mass imbalance gate",
       "status": "partial",
       "evidence": [
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md",
+        "docs/validation/03-conservation/chapter.py",
         "src/cfdx/core/numerics/conservation.h",
         "src/cfdx/physics/continuation.h",
         "src/cfdx/physics/steady_incompressible_solver.h",
@@ -819,7 +819,7 @@
       "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py"
       ]
     },
     {
@@ -859,7 +859,7 @@
       "requirement": "complete benchmark campaign",
       "status": "partial",
       "evidence": [
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py"
       ]
     },
     {
