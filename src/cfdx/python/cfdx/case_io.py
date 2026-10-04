@@ -238,12 +238,22 @@ def read_case(path: Path) -> CFDXSession:
 def read_case_with_dat(
     path: Path, dat_path: Path | None = None
 ) -> tuple[CFDXSession, Path]:
-    """Load a case and validate its paired solver DAT artifact."""
+    """Load a case and apply paired DAT iteration/time metadata.
+
+    Field values are deliberately not attached to ``CFDXSession`` here: the
+    session currently has no field store or mesh-cell mapping contract. The
+    DAT remains the authoritative owner of field values.
+    """
     case_path = _validate_path(path)
     session = _read_session(case_path)
 
     candidate = Path(dat_path) if dat_path is not None else _paired_dat_path(case_path)
     if not candidate.is_file():
         raise FileNotFoundError(candidate)
-    read_dat_restart(candidate)
+    restart = read_dat_restart(candidate)
+    # Iteration/time are first-class session metadata and already have a
+    # defined destination. Restore them from the DAT without pretending that
+    # the session can yet own/remap the checkpoint field arrays.
+    session.iteration = restart.iteration
+    session.time = restart.time
     return session, candidate
