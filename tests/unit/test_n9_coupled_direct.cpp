@@ -198,8 +198,6 @@ int main() {
         for (std::size_t i = 0; i < 3; ++i) bu(i) = rhs[i];
         Vector m_inv_bu(3, 0.0);
         EXPECT_TRUE(solve_M(bu, m_inv_bu));
-        const auto Dm_bu = Dd.matvec ? std::vector<double>{} : std::vector<double>{};
-        (void)Dm_bu;
         const auto tmp = dense_matvec(Dd, {m_inv_bu(0), m_inv_bu(1), m_inv_bu(2)});
         pressure_rhs(0) -= tmp[0];
         pressure_rhs(1) -= tmp[1];
