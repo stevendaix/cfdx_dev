@@ -975,14 +975,30 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         "solve_coupled_momentum_continuity: invalid face topology on face " +
                         std::to_string(f) + " cell " + std::to_string(c));
                 const std::size_t ncell = static_cast<std::size_t>(other_cell);
-                // Internal Gauss face pressure is the arithmetic average.
-                const double coeff = 0.5;
-                A.push_back(c, 3*nc + c, Sf.x * coeff);
-                A.push_back(c, 3*nc + ncell, Sf.x * coeff);
-                A.push_back(nc + c, 3*nc + c, Sf.y * coeff);
-                A.push_back(nc + c, 3*nc + ncell, Sf.y * coeff);
-                A.push_back(2*nc + c, 3*nc + c, Sf.z * coeff);
-                A.push_back(2*nc + c, 3*nc + ncell, Sf.z * coeff);
+                // Match gauss_gradient_with_boundary() exactly: the
+                // cell-centred pressure gradient uses a distance-weighted
+                // face value, not an unconditional arithmetic average.
+                // On a skewed mesh dc and dn need not be equal. Using 0.5 here
+                // therefore assembled a different pressure-gradient operator
+                // from the one used by the segregated momentum equation and
+                // from the independent final momentum residual.
+                const double dc =
+                    (geometry.face_centres[f] - geometry.cell_centres[c]).mag();
+                const double dn =
+                    (geometry.cell_centres[ncell] - geometry.face_centres[f]).mag();
+                if (!(dc > 0.0) || !(dn > 0.0) || !std::isfinite(dc) ||
+                    !std::isfinite(dn))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face-centre distances on face " +
+                        std::to_string(f));
+                const double weight_c = dn / (dc + dn);
+                const double weight_n = dc / (dc + dn);
+                A.push_back(c, 3*nc + c, Sf.x * weight_c);
+                A.push_back(c, 3*nc + ncell, Sf.x * weight_n);
+                A.push_back(nc + c, 3*nc + c, Sf.y * weight_c);
+                A.push_back(nc + c, 3*nc + ncell, Sf.y * weight_n);
+                A.push_back(2*nc + c, 3*nc + c, Sf.z * weight_c);
+                A.push_back(2*nc + c, 3*nc + ncell, Sf.z * weight_n);
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 const ScalarBoundaryCondition* bc = nullptr;
