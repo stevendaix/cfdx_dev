@@ -123,7 +123,7 @@
 #
 # ## 17.12 Code map
 #
-# Case/application: [src/cfdx/application](../../../src/cfdx/application/). Mesh/geometry: [src/cfdx/core/mesh](../../../src/cfdx/core/mesh/) and [src/cfdx/core/geometry](../../../src/cfdx/core/geometry/). Numerics: [src/cfdx/core/numerics](../../../src/cfdx/core/numerics/). Linear algebra: [src/cfdx/core/linalg](../../../src/cfdx/core/linalg/). Physics: [src/cfdx/physics](../../../src/cfdx/physics/). I/O: [src/cfdx/io](../../../src/cfdx/io/).
+# Case/application: [src/cfdx/application](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/application/). Mesh/geometry: [src/cfdx/core/mesh](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/mesh/) and [src/cfdx/core/geometry](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/geometry/). Numerics: [src/cfdx/core/numerics](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/numerics/). Linear algebra: [src/cfdx/core/linalg](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/core/linalg/). Physics: [src/cfdx/physics](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/physics/). I/O: [src/cfdx/io](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/).
 #
 # ## 17.13 V&V insertion points
 #
