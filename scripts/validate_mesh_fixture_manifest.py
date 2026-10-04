@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""Validate the N10 external mesh-fixture manifest without fetching external data.
-
-The validator is intentionally dependency-free. It checks the manifest's
-integrity boundary: immutable source refs, explicit acquisition policy, valid
-SHA-256 values when present, and the rule that mandatory fixtures cannot have
-an unverified/null hash.
-"""
+"""Validate the N10 external mesh-fixture manifest without fetching external data."""
 from __future__ import annotations
 
-import hashlib
 import re
 import sys
 from pathlib import Path
@@ -30,24 +23,33 @@ def parse_manifest(text: str) -> tuple[list[dict[str, str]], list[dict[str, str]
     section = None
     current = None
 
+    def finish_current() -> None:
+        nonlocal current
+        if current is None:
+            return
+        if section == "sources":
+            sources.append(current)
+        elif section == "fixtures":
+            fixtures.append(current)
+        else:
+            fail("entry outside sources/fixtures")
+        current = None
+
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        if line == "sources:":
-            section = "sources"
-            continue
-        if line == "fixtures:":
-            section = "fixtures"
+        if line in {"sources:", "fixtures:"}:
+            finish_current()
+            section = line[:-1]
             continue
         if line.startswith("version:") or line.startswith("schema:"):
             continue
         if line.startswith("- id:"):
-            if current is not None:
-                (sources if section == "sources" else fixtures).append(current)
-            current = {"id": line.split(":", 1)[1].strip()}
+            finish_current()
             if section not in {"sources", "fixtures"}:
                 fail(f"{MANIFEST}:{lineno}: entry outside sources/fixtures")
+            current = {"id": line.split(":", 1)[1].strip()}
             continue
         if current is None:
             fail(f"{MANIFEST}:{lineno}: unexpected content")
@@ -56,8 +58,7 @@ def parse_manifest(text: str) -> tuple[list[dict[str, str]], list[dict[str, str]
         key, value = (part.strip() for part in line.split(":", 1))
         current[key] = value
 
-    if current is not None:
-        (sources if section == "sources" else fixtures).append(current)
+    finish_current()
     return sources, fixtures
 
 
