@@ -6,9 +6,23 @@ import re
 
 _SUPPORTED={".vtu",".vtk",".vtp",".pvtu"}
 _NUMBER=re.compile(r"(?<![A-Za-z])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z])")
+_XML_SUFFIXES=frozenset({".vtu",".vtp",".pvtu"})
+_XML_HEADER=b"<?xml"
+_LEGACY_HEADER=b"# vtk DataFile Version"
 
 @dataclass(frozen=True)
 class ResultFrame:
+    """One discovered output file.
+
+    ``complete`` reports whether every readability check that discovery
+    actually performed succeeded. Without ``inspect_fields`` that is the
+    non-empty size plus the format banner, which rejects empty, truncated and
+    non-VTK files but cannot judge a file whose body was cut after a valid
+    header. With ``inspect_fields`` a VTK reader is additionally asked, so the
+    field reflects a real parse. Discovery never guesses beyond the evidence it
+    gathered; it does not treat "unverified" as "usable".
+    """
+
     path: Path
     sequence: int
     time: float | None = None
@@ -65,6 +79,23 @@ def _dataset_is_empty(dataset) -> bool:
         and getattr(dataset, "n_cells", None) == 0
     )
 
+
+def _has_recognised_header(path: Path) -> bool:
+    """Probe the format banner every supported VTK-family file starts with.
+
+    A size check alone reports a truncated or non-VTK file as usable, because a
+    partially written output still has a non-zero length. XML-family files open
+    with the XML declaration and legacy .vtk with its version banner, so the
+    banner is the cheapest available structural evidence of readability.
+    """
+    suffix=path.suffix.lower()
+    if suffix not in _XML_SUFFIXES and suffix!=".vtk": return True
+    try:
+        with path.open("rb") as handle: head=handle.read(64).lstrip()
+    except OSError: return False
+    if suffix in _XML_SUFFIXES: return head.startswith(_XML_HEADER)
+    return head.startswith(_LEGACY_HEADER)
+
 def validate_physical_time_provenance(series: ResultSeries) -> None:
     """Require every non-empty result frame to carry authoritative physical time.
 
@@ -96,7 +127,7 @@ def discover_result_series(directory: Path, *, inspect_fields: bool = False, req
     paths=sorted((p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _SUPPORTED),key=_sort_key)
     frames=[]
     for p in paths:
-        complete=p.stat().st_size > 0
+        complete=p.stat().st_size > 0 and _has_recognised_header(p)
         fields=()
         iteration=None
         metadata_time=None
