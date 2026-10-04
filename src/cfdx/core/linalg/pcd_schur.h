@@ -178,6 +178,8 @@ public:
             pressure_null_space_->remove(pressure);
 
         pressure *= -1.0;
+        if (pressure_reference_cell_)
+            pressure(*pressure_reference_cell_) = 0.0;
         if (pressure_null_space_)
             pressure_null_space_->remove(pressure);
         return true;
