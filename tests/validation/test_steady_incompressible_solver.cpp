@@ -141,6 +141,76 @@ int main()
     });
 
 
+    run_case("n9_3_production_coupled_matches_segregated_reference", [] {
+        const Mesh m = make_two_cell_channel();
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {
+            VelocityBoundaryCondition::Type::FIXED_VALUE,
+            {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        Field<double,Location::CELL> simple_u(2,"U","m/s",3);
+        Field<double,Location::CELL> simple_p(2,"p","Pa",1);
+        Field<double,Location::CELL> coupled_u(2,"U","m/s",3);
+        Field<double,Location::CELL> coupled_p(2,"p","Pa",1);
+        simple_u.fill(0.0);
+        simple_p.fill(0.0);
+        coupled_u.fill(0.0);
+        coupled_p.fill(0.0);
+
+        IncompressibleSolverControls reference;
+        reference.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        reference.convergence.max_iterations = 100;
+        reference.convergence.relative_tolerance = 1e-9;
+        reference.convergence.continuity_tolerance = 1e-9;
+        reference.linear_max_iterations = 2000;
+        reference.linear_tolerance = 1e-11;
+        reference.pressure_reference_cell = 0;
+        reference.pressure_reference_value = 0.0;
+        reference.body_force = cfdx::core::Vec3{1.0, 0.0, 0.0};
+
+        const auto simple_result = solve_steady_incompressible(
+            m, simple_u, simple_p, ubc, pbc, reference);
+        EXPECT_TRUE(simple_result.converged);
+        EXPECT_TRUE(!simple_result.history.empty());
+
+        IncompressibleSolverControls coupled = reference;
+        coupled.algorithm = PressureVelocityAlgorithm::COUPLED;
+        coupled.coupling.coupled_max_iterations = 2000;
+        coupled.coupling.coupled_linear_tolerance = 1e-11;
+        coupled.coupled_linear_solver.krylov = KrylovModel::GMRES;
+        coupled.coupled_linear_solver.preconditioner =
+            PreconditionerModel::CoupledBlockSchur;
+
+        const auto coupled_result = solve_steady_incompressible(
+            m, coupled_u, coupled_p, ubc, pbc, coupled);
+        EXPECT_TRUE(coupled_result.converged);
+        EXPECT_TRUE(coupled_result.coupled_linear_plan_resolved);
+        EXPECT_TRUE(!coupled_result.history.empty());
+
+        const auto& last = coupled_result.history.back();
+        EXPECT_TRUE(std::isfinite(last.momentum_equation_residual_relative));
+        EXPECT_TRUE(std::isfinite(last.continuity_normalized));
+        EXPECT_TRUE(std::isfinite(last.mass_normalized_imbalance));
+        EXPECT_TRUE(last.mass_nonfinite_faces == 0);
+        EXPECT_TRUE(last.continuity_normalized < 1e-8);
+        EXPECT_TRUE(last.mass_normalized_imbalance < 1e-8);
+
+        for (std::size_t c = 0; c < 2; ++c) {
+            for (std::size_t d = 0; d < 3; ++d)
+                EXPECT_NEAR(
+                    coupled_u.component_data(d)[c],
+                    simple_u.component_data(d)[c],
+                    1e-8);
+            EXPECT_NEAR(coupled_p(c), simple_p(c), 1e-8);
+        }
+
+        EXPECT_TRUE(coupled_result.convergence_status ==
+                    cfdx::core::ConvergenceStatus::CONVERGED);
+    });
+
+
     run_case("native_solver_consumes_dat_restart", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> seed_u(1,"U","m/s",3);
