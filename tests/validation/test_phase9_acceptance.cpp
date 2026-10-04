@@ -560,6 +560,14 @@ int main(int argc, char** argv)
                         gates.push_back("momentum_equation_residual_relative");
                     if (!(h.corrected_flux_continuity_linf < 1e-7))
                         gates.push_back("corrected_flux_continuity");
+                    if (test.algorithm == PressureVelocityAlgorithm::COUPLED) {
+                        if (h.mass_nonfinite_faces != 0)
+                            gates.push_back("coupled_mass_nonfinite_faces");
+                        if (!(h.mass_normalized_imbalance < 1e-7))
+                            gates.push_back("coupled_mass_normalized_imbalance");
+                        if (!result.solve.coupled_linear_plan_resolved)
+                            gates.push_back("coupled_linear_plan_unresolved");
+                    }
                     if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
                         result.solve.iterations < 2)
                         gates.push_back("pimple_outer_correctors");
