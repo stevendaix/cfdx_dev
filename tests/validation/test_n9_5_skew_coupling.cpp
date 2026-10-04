@@ -21,6 +21,7 @@ Mesh make_skew_channel_mesh(std::size_t nx, std::size_t ny)
         throw std::invalid_argument("skew channel mesh too small");
 
     Mesh mesh;
+    constexpr double pi = 3.141592653589793238462643383279502884;
     const std::size_t plane = (nx + 1) * (ny + 1);
     mesh.points().resize(2 * plane);
 
@@ -38,10 +39,10 @@ Mesh make_skew_channel_mesh(std::size_t nx, std::size_t ny)
             const bool boundary = i == 0 || i == nx || j == 0 || j == ny;
             const double sx = boundary
                 ? 0.0
-                : 0.12 * std::sin(M_PI * x0) * std::sin(M_PI * y0);
+                : 0.12 * std::sin(pi * x0) * std::sin(pi * y0);
             const double sy = boundary
                 ? 0.0
-                : 0.06 * std::sin(2.0 * M_PI * x0) * std::sin(M_PI * y0);
+                : 0.06 * std::sin(2.0 * pi * x0) * std::sin(pi * y0);
             for (std::size_t k = 0; k < 2; ++k)
                 mesh.points().set(id(i, j, k), x0 + sx, y0 + sy, static_cast<double>(k));
         }
@@ -209,7 +210,7 @@ Run run_case(PressureVelocityAlgorithm algorithm,
         [](std::size_t iter, double, const Mesh&,
            const Field<double, Location::CELL>&,
            const Field<double, Location::CELL>&) {
-            return iter < 3000;
+            return true;
         };
 
     const auto result = solve_steady_incompressible(
