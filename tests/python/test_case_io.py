@@ -72,10 +72,12 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     loaded, loaded_dat = read_case_with_dat(case_path)
 
     assert loaded.case.as_dict() == make_session().case.as_dict()
-    # Iteration/time are restored from the paired DAT; field values remain
-    # owned by the DAT until the session has a field-store/remapping contract.
     assert loaded.iteration == 120
     assert loaded.time == pytest.approx(2.5)
+    assert loaded.field_cell_ids is None
+    assert loaded.fields["U"].dimension == 3
+    assert loaded.fields["U"].values == [1.0, 2.0, 3.0]
+    assert loaded.fields["p"].values == [4.0]
     assert loaded_dat == dat_path
     assert loaded_dat.read_bytes() == source.read_bytes()
     restart = read_dat_restart(loaded_dat)
@@ -111,3 +113,50 @@ def test_save_case_preserves_existing_hdf5_mesh_data(tmp_path: Path) -> None:
 
     with h5py.File(path, "r") as h5:
         assert list(h5["points"][()]) == [0.0, 1.0, 2.0]
+
+
+def test_read_case_with_dat_remaps_fields_to_case_cell_order(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat"
+    write_dat_hdf5(
+        source,
+        DatRestart(
+            version=2,
+            cells=2,
+            iteration=9,
+            time=0.75,
+            fields={
+                "U": DatField("U", 3, [10.0, 0.0, 0.0, 20.0, 0.0, 0.0]),
+                "p": DatField("p", 1, [100.0, 200.0]),
+            },
+            cell_ids=(20, 10),
+        ),
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+    with h5py.File(case_path, "a") as h5:
+        h5.create_dataset("cell_ids", data=[10, 20])
+
+    loaded, _ = read_case_with_dat(case_path, source)
+
+    assert loaded.field_cell_ids == (10, 20)
+    assert loaded.fields["U"].values == [20.0, 0.0, 0.0, 10.0, 0.0, 0.0]
+    assert loaded.fields["p"].values == [200.0, 100.0]
+
+
+def test_read_case_with_dat_rejects_idless_dat_for_identified_mesh(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat"
+    write_dat_hdf5(
+        source,
+        DatRestart(
+            version=2,
+            cells=1,
+            iteration=9,
+            time=0.75,
+            fields={"p": DatField("p", 1, [100.0])},
+        ),
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+    with h5py.File(case_path, "a") as h5:
+        h5.create_dataset("cell_ids", data=[0])
+
+    with pytest.raises(ValueError, match="persistent cell ids"):
+        read_case_with_dat(case_path, source)
