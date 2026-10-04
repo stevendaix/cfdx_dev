@@ -319,13 +319,24 @@ int main()
 
         constexpr double ghia_u=-0.20581;
         constexpr double ghia_v=0.05454;
-        // The QoI is sampled at the physical domain centre from the four
-        // surrounding cell centres. Keep the reference tolerance explicit and
-        // unchanged here; it is a reference-comparison gate, not a convergence
-        // tolerance, and must be tightened only from measured resolution evidence.
-        if (std::abs(continuation_u-ghia_u) > 0.15 ||
-            std::abs(continuation_v-ghia_v) > 0.15)
-            throw std::runtime_error("N7 Ghia centre-velocity QoI gate failed");
+        // Reference comparison against the published Re=100 lid-driven cavity.
+        // This bound is a gross-error sanity check, NOT a spatial accuracy
+        // qualification: CFDX runs a single discretization here, so a
+        // discretization error cannot be separated from a solver error and no
+        // tolerance tighter than a gross-error bound would be justified. The
+        // observed deviation is reported so the number stays auditable. A mesh
+        // refinement study remains the missing evidence before any spatial
+        // accuracy claim; until then the requirement stays "partial".
+        constexpr double kGhiaGrossErrorBound = 0.15;
+        const double ghia_u_error = std::abs(continuation_u - ghia_u);
+        const double ghia_v_error = std::abs(continuation_v - ghia_v);
+        std::printf(
+            "N7 Ghia centre-velocity deviation: u=%.6e v=%.6e (gross-error bound=%.3e)\n",
+            ghia_u_error, ghia_v_error, kGhiaGrossErrorBound);
+        if (ghia_u_error > kGhiaGrossErrorBound ||
+            ghia_v_error > kGhiaGrossErrorBound)
+            throw std::runtime_error(
+                "N7 Ghia centre-velocity deviates beyond the gross-error bound");
         if (std::abs(adaptive_u-direct_u) > 2e-5 ||
             std::abs(adaptive_v-direct_v) > 2e-5)
             throw std::runtime_error("N7 adaptive-relaxation QoI mismatch");

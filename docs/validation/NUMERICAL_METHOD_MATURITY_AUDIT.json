@@ -148,7 +148,7 @@
         "unified QoI/conservation gates",
         "adaptive URF qualification",
         "deterministic final convergence report",
-        "production PDE corridors beyond the Re=100 lid-driven cavity (continuation/adaptive verified on that corridor)"
+        "production PDE corridors beyond the Re=100 lid-driven cavity (continuation/adaptive qualified on that corridor only; no spatial accuracy claim, mesh refinement study outstanding)"
       ]
     },
     {
