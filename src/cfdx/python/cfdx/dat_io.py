@@ -222,6 +222,9 @@ def remap_dat_restart(
     missing = [cell_id for cell_id in target if cell_id not in source_index]
     if missing:
         raise ValueError(f"target cell id missing from checkpoint: {missing[0]}")
+    extra = [cell_id for cell_id in restart.cell_ids if cell_id not in set(target)]
+    if extra:
+        raise ValueError(f"checkpoint cell id is absent from target mesh: {extra[0]}")
     fields: dict[str, DatField] = {}
     for name, field in restart.fields.items():
         values: list[float] = []
