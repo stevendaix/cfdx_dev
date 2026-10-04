@@ -193,15 +193,19 @@ def extract_n8_evidence(results: list[dict[str, object]]) -> dict[str, object]:
 
 
 def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
-    """Report whether structured N8 evidence contains the required fields.
-
-    This is an evidence-integrity audit, not a numerical acceptance gate: it
-    never invents values and never changes a source test verdict.
-    """
+    """Report whether structured N8 evidence contains the required fields."""
     requirements = {
-        "physical_model_results": ("model", "solver_converged", "iterations", "gates_failed"),
-        "schur_quantitative": ("case", "cond_inf_Auu", "exact_solve_backward_error", "machine_epsilon"),
-        "schur_production": ("cells", "unknowns", "nnz", "schur_nnz", "true_residual", "iterations", "setup_us", "solve_us", "pressure_coarse_size", "hierarchy_builds", "numeric_updates"),
+        "physical_model_results": (
+            "model", "solver_converged", "iterations", "gates_failed"
+        ),
+        "schur_quantitative": (
+            "case", "cond_inf_Auu", "exact_solve_backward_error", "machine_epsilon"
+        ),
+        "schur_production": (
+            "cells", "unknowns", "nnz", "schur_nnz", "true_residual",
+            "iterations", "setup_us", "solve_us", "pressure_coarse_size",
+            "hierarchy_builds", "numeric_updates",
+        ),
     }
     missing: dict[str, list[dict[str, object]]] = {}
     checked = complete = 0
@@ -209,7 +213,7 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
         records = evidence.get(category, [])
         if not isinstance(records, list):
             records = []
-        category_missing = []
+        category_missing: list[dict[str, object]] = []
         for index, record in enumerate(records):
             if not isinstance(record, dict):
                 category_missing.append({"index": index, "fields": list(fields)})
@@ -222,8 +226,13 @@ def audit_evidence_coverage(evidence: dict[str, object]) -> dict[str, object]:
                 complete += 1
         if category_missing:
             missing[category] = category_missing
-    return {\n        "status": "COMPLETE" if not missing else "INCOMPLETE",\n        "records_checked": checked,\n        "records_complete": complete,\n        "missing_fields": missing,\n        "policy": "diagnostic_only",\n    }
-
+    return {
+        "status": "COMPLETE" if not missing else "INCOMPLETE",
+        "records_checked": checked,
+        "records_complete": complete,
+        "missing_fields": missing,
+        "policy": "diagnostic_only",
+    }
 
 def main() -> int:
     parser = argparse.ArgumentParser()
