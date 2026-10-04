@@ -12,7 +12,7 @@ Expose the reproducible CFDX code-intelligence index through a narrow read-only 
 ## Documentation operations
 
 - `documentation.search`: search tracked repository text by pattern, optionally scoped to a repository-relative path.
-- `documentation.read`: read a tracked repository file at `HEAD`.
+- `documentation.read`: read a tracked repository file at `HEAD`; accepts `file_path` as a repository-relative tracked path.
 
 Both operations are descriptive only and never modify repository state.
 
@@ -32,7 +32,7 @@ The server is bound to one repository/index pair at startup. Configuration can b
 - `--root` / `CFDX_AI_ROOT`: repository root.
 - `--index` / `CFDX_AI_INDEX`: SQLite index path.
 
-The MCP tool inputs therefore remain narrow: `index.validate` has no arguments and the five query operations accept only `pattern`.
+The MCP tool inputs remain narrow: `index.validate` has no arguments; the indexed query operations accept only `pattern`; `repository.file_structure` accepts an optional relative `path`; `repository.status` has no arguments; `documentation.search` accepts `pattern` and optional `path`; `documentation.read` accepts `file_path`.
 
 ## Required response fields
 
@@ -70,7 +70,7 @@ Indexed relationships are not execution traces. Test-to-symbol and validation-to
 
 `.ai/mcp/test_development_server.py` uses the MCP SDK's in-process client/server path to verify:
 
-1. the complete six-tool surface is exposed;
+1. the complete ten-tool surface is exposed;
 2. tools are read-only annotated;
 3. stale indexes are explicitly reported;
 4. stale evidence queries do not present indexed rows.
