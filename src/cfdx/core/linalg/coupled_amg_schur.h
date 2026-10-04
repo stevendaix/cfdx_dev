@@ -94,8 +94,9 @@ public:
             G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
             D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
             C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
-            BlockOperator blocks(Auu_, G_, D_, C_);
-            if (!pcd_schur_->setup(blocks))
+            pcd_blocks_ =
+                std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
+            if (!pcd_schur_->setup(*pcd_blocks_))
                 return fail("PCD Schur approximation setup failed");
             pcd_ready_ = true;
             ready_ = true;
@@ -164,8 +165,7 @@ public:
             std::copy(new_C.values_data(),
                       new_C.values_data() + new_C.nnz(), C_.values_data());
 
-            BlockOperator blocks(Auu_, G_, D_, C_);
-            if (!pcd_schur_->update_values(blocks))
+            if (!pcd_blocks_ || !pcd_schur_->update_values(*pcd_blocks_))
                 return fail_update("PCD Schur numeric update failed");
 
             velocity_inv_ = std::move(candidate.velocity_inv_);
@@ -544,7 +544,7 @@ private:
     }
 
     void reset() {
-        ready_=false; pcd_ready_=false; last_error_.clear(); velocity_inv_.clear();
+        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); last_error_.clear(); velocity_inv_.clear();
         velocity_inv_diag_.clear();
         row_.clear(); col_.clear(); val_.clear(); schur_=SparseMatrix();
     }
@@ -563,6 +563,7 @@ private:
     SparseMatrix C_;
     NativeBoomerAMGPreconditioner pressure_amg_;
     std::unique_ptr<PcdSchurApproximation> pcd_schur_;
+    std::unique_ptr<BlockOperator> pcd_blocks_;
     bool pcd_ready_{false};
     bool ready_{false};
     std::string last_error_;
