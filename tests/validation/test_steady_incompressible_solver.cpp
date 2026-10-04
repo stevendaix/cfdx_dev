@@ -161,7 +161,7 @@ int main()
 
         IncompressibleSolverControls reference;
         reference.algorithm = PressureVelocityAlgorithm::SIMPLE;
-        reference.convergence.max_iterations = 100;
+        reference.convergence.max_iterations = 2000;
         reference.convergence.relative_tolerance = 1e-9;
         reference.convergence.continuity_tolerance = 1e-9;
         reference.linear_max_iterations = 2000;
