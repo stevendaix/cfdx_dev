@@ -284,6 +284,7 @@ def main() -> int:
     failed = [r["name"] for r in results if r["status"] == "FAIL"]
     completed = len(results)
     evidence = extract_n8_evidence(results)
+    evidence_coverage = audit_evidence_coverage(evidence)
     report = {
         "campaign": "N8 complete solver/preconditioner qualification",
         "status": "PASS" if not failed and completed == len(REQUIRED_TESTS) else "FAIL",
@@ -292,6 +293,7 @@ def main() -> int:
         "failed_tests": failed,
         "results": results,
         "evidence": evidence,
+        "evidence_coverage": evidence_coverage,
         "coverage": {
             "pressure_velocity": [
                 "SIMPLE", "SIMPLEC", "PISO", "PIMPLE",
