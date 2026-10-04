@@ -1,11 +1,14 @@
 #pragma once
 
 #include "cfdx/core/linalg/block_operator.h"
+#include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/schur_approximation.h"
 #include "cfdx/core/linalg/vector.h"
 
 #include <cmath>
 #include <cstddef>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace cfdx::core {
@@ -32,7 +35,13 @@ inline const char* to_string(SimplerSchurMode m) {
 // qualified against the ExactSchur oracle (#492).
 class SimplerSchurApproximation final : public SchurApproximation {
 public:
-    explicit SimplerSchurApproximation(SimplerSchurMode mode) : mode_(mode) {}
+    // The optional pressure null-space projector is the same mean-zero policy the
+    // exact and LSC/BFBt approximations accept. It is opt-in so an existing caller
+    // keeps its previous algebra exactly.
+    explicit SimplerSchurApproximation(
+        SimplerSchurMode mode,
+        std::optional<NullSpaceProjector> pressure_null_space = std::nullopt)
+        : mode_(mode), pressure_null_space_(std::move(pressure_null_space)) {}
 
     const char* name() const noexcept override {
         return mode_ == SimplerSchurMode::SIMPLE ? "simple_schur" : "simplec_schur";
@@ -43,6 +52,9 @@ public:
         const SparseMatrix& auu = blocks.Auu();
         const std::size_t n = auu.n_rows();
         if (n == 0) return false;
+        if (pressure_null_space_ &&
+            pressure_null_space_->dimension() != blocks.pressure_size())
+            return false;
 
         diagonal_.assign(n, 0.0);
         denominator_.assign(n, 0.0);
@@ -69,10 +81,17 @@ public:
             denominator_[i] = ad;
         }
         blocks_ = &blocks;
+        graph_signature_ = graph_signature(blocks);
         return true;
     }
 
+    // A CSR graph change invalidates the diagonal and offdiagonal sums captured
+    // by setup, so it is rejected rather than silently recomputed from a different
+    // sparsity pattern. This matches the exact and LSC/BFBt approximations: a
+    // numeric refresh is accepted, a graph change requires an explicit setup.
     bool update_values(const BlockOperator& blocks) override {
+        if (!blocks_ || graph_signature(blocks) != graph_signature_)
+            return false;
         return setup(blocks);
     }
 
@@ -84,8 +103,15 @@ public:
         if (pressure.size() != np)
             pressure = Vector(np, 0.0);
 
+        Vector projected_rhs = rhs_p;
+        if (pressure_null_space_) {
+            if (!pressure_null_space_->is_compatible(projected_rhs))
+                return false;
+            pressure_null_space_->remove(projected_rhs);
+        }
+
         // Gp = G * rhs_p
-        const auto Gp = blocks_->G().matvec(rhs_p);
+        const auto Gp = blocks_->G().matvec(projected_rhs);
         Vector Gp_v(nu, 0.0);
         for (std::size_t i = 0; i < nu; ++i) Gp_v(i) = Gp[i];
 
@@ -95,21 +121,60 @@ public:
             y(i) = Gp_v(i) / denominator_[i];
 
         // out = C*rhs_p - D*y
-        const auto Cp = blocks_->C().matvec(rhs_p);
+        const auto Cp = blocks_->C().matvec(projected_rhs);
         const auto Dy = blocks_->D().matvec(y);
         for (std::size_t i = 0; i < np; ++i)
             pressure(i) = Cp[i] - Dy[i];
+        if (pressure_null_space_) pressure_null_space_->remove(pressure);
         return true;
     }
 
     double offdiag_norm() const noexcept { return offdiag_norm_; }
 
+    bool has_pressure_null_space_policy() const noexcept {
+        return pressure_null_space_.has_value();
+    }
+
 private:
+    struct GraphSignature {
+        std::size_t hash = 0;
+        bool operator==(const GraphSignature& other) const noexcept {
+            return hash == other.hash;
+        }
+        bool operator!=(const GraphSignature& other) const noexcept {
+            return !(*this == other);
+        }
+    };
+
+    static GraphSignature graph_signature(const BlockOperator& blocks) {
+        std::size_t h = 1469598103934665603ULL;
+        const auto mix = [&h](std::size_t value) {
+            h ^= value;
+            h *= 1099511628211ULL;
+        };
+        const auto add = [&mix](const SparseMatrix& A) {
+            mix(A.n_rows());
+            mix(A.n_cols());
+            mix(A.nnz());
+            for (std::size_t i = 0; i < A.n_rows() + 1; ++i)
+                mix(A.row_offsets_data()[i]);
+            for (std::size_t k = 0; k < A.nnz(); ++k)
+                mix(A.columns_data()[k]);
+        };
+        add(blocks.Auu());
+        add(blocks.G());
+        add(blocks.D());
+        add(blocks.C());
+        return GraphSignature{h};
+    }
+
     SimplerSchurMode mode_;
+    std::optional<NullSpaceProjector> pressure_null_space_;
     const BlockOperator* blocks_ = nullptr;
     std::vector<double> diagonal_;
     std::vector<double> denominator_;
     double offdiag_norm_ = 0.0;
+    GraphSignature graph_signature_{};
 };
 
 } // namespace cfdx::core
