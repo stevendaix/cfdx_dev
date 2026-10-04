@@ -191,6 +191,10 @@ struct CaseSetup {
 
     // Initial conditions
     InitialCondition initial_condition;
+    // True when the case file actually carried an initial_condition block.
+    // Distinguishes "declared as zero" from "not declared", which must not be
+    // treated as an implicit uniform initialization.
+    bool has_initial_condition = false;
 
     // Numerical schemes
     NumericalScheme numerics;

@@ -76,12 +76,18 @@ int main()
         Field<double,Location::CELL> expected_p = loaded_p;
         (void)solve_steady_incompressible(m, expected_u, expected_p, ubc, pbc, controls);
 
+        // Declare the checkpoint as the initialization strategy rather than
+        // relying on the positional restart argument alone.
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+
         Field<double,Location::CELL> restart_u(1,"U","m/s",3);
         Field<double,Location::CELL> restart_p(1,"p","Pa",1);
         restart_u.fill(0.0);
         restart_p.fill(0.0);
         (void)solve_steady_incompressible(
-            m, restart_u, restart_p, ubc, pbc, controls, dat.string());
+            m, restart_u, restart_p, ubc, pbc, restart_controls);
 
         EXPECT_NEAR(restart_u(0,0), expected_u(0,0), 1e-14);
         EXPECT_NEAR(restart_u(0,1), expected_u(0,1), 1e-14);
@@ -117,8 +123,12 @@ int main()
         (void)solve_steady_incompressible(
             m,expected_u,expected_p,ubc,pbc,controls);
 
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+        cfdx::io::DatRestartFields restart_fields{&T,&k,&omega};
         (void)solve_steady_incompressible(
-            m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
+            m,U,p,ubc,pbc,restart_controls,"",restart_fields);
 
         EXPECT_NEAR(U(0,0),expected_u(0,0),1e-14);
         EXPECT_NEAR(U(0,1),expected_u(0,1),1e-14);
@@ -417,6 +427,66 @@ int main()
         EXPECT_NEAR(loaded_k(0),0.12,1e-14);
         EXPECT_NEAR(loaded_second(0),4.5,1e-14);
         std::filesystem::remove(dat);
+    });
+
+    run_case("nonlinear_retry_controls_are_validated_by_the_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 2;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        // The solver owns the nonlinear retry policy, so an invalid policy must
+        // be rejected at the solver boundary and not only inside the controller.
+        bool rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 0;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+
+        rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 3;
+            c.nonlinear_retry.relaxation_shrink = 1.5;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("nonlinear_state_rollback_restores_fields_exactly", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+
+        NonlinearStateRollback transaction(U, p);
+        transaction.begin();
+        U.component_data(0)[0] = 3.5;
+        U.component_data(1)[0] = -1.25;
+        p(0) = 42.0;
+        transaction.reject();
+
+        EXPECT_TRUE(U.component_data(0)[0] == 0.0);
+        EXPECT_TRUE(U.component_data(1)[0] == 0.0);
+        EXPECT_TRUE(p(0) == 0.0);
+        EXPECT_TRUE(!transaction.active());
     });
 
     return run_all();

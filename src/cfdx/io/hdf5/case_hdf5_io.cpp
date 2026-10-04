@@ -669,6 +669,7 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
 
     const mini_json::value* ic = mini_json::find(json, "initial_condition");
     if (ic && ic->is_object()) {
+        setup.has_initial_condition = true;
         setup.initial_condition.velocity = json_get_number(*ic, "velocity");
         setup.initial_condition.pressure = json_get_number(*ic, "pressure");
         setup.initial_condition.temperature = json_get_number(*ic, "temperature", 288.15);

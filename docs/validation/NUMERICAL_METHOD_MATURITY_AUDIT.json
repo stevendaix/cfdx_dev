@@ -135,15 +135,20 @@
       "name": "Nonlinear solver and convergence",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
         "src/cfdx/cfdx/core/utils/convergence_monitor.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/solver_control.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ],
       "gaps": [
         "unified QoI/conservation gates",
         "adaptive URF qualification",
-        "continuation qualification",
-        "deterministic final convergence report"
+        "deterministic final convergence report",
+        "production PDE corridors beyond the Re=100 lid-driven cavity (continuation/adaptive qualified on that corridor only; no spatial accuracy claim, mesh refinement study outstanding)"
       ]
     },
     {

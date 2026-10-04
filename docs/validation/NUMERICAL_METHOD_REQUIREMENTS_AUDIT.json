@@ -514,8 +514,13 @@
       "requirement": "unified convergence monitor",
       "status": "implemented",
       "evidence": [
+        "src/cfdx/cfdx/core/utils/convergence_monitor.h",
         "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/cfdx/core/utils/convergence_monitor.h"
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
     },
     {
@@ -523,32 +528,55 @@
       "requirement": "physical residual normalization",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
       "requirement": "continuity/mass imbalance gate",
       "status": "partial",
       "evidence": [
+        "docs/validation/CONSERVATION_BOUNDEDNESS.md",
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
-      ]
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
       "requirement": "QoI convergence gate",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
       "requirement": "stagnation/divergence detection",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
     },
     {
@@ -556,22 +584,52 @@
       "requirement": "adaptive under-relaxation qualification",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
       "requirement": "continuation/homotopy qualification",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; no spatial accuracy claim; single Re=100 lid-driven cavity corridor, mesh refinement study outstanding"
     },
     {
       "package_id": "N7",
       "requirement": "deterministic convergence report",
       "status": "partial",
       "evidence": [
-        "docs/validation/VALIDATION_REPORT.md"
+        "docs/validation/VALIDATION_REPORT.md",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "declared initialization strategy",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_initialization.cpp",
+        "tests/validation/test_steady_incompressible_solver.cpp",
+        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+      ],
+      "note": "provided/uniform/restart are declared and validated; unknown mode names are rejected. Automatic selection remains partial: no strategy is inferred from filesystem, mesh-quality or prior-divergence probing, because the initial state fixes the reference residual of the convergence report."
     },
     {
       "package_id": "N8",

@@ -96,7 +96,7 @@ int main(int argc, char** argv)
                         metrics.l2_relative, metrics.max_relative);
     }
 
-    const int global_ok = mpi_allreduce_min(local_ok ? 1 : 0);
+    const bool global_ok = mpi_allreduce_min(static_cast<double>(local_ok ? 1 : 0)) >= 0.5;
     if (!global_ok) {
         mpi_finalize();
         return 1;
@@ -110,8 +110,10 @@ int main(int argc, char** argv)
     if (rank == 0 && reduction_delta > 1e-14)
         std::fprintf(stderr, "N13 reduction equivalence failed: %.17g\n", reduction_delta);
 
-    const int reduction_ok = mpi_allreduce_min(
-        (reduction_delta <= 1e-14) ? 1 : 0);
+    // mpi_allreduce_min yields a double; narrow explicitly rather than
+    // implicitly converting it to an integral type.
+    const bool reduction_ok = mpi_allreduce_min(
+        static_cast<double>((reduction_delta <= 1e-14) ? 1 : 0)) >= 0.5;
     mpi_finalize();
     return (reduction_ok && global_ok) ? 0 : 1;
 }

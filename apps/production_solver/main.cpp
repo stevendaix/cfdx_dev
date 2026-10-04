@@ -98,6 +98,18 @@ void apply_explicit_case_numerics(
                     "unsupported resolved linear-solver selection: " +
                     selection.method_id);
             }
+        } else if (selection.family == NumericalMethodFamily::Initialization) {
+            if (selection.method_id == "initialization.provided") {
+                controls.initialization.mode = InitializationMode::Provided;
+            } else if (selection.method_id == "initialization.uniform") {
+                controls.initialization.mode = InitializationMode::Uniform;
+            } else if (selection.method_id == "initialization.restart") {
+                controls.initialization.mode = InitializationMode::Restart;
+            } else {
+                throw std::invalid_argument(
+                    "unsupported resolved initialization selection: " +
+                    selection.method_id);
+            }
         } else if (selection.family == NumericalMethodFamily::Temporal) {
             throw std::invalid_argument(
                 "steady production solver does not consume a temporal selection: " +
@@ -190,8 +202,27 @@ int main(int argc, char** argv)
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
-        U.fill(0.0);
-        p.fill(0.0);
+
+        // The initial state is declared, not inferred. When the case carries an
+        // explicit initial_condition block it is mapped onto the fields through
+        // the uniform strategy; otherwise the caller-provided state is kept.
+        // A restart, when requested, replaces it below.
+        InitializationControls initialization;
+        if (is_case_hdf5 && case_setup.has_initial_condition) {
+            const auto& ic = case_setup.initial_condition;
+            initialization.mode = InitializationMode::Uniform;
+            if (!ic.velocity_vector.empty()) {
+                if (ic.velocity_vector.size() != 3)
+                    throw std::runtime_error(
+                        "production solver: initial_condition.velocity_vector must have 3 components");
+                initialization.uniform_velocity = cfdx::core::Vec3{
+                    ic.velocity_vector[0], ic.velocity_vector[1], ic.velocity_vector[2]};
+            } else {
+                initialization.uniform_velocity =
+                    cfdx::core::Vec3{ic.velocity, ic.velocity, ic.velocity};
+            }
+            initialization.uniform_pressure = ic.pressure;
+        }
 
         VelocityBoundaryConditions ubc;
         ScalarBoundaryConditions pbc;
@@ -228,12 +259,14 @@ int main(int argc, char** argv)
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
 
-        if (!options.restart.empty()) {
-            const auto restart_state = read_dat_restart(
-                options.restart.string(), mesh, U, p);
-            std::cout << "Restart iteration=" << restart_state.iteration
-                      << " time=" << restart_state.time << "\n";
-        }
+        // The declared initialization strategy is applied by the solver, before
+        // the first residual is formed. An explicit --restart request therefore
+        // overrides the case-derived uniform state.
+        controls.initialization = initialization;
+        if (!options.restart.empty())
+            controls.initialization.mode = InitializationMode::Restart;
+        std::cout << "Initialization strategy "
+                  << cfdx::physics::to_string(controls.initialization.mode) << "\n";
 
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
@@ -253,6 +286,8 @@ int main(int argc, char** argv)
 
         const auto result = solve_steady_incompressible(
             mesh, U, p, ubc, pbc, controls, options.restart.string());
+        if (!options.restart.empty())
+            std::cout << "Restart checkpoint " << options.restart.string() << "\n";
 
         const auto dat = options.output_dir / "restart.dat";
         write_dat_restart(dat.string(), mesh, U, p, result.iterations, 0.0);

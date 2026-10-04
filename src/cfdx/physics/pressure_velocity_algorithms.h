@@ -46,6 +46,54 @@ inline void validate_coupling_controls(const CouplingControls& c)
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
 }
 
+struct AdaptiveRelaxationControls {
+    bool enabled = false;
+    double min_alpha_u = 0.2;
+    double max_alpha_u = 0.9;
+    double min_alpha_p = 0.1;
+    double max_alpha_p = 0.5;
+    double improvement_threshold = 0.05;
+    double degradation_threshold = 0.10;
+};
+
+inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
+{
+    if (c.min_alpha_u <= 0.0 || c.max_alpha_u < c.min_alpha_u || c.max_alpha_u > 1.0 ||
+        c.min_alpha_p <= 0.0 || c.max_alpha_p < c.min_alpha_p || c.max_alpha_p > 1.0 ||
+        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold)
+        throw std::invalid_argument("invalid adaptive relaxation controls");
+}
+
+inline double adapt_relaxation_factor(
+    double alpha,
+    double previous_residual,
+    double residual,
+    double min_alpha,
+    double max_alpha,
+    const AdaptiveRelaxationControls& controls)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(alpha) || !std::isfinite(previous_residual) ||
+        !std::isfinite(residual) || previous_residual < 0.0 || residual < 0.0)
+        throw std::invalid_argument("invalid adaptive relaxation state");
+    const double safe_alpha = std::clamp(alpha, min_alpha, max_alpha);
+    if (!controls.enabled || previous_residual == 0.0)
+        return safe_alpha;
+    const double ratio = residual / previous_residual;
+    if (ratio <= 1.0 - controls.improvement_threshold)
+        return std::min(max_alpha, safe_alpha * 1.10);
+    if (ratio >= 1.0 + controls.degradation_threshold)
+        return std::max(min_alpha, safe_alpha * 0.50);
+    // Slow-but-monotone improvement: creep up so a factor collapsed near the
+    // minimum by an early transient can recover once convergence resumes.
+    // Without this, a permanently-low alpha (e.g. after a transient jump) keeps
+    // the solver in an ultra-slow regime and the monotone residual decrease
+    // (ratio slightly below 1) never triggers the strong-improvement branch.
+    if (ratio < 1.0)
+        return std::min(max_alpha, safe_alpha * 1.05);
+    return safe_alpha;
+}
+
 inline double relaxed_value(double old_value, double computed_value, double alpha)
 {
     if (!std::isfinite(alpha) || !std::isfinite(old_value) || !std::isfinite(computed_value) ||

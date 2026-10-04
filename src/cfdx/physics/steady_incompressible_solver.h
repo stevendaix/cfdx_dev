@@ -18,6 +18,7 @@
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
+#include "cfdx/cfdx/core/utils/convergence_monitor.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -85,7 +86,59 @@ struct IncompressibleTransientControls {
     bool history_valid = false;
 };
 
+// ---------------------------------------------------------------------------
+// Initialization contract (N7)
+// ---------------------------------------------------------------------------
+// The initial state is part of the numerical method: it fixes the denominator
+// of every relative residual reported by the solve, because
+// result.reference_momentum_residual is taken from the first iteration. The
+// strategy is therefore declared explicitly and validated rather than inferred
+// from whether a restart path happens to be non-empty.
+//
+// Automatic selection is deliberately NOT implemented. Choosing a strategy by
+// probing the filesystem or mesh quality would change the initial state, and
+// therefore the relative-residual reference, without the resulting convergence
+// being attributable to a declared numerical method.
+enum class InitializationMode {
+    // Caller-provided fields are used unchanged. The caller is responsible for
+    // having produced a meaningful state.
+    Provided,
+    // Fields are reset to a uniform state before the solve.
+    Uniform,
+    // Fields are overwritten from a CFDX-DAT checkpoint. Requires
+    // controls.initialization.restart_path to be non-empty.
+    Restart
+};
+
+inline const char* to_string(InitializationMode mode) {
+    switch (mode) {
+        case InitializationMode::Provided: return "provided";
+        case InitializationMode::Uniform: return "uniform";
+        case InitializationMode::Restart: return "restart";
+    }
+    return "unknown";
+}
+
+// Parses an initialization mode name. Returns false for an unrecognised name so
+// that callers reject it instead of silently defaulting.
+inline bool parse_initialization_mode(const std::string& name, InitializationMode& out) {
+    if (name == "provided") { out = InitializationMode::Provided; return true; }
+    if (name == "uniform") { out = InitializationMode::Uniform; return true; }
+    if (name == "restart") { out = InitializationMode::Restart; return true; }
+    return false;
+}
+
+struct InitializationControls {
+    InitializationMode mode = InitializationMode::Provided;
+    // Uniform state applied when mode == Uniform.
+    cfdx::core::Vec3 uniform_velocity{0.0, 0.0, 0.0};
+    double uniform_pressure = 0.0;
+    // Checkpoint path applied when mode == Restart.
+    std::string restart_path;
+};
+
 struct IncompressibleSolverControls {
+    InitializationControls initialization;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     IncompressibleTransientControls transient;
     CouplingControls coupling;
@@ -107,6 +160,7 @@ struct IncompressibleSolverControls {
     DiagnosticsControls diagnostics;
     NonlinearRetryControls nonlinear_retry;
     std::vector<IncompressiblePointProbe> probes;
+    AdaptiveRelaxationControls adaptive_relaxation;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -130,6 +184,9 @@ struct IncompressibleIteration {
     double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
     double pressure_change_inf = std::numeric_limits<double>::infinity();
+    double effective_alpha_u = 0.0;
+    double effective_alpha_p = 0.0;
+    double nonlinear_convergence_metric = std::numeric_limits<double>::infinity();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
     std::size_t pressure_correctors_used = 0;
@@ -183,14 +240,79 @@ struct IncompressibleSolveResult {
     std::vector<IncompressibleIteration> history;
     double reference_momentum_residual = 0.0;
     cfdx::core::LinearSolverContextStats pressure_linear_context;
+    cfdx::core::ConvergenceStatus convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+    std::string convergence_reason;
 };
+
+// Applies the declared initialization strategy to the caller's fields.
+//
+// legacy_restart_path is the positional restart argument of
+// solve_steady_incompressible. It supplies the checkpoint for a declared
+// Restart mode, so existing callers that only pass the positional argument keep
+// working. A caller that declares Provided or Uniform while also passing a
+// legacy path gets the path ignored rather than silently applied, because that
+// would make the initial state depend on an undeclared input.
+inline void apply_initialization(
+    const InitializationControls& init,
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    cfdx::io::DatRestartFields& restart_fields,
+    const std::string& legacy_restart_path)
+{
+    using namespace cfdx::core;
+    const std::string& restart_source =
+        init.restart_path.empty() ? legacy_restart_path : init.restart_path;
+    switch (init.mode) {
+        case InitializationMode::Provided:
+            // Caller-owned state is used as-is.
+            break;
+        case InitializationMode::Uniform:
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                U.component_data(0)[c] = init.uniform_velocity.x;
+                U.component_data(1)[c] = init.uniform_velocity.y;
+                U.component_data(2)[c] = init.uniform_velocity.z;
+                p(c) = init.uniform_pressure;
+            }
+            break;
+        case InitializationMode::Restart: {
+            if (restart_source.empty())
+                throw std::invalid_argument(
+                    "initialization mode 'restart' requires a checkpoint path");
+            (void)cfdx::io::read_dat_restart_fields(
+                restart_source, mesh, U, p, restart_fields);
+            break;
+        }
+    }
+}
+
+inline void validate_initialization_controls(const InitializationControls& init) {
+    switch (init.mode) {
+        case InitializationMode::Provided:
+            break;
+        case InitializationMode::Uniform:
+            if (!std::isfinite(init.uniform_pressure) ||
+                !std::isfinite(init.uniform_velocity.x) ||
+                !std::isfinite(init.uniform_velocity.y) ||
+                !std::isfinite(init.uniform_velocity.z))
+                throw std::invalid_argument(
+                    "uniform initialization state must be finite");
+            break;
+        case InitializationMode::Restart:
+            // The checkpoint may come from init.restart_path or from the
+            // positional argument; apply_initialization resolves which.
+            break;
+    }
+}
 
 inline void validate_incompressible_controls(
     const IncompressibleSolverControls& c, std::size_t n_cells)
 {
+    validate_initialization_controls(c.initialization);
     validate_coupling_controls(c.coupling);
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
+    validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
     if (c.transient.enabled) {
         if (!(c.transient.dt > 0.0) || !std::isfinite(c.transient.dt))
@@ -1350,13 +1472,29 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
 
-    if (!restart_path.empty())
-        (void)cfdx::io::read_dat_restart_fields(restart_path, mesh, U, p, restart_fields);
-
+    // Initialization is applied here, before any residual or flux is formed, and
+    // is validated first so an invalid strategy cannot mutate the caller's state.
     validate_incompressible_controls(controls, mesh.n_cells());
+    apply_initialization(
+        controls.initialization, mesh, U, p, restart_fields, restart_path);
+
     const FvGeometry geometry = build_fv_geometry(mesh);
     const double mu_eff = controls.density *
         (controls.kinematic_viscosity + controls.turbulent_viscosity);
+    cfdx::core::ConvergenceMonitorControls monitor_controls;
+    monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
+    monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
+    monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
+    monitor_controls.minimum_iterations = std::min<std::size_t>(2, controls.convergence.max_iterations);
+    monitor_controls.max_iterations = controls.convergence.max_iterations;
+    // Conservative defaults: stagnation is diagnostic, not a shortcut around
+    // the configured residual/conservation gates. Divergence is detected only
+    // after repeated growth and never by relaxing a tolerance.
+    monitor_controls.stagnation_window = 10;
+    monitor_controls.stagnation_relative_improvement = 1e-3;
+    monitor_controls.divergence_window = 3;
+    monitor_controls.divergence_growth_factor = 10.0;
+    cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
 
     bool has_fixed_pressure_boundary = false;
     for (const auto& [name, bc] : pressure_bcs) {
@@ -1487,6 +1625,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::CELL> frozen_grad_p;
     bool frozen_state_valid = false;
 
+    double effective_alpha_u = controls.coupling.alpha_u;
+    double effective_alpha_p = controls.coupling.alpha_p;
+
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         bool stop_after_iteration = false;
         NonlinearRetryController retry_controller(controls.nonlinear_retry);
@@ -1512,6 +1653,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     nonlinear_residual,
                     std::max(previous_residual, forcing.residual_floor), forcing);
             }
+        }
+
+        if (controls.adaptive_relaxation.enabled && result.history.size() >= 2) {
+            const double current_metric =
+                result.history.back().nonlinear_convergence_metric;
+            const double previous_metric =
+                result.history[result.history.size() - 2].nonlinear_convergence_metric;
+            effective_alpha_u = adapt_relaxation_factor(
+                effective_alpha_u, previous_metric, current_metric,
+                controls.adaptive_relaxation.min_alpha_u,
+                controls.adaptive_relaxation.max_alpha_u,
+                controls.adaptive_relaxation);
+            effective_alpha_p = adapt_relaxation_factor(
+                effective_alpha_p, previous_metric, current_metric,
+                controls.adaptive_relaxation.min_alpha_p,
+                controls.adaptive_relaxation.max_alpha_p,
+                controls.adaptive_relaxation);
         }
 
         std::size_t pressure_correctors = configured_pcorr;
@@ -1641,10 +1799,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 for (std::size_t d = 0; d < 3; ++d)
                     U.component_data(d)[c] =
                         U_old.component_data(d)[c] +
-                        retry_controller.alpha_u(controls.coupling.alpha_u) *
+                        retry_controller.alpha_u(effective_alpha_u) *
                         (U.component_data(d)[c] - U_old.component_data(d)[c]);
                 p(c) = p_old(c) +
-                    retry_controller.alpha_p(controls.coupling.alpha_p) * (p(c) - p_old(c));
+                    retry_controller.alpha_p(effective_alpha_p) * (p(c) - p_old(c));
             }
 
             // The coupled solve has already enforced the discrete continuity
@@ -1664,9 +1822,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The independent nonlinear momentum residual below remains the
             // final physical acceptance metric.
         } else {
-        relax_momentum_equation(ex, ux_old, retry_controller.alpha_u(controls.coupling.alpha_u));
-        relax_momentum_equation(ey, uy_old, retry_controller.alpha_u(controls.coupling.alpha_u));
-        relax_momentum_equation(ez, uz_old, retry_controller.alpha_u(controls.coupling.alpha_u));
+        relax_momentum_equation(ex, ux_old, retry_controller.alpha_u(effective_alpha_u));
+        relax_momentum_equation(ey, uy_old, retry_controller.alpha_u(effective_alpha_u));
+        relax_momentum_equation(ez, uz_old, retry_controller.alpha_u(effective_alpha_u));
 
         // Equation relaxation is already part of the matrix. The Krylov solve
         // therefore returns the solution of the relaxed equation directly;
@@ -1946,7 +2104,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Relax the physical pressure exactly once. The reference is a
             // gauge: enforce it by a uniform shift, never by overwriting one
             // cell and creating an artificial local pressure jump.
-            const double alpha_p = retry_controller.alpha_p(controls.coupling.alpha_p);
+            const double alpha_p = retry_controller.alpha_p(effective_alpha_p);
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += alpha_p * p_corr(c);
             if (!has_fixed_pressure_boundary) {
@@ -2238,6 +2396,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
+        h.effective_alpha_u = effective_alpha_u;
+        h.effective_alpha_p = effective_alpha_p;
         h.momentum_linear_iterations =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED
                 ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations});
@@ -2301,14 +2461,40 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         else if (debug_cell_enabled)
             debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
-        const bool converged_now =
-            iter >= minimum_outer_correctors && iter > 1 &&
-            h.momentum_residual <= controls.convergence.relative_tolerance &&
-            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance &&
-            h.pressure_residual <= controls.convergence.relative_tolerance &&
-            h.continuity_normalized <= controls.convergence.continuity_tolerance &&
-            h.velocity_change_inf <= controls.convergence.relative_tolerance &&
+        const double nonlinear_metric = std::max({
+            h.momentum_residual,
+            h.momentum_equation_residual_relative,
+            h.pressure_residual,
+            h.velocity_change_inf,
+            h.pressure_change_inf});
+        h.nonlinear_convergence_metric = nonlinear_metric;
+        // Acceptance stays per-criterion. The monitor divides its synthetic
+        // maximum by the maximum seen at the first iteration, so a metric whose
+        // absolute scale sits far below that first maximum would be exempted
+        // from the gate. nonlinear_metric is therefore a diagnostic summary and
+        // never a replacement for the individual physical criteria.
+        const bool momentum_residual_gate =
+            h.momentum_residual <= controls.convergence.relative_tolerance;
+        const bool momentum_equation_residual_gate =
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
+        const bool pressure_residual_gate =
+            h.pressure_residual <= controls.convergence.relative_tolerance;
+        const bool velocity_change_gate =
+            h.velocity_change_inf <= controls.convergence.relative_tolerance;
+        const bool pressure_change_gate =
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
+        const bool per_criterion_gates_ok =
+            momentum_residual_gate && momentum_equation_residual_gate &&
+            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
+        const auto convergence_report = convergence_monitor.update({
+            iter,
+            nonlinear_metric,
+            h.continuity_normalized,
+            {}});
+        const bool converged_now =
+            iter >= minimum_outer_correctors &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
+            per_criterion_gates_ok;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
@@ -2751,8 +2937,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             stop_after_iteration = true;
         }
 
+        result.convergence_status = convergence_report.status;
+        result.convergence_reason = convergence_report.reason;
         if (converged_now) {
             result.converged = true;
+            result.iterations = iter;
+            stop_after_iteration = true;
+        }
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
+            convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED) {
             result.iterations = iter;
             stop_after_iteration = true;
         }
@@ -2767,8 +2960,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 retry_controller.reject();
                 std::cerr << "CFDX nonlinear iteration " << iter
                           << " rejected; retry=" << retry_controller.retries()
-                          << " alpha_u=" << retry_controller.alpha_u(controls.coupling.alpha_u)
-                          << " alpha_p=" << retry_controller.alpha_p(controls.coupling.alpha_p)
+                          << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                          << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
                           << " reason=" << error.what() << "\n";
             }
         }
