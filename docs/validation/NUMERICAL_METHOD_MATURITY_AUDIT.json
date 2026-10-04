@@ -148,8 +148,9 @@
       ],
       "gaps": [
         "automatic initialization strategies remain intentionally unqualified; provided/uniform/restart are the declared validated modes",
-        "continuation failure/recovery remains unit-qualified but is not yet part of the canonical Re=100 qualification corridor",
-        "qualification breadth beyond the Re=100 lid-driven cavity, including broader geometries/meshes and parameter corridors",
+        "continuation failure/recovery remains unit-qualified but is not yet part of the canonical qualification corridors",
+        "qualification breadth now covers two resolutions by two Reynolds corridors on the lid-driven cavity (tests/validation/test_n7_convergence_qualification.cpp --breadth, 16x16x2 and 32x32x2 at Re=100 and Re=400) and finds that adaptive relaxation is corridor-dependent: it reproduces the direct solve to 1.35e-4 relative at Re=100/16x16 and 6.3e-4 at Re=400/32x32, and on the 16x16/Re=400 corner it parks on a false plateau at a 7.83e-3 relative residual against a 1e-8 contract, identically at a 625- and a 2500-iteration budget. That stall is asserted by name in the test, so a repair forces this audit to be updated. Continuation still solves that same stalled corridor to 1.9e-9, so the limitation is specific to adaptive relaxation rather than to the corridor itself. Continuation reproduces the direct solve across the whole matrix to <=1.3e-7 relative",
+        "no geometry other than the lid-driven cavity is covered; the 64^2 corridor is excluded from the breadth matrix on cost grounds and no spatial accuracy trend is measured across it",
         "spatial observed-order evidence is merge-gated only as a 16/32/64 trend tripwire (tests/validation/test_ghia_cavity.cpp --gate, order U_RMS=2.05, V_RMS=1.16); the full 32/64/128 plus Re=400/Re=1000 campaign runs weekly on schedule and establishes neither the spatial accuracy of the continuation or adaptive paths nor a general order on other schemes, meshes or geometries"
       ]
     },
