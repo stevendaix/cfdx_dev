@@ -1502,7 +1502,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
         auto pcd = std::make_unique<PcdSchurApproximation>(
             pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
-            std::move(solve_kp), std::move(solve_fp));
+            std::move(solve_kp), std::move(solve_fp),
+            std::nullopt, reference_cell);
 
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
