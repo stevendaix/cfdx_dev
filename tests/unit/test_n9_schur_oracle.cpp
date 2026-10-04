@@ -137,9 +137,10 @@ int main() {
         // C=0 and D*1=0 create the pressure constant null mode in the
         // Schur operator. The oracle must reject an incompatible RHS rather
         // than silently altering it.
+        const auto G0 = make_sparse(2, 2, {{0,0,1.0},{0,1,-1.0},{1,0,-1.0},{1,1,1.0}});
         const auto C0 = make_sparse(2, 2, {});
-        const auto D0 = make_sparse(2, 2, {{0,0,1.0},{0,1,-1.0},{1,0,-1.0},{1,1,1.0}});
-        const BlockOperator singular(M, G, D0, C0);
+        const auto D0 = make_sparse(2, 2, {{0,0,-1.0},{0,1,1.0},{1,0,1.0},{1,1,-1.0}});
+        const BlockOperator singular(M, G0, D0, C0);
         singular.validate();
 
         ExactSchurApproximation schur(solve_M, {}, NullSpaceProjector::constant(2));
