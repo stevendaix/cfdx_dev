@@ -104,8 +104,12 @@ inline LinearSolveReport solve_linear_system(
                 matrix, rhs, solution, max_iterations, tolerance, pc);
             break;
         case KrylovModel::GMRES:
-        case KrylovModel::FGMRES:
             report.result = solve_gmres(
+                matrix, rhs, solution, request.gmres_restart,
+                max_iterations, tolerance, pc);
+            break;
+        case KrylovModel::FGMRES:
+            report.result = solve_fgmres(
                 matrix, rhs, solution, request.gmres_restart,
                 max_iterations, tolerance, pc);
             break;
