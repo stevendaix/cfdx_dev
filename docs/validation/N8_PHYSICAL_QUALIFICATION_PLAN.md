@@ -163,10 +163,12 @@ The next PR should be considered complete when it provides:
 - [ ] conservation evidence;
 - [ ] LSC/BFBt versus exact-Schur evidence on representative CFD matrices;
 - [ ] anisotropic/strong-scaling AMG diagnostics;
-- [ ] machine-readable report;
-- [ ] CI integration without suppressing existing gates.
+- [x] machine-readable report (delivered: `scripts/n8_physical_qualification.py` writes `<build-dir>/n8_physical_qualification.json` with the structured evidence sections, the evidence-completeness audit, the model-resolution audit and the resolved-linear-plan audit; the schema is pinned by `tests/python/test_n8_qualification_evidence.py`);
+- [x] CI integration without suppressing existing gates (delivered: registered as `test_n8_physical_qualification` with `RUN_SERIAL`, carrying labels `n8;qualification;validation` and therefore selected by the `ctest -LE long` sweep in `cfdx-ci.yml`; it is merge-gating on both the Release and DebugSanitizers builds and adds a gate rather than relaxing one).
 
-This PR intentionally stops at the campaign design and evidence wiring. It does not claim N8 qualification before the executable production campaign has been run.
+The four physical matrices remain unchecked: the campaign executes all four cases but only the Couette path, through `test_n8_pressure_velocity_matrix`, emits the structured `MODEL_*` records the report parses. Poiseuille, Ghia and the skew case contribute pass/fail and elapsed time only, each at its `--quick` variant.
+
+This plan intentionally stops short of N8 qualification. It does not claim qualification before the executable production campaign has produced representative evidence, and the generic Schur layer it benchmarks is not yet selectable from a production case.
 
 ## Complete solver/preconditioner model matrix
 

@@ -159,6 +159,8 @@
       "status": "partial",
       "evidence": [
         "scripts/n8_physical_qualification.py",
+        "tests/python/test_n8_qualification_evidence.py",
+        "tests/validation/test_n8_schur_production_benchmark.cpp",
         "tests/unit/test_exact_schur.cpp",
         "tests/unit/test_simplerc_schur.cpp",
         "tests/unit/test_lsc_bfbt_schur.cpp",
@@ -166,7 +168,9 @@
         "tests/unit/test_schur_approximation_comparison.cpp"
       ],
       "gaps": [
-        "resolved automatic linear plan is not yet recorded in the campaign report",
+        "the generic SchurApproximation layer (exact oracle, SIMPLE/SIMPLEC, LSC/BFBt) is reachable only from tests: no file under src/ or apps/ includes it and no case-file or solver-options setting selects a Schur approximation, so production still selects the separate CoupledBlockSchur preconditioners",
+        "PCD Schur approximation is not implemented",
+        "only a constant (mean-zero) pressure null-space policy exists in the Schur layer; pinned pressure is handled in production by a separate gauge-elimination mechanism that the Schur layer does not use",
         "measured matrix characteristics (anisotropy, coefficient range, numerical symmetry and saddle-point structure) are not yet fed to the dispatcher from assembled matrices",
         "anisotropic and strongly scaled AMG campaign is incomplete",
         "Schur acceptance envelope is not yet established on representative CFD matrices"
