@@ -1,4 +1,5 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/io/restart/dat_restart.h"
 #include <filesystem>
 #include "common/test_harness.h"
