@@ -320,5 +320,31 @@ int main() {
         EXPECT_TRUE(std::isfinite(z(0)) && std::isfinite(z(1)));
     });
 
+    run_case("lsc_bfbt_declares_the_inverse_action", [&] {
+        // apply() returns -P^{-1} E P^{-1} r, which approximates S^{-1} r, so both
+        // modes are inverse actions. An adapter building a preconditioner needs
+        // this action; one assembling a residual would be silently wrong.
+        const auto Pinv = make_pressure_inverse({1.0, 1.0});
+        auto solve_P = [Pinv](const Vector& rhs, Vector& z) {
+            if (z.size() != rhs.size()) z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) {
+                z(i) = 0.0;
+                for (std::size_t j = 0; j < rhs.size(); ++j) z(i) += Pinv[i][j] * rhs(j);
+            }
+            return true;
+        };
+
+        LscBfbtSchurApproximation lsc(LscBfbtSchurApproximation::Mode::LSC, solve_P, {});
+        LscBfbtSchurApproximation bfbt(LscBfbtSchurApproximation::Mode::BFBT, solve_P, {});
+        EXPECT_TRUE(lsc.action() == SchurAction::InverseOperator);
+        EXPECT_TRUE(bfbt.action() == SchurAction::InverseOperator);
+        EXPECT_TRUE(provides_action(lsc, SchurAction::InverseOperator));
+        EXPECT_TRUE(!provides_action(lsc, SchurAction::Operator));
+
+        // The declared action must hold through setup, not only on a bare instance.
+        EXPECT_TRUE(lsc.setup(blocks));
+        EXPECT_TRUE(provides_action(lsc, SchurAction::InverseOperator));
+    });
+
     return run_all();
 }

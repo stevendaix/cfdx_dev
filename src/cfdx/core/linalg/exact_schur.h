@@ -61,6 +61,9 @@ public:
 
     const char* name() const noexcept override { return "exact_schur"; }
 
+    // apply() runs CG to solve S p = rhs_p, so it is the inverse action.
+    SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
+
     bool setup(const BlockOperator& blocks) override {
         if (!blocks.is_valid() || !auu_solve_) return false;
         if (pressure_null_space_ && pressure_null_space_->dimension() != blocks.pressure_size())

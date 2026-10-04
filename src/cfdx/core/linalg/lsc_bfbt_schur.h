@@ -69,6 +69,9 @@ public:
         return mode_ == Mode::LSC ? "lsc_schur" : "bfbt_schur";
     }
 
+    // apply() returns -P^{-1} E P^{-1} r, which approximates S^{-1} r.
+    SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
+
     bool setup(const BlockOperator& blocks) override {
         if (!blocks.is_valid() || !pressure_solve_) return false;
         const std::size_t nu = blocks.velocity_size();

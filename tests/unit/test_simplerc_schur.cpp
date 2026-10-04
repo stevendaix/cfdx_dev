@@ -294,5 +294,31 @@ int main() {
         EXPECT_TRUE(!s.setup(blocks));
     });
 
+    run_case("simplerc_declares_the_operator_action_and_behaves_as_it", [&] {
+        SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(s.setup(blocks));
+
+        // SIMPLE/SIMPLEC apply the Schur operator itself, not its inverse. This is
+        // the distinction the SchurApproximation::action() contract exists to make
+        // explicit: an adapter that assumed an inverse action would silently apply
+        // a mathematically different map.
+        EXPECT_TRUE(s.action() == SchurAction::Operator);
+        EXPECT_TRUE(provides_action(s, SchurAction::Operator));
+        EXPECT_TRUE(!provides_action(s, SchurAction::InverseOperator));
+
+        Vector out(2, 0.0);
+        EXPECT_TRUE(s.apply(p, out));
+
+        const Vector as_operator = dense_matvec(S_simplec_dense, p);
+        const Vector as_inverse = dense_matvec(dense_inverse(S_simplec_dense), p);
+        EXPECT_NEAR(out(0), as_operator(0), 1e-12);
+        EXPECT_NEAR(out(1), as_operator(1), 1e-12);
+
+        // The two candidate maps must actually differ on this input, otherwise the
+        // assertions above could not tell them apart.
+        EXPECT_TRUE(std::abs(as_operator(0) - as_inverse(0)) > 1e-6 ||
+                    std::abs(as_operator(1) - as_inverse(1)) > 1e-6);
+    });
+
     return run_all();
 }
