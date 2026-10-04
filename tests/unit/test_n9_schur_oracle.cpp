@@ -231,20 +231,38 @@ int main() {
         Vector pressure_rhs(2, 0.0);
         pressure_rhs(0) = rhs[3];
         pressure_rhs(1) = rhs[4];
-        const auto Dm_bu = Dd3.matvec(m_inv_bu);
+        const Vector Dm_bu = matvec(Dd3, m_inv_bu);
         for (std::size_t i = 0; i < 2; ++i) pressure_rhs(i) -= Dm_bu[i];
 
         Vector pressure(2, 0.0);
         EXPECT_TRUE(schur.apply(pressure_rhs, pressure));
 
         Vector velocity_rhs(3, 0.0);
-        const auto Gp = Gd3.matvec(pressure);
+        const Vector Gp = matvec(Gd3, pressure);
         for (std::size_t i = 0; i < 3; ++i) velocity_rhs(i) = bu(i) - Gp[i];
         Vector velocity(3, 0.0);
         EXPECT_TRUE(solve_M3(velocity_rhs, velocity));
 
         for (std::size_t i = 0; i < 3; ++i) EXPECT_NEAR(velocity(i), direct[i], 1e-9);
         for (std::size_t i = 0; i < 2; ++i) EXPECT_NEAR(pressure(i), direct[3 + i], 1e-9);
+
+        // Independent true residual of the reconstructed Schur solution.
+        const Vector ru3 = [&] {
+            Vector r(3, 0.0);
+            const Vector Mu = matvec(Md3, velocity);
+            const Vector Gp_check = matvec(Gd3, pressure);
+            for (std::size_t i = 0; i < 3; ++i) r(i) = Mu(i) + Gp_check(i) - bu(i);
+            return r;
+        }();
+        const Vector rp3 = [&] {
+            Vector r(2, 0.0);
+            const Vector Du = matvec(Dd3, velocity);
+            const Vector Cp = matvec(Cd3, pressure);
+            for (std::size_t i = 0; i < 2; ++i) r(i) = Du(i) + Cp(i) - rhs[3 + i];
+            return r;
+        }();
+        EXPECT_TRUE(ru3.norm2() < 1e-10);
+        EXPECT_TRUE(rp3.norm2() < 1e-10);
     });
 
     run_case("n9_schur_null_space_rejects_incompatible_rhs_and_projects_compatible", [&] {
