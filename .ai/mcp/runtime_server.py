@@ -106,6 +106,21 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
                 return {"ok": False, "errors": ["checkpoint cell_ids must be one-dimensional"]}
             if cell_ids_present and h5["cell_ids"].shape[0] != cells:
                 return {"ok": False, "errors": ["checkpoint cell_ids count differs from cells"]}
+            if cell_ids_present:
+                cell_ids = np.asarray(h5["cell_ids"][()], dtype=np.int64)
+                if np.any(cell_ids < 0):
+                    return {"ok": False, "errors": ["checkpoint contains negative cell ids"]}
+                if np.unique(cell_ids).size != cell_ids.size:
+                    return {"ok": False, "errors": ["checkpoint contains duplicate cell ids"]}
+            for name, dataset in h5["fields"].items():
+                if dataset.ndim not in (1, 2):
+                    return {"ok": False, "errors": [f"field {name!r} has unsupported rank: {dataset.ndim}"]}
+                if dataset.shape[0] != cells:
+                    return {"ok": False, "errors": [f"field {name!r} cell count mismatch"]}
+                if dataset.ndim == 2 and dataset.shape[1] <= 0:
+                    return {"ok": False, "errors": [f"field {name!r} has invalid dimension"]}
+                if not np.all(np.isfinite(dataset[()])):
+                    return {"ok": False, "errors": [f"field {name!r} contains non-finite values"]}
             return {"ok": True, "artifact": "checkpoint", "path": path.name, "attributes": attributes, "metadata": {"version": int(attributes["version"]), "cells": cells, "iteration": iteration, "time": time_value}, "cell_ids_present": cell_ids_present, "fields": fields}
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX DAT checkpoint: {exc}"]}
