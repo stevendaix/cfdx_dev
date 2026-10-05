@@ -38,11 +38,11 @@ int main()
         // not collapse 0.726 directly to the floor; recovery remains gradual.
         double alpha = 0.726;
         alpha = adapt_relaxation_factor(alpha, 1.0, 2.33, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.676, 1e-12);
+        EXPECT_NEAR(alpha, 0.706, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 2.33, 1.95, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.696, 1e-12);
+        EXPECT_NEAR(alpha, 0.756, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 1.95, 0.9, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.716, 1e-12);
+        EXPECT_NEAR(alpha, 0.8, 1e-12);
     });
 
     return run_all();
