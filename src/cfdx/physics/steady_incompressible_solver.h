@@ -2947,6 +2947,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 adaptive_relaxation_severe_degradation(
                     previous.momentum_equation_residual_relative,
                     h.momentum_equation_residual_relative,
+                    previous.effective_alpha_u,
+                    h.effective_alpha_u,
                     controls.adaptive_relaxation);
             const bool severe_p =
                 std::isfinite(previous.continuity_normalized) &&
@@ -2955,6 +2957,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 adaptive_relaxation_severe_degradation(
                     previous.continuity_normalized,
                     h.continuity_normalized,
+                    previous.effective_alpha_p,
+                    h.effective_alpha_p,
                     controls.adaptive_relaxation);
 
             if (severe_u || severe_p) {
