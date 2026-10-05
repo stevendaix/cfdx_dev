@@ -41,7 +41,7 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare"}
+            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare"}
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -55,6 +55,13 @@ async def exercise() -> None:
             assert data["configuration"]["name"] == "demo"
             assert data["attributes"]["case_revision"] == 4
             assert data["runtime_state_present"] is False
+
+            case_validation = await client.call_tool("case.validate", {"case_path": "demo.cfdx.h5"})
+            assert case_validation.is_error is False
+            assert case_validation.structured_content["ok"] is True
+            assert case_validation.structured_content["artifact"] == "case-validation"
+            assert case_validation.structured_content["checks"]["mesh"] is True
+            assert case_validation.structured_content["checks"]["runtime_separated"] is True
 
             checkpoint = await client.call_tool("checkpoint.inspect", {"checkpoint_path": "demo.dat.h5"})
             assert checkpoint.is_error is False
