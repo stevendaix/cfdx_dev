@@ -7,7 +7,7 @@ N8 implementation is substantially merged. The remaining work is to establish re
 > **Re-baselined 2026-10-04.** Section boxes below were reconciled against the merged tree. Items merged after this list was written were checked only where the current source tree evidences them; sections that remain unchecked say what is missing. Three corrections matter for reading the rest of this document:
 >
 > - **LSC and BFBt are implemented, not missing** (`src/cfdx/core/linalg/lsc_bfbt_schur.h`, #562), verified against the exact-Schur oracle (#565) and measured for conditioning and FP64 error floor (#568). Only **PCD** is unimplemented.
-> - **The generic Schur layer is not production-selectable.** No file under `src/` or `apps/` includes it and no case-file setting chooses a Schur approximation; production still uses the separate `CoupledBlockSchur*` pair. Section 7 cannot close until that changes.
+> - **The generic Schur layer is now production-reachable, but only through PCD.** #635 made `steady_incompressible_solver.h` include `coupled_amg_schur.h` -> `pcd_schur.h` -> `schur_approximation.h`, so the earlier claim is superseded. The exact oracle, SIMPLE/SIMPLEC and LSC/BFBt approximations remain test-only, and no case-file setting selects them. A production case selects `PCD` or the separate `CoupledBlockSchur*`/`MGR` pair. Section 7 cannot close until the oracle-qualified approximations are selectable too.
 > - **SIMPLE/SIMPLEC lacked a pressure null-space policy and a graph-signature guard on `update_values`**; #634 gives it both, matching the exact and LSC/BFBt approximations.
 
 ## 1. FGMRES gate
@@ -83,7 +83,7 @@ Current algebraic tests are infrastructure evidence, not final CFD qualification
 - [x] Compute exact Schur reference where tractable. (Implicit exact-Schur oracle with a preconditioner-free CG action, #492; independent dense-assembly cross-check, #565.)
 - [x] Compare SIMPLE/SIMPLEC, LSC and BFBT against the exact reference. (`test_schur_approximation_comparison`.)
 - [x] Measure approximation error and conditioning. (Infinity-norm `cond(Auu)`, oracle discrepancy, measured FP64 backward-error floor, per-method `algebra_error`/`exact_schur_error`, #568. Approximation quality is deliberately left diagnostic: no envelope exists.)
-- [x] Include null-space handling where applicable. Delivered for the exact and LSC/BFBt approximations (`test_lsc_bfbt_schur_null_space`, #575) and for SIMPLE/SIMPLEC (#634). The Schur layer still offers only the constant/mean-zero projector — there is no pinned-pressure policy there, so that part remains open.
+- [x] Include null-space handling where applicable. Delivered for the exact and LSC/BFBt approximations (`test_lsc_bfbt_schur_null_space`, #575) and for SIMPLE/SIMPLEC (#634). `NullSpaceProjector` still offers only the constant/mean-zero policy, so this stays `partial`. #635 gives the PCD path a pinned-pressure treatment by imposing the reference row on its pressure operators (`impose_pcd_reference_row`) and passing the reference cell to the class; this is not a reusable null-space policy.
 - [ ] Establish an acceptance envelope from representative matrices. Blocked on the first item; the controlled family measures LSC/BFBt action error at 4.8–8.6 against exact, which is why no threshold may be invented yet.
 - [x] Identify the FP64 numerical floor from measured results. (Machine epsilon and attainable backward-error floor reported per case, #568; #482 established the `tol >> eps*cond(A)` rule.)
 - [x] Test numeric-value refresh without rebuilding the graph. (`n8_schur_benchmark_lifecycle`: value-only change on an unchanged graph, `hierarchy_builds` held constant, one `numeric_update`, true residual independently recomputed.) Graph-*change* rejection is guarded for the exact, LSC/BFBt and SIMPLE/SIMPLEC approximations.
@@ -157,7 +157,7 @@ The remaining three are unverified for N8 specifically. `PreconditionerModel::LS
 
 ## 10. Final qualification evidence
 
-- [ ] Full N8 physical campaign passes.
+- [x] Full N8 physical campaign passes. Measured on exact HEAD `f4550bb0`: 23/23 required tests completed, none failed, and every sub-audit `COMPLETE` — `linear_plan` (16 methods compared, zero substitutions, zero structure mismatches, zero `models_without_plan`), `model_resolution` (8 configured, 8 resolved, announced and observed tallies agree), `evidence_coverage` (38 records, no missing fields) and `preconditioner_identity` (8 records, zero identifier mismatches). `test_n8_physical_qualification` passed in 83.7 s in a local Release build.
 - [x] All mandatory gates are present in CTest. The campaign is registered as `test_n8_physical_qualification` (`CMakeLists.txt`), all 22 required tests resolve against `ctest -N`, and the audit validator runs in the `cfdx-maturity` workflow.
 - [ ] No validation case is disabled merely to obtain a green build.
 - [ ] No tolerance inflation. Both are claims about development history rather than properties of the current tree, so they are not checked here. The report asserts `changes_numerical_tolerances: false` and `disables_validation: false` in its own policy block, but a self-assertion is not independent evidence; this item stays open until reviewed against the diffs.
