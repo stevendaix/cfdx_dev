@@ -65,6 +65,33 @@ void run_case(const std::string& name, std::function<void()> func) {
         } \
     } while (0)
 
+// Pins the diagnostic as well as the exception type. A bare EXPECT_THROW
+// accepts any failure of the right type, so it cannot distinguish a deliberate
+// rejection from an unrelated parse error on the same code path.
+#define EXPECT_THROW_WITH(expr, exception_type, substring) \
+    do { \
+        bool threw = false; \
+        try { \
+            expr; \
+        } catch (const exception_type& exc) { \
+            threw = true; \
+            const std::string message = exc.what(); \
+            if (message.find(substring) == std::string::npos) { \
+                std::cerr << "  FAILED: expected message containing \"" << substring \
+                          << "\" but got \"" << message << "\" in " << __FUNCTION__ \
+                          << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+                throw std::runtime_error("Unexpected diagnostic"); \
+            } \
+        } catch (...) { \
+            std::cerr << "  FAILED: wrong exception type thrown in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            throw std::runtime_error("Wrong exception type"); \
+        } \
+        if (!threw) { \
+            std::cerr << "  FAILED: expected exception " #exception_type " not thrown in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            throw std::runtime_error("Expected exception not thrown"); \
+        } \
+    } while (0)
+
 int run_all() {
     auto& cases = get_test_cases();
     int passed = 0;

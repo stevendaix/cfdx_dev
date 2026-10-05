@@ -154,6 +154,45 @@ assert np.array_equal(restored,x)
 # - a revision attribute that is not an integer;
 # - any revision that differs from the case being loaded.
 #
-# The binding is deliberately limited to the Python application layer. The native C++
-# `\texttt{dat\_restart.h}` path still uses the legacy text DAT format and persists no revision
-# identity, so it does not satisfy this contract and must not be reported as covered by it.
+# The binding covers the Python application layer. The native C++ path binds a different identity,
+# described in section 16.15, because it is handed a mesh rather than a case object. Neither layer
+# alone satisfies the full case/mesh/physics/numerics tuple of section 16.13, and neither may be
+# reported as if it did.
+#
+# %%
+# ## 16.15 Native mesh-identity contract
+#
+# The native text DAT binds the checkpoint to the geometry it was written from, as DAT version 3:
+#
+# ```
+# CFDX-DAT 3
+# cells <n_cells>
+# iteration <n>
+# time <t>
+# identity <n_points> <n_faces> <n_cells> <geometry_checksum>
+# field U 3
+# ...
+# optional_fields
+# ```
+#
+# The checksum is FNV-1a over the point coordinates. It is therefore independent of assembly order
+# and of MPI decomposition. `[-0.0]` is normalised to `[0.0]` before hashing, because the two are the
+# same point and must not yield two identities for one mesh. A non-finite coordinate is rejected
+# when the identity is computed rather than silently hashed into it.
+#
+# The contract is deliberately strict:
+#
+# - the identity is compared **before** any field value is read, so an incompatible artifact never
+#   has its numerical state loaded;
+# - a DAT version below 3 carries no identity and is **rejected**, not accepted on the strength of
+#   its cell count. A cell count is exactly the check that cannot distinguish two meshes: validating
+#   by cell count alone let a checkpoint written on one mesh load its field values into any other
+#   mesh of the same cell count without raising an error. That is a silent wrong-state restart, not
+#   a reported failure.
+#
+# What this identity does *not* cover: it describes geometry, not cell ordering. Two meshes of
+# identical geometry with permuted cells are not distinguished here. That is a separate problem and
+# belongs to the persistent cell-ID remapping of the distributed checkpoint path. Full
+# case/mesh/physics/numerics revision binding for the native path additionally requires
+# `read_case_cfdx_h5()` to expose the revision attributes `save_case()` already writes into
+# `\texttt{.cfdx.h5}`; that is the stage after this one and is not claimed here.

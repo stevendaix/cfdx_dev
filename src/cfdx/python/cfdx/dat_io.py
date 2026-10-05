@@ -40,10 +40,24 @@ class DatRestart:
     fields: dict[str, DatField]
     # Persistent global cell identities, independent of MPI rank/local ordering.
     cell_ids: tuple[int, ...] | None = None
+    # Mesh identity recorded by a native DAT writer, as
+    # (n_points, n_faces, n_cells, geometry_checksum). The native C++ restart
+    # reader compares it against the mesh it is restarting; this layer has no
+    # mesh to compare against and only carries it. Absent for DAT versions
+    # before the identity contract.
+    mesh_identity: tuple[int, int, int, int] | None = None
+
+
+# DAT text versions understood by this reader.
+#   1 — velocity and pressure only.
+#   2 — adds the optional T / k / second turbulence section.
+#   3 — adds the mesh identity the native restart reader validates.
+DAT_TEXT_IDENTITY_VERSION = 3
+_SUPPORTED_TEXT_VERSIONS = (1, 2, DAT_TEXT_IDENTITY_VERSION)
 
 
 def _validate(restart: DatRestart) -> DatRestart:
-    if restart.version not in (1, 2):
+    if restart.version not in _SUPPORTED_TEXT_VERSIONS:
         raise ValueError(f"unsupported DAT version {restart.version}")
     if restart.cells < 0 or restart.iteration < 0:
         raise ValueError("invalid DAT checkpoint metadata")
@@ -51,6 +65,13 @@ def _validate(restart: DatRestart) -> DatRestart:
         raise ValueError("time must be finite")
     if not restart.fields:
         raise ValueError("DAT restart contains no fields")
+    if restart.mesh_identity is not None:
+        if len(restart.mesh_identity) != 4:
+            raise ValueError("DAT checkpoint mesh identity must have four components")
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in restart.mesh_identity):
+            raise ValueError("DAT checkpoint mesh identity must be integers")
+        if any(v < 0 for v in restart.mesh_identity):
+            raise ValueError("DAT checkpoint mesh identity must be non-negative")
     if restart.cell_ids is not None:
         if len(restart.cell_ids) != restart.cells:
             raise ValueError("DAT checkpoint cell_ids count differs from cells")
@@ -88,7 +109,7 @@ def _read_text(path: Path) -> DatRestart:
         version = int(take("DAT version"))
     except ValueError as exc:
         raise ValueError("invalid DAT version") from exc
-    if version not in (1, 2):
+    if version not in _SUPPORTED_TEXT_VERSIONS:
         raise ValueError(f"unsupported DAT version {version}")
 
     if take("cells key") != "cells":
@@ -112,8 +133,33 @@ def _read_text(path: Path) -> DatRestart:
     except ValueError as exc:
         raise ValueError("invalid time") from exc
 
+    mesh_identity: tuple[int, int, int, int] | None = None
+    if version >= DAT_TEXT_IDENTITY_VERSION:
+        # The identity the native restart reader validates against. Recorded
+        # here, not checked: this layer holds no mesh, so a mismatch is for the
+        # caller that has one to detect.
+        if take("identity key") != "identity":
+            raise ValueError("expected 'identity'")
+        components: list[int] = []
+        for label in ("identity points", "identity faces", "identity cells",
+                      "identity checksum"):
+            try:
+                components.append(int(take(label)))
+            except ValueError as exc:
+                raise ValueError("malformed DAT mesh identity") from exc
+        if components[2] != cells:
+            raise ValueError("DAT checkpoint mesh identity cell count differs from cells")
+        mesh_identity = (components[0], components[1], components[2], components[3])
+
     fields: dict[str, DatField] = {}
     while pos < len(tokens):
+        # The native writer marks the optional-field section between the
+        # mandatory fields and the optional ones. It is consumed here wherever
+        # it appears, so a checkpoint written by the C++ writer parses; the
+        # marker is absent from hand-written DATs, and both forms are accepted.
+        if tokens[pos] == "optional_fields":
+            pos += 1
+            continue
         if take("field key") != "field":
             raise ValueError("expected 'field'")
         name = take("field name")
@@ -131,7 +177,7 @@ def _read_text(path: Path) -> DatRestart:
                 raise ValueError(f"invalid value in field {name!r}") from exc
         fields[name] = DatField(name, dimension, values)
 
-    return _validate(DatRestart(version, cells, iteration, time, fields))
+    return _validate(DatRestart(version, cells, iteration, time, fields, None, mesh_identity))
 
 
 def _read_hdf5(path: Path) -> DatRestart:
@@ -244,5 +290,9 @@ def remap_dat_restart(
             values.extend(field.values[begin:end])
         fields[name] = DatField(field.name, field.dimension, values)
     return _validate(
+        # The mesh identity is deliberately not carried over: the result is
+        # reordered onto a different cell set, so the recorded identity no longer
+        # describes it and forwarding it would claim a validation that no longer
+        # holds.
         DatRestart(restart.version, len(target), restart.iteration, restart.time, fields, target)
     )
