@@ -1504,6 +1504,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const bool use_lsc_bfbt =
         schur_model == CoupledSchurModel::LSC ||
         schur_model == CoupledSchurModel::BFBT;
+    const bool use_simple_schur =
+        schur_model == CoupledSchurModel::SIMPLE ||
+        schur_model == CoupledSchurModel::SIMPLEC;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
     const auto extract_coupled_block = [&](std::size_t row_block,
                                            std::size_t col_block,
@@ -1525,7 +1528,33 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         block.finalize();
         return block;
     };
-    if (use_lsc_bfbt) {
+    if (use_simple_schur) {
+        if (!use_n8_block_schur)
+            throw std::invalid_argument(
+                "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
+
+        const auto mode =
+            schur_model == CoupledSchurModel::SIMPLE
+                ? SimplerSchurMode::SIMPLE
+                : SimplerSchurMode::SIMPLEC;
+        auto simpler = std::make_unique<SimplerSchurApproximation>(mode);
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation =
+            schur_model == CoupledSchurModel::SIMPLE
+                ? CoupledSchurApproximationModel::SIMPLE
+                : CoupledSchurApproximationModel::SIMPLEC;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        schur->set_simpler_schur(std::move(simpler));
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N9 SIMPLE/SIMPLEC Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_lsc_bfbt) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "LSC/BFBt coupled Schur models require the coupled_block_schur linear plan");
@@ -1675,8 +1704,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 break;
             case CoupledSchurModel::LSC:
             case CoupledSchurModel::BFBT:
+            case CoupledSchurModel::SIMPLE:
+            case CoupledSchurModel::SIMPLEC:
                 throw std::invalid_argument(
-                    "LSC/BFBt are handled by the algebraic Schur production path");
+                    "selected algebraic Schur model is handled by its dedicated production path");
             default:
                 throw std::invalid_argument("unsupported coupled Schur model");
         }

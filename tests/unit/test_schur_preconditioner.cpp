@@ -161,6 +161,36 @@ int main() {
         EXPECT_NEAR(z(2), 0.75, 1e-12);
     });
 
+    run_case("coupled_simple_family_schur_setup_and_apply", [] {
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 4.0); A.push_back(0, 3, 1.0);
+        A.push_back(1, 1, 5.0); A.push_back(1, 3, 2.0);
+        A.push_back(2, 2, 6.0); A.push_back(2, 3, 3.0);
+        A.push_back(3, 3, 1.0); // pressure gauge row
+        A.finalize();
+
+        for (const auto mode : {CoupledSchurApproximationModel::SIMPLE,
+                                CoupledSchurApproximationModel::SIMPLEC}) {
+            CoupledBlockSchurOptions options;
+            options.schur_approximation = mode;
+            CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+            preconditioner.set_simpler_schur(std::make_unique<SimplerSchurApproximation>(
+                mode == CoupledSchurApproximationModel::SIMPLE
+                    ? SimplerSchurMode::SIMPLE
+                    : SimplerSchurMode::SIMPLEC));
+            EXPECT_TRUE(preconditioner.setup(A));
+
+            Vector r(4, 0.0);
+            r(3) = 1.0;
+            Vector z(4, 0.0);
+            EXPECT_TRUE(preconditioner.apply(r, z));
+            // The pressure row is the gauge identity, so the preconditioner must
+            // preserve it rather than silently replacing the requested model.
+            EXPECT_NEAR(z(3), 1.0, 1e-12);
+            EXPECT_TRUE(std::isfinite(z.norm_inf()));
+        }
+    });
+
     run_case("coupled_block_schur_accepts_pressure_gauge_row", [] {
         SparseMatrix A(4, 4);
         A.push_back(0, 0, 2.0);
