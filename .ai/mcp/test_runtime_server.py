@@ -41,7 +41,7 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "checkpoint.inspect", "checkpoint.field.inspect"}
+            assert {tool.name for tool in listed.tools} == {"case.inspect", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare"}
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -98,8 +98,25 @@ async def exercise() -> None:
             assert data["min"] == -2.0
             assert data["max"] == -2.0
 
+            with h5py.File(root / "later.dat.h5", "w") as h5:
+                h5.attrs["format"] = "CFDX-DAT"
+                h5.create_group("fields").create_dataset("p", data=[2.0])
+            comparison = await client.call_tool(
+                "checkpoint.compare",
+                {"left_checkpoint_path": "demo.dat.h5", "right_checkpoint_path": "later.dat.h5", "field_name": "p"},
+            )
+            assert comparison.is_error is False
+            data = comparison.structured_content
+            assert data["ok"] is True
+            assert data["value_count"] == 1
+            assert data["max_abs_difference"] == 0.5
+            assert data["relative_l2_difference"] == 1.0 / 3.0
+
             for name, args in (
                 ("case.inspect", {"case_path": "../outside.cfdx.h5"}),
+                ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
+                ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
+                ("checkpoint.compare", {"left_checkpoint_path": "../a.dat.h5", "right_checkpoint_path": "later.dat.h5", "field_name": "p"}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
             ):
