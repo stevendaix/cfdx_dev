@@ -41,8 +41,38 @@ jobs:
             --fixture openfoam-airfoil2d \
             --report build/n10-fixtures/n10_public_fixture_verification.json
 
+      - name: Install build and mesh-import dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build production mesh importer qualification target
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_GPU=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv/bin/python
+          cmake --build build --parallel 4 --target cfdx_convert test_n10_external_fixture_import
+
+      - name: Qualify imported fixtures through the production C++ importer
+        run: |
+          set -euo pipefail
+          ./build/test_n10_external_fixture_import \
+            build/n10-fixtures \
+            build/n10-fixtures/n10_production_fixture_qualification.json
+
       - name: Publish verification evidence
         uses: actions/upload-artifact@v4
         with:
           name: n10-public-fixture-verification
-          path: build/n10-fixtures/n10_public_fixture_verification.json
+          path: |
+            build/n10-fixtures/n10_public_fixture_verification.json
+            build/n10-fixtures/n10_production_fixture_qualification.json
