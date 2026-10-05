@@ -548,10 +548,18 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # pulled into the quick smoke path because its coupled Krylov/preconditioner
     # cost is materially different from the SIMPLE Ghia regression.
     if(CFDX_ENABLE_LONG_VALIDATION)
+        # Run a bounded low-resolution preflight first. The dependency prevents
+        # the physical PCD qualification from starting when the nested solver
+        # already exhibits runaway behaviour on the smaller case.
+        add_test(NAME test_ghia_cavity_n8_pcd_preflight COMMAND test_ghia_cavity --pcd-preflight)
+        set_tests_properties(test_ghia_cavity_n8_pcd_preflight PROPERTIES
+            LABELS "n8;qualification;validation;long;preflight"
+            TIMEOUT 120)
         add_test(NAME test_ghia_cavity_n8_pcd COMMAND test_ghia_cavity --pcd)
         set_tests_properties(test_ghia_cavity_n8_pcd PROPERTIES
             LABELS "n8;qualification;validation;long"
-            TIMEOUT 900)
+            TIMEOUT 720
+            DEPENDS test_ghia_cavity_n8_pcd_preflight)
     endif()
     # Merge-gated observed-order tripwire. Three resolutions at 16/32/64 give a
     # Richardson-style order in about 90s, so observed-order evidence now gates

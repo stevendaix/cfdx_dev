@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -332,9 +333,10 @@ int main(int argc, char** argv)
     try {
         const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
         const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
+        const bool pcd_preflight = argc == 2 && std::string(argv[1]) == "--pcd-preflight";
         const bool pcd = argc == 2 && std::string(argv[1]) == "--pcd";
-        if (argc > 1 && !quick && !gate && !pcd)
-            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd]");
+        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd]");
 
         // Merge-gated observed-order smoke check. Three resolutions are the
         // minimum for a Richardson-style order from successive differences, so
@@ -378,16 +380,26 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        if (pcd) {
+        if (pcd_preflight || pcd) {
+            const auto start = std::chrono::steady_clock::now();
+            const CavityCase test = pcd_preflight
+                ? CavityCase{100.0,16,16,1000}
+                : CavityCase{100.0,32,32,5000};
             const auto result = run_case(
-                {100.0,32,32,5000},
+                test,
                 PressureVelocityAlgorithm::COUPLED,
                 PreconditionerModel::PCD);
             (void)result;
-            std::cout << "GHIA_CAVITY_N8_PCD: PASS\n";
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start).count();
+            std::cout << "N8_PCD_STAGE stage="
+                      << (pcd_preflight ? "preflight-16x16" : "qualification-32x32")
+                      << " elapsed_s=" << elapsed << "\\n";
+            std::cout << (pcd_preflight
+                ? "GHIA_CAVITY_N8_PCD_PREFLIGHT: PASS\\n"
+                : "GHIA_CAVITY_N8_PCD: PASS\\n");
             return 0;
         }
-
         const auto r32 = run_case({100.0,32,32,2500});
         if (quick) {
             std::cout << "GHIA_CAVITY_QUICK: PASS\n";
