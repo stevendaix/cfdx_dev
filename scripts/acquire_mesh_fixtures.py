@@ -107,7 +107,7 @@ def verify_sha256(path: Path, expected: str | None, fixture_id: str, *, director
     return actual
 
 
-LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\\n"
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
 
 
 def is_lfs_pointer(path: Path) -> bool:
