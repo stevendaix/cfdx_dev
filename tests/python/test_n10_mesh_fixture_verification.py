@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scripts.verify_n10_mesh_fixtures import is_lfs_pointer, sha256
+from scripts.acquire_mesh_fixtures import sha256_tree\nfrom scripts.verify_n10_mesh_fixtures import is_lfs_pointer, sha256
 
 
 def test_lfs_pointer_is_not_payload(tmp_path):
