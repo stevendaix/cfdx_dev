@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, TYPE_CHECKING
 
+from ..probe import ProbeCatalog
 from ..session import CFDXSession, ChangeImpact
 from .properties import set_property
 
@@ -43,6 +44,24 @@ class SetProperty(Command):
         context.session.case_revision += 1
         if impact is not ChangeImpact.HOT:
             context.session.mark_restart_required()
+
+
+@dataclass(frozen=True)
+class ConfigureProbes(Command):
+    """Replace the case's probe catalogue as a reversible setup action.
+
+    Adding or removing probes only reconfigures solver instrumentation (it does
+    not alter the discretisation), so the impact is ``HOT`` and no restart is
+    required. The catalogue is forwarded to the solver as ``--probe``/``--probe``
+    arguments by the execution backend.
+    """
+
+    catalog: ProbeCatalog
+
+    def execute(self, context: CommandContext) -> None:
+        self.catalog.validate()
+        context.session.case.probes = list(self.catalog.probes)
+        context.session.case_revision += 1
 
 
 class _ControllerCommand(Command):

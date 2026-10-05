@@ -341,16 +341,24 @@ int main()
         EXPECT_TRUE(!result.probe_samples.empty());
 
         const std::string csv_path = unique_temp_path(".csv").string();
-        cfdx::io::write_probe_csv(csv_path, result.probe_samples);
+        cfdx::io::write_probe_csv(csv_path, result.probe_samples, controls.probes);
 
         std::ifstream in(csv_path);
         EXPECT_TRUE(in.is_open());
         std::string line;
         EXPECT_TRUE(std::getline(in, line) && line == "# cfdx-probe-csv v1");
         EXPECT_TRUE(std::getline(in, line) && line == "# columns: probe,iteration,time,value");
+        // The export now carries self-describing probe metadata (# probe lines),
+        // ordered by probe name, matching the application-layer writer.
+        EXPECT_TRUE(std::getline(in, line) && line.rfind("# probe ", 0) == 0);
+        EXPECT_TRUE(line.find("pressure_reference") != std::string::npos);
+        EXPECT_TRUE(line.find("field=p") != std::string::npos);
+        EXPECT_TRUE(line.find("unit=Pa") != std::string::npos);
         std::size_t data_rows = 0;
         while (std::getline(in, line)) {
             if (line.empty()) continue;
+            if (line[0] == '#')
+                continue; // skip remaining # probe metadata lines
             const std::size_t last_comma = line.find_last_of(',');
             EXPECT_TRUE(last_comma != std::string::npos);
             std::istringstream value_stream(line.substr(last_comma + 1));
