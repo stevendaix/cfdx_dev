@@ -67,6 +67,19 @@ The adapter is configured with `--root` / `--index` or the `CFDX_AI_ROOT` / `CFD
 
 The adapter performs freshness validation before every indexed evidence query and returns structured MCP results. It does not modify repository, build, case, or runtime state.
 
+## Read-only Runtime MCP artifact surface
+
+The first Runtime MCP surface is deliberately limited to inspection of existing CFDX HDF5 artifacts. It does not create cases, modify files, launch solvers, monitor processes, restart simulations, or alter runtime state.
+
+| Operation | Input | Result |
+|---|---|---|
+| `case.inspect` | root-relative `.cfdx.h5` path | case attributes, parsed setup configuration, dataset metadata, runtime-state presence |
+| `checkpoint.inspect` | root-relative `.dat.h5` path | checkpoint attributes, cell-ID presence, field metadata (names/shapes/dtypes/sizes) |
+
+The Runtime MCP root is configured with `--root` or `CFDX_RUNTIME_ROOT`. Paths are required to be relative to that root and repository/filesystem escape attempts are rejected. Field arrays are not returned by the inspection surface, and no solver executable is invoked.
+
+The adapter is `.ai/mcp/runtime_server.py`; its contract is exercised by `.ai/mcp/test_runtime_server.py`. All tools are annotated read-only and closed-world. This surface is an inspection foundation, not evidence that a simulation is valid, converged, verified, or qualified.
+
 ## Permissions
 
 All operations in this first surface are `READ_ONLY`. Tool annotations communicate the intended behavior to MCP hosts, but they are not a security boundary. Write/execute operations belong to separately permissioned Development or Runtime MCP surfaces.
