@@ -598,7 +598,7 @@ private:
     }
 
     void reset() {
-        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); algebraic_ready_=false; algebraic_blocks_.reset(); algebraic_schur_.reset(); last_error_.clear(); velocity_inv_.clear();
+        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); algebraic_ready_=false; algebraic_blocks_.reset(); last_error_.clear(); velocity_inv_.clear();
         velocity_inv_diag_.clear();
         row_.clear(); col_.clear(); val_.clear(); schur_=SparseMatrix();
     }
