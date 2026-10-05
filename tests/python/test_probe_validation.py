@@ -8,6 +8,7 @@ from cfdx.probe_validation import (
     PROBE_CSV_VERSION,
     ProbeSample,
     ProbeSeries,
+    _format_probe_csv_value,
     read_probe_csv,
     write_probe_csv,
 )
@@ -39,10 +40,51 @@ def test_write_probe_csv_emits_native_schema(tmp_path):
     assert text.splitlines()[2] == "pressure,1,0.1,1.0"
 
 
+# Canonical probe-CSV float encoding: shortest round-trip representation with
+# Python repr notation (decimal for 10^-4 <= |v| < 10^16, scientific otherwise,
+# trailing ".0" for integer magnitudes). The C++ writer is implemented to emit
+# these exact tokens, so this table is the shared cross-language contract between
+# cfdx.io.probe_csv and cfdx.probe_validation.
+CANONICAL_FLOATS = [
+    (0.0, "0.0"),
+    (1.0, "1.0"),
+    (-0.0, "-0.0"),
+    (0.1, "0.1"),
+    (1.0 / 3.0, "0.3333333333333333"),
+    (1e-9, "1e-09"),
+    (1e-4, "0.0001"),
+    (1e-5, "1e-05"),
+    (1e6, "1000000.0"),
+    (1e15, "1000000000000000.0"),
+    (1e16, "1e+16"),
+    (1e17, "1e+17"),
+    (1e-308, "1e-308"),
+    (123.45678901234568, "123.45678901234568"),
+    (math.pi, "3.141592653589793"),
+]
+
+
+def test_canonical_float_format_matches_cpp():
+    for value, expected in CANONICAL_FLOATS:
+        assert _format_probe_csv_value(value) == expected, value
+
+
+def test_write_probe_csv_value_encoding_is_canonical(tmp_path):
+    series = [
+        ProbeSeries("probe", (), (
+            ProbeSample(i, 0.0, value) for i, (value, _) in enumerate(CANONICAL_FLOATS, start=1)
+        )),
+    ]
+    path = write_probe_csv(tmp_path / "probes.csv", series)
+    rows = [line for line in path.read_text().splitlines() if not line.startswith("#")]
+    for (value, expected), row in zip(CANONICAL_FLOATS, rows):
+        # The value column must equal the canonical token shared with the C++
+        # writer, and parse back to the identical double.
+        assert row.split(",")[3] == expected, (value, row)
+        assert float(row.split(",")[3]) == value
+
+
 def test_write_probe_csv_byte_stable(tmp_path):
-    # repr() yields the shortest float that round-trips, the same spelling the
-    # C++ writer emits via std::to_chars, so the export is byte-stable across the
-    # two implementations for any value with a non-integer magnitude.
     path = write_probe_csv(tmp_path / "probes.csv", [
         ProbeSeries("u_mag", (), (
             ProbeSample(1, 1.0, 0.0),
@@ -53,11 +95,27 @@ def test_write_probe_csv_byte_stable(tmp_path):
     expected = (
         f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n"
         "# columns: probe,iteration,time,value\n"
-        f"u_mag,1,{repr(1.0)},{repr(0.0)}\n"
-        f"u_mag,2,{repr(1.0 / 3.0)},{repr(1.0 / 3.0)}\n"
-        f"u_mag,3,{repr(1e-9)},{repr(123.45678901234568)}\n"
+        + "".join(
+            f"u_mag,{i},{_format_probe_csv_value(t)},{_format_probe_csv_value(v)}\n"
+            for i, (t, v)
+            in zip((1, 2, 3), ((1.0, 0.0), (1.0 / 3.0, 1.0 / 3.0), (1e-9, 123.45678901234568)))
+        )
     )
     assert path.read_text() == expected
+
+
+def test_write_probe_csv_overwrites_existing_file(tmp_path):
+    path = tmp_path / "overwrite.csv"
+    write_probe_csv(path, [
+        ProbeSeries("a", (), (ProbeSample(1, 0.0, 1.0),)),
+    ])
+    assert path.read_text().splitlines()[-1] == "a,1,0.0,1.0"
+    # Overwrite with different content; no .tmp may be left behind.
+    write_probe_csv(path, [
+        ProbeSeries("b", (), (ProbeSample(1, 0.0, 2.0),)),
+    ])
+    assert path.read_text().splitlines()[-1] == "b,1,0.0,2.0"
+    assert not (tmp_path / "overwrite.csv.tmp").exists()
 
 
 def test_write_probe_csv_orders_by_name_then_iteration(tmp_path):
@@ -177,4 +235,18 @@ def test_write_probe_csv_rejects_nonfinite_value(tmp_path):
         write_probe_csv(tmp_path / "bad.csv", [
             ProbeSeries("p", (), (ProbeSample(1, 0.0, math.inf),)),
         ])
+
+
+def test_read_probe_csv_rejects_bad_columns_header(tmp_path):
+    csv = tmp_path / "bad_columns.csv"
+    csv.write_text(f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n# columns: foo,bar,baz,qux\nx,1,0,0.0\n")
+    with pytest.raises(ValueError, match="column header mismatch"):
+        read_probe_csv(csv)
+
+
+def test_read_probe_csv_rejects_missing_columns_header(tmp_path):
+    csv = tmp_path / "no_columns.csv"
+    csv.write_text(f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\nx,1,0.0,0.0\n")
+    with pytest.raises(ValueError, match="missing the # columns: header"):
+        read_probe_csv(csv)
 
