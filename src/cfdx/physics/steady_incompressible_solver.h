@@ -244,6 +244,9 @@ struct IncompressibleSolveResult {
     bool converged = false;
     std::size_t iterations = 0;
     std::vector<IncompressibleIteration> history;
+    // Retained point-probe samples, one per configured probe per iteration.
+    // This is the artifact a probe export is written from.
+    std::vector<IncompressibleProbeSample> probe_samples;
     // Final conservative face mass flux used by the pressure-velocity
     // continuity operator. This is exposed as evidence so validation can
     // compare algorithms on the same authoritative face operator rather than
@@ -3440,15 +3443,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         result.history.push_back(h);
 
-        if (controls.probe_callback) {
-            for (const auto& probe : controls.probes) {
-                if (probe.name.empty())
-                    throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
-                const double value = sample_incompressible_probe(probe, mesh, geometry, U, p);
-                if (!std::isfinite(value))
-                    throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
-                controls.probe_callback(IncompressibleProbeSample{probe.name, iter, 0.0, value});
-            }
+        // Samples are retained regardless of probe_callback. A probe that was
+        // requested and sampled but not retained left no artifact behind, so
+        // there was nothing to export or validate after the run.
+        for (const auto& probe : controls.probes) {
+            if (probe.name.empty())
+                throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
+            const double value = sample_incompressible_probe(probe, mesh, geometry, U, p);
+            if (!std::isfinite(value))
+                throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
+            result.probe_samples.push_back(
+                IncompressibleProbeSample{probe.name, iter, 0.0, value});
+            if (controls.probe_callback)
+                controls.probe_callback(result.probe_samples.back());
         }
 
         if (controls.iteration_output_callback &&

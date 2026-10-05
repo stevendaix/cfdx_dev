@@ -3,6 +3,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
 #include "cfdx/io/restart/dat_restart.h"
+#include "cfdx/io/probe/probe_csv.h"
 #include "cfdx/io/runtime/convergence_history.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
@@ -22,7 +23,69 @@ struct Options {
     std::filesystem::path restart;
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
+    std::vector<IncompressiblePointProbe> probes;
+    std::filesystem::path probe_csv;
 };
+
+
+// Parses `--probe <name>:<x>,<y>,<z>:<field>`.
+//
+// A probe has to be declarable from a run, otherwise sampling exists only inside
+// the C++ API and no run can produce a probe artifact. The field is the probe's
+// enum name, so an unsupported one is rejected at parse time rather than
+// silently producing a column of the wrong quantity.
+IncompressiblePointProbe parse_probe(const std::string& spec)
+{
+    const auto first = spec.find(':');
+    if (first == std::string::npos)
+        throw std::invalid_argument("--probe expects <name>:<x>,<y>,<z>:<field>");
+    const auto second = spec.find(':', first + 1);
+    if (second == std::string::npos)
+        throw std::invalid_argument("--probe expects <name>:<x>,<y>,<z>:<field>");
+    const std::string name = spec.substr(0, first);
+    if (name.empty())
+        throw std::invalid_argument("--probe name must not be empty");
+
+    std::vector<double> coordinates;
+    const std::string point = spec.substr(first + 1, second - first - 1);
+    std::size_t begin = 0;
+    while (begin <= point.size()) {
+        const auto comma = point.find(',', begin);
+        const std::string token = point.substr(
+            begin, comma == std::string::npos ? std::string::npos : comma - begin);
+        try {
+            coordinates.push_back(std::stod(token));
+        } catch (const std::exception&) {
+            throw std::invalid_argument("--probe coordinates must be numeric: " + token);
+        }
+        if (comma == std::string::npos) break;
+        begin = comma + 1;
+    }
+    if (coordinates.size() != 3)
+        throw std::invalid_argument("--probe expects exactly three coordinates");
+
+    const std::string field_name = spec.substr(second + 1);
+    IncompressibleProbeField field;
+    if (field_name == "p" || field_name == "pressure")
+        field = IncompressibleProbeField::PRESSURE;
+    else if (field_name == "u_x")
+        field = IncompressibleProbeField::U_X;
+    else if (field_name == "u_y")
+        field = IncompressibleProbeField::U_Y;
+    else if (field_name == "u_z")
+        field = IncompressibleProbeField::U_Z;
+    else if (field_name == "u_mag" || field_name == "u_magnitude")
+        field = IncompressibleProbeField::U_MAGNITUDE;
+    else
+        throw std::invalid_argument(
+            "--probe field must be one of p, u_x, u_y, u_z, u_mag: " + field_name);
+
+    IncompressiblePointProbe probe;
+    probe.name = name;
+    probe.location = Vec3{coordinates[0], coordinates[1], coordinates[2]};
+    probe.field = field;
+    return probe;
+}
 
 
 struct LoadedCaseNumerics {
@@ -162,9 +225,13 @@ Options parse(int argc, char** argv)
         else if (arg == "--restart") o.restart = value("--restart");
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
+        else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
+        else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
-                         "[--restart DAT] [--iterations N] [--adaptive-convergence]\n";
+                         "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
+                         "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
+                         "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
@@ -172,6 +239,14 @@ Options parse(int argc, char** argv)
     }
     if (o.mesh.empty() || o.output_dir.empty() || o.iterations == 0)
         throw std::invalid_argument("--mesh, --output-dir and positive --iterations are required");
+    // Asking for an export with nothing to sample would otherwise produce an
+    // empty file, or worse a file with a header and no data.
+    if (!o.probe_csv.empty() && o.probes.empty())
+        throw std::invalid_argument("--probe-csv requires at least one --probe");
+    for (std::size_t i = 0; i < o.probes.size(); ++i)
+        for (std::size_t j = i + 1; j < o.probes.size(); ++j)
+            if (o.probes[i].name == o.probes[j].name)
+                throw std::invalid_argument("duplicate probe name: " + o.probes[i].name);
     std::filesystem::create_directories(o.output_dir);
     return o;
 }
@@ -261,6 +336,7 @@ int main(int argc, char** argv)
             options.adaptive_convergence;
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
+        controls.probes = options.probes;
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore
@@ -295,6 +371,13 @@ int main(int argc, char** argv)
         const auto dat = options.output_dir / "restart.dat";
         write_dat_restart(dat.string(), mesh, U, p, result.iterations, 0.0);
         std::cout << "Checkpoint " << dat.string() << "\n";
+
+        if (!options.probe_csv.empty()) {
+            write_probe_csv(options.probe_csv.string(), result.probe_samples);
+            std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+                      << result.probe_samples.size() << " samples)\n";
+        }
+
         std::cout << "Converged " << (result.converged ? "YES" : "NO")
                   << " Iterations " << result.iterations << "\n";
         return result.converged ? 0 : 1;
