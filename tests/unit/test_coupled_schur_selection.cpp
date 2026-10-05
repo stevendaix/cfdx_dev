@@ -19,8 +19,8 @@ int main() {
             throw std::runtime_error("unknown Schur model was accepted");
 
         CouplingControls controls;
-        if (controls.schur_model != CoupledSchurModel::BlockLocal)
-            throw std::runtime_error("default Schur model changed unexpectedly");
+        if (controls.schur_model != CoupledSchurModel::PCD)
+            throw std::runtime_error("existing PCD default changed unexpectedly");
         controls.schur_model = CoupledSchurModel::PCD;
         if (std::string(to_string(controls.schur_model)) != "pcd")
             throw std::runtime_error("PCD model string is not stable");
