@@ -76,7 +76,6 @@ void run_amg_case(const SparseMatrix& A,
                   double anisotropy,
                   double scale,
                   bool& structural_ok) {
-    TestSparseOperator op(A);
     AMG amg;
     const bool setup_ok = amg.setup(A);
     const auto levels = amg.hierarchy_level_sizes();
