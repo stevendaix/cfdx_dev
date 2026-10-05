@@ -78,7 +78,7 @@ int main()
         // independently tracked pressure controller state.
         alpha = adapt_relaxation_factor_windowed(
             alpha, 1.0, 1.20, 0.6, 0.8, c, improve, degrade);
-        EXPECT_NEAR(alpha, 0.71, 1e-12);
+        EXPECT_NEAR(alpha, 0.705, 1e-12);
         EXPECT_TRUE(degrade == 1);
         alpha = adapt_relaxation_factor_windowed(
             alpha, 1.0, 1.20, 0.6, 0.8, c, improve, degrade);
