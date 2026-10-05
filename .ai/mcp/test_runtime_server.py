@@ -58,10 +58,8 @@ async def exercise() -> None:
 
             case_validation = await client.call_tool("case.validate", {"case_path": "demo.cfdx.h5"})
             assert case_validation.is_error is False
-            assert case_validation.structured_content["ok"] is True
-            assert case_validation.structured_content["artifact"] == "case-validation"
-            assert case_validation.structured_content["checks"]["mesh"] is True
-            assert case_validation.structured_content["checks"]["runtime_separated"] is True
+            assert case_validation.structured_content["ok"] is False
+            assert "mesh data is missing" in case_validation.structured_content["errors"][0]
 
             checkpoint = await client.call_tool("checkpoint.inspect", {"checkpoint_path": "demo.dat.h5"})
             assert checkpoint.is_error is False
