@@ -78,6 +78,56 @@ int main() {
         }
     });
 
+    run_case("cg_symmetric_scaling_uses_transformed_system", [] {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0e-8);
+        A.push_back(1, 1, 1.0);
+        A.push_back(2, 2, 1.0e8);
+        A.finalize();
+
+        Vector exact(3);
+        exact(0) = 2.0;
+        exact(1) = -3.0;
+        exact(2) = 4.0;
+        const auto b = rhs_from(A, exact);
+
+        LinearSolverRequest request;
+        request.krylov = KrylovModel::CG;
+        request.preconditioner = PreconditionerModel::Jacobi;
+        request.scaling = LinearScalingModel::SymmetricDiagonal;
+
+        Vector solution(3, 0.0);
+        const auto report = solve_linear_system(
+            A, b, solution, LinearProblemKind::PressurePoisson,
+            request, 50, 1.0e-12);
+
+        EXPECT_TRUE(report.result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(report.applied_scaling == LinearScalingModel::SymmetricDiagonal);
+        EXPECT_TRUE(report.physical_residual_relative < 1.0e-12);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            EXPECT_NEAR(solution(i), exact(i), 1.0e-10);
+    });
+
+    run_case("scaling_rejects_zero_rows_and_columns_without_repair", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(1, 1, 3.0);
+        A.finalize();
+
+        Vector b(2, 0.0);
+        Vector x(2, 7.0);
+        LinearSolverRequest request;
+        request.krylov = KrylovModel::GMRES;
+        request.preconditioner = PreconditionerModel::Jacobi;
+        request.scaling = LinearScalingModel::RowColumn;
+
+        const auto report = solve_linear_system(
+            A, b, x, LinearProblemKind::General, request, 20, 1.0e-11);
+
+        EXPECT_TRUE(report.result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(std::isinf(report.physical_residual_relative));
+        EXPECT_NEAR(x(0), 7.0, 0.0);
+    });
+
     run_case("default_solver_path_is_unchanged", [] {
         const auto A = make_system();
         const auto exact = make_exact_solution();
