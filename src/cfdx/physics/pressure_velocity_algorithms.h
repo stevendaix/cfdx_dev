@@ -24,7 +24,7 @@ enum class PressureVelocityAlgorithm {
     COUPLED
 };
 
-enum class CoupledSchurModel { BlockLocal, PCD, LSC, BFBT };
+enum class CoupledSchurModel { BlockLocal, PCD, LSC, BFBT, SIMPLE, SIMPLEC };
 
 inline const char* to_string(CoupledSchurModel model) noexcept {
     switch (model) {
@@ -32,6 +32,8 @@ inline const char* to_string(CoupledSchurModel model) noexcept {
         case CoupledSchurModel::PCD: return "pcd";
         case CoupledSchurModel::LSC: return "lsc";
         case CoupledSchurModel::BFBT: return "bfbt";
+        case CoupledSchurModel::SIMPLE: return "simple";
+        case CoupledSchurModel::SIMPLEC: return "simplec";
     }
     return "unknown";
 }
@@ -41,6 +43,8 @@ inline bool parse_coupled_schur_model(const std::string& name, CoupledSchurModel
     if (name == "pcd") { out = CoupledSchurModel::PCD; return true; }
     if (name == "lsc") { out = CoupledSchurModel::LSC; return true; }
     if (name == "bfbt") { out = CoupledSchurModel::BFBT; return true; }
+    if (name == "simple") { out = CoupledSchurModel::SIMPLE; return true; }
+    if (name == "simplec") { out = CoupledSchurModel::SIMPLEC; return true; }
     return false;
 }
 
