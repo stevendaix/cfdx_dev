@@ -767,6 +767,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_coupled_schur_selection tests/unit/test_coupled_schur_selection.cpp)
     add_cfdx_test(test_lsc_bfbt_schur_null_space tests/unit/test_lsc_bfbt_schur_null_space.cpp)
     add_cfdx_test(test_schur_approximation_comparison tests/unit/test_schur_approximation_comparison.cpp)
     add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
