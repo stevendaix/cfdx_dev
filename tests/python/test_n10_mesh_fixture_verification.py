@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from scripts.acquire_mesh_fixtures import sha256_tree\nfrom scripts.verify_n10_mesh_fixtures import is_lfs_pointer, sha256
+from scripts.acquire_mesh_fixtures import github_media_url, sha256_tree
+from scripts.verify_n10_mesh_fixtures import is_lfs_pointer, sha256
 
 
 def test_lfs_pointer_is_not_payload(tmp_path):
@@ -19,9 +20,6 @@ def test_real_payload_is_not_lfs_pointer(tmp_path):
     assert sha256(payload) == (
         "d1a8147b7ff4ff49fac7ac2d87b71fce68f95266ca9ec5b6193db5b57c8b7c93"
     )
-
-
-from scripts.acquire_mesh_fixtures import github_media_url
 
 
 def test_github_lfs_media_url_is_pinned_to_ref():
