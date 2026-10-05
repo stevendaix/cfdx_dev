@@ -149,6 +149,22 @@ int main()
 
         auto direct_controls=controls();
         const auto direct=solve_steady_incompressible(mesh,Ud,pd,ubc,pbc,direct_controls);
+        if (!direct.converged) {
+            std::cerr << "N7_RE400 direct failure: status="
+                      << cfdx::core::to_string(direct.convergence_status)
+                      << " reason=" << direct.convergence_reason
+                      << " iterations=" << direct.iterations << "\n";
+            if (!direct.history.empty()) {
+                const auto& h=direct.history.back();
+                std::cerr << "  metric=" << h.nonlinear_convergence_metric
+                          << " continuity=" << h.continuity_normalized
+                          << " continuity_linf=" << h.continuity_linf
+                          << " momentum=" << h.momentum_equation_residual
+                          << " momentum_rel=" << h.momentum_equation_residual_relative
+                          << " dU=" << h.velocity_change_inf
+                          << " dP=" << h.pressure_change_inf << "\n";
+            }
+        }
         EXPECT_TRUE(direct.converged);
         EXPECT_TRUE(direct.convergence_status==ConvergenceStatus::CONVERGED);
 
@@ -161,6 +177,25 @@ int main()
 
         const auto adaptive=solve_steady_incompressible(
             mesh,Ua,pa,ubc,pbc,adaptive_controls);
+        if (!adaptive.converged) {
+            std::cerr << "N7_RE400 adaptive failure: status="
+                      << cfdx::core::to_string(adaptive.convergence_status)
+                      << " reason=" << adaptive.convergence_reason
+                      << " iterations=" << adaptive.iterations << "\n";
+            const std::size_t first = adaptive.history.size() > 8
+                ? adaptive.history.size() - 8 : 0;
+            for (std::size_t i=first; i<adaptive.history.size(); ++i) {
+                const auto& h=adaptive.history[i];
+                std::cerr << "  iter=" << h.iteration
+                          << " metric=" << h.nonlinear_convergence_metric
+                          << " continuity=" << h.continuity_normalized
+                          << " momentum_rel=" << h.momentum_equation_residual_relative
+                          << " dU=" << h.velocity_change_inf
+                          << " dP=" << h.pressure_change_inf
+                          << " alpha_u=" << h.effective_alpha_u
+                          << " alpha_p=" << h.effective_alpha_p << "\n";
+            }
+        }
         EXPECT_TRUE(adaptive.converged);
         EXPECT_TRUE(adaptive.convergence_status==ConvergenceStatus::CONVERGED);
         EXPECT_TRUE(adaptive.history.size()>=3);
