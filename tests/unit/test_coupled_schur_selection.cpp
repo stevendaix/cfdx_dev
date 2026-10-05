@@ -15,6 +15,12 @@ int main() {
         if (!parse_coupled_schur_model("pcd", model) ||
             model != CoupledSchurModel::PCD)
             throw std::runtime_error("pcd parsing failed");
+        if (!parse_coupled_schur_model("lsc", model) ||
+            model != CoupledSchurModel::LSC)
+            throw std::runtime_error("lsc parsing failed");
+        if (!parse_coupled_schur_model("bfbt", model) ||
+            model != CoupledSchurModel::BFBT)
+            throw std::runtime_error("bfbt parsing failed");
         if (parse_coupled_schur_model("unknown", model))
             throw std::runtime_error("unknown Schur model was accepted");
 
@@ -24,6 +30,12 @@ int main() {
         controls.schur_model = CoupledSchurModel::PCD;
         if (std::string(to_string(controls.schur_model)) != "pcd")
             throw std::runtime_error("PCD model string is not stable");
+        controls.schur_model = CoupledSchurModel::LSC;
+        if (std::string(to_string(controls.schur_model)) != "lsc")
+            throw std::runtime_error("LSC model string is not stable");
+        controls.schur_model = CoupledSchurModel::BFBT;
+        if (std::string(to_string(controls.schur_model)) != "bfbt")
+            throw std::runtime_error("BFBt model string is not stable");
 
         std::cout << "coupled Schur selection contract PASS\n";
         return 0;

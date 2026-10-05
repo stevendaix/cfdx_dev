@@ -1501,8 +1501,121 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
     const bool use_pcd =
         solver_plan.preconditioner == PreconditionerModel::PCD;
+    const bool use_lsc_bfbt =
+        schur_model == CoupledSchurModel::LSC ||
+        schur_model == CoupledSchurModel::BFBT;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
-    if (use_pcd) {
+    const auto extract_coupled_block = [&](std::size_t row_block,
+                                           std::size_t col_block,
+                                           std::size_t row_size,
+                                           std::size_t col_size) {
+        SparseMatrix block(row_size, col_size);
+        const std::size_t velocity_size = 3 * nc;
+        const std::size_t row_offset = row_block == 0 ? 0 : velocity_size;
+        const std::size_t col_offset = col_block == 0 ? 0 : velocity_size;
+        for (std::size_t r = 0; r < row_size; ++r) {
+            const std::size_t gr = row_offset + r;
+            for (std::size_t k = A.row_offsets_data()[gr];
+                 k < A.row_offsets_data()[gr + 1]; ++k) {
+                const std::size_t gc = A.columns_data()[k];
+                if (gc >= col_offset && gc < col_offset + col_size)
+                    block.push_back(r, gc - col_offset, A.values_data()[k]);
+            }
+        }
+        block.finalize();
+        return block;
+    };
+    if (use_lsc_bfbt) {
+        if (!use_n8_block_schur)
+            throw std::invalid_argument(
+                "LSC/BFBt coupled Schur models require the coupled_block_schur linear plan");
+
+        const SparseMatrix Auu = extract_coupled_block(0, 0, 3 * nc, 3 * nc);
+        const SparseMatrix G = extract_coupled_block(0, 1, 3 * nc, nc);
+        const SparseMatrix D = extract_coupled_block(1, 0, nc, 3 * nc);
+        const SparseMatrix C = extract_coupled_block(1, 1, nc, nc);
+
+        std::vector<double> q_inverse(3 * nc, 1.0);
+        if (schur_model == CoupledSchurModel::LSC) {
+            for (std::size_t i = 0; i < 3 * nc; ++i) {
+                double diagonal = 0.0;
+                for (std::size_t k = Auu.row_offsets_data()[i];
+                     k < Auu.row_offsets_data()[i + 1]; ++k) {
+                    if (Auu.columns_data()[k] == i)
+                        diagonal += Auu.values_data()[k];
+                }
+                if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                    throw std::runtime_error(
+                        "LSC Schur setup requires positive finite momentum diagonal");
+                q_inverse[i] = 1.0 / diagonal;
+            }
+        }
+
+        SparseMatrix pressure_operator(nc, nc);
+        for (std::size_t row = 0; row < nc; ++row) {
+            std::map<std::size_t, double> entries;
+            for (std::size_t dk = D.row_offsets_data()[row];
+                 dk < D.row_offsets_data()[row + 1]; ++dk) {
+                const std::size_t velocity_col = D.columns_data()[dk];
+                const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
+                for (std::size_t gk = G.row_offsets_data()[velocity_col];
+                     gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
+                    entries[G.columns_data()[gk]] +=
+                        d_value * G.values_data()[gk];
+                }
+            }
+            if (row == reference_cell) {
+                pressure_operator.push_back(row, row, 1.0);
+            } else {
+                for (const auto& [col, value] : entries) {
+                    if (std::isfinite(value) && value != 0.0)
+                        pressure_operator.push_back(row, col, value);
+                }
+            }
+        }
+        pressure_operator.finalize();
+
+        auto solve_pressure = [pressure_operator, max_iterations, tolerance](
+            const Vector& rhs, Vector& x) mutable {
+            LinearOperator op{
+                pressure_operator.n_rows(),
+                [&pressure_operator](const Vector& input, Vector& output) {
+                    const auto values = pressure_operator.matvec(input);
+                    if (output.size() != values.size())
+                        output.resize(values.size());
+                    for (std::size_t i = 0; i < values.size(); ++i)
+                        output(i) = values[i];
+                }};
+            const auto result = solve_gmres(
+                op, rhs, x,
+                static_cast<int>(std::min<std::size_t>(64, pressure_operator.n_rows())),
+                max_iterations, tolerance);
+            return result.status == SolverStatus::CONVERGED;
+        };
+
+        auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
+            schur_model == CoupledSchurModel::LSC
+                ? LscBfbtSchurApproximation::Mode::LSC
+                : LscBfbtSchurApproximation::Mode::BFBT,
+            std::move(solve_pressure));
+
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation =
+            schur_model == CoupledSchurModel::LSC
+                ? CoupledSchurApproximationModel::LSC
+                : CoupledSchurApproximationModel::BFBT;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        schur->set_algebraic_schur(std::move(algebraic_schur));
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N9 LSC/BFBt Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_pcd) {
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
@@ -1560,6 +1673,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             case CoupledSchurModel::PCD:
                 options.schur_approximation = CoupledSchurApproximationModel::PCD;
                 break;
+            case CoupledSchurModel::LSC:
+            case CoupledSchurModel::BFBT:
+                throw std::invalid_argument(
+                    "LSC/BFBt are handled by the algebraic Schur production path");
             default:
                 throw std::invalid_argument("unsupported coupled Schur model");
         }
