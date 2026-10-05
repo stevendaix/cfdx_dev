@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 
 def fail(message: str) -> None:
@@ -106,6 +107,25 @@ def verify_sha256(path: Path, expected: str | None, fixture_id: str, *, director
     return actual
 
 
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\\n"
+
+
+def is_lfs_pointer(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(len(LFS_POINTER_PREFIX)) == LFS_POINTER_PREFIX
+
+
+def github_media_url(repository: str, ref: str, relative_path: str) -> str:
+    owner_repo = repository.removeprefix("https://github.com/").rstrip("/")
+    encoded_path = quote(relative_path, safe="/")
+    return f"https://media.githubusercontent.com/media/{owner_repo}/{ref}/{encoded_path}"
+
+
+def download_url(url: str, destination: Path) -> None:
+    with urllib.request.urlopen(url, timeout=30) as response, destination.open("wb") as out:
+        shutil.copyfileobj(response, out)
+
+
 def acquire_file(source: dict[str, str], relative_path: str, destination: Path) -> None:
     repository = source.get("repository", "")
     ref = source.get("ref", "")
@@ -115,17 +135,32 @@ def acquire_file(source: dict[str, str], relative_path: str, destination: Path) 
         fail(f"source {source['id']}: immutable ref required for {relative_path}")
     if repository.startswith("https://github.com/") and relative_path:
         owner_repo = repository.removeprefix("https://github.com/").rstrip("/")
-        url = f"https://raw.githubusercontent.com/{owner_repo}/{ref}/{relative_path}"
+        url = f"https://raw.githubusercontent.com/{owner_repo}/{ref}/{quote(relative_path, safe='/')}"
     elif repository.startswith("https://gitlab.") and relative_path:
-        url = f"{repository.rstrip('/')}/-/raw/{ref}/{relative_path}"
+        url = f"{repository.rstrip('/')}/-/raw/{ref}/{quote(relative_path, safe='/')}"
     else:
         fail(f"source {source['id']}: unsupported repository URL {repository}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with urllib.request.urlopen(url, timeout=30) as response, destination.open("wb") as out:
-            shutil.copyfileobj(response, out)
+        download_url(url, destination)
+        if is_lfs_pointer(destination):
+            if not repository.startswith("https://github.com/"):
+                fail(
+                    f"fixture {relative_path}: source returned a Git-LFS pointer, "
+                    "but no GitHub LFS media endpoint is available"
+                )
+            destination.unlink()
+            media_url = github_media_url(repository, ref, relative_path)
+            download_url(media_url, destination)
+            if is_lfs_pointer(destination):
+                fail(
+                    f"fixture {relative_path}: GitHub LFS media endpoint still returned "
+                    "a pointer; actual payload bytes were not acquired"
+                )
     except Exception as exc:
         destination.unlink(missing_ok=True)
+        if str(exc).startswith("fixture "):
+            fail(str(exc))
         fail(f"download failed for {relative_path}: {exc}")
 
 
