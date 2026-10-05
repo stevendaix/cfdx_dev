@@ -69,6 +69,14 @@ jobs:
             build/n10-fixtures \
             build/n10-fixtures/n10_production_fixture_qualification.json
 
+      - name: Audit the complete fixture evidence chain
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_n10_fixture_evidence.py \
+            --verification build/n10-fixtures/n10_public_fixture_verification.json \
+            --qualification build/n10-fixtures/n10_production_fixture_qualification.json \
+            --report build/n10-fixtures/n10_fixture_evidence_gate.json
+
       - name: Publish verification evidence
         uses: actions/upload-artifact@v4
         with:
@@ -76,3 +84,4 @@ jobs:
           path: |
             build/n10-fixtures/n10_public_fixture_verification.json
             build/n10-fixtures/n10_production_fixture_qualification.json
+            build/n10-fixtures/n10_fixture_evidence_gate.json
