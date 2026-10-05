@@ -1,7 +1,10 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/pressure_velocity_system.h"
+#include "cfdx/io/probe/probe_csv.h"
 #include "cfdx/io/restart/dat_restart.h"
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include "common/test_harness.h"
 #include <limits>
 
@@ -304,6 +307,63 @@ int main()
             EXPECT_NEAR(sample.time, 0.0, 1e-14);
             EXPECT_NEAR(sample.value, 0.0, 1e-14);
         }
+    });
+
+    // Closes the "compare CSV against analytical/reference values" item for the
+    // probe CSV export stream: a zero-velocity, zero-gradient-pressure field on a
+    // unit cube with fixed-zero walls admits the uniform zero field as its
+    // analytical steady solution. The probes are exported to CSV and the values
+    // read back from disk are asserted against that analytical reference.
+    run_case("native_point_probe_csv_matches_analytical_reference", []() {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 2;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        controls.probes = {
+            {"pressure_reference", {0.5, 0.5, 0.5}, IncompressibleProbeField::PRESSURE},
+            {"velocity_reference", {0.5, 0.5, 0.5}, IncompressibleProbeField::U_MAGNITUDE},
+        };
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(!result.probe_samples.empty());
+
+        const std::string csv_path = unique_temp_path(".csv").string();
+        cfdx::io::write_probe_csv(csv_path, result.probe_samples);
+
+        std::ifstream in(csv_path);
+        EXPECT_TRUE(in.is_open());
+        std::string line;
+        EXPECT_TRUE(std::getline(in, line) && line == "# cfdx-probe-csv v1");
+        EXPECT_TRUE(std::getline(in, line) && line == "# columns: probe,iteration,time,value");
+        std::size_t data_rows = 0;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            const std::size_t last_comma = line.find_last_of(',');
+            EXPECT_TRUE(last_comma != std::string::npos);
+            std::istringstream value_stream(line.substr(last_comma + 1));
+            double value = 0.0;
+            value_stream >> value;
+            EXPECT_TRUE(std::isfinite(value));
+            // Analytical reference: the analytical solution is the uniform zero
+            // field, so every exported sample must reproduce it.
+            EXPECT_NEAR(value, 0.0, 1e-12);
+            ++data_rows;
+        }
+        EXPECT_TRUE(data_rows == result.probe_samples.size());
+        std::filesystem::remove(csv_path);
     });
 
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {

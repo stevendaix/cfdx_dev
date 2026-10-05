@@ -16,6 +16,13 @@
 // sample. Rows are ordered by probe name then iteration, so the output is
 // deterministic and a probe's history is contiguous, which keeps it diffable.
 //
+// Float encoding: each numeric field is serialized with the shortest
+// round-tripping representation using Python repr notation (decimal for
+// 10^-4 <= |v| < 10^16, scientific otherwise, with a trailing ".0" for integer
+// magnitudes). This is byte-for-byte identical to Python's repr(float), so a
+// file written by cfdx::io::write_probe_csv is reproducible verbatim through
+// cfdx.probe_validation.write_probe_csv and vice-versa.
+//
 // The Python layer owns a reader for this exact schema
 // (`cfdx.probe_validation.read_probe_csv`), so a file written here round-trips
 // through the application layer unchanged.
@@ -28,9 +35,9 @@
 #include <cmath>
 #include <fstream>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <vector>
 
 namespace cfdx::io {
@@ -38,20 +45,31 @@ namespace cfdx::io {
 inline constexpr int ProbeCsvVersion = 1;
 inline constexpr const char* ProbeCsvMagic = "cfdx-probe-csv";
 
-// Renders a double with the shortest representation that round-trips exactly,
-// matching Python's ``repr(float)`` so a CSV written here is byte-for-byte
-// identical to one written by ``cfdx.probe_validation.write_probe_csv``. Integer-
-// valued magnitudes gain a trailing ``.0`` (e.g. ``0`` -> ``0.0``) so the value
-// is unambiguously a float and matches Python's float literal spelling.
+// Canonical float serialization for the probe CSV. The emitted text is the
+// shortest representation that round-trips exactly, using Python ``repr`` float
+// notation: decimal for 10^-4 <= |v| < 10^16, scientific otherwise, with a
+// trailing ``.0`` for integer magnitudes. This is byte-for-byte identical to
+// ``cfdx.probe_validation.write_probe_csv`` (which uses ``repr(float)``) across
+// the full IEEE-754 exponent range, so a CSV produced here is reproducible
+// verbatim from the Python layer and vice-versa. The shortest fixed-point form
+// is only taken for in-range exponents (safely bounded in length); extreme
+// exponents use the shortest scientific form, which never overflows the buffer.
 inline std::string format_probe_csv_value(double value)
 {
     if (!std::isfinite(value))
         throw std::invalid_argument("probe CSV values must be finite");
     char buffer[64];
-    const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-    if (result.ec != std::errc{})
-        throw std::runtime_error("probe CSV: floating-point formatting failed");
-    std::string text(buffer, result.ptr);
+    const auto scientific = std::to_chars(buffer, buffer + sizeof(buffer), value,
+                                          std::chars_format::scientific);
+    std::string text(buffer, scientific.ptr);
+    const std::size_t e_pos = text.find_first_of("eE");
+    const int exponent = (e_pos != std::string::npos)
+        ? std::atoi(text.c_str() + e_pos + 1) : 0;
+    if (exponent >= -4 && exponent < 16) {
+        const auto fixed = std::to_chars(buffer, buffer + sizeof(buffer), value,
+                                         std::chars_format::fixed);
+        text.assign(buffer, fixed.ptr);
+    }
     if (text.find('.') == std::string::npos &&
         text.find('e') == std::string::npos &&
         text.find('E') == std::string::npos)
