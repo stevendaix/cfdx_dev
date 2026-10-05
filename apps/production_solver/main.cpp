@@ -306,10 +306,60 @@ int main(int argc, char** argv)
         ScalarBoundaryConditions pbc;
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
             const auto& patch = mesh.boundary().patch(i);
-            ubc[patch.name] = {
-                VelocityBoundaryCondition::Type::FIXED_VALUE,
-                {0.0, 0.0, 0.0}};
-            pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            if (!is_case_hdf5) {
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::FIXED_VALUE,
+                    {0.0, 0.0, 0.0}};
+                pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                continue;
+            }
+
+            const auto* bc = case_setup.find_boundary(patch.name);
+            if (bc == nullptr)
+                throw std::invalid_argument(
+                    "production solver: case has no boundary condition for mesh patch '" +
+                    patch.name + "'");
+
+            if (bc->value_type == BCValueType::FIXED ||
+                bc->value_type == BCValueType::WALL_NO_SLIP ||
+                bc->value_type == BCValueType::WALL_THERMAL) {
+                cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+                if (!bc->velocity_vector.empty()) {
+                    if (bc->velocity_vector.size() != 3)
+                        throw std::invalid_argument(
+                            "production solver: velocity_vector must have 3 components for patch '" +
+                            patch.name + "'");
+                    value = cfdx::core::Vec3{
+                        bc->velocity_vector[0],
+                        bc->velocity_vector[1],
+                        bc->velocity_vector[2]};
+                } else if (bc->velocity_magnitude != 0.0) {
+                    value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                }
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::FIXED_VALUE, value};
+            } else if (bc->value_type == BCValueType::ZERO_GRADIENT ||
+                       bc->value_type == BCValueType::WALL_SLIP ||
+                       bc->type == BCType::OUTLET ||
+                       bc->type == BCType::PRESSURE_OUTLET ||
+                       bc->type == BCType::SYMMETRY) {
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::ZERO_GRADIENT,
+                    {0.0, 0.0, 0.0}};
+            } else {
+                throw std::invalid_argument(
+                    "production solver: unsupported velocity BC '" +
+                    std::string(to_string(bc->value_type)) + "' on patch '" +
+                    patch.name + "'");
+            }
+
+            if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
+                pbc[patch.name] = {
+                    ScalarBoundaryType::FIXED_VALUE, bc->pressure, 0.0};
+            } else {
+                pbc[patch.name] = {
+                    ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            }
         }
 
         IncompressibleSolverControls controls;
