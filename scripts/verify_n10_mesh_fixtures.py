@@ -14,6 +14,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from scripts.acquire_mesh_fixtures import sha256_tree
+
 
 LFS_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
 
@@ -106,8 +108,10 @@ def verify_fixture(
 
     if payload.is_file():
         actual = sha256(payload)
+    elif payload.is_dir() and fixture.get("acquisition") == "pinned_repository_subtree":
+        actual = sha256_tree(payload)
     else:
-        result["reason"] = "directory fixtures require the acquisition tree digest"
+        result["reason"] = "unsupported acquired fixture payload type"
         return result
 
     result["sha256"] = actual
