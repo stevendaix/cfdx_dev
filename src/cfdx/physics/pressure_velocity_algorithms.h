@@ -54,9 +54,10 @@ struct AdaptiveRelaxationControls {
     double max_alpha_p = 0.5;
     double improvement_threshold = 0.05;
     double degradation_threshold = 0.10;
-    // Additive updates avoid the large multiplicative jumps that can collapse
-    // the controller to its floor and create a deterministic limit cycle.
-    double increase_step = 0.01;
+    // Small additive increases make the controller conservative near a stable
+    // fixed point; degradation remains twice as fast so overshoot is recovered
+    // more quickly than it is introduced.
+    double increase_step = 0.005;
     double decrease_step = 0.02;
     // Adapt against a short history window rather than consecutive noisy
     // iterations. This prevents the controller from reacting to the
