@@ -179,5 +179,5 @@ int main()
         const double scale=std::max(std::abs(centre_u(Ud)),1e-3);
         EXPECT_TRUE(std::abs(centre_u(Ua)-centre_u(Ud)) <= 1e-2*scale);
     });
-    return run_all_tests();
+    return run_all();
 }
