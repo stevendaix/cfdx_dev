@@ -1894,7 +1894,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double reference_metric =
                     result.history[result.history.size() - 1 - window]
                         .nonlinear_convergence_metric;
-                const double ratio = current_metric / reference_metric;
+                const double ratio = reference_metric > 0.0
+                    ? current_metric / reference_metric : 1.0;
                 if (ratio <= 1.0 - controls.adaptive_relaxation.improvement_threshold) {
                     ++adaptive_improvement_streak;
                     adaptive_degradation_streak = 0;
