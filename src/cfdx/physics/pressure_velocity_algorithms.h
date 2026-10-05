@@ -87,6 +87,13 @@ struct AdaptiveRelaxationControls {
     // more quickly than it is introduced.
     double increase_step = 0.005;
     double decrease_step = 0.02;
+    // A severe residual jump is treated as an overshoot event rather than
+    // waiting for the normal multi-window hysteresis. This guard is checked
+    // on every completed nonlinear iteration.
+    double severe_degradation_ratio = 2.0;
+    // Number of adaptation windows during which increases are frozen after a
+    // severe-degradation rollback.
+    std::size_t recovery_cooldown_windows = 2;
     // Adapt against a short history window rather than consecutive noisy
     // iterations. This prevents the controller from reacting to the
     // pressure/velocity coupling oscillation of SIMPLE itself.
@@ -107,6 +114,8 @@ inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationContro
         c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
         c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
         c.decrease_step > (c.max_alpha_p - c.min_alpha_p) ||
+        !(c.severe_degradation_ratio > 1.0 + c.degradation_threshold) ||
+        c.recovery_cooldown_windows == 0 ||
         c.adaptation_window == 0 || c.required_trend_windows == 0)
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
@@ -176,6 +185,18 @@ inline double adapt_relaxation_factor_windowed(
         return std::max(min_alpha, safe_alpha - controls.decrease_step);
     }
     return safe_alpha;
+}
+
+inline bool adaptive_relaxation_severe_degradation(
+    double previous_metric,
+    double current_metric,
+    const AdaptiveRelaxationControls& controls)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(previous_metric) || !std::isfinite(current_metric) ||
+        previous_metric <= 0.0 || current_metric < 0.0)
+        throw std::invalid_argument("invalid adaptive relaxation guard state");
+    return current_metric / previous_metric >= controls.severe_degradation_ratio;
 }
 
 inline double relaxed_value(double old_value, double computed_value, double alpha)
