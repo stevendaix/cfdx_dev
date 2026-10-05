@@ -52,7 +52,7 @@ D_r A D_c\hat{\mathbf{x}}=D_r\mathbf{b},
 \qquad \mathbf{x}=D_c\hat{\mathbf{x}}.
 \]
 
-The implementation currently exposes the matrix factors; production solver wiring remains a separate step so that existing numerical paths are not changed implicitly.
+The implementation currently exposes the matrix factors; production solver wiring remains a separate step so that existing numerical paths are not changed implicitly. This PR adds an executable equivalence campaign that applies the transformation explicitly and maps the solved scaled variables back to the physical variables.
 
 ### Null-space compatibility
 
@@ -80,7 +80,7 @@ The classification is diagnostic only. It never changes the requested solver or 
 
 ## Tests
 
-The existing registered `test_null_space` target now also exercises:
+The existing registered `test_null_space` target continues to exercise the low-level scaling factors. A dedicated `test_n11_scaling_equivalence` validation target now additionally exercises:
 
 - matrix pathology detection;
 - connected-component detection;
@@ -88,6 +88,15 @@ The existing registered `test_null_space` target now also exercises:
 - row/column scaling factors;
 - preservation of explicit zero-row behaviour;
 - null-space RHS compatibility.
+
+The dedicated N11 scaling campaign checks:
+
+- exact algebraic equivalence of `D_r A D_c x̂ = D_r b`;
+- recovery of the physical solution after solving the scaled system;
+- independently recomputed physical residual below `1e-10` on a deliberately strongly scaled nonsymmetric system;
+- explicit zero-row/zero-column reporting without numerical repair.
+
+This is verification of the scaling contract, not production solver qualification.
 
 This keeps the first N11 slice inside an already registered CTest target and avoids introducing a second test-registration mechanism.
 
