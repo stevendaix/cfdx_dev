@@ -56,7 +56,7 @@ struct AdaptiveRelaxationControls {
     double degradation_threshold = 0.10;
     // Additive updates avoid the large multiplicative jumps that can collapse
     // the controller to its floor and create a deterministic limit cycle.
-    double increase_step = 0.05;
+    double increase_step = 0.01;
     double decrease_step = 0.02;
 };
 
