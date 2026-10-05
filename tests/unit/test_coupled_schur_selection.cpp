@@ -21,6 +21,12 @@ int main() {
         if (!parse_coupled_schur_model("bfbt", model) ||
             model != CoupledSchurModel::BFBT)
             throw std::runtime_error("bfbt parsing failed");
+        if (!parse_coupled_schur_model("simple", model) ||
+            model != CoupledSchurModel::SIMPLE)
+            throw std::runtime_error("simple parsing failed");
+        if (!parse_coupled_schur_model("simplec", model) ||
+            model != CoupledSchurModel::SIMPLEC)
+            throw std::runtime_error("simplec parsing failed");
         if (parse_coupled_schur_model("unknown", model))
             throw std::runtime_error("unknown Schur model was accepted");
 
@@ -36,6 +42,12 @@ int main() {
         controls.schur_model = CoupledSchurModel::BFBT;
         if (std::string(to_string(controls.schur_model)) != "bfbt")
             throw std::runtime_error("BFBt model string is not stable");
+        controls.schur_model = CoupledSchurModel::SIMPLE;
+        if (std::string(to_string(controls.schur_model)) != "simple")
+            throw std::runtime_error("SIMPLE model string is not stable");
+        controls.schur_model = CoupledSchurModel::SIMPLEC;
+        if (std::string(to_string(controls.schur_model)) != "simplec")
+            throw std::runtime_error("SIMPLEC model string is not stable");
 
         std::cout << "coupled Schur selection contract PASS\n";
         return 0;
