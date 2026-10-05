@@ -349,7 +349,6 @@ int main(int argc, char** argv)
             } else {
                 throw std::invalid_argument(
                     "production solver: unsupported velocity BC '" +
-                    std::string(to_string(bc->value_type)) + "' on patch '" +
                     patch.name + "'");
             }
 
