@@ -49,8 +49,17 @@ int main()
         AdaptiveRelaxationControls c;
         c.enabled = true;
 
-        EXPECT_TRUE(adaptive_relaxation_severe_degradation(1.0, 2.0, c));
-        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 1.99, c));
+        // A 2x residual jump is severe only when the corresponding
+        // relaxation factor increased between accepted states.
+        EXPECT_TRUE(adaptive_relaxation_severe_degradation(1.0, 2.0, 0.70, 0.705, c));
+        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 1.99, 0.70, 0.705, c));
+        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 2.0, 0.70, 0.70, c));
+        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 2.0, 0.705, 0.70, c));
+
+        // The guard is channel-local: a momentum alpha increase does not imply
+        // a pressure overshoot and vice versa.
+        EXPECT_TRUE(adaptive_relaxation_severe_degradation(1.0, 2.1, 0.30, 0.31, c));
+        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 2.1, 0.31, 0.30, c));
 
         double alpha = 0.78;
         alpha = std::max(c.min_alpha_u, alpha - c.decrease_step);
