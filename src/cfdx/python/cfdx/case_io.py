@@ -109,6 +109,40 @@ def save_case(session: CFDXSession, path: Path) -> Path:
     return path
 
 
+_CHECKPOINT_REVISION_NAMES = ("case_revision", "mesh_revision", "physics_revision", "numerics_revision")
+
+
+def _write_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
+    """Bind a canonical DAT/HDF5 checkpoint to the case revision identity."""
+    revisions = {name: int(getattr(session, name)) for name in _CHECKPOINT_REVISION_NAMES}
+    if any(value < 0 for value in revisions.values()):
+        raise ValueError("checkpoint revisions must be non-negative")
+    with h5py.File(path, "a") as h5:
+        h5.attrs["checkpoint_schema_version"] = 1
+        for name, value in revisions.items():
+            h5.attrs[name] = value
+        h5.flush()
+
+
+def _validate_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
+    """Reject a DAT/HDF5 checkpoint not produced for this case identity."""
+    with h5py.File(path, "r") as h5:
+        schema = h5.attrs.get("checkpoint_schema_version")
+        if int(schema) != 1:
+            raise ValueError("unsupported CFDX DAT checkpoint schema")
+        missing = [name for name in _CHECKPOINT_REVISION_NAMES if name not in h5.attrs]
+        if missing:
+            raise ValueError(
+                "DAT checkpoint is missing compatibility metadata: " + ", ".join(missing)
+            )
+        expected = {name: int(getattr(session, name)) for name in _CHECKPOINT_REVISION_NAMES}
+        actual = {name: int(h5.attrs[name]) for name in _CHECKPOINT_REVISION_NAMES}
+        mismatches = [name for name in _CHECKPOINT_REVISION_NAMES if actual[name] != expected[name]]
+        if mismatches:
+            details = ", ".join(f"{name}={actual[name]} expected={expected[name]}" for name in mismatches)
+            raise ValueError("incompatible DAT checkpoint revisions: " + details)
+
+
 def save_case_with_dat(
     session: CFDXSession, path: Path, dat_path: Path
 ) -> tuple[Path, Path]:
