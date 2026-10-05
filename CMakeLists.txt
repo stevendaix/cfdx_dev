@@ -959,7 +959,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     endif()
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_n9_s8_naca0012_contract
-            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
         set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
             LABELS "n9;qualification;validation;total-validation"
