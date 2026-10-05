@@ -49,6 +49,7 @@ REQUIRED_TESTS = (
     "test_mgr_preconditioner",
     "test_coupled_block_schur_amg",
     "test_n8_schur_production_benchmark",
+    "test_n8_schur_representative_cfd",
 )
 
 
