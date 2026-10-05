@@ -260,6 +260,9 @@ struct IncompressibleSolveResult {
     bool pressure_linear_plan_resolved = false;
     cfdx::core::LinearSolverPlan coupled_linear_plan;
     bool coupled_linear_plan_resolved = false;
+    CoupledSchurModel requested_coupled_schur_model = CoupledSchurModel::BlockLocal;
+    CoupledSchurModel resolved_coupled_schur_model = CoupledSchurModel::BlockLocal;
+    bool coupled_schur_model_resolved = false;
 };
 
 // Applies the declared initialization strategy to the caller's fields.
@@ -973,6 +976,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     std::size_t max_iterations,
     double tolerance,
     const DiagnosticsControls& diagnostics,
+    CoupledSchurModel schur_model,
     const cfdx::core::LinearSolverRequest& solver_request,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
@@ -1549,10 +1553,20 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
-        options.schur_approximation = CoupledSchurApproximationModel::PCD;
+        switch (schur_model) {
+            case CoupledSchurModel::BlockLocal:
+                options.schur_approximation = CoupledSchurApproximationModel::BlockLocal;
+                break;
+            case CoupledSchurModel::PCD:
+                options.schur_approximation = CoupledSchurApproximationModel::PCD;
+                break;
+            default:
+                throw std::invalid_argument("unsupported coupled Schur model");
+        }
 
         auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
-        schur->set_pcd_schur(std::move(pcd));
+        if (schur_model == CoupledSchurModel::PCD)
+            schur->set_pcd_schur(std::move(pcd));
         // Set the preconditioner up here for the same reason the BlockSchur
         // branch below does. solve_fgmres also calls setup() on its
         // preconditioner before the first apply, so this is not what makes PCD
@@ -1739,6 +1753,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             : 1u;
 
     IncompressibleSolveResult result;
+    result.requested_coupled_schur_model = controls.coupling.schur_model;
+    result.resolved_coupled_schur_model = controls.coupling.schur_model;
+    result.coupled_schur_model_resolved = true;
     LinearSolverPlan pressure_plan;
     std::unique_ptr<Preconditioner> pressure_preconditioner;
     std::unique_ptr<ReusableCgContext> pressure_context;
@@ -2005,6 +2022,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.coupled_max_iterations,
                 controls.coupling.coupled_linear_tolerance,
                 controls.diagnostics,
+                controls.coupling.schur_model,
                 controls.coupled_linear_solver,
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
