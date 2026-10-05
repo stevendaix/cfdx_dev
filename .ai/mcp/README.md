@@ -31,6 +31,17 @@ The read-only Development MCP also exposes repository inspection without modifyi
 
 The file-structure operation uses tracked files only, and rejects paths that escape the repository. These operations are descriptive and do not imply build, test, validation, or qualification evidence.
 
+## Read-only Development MCP documentation surface
+
+The read-only Development MCP exposes repository-grounded documentation lookup without modifying Git state:
+
+| Operation | Input | Result |
+|---|---|---|
+| `documentation.search` | pattern + optional relative path | tracked text matches with file/line context |
+| `documentation.read` | tracked relative path | file content at `HEAD` |
+
+Both operations reject repository-escaping paths. `documentation.read` only reads tracked files through Git and therefore does not expose arbitrary filesystem paths.
+
 ## Read-only Development MCP query surface
 
 The first implemented Development MCP surface is deliberately read-only. It maps to the reproducible index/query layer and preserves the evidence contract.
@@ -50,7 +61,7 @@ Evidence relations are descriptive only. An explicit test-to-symbol or validatio
 
 ## Adapter
 
-`.ai/mcp/development_server.py` implements the six operations using the official MCP Python SDK 2.3.0. `.ai/scripts/query_index.py` remains the executable reference for deterministic index semantics.
+`.ai/mcp/development_server.py` implements the ten read-only operations using the official MCP Python SDK 2.3.0. `.ai/scripts/query_index.py` remains the executable reference for deterministic index semantics.
 
 The adapter is configured with `--root` / `--index` or the `CFDX_AI_ROOT` / `CFDX_AI_INDEX` environment variables. stdio is the default transport; Streamable HTTP is available for controlled deployments.
 
@@ -62,6 +73,6 @@ All operations in this first surface are `READ_ONLY`. Tool annotations communica
 
 ## Testing
 
-`.ai/mcp/test_development_server.py` exercises the server in-process through the MCP client and verifies the six-tool surface, stale-index reporting, and refusal to present stale evidence.
+`.ai/mcp/test_development_server.py` exercises the server in-process through the MCP client and verifies the ten-tool surface, path-safety checks, stale-index reporting, and refusal to present stale evidence.
 
 The first phase specified architecture only; this adapter is the first executable Development MCP component. Transport-specific deployment and broader MCP integration tests remain future work.
