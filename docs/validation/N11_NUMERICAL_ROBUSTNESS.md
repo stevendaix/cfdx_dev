@@ -52,7 +52,7 @@ D_r A D_c\hat{\mathbf{x}}=D_r\mathbf{b},
 \qquad \mathbf{x}=D_c\hat{\mathbf{x}}.
 \]
 
-The implementation currently exposes the matrix factors; production solver wiring remains a separate step so that existing numerical paths are not changed implicitly. This PR adds an executable equivalence campaign that applies the transformation explicitly and maps the solved scaled variables back to the physical variables.
+The implementation exposes the matrix factors and the production linear-solver dispatch now accepts an explicit scaling request. The default remains `MatrixScaling::None`; when scaling is requested, the dispatch solves the transformed system and maps the result back to physical variables before applying an independent physical-residual gate. This PR adds an executable equivalence campaign that applies the transformation explicitly and maps the solved scaled variables back to the physical variables.
 
 ### Null-space compatibility
 
@@ -96,7 +96,7 @@ The dedicated N11 scaling campaign checks:
 - independently recomputed physical residual below `1e-10` on a deliberately strongly scaled nonsymmetric system;
 - explicit zero-row/zero-column reporting without numerical repair.
 
-This is verification of the scaling contract, not production solver qualification.
+The dedicated N11 production campaign additionally verifies that explicit row+column scaling is honored by the production linear-solver dispatch, that the returned solution is physical, that the independently recomputed physical residual remains below the requested tolerance, and that zero rows/columns are rejected without repair. Constant-null-space projection is explicitly rejected with scaling until its transformed null-space basis is qualified.
 
 This keeps the first N11 slice inside an already registered CTest target and avoids introducing a second test-registration mechanism.
 
