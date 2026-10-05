@@ -189,7 +189,9 @@ static bool validate_2d_edge_mesh(const Mesh& mesh, FixtureResult& result) {
 }
 
 static FixtureResult qualify_fixture(const std::string& id, const fs::path& path) {
-    FixtureResult result{id, path.string()};
+    FixtureResult result;
+    result.id = id;
+    result.source_path = path.string();
     try {
         Mesh mesh;
         result.imported = cfdx::io::mesh::import_mesh(path.string(), mesh);
