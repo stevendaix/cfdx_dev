@@ -14,14 +14,14 @@ sources:
     project: meshio
     repository: https://github.com/nschloe/meshio
     ref: b2ee99842e119901349fdeee06b5bf61e01f450a
-    license_status: verify
-    redistribution: pending
+    license_status: verified
+    redistribution: verified
   - id: openfoam-dev
     project: OpenFOAM-dev
     repository: https://github.com/OpenFOAM/OpenFOAM-dev
     ref: fbbf59ba819f0ab4ccfa2c02c39d357c96cd2633
-    license_status: verify
-    redistribution: pending
+    license_status: verified
+    redistribution: verified
   - id: gmsh
     project: Gmsh
     repository: https://gitlab.onelab.info/gmsh/gmsh
@@ -39,46 +39,46 @@ fixtures:
   - id: meshio-su2-square
     source: meshio
     path: tests/meshes/su2/square.su2
-    sha256: null
+    sha256: 58c56bef6d32ae93e4c8ab6fbd5ab92676bd353ea0d160a702fd6bb101b4b16c
     category: su2
     intended_test: meshio_import
     mandatory_ci: false
     reference_only: true
     acquisition: pinned_raw
-    status: pending_hash_and_license_verification
+    status: verified_reference
 
   - id: meshio-gmsh-insulated-2-2
     source: meshio
     path: tests/meshes/msh/insulated-2.2.msh
-    sha256: null
+    sha256: e948c04847537cffd8b00fbcc4d5add982d18c76cab2200635d43b84ded08523
     category: gmsh
     intended_test: meshio_import
     mandatory_ci: false
     reference_only: true
     acquisition: pinned_raw
-    status: pending_hash_and_license_verification
+    status: verified_reference
 
   - id: meshio-vtk-unstructured
     source: meshio
     path: tests/meshes/vtk/06_unstructured.vtk
-    sha256: null
+    sha256: bba5171c092aa0ed9714ab5fc9f3715b430500554e58e2b8dac3dd9443988414
     category: vtk
     intended_test: meshio_import
     mandatory_ci: false
     reference_only: true
     acquisition: pinned_raw
-    status: pending_hash_and_license_verification
+    status: verified_reference
 
   - id: openfoam-airfoil2d
     source: openfoam-dev
     path: tutorials/incompressibleFluid/airFoil2D/constant/polyMesh
-    sha256: null
+    sha256: c7fe0122a4c8e2b7aaaaa34a7a403246f9dccf2e1b0005d8ba25eecf73b2b533
     category: openfoam_polyMesh
     intended_test: openfoam_import
     mandatory_ci: false
     reference_only: true
     acquisition: pinned_repository_subtree
-    status: pending_hash_and_license_verification
+    status: verified_reference
 
   - id: ansys-vmfl078
     source: ansys-vmfl

@@ -14,10 +14,20 @@ import hashlib
 import json
 from pathlib import Path
 
-from scripts.acquire_mesh_fixtures import sha256_tree
-
-
 LFS_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
+
+
+def sha256_tree(path: Path) -> str:
+    """Independently hash a directory from relative paths and file bytes."""
+    digest = hashlib.sha256()
+    for child in sorted(p for p in path.rglob("*") if p.is_file()):
+        relative = child.relative_to(path).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        with child.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def sha256(path: Path) -> str:
@@ -132,14 +142,23 @@ def main() -> int:
     parser.add_argument(
         "--output-root", type=Path, default=Path("build/n10-fixtures")
     )
+    parser.add_argument(
+        "--fixture", action="append", dest="fixtures",
+        help="verify only the selected fixture ids; repeat for multiple fixtures",
+    )
     parser.add_argument("--report", type=Path, default=None)
     args = parser.parse_args()
 
     sources, fixtures = parse_manifest(args.manifest)
+    selected = set(args.fixtures or [fixture["id"] for fixture in fixtures])
     results = []
     for fixture in fixtures:
+        if fixture["id"] not in selected:
+            continue
         source = sources.get(fixture.get("source", ""), {})
         results.append(verify_fixture(fixture, source, args.output_root))
+    if not results:
+        parser.error("no fixtures selected")
 
     verified = [item for item in results if item["status"] == "VERIFIED"]
     report = {

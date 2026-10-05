@@ -1,0 +1,48 @@
+name: N10 Public Fixture Verification
+
+on:
+  pull_request:
+  push:
+    branches: [master, main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: n10-public-fixtures-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-fixtures:
+    name: Acquire and verify public N10 fixtures
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Acquire pinned public fixtures
+        run: |
+          set -euo pipefail
+          python3 scripts/acquire_mesh_fixtures.py \
+            --fixture meshio-su2-square \
+            --fixture meshio-gmsh-insulated-2-2 \
+            --fixture meshio-vtk-unstructured \
+            --fixture openfoam-airfoil2d
+
+      - name: Independently verify acquired public fixtures
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_n10_mesh_fixtures.py \
+            --fixture meshio-su2-square \
+            --fixture meshio-gmsh-insulated-2-2 \
+            --fixture meshio-vtk-unstructured \
+            --fixture openfoam-airfoil2d \
+            --report build/n10-fixtures/n10_public_fixture_verification.json
+
+      - name: Publish verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: n10-public-fixture-verification
+          path: build/n10-fixtures/n10_public_fixture_verification.json
