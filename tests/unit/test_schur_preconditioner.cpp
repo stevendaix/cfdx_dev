@@ -166,8 +166,7 @@ int main() {
         A.push_back(0, 0, 4.0); A.push_back(0, 3, 1.0);
         A.push_back(1, 1, 5.0); A.push_back(1, 3, 2.0);
         A.push_back(2, 2, 6.0); A.push_back(2, 3, 3.0);
-        A.push_back(3, 0, -1.0); A.push_back(3, 1, -2.0);
-        A.push_back(3, 2, -3.0); A.push_back(3, 3, 1.0); // pressure gauge row
+        A.push_back(3, 3, 1.0); // pressure gauge row
         A.finalize();
 
         for (const auto mode : {CoupledSchurApproximationModel::SIMPLE,
