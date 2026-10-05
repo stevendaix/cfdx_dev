@@ -156,7 +156,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--report", type=Path, default=None)
-    parser.add_argument("--fixture-manifest", type=Path, default=Path("tests/fixtures/mesh_sources.yaml"))
+    parser.add_argument("--fixture-manifest", type=Path, default=None)
     args = parser.parse_args()
 
     build_dir = args.build_dir.resolve()
@@ -165,7 +165,7 @@ def main() -> int:
         return 2
 
     report_path = args.report.resolve() if args.report else build_dir / "n10_qualification.json"
-    manifest_path = args.fixture_manifest.resolve()
+    repo_root = Path(__file__).resolve().parents[1]\n    manifest_path = (args.fixture_manifest if args.fixture_manifest is not None else repo_root / "tests/fixtures/mesh_sources.yaml").resolve()
     if not manifest_path.exists():
         print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
         return 2
