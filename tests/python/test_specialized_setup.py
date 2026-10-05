@@ -1,5 +1,7 @@
 import pytest
 
+PySide6 = pytest.importorskip("PySide6", reason="GUI tests require the optional [gui] dependencies")
+
 from cfdx import CFDXSession
 
 

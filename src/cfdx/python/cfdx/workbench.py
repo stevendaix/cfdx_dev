@@ -11,11 +11,8 @@ from .application import Application, ApplicationStateChanged, ResultsChanged, W
 from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
-from .gui_3d import PyVistaQtView
-from .mesh_browser_panel import MeshBrowserPanel
 from .mesh_model import read_mesh_catalog
 from .runner import SolverRunner
-from .setup_panel import CaseSetupPanel
 from .session import CFDXSession
 from .validation import validate_case
 
@@ -42,6 +39,9 @@ except ImportError:  # pragma: no cover
 
 
 if QMainWindow is not object:
+    from .gui_3d import PyVistaQtView
+    from .mesh_browser_panel import MeshBrowserPanel
+    from .setup_panel import CaseSetupPanel
     from .run_center_panel import RunCenterPanel
     from .results_panel import ResultsPanel
 

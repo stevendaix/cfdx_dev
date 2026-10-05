@@ -15,13 +15,31 @@ Run the deterministic orchestration example:
 
 ## GUI
 
-Install the optional visualization stack:
+The GUI is optional. On a local development machine, create an isolated
+environment and install the visualization stack:
 
-    pip install -e ".[gui]"
+    python3 -m venv .venv-gui
+    .venv-gui/bin/python -m pip install --upgrade pip
+    .venv-gui/bin/python -m pip install -e ".[gui]"
 
 Then launch:
 
-    cfdx-gui
+    .venv-gui/bin/cfdx-gui
+
+On Ubuntu, a display server and OpenGL runtime are required for the full 3D
+workspace. For a headless workstation or CI runner, install Xvfb and run the
+Qt tests with a virtual display:
+
+    sudo apt-get install xvfb libgl1-mesa-dri libgl1-mesa-dev libglu1-mesa \
+      libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-randr0 \
+      libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxkbcommon-x11-0
+    QT_QPA_PLATFORM=xcb xvfb-run -a -s "-screen 0 1280x1024x24" \
+      .venv-gui/bin/python -m pytest -q \
+        tests/python/test_specialized_setup.py \
+        tests/python/test_workbench.py \
+        tests/python/test_gui_browser_widgets.py \
+        tests/python/test_renderer_pyvista.py \
+        tests/python/test_gui_3d.py
 
 The GUI is intentionally optional. A headless installation does not require
 PySide6, PyVista or Qt.
@@ -46,7 +64,20 @@ post-processing code can be tested without a display server.
 
 All core orchestration and renderer-contract tests are designed to run without
 a graphical display. Optional Qt/PyVista tests are skipped when those
-dependencies are not installed.
+dependencies are not installed. The documented Xvfb command is the reference
+for local and CI runners. The corresponding job is prepared for the canonical
+`.github/workflows/cfdx-ci.yml`; publishing that workflow change requires the
+GitHub `workflow` permission. The job installs the `.[gui]` extra, verifies the
+Qt/PyVista/PyVistaQt imports, and runs the stable Qt and renderer-contract
+tests under Xvfb.
+
+The OpenGL widget smoke test remains opt-in because VTK can abort the process
+when a runner exposes an incomplete OpenGL implementation. To run it locally,
+use a real or known-good virtual display and set:
+
+    CFDX_RUN_PYVISTA_QT_SMOKE=1 \
+      QT_QPA_PLATFORM=xcb xvfb-run -a -s "-screen 0 1280x1024x24" \
+      .venv-gui/bin/python -m pytest -q tests/python/test_gui_3d.py
 
 
 ## Case files

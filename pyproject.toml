@@ -7,7 +7,10 @@ name = "cfdx"
 version = "0.7.0"
 description = "Python orchestration interface for the CFDX CFD framework"
 requires-python = ">=3.10"
-dependencies = ["h5py>=3.8"]
+dependencies = [
+    "h5py>=3.8",
+    "pydantic>=2.0",
+]
 
 [project.optional-dependencies]
 gui = [
