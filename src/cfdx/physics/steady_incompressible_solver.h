@@ -161,7 +161,7 @@ struct IncompressibleSolverControls {
     // They deliberately have independent solver controls so the outer coupled
     // iteration budget can never become an accidental inner Krylov budget.
     cfdx::core::LinearSolverRequest pcd_laplacian_linear_solver{
-        cfdx::core::KrylovModel::CG,
+        cfdx::core::KrylovModel::GMRES,
         cfdx::core::PreconditionerModel::NativeAMG,
         40,
         false,
