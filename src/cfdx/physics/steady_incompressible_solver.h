@@ -2290,6 +2290,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.diagnostics,
                 controls.coupling.schur_model,
                 controls.coupled_linear_solver,
+                controls,
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
