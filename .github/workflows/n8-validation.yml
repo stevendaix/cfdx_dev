@@ -1,0 +1,131 @@
+name: CFDX N8 validation
+
+# Dedicated N8 production qualification. It is intentionally separate from the
+# broad total-validation workflow so N8 can be rerun without spending the full
+# validation budget. The workflow is active only for PRs carrying
+# `validation-total`, or when started manually.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-n8-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  n8-production-schur:
+    name: N8 production Schur qualification
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    env:
+      BUILD_DIR: build-n8-validation
+      VENV_DIR: .venv-n8-validation
+
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v4
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+
+      - name: Configure full validation build
+        id: configure
+        continue-on-error: true
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python"
+
+      - name: Build N8 validation target
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --parallel 2 --target test_phase9_acceptance
+
+      - name: Run full N8 production Schur qualification
+        id: n8
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir "$BUILD_DIR" \
+            --tests-regex '^test_n8_pressure_velocity_matrix$' \
+            --output-on-failure \
+            --no-tests=error \
+            -V 2>&1 | tee "$BUILD_DIR/n8-production-schur.log"
+
+      - name: Verify four Schur models independently
+        id: evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$BUILD_DIR/n8-production-schur.log"
+          test -s "$log"
+
+          for model in SIMPLE SIMPLEC LSC BFBT; do
+            grep -E "MODEL_PLAN algorithm=COUPLED/${model}-Schur/upwind/bounded .*schur_requested=${model} schur_resolved=${model}" "$log"
+            grep -E "MODEL_RESULT COUPLED/${model}-Schur/upwind/bounded .*solver_converged=true .*gates_failed=0" "$log"
+          done
+
+          if grep -E "n8_coupled_schur_(unresolved|model_mismatch)" "$log"; then
+            echo "N8 Schur resolution gate failed."
+            exit 1
+          fi
+
+          echo "All four requested Schur models resolved exactly and passed the production gates."
+
+      - name: Upload N8 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-n8-production-schur-evidence
+          path: |
+            ${{ env.BUILD_DIR }}/Testing/
+            ${{ env.BUILD_DIR }}/n8-production-schur.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Final N8 gate
+        if: always()
+        shell: bash
+        run: |
+          echo "configure=${{ steps.configure.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          echo "n8=${{ steps.n8.outcome }}"
+          echo "evidence=${{ steps.evidence.outcome }}"
+
+          if [[ "${{ steps.configure.outcome }}" != "success" ||
+                "${{ steps.build.outcome }}" != "success" ||
+                "${{ steps.n8.outcome }}" != "success" ||
+                "${{ steps.evidence.outcome }}" != "success" ]]; then
+            echo "CFDX N8 production Schur qualification: FAIL"
+            exit 1
+          fi
+
+          echo "CFDX N8 production Schur qualification: PASS"
