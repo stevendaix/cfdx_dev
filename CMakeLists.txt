@@ -803,6 +803,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
     add_cfdx_test(test_n8_schur_representative_cfd tests/validation/test_n8_schur_representative_cfd.cpp)
+    add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
