@@ -86,8 +86,11 @@ The first executable Runtime MCP surface is deliberately read-only and inspects 
 | `case.inspect` | root-relative `.cfdx.h5` path | case attributes, configuration, dataset metadata, runtime-state presence |
 | `checkpoint.inspect` | root-relative `.dat.h5` path | checkpoint attributes, cell-ID presence, field metadata |
 | `checkpoint.field.inspect` | root-relative `.dat.h5` path + field name + optional component | finite-value status and descriptive scalar statistics without returning field arrays |
+| `checkpoint.compare` | two root-relative `.dat.h5` paths + field name + optional component | descriptive field difference metrics between two checkpoints |
 
 Paths are confined to the configured runtime root. These tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
 
 
 Field statistics are descriptive only: they do not establish convergence, verification, validation, or qualification. Vector fields may be summarized as a whole or one component at a time. The field tool reads the selected dataset but never modifies the checkpoint.
+
+Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.
