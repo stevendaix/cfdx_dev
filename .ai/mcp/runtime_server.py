@@ -16,6 +16,7 @@ import h5py
 import numpy as np
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from cfdx.case_io import validate_case_bundle
 
 
 def _root(configured: str | None) -> Path:
@@ -205,6 +206,19 @@ def _checkpoint_compare(
         return {"ok": False, "errors": [f"invalid CFDX DAT comparison: {exc}"]}
 
 
+def _validate_case(path: Path) -> dict[str, Any]:
+    try:
+        result = validate_case_bundle(path)
+        return {
+            "ok": True,
+            "artifact": "case-validation",
+            "path": path.name,
+            "checks": result,
+        }
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return {"ok": False, "errors": [f"invalid CFDX case artifact: {exc}"]}
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
@@ -215,6 +229,17 @@ def create_server(root: str | None = None) -> MCPServer:
         """Inspect a root-relative .cfdx.h5 case without loading solver state."""
         try:
             return _inspect_case(_safe_path(runtime_root, case_path))
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(name="case.validate", title="Validate CFDX case", annotations=annotations)
+    def case_validate(case_path: str) -> dict[str, Any]:
+        """Validate a root-relative .cfdx.h5 case using the canonical CFDX bundle contract."""
+        try:
+            path = _safe_path(runtime_root, case_path)
+            if not path.is_file() or not path.name.lower().endswith(".cfdx.h5"):
+                return {"ok": False, "errors": ["case must be an existing canonical .cfdx.h5 artifact"]}
+            return _validate_case(path)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
