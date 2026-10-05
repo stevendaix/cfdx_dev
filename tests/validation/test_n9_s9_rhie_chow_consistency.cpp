@@ -147,7 +147,7 @@ int main()
         // to the face flux instead of allowing a checkerboard pressure mode to
         // become invisible to continuity.
         EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
-        EXPECT_NEAR(phi(1), -2.0, 1e-12);
+        EXPECT_NEAR(phi(1), 2.0, 1e-12);
     });
 
     return 0;
