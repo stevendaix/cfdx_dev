@@ -318,7 +318,10 @@ jobs:
 
   validation-report:
     name: Validation report and metadata
-    needs: long-tests
+    if: always()
+    needs:
+      - prepare
+      - long-tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -343,6 +346,9 @@ jobs:
         with:
           name: cfdx-total-validation-long-evidence
           path: long-evidence
+      - name: Verify long-validation evidence is present
+        run: test -s long-evidence/build-validation/long-validation.log
+
       - name: Build numerical validation report
         id: validation_report
         continue-on-error: true
