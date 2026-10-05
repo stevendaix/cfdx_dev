@@ -67,6 +67,19 @@ async def exercise() -> None:
             assert data["cell_ids_present"] is True
             assert data["fields"][0]["name"] == "p"
 
+            with h5py.File(root / "invalid.dat.h5", "w") as h5:
+                h5.attrs["format"] = "CFDX-DAT"
+                h5.attrs["version"] = 2
+                h5.attrs["cells"] = 2
+                h5.attrs["iteration"] = 1
+                h5.attrs["time"] = 0.1
+                h5.create_dataset("cell_ids", data=[1, 1])
+                h5.create_dataset("fields/p", data=[1.0])
+            invalid = await client.call_tool("checkpoint.inspect", {"checkpoint_path": "invalid.dat.h5"})
+            assert invalid.is_error is False
+            assert invalid.structured_content["ok"] is False
+            assert "duplicate cell ids" in invalid.structured_content["errors"][0]
+
             scalar = await client.call_tool(
                 "checkpoint.field.inspect",
                 {"checkpoint_path": "demo.dat.h5", "field_name": "p"},
