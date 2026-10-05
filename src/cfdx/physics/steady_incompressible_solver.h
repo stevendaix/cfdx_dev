@@ -999,6 +999,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const DiagnosticsControls& diagnostics,
     CoupledSchurModel schur_model,
     const cfdx::core::LinearSolverRequest& solver_request,
+    const IncompressibleSolverControls& controls,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
