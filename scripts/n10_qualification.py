@@ -13,6 +13,11 @@ import json
 import re
 import subprocess
 import sys
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None
 import time
 from pathlib import Path
 
@@ -164,8 +169,11 @@ def main() -> int:
     if not manifest_path.exists():
         print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
         return 2
+    if yaml is None:
+        print("error: PyYAML is required to parse the N10 fixture manifest", file=sys.stderr)
+        return 2
     try:
-        manifest = json.loads(json.dumps(__import__("yaml").safe_load(manifest_path.read_text(encoding="utf-8"))))
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     except Exception as exc:
         print(f"error: unable to parse fixture manifest: {exc}", file=sys.stderr)
         return 2
