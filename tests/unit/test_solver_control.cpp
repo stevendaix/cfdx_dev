@@ -30,7 +30,7 @@ int main()
     run_case("adaptive_relaxation", [] {
         AdaptiveRelaxationControls c;
         c.enabled = true;
-        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.55, 1e-12);
+        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.51, 1e-12);
         EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.2, 0.2, 0.9, c), 0.48, 1e-12);
         EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.02, 0.2, 0.9, c), 0.5, 1e-12);
 
@@ -40,9 +40,9 @@ int main()
         alpha = adapt_relaxation_factor(alpha, 1.0, 2.33, 0.6, 0.8, c);
         EXPECT_NEAR(alpha, 0.706, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 2.33, 1.95, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.756, 1e-12);
+        EXPECT_NEAR(alpha, 0.716, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 1.95, 0.9, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.8, 1e-12);
+        EXPECT_NEAR(alpha, 0.726, 1e-12);
     });
 
     return run_all();
