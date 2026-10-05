@@ -367,27 +367,43 @@ public:
     void reset()
     {
         retry_count_ = 0;
-        alpha_scale_ = 1.0;
+        alpha_scale_u_ = 1.0;
+        alpha_scale_p_ = 1.0;
     }
 
     bool can_retry() const { return retry_count_ < controls_.max_retries; }
 
-    void reject()
+    void reject(bool shrink_u = true, bool shrink_p = true)
+    {
+        if (!can_retry())
+            throw std::runtime_error("nonlinear retry limit exhausted");
+        if (!shrink_u && !shrink_p)
+            throw std::invalid_argument("nonlinear retry must shrink at least one relaxation channel");
+        ++retry_count_;
+        if (shrink_u)
+            alpha_scale_u_ *= controls_.relaxation_shrink;
+        if (shrink_p)
+            alpha_scale_p_ *= controls_.relaxation_shrink;
+    }
+
+    // Record a bounded retry without applying the generic relaxation shrink.
+    // Specialized recovery logic may already have reduced the effective
+    // relaxation factor and must not be compounded by a second scaling.
+    void retry_without_relaxation()
     {
         if (!can_retry())
             throw std::runtime_error("nonlinear retry limit exhausted");
         ++retry_count_;
-        alpha_scale_ *= controls_.relaxation_shrink;
     }
 
     double alpha_u(double base) const
     {
-        return std::max(controls_.minimum_alpha_u, base * alpha_scale_);
+        return std::max(controls_.minimum_alpha_u, base * alpha_scale_u_);
     }
 
     double alpha_p(double base) const
     {
-        return std::max(controls_.minimum_alpha_p, base * alpha_scale_);
+        return std::max(controls_.minimum_alpha_p, base * alpha_scale_p_);
     }
 
     std::size_t retries() const { return retry_count_; }
@@ -395,7 +411,8 @@ public:
 private:
     NonlinearRetryControls controls_;
     std::size_t retry_count_ = 0;
-    double alpha_scale_ = 1.0;
+    double alpha_scale_u_ = 1.0;
+    double alpha_scale_p_ = 1.0;
 };
 
 } // namespace cfdx::physics
