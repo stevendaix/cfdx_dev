@@ -2983,7 +2983,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 frozen_state_valid = false;
-                retry_controller.reject(severe_u, severe_p);
+                // The severe guard has already reduced the responsible effective
+                // relaxation factor. Count the retry without applying the generic
+                // retry-controller shrink a second time.
+                retry_controller.retry_without_relaxation();
                 continue;
             }
         }
