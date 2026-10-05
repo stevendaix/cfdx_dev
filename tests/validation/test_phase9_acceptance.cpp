@@ -142,7 +142,8 @@ RunResult run_couette_channel(
     KrylovModel coupled_requested_krylov = KrylovModel::Auto,
     PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
     KrylovModel pressure_requested_krylov = KrylovModel::Auto,
-    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto)
+    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto,
+    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -208,6 +209,7 @@ RunResult run_couette_channel(
     c.diagnostics.debug_cell = 33;
     c.coupled_linear_solver.krylov = coupled_requested_krylov;
     c.coupled_linear_solver.preconditioner = coupled_preconditioner;
+    c.coupling.schur_model = schur_model;
     // The pressure sub-problem request is a separate request. It is applied from
     // the parameters the caller announces before the run, so the announced
     // request cannot drift from the configured one.
@@ -365,6 +367,7 @@ int main(int argc, char** argv)
             PreconditionerModel coupled_preconditioner;
             KrylovModel pressure_krylov = KrylovModel::Auto;
             PreconditionerModel pressure_preconditioner = PreconditionerModel::Auto;
+            CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal;
         };
 
         // The smoke set spans segregated, multi-corrector and monolithic
@@ -392,6 +395,23 @@ int main(int argc, char** argv)
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
+                {"COUPLED/SIMPLE-Schur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::SIMPLE},
+                {"COUPLED/SIMPLEC-Schur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::SIMPLEC},
+                {"COUPLED/LSC/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::LSC},
+                {"COUPLED/BFBT/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::BFBT},
+
                 {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
                  ConvectionScheme::UPWIND, true, KrylovModel::Auto,
              PreconditionerModel::Auto},
@@ -481,6 +501,7 @@ int main(int argc, char** argv)
                       << to_string(test.pressure_krylov)
                       << " pressure_requested_preconditioner="
                       << to_string(test.pressure_preconditioner)
+                      << " schur_model=" << to_string(test.schur_model)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -531,6 +552,12 @@ int main(int argc, char** argv)
                           << " pressure_null_space="
                           << resolved_name(solve_result.pressure_linear_plan_resolved,
                                            to_string(solve_result.pressure_linear_plan.null_space))
+                          << " schur_requested="
+                          << to_string(solve_result.requested_coupled_schur_model)
+                          << " schur_resolved="
+                          << (solve_result.coupled_schur_model_resolved
+                                  ? to_string(solve_result.resolved_coupled_schur_model)
+                                  : "none")
                           << "\n";
 
                 const auto error = profile_error(result, 8, 16);
@@ -595,6 +622,11 @@ int main(int argc, char** argv)
                             if (result.solve.coupled_linear_plan.preconditioner !=
                                 test.coupled_preconditioner)
                                 gates.push_back("n8_coupled_preconditioner_mismatch");
+                            if (!solve_result.coupled_schur_model_resolved)
+                                gates.push_back("n8_coupled_schur_unresolved");
+                            if (solve_result.coupled_schur_model_resolved &&
+                                solve_result.resolved_coupled_schur_model != test.schur_model)
+                                gates.push_back("n8_coupled_schur_model_mismatch");
                         }
                     }
                     if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
