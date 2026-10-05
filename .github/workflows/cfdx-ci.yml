@@ -153,10 +153,22 @@ jobs:
       - name: Final CI gate
         if: always()
         run: |
-          if [[ "${{ steps.build.outcome }}" != "success" ||
-                "${{ steps.ctest.outcome }}" != "success" ||
-                "${{ steps.python.outcome }}" == "failure" ]]; then
+          build_outcome='${{ steps.build.outcome }}'
+          ctest_outcome='${{ steps.ctest.outcome }}'
+          python_outcome='${{ steps.python.outcome }}'
+
+          echo "Final CI gate: build=$build_outcome ctest=$ctest_outcome python=$python_outcome"
+
+          if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
+
+          # Python regression is Release-only. A skipped Python step in
+          # DebugSanitizers is therefore a valid state, not a failure.
+          if [[ "${{ matrix.build_type }}" == "Release" && "$python_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+
           echo "CFDX CI FINAL DECISION: PASS"
