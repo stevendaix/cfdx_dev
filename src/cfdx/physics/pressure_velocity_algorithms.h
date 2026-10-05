@@ -53,7 +53,7 @@ struct CouplingControls {
     double coupled_linear_tolerance = 1e-10;
     // Explicit pressure-Schur approximation for the coupled production path.
     // Unsupported models must be rejected; there is no implicit fallback.
-    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal;
+    CoupledSchurModel schur_model = CoupledSchurModel::PCD;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
