@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace cfdx::physics {
 
@@ -23,6 +24,22 @@ enum class PressureVelocityAlgorithm {
     COUPLED
 };
 
+enum class CoupledSchurModel { BlockLocal, PCD };
+
+inline const char* to_string(CoupledSchurModel model) noexcept {
+    switch (model) {
+        case CoupledSchurModel::BlockLocal: return "block_local";
+        case CoupledSchurModel::PCD: return "pcd";
+    }
+    return "unknown";
+}
+
+inline bool parse_coupled_schur_model(const std::string& name, CoupledSchurModel& out) {
+    if (name == "block_local") { out = CoupledSchurModel::BlockLocal; return true; }
+    if (name == "pcd") { out = CoupledSchurModel::PCD; return true; }
+    return false;
+}
+
 struct CouplingControls {
     double alpha_u = 0.7;
     double alpha_p = 0.3;
@@ -34,6 +51,9 @@ struct CouplingControls {
     // after pressure gauge fixing.
     std::size_t coupled_max_iterations = 2000;
     double coupled_linear_tolerance = 1e-10;
+    // Explicit pressure-Schur approximation for the coupled production path.
+    // Unsupported models must be rejected; there is no implicit fallback.
+    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
