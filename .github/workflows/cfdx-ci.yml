@@ -83,13 +83,14 @@ jobs:
         continue-on-error: true
         run: |
           if [[ "${{ matrix.build_type }}" == "DebugSanitizers" ]]; then
-            # The complex wall-distance benchmark is a performance/validation
-            # workload, not a sanitizer regression test. It currently costs
-            # ~273 s under ASan/UBSan and is covered by long validation.
-            # The observed-order campaign is excluded for the same reason: it
-            # costs ~96 s in Release and exceeds the sanitizer budget. It still
-            # gates merges through the Release job.
-            ctest --test-dir build -LE 'long|benchmark|campaign' --output-on-failure --no-tests=error --parallel 6
+            # DebugSanitizers retains the full unit/regression suite, but excludes
+            # individually tagged sanitizer-slow qualification cases. These are
+            # expensive numerical workloads whose Release coverage remains
+            # merge-gating here and whose full validation is also exercised by
+            # cfdx-validation.yml. The sanitizer-slow label is intentionally
+            # narrow and is based on measured sanitizer runtime, not on test
+            # importance.
+            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6
           else
             ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
           fi
