@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/lsc_bfbt_schur.h"
+#include "cfdx/core/linalg/simplerc_schur.h"
 
 #include <algorithm>
 #include <array>
@@ -37,7 +38,9 @@ enum class CoupledSchurApproximationModel {
     BlockLocal,
     PCD,
     LSC,
-    BFBT
+    BFBT,
+    SIMPLE,
+    SIMPLEC
 };
 
 struct CoupledBlockSchurOptions {
@@ -87,6 +90,10 @@ public:
         algebraic_schur_ = std::move(schur);
     }
 
+    void set_simpler_schur(std::unique_ptr<SimplerSchurApproximation> schur) {
+        simpler_schur_ = std::move(schur);
+    }
+
     bool setup(const SparseMatrix& A) override {
         reset();
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
@@ -106,6 +113,27 @@ public:
             if (!pcd_schur_->setup(*pcd_blocks_))
                 return fail("PCD Schur approximation setup failed");
             pcd_ready_ = true;
+            ready_ = true;
+            return true;
+        }
+        if (options_.schur_approximation == CoupledSchurApproximationModel::SIMPLE ||
+            options_.schur_approximation == CoupledSchurApproximationModel::SIMPLEC) {
+            if (!simpler_schur_)
+                return fail("SIMPLE/SIMPLEC Schur approximation was not configured");
+            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            simpler_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
+            if (!simpler_schur_->setup(*simpler_blocks_))
+                return fail("SIMPLE/SIMPLEC Schur approximation setup failed");
+            schur_ = simpler_schur_->assembled_operator();
+            if (schur_.n_rows() != n_cells_ || schur_.nnz() == 0)
+                return fail("SIMPLE/SIMPLEC Schur assembly failed");
+            if (!pressure_amg_.setup(schur_))
+                return fail(std::string("pressure SIMPLE/SIMPLEC AMG setup failed: ") +
+                            pressure_amg_.last_error());
+            simpler_ready_ = true;
             ready_ = true;
             return true;
         }
@@ -154,6 +182,42 @@ public:
         if (!candidate.prepare_numeric_state(A)) {
             last_error_ = candidate.last_error_;
             return false;
+        }
+
+        if (options_.schur_approximation == CoupledSchurApproximationModel::SIMPLE ||
+            options_.schur_approximation == CoupledSchurApproximationModel::SIMPLEC) {
+            if (!simpler_ready_ || !simpler_schur_ || !simpler_blocks_)
+                return fail_update("SIMPLE/SIMPLEC Schur approximation is not initialized");
+            const SparseMatrix new_Auu = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            const SparseMatrix new_G = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            const SparseMatrix new_D = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            const SparseMatrix new_C = extract_block(A, 1, 1, n_cells_, n_cells_);
+            if (!same_pattern(Auu_, new_Auu) || !same_pattern(G_, new_G) ||
+                !same_pattern(D_, new_D) || !same_pattern(C_, new_C))
+                return fail_update("SIMPLE/SIMPLEC coupled block graph changed; explicit setup() required");
+            std::copy(new_Auu.values_data(), new_Auu.values_data() + new_Auu.nnz(), Auu_.values_data());
+            std::copy(new_G.values_data(), new_G.values_data() + new_G.nnz(), G_.values_data());
+            std::copy(new_D.values_data(), new_D.values_data() + new_D.nnz(), D_.values_data());
+            std::copy(new_C.values_data(), new_C.values_data() + new_C.nnz(), C_.values_data());
+            simpler_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
+            if (!simpler_schur_->update_values(*simpler_blocks_))
+                return fail_update("SIMPLE/SIMPLEC Schur numeric update failed");
+            const SparseMatrix new_schur = simpler_schur_->assembled_operator();
+            if (new_schur.n_rows() != n_cells_ || new_schur.nnz() == 0)
+                return fail_update("SIMPLE/SIMPLEC Schur assembly failed during numeric update");
+            if (!same_pattern(schur_, new_schur))
+                return fail_update("SIMPLE/SIMPLEC Schur CSR pattern changed; explicit setup() required");
+            if (!pressure_amg_.update_values(new_schur)) {
+                last_error_ = pressure_amg_.last_error();
+                return false;
+            }
+            schur_ = new_schur;
+            velocity_inv_ = std::move(candidate.velocity_inv_);
+            velocity_inv_diag_ = std::move(candidate.velocity_inv_diag_);
+            row_ = std::move(candidate.row_);
+            col_ = std::move(candidate.col_);
+            val_ = std::move(candidate.val_);
+            return true;
         }
 
         if (!same_pattern(schur_, candidate.schur_)) {
@@ -598,7 +662,7 @@ private:
     }
 
     void reset() {
-        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); algebraic_ready_=false; algebraic_blocks_.reset(); last_error_.clear(); velocity_inv_.clear();
+        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); algebraic_ready_=false; algebraic_blocks_.reset(); simpler_ready_=false; simpler_blocks_.reset(); last_error_.clear(); velocity_inv_.clear();
         velocity_inv_diag_.clear();
         row_.clear(); col_.clear(); val_.clear(); schur_=SparseMatrix();
     }
@@ -620,8 +684,11 @@ private:
     std::unique_ptr<BlockOperator> pcd_blocks_;
     std::unique_ptr<SchurApproximation> algebraic_schur_;
     std::unique_ptr<BlockOperator> algebraic_blocks_;
+    std::unique_ptr<SimplerSchurApproximation> simpler_schur_;
+    std::unique_ptr<BlockOperator> simpler_blocks_;
     bool pcd_ready_{false};
     bool algebraic_ready_{false};
+    bool simpler_ready_{false};
     bool ready_{false};
     std::string last_error_;
 };
