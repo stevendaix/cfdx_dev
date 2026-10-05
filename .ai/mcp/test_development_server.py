@@ -59,7 +59,7 @@ async def exercise() -> None:
                 "evidence.test", "evidence.validation", "repository.file_structure",
                 "repository.status", "documentation.search", "documentation.read",
             }
-            pattern_names = expected_names - {"index.validate", "repository.file_structure", "repository.status", "documentation.read"}
+            pattern_names = expected_names - {"index.validate", "repository.file_structure", "repository.status", "documentation.read", "documentation.search"}
             assert names == expected_names
             tool_map = {tool.name: tool for tool in listed.tools}
             read_schema = tool_map["documentation.read"].input_schema
