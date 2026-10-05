@@ -76,3 +76,15 @@ All operations in this first surface are `READ_ONLY`. Tool annotations communica
 `.ai/mcp/test_development_server.py` exercises the server in-process through the MCP client and verifies the ten-tool surface, path-safety checks, stale-index reporting, and refusal to present stale evidence.
 
 The first phase specified architecture only; this adapter is the first executable Development MCP component. Transport-specific deployment and broader MCP integration tests remain future work.
+
+## Read-only Runtime MCP artifact surface
+
+The first executable Runtime MCP surface is deliberately read-only and inspects existing CFDX artifacts:
+
+| Operation | Input | Result |
+|---|---|---|
+| `case.inspect` | root-relative `.cfdx.h5` path | case attributes, configuration, dataset metadata, runtime-state presence |
+| `checkpoint.inspect` | root-relative `.dat.h5` path | checkpoint attributes, cell-ID presence, field metadata |
+
+Paths are confined to the configured runtime root. These tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
+
