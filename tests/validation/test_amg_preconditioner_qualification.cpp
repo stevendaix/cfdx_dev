@@ -586,7 +586,7 @@ int main() {
                           << " cg_status=" << static_cast<int>(cg.status)
                           << " cg_iterations=" << cg.iterations
                           << " cg_true_residual=" << cg_true_residual
-                          << '\\n';
+                          << '\n';
 
                 // A V-cycle must be a genuine contraction on the manufactured
                 // low-frequency mode. The independent CG solve must then reach
@@ -600,7 +600,8 @@ int main() {
             }
         }
     }
-\n    auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
+
+    auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {
         std::cout << label
                   << " status=" << static_cast<int>(result.status)
                   << " iterations=" << result.iterations
