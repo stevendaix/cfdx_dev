@@ -2019,6 +2019,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t adaptive_u_degradation_streak = 0;
     std::size_t adaptive_p_improvement_streak = 0;
     std::size_t adaptive_p_degradation_streak = 0;
+    std::size_t adaptive_u_recovery_cooldown = 0;
+    std::size_t adaptive_p_recovery_cooldown = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         bool stop_after_iteration = false;
@@ -2047,6 +2049,44 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        if (controls.adaptive_relaxation.enabled && result.history.size() > 1) {
+            // Severe residual jumps are overshoot events. Detect them every
+            // nonlinear iteration so a large jump cannot survive until the
+            // next four-iteration adaptation boundary.
+            const auto& previous = result.history[result.history.size() - 2];
+            const auto& current = result.history.back();
+            if (std::isfinite(previous.momentum_equation_residual_relative) &&
+                std::isfinite(current.momentum_equation_residual_relative) &&
+                previous.momentum_equation_residual_relative > 0.0 &&
+                adaptive_relaxation_severe_degradation(
+                    previous.momentum_equation_residual_relative,
+                    current.momentum_equation_residual_relative,
+                    controls.adaptive_relaxation)) {
+                effective_alpha_u = std::max(
+                    controls.adaptive_relaxation.min_alpha_u,
+                    effective_alpha_u - controls.adaptive_relaxation.decrease_step);
+                adaptive_u_improvement_streak = 0;
+                adaptive_u_degradation_streak = 0;
+                adaptive_u_recovery_cooldown =
+                    controls.adaptive_relaxation.recovery_cooldown_windows;
+            }
+            if (std::isfinite(previous.continuity_normalized) &&
+                std::isfinite(current.continuity_normalized) &&
+                previous.continuity_normalized > 0.0 &&
+                adaptive_relaxation_severe_degradation(
+                    previous.continuity_normalized,
+                    current.continuity_normalized,
+                    controls.adaptive_relaxation)) {
+                effective_alpha_p = std::max(
+                    controls.adaptive_relaxation.min_alpha_p,
+                    effective_alpha_p - controls.adaptive_relaxation.decrease_step);
+                adaptive_p_improvement_streak = 0;
+                adaptive_p_degradation_streak = 0;
+                adaptive_p_recovery_cooldown =
+                    controls.adaptive_relaxation.recovery_cooldown_windows;
+            }
+        }
+
         if (controls.adaptive_relaxation.enabled) {
             // Adapt the momentum and pressure relaxation independently. SIMPLE
             // couples the two equations, but their residuals measure different
@@ -2060,9 +2100,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto& current = result.history.back();
                 const auto& reference = result.history[result.history.size() - 1 - window];
 
-                if (std::isfinite(current.momentum_equation_residual_relative) &&
-                    std::isfinite(reference.momentum_equation_residual_relative) &&
-                    reference.momentum_equation_residual_relative > 0.0) {
+                if (adaptive_u_recovery_cooldown > 0) {
+                    --adaptive_u_recovery_cooldown;
+                    adaptive_u_improvement_streak = 0;
+                    adaptive_u_degradation_streak = 0;
+                } else if (std::isfinite(current.momentum_equation_residual_relative) &&
+                           std::isfinite(reference.momentum_equation_residual_relative) &&
+                           reference.momentum_equation_residual_relative > 0.0) {
                     effective_alpha_u = adapt_relaxation_factor_windowed(
                         effective_alpha_u,
                         reference.momentum_equation_residual_relative,
@@ -2077,9 +2121,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     adaptive_u_degradation_streak = 0;
                 }
 
-                if (std::isfinite(current.continuity_normalized) &&
-                    std::isfinite(reference.continuity_normalized) &&
-                    reference.continuity_normalized > 0.0) {
+                if (adaptive_p_recovery_cooldown > 0) {
+                    --adaptive_p_recovery_cooldown;
+                    adaptive_p_improvement_streak = 0;
+                    adaptive_p_degradation_streak = 0;
+                } else if (std::isfinite(current.continuity_normalized) &&
+                           std::isfinite(reference.continuity_normalized) &&
+                           reference.continuity_normalized > 0.0) {
                     effective_alpha_p = adapt_relaxation_factor_windowed(
                         effective_alpha_p,
                         reference.continuity_normalized,
