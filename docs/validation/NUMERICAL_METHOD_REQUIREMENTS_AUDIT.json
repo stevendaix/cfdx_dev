@@ -690,7 +690,7 @@
         "docs/validation/PCD_SCHUR_QUALIFICATION.md",
         "tests/unit/test_pcd_schur.cpp"
       ],
-      "note": "Implementation and integration exist; physical qualification remains incomplete."
+      "note": "Implementation and production integration exist (#635); physical qualification remains incomplete because the -Fp^{-1} versus -Kp^{-1} operator ordering is untested on a non-zero-convection case, and preconditioner.pcd remains Planned in the registry."
     },
     {
       "package_id": "N8",
