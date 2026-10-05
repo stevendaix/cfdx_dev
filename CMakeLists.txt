@@ -529,6 +529,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         LABELS "n7;qualification;validation;sanitizer-slow"
         TIMEOUT 1800)
     add_cfdx_test(test_n7_causal_overshoot_regression tests/unit/test_n7_causal_overshoot_regression.cpp)
+    set_tests_properties(test_n7_causal_overshoot_regression PROPERTIES
+        LABELS "n7;regression;unit")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
