@@ -12,7 +12,21 @@
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-namespace {\n\nclass TestSparseOperator final : public LinearOperatorBase {\npublic:\n    explicit TestSparseOperator(const SparseMatrix& A) : A_(A) {}\n    std::size_t rows() const noexcept override { return A_.n_rows(); }\n    std::size_t cols() const noexcept override { return A_.n_cols(); }\n    void apply(const Vector& x, Vector& y) const override {\n        const auto values = A_.matvec(x);\n        if (y.size() != values.size()) y.resize(values.size());\n        for (std::size_t i = 0; i < values.size(); ++i) y(i) = values[i];\n    }\nprivate:\n    SparseMatrix A_;\n};
+namespace {
+
+class TestSparseOperator final : public LinearOperatorBase {
+public:
+    explicit TestSparseOperator(const SparseMatrix& A) : A_(A) {}
+    std::size_t rows() const noexcept override { return A_.n_rows(); }
+    std::size_t cols() const noexcept override { return A_.n_cols(); }
+    void apply(const Vector& x, Vector& y) const override {
+        const auto values = A_.matvec(x);
+        if (y.size() != values.size()) y.resize(values.size());
+        for (std::size_t i = 0; i < values.size(); ++i) y(i) = values[i];
+    }
+private:
+    SparseMatrix A_;
+};
 
 SparseMatrix make_anisotropic_diffusion(std::size_t nx,
                                         std::size_t ny,
@@ -90,7 +104,8 @@ void run_amg_case(const SparseMatrix& A,
               << " fine=" << A.n_rows();
 
     if (!setup_ok) {
-        std::cout << " structural=FAIL" << '\n';
+        std::cout << " structural=FAIL" << '
+';
         structural_ok = false;
         return;
     }
@@ -116,7 +131,8 @@ void run_amg_case(const SparseMatrix& A,
               << " cg_iterations=" << result.iterations
               << " cg_true_residual=" << true_residual
               << " evidence=" << (finite_evidence ? "FINITE" : "NONFINITE")
-              << '\n';
+              << '
+';
 
     // This campaign establishes the measured applicability envelope; it does
     // not invent a universal iteration-count or convergence threshold. Setup,
@@ -156,7 +172,8 @@ int main() {
                       << " ax=" << ax
                       << " ay=" << ay
                       << " rows=" << A.n_rows()
-                      << " cols=" << A.n_cols() << '\n';
+                      << " cols=" << A.n_cols() << '
+';
 
             run_amg_case<NativeBoomerAMGPreconditioner>(
                 A, b, "NativeBoomerAMG", anisotropy, scale, structural_ok);
@@ -165,6 +182,7 @@ int main() {
 
     EXPECT_TRUE(structural_ok);
     std::cout << "N8 AMG anisotropy/scaling qualification: "
-              << (structural_ok ? "PASS" : "FAIL") << '\n';
+              << (structural_ok ? "PASS" : "FAIL") << '
+';
     return 0;
 }
