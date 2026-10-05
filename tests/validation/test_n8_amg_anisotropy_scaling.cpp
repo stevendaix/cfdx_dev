@@ -104,8 +104,7 @@ void run_amg_case(const SparseMatrix& A,
               << " fine=" << A.n_rows();
 
     if (!setup_ok) {
-        std::cout << " structural=FAIL" << '
-';
+        std::cout << " structural=FAIL" << '\\n';
         structural_ok = false;
         return;
     }
@@ -131,8 +130,7 @@ void run_amg_case(const SparseMatrix& A,
               << " cg_iterations=" << result.iterations
               << " cg_true_residual=" << true_residual
               << " evidence=" << (finite_evidence ? "FINITE" : "NONFINITE")
-              << '
-';
+              << '\\n';
 
     // This campaign establishes the measured applicability envelope; it does
     // not invent a universal iteration-count or convergence threshold. Setup,
@@ -172,8 +170,7 @@ int main() {
                       << " ax=" << ax
                       << " ay=" << ay
                       << " rows=" << A.n_rows()
-                      << " cols=" << A.n_cols() << '
-';
+                      << " cols=" << A.n_cols() << '\\n';
 
             run_amg_case<NativeBoomerAMGPreconditioner>(
                 A, b, "NativeBoomerAMG", anisotropy, scale, structural_ok);
@@ -182,7 +179,6 @@ int main() {
 
     EXPECT_TRUE(structural_ok);
     std::cout << "N8 AMG anisotropy/scaling qualification: "
-              << (structural_ok ? "PASS" : "FAIL") << '
-';
+              << (structural_ok ? "PASS" : "FAIL") << '\\n';
     return 0;
 }
