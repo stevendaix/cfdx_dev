@@ -78,9 +78,9 @@ public:
                           PressureSolve convection_diffusion_solve,
                           std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
                           std::optional<std::size_t> pressure_reference_cell = std::nullopt)
-        : pressure_mass_(&pressure_mass),
-          pressure_laplacian_(&pressure_laplacian),
-          pressure_convection_diffusion_(&pressure_convection_diffusion),
+        : pressure_mass_(pressure_mass),
+          pressure_laplacian_(pressure_laplacian),
+          pressure_convection_diffusion_(pressure_convection_diffusion),
           laplacian_solve_(std::move(laplacian_solve)),
           convection_diffusion_solve_(std::move(convection_diffusion_solve)),
           pressure_null_space_(std::move(pressure_null_space)),
@@ -102,9 +102,9 @@ public:
             pressure_convection_diffusion_ == nullptr)
             return false;
 
-        if (!valid_pressure_operator(*pressure_mass_, np) ||
-            !valid_pressure_operator(*pressure_laplacian_, np) ||
-            !valid_pressure_operator(*pressure_convection_diffusion_, np))
+        if (!valid_pressure_operator(pressure_mass_, np) ||
+            !valid_pressure_operator(pressure_laplacian_, np) ||
+            !valid_pressure_operator(pressure_convection_diffusion_, np))
             return false;
 
         if (pressure_null_space_ &&
@@ -114,13 +114,13 @@ public:
             *pressure_reference_cell_ >= np)
             return false;
 
-        blocks_ = &blocks;
+        pressure_size_ = np;
         graph_signature_ = graph_signature(blocks);
         return true;
     }
 
     bool update_values(const BlockOperator& blocks) override {
-        if (!blocks_ || graph_signature(blocks) != graph_signature_)
+        if (pressure_size_ == 0 || graph_signature(blocks) != graph_signature_)
             return false;
         const std::size_t np = blocks.pressure_size();
         if (!blocks.is_valid() || np == 0 ||
@@ -146,7 +146,7 @@ public:
                                 const SparseMatrix& pressure_mass,
                                 const SparseMatrix& pressure_laplacian,
                                 const SparseMatrix& pressure_convection_diffusion) {
-        if (!blocks_ || graph_signature(blocks) != graph_signature_)
+        if (pressure_size_ == 0 || graph_signature(blocks) != graph_signature_)
             return false;
 
         const std::size_t np = blocks.pressure_size();
@@ -155,26 +155,26 @@ public:
             !valid_pressure_operator(pressure_convection_diffusion, np))
             return false;
 
-        if (!same_pattern(*pressure_mass_, pressure_mass) ||
-            !same_pattern(*pressure_laplacian_, pressure_laplacian) ||
-            !same_pattern(*pressure_convection_diffusion_,
+        if (!same_pattern(pressure_mass_, pressure_mass) ||
+            !same_pattern(pressure_laplacian_, pressure_laplacian) ||
+            !same_pattern(pressure_convection_diffusion_,
                            pressure_convection_diffusion))
             return false;
 
-        pressure_mass_ = &pressure_mass;
-        pressure_laplacian_ = &pressure_laplacian;
-        pressure_convection_diffusion_ = &pressure_convection_diffusion;
+        pressure_mass_ = pressure_mass;
+        pressure_laplacian_ = pressure_laplacian;
+        pressure_convection_diffusion_ = pressure_convection_diffusion;
+        pressure_size_ = np;
         graph_signature_ = graph_signature(blocks);
         return true;
     }
 
     bool apply(const Vector& rhs_p, Vector& pressure) const override {
-        if (!blocks_ || !pressure_mass_ || !pressure_laplacian_ ||
-            !pressure_convection_diffusion_ || !laplacian_solve_ ||
+        if (pressure_size_ == 0 || !laplacian_solve_ ||
             !convection_diffusion_solve_)
             return false;
 
-        const std::size_t np = blocks_->pressure_size();
+        const std::size_t np = pressure_size_;
         if (rhs_p.size() != np)
             return false;
 
@@ -208,29 +208,24 @@ public:
         return pressure_null_space_.has_value();
     }
 
-    // PCD is intentionally exposed as an explicit Schur approximation object.
-    // The production coupled preconditioner must own the pressure operators and
-    // solver objects; this class only owns their non-owning views and therefore
-    // requires those objects to outlive the approximation.
+    // PCD owns snapshots of the pressure-side matrices, so matrix lifetime is
+    // independent of the caller after construction or numeric update. The solve
+    // callbacks are owned std::function values; any solver state captured by a
+    // callback remains the callback's responsibility.
     const SparseMatrix& pressure_mass() const {
-        if (!pressure_mass_) throw std::logic_error("PCD: pressure mass operator is not configured");
-        return *pressure_mass_;
+        return pressure_mass_;
     }
 
     const SparseMatrix& pressure_laplacian() const {
-        if (!pressure_laplacian_) throw std::logic_error("PCD: pressure Laplacian is not configured");
-        return *pressure_laplacian_;
+        return pressure_laplacian_;
     }
 
     const SparseMatrix& pressure_convection_diffusion() const {
-        if (!pressure_convection_diffusion_)
-            throw std::logic_error("PCD: pressure convection-diffusion operator is not configured");
-        return *pressure_convection_diffusion_;
+        return pressure_convection_diffusion_;
     }
 
     bool has_pressure_operators() const noexcept {
-        return pressure_mass_ && pressure_laplacian_ &&
-               pressure_convection_diffusion_;
+        return pressure_size_ != 0;
     }
 
 private:
@@ -287,16 +282,16 @@ private:
         add(blocks.G());
         add(blocks.D());
         add(blocks.C());
-        add(*pressure_mass_);
-        add(*pressure_laplacian_);
-        add(*pressure_convection_diffusion_);
+        add(pressure_mass_);
+        add(pressure_laplacian_);
+        add(pressure_convection_diffusion_);
         return GraphSignature{h};
     }
 
-    const BlockOperator* blocks_ = nullptr;
-    const SparseMatrix* pressure_mass_ = nullptr;
-    const SparseMatrix* pressure_laplacian_ = nullptr;
-    const SparseMatrix* pressure_convection_diffusion_ = nullptr;
+    std::size_t pressure_size_ = 0;
+    SparseMatrix pressure_mass_;
+    SparseMatrix pressure_laplacian_;
+    SparseMatrix pressure_convection_diffusion_;
     PressureSolve laplacian_solve_;
     PressureSolve convection_diffusion_solve_;
     std::optional<NullSpaceProjector> pressure_null_space_;
