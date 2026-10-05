@@ -155,6 +155,7 @@ def save_case_with_dat(
     target_dat = _paired_dat_path(case_path)
     restart = read_dat_restart(dat_path)
     write_dat_hdf5(target_dat, restart)
+    _write_checkpoint_revisions(target_dat, session)
 
     return case_path, target_dat
 
@@ -304,6 +305,7 @@ def read_case_with_dat(
         raise FileNotFoundError(candidate)
 
     restart = read_dat_restart(candidate)
+    _validate_checkpoint_revisions(candidate, session)
     case_cell_ids = _read_case_cell_ids(case_path)
     if case_cell_ids is not None:
         if restart.cell_ids is None:
