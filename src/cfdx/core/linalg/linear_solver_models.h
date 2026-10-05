@@ -49,6 +49,19 @@ enum class ModelAvailability { Available, Planned };
 
 enum class NullSpaceModel { None, Constant };
 
+enum class LinearScalingModel { None, Row, Column, RowColumn, SymmetricDiagonal };
+
+inline const char* to_string(LinearScalingModel value) {
+    switch (value) {
+        case LinearScalingModel::None: return "none";
+        case LinearScalingModel::Row: return "row";
+        case LinearScalingModel::Column: return "column";
+        case LinearScalingModel::RowColumn: return "row_column";
+        case LinearScalingModel::SymmetricDiagonal: return "symmetric_diagonal";
+    }
+    return "unknown";
+}
+
 struct SolverModelDescriptor {
     const char* name;
     ModelAvailability availability;
@@ -135,6 +148,8 @@ struct LinearSolverRequest {
     int gmres_restart = 40;
     bool allow_fallback = false;
     NullSpaceModel null_space = NullSpaceModel::None;
+    // Optional algebraic scaling. None preserves the historical production path.
+    LinearScalingModel scaling = LinearScalingModel::None;
 };
 
 struct MatrixCharacteristics {
