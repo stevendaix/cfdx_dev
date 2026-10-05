@@ -132,14 +132,23 @@ def main() -> int:
     parser.add_argument(
         "--output-root", type=Path, default=Path("build/n10-fixtures")
     )
+    parser.add_argument(
+        "--fixture", action="append", dest="fixtures",
+        help="verify only the selected fixture ids; repeat for multiple fixtures",
+    )
     parser.add_argument("--report", type=Path, default=None)
     args = parser.parse_args()
 
     sources, fixtures = parse_manifest(args.manifest)
+    selected = set(args.fixtures or [fixture["id"] for fixture in fixtures])
     results = []
     for fixture in fixtures:
+        if fixture["id"] not in selected:
+            continue
         source = sources.get(fixture.get("source", ""), {})
         results.append(verify_fixture(fixture, source, args.output_root))
+    if not results:
+        parser.error("no fixtures selected")
 
     verified = [item for item in results if item["status"] == "VERIFIED"]
     report = {
