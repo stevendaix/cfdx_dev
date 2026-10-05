@@ -4,7 +4,13 @@ import h5py
 import pytest
 
 from cfdx import CFDXSession
-from cfdx.case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from cfdx.case_io import (
+    _checkpoint_revision_attributes,
+    read_case,
+    read_case_with_dat,
+    save_case,
+    save_case_with_dat,
+)
 from cfdx.dat_io import DatField, DatRestart, read_dat_restart, write_dat_hdf5
 
 
@@ -24,6 +30,17 @@ def make_session() -> CFDXSession:
     session.iteration = 120
     session.time = 2.5
     return session
+
+
+def write_solver_dat(path: Path, restart: DatRestart, *, bind: bool = True) -> Path:
+    """Write a solver checkpoint, bound to the case identity by default.
+
+    Only an unbound checkpoint is a usable restart input, so a fixture that
+    exercises cell-id remapping has to stamp the same revision attributes the
+    canonical save path writes.
+    """
+    attributes = _checkpoint_revision_attributes(make_session()) if bind else None
+    return write_dat_hdf5(path, restart, attributes=attributes)
 
 
 def test_case_hdf5_roundtrip_preserves_configuration_without_numerical_state(tmp_path: Path) -> None:
@@ -54,7 +71,7 @@ def test_case_hdf5_contains_no_separate_checkpoint_file(tmp_path: Path) -> None:
 
 def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(
+    write_solver_dat(
         source,
         DatRestart(
             version=2,
@@ -79,15 +96,19 @@ def test_save_and_read_case_with_dat(tmp_path: Path) -> None:
     assert loaded.fields["U"].values == [1.0, 2.0, 3.0]
     assert loaded.fields["p"].values == [4.0]
     assert loaded_dat == dat_path
-    assert loaded_dat.read_bytes() == source.read_bytes()
     restart = read_dat_restart(loaded_dat)
-    assert restart.iteration == 120
-    assert restart.time == pytest.approx(2.5)
+    assert restart == read_dat_restart(source)
+    with h5py.File(loaded_dat, "r") as h5:
+        assert int(h5.attrs["checkpoint_schema_version"]) == 1
+        assert int(h5.attrs["case_revision"]) == 7
+        assert int(h5.attrs["mesh_revision"]) == 3
+        assert int(h5.attrs["physics_revision"]) == 5
+        assert int(h5.attrs["numerics_revision"]) == 6
 
 
 def test_read_case_with_dat_is_independent_of_case_state(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(source, DatRestart(2, 1, 120, 2.5, {"p": DatField("p", 1, [1.0])}))
+    write_solver_dat(source, DatRestart(2, 1, 120, 2.5, {"p": DatField("p", 1, [1.0])}))
     case_path, dat_path = save_case_with_dat(
         make_session(), tmp_path / "channel.cfdx.h5", source
     )
@@ -117,7 +138,7 @@ def test_save_case_preserves_existing_hdf5_mesh_data(tmp_path: Path) -> None:
 
 def test_read_case_with_dat_remaps_fields_to_case_cell_order(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(
+    write_solver_dat(
         source,
         DatRestart(
             version=2,
@@ -144,7 +165,7 @@ def test_read_case_with_dat_remaps_fields_to_case_cell_order(tmp_path: Path) -> 
 
 def test_read_case_with_dat_rejects_idless_dat_for_identified_mesh(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(
+    write_solver_dat(
         source,
         DatRestart(
             version=2,
@@ -164,7 +185,7 @@ def test_read_case_with_dat_rejects_idless_dat_for_identified_mesh(tmp_path: Pat
 
 def test_read_case_with_dat_rejects_different_cell_id_sets(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(
+    write_solver_dat(
         source,
         DatRestart(
             version=2,
@@ -185,7 +206,7 @@ def test_read_case_with_dat_rejects_different_cell_id_sets(tmp_path: Path) -> No
 
 def test_read_case_with_dat_rejects_extra_checkpoint_cell_ids(tmp_path: Path) -> None:
     source = tmp_path / "solver.dat"
-    write_dat_hdf5(
+    write_solver_dat(
         source,
         DatRestart(
             version=2,
@@ -201,4 +222,85 @@ def test_read_case_with_dat_rejects_extra_checkpoint_cell_ids(tmp_path: Path) ->
         h5.create_dataset("cell_ids", data=[10])
 
     with pytest.raises(ValueError, match="absent from target mesh"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_unbound_checkpoint(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    write_solver_dat(
+        source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}), bind=False
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="unsupported CFDX DAT checkpoint schema"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_missing_revision_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    attributes = _checkpoint_revision_attributes(make_session())
+    del attributes["numerics_revision"]
+    write_dat_hdf5(
+        source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}), attributes=attributes
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="missing compatibility metadata"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_non_integer_revision_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    write_solver_dat(source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}))
+    with h5py.File(source, "a") as h5:
+        h5.attrs["mesh_revision"] = "not-a-revision"
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="non-integer 'mesh_revision' binding"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_incompatible_revisions(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    attributes = _checkpoint_revision_attributes(make_session())
+    attributes["physics_revision"] = 99
+    write_dat_hdf5(
+        source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}), attributes=attributes
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="incompatible DAT checkpoint revisions"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_revision_before_reading_numerical_state(tmp_path: Path) -> None:
+    """An incompatible checkpoint must be rejected without its fields parsed."""
+    source = tmp_path / "solver.dat.h5"
+    attributes = _checkpoint_revision_attributes(make_session())
+    attributes["case_revision"] = 99
+    write_solver_dat(
+        source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])})
+    )
+    with h5py.File(source, "a") as h5:
+        for name, value in attributes.items():
+            h5.attrs[name] = value
+        # Any code path that parsed the numerical state before settling the case
+        # identity would trip this cell-count contradiction instead.
+        h5.attrs["cells"] = 4
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="incompatible DAT checkpoint revisions"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_unsupported_checkpoint_schema(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    attributes = _checkpoint_revision_attributes(make_session())
+    attributes["checkpoint_schema_version"] = 99
+    write_dat_hdf5(
+        source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}), attributes=attributes
+    )
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="unsupported CFDX DAT checkpoint schema"):
         read_case_with_dat(case_path, source)

@@ -177,8 +177,18 @@ def read_dat_restart(path: str | Path) -> DatRestart:
     return _read_text(path)
 
 
-def write_dat_hdf5(path: str | Path, restart: DatRestart) -> Path:
-    """Write a CFDX DAT checkpoint as an HDF5 container."""
+def write_dat_hdf5(
+    path: str | Path,
+    restart: DatRestart,
+    attributes: dict[str, int] | None = None,
+) -> Path:
+    """Write a CFDX DAT checkpoint as an HDF5 container.
+
+    ``attributes`` carries caller-owned root attributes such as the case
+    revision binding. They are written in the same file handle as the
+    checkpoint data so a published checkpoint is never observed without the
+    metadata that qualifies it.
+    """
     path = Path(path)
     _validate(restart)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +198,8 @@ def write_dat_hdf5(path: str | Path, restart: DatRestart) -> Path:
         h5.attrs["cells"] = restart.cells
         h5.attrs["iteration"] = restart.iteration
         h5.attrs["time"] = restart.time
+        for name, value in (attributes or {}).items():
+            h5.attrs[name] = value
         if restart.cell_ids is not None:
             h5.create_dataset("cell_ids", data=np.asarray(restart.cell_ids, dtype=np.uint64))
         group = h5.create_group("fields")
