@@ -7,6 +7,7 @@
 #include "common/test_harness.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
