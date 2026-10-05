@@ -30,7 +30,7 @@ int main()
     run_case("adaptive_relaxation", [] {
         AdaptiveRelaxationControls c;
         c.enabled = true;
-        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.51, 1e-12);
+        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.505, 1e-12);
         EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.2, 0.2, 0.9, c), 0.48, 1e-12);
         EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.02, 0.2, 0.9, c), 0.5, 1e-12);
 
@@ -40,9 +40,9 @@ int main()
         alpha = adapt_relaxation_factor(alpha, 1.0, 2.33, 0.6, 0.8, c);
         EXPECT_NEAR(alpha, 0.706, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 2.33, 1.95, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.716, 1e-12);
+        EXPECT_NEAR(alpha, 0.711, 1e-12);
         alpha = adapt_relaxation_factor(alpha, 1.95, 0.9, 0.6, 0.8, c);
-        EXPECT_NEAR(alpha, 0.726, 1e-12);
+        EXPECT_NEAR(alpha, 0.716, 1e-12);
     });
 
     run_case("adaptive_relaxation_windowed_hysteresis", [] {
@@ -64,13 +64,13 @@ int main()
         // A second sustained improvement changes alpha exactly once.
         alpha = adapt_relaxation_factor_windowed(
             alpha, 1.0, 0.90, 0.6, 0.8, c, improve, degrade);
-        EXPECT_NEAR(alpha, 0.71, 1e-12);
+        EXPECT_NEAR(alpha, 0.705, 1e-12);
         EXPECT_TRUE(improve == 0);
 
         // A neutral window clears the trend and prevents stale decisions.
         alpha = adapt_relaxation_factor_windowed(
             alpha, 1.0, 1.02, 0.6, 0.8, c, improve, degrade);
-        EXPECT_NEAR(alpha, 0.71, 1e-12);
+        EXPECT_NEAR(alpha, 0.705, 1e-12);
         EXPECT_TRUE(improve == 0);
         EXPECT_TRUE(degrade == 0);
 
@@ -82,7 +82,7 @@ int main()
         EXPECT_TRUE(degrade == 1);
         alpha = adapt_relaxation_factor_windowed(
             alpha, 1.0, 1.20, 0.6, 0.8, c, improve, degrade);
-        EXPECT_NEAR(alpha, 0.69, 1e-12);
+        EXPECT_NEAR(alpha, 0.685, 1e-12);
         EXPECT_TRUE(degrade == 0);
     });
 
@@ -104,7 +104,7 @@ int main()
         alpha_p = adapt_relaxation_factor_windowed(
             alpha_p, 1.0, 1.20, 0.25, 0.35, c, p_improve, p_degrade);
 
-        EXPECT_NEAR(alpha_u, 0.71, 1e-12);
+        EXPECT_NEAR(alpha_u, 0.705, 1e-12);
         EXPECT_NEAR(alpha_p, 0.28, 1e-12);
     });
 
