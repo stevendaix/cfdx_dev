@@ -2015,6 +2015,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
+    std::size_t adaptive_u_improvement_streak = 0;
+    std::size_t adaptive_u_degradation_streak = 0;
+    std::size_t adaptive_p_improvement_streak = 0;
+    std::size_t adaptive_p_degradation_streak = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         bool stop_after_iteration = false;
@@ -2043,21 +2047,53 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        if (controls.adaptive_relaxation.enabled && result.history.size() >= 2) {
-            const double current_metric =
-                result.history.back().nonlinear_convergence_metric;
-            const double previous_metric =
-                result.history[result.history.size() - 2].nonlinear_convergence_metric;
-            effective_alpha_u = adapt_relaxation_factor(
-                effective_alpha_u, previous_metric, current_metric,
-                controls.adaptive_relaxation.min_alpha_u,
-                controls.adaptive_relaxation.max_alpha_u,
-                controls.adaptive_relaxation);
-            effective_alpha_p = adapt_relaxation_factor(
-                effective_alpha_p, previous_metric, current_metric,
-                controls.adaptive_relaxation.min_alpha_p,
-                controls.adaptive_relaxation.max_alpha_p,
-                controls.adaptive_relaxation);
+        if (controls.adaptive_relaxation.enabled) {
+            // Adapt the momentum and pressure relaxation independently. SIMPLE
+            // couples the two equations, but their residuals measure different
+            // numerical mechanisms: momentum relaxation is controlled from the
+            // momentum-equation residual, while pressure relaxation is
+            // controlled from the normalized continuity imbalance. A single
+            // aggregate metric must not force both factors in the same direction.
+            const auto window = controls.adaptive_relaxation.adaptation_window;
+            if (window > 0 && result.history.size() > window &&
+                (result.history.size() - 1) % window == 0) {
+                const auto& current = result.history.back();
+                const auto& reference = result.history[result.history.size() - 1 - window];
+
+                if (std::isfinite(current.momentum_equation_residual_relative) &&
+                    std::isfinite(reference.momentum_equation_residual_relative) &&
+                    reference.momentum_equation_residual_relative > 0.0) {
+                    effective_alpha_u = adapt_relaxation_factor_windowed(
+                        effective_alpha_u,
+                        reference.momentum_equation_residual_relative,
+                        current.momentum_equation_residual_relative,
+                        controls.adaptive_relaxation.min_alpha_u,
+                        controls.adaptive_relaxation.max_alpha_u,
+                        controls.adaptive_relaxation,
+                        adaptive_u_improvement_streak,
+                        adaptive_u_degradation_streak);
+                } else {
+                    adaptive_u_improvement_streak = 0;
+                    adaptive_u_degradation_streak = 0;
+                }
+
+                if (std::isfinite(current.continuity_normalized) &&
+                    std::isfinite(reference.continuity_normalized) &&
+                    reference.continuity_normalized > 0.0) {
+                    effective_alpha_p = adapt_relaxation_factor_windowed(
+                        effective_alpha_p,
+                        reference.continuity_normalized,
+                        current.continuity_normalized,
+                        controls.adaptive_relaxation.min_alpha_p,
+                        controls.adaptive_relaxation.max_alpha_p,
+                        controls.adaptive_relaxation,
+                        adaptive_p_improvement_streak,
+                        adaptive_p_degradation_streak);
+                } else {
+                    adaptive_p_improvement_streak = 0;
+                    adaptive_p_degradation_streak = 0;
+                }
+            }
         }
 
         std::size_t pressure_correctors = configured_pcorr;

@@ -82,13 +82,32 @@ struct AdaptiveRelaxationControls {
     double max_alpha_p = 0.5;
     double improvement_threshold = 0.05;
     double degradation_threshold = 0.10;
+    // Small additive increases make the controller conservative near a stable
+    // fixed point; degradation remains twice as fast so overshoot is recovered
+    // more quickly than it is introduced.
+    double increase_step = 0.005;
+    double decrease_step = 0.02;
+    // Adapt against a short history window rather than consecutive noisy
+    // iterations. This prevents the controller from reacting to the
+    // pressure/velocity coupling oscillation of SIMPLE itself.
+    std::size_t adaptation_window = 4;
+    // Number of consecutive window decisions required before changing a
+    // relaxation factor. This is deliberately explicit: the controller is
+    // hysteretic and must not react to a single SIMPLE oscillation.
+    std::size_t required_trend_windows = 2;
 };
 
 inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
 {
     if (c.min_alpha_u <= 0.0 || c.max_alpha_u < c.min_alpha_u || c.max_alpha_u > 1.0 ||
         c.min_alpha_p <= 0.0 || c.max_alpha_p < c.min_alpha_p || c.max_alpha_p > 1.0 ||
-        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold)
+        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold ||
+        !(c.increase_step > 0.0) || !(c.decrease_step > 0.0) ||
+        c.increase_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.decrease_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.adaptation_window == 0 || c.required_trend_windows == 0)
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
 
@@ -109,16 +128,53 @@ inline double adapt_relaxation_factor(
         return safe_alpha;
     const double ratio = residual / previous_residual;
     if (ratio <= 1.0 - controls.improvement_threshold)
-        return std::min(max_alpha, safe_alpha * 1.10);
+        return std::min(max_alpha, safe_alpha + controls.increase_step);
     if (ratio >= 1.0 + controls.degradation_threshold)
-        return std::max(min_alpha, safe_alpha * 0.50);
-    // Slow-but-monotone improvement: creep up so a factor collapsed near the
-    // minimum by an early transient can recover once convergence resumes.
-    // Without this, a permanently-low alpha (e.g. after a transient jump) keeps
-    // the solver in an ultra-slow regime and the monotone residual decrease
-    // (ratio slightly below 1) never triggers the strong-improvement branch.
-    if (ratio < 1.0)
-        return std::min(max_alpha, safe_alpha * 1.05);
+        return std::max(min_alpha, safe_alpha - controls.decrease_step);
+    // Hysteresis band: retain the current relaxation and filter small residual noise.
+    return safe_alpha;
+}
+
+inline double adapt_relaxation_factor_windowed(
+    double alpha,
+    double reference_metric,
+    double current_metric,
+    double min_alpha,
+    double max_alpha,
+    const AdaptiveRelaxationControls& controls,
+    std::size_t& improvement_streak,
+    std::size_t& degradation_streak)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(alpha) || !std::isfinite(reference_metric) ||
+        !std::isfinite(current_metric) || reference_metric <= 0.0 ||
+        current_metric < 0.0)
+        throw std::invalid_argument("invalid windowed adaptive relaxation state");
+
+    const double safe_alpha = std::clamp(alpha, min_alpha, max_alpha);
+    if (!controls.enabled)
+        return safe_alpha;
+
+    const double ratio = current_metric / reference_metric;
+    if (ratio <= 1.0 - controls.improvement_threshold) {
+        ++improvement_streak;
+        degradation_streak = 0;
+    } else if (ratio >= 1.0 + controls.degradation_threshold) {
+        ++degradation_streak;
+        improvement_streak = 0;
+    } else {
+        improvement_streak = 0;
+        degradation_streak = 0;
+    }
+
+    if (improvement_streak >= controls.required_trend_windows) {
+        improvement_streak = 0;
+        return std::min(max_alpha, safe_alpha + controls.increase_step);
+    }
+    if (degradation_streak >= controls.required_trend_windows) {
+        degradation_streak = 0;
+        return std::max(min_alpha, safe_alpha - controls.decrease_step);
+    }
     return safe_alpha;
 }
 

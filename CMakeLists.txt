@@ -518,6 +518,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
     set_tests_properties(test_n7_convergence_qualification PROPERTIES
         LABELS "n7;qualification;validation;sanitizer-slow")
+    add_executable(test_n7_adaptive_relaxation_re400
+        tests/validation/test_n7_adaptive_relaxation_re400.cpp)
+    target_link_libraries(test_n7_adaptive_relaxation_re400 PRIVATE cfdx_core)
+    target_include_directories(test_n7_adaptive_relaxation_re400 PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n7_adaptive_relaxation_re400
+             COMMAND test_n7_adaptive_relaxation_re400)
+    set_tests_properties(test_n7_adaptive_relaxation_re400 PROPERTIES
+        LABELS "n7;qualification;validation;sanitizer-slow"
+        TIMEOUT 1800)
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
