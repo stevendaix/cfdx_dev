@@ -80,7 +80,7 @@ int main()
         EXPECT_TRUE(retry.retries() == std::size_t{1});
         EXPECT_NEAR(retry.alpha_u(0.705), 0.705, 1e-14);
         EXPECT_NEAR(alpha_u, 0.685, 1e-14);
-        EXPECT_EQ(history.size(), std::size_t{1});
+        EXPECT_TRUE(history.size() == std::size_t{1});
 
         const double retry_residual_u = 1.2;
         const bool severe_on_retry = adaptive_relaxation_severe_degradation(
@@ -89,8 +89,8 @@ int main()
         EXPECT_TRUE(!severe_on_retry);
         append_accepted(history, {11, retry_residual_u, 0.8, alpha_u, 0.300});
 
-        EXPECT_EQ(history.size(), std::size_t{2});
-        EXPECT_EQ(history.back().iteration, std::size_t{11});
+        EXPECT_TRUE(history.size() == std::size_t{2});
+        EXPECT_TRUE(history.back().iteration == std::size_t{11});
         EXPECT_NEAR(history.back().alpha_u, 0.685, 1e-14);
 
         const bool severe_p_without_alpha_increase =
