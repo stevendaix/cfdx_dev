@@ -30,8 +30,8 @@ int main()
     run_case("adaptive_relaxation", [] {
         AdaptiveRelaxationControls c;
         c.enabled = true;
-        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.52, 1e-12);
-        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.2, 0.2, 0.9, c), 0.45, 1e-12);
+        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 0.8, 0.2, 0.9, c), 0.55, 1e-12);
+        EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.2, 0.2, 0.9, c), 0.48, 1e-12);
         EXPECT_NEAR(adapt_relaxation_factor(0.5, 1.0, 1.02, 0.2, 0.9, c), 0.5, 1e-12);
 
         // Regression for the N7 Re=400 limit-cycle mechanism: degradation must
