@@ -1,9 +1,12 @@
 #include "cfdx/core/geometry/mesh_validator.h"
 #include "cfdx/io/mesh/mesh_importer.h"
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -19,6 +22,12 @@ struct FixtureResult {
     bool imported = false;
     bool topology_valid = false;
     bool geometry_quality_valid = false;
+    std::string validation_mode = "3d";
+    double min_cell_area_2d = 0.0;
+    double max_cell_area_2d = 0.0;
+    double min_edge_length_2d = 0.0;
+    double max_edge_length_2d = 0.0;
+    double max_aspect_ratio_2d = 0.0;
     std::string error;
     cfdx::core::MeshStats stats{};
     MeshQualityReport quality{};
@@ -101,6 +110,84 @@ static void write_report(const fs::path& path,
     out << "}\n";
 }
 
+static bool validate_2d_edge_mesh(const Mesh& mesh, FixtureResult& result) {
+    if (mesh.n_points() == 0 || mesh.n_cells() == 0 || mesh.n_faces() == 0)
+        return false;
+
+    double min_edge = std::numeric_limits<double>::infinity();
+    double max_edge = 0.0;
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const auto size = mesh.faces().face_size(f);
+        if (size != 2) return false;
+        const auto off = mesh.faces().face_offset(f);
+        const auto a = mesh.faces().vertices_data()[off];
+        const auto b = mesh.faces().vertices_data()[off + 1];
+        const double dx = mesh.points().x(b) - mesh.points().x(a);
+        const double dy = mesh.points().y(b) - mesh.points().y(a);
+        const double dz = mesh.points().z(b) - mesh.points().z(a);
+        const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (!(length > 0.0) || !std::isfinite(length)) return false;
+        min_edge = std::min(min_edge, length);
+        max_edge = std::max(max_edge, length);
+    }
+
+    double min_area = std::numeric_limits<double>::infinity();
+    double max_area = 0.0;
+    double max_aspect = 0.0;
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        const auto off = mesh.cells().cell_offset(c);
+        const auto count = mesh.cells().cell_size(c);
+        if (count < 3) return false;
+
+        double signed_area_twice = 0.0;
+        double lo_x = std::numeric_limits<double>::infinity();
+        double lo_y = std::numeric_limits<double>::infinity();
+        double hi_x = -std::numeric_limits<double>::infinity();
+        double hi_y = -std::numeric_limits<double>::infinity();
+
+        for (std::size_t k = 0; k < count; ++k) {
+            const auto face = mesh.cells().faces_data()[off + k];
+            const auto face_off = mesh.faces().face_offset(face);
+            const auto a = mesh.faces().vertices_data()[face_off];
+            const auto b = mesh.faces().vertices_data()[face_off + 1];
+            const bool owner = mesh.ownership().owner(face) == c;
+            const auto first = owner ? a : b;
+            const auto second = owner ? b : a;
+
+            const double x1 = mesh.points().x(first);
+            const double y1 = mesh.points().y(first);
+            const double x2 = mesh.points().x(second);
+            const double y2 = mesh.points().y(second);
+            signed_area_twice += x1 * y2 - x2 * y1;
+            lo_x = std::min({lo_x, x1, x2});
+            lo_y = std::min({lo_y, y1, y2});
+            hi_x = std::max({hi_x, x1, x2});
+            hi_y = std::max({hi_y, y1, y2});
+        }
+
+        const double area = std::abs(signed_area_twice) * 0.5;
+        const double ex = hi_x - lo_x;
+        const double ey = hi_y - lo_y;
+        const double emin = std::min(ex, ey);
+        const double emax = std::max(ex, ey);
+        if (!(area > 0.0) || !std::isfinite(area) ||
+            !(emin > 0.0) || !std::isfinite(emax))
+            return false;
+
+        min_area = std::min(min_area, area);
+        max_area = std::max(max_area, area);
+        max_aspect = std::max(max_aspect, emax / emin);
+    }
+
+    result.validation_mode = "2d_edge_mesh";
+    result.min_cell_area_2d = min_area;
+    result.max_cell_area_2d = max_area;
+    result.min_edge_length_2d = min_edge;
+    result.max_edge_length_2d = max_edge;
+    result.max_aspect_ratio_2d = max_aspect;
+    return true;
+}
+
 static FixtureResult qualify_fixture(const std::string& id, const fs::path& path) {
     FixtureResult result{id, path.string()};
     try {
@@ -122,8 +209,16 @@ static FixtureResult qualify_fixture(const std::string& id, const fs::path& path
         }
 
         result.stats = mesh.stats();
-        result.quality = cfdx::core::validate_mesh(mesh);
-        result.geometry_quality_valid = result.quality.ok;
+        bool all_edges = true;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            all_edges = all_edges && mesh.faces().face_size(f) == 2;
+        }
+        if (all_edges) {
+            result.geometry_quality_valid = validate_2d_edge_mesh(mesh, result);
+        } else {
+            result.quality = cfdx::core::validate_mesh(mesh);
+            result.geometry_quality_valid = result.quality.ok;
+        }
         if (!result.geometry_quality_valid) {
             for (const auto& error : result.quality.errors) {
                 if (!result.error.empty()) result.error += "; ";
