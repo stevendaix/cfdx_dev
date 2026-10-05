@@ -958,6 +958,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n9_s8_naca0012_contract
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
+        set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
+            LABELS "n9;qualification;validation;total-validation"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    if(Python3_Interpreter_FOUND)
         add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
         set_tests_properties(test_missing_qualification_case_contracts PROPERTIES LABELS "qualification;validation")
     endif()
