@@ -157,6 +157,25 @@ struct IncompressibleSolverControls {
     cfdx::core::LinearSolverRequest momentum_linear_solver;
     cfdx::core::LinearSolverRequest pressure_linear_solver;
     cfdx::core::LinearSolverRequest coupled_linear_solver;
+    // PCD pressure-side solves are nested inside the coupled preconditioner.
+    // They deliberately have independent solver controls so the outer coupled
+    // iteration budget can never become an accidental inner Krylov budget.
+    cfdx::core::LinearSolverRequest pcd_laplacian_linear_solver{
+        cfdx::core::KrylovModel::CG,
+        cfdx::core::PreconditionerModel::NativeAMG,
+        40,
+        false,
+        cfdx::core::NullSpaceModel::None};
+    cfdx::core::LinearSolverRequest pcd_convection_diffusion_linear_solver{
+        cfdx::core::KrylovModel::FGMRES,
+        cfdx::core::PreconditionerModel::ILU0,
+        40,
+        false,
+        cfdx::core::NullSpaceModel::None};
+    std::size_t pcd_laplacian_max_iterations = 100;
+    std::size_t pcd_convection_diffusion_max_iterations = 100;
+    double pcd_laplacian_tolerance = 1e-8;
+    double pcd_convection_diffusion_tolerance = 1e-8;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
     DiagnosticsControls diagnostics;
@@ -888,6 +907,8 @@ struct PcdPressureOperators {
     cfdx::core::SparseMatrix mass;
     cfdx::core::SparseMatrix laplacian;
     cfdx::core::SparseMatrix convection_diffusion;
+    std::unique_ptr<cfdx::core::Preconditioner> laplacian_preconditioner;
+    std::unique_ptr<cfdx::core::Preconditioner> convection_diffusion_preconditioner;
 };
 
 inline cfdx::core::SparseMatrix impose_pcd_reference_row(
@@ -1650,40 +1671,89 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
                 reference_cell, ConvectionScheme::UPWIND));
 
-        auto solve_kp = [pcd_ops, max_iterations, tolerance](
+        const auto prepare_pcd_solver =
+            [](const cfdx::core::SparseMatrix& matrix,
+               const cfdx::core::LinearSolverRequest& request) {
+                if (request.krylov == cfdx::core::KrylovModel::Auto ||
+                    request.preconditioner == cfdx::core::PreconditionerModel::Auto)
+                    throw std::invalid_argument(
+                        "PCD nested solvers require explicit Krylov and preconditioner models");
+                auto preconditioner =
+                    cfdx::core::make_scalar_preconditioner(request.preconditioner);
+                if (!preconditioner || !preconditioner->setup(matrix))
+                    throw std::runtime_error(
+                        "PCD nested pressure preconditioner setup failed");
+                return preconditioner;
+            };
+
+        pcd_ops->laplacian_preconditioner =
+            prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver);
+        pcd_ops->convection_diffusion_preconditioner =
+            prepare_pcd_solver(
+                pcd_ops->convection_diffusion,
+                controls.pcd_convection_diffusion_linear_solver);
+
+        const auto solve_kp = [pcd_ops, controls](
             const Vector& rhs, Vector& x) {
             const auto& matrix = pcd_ops->laplacian;
-            LinearOperator op{
-                matrix.n_rows(),
-                [&matrix](const Vector& input, Vector& output) {
-                    const auto values = matrix.matvec(input);
-                    if (output.size() != values.size())
-                        output.resize(values.size());
-                    for (std::size_t i = 0; i < values.size(); ++i)
-                        output(i) = values[i];
-                }};
-            const auto result = solve_gmres(
-                op, rhs, x,
-                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
-                max_iterations, tolerance);
+            auto* preconditioner = pcd_ops->laplacian_preconditioner.get();
+            const int restart = std::min<int>(
+                controls.pcd_laplacian_linear_solver.gmres_restart,
+                static_cast<int>(matrix.n_rows()));
+            cfdx::core::SolverResult result;
+            if (controls.pcd_laplacian_linear_solver.krylov ==
+                cfdx::core::KrylovModel::CG) {
+                result = solve_cg_prepared(
+                    matrix, rhs, x, *preconditioner,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance);
+            } else if (controls.pcd_laplacian_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::GMRES) {
+                result = solve_gmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance,
+                    preconditioner, {}, {}, false);
+            } else if (controls.pcd_laplacian_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::FGMRES) {
+                result = solve_fgmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance,
+                    preconditioner, {}, {}, false);
+            } else {
+                throw std::invalid_argument(
+                    "unsupported PCD Laplacian Krylov model");
+            }
             return result.status == SolverStatus::CONVERGED;
         };
-        auto solve_fp = [pcd_ops, max_iterations, tolerance](
+
+        const auto solve_fp = [pcd_ops, controls](
             const Vector& rhs, Vector& x) {
             const auto& matrix = pcd_ops->convection_diffusion;
-            LinearOperator op{
-                matrix.n_rows(),
-                [&matrix](const Vector& input, Vector& output) {
-                    const auto values = matrix.matvec(input);
-                    if (output.size() != values.size())
-                        output.resize(values.size());
-                    for (std::size_t i = 0; i < values.size(); ++i)
-                        output(i) = values[i];
-                }};
-            const auto result = solve_fgmres(
-                op, rhs, x,
-                static_cast<int>(std::min<std::size_t>(128, matrix.n_rows())),
-                max_iterations, tolerance);
+            auto* preconditioner = pcd_ops->convection_diffusion_preconditioner.get();
+            const int restart = std::min<int>(
+                controls.pcd_convection_diffusion_linear_solver.gmres_restart,
+                static_cast<int>(matrix.n_rows()));
+            cfdx::core::SolverResult result;
+            if (controls.pcd_convection_diffusion_linear_solver.krylov ==
+                cfdx::core::KrylovModel::GMRES) {
+                result = solve_gmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_convection_diffusion_max_iterations,
+                    controls.pcd_convection_diffusion_tolerance,
+                    preconditioner, {}, {}, false);
+            } else if (controls.pcd_convection_diffusion_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::FGMRES) {
+                result = solve_fgmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_convection_diffusion_max_iterations,
+                    controls.pcd_convection_diffusion_tolerance,
+                    preconditioner, {}, {}, false);
+            } else {
+                throw std::invalid_argument(
+                    "PCD convection-diffusion solve requires GMRES or FGMRES");
+            }
             return result.status == SolverStatus::CONVERGED;
         };
 
