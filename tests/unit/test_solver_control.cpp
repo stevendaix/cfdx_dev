@@ -45,6 +45,21 @@ int main()
         EXPECT_NEAR(alpha, 0.716, 1e-12);
     });
 
+    run_case("adaptive_relaxation_severe_overshoot_guard", [] {
+        AdaptiveRelaxationControls c;
+        c.enabled = true;
+
+        EXPECT_TRUE(adaptive_relaxation_severe_degradation(1.0, 2.0, c));
+        EXPECT_FALSE(adaptive_relaxation_severe_degradation(1.0, 1.99, c));
+
+        double alpha = 0.78;
+        alpha = std::max(c.min_alpha_u, alpha - c.decrease_step);
+        EXPECT_NEAR(alpha, 0.76, 1e-12);
+
+        c.recovery_cooldown_windows = 2;
+        EXPECT_TRUE(c.recovery_cooldown_windows == 2);
+    });
+
     run_case("adaptive_relaxation_windowed_hysteresis", [] {
         AdaptiveRelaxationControls c;
         c.enabled = true;
