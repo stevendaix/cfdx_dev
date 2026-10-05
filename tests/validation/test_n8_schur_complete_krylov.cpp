@@ -253,6 +253,14 @@ int main() {
             const Dense S =
                 subtract(C, multiply(multiply(D, Auu_inv), G));
             const Dense S_inv = inverse(S);
+            const Dense Q_inv = [&] {
+                Dense q(Auu.size(), std::vector<double>(Auu.size(), 0.0));
+                for (std::size_t i = 0; i < Auu.size(); ++i)
+                    q[i][i] = 1.0 / Auu[i][i];
+                return q;
+            }();
+            const Dense P = multiply(multiply(D, Q_inv), G);
+            const Dense P_inv = inverse(P);
 
             const auto Mp = make_sparse(
                 cfg.n * cfg.n, cfg.n * cfg.n,
@@ -369,8 +377,8 @@ int main() {
                 run_method("simplec", simplec_setup_us, simplec_pc, rhs);
 
             const auto pressure_solve =
-                [S_inv](const Vector& r, Vector& z) {
-                    z = matvec(S_inv, r);
+                [P_inv](const Vector& r, Vector& z) {
+                    z = matvec(P_inv, r);
                     return true;
                 };
             const std::vector<double> qdiag = [&] {
