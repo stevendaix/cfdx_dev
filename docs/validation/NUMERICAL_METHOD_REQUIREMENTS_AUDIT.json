@@ -650,9 +650,11 @@
     {
       "package_id": "N8",
       "requirement": "exact algebraic Schur oracle",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+        "src/cfdx/core/linalg/exact_schur.h",
+        "tests/unit/test_n9_schur_oracle.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp"
       ]
     },
     {
@@ -681,8 +683,14 @@
     {
       "package_id": "N8",
       "requirement": "PCD Schur approximation",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/pcd_schur.h",
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "docs/validation/PCD_SCHUR_QUALIFICATION.md",
+        "tests/unit/test_pcd_schur.cpp"
+      ],
+      "note": "Implementation and integration exist; physical qualification remains incomplete."
     },
     {
       "package_id": "N8",
@@ -705,16 +713,21 @@
       "requirement": "SIMPLE",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_registry.h"
-      ]
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/linalg/simplerc_schur.h"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
     },
     {
       "package_id": "N9",
       "requirement": "SIMPLEC",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_registry.h"
-      ]
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/linalg/simplerc_schur.h",
+        "tests/unit/test_simplerc_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
     },
     {
       "package_id": "N9",
@@ -1196,6 +1209,102 @@
         "tests/unit/test_local_time_stepping.cpp",
         "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Exact Schur oracle",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/core/linalg/exact_schur.h",
+        "tests/unit/test_n9_schur_oracle.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Block Schur reference",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "tests/validation/test_n8_schur_production_benchmark.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "PCD Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/pcd_schur.h",
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "docs/validation/PCD_SCHUR_QUALIFICATION.md"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "LSC Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "BFBt Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "MGR Schur path",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "src/cfdx/core/linalg/linear_solver_models.h"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "SIMPLER",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Yosida",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Cahouet–Chabard",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Augmented-Lagrangian Schur",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Inexact Uzawa",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
     }
   ]
 }
