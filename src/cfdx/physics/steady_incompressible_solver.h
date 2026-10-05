@@ -1850,6 +1850,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
+    std::size_t adaptive_improvement_streak = 0;
+    std::size_t adaptive_degradation_streak = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         bool stop_after_iteration = false;
@@ -1879,11 +1881,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         if (controls.adaptive_relaxation.enabled) {
-            // SIMPLE residuals contain a strong odd/even component from the
-            // pressure-velocity coupling. Feed the adaptive controller a
-            // short-window trend instead of reacting to every iteration.
-            // This keeps the additive bounds while preventing a deterministic
-            // alpha oscillation around the nominal value.
+            // Require a sustained trend before changing relaxation. A single
+            // bad SIMPLE iteration is not sufficient evidence of instability:
+            // pressure-velocity coupling naturally produces alternating
+            // residuals. Two consecutive window-level decisions in the same
+            // direction are required before applying one bounded step.
             const auto window = controls.adaptive_relaxation.adaptation_window;
             if (window > 0 && result.history.size() > window &&
                 (result.history.size() - 1) % window == 0) {
@@ -1892,16 +1894,35 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double reference_metric =
                     result.history[result.history.size() - 1 - window]
                         .nonlinear_convergence_metric;
-                effective_alpha_u = adapt_relaxation_factor(
-                    effective_alpha_u, reference_metric, current_metric,
-                    controls.adaptive_relaxation.min_alpha_u,
-                    controls.adaptive_relaxation.max_alpha_u,
-                    controls.adaptive_relaxation);
-                effective_alpha_p = adapt_relaxation_factor(
-                    effective_alpha_p, reference_metric, current_metric,
-                    controls.adaptive_relaxation.min_alpha_p,
-                    controls.adaptive_relaxation.max_alpha_p,
-                    controls.adaptive_relaxation);
+                const double ratio = current_metric / reference_metric;
+                if (ratio <= 1.0 - controls.adaptive_relaxation.improvement_threshold) {
+                    ++adaptive_improvement_streak;
+                    adaptive_degradation_streak = 0;
+                } else if (ratio >= 1.0 + controls.adaptive_relaxation.degradation_threshold) {
+                    ++adaptive_degradation_streak;
+                    adaptive_improvement_streak = 0;
+                } else {
+                    adaptive_improvement_streak = 0;
+                    adaptive_degradation_streak = 0;
+                }
+                constexpr std::size_t required_streak = 2;
+                if (adaptive_improvement_streak >= required_streak) {
+                    effective_alpha_u = std::min(
+                        controls.adaptive_relaxation.max_alpha_u,
+                        effective_alpha_u + controls.adaptive_relaxation.increase_step);
+                    effective_alpha_p = std::min(
+                        controls.adaptive_relaxation.max_alpha_p,
+                        effective_alpha_p + controls.adaptive_relaxation.increase_step);
+                    adaptive_improvement_streak = 0;
+                } else if (adaptive_degradation_streak >= required_streak) {
+                    effective_alpha_u = std::max(
+                        controls.adaptive_relaxation.min_alpha_u,
+                        effective_alpha_u - controls.adaptive_relaxation.decrease_step);
+                    effective_alpha_p = std::max(
+                        controls.adaptive_relaxation.min_alpha_p,
+                        effective_alpha_p - controls.adaptive_relaxation.decrease_step);
+                    adaptive_degradation_streak = 0;
+                }
             }
         }
 
