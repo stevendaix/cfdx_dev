@@ -88,7 +88,25 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
             if "fields" not in h5:
                 return {"ok": False, "errors": ["checkpoint has no fields group"]}
             fields = [{"name": name, "shape": list(dataset.shape), "dtype": str(dataset.dtype), "size": int(dataset.size)} for name, dataset in h5["fields"].items()]
-            return {"ok": True, "artifact": "checkpoint", "path": path.name, "attributes": _attributes(h5), "cell_ids_present": "cell_ids" in h5, "fields": fields}
+            attributes = _attributes(h5)
+            required_metadata = ("version", "cells", "iteration", "time")
+            missing_metadata = [name for name in required_metadata if name not in attributes]
+            if missing_metadata:
+                return {"ok": False, "errors": [f"checkpoint is missing required metadata: {missing_metadata}"]}
+            try:
+                cells = int(attributes["cells"])
+                iteration = int(attributes["iteration"])
+                time_value = float(attributes["time"])
+            except (TypeError, ValueError) as exc:
+                return {"ok": False, "errors": [f"checkpoint metadata is invalid: {exc}"]}
+            if cells < 0 or iteration < 0 or not np.isfinite(time_value):
+                return {"ok": False, "errors": ["checkpoint metadata contains invalid cells, iteration, or time"]}
+            cell_ids_present = "cell_ids" in h5
+            if cell_ids_present and h5["cell_ids"].ndim != 1:
+                return {"ok": False, "errors": ["checkpoint cell_ids must be one-dimensional"]}
+            if cell_ids_present and h5["cell_ids"].shape[0] != cells:
+                return {"ok": False, "errors": ["checkpoint cell_ids count differs from cells"]}
+            return {"ok": True, "artifact": "checkpoint", "path": path.name, "attributes": attributes, "metadata": {"version": int(attributes["version"]), "cells": cells, "iteration": iteration, "time": time_value}, "cell_ids_present": cell_ids_present, "fields": fields}
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX DAT checkpoint: {exc}"]}
 
