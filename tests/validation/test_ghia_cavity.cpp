@@ -100,7 +100,10 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
     return mesh;
 }
 
-CavityResult solve_cavity(const CavityCase& test)
+CavityResult solve_cavity(
+    const CavityCase& test,
+    PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
+    PreconditionerModel preconditioner = PreconditionerModel::Auto)
 {
     Mesh mesh=make_cavity_mesh(test.nx,test.ny);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -120,7 +123,7 @@ CavityResult solve_cavity(const CavityCase& test)
         pbc[name]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
 
     IncompressibleSolverControls controls;
-    controls.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    controls.algorithm=algorithm;
     controls.density=1.0;
     controls.kinematic_viscosity=1.0/test.reynolds;
     controls.linear_max_iterations=10000;
@@ -132,6 +135,12 @@ CavityResult solve_cavity(const CavityCase& test)
     // the pressure reference away from a corner where several wall BCs meet.
     controls.pressure_reference_cell=(test.ny/2)*test.nx+(test.nx/2);
     controls.pressure_reference_value=0.0;
+    controls.coupling.alpha_u=0.7;
+    controls.coupling.alpha_p=0.3;
+    controls.coupling.coupled_max_iterations=5000;
+    controls.coupling.coupled_linear_tolerance=1e-10;
+    controls.coupled_linear_solver.krylov=KrylovModel::FGMRES;
+    controls.coupled_linear_solver.preconditioner=preconditioner;
     controls.use_bounded_convection=true;
     controls.convection_scheme=ConvectionScheme::UPWIND;
     controls.coupling.alpha_u=0.7;
@@ -148,20 +157,29 @@ CavityResult solve_cavity(const CavityCase& test)
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,controls);
     if(!solve.converged)
         throw std::runtime_error("Ghia cavity did not converge for Re="+std::to_string(test.reynolds));
-    const auto& pressure_context=solve.pressure_linear_context;
-    if(pressure_context.full_setups!=1 ||
-       pressure_context.solves!=solve.iterations ||
-       pressure_context.full_setups+
-               pressure_context.numeric_updates+
-               pressure_context.unchanged_reuses!=
-           pressure_context.solves)
-        throw std::runtime_error(
-            "Ghia pressure solver did not reuse its preconditioner lifecycle");
-    std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
-             <<pressure_context.full_setups
-             <<" numeric_updates="<<pressure_context.numeric_updates
-             <<" unchanged_reuses="<<pressure_context.unchanged_reuses
-             <<" solves="<<pressure_context.solves<<"\n";
+    if (algorithm == PressureVelocityAlgorithm::SIMPLE) {
+        const auto& pressure_context=solve.pressure_linear_context;
+        if(pressure_context.full_setups!=1 ||
+           pressure_context.solves!=solve.iterations ||
+           pressure_context.full_setups+
+                   pressure_context.numeric_updates+
+                   pressure_context.unchanged_reuses!=
+               pressure_context.solves)
+            throw std::runtime_error(
+                "Ghia pressure solver did not reuse its preconditioner lifecycle");
+        std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
+                 <<pressure_context.full_setups
+                 <<" numeric_updates="<<pressure_context.numeric_updates
+                 <<" unchanged_reuses="<<pressure_context.unchanged_reuses
+                 <<" solves="<<pressure_context.solves<<"\n";
+    }
+    std::cout<<"N8_GHIA_MODEL algorithm="
+             <<(algorithm == PressureVelocityAlgorithm::COUPLED ? "COUPLED" : "SIMPLE")
+             <<" preconditioner="<<to_string(preconditioner)
+             <<" iterations="<<solve.iterations
+             <<" true_momentum_residual="<<solve.history.back().momentum_equation_residual
+             <<" continuity="<<solve.history.back().continuity_linf
+             <<"\n";
     return {std::move(U),solve,build_fv_geometry(mesh)};
 }
 
@@ -237,9 +255,12 @@ struct CaseMetrics { Comparison u; Comparison v; };
 struct Profile { std::vector<double> u; std::vector<double> v; };
 struct ValidationResult { CavityResult solution; CaseMetrics metrics; };
 
-ValidationResult run_case(const CavityCase& test)
+ValidationResult run_case(
+    const CavityCase& test,
+    PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
+    PreconditionerModel preconditioner = PreconditionerModel::Auto)
 {
-    auto result=solve_cavity(test);
+    auto result=solve_cavity(test, algorithm, preconditioner);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
@@ -357,6 +378,11 @@ int main(int argc, char** argv)
         }
 
         const auto r32 = run_case({100.0,32,32,2500});
+        const auto r32_pcd = run_case(
+            {100.0,32,32,5000},
+            PressureVelocityAlgorithm::COUPLED,
+            PreconditionerModel::PCD);
+        (void)r32_pcd;
         if (quick) {
             std::cout << "GHIA_CAVITY_QUICK: PASS\n";
             return 0;
