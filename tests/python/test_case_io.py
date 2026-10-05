@@ -202,3 +202,40 @@ def test_read_case_with_dat_rejects_extra_checkpoint_cell_ids(tmp_path: Path) ->
 
     with pytest.raises(ValueError, match="absent from target mesh"):
         read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_missing_revision_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    write_dat_hdf5(source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}))
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="missing compatibility metadata"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_incompatible_revisions(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    write_dat_hdf5(source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}))
+    with h5py.File(source, "a") as h5:
+        h5.attrs["checkpoint_schema_version"] = 1
+        h5.attrs["case_revision"] = 7
+        h5.attrs["mesh_revision"] = 3
+        h5.attrs["physics_revision"] = 99
+        h5.attrs["numerics_revision"] = 6
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="incompatible DAT checkpoint revisions"):
+        read_case_with_dat(case_path, source)
+
+
+def test_read_case_with_dat_rejects_unsupported_checkpoint_schema(tmp_path: Path) -> None:
+    source = tmp_path / "solver.dat.h5"
+    write_dat_hdf5(source, DatRestart(2, 1, 12, 0.5, {"p": DatField("p", 1, [1.0])}))
+    with h5py.File(source, "a") as h5:
+        h5.attrs["checkpoint_schema_version"] = 99
+        for name, value in (("case_revision", 7), ("mesh_revision", 3), ("physics_revision", 5), ("numerics_revision", 6)):
+            h5.attrs[name] = value
+    case_path = save_case(make_session(), tmp_path / "channel.cfdx.h5")
+
+    with pytest.raises(ValueError, match="unsupported CFDX DAT checkpoint schema"):
+        read_case_with_dat(case_path, source)
