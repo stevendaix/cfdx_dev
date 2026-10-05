@@ -165,7 +165,12 @@ def main() -> int:
         return 2
 
     report_path = args.report.resolve() if args.report else build_dir / "n10_qualification.json"
-    repo_root = Path(__file__).resolve().parents[1]\n    manifest_path = (args.fixture_manifest if args.fixture_manifest is not None else repo_root / "tests/fixtures/mesh_sources.yaml").resolve()
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest_path = (
+        args.fixture_manifest
+        if args.fixture_manifest is not None
+        else repo_root / "tests/fixtures/mesh_sources.yaml"
+    ).resolve()
     if not manifest_path.exists():
         print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
         return 2
@@ -177,18 +182,40 @@ def main() -> int:
     except Exception as exc:
         print(f"error: unable to parse fixture manifest: {exc}", file=sys.stderr)
         return 2
-    fixtures = manifest.get("fixtures", []) if isinstance(manifest, dict) else []
-    verified_fixtures = [
-        {
-            "id": item.get("id"),
-            "source": item.get("source"),
-            "acquisition": item.get("acquisition"),
-            "sha256": item.get("sha256"),
-            "status": item.get("status"),
-        }
-        for item in fixtures
-        if item.get("status") == "verified_reference"
-    ]
+
+    if not isinstance(manifest, dict):
+        print("error: fixture manifest root must be a mapping", file=sys.stderr)
+        return 2
+    fixtures = manifest.get("fixtures")
+    if not isinstance(fixtures, list):
+        print("error: fixture manifest 'fixtures' must be a list", file=sys.stderr)
+        return 2
+
+    verified_fixtures: list[dict[str, object]] = []
+    for index, item in enumerate(fixtures):
+        if not isinstance(item, dict):
+            print(f"error: fixture manifest entry {index} must be a mapping", file=sys.stderr)
+            return 2
+        if item.get("status") != "verified_reference":
+            continue
+        required_fields = ("id", "source", "acquisition", "sha256")
+        missing_fields = [field for field in required_fields if not item.get(field)]
+        if missing_fields:
+            print(
+                f"error: verified fixture entry {index} is missing required fields: "
+                + ", ".join(missing_fields),
+                file=sys.stderr,
+            )
+            return 2
+        verified_fixtures.append(
+            {
+                "id": item["id"],
+                "source": item["source"],
+                "acquisition": item["acquisition"],
+                "sha256": item["sha256"],
+                "status": item["status"],
+            }
+        )
     if not verified_fixtures:
         print("error: fixture manifest contains no verified_reference fixtures", file=sys.stderr)
         return 2
