@@ -58,6 +58,10 @@ struct AdaptiveRelaxationControls {
     // the controller to its floor and create a deterministic limit cycle.
     double increase_step = 0.01;
     double decrease_step = 0.02;
+    // Adapt against a short history window rather than consecutive noisy
+    // iterations. This prevents the controller from reacting to the
+    // pressure/velocity coupling oscillation of SIMPLE itself.
+    std::size_t adaptation_window = 4;
 };
 
 inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
@@ -69,7 +73,8 @@ inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationContro
         c.increase_step > (c.max_alpha_u - c.min_alpha_u) ||
         c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
         c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
-        c.decrease_step > (c.max_alpha_p - c.min_alpha_p))
+        c.decrease_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.adaptation_window == 0)
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
 
