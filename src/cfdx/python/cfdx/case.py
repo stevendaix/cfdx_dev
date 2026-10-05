@@ -48,6 +48,7 @@ class Case:
             "numerics": self.numerics,
             "boundaries": self.boundaries,
             "materials": self.materials,
+            "probes": [probe.to_dict() for probe in self.probes],
             "execution": {
                 "policy": self.execution.policy,
                 "solver": self.execution.solver,

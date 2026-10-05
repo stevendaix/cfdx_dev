@@ -1,6 +1,6 @@
 from pathlib import Path
-
 import h5py
+import json
 import pytest
 
 from cfdx import CFDXSession
@@ -12,6 +12,7 @@ from cfdx.case_io import (
     save_case_with_dat,
 )
 from cfdx.dat_io import DatField, DatRestart, read_dat_restart, write_dat_hdf5
+from cfdx.probe import Probe, ProbeField
 
 
 def make_session() -> CFDXSession:
@@ -56,6 +57,41 @@ def test_case_hdf5_roundtrip_preserves_configuration_without_numerical_state(tmp
     assert loaded.numerics_revision == 6
     assert loaded.iteration == 0
     assert loaded.time == pytest.approx(0.0)
+
+
+def test_case_hdf5_roundtrip_preserves_probe_catalogue(tmp_path: Path) -> None:
+    original = make_session()
+    original.case.probes = [
+        Probe("p_wall", 1.0, 2.0, 3.0, ProbeField.PRESSURE),
+        Probe("u_inlet", 0.5, 0.0, 0.0, ProbeField.U_X),
+        Probe("mag_sensor", -1.5, 2.5, 0.0, ProbeField.U_MAGNITUDE),
+    ]
+    path = save_case(original, tmp_path / "channel.cfdx.h5")
+
+    loaded = read_case(path)
+
+    assert loaded.case.probes == original.case.probes
+    assert loaded.case.as_dict() == original.case.as_dict()
+
+
+def test_read_case_without_probe_catalogue_defaults_to_empty(tmp_path: Path) -> None:
+    """A case saved before the probe catalogue existed loads cleanly."""
+    path = save_case(make_session(), tmp_path / "legacy.cfdx.h5")
+    with h5py.File(path, "a") as h5:
+        raw = h5["case/config"][()]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        config = json.loads(raw)
+        config.pop("probes", None)
+        del h5["case/config"]
+        h5.create_dataset(
+            "case/config",
+            data=json.dumps(config, sort_keys=True, separators=(",", ":")),
+        )
+
+    loaded = read_case(path)
+
+    assert loaded.case.probes == []
 
 
 def test_case_hdf5_contains_no_separate_checkpoint_file(tmp_path: Path) -> None:

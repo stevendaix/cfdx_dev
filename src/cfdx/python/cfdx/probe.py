@@ -13,10 +13,11 @@ introducing import cycles.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 import math
 
 
@@ -97,6 +98,27 @@ class Probe:
     def spec(self) -> str:
         """Serialize to the token accepted by the solver ``--probe`` option."""
         return f"{self.name}:{self.x},{self.y},{self.z}:{self.field.cli}"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to the case-file representation."""
+        return {
+            "name": self.name,
+            "x": self.x,
+            "y": self.y,
+            "z": self.z,
+            "field": self.field.cli,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "Probe":
+        """Rebuild a probe from its case-file representation."""
+        return cls(
+            name=data["name"],
+            x=float(data["x"]),
+            y=float(data["y"]),
+            z=float(data["z"]),
+            field=ProbeField.from_cli(data.get("field", ProbeField.PRESSURE.cli)),
+        )
 
 
 @dataclass

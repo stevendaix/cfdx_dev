@@ -16,6 +16,7 @@ import h5py
 
 from .case import Case, ExecutionConfig
 from .dat_io import read_dat_restart, remap_dat_restart, write_dat_hdf5
+from .probe import Probe
 from .session import CFDXSession
 
 
@@ -206,6 +207,7 @@ def _read_session(path: Path) -> CFDXSession:
                 boundaries=dict(data["boundaries"]),
                 materials=dict(data.get("materials", {})),
                 execution=execution,
+                probes=[Probe.from_dict(item) for item in data.get("probes", [])],
             )
             # Loading a case never consumes numerical restart state.
             session = CFDXSession(
