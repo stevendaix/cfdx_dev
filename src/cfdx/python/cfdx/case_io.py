@@ -252,11 +252,6 @@ def _read_case_cell_ids(path: Path) -> tuple[int, ...] | None:
     return ids
 
 
-def read_case(path: Path) -> CFDXSession:
-    """Load only the HDF5 case; no solver restart artifact is consumed."""
-    return _read_session(path)
-
-
 def read_case_with_dat(
     path: Path, dat_path: Path | None = None
 ) -> tuple[CFDXSession, Path]:
@@ -281,6 +276,14 @@ def read_case_with_dat(
             raise ValueError(
                 "DAT restart has no persistent cell ids; cannot safely map it to the case mesh"
             )
+        source_ids = set(restart.cell_ids)
+        target_ids = set(case_cell_ids)
+        missing = target_ids - source_ids
+        extra = source_ids - target_ids
+        if missing:
+            raise ValueError(f"target cell id missing from checkpoint: {min(missing)}")
+        if extra:
+            raise ValueError(f"checkpoint cell id is absent from target mesh: {min(extra)}")
         restart = remap_dat_restart(restart, case_cell_ids)
     elif restart.cell_ids is not None:
         # Preserve the DAT's explicit ordering when the case does not carry a
