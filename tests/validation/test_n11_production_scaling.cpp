@@ -70,7 +70,7 @@ int main() {
         EXPECT_TRUE(scaled.scaling == MatrixScaling::RowColumn);
         EXPECT_TRUE(scaled.physical_residual_relative < 1.0e-11);
         for (std::size_t i = 0; i < 4; ++i)
-            EXPECT_NEAR(scaled_solution(i), unscaled_solution(i), 1.0e-9);
+            EXPECT_NEAR(scaled_solution(i), exact(i), 1.0e-9);
     });
 
     run_case("production_scaling_does_not_repair_singular_rows", [] {
