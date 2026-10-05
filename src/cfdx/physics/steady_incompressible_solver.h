@@ -1505,15 +1505,35 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         schur_model == CoupledSchurModel::LSC ||
         schur_model == CoupledSchurModel::BFBT;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
+    const auto extract_coupled_block = [&](std::size_t row_block,
+                                           std::size_t col_block,
+                                           std::size_t row_size,
+                                           std::size_t col_size) {
+        SparseMatrix block(row_size, col_size);
+        const std::size_t velocity_size = 3 * nc;
+        const std::size_t row_offset = row_block == 0 ? 0 : velocity_size;
+        const std::size_t col_offset = col_block == 0 ? 0 : velocity_size;
+        for (std::size_t r = 0; r < row_size; ++r) {
+            const std::size_t gr = row_offset + r;
+            for (std::size_t k = A.row_offsets_data()[gr];
+                 k < A.row_offsets_data()[gr + 1]; ++k) {
+                const std::size_t gc = A.columns_data()[k];
+                if (gc >= col_offset && gc < col_offset + col_size)
+                    block.push_back(r, gc - col_offset, A.values_data()[k]);
+            }
+        }
+        block.finalize();
+        return block;
+    };
     if (use_lsc_bfbt) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "LSC/BFBt coupled Schur models require the coupled_block_schur linear plan");
 
-        const SparseMatrix Auu = extract_block(A, 0, 0, 3 * nc, 3 * nc);
-        const SparseMatrix G = extract_block(A, 0, 1, 3 * nc, nc);
-        const SparseMatrix D = extract_block(A, 1, 0, nc, 3 * nc);
-        const SparseMatrix C = extract_block(A, 1, 1, nc, nc);
+        const SparseMatrix Auu = extract_coupled_block(0, 0, 3 * nc, 3 * nc);
+        const SparseMatrix G = extract_coupled_block(0, 1, 3 * nc, nc);
+        const SparseMatrix D = extract_coupled_block(1, 0, nc, 3 * nc);
+        const SparseMatrix C = extract_coupled_block(1, 1, nc, nc);
 
         std::vector<double> q_inverse(3 * nc, 1.0);
         if (schur_model == CoupledSchurModel::LSC) {
