@@ -84,7 +84,7 @@ The first executable Runtime MCP surface is deliberately read-only and inspects 
 | Operation | Input | Result |
 |---|---|---|
 | `case.inspect` | root-relative `.cfdx.h5` path | case attributes, configuration, dataset metadata, runtime-state presence |
-| `checkpoint.inspect` | root-relative `.dat.h5` path | validated checkpoint metadata (version/cells/iteration/time), cell-ID presence, field metadata |
+| `checkpoint.inspect` | root-relative `.dat.h5` path | validated checkpoint metadata, cell-ID integrity, field shape/count/finite-value integrity, and field metadata |
 | `checkpoint.field.inspect` | root-relative `.dat.h5` path + field name + optional component | finite-value status and descriptive scalar statistics without returning field arrays |
 | `checkpoint.compare` | two root-relative `.dat.h5` paths + field name + optional component | descriptive field difference metrics between two checkpoints |
 
