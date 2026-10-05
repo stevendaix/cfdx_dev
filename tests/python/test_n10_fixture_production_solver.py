@@ -27,10 +27,6 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     shutil.copyfile(source, source_case)
 
     case_path = case_dir / "square.cfdx.h5"
-    pythonpath = os.environ.get("PYTHONPATH", "")
-    env = os.environ.copy()
-    env["PYTHONPATH"] = pythonpath
-
     from cfdx.io.converter import convert
 
     converted = convert(source_case, output=case_path)
@@ -52,7 +48,7 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         text=True,
         timeout=60,
         check=False,
-        env=env,
+        env=os.environ.copy(),
     )
     diagnostics = result.stdout + result.stderr
     assert result.returncode == 0, diagnostics[-12000:]
@@ -60,9 +56,6 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     assert "Converged YES" in diagnostics
     assert (output_dir / "restart.dat").is_file()
 
-    # Retain a small machine-readable execution record for the N10 artifact
-    # chain. This records execution evidence only; it does not promote the
-    # fixture to physical verification/validation/qualification.
     evidence = {
         "fixture": "meshio-su2-square",
         "case": str(case_path),
@@ -74,3 +67,10 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     }
     report = output_dir / "n10_numerical_support_smoke.json"
     report.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        test_n10_verified_fixture_reaches_production_solver(Path(directory))
