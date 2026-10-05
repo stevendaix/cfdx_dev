@@ -1878,21 +1878,30 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        if (controls.adaptive_relaxation.enabled && result.history.size() >= 2) {
-            const double current_metric =
-                result.history.back().nonlinear_convergence_metric;
-            const double previous_metric =
-                result.history[result.history.size() - 2].nonlinear_convergence_metric;
-            effective_alpha_u = adapt_relaxation_factor(
-                effective_alpha_u, previous_metric, current_metric,
-                controls.adaptive_relaxation.min_alpha_u,
-                controls.adaptive_relaxation.max_alpha_u,
-                controls.adaptive_relaxation);
-            effective_alpha_p = adapt_relaxation_factor(
-                effective_alpha_p, previous_metric, current_metric,
-                controls.adaptive_relaxation.min_alpha_p,
-                controls.adaptive_relaxation.max_alpha_p,
-                controls.adaptive_relaxation);
+        if (controls.adaptive_relaxation.enabled) {
+            // SIMPLE residuals contain a strong odd/even component from the
+            // pressure-velocity coupling. Feed the adaptive controller a
+            // short-window trend instead of reacting to every iteration.
+            // This keeps the additive bounds while preventing a deterministic
+            // alpha oscillation around the nominal value.
+            const auto window = controls.adaptive_relaxation.adaptation_window;
+            if (window > 0 && result.history.size() > window) {
+                const double current_metric =
+                    result.history.back().nonlinear_convergence_metric;
+                const double reference_metric =
+                    result.history[result.history.size() - 1 - window]
+                        .nonlinear_convergence_metric;
+                effective_alpha_u = adapt_relaxation_factor(
+                    effective_alpha_u, reference_metric, current_metric,
+                    controls.adaptive_relaxation.min_alpha_u,
+                    controls.adaptive_relaxation.max_alpha_u,
+                    controls.adaptive_relaxation);
+                effective_alpha_p = adapt_relaxation_factor(
+                    effective_alpha_p, reference_metric, current_metric,
+                    controls.adaptive_relaxation.min_alpha_p,
+                    controls.adaptive_relaxation.max_alpha_p,
+                    controls.adaptive_relaxation);
+            }
         }
 
         std::size_t pressure_correctors = configured_pcorr;
