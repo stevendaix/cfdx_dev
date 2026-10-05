@@ -7,7 +7,7 @@ import tempfile
 import h5py
 from mcp import Client
 
-from runtime_server import create_server
+import sys\nsys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))\n\nfrom runtime_server import create_server
 
 
 def make_artifacts(root: pathlib.Path) -> None:
