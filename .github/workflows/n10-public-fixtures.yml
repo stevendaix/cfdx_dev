@@ -41,6 +41,22 @@ jobs:
             --fixture openfoam-airfoil2d \
             --report build/n10-fixtures/n10_public_fixture_verification.json
 
+      - name: Build production mesh importer qualification target
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_ENABLE_GPU=OFF
+          cmake --build build --parallel --target cfdx_convert test_n10_external_fixture_import
+
+      - name: Qualify imported fixtures through the production C++ importer
+        run: |
+          set -euo pipefail
+          ./build/test_n10_external_fixture_import \
+            build/n10-fixtures \
+            build/n10-fixtures/n10_production_fixture_qualification.json
+
       - name: Publish verification evidence
         uses: actions/upload-artifact@v4
         with:
