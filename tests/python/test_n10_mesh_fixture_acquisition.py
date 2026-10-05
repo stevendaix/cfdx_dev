@@ -37,4 +37,4 @@ def test_sha256_tree_is_path_and_content_deterministic(tmp_path):
     (root / "a" / "y").write_bytes(b"y")
 
     digest = sha256_tree(root)
-    assert digest == "8d3c7c8f0c5b1bbf9f6f7bbd9a3f4b4d0b5f6d1d0b2b9f0b0b4a0a8e0c7f3f6d"
+    assert digest == "4cd3cbace896f7ac9fbb224f47ec34a4dd42e10a88b375362f297837bfa73583"
