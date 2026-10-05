@@ -136,6 +136,20 @@ int main()
         EXPECT_TRUE(!retry.can_retry());
     });
 
+    run_case("nonlinear_retry_can_retry_without_generic_relaxation_shrink", [] {
+        NonlinearRetryControls c;
+        c.max_retries = 1;
+        c.relaxation_shrink = 0.5;
+        c.minimum_alpha_u = 0.1;
+        c.minimum_alpha_p = 0.05;
+        NonlinearRetryController retry(c);
+
+        retry.retry_without_relaxation();
+        EXPECT_NEAR(retry.alpha_u(0.8), 0.8, 1e-14);
+        EXPECT_NEAR(retry.alpha_p(0.3), 0.3, 1e-14);
+        EXPECT_TRUE(!retry.can_retry());
+    });
+
     run_case("nonlinear_state_rollback_restores_velocity_and_pressure", [] {
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
