@@ -1,4 +1,5 @@
 #include "cfdx/core/linalg/hypre_amg.h"
+#include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "common/test_harness.h"
 
@@ -91,7 +92,7 @@ void run_amg_case(const SparseMatrix& A,
                   double scale,
                   bool& structural_ok) {
     TestSparseOperator op(A);
-    AMG amg(op);
+    AMG amg;
     const bool setup_ok = amg.setup(A);
     const auto levels = amg.hierarchy_level_sizes();
 
