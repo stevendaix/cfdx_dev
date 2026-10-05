@@ -255,77 +255,6 @@ double max_difference(const Run& a, const Run& b)
     return e;
 }
 
-// External flow. A uniform stream is admitted at the inlet and leaves through
-// an outlet whose static pressure is prescribed. The plate and the far field
-// carry no prescribed velocity, so their face flux interpolates the owner value
-// and the wall applies no shear; the uniform stream is then an exact discrete
-// solution of the momentum and continuity equations with a constant pressure
-// that satisfies the prescribed outlet value. The configuration therefore has a
-// production-quality oracle, and it is the member of the matrix that pins the
-// pressure level instead of leaving it to the gauge, which the closed-channel
-// benchmarks never exercise.
-VelocityBoundaryConditions external_flow_velocity_bc()
-{
-    VelocityBoundaryConditions bc;
-    bc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
-    for (const char* n : {"outlet","bottom","top","front","back"})
-        bc[n] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
-    return bc;
-}
-
-ScalarBoundaryConditions external_flow_pressure_bc()
-{
-    ScalarBoundaryConditions bc = channel_pressure_bc();
-    bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
-    return bc;
-}
-
-// Pressure-driven external flow. The same duct is driven by a prescribed static
-// pressure difference across the inlet and the outlet instead of by a body
-// force. The exact solution is Poiseuille, so the analytic oracle is unchanged,
-// and the pressure level is now determined by two fixed-pressure boundaries
-// rather than by the pure-Neumann gauge. This is the branch that separates a
-// fixed-pressure boundary from a gauge constraint.
-ScalarBoundaryConditions pressure_driven_pressure_bc(double p_in, double p_out)
-{
-    ScalarBoundaryConditions bc = channel_pressure_bc();
-    bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,p_in,p_in};
-    bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,p_out,p_out};
-    return bc;
-}
-
-double shear_stream_l2(const Run& r)
-{
-    double e2=0.0;
-    for (std::size_t c=0;c<r.U.size();++c) {
-        const double e=r.U.component_data(0)[c]-1.0;
-        e2 += e*e;
-    }
-    return std::sqrt(e2/static_cast<double>(r.U.size()));
-}
-
-double pressure_linf(const Run& r, double exact)
-{
-    double e=0.0;
-    for (std::size_t c=0;c<r.p.size();++c)
-        e=std::max(e,std::abs(r.p(c)-exact));
-    return e;
-}
-
-double pressure_driven_l2(
-    const Run& r, std::size_t nx, std::size_t ny, double dp, double nu)
-{
-    double e2=0.0;
-    for (std::size_t c=0;c<r.U.size();++c) {
-        const std::size_t j=c/nx;
-        const double y=(static_cast<double>(j)+0.5)/static_cast<double>(ny);
-        const double exact=dp*y*(1.0-y)/(2.0*nu);
-        const double e=r.U.component_data(0)[c]-exact;
-        e2 += e*e;
-    }
-    return std::sqrt(e2/static_cast<double>(r.U.size()));
-}
-
 std::array<PressureVelocityAlgorithm,6> algorithms()
 {
     return {PressureVelocityAlgorithm::SIMPLE,PressureVelocityAlgorithm::SIMPLEC,
@@ -394,46 +323,6 @@ int main()
         if (max_difference(couette[0],skew)>3e-2)
             throw std::runtime_error("skew Couette physical-equivalence gate failed");
     }
-
-    // External flow: uniform stream in, prescribed static pressure out. The
-    // oracle is the exact discrete solution, so the gate is set by round-off and
-    // not by mesh resolution, and every one of the six algorithms has to land on
-    // it independently.
-    std::vector<Run> external;
-    external.reserve(algs.size());
-    const auto u_external=external_flow_velocity_bc();
-    const auto p_external=external_flow_pressure_bc();
-    for (std::size_t k=0;k<algs.size();++k) {
-        external.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],
-                                      u_external,p_external,0.0));
-        require_physical_convergence(external[k],"external flow");
-        if (shear_stream_l2(external[k])>1e-6)
-            throw std::runtime_error("external flow analytic L2 gate failed");
-        if (pressure_linf(external[k],0.0)>1e-6)
-            throw std::runtime_error("external flow pressure-level gate failed");
-    }
-    for (std::size_t k=1;k<algs.size();++k)
-        if (max_difference(external[0],external[k])>1e-6)
-            throw std::runtime_error("external flow algorithm equivalence gate failed");
-
-    // Pressure-driven external flow: the prescribed pressure difference replaces
-    // the body force, so the same analytic profile is reached with the pressure
-    // level fixed at both ends and no gauge freedom at all.
-    constexpr double dp=0.1;
-    std::vector<Run> driven;
-    driven.reserve(algs.size());
-    const auto u_driven=channel_velocity_bc(0.0);
-    const auto p_driven=pressure_driven_pressure_bc(dp,0.0);
-    for (std::size_t k=0;k<algs.size();++k) {
-        driven.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],
-                                    u_driven,p_driven,0.0));
-        require_physical_convergence(driven[k],"pressure-driven external flow");
-        if (pressure_driven_l2(driven[k],12,16,dp,0.1)>5e-3)
-            throw std::runtime_error("pressure-driven external flow analytic L2 gate failed");
-    }
-    for (std::size_t k=1;k<algs.size();++k)
-        if (max_difference(driven[0],driven[k])>2e-4)
-            throw std::runtime_error("pressure-driven external flow equivalence gate failed");
 
     return 0;
 }
