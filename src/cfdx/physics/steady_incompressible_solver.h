@@ -47,6 +47,14 @@ struct VelocityBoundaryCondition {
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
 
+// Pressure gauge policies for pure-Neumann incompressible systems.
+// These are gauge choices only; fixed-pressure boundaries remain authoritative.
+enum class PressureGaugePolicy {
+    REFERENCE_CELL,
+    ZERO_MEAN,
+    NONE,
+};
+
 enum class IncompressibleProbeField {
     PRESSURE,
     U_X,
