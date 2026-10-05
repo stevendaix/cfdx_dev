@@ -38,14 +38,24 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     converted = convert(source_case, output=case_path, write_reports=False)
     assert converted.case is not None
 
-    # The public SU2 square is a mesh-only reference fixture with zero-valued
-    # boundary conditions.  Starting the steady solve from the same zero state
-    # makes the pressure-correction RHS identically zero and exercises a
-    # singular/degenerate linear system rather than the production execution
-    # path.  A non-zero initial guess is a legitimate numerical initial
-    # condition; it is not a reference solution, forcing term, or tolerance
-    # change, and the physical boundary conditions remain those of the case.
-    converted.case.initial_condition.velocity_vector = [1.0, 0.0, 0.0]
+    # The public SU2 square is a mesh-only reference fixture. Build a
+    # deterministic solver-ready CFDX case from that verified mesh: all
+    # boundaries are no-slip walls and the first imported patch is the moving
+    # lid. This is a cavity-style numerical execution case, not a reference
+    # solution or physical qualification claim.
+    from cfdx.io.schema import BCType, BCValueType
+
+    assert converted.case.boundary_conditions
+    for boundary in converted.case.boundary_conditions:
+        boundary.type = BCType.WALL
+        boundary.value_type = BCValueType.WALL_NO_SLIP
+        boundary.velocity_vector = [0.0, 0.0, 0.0]
+        boundary.velocity_magnitude = 0.0
+
+    moving_lid = converted.case.boundary_conditions[0]
+    moving_lid.velocity_vector = [1.0, 0.0, 0.0]
+    converted.case.initial_condition.velocity_vector = [0.0, 0.0, 0.0]
+
     from cfdx.io.converter import write_result
 
     write_result(converted, case_path, write_reports=False)
