@@ -53,10 +53,13 @@ class ProbeSeries:
 
 
 def _format_probe_csv_value(value: float) -> str:
-    """Render a float so the text round-trips exactly through float().
+    """Canonical probe-CSV float token shared with the C++ writer.
 
-    ``repr`` gives the shortest representation that parses back to the same
-    double, which is what makes the export byte-stable across runs.
+    ``repr(float)`` yields the shortest representation that round-trips exactly,
+    using Python notation (decimal for 10^-4 <= |v| < 10^16, scientific
+    otherwise, with a trailing ``.0`` for integer magnitudes). The C++ writer
+    reproduces this verbatim, so the two implementations emit byte-identical
+    values. See ``CANONICAL_FLOATS`` / ``test_canonical_float_format_matches_cpp``.
     """
     if not math.isfinite(value):
         raise ValueError("probe CSV values must be finite")
@@ -117,11 +120,12 @@ def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
     text = source.read_text(encoding="utf-8")
 
     magic: str | None = None
+    columns_ok = False
     data_lines: list[str] = []
     for line in text.splitlines():
         if line.startswith("#"):
             body = line[1:].strip()
-            if not magic and body.startswith(PROBE_CSV_MAGIC):
+            if body.startswith(PROBE_CSV_MAGIC) and magic is None:
                 parts = body.split()
                 if len(parts) != 2 or parts[0] != PROBE_CSV_MAGIC:
                     raise ValueError("malformed probe CSV header")
@@ -134,12 +138,22 @@ def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
                         f"unsupported probe CSV version: {parts[1]}"
                     )
                 magic = parts[0]
+            elif body.startswith("columns:"):
+                expected_columns = "columns: " + ",".join(_PROBE_CSV_COLUMNS)
+                if body != expected_columns:
+                    raise ValueError(
+                        "probe CSV column header mismatch: expected "
+                        + ",".join(_PROBE_CSV_COLUMNS)
+                    )
+                columns_ok = True
             continue
         if line.strip():
             data_lines.append(line)
 
     if magic is None:
         raise ValueError(f"not a CFDX probe CSV: {source}")
+    if not columns_ok:
+        raise ValueError("probe CSV is missing the # columns: header")
 
     grouped: dict[str, list[ProbeSample]] = {}
     for line in data_lines:

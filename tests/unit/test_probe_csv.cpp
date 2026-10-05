@@ -158,5 +158,41 @@ int main()
         }), std::invalid_argument, "comma or newline");
     });
 
+    // Pins the canonical float encoding shared with the Python writer
+    // (repr(float)): shortest round-trip, Python notation, ".0" for integer
+    // magnitudes. These are the same tokens the Python battery asserts, so the
+    // two implementations are byte-identical across the full exponent range.
+    run_case("canonical_float_encoding_matches_python_repr", []() {
+        struct Case { double value; const char* expected; };
+        const Case cases[] = {
+            {0.0, "0.0"}, {1.0, "1.0"}, {-0.0, "-0.0"}, {0.1, "0.1"},
+            {1.0 / 3.0, "0.3333333333333333"}, {1e-9, "1e-09"},
+            {1e-4, "0.0001"}, {1e-5, "1e-05"}, {1e6, "1000000.0"},
+            {1e15, "1000000000000000.0"}, {1e16, "1e+16"}, {1e17, "1e+17"},
+            {1e-308, "1e-308"},
+            {123.45678901234568, "123.45678901234568"},
+            {3.141592653589793, "3.141592653589793"},
+        };
+        for (const auto& c : cases)
+            EXPECT_TRUE(format_probe_csv_value(c.value) == c.expected);
+    });
+
+    run_case("overwrites_existing_file_atomically", []() {
+        const auto path = unique_temp_path(".csv");
+        write_probe_csv(path.string(), {
+            {IncompressibleProbeSample{"a", 1, 0.0, 1.0}},
+        });
+        EXPECT_TRUE(std::filesystem::exists(path));
+        // Second publication to the same path: must replace, not append, and
+        // leave no temp file behind.
+        write_probe_csv(path.string(), {
+            {IncompressibleProbeSample{"b", 1, 0.0, 2.0}},
+        });
+        const std::string text = read_all(path);
+        EXPECT_TRUE(text.find("b,1,0.0,2.0") != std::string::npos);
+        EXPECT_TRUE(text.find("a,1") == std::string::npos);
+        EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+    });
+
     return run_all();
 }
