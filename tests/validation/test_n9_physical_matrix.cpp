@@ -130,12 +130,13 @@ struct Run {
 
 IncompressibleSolverControls controls_for(
     PressureVelocityAlgorithm algorithm,
+    double viscosity = 0.1,
     bool transient_projection = false)
 {
     IncompressibleSolverControls c;
     c.algorithm = algorithm;
     c.density = 1.0;
-    c.kinematic_viscosity = 0.1;
+    c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
     c.coupling.alpha_p = 0.3;
     c.coupling.n_pressure_correctors =
@@ -194,14 +195,15 @@ Run solve_case(
     PressureVelocityAlgorithm algorithm,
     const VelocityBoundaryConditions& ubc,
     const ScalarBoundaryConditions& pbc,
-    double body_force_x)
+    double body_force_x,
+    double viscosity = 0.1)
 {
     Field<double, Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double, Location::CELL> p(mesh.n_cells(),"p","Pa",1);
     U.fill(0.0);
     p.fill(17.0);
 
-    auto c = controls_for(algorithm);
+    auto c = controls_for(algorithm, viscosity);
     c.body_force = {body_force_x,0.0,0.0};
     const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     return {std::move(U),std::move(p),std::move(result)};
@@ -243,6 +245,39 @@ double poiseuille_l2(const Run& r, std::size_t nx, std::size_t ny, double G, dou
         e2 += e*e;
     }
     return std::sqrt(e2/static_cast<double>(r.U.size()));
+}
+
+double cavity_profile_linf(const Run& r, std::size_t nx, std::size_t ny)
+{
+    // Ghia et al. Re=100 centreline reference values. These points are
+    // deliberately sparse here because the dedicated Ghia campaign retains
+    // the complete 17-point profiles; N9 uses them as an independent physical
+    // cross-algorithm gate.
+    constexpr double y[] = {0.0625, 0.1719, 0.5000, 0.8516, 0.9609};
+    constexpr double u_ref[] = {-0.04192, -0.10150, -0.20581, 0.23151, 0.73722};
+    constexpr double x[] = {0.0625, 0.2266, 0.5000, 0.9063, 0.9688};
+    constexpr double v_ref[] = {0.09233, 0.17507, 0.05454, -0.16914, -0.05906};
+    double max_error = 0.0;
+    const auto sample = [&](double qx, double qy, std::size_t component) {
+        const double fx = qx*static_cast<double>(nx)-0.5;
+        const double fy = qy*static_cast<double>(ny)-0.5;
+        const auto clamp_index = [](double q, std::size_t n) {
+            return std::clamp(static_cast<long>(std::floor(q)), 0L,
+                              static_cast<long>(n)-2L);
+        };
+        const long ix0=clamp_index(fx,nx), iy0=clamp_index(fy,ny);
+        const double tx=std::clamp(fx-static_cast<double>(ix0),0.0,1.0);
+        const double ty=std::clamp(fy-static_cast<double>(iy0),0.0,1.0);
+        const std::size_t i=static_cast<std::size_t>(ix0), j=static_cast<std::size_t>(iy0);
+        const auto at=[&](std::size_t ii,std::size_t jj) { return r.U.component_data(component)[jj*nx+ii]; };
+        return (1.0-ty)*((1.0-tx)*at(i,j)+tx*at(i+1,j))
+             + ty*((1.0-tx)*at(i,j+1)+tx*at(i+1,j+1));
+    };
+    for (std::size_t i=0;i<5;++i) {
+        max_error=std::max(max_error,std::abs(sample(0.5,y[i],0)-u_ref[i]));
+        max_error=std::max(max_error,std::abs(sample(x[i],0.5,1)-v_ref[i]));
+    }
+    return max_error;
 }
 
 double max_difference(const Run& a, const Run& b)
@@ -297,8 +332,10 @@ int main()
         cavity_bc["outlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["bottom"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
-        cavity.push_back(solve_case(make_cavity_mesh(16,16),algs[k],cavity_bc,p_channel,0.0));
-        require_physical_convergence(cavity[k],"cavity");
+        cavity.push_back(solve_case(make_cavity_mesh(32,32),algs[k],cavity_bc,p_channel,0.0,0.01));
+        require_physical_convergence(cavity[k],"Ghia Re=100 cavity");
+        if (cavity_profile_linf(cavity[k],32,32)>0.20)
+            throw std::runtime_error("Ghia Re=100 centreline oracle gate failed");
     }
 
     // Cross-algorithm physical-equivalence gate on each benchmark.
@@ -307,7 +344,7 @@ int main()
             throw std::runtime_error("Couette algorithm equivalence gate failed");
         if (max_difference(poiseuille[0],poiseuille[k])>2e-4)
             throw std::runtime_error("Poiseuille algorithm equivalence gate failed");
-        if (max_difference(cavity[0],cavity[k])>5e-3)
+        if (max_difference(cavity[0],cavity[k])>2e-2)
             throw std::runtime_error("cavity algorithm equivalence gate failed");
     }
 
