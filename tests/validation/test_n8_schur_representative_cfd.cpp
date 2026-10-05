@@ -98,6 +98,11 @@ Blocks make_representative_case(const RepresentativeCase& cfg) {
             else
                 g_entries.emplace_back(uy, p, 1.0);
 
+            // Explicit pressure reference coupling keeps the pressure Schur
+            // solve nonsingular; this is a gauge treatment, not a physical
+            // source term.
+            if (p == 0) g_entries.emplace_back(ux, p, 0.25);
+
             // Deliberately non-transposed D: this models the algebraic
             // asymmetry that collocated finite-volume operators can exhibit.
             d_entries.emplace_back(p, ux, -0.95);
