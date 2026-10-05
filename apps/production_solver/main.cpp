@@ -3,6 +3,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
 #include "cfdx/io/restart/dat_restart.h"
+#include "cfdx/io/runtime/convergence_history.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
 #include <algorithm>
