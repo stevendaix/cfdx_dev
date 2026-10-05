@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstddef>
+#include <array>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -331,19 +332,25 @@ constexpr double kContinuationReproductionRelativeTolerance = 1e-5;
 constexpr double kAdaptiveGateReproductionRelativeTolerance = 1e-4;
 constexpr double kAdaptiveBreadthReproductionRelativeTolerance = 1e-2;
 
-// Corridors where the adaptive controller is currently documented to park on a
-// false plateau instead of reaching the production convergence contract. This is
-// listed so the limitation is ASSERTED rather than silently tolerated: if a solver
-// change repairs a corridor, this assertion fails and the audit has to be updated
-// with the new measured behaviour instead of the tolerated set quietly growing.
+// Corridors where the adaptive controller is documented to park on a false
+// plateau instead of reaching the production convergence contract. The list is
+// maintained so a limitation is ASSERTED rather than silently tolerated: if a
+// solver change repairs a corridor, this assertion fails and the audit has to
+// be updated with the new measured behaviour instead of the tolerated set
+// quietly growing.
 //
-// Measured signature of the 16^2/Re=400 stall: the run parks at a relative
-// momentum metric of 7.83e-3 against a 1e-8 contract, with effective
-// alpha_u=0.66, alpha_p=0.275, i.e. inside the 0.6-0.8 / 0.25-0.35 envelope. The
-// final iteration values are identical at a 625-iteration and a 2500-iteration
-// budget, so the iteration is frozen rather than merely slow.
+// The list is empty. It previously held the 16^2/Re=400 corridor, whose
+// signature was a relative momentum metric of 7.83e-3 against a 1e-8 contract
+// with effective alpha_u=0.66, alpha_p=0.275, frozen identically at a 625- and a
+// 2500-iteration budget. The cause was not the relaxation envelope: the
+// controller compared each residual against the immediately preceding one, and
+// the nonlinear metric on this corridor is noisy enough that the ratio carried
+// no trend. Alpha therefore sawtoothed between its bounds while the residual
+// sat on a plateau. Comparing against a smoothed reference fixed it, and the
+// corridor now reaches the contract. The tripwire is retained: it is what
+// surfaced the repair, and it will surface the next one.
 struct KnownAdaptiveStall { std::size_t n; double reynolds; };
-constexpr KnownAdaptiveStall kDocumentedAdaptiveStalls[] = {{16, 400.0}};
+constexpr std::array<KnownAdaptiveStall, 0> kDocumentedAdaptiveStalls{};
 
 bool is_documented_adaptive_stall(std::size_t n, double reynolds)
 {
@@ -551,12 +558,270 @@ CaseSummary qualify_case(const Solution& result, bool apply_ghia_reference)
     return summary;
 }
 
+
+// Sweep FIXED relaxation factors with adaptive control disabled, to separate two
+// very different diagnoses for a corridor on which the adaptive controller
+// stalls: either the adaptive envelope is too narrow and some admissible factor
+// does converge, or no under-relaxed factor converges on that corridor at all.
+// The two imply completely different fixes.
+struct FixedRun {
+    IncompressibleSolveResult result;
+    Field<double,Location::CELL> U;
+    double alpha_u = 0.0;
+    double alpha_p = 0.0;
+};
+
+FixedRun run_fixed_alpha_case(std::size_t n, double nu,
+                              double alpha_u, double alpha_p)
+{
+    Mesh mesh = make_cavity_mesh(n,n);
+    Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+    U.fill(0.0); p.fill(0.0);
+
+    VelocityBoundaryConditions ubc;
+    for (const char* nm : {"bottom","left","right","front","back"})
+        ubc[nm]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    ubc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
+    ScalarBoundaryConditions pbc;
+    for (const char* nm : {"bottom","top","left","right","front","back"})
+        pbc[nm]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+    IncompressibleSolverControls c;
+    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    c.density=1.0;
+    c.kinematic_viscosity=nu;
+    c.linear_max_iterations=10000;
+    c.linear_tolerance=1e-10;
+    c.pressure_reference_cell=(n/2)*n+(n/2);
+    c.pressure_reference_value=0.0;
+    c.use_bounded_convection=true;
+    c.convection_scheme=ConvectionScheme::UPWIND;
+    c.coupling.alpha_u=alpha_u;
+    c.coupling.alpha_p=alpha_p;
+    c.adaptive_relaxation.enabled=false;
+    c.convergence.max_iterations=2500;
+    c.convergence.relative_tolerance=1e-8;
+    c.convergence.continuity_tolerance=1e-8;
+    c.diagnostics.iteration_trace=false;
+    FixedRun run;
+    run.result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    run.U = U;
+    run.alpha_u = alpha_u;
+    run.alpha_p = alpha_p;
+    return run;
+}
+
+// Field-to-field distance between two converged velocity fields, normalised by
+// the baseline magnitude. This is the comparison the centre-velocity QoI cannot
+// make: two strategies can agree on one probe and disagree across the field,
+// which is exactly where a cavity's shear layers and secondary vortices live.
+struct FieldDistance { double l1 = 0.0; double l2 = 0.0; double linf = 0.0; };
+
+FieldDistance field_distance(const Field<double,Location::CELL>& a,
+                             const Field<double,Location::CELL>& b)
+{
+    FieldDistance d;
+    double l2 = 0.0;
+    double norm = 0.0;
+    for (std::size_t c = 0; c < a.size(); ++c)
+        for (std::size_t k = 0; k < 3; ++k) {
+            const double x = a.component_data(k)[c];
+            const double y = b.component_data(k)[c];
+            const double diff = std::abs(x - y);
+            d.l1 += diff;
+            l2 += diff * diff;
+            d.linf = std::max(d.linf, diff);
+            norm += x * x;
+        }
+    d.l2 = std::sqrt(l2);
+    const double scale = std::max(std::sqrt(norm), 1e-30);
+    d.l1 /= scale;
+    d.l2 /= scale;
+    d.linf /= scale;
+    return d;
+}
+
+
+struct ContractRun {
+    bool converged = false;
+    std::size_t iterations = 0;
+    double metric = 0.0;
+    double du_inf = 0.0;
+    double dp_inf = 0.0;
+    double continuity = 0.0;
+    Field<double,Location::CELL> U;
+};
+
+// One solve at an explicit nonlinear target, adaptive disabled and factors
+// fixed, so the only thing that varies between rows is the declared contract.
+ContractRun run_contract_case(std::size_t n, double nu, double rel_tol,
+                              double linear_tol = 1e-10)
+{
+    Mesh mesh = make_cavity_mesh(n,n);
+    Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+    U.fill(0.0); p.fill(0.0);
+    VelocityBoundaryConditions ubc;
+    for (const char* nm : {"bottom","left","right","front","back"})
+        ubc[nm]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    ubc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
+    ScalarBoundaryConditions pbc;
+    for (const char* nm : {"bottom","top","left","right","front","back"})
+        pbc[nm]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+    IncompressibleSolverControls c;
+    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    c.density=1.0;
+    c.kinematic_viscosity=nu;
+    c.linear_max_iterations=10000;
+    c.linear_tolerance=linear_tol;
+    c.pressure_reference_cell=(n/2)*n+(n/2);
+    c.pressure_reference_value=0.0;
+    c.use_bounded_convection=true;
+    c.convection_scheme=ConvectionScheme::UPWIND;
+    c.coupling.alpha_u=0.7;
+    c.coupling.alpha_p=0.3;
+    c.adaptive_relaxation.enabled=false;
+    c.convergence.max_iterations=2500;
+    c.convergence.relative_tolerance=rel_tol;
+    c.convergence.continuity_tolerance=rel_tol;
+    c.diagnostics.iteration_trace=false;
+
+    ContractRun out;
+    const auto r = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    out.converged = r.converged;
+    out.iterations = r.iterations;
+    out.U = U;
+    if (!r.history.empty()) {
+        const auto& h = r.history.back();
+        out.metric = h.nonlinear_convergence_metric;
+        out.du_inf = h.velocity_change_inf;
+        out.dp_inf = h.pressure_change_inf;
+        out.continuity = h.continuity_linf;
+    }
+    return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     const bool breadth = argc > 1 && std::string(argv[1]) == "--breadth";
     try {
+        if (argc > 1 && std::string(argv[1]) == "--contract") {
+            struct Cell { std::size_t n; double nu; };
+            const Cell cells[] = {{16,0.01},{32,0.01},{16,0.0025},{32,0.0025}};
+            const double tols[] = {1e-6, 1e-8, 1e-10, 1e-12};
+            for (const auto& c : cells) {
+                std::printf("\n=== n=%zu Re=%.0f (fixed 0.7/0.3, linear_tol=1e-10) ===\n",
+                            c.n, 1.0/c.nu);
+                std::printf("%9s %5s %7s %12s %12s %12s %12s\n",
+                            "rel_tol", "conv", "iter", "metric",
+                            "dU_inf", "dp_inf", "field_vs_1e-12");
+                const auto reference = run_contract_case(c.n, c.nu, 1e-12);
+                for (double tol : tols) {
+                    const auto r = run_contract_case(c.n, c.nu, tol);
+                    std::printf("%9.0e %5d %7zu %12.4e %12.4e %12.4e",
+                                tol, r.converged ? 1 : 0, r.iterations,
+                                r.metric, r.du_inf, r.dp_inf);
+                    if (r.converged && reference.converged)
+                        std::printf(" %12.4e", field_distance(reference.U, r.U).l2);
+                    std::printf("\n");
+                    std::fflush(stdout);
+                }
+                std::printf("reference 1e-12 converged=%d\n", reference.converged ? 1 : 0);
+                std::fflush(stdout);
+            }
+            return 0;
+        }
+
+        if (argc > 1 && std::string(argv[1]) == "--sweep") {
+            const std::size_t n = argc > 2
+                ? static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)) : 16;
+            const double nu = argc > 3 ? std::strtod(argv[3], nullptr) : 0.0025;
+            struct Pair { double u; double p; };
+            const Pair pairs[] = {
+                {0.7, 0.30},  // the direct-solve baseline
+                {0.8, 0.30},  // top of the tested adaptive envelope
+                {0.8, 0.35},  // top-right corner of the envelope
+                {1.0, 0.30},  // no momentum under-relaxation
+                {1.0, 1.00},  // no under-relaxation at all
+                {0.9, 0.35},  // just outside the envelope
+            };
+            std::printf("sweep n=%zu Re=%.0f (adaptive disabled, fixed factors)\n",
+                        n, 1.0/nu);
+            std::printf("%8s %8s %6s %9s %14s %14s\n",
+                        "alpha_u", "alpha_p", "conv", "iterations", "metric", "continuity");
+            FixedRun baseline;
+            for (const auto& pr : pairs) {
+                const auto run = run_fixed_alpha_case(n, nu, pr.u, pr.p);
+                const auto& r = run.result;
+                const double metric = r.history.empty() ? 0.0
+                    : r.history.back().nonlinear_convergence_metric;
+                const double cont = r.history.empty() ? 0.0
+                    : r.history.back().continuity_linf;
+                if (pr.u == 0.7 && pr.p == 0.30) baseline = run;
+                std::printf("%8.2f %8.2f %6d %9zu %14.6e %14.6e",
+                            pr.u, pr.p, r.converged ? 1 : 0, r.iterations, metric, cont);
+                if (baseline.result.converged && r.converged && run.U.size() > 0) {
+                    const auto d = field_distance(baseline.U, run.U);
+                    std::printf("  field_vs_baseline L1=%.3e L2=%.3e Linf=%.3e",
+                                d.l1, d.l2, d.linf);
+                }
+                std::printf("\n");
+                std::fflush(stdout);
+            }
+            return 0;
+        }
+
+        if (argc > 3 && std::string(argv[1]) == "--diagnose") {
+            const auto n = static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10));
+            const auto nu = std::strtod(argv[3], nullptr);
+            const auto result = solve_n7_case(n, nu);
+            const auto& hist = result.adaptive.history;
+            std::printf("adaptive iterations recorded: %zu converged=%d\n",
+                        hist.size(), result.adaptive.converged ? 1 : 0);
+            const std::size_t tail = 12;
+            const std::size_t start = hist.size() > tail ? hist.size() - tail : 0;
+            std::printf("%6s %14s %14s %14s %14s %8s %8s\n",
+                        "iter", "metric", "momentum_rel", "dU_inf", "dp_inf",
+                        "a_u", "a_p");
+            for (std::size_t i = start; i < hist.size(); ++i) {
+                const auto& h = hist[i];
+                std::printf("%6zu %14.6e %14.6e %14.6e %14.6e %8.4f %8.4f\n",
+                            h.iteration, h.nonlinear_convergence_metric,
+                            h.momentum_equation_residual_relative,
+                            h.velocity_change_inf, h.pressure_change_inf,
+                            h.effective_alpha_u, h.effective_alpha_p);
+            }
+            // Count how many consecutive trailing iterations sit in the
+            // controller dead zone, where alpha is left untouched. The ratio is
+            // measured against the smoothed reference the controller actually
+            // compares against, not against the previous iteration.
+            std::size_t dead = 0;
+            AdaptiveRelaxationControls probe;
+            probe.enabled = true;
+            double reference = hist.empty() ? 0.0 : hist[0].nonlinear_convergence_metric;
+            for (std::size_t i = hist.size(); i-- > 1;) {
+                reference = adaptive_reference_update(
+                    reference, hist[i].nonlinear_convergence_metric, probe);
+                const double ratio = hist[i].nonlinear_convergence_metric /
+                    std::max(reference, 1e-300);
+                if (ratio >= 1.0 && ratio < 1.10) ++dead; else break;
+            }
+            std::printf("trailing iterations in alpha dead zone [1.00,1.10): %zu\n", dead);
+            if (hist.size() > 1) {
+                const double r0 = hist[0].nonlinear_convergence_metric;
+                const double rn = hist.back().nonlinear_convergence_metric;
+                std::printf("metric first=%.6e last=%.6e reduction=%.3e\n",
+                            r0, rn, r0 > 0.0 ? r0 / std::max(rn, 1e-300) : 0.0);
+                std::printf("dU_inf last=%.6e (relative to |U|max would need |U|max)\n",
+                            hist.back().velocity_change_inf);
+            }
+            return 0;
+        }
+
         if (argc > 3 && std::string(argv[1]) == "--case") {
             const auto n = static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10));
             const auto nu = std::strtod(argv[3], nullptr);

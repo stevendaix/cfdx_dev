@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/steven/cfdx_dev/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

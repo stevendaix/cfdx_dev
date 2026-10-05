@@ -60,6 +60,17 @@ struct AdaptiveRelaxationControls {
     // making recovery gradual and reversible.
     double increase_step = 0.02;
     double decrease_step = 0.02;
+    // The improvement/degradation decision compares the current residual against
+    // a smoothed reference, not against the immediately preceding one. On a
+    // noisy nonlinear metric the single-step ratio is dominated by
+    // iteration-to-iteration scatter: on the 16^2/Re=100 cavity the metric
+    // oscillates by roughly a factor of two between consecutive iterations, so a
+    // one-step reference makes the controller sawtooth alpha between its bounds
+    // indefinitely instead of settling. A windowed best is the opposite bias,
+    // because it sits permanently below the current value and therefore reports
+    // degradation almost every iteration, collapsing alpha. An exponential
+    // average tracks the trend without either bias.
+    std::size_t reference_window = 10;
 };
 
 inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
@@ -71,33 +82,55 @@ inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationContro
         c.increase_step > (c.max_alpha_u - c.min_alpha_u) ||
         c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
         c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
-        c.decrease_step > (c.max_alpha_p - c.min_alpha_p))
+        c.decrease_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.reference_window < 2)
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
 
 inline double adapt_relaxation_factor(
     double alpha,
-    double previous_residual,
+    double reference_residual,
     double residual,
     double min_alpha,
     double max_alpha,
     const AdaptiveRelaxationControls& controls)
 {
     validate_adaptive_relaxation_controls(controls);
-    if (!std::isfinite(alpha) || !std::isfinite(previous_residual) ||
-        !std::isfinite(residual) || previous_residual < 0.0 || residual < 0.0)
+    if (!std::isfinite(alpha) || !std::isfinite(reference_residual) ||
+        !std::isfinite(residual) || reference_residual < 0.0 || residual < 0.0)
         throw std::invalid_argument("invalid adaptive relaxation state");
     const double safe_alpha = std::clamp(alpha, min_alpha, max_alpha);
-    if (!controls.enabled || previous_residual == 0.0)
+    if (!controls.enabled || reference_residual == 0.0)
         return safe_alpha;
-    const double ratio = residual / previous_residual;
+    const double ratio = residual / reference_residual;
     if (ratio <= 1.0 - controls.improvement_threshold)
         return std::min(max_alpha, safe_alpha + controls.increase_step);
     if (ratio >= 1.0 + controls.degradation_threshold)
         return std::max(min_alpha, safe_alpha - controls.decrease_step);
-    // Hysteresis band: retain the current relaxation. This filters small
-    // residual noise and gives the controller memory through alpha itself.
+    // Beating the smoothed reference without clearing the strong-improvement
+    // band is slow but genuine progress. Creeping up here lets a factor that an
+    // earlier transient drove down recover once convergence resumes; without it a
+    // permanently low alpha stays in an ultra-slow regime, because a merely
+    // improving residual never triggers the strong-improvement branch.
+    if (ratio < 1.0)
+        return std::min(max_alpha, safe_alpha + 0.5 * controls.increase_step);
+    // Within the hysteresis band relative to the smoothed reference: retain the
+    // current relaxation.
     return safe_alpha;
+}
+
+// Advance the exponential reference the adaptive controller compares against.
+// `previous` is the running average carried between iterations; `current` is
+// the residual just measured. Returns the updated reference.
+inline double adaptive_reference_update(double previous, double current,
+                                        const AdaptiveRelaxationControls& controls)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(previous) || !std::isfinite(current) || previous < 0.0 || current < 0.0)
+        throw std::invalid_argument("invalid adaptive relaxation state");
+    if (previous == 0.0) return current;
+    const double weight = 1.0 / static_cast<double>(controls.reference_window);
+    return previous + weight * (current - previous);
 }
 
 inline double relaxed_value(double old_value, double computed_value, double alpha)

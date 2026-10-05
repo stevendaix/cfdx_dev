@@ -1834,6 +1834,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
+    // Smoothed residual reference for the adaptive relaxation controller. It
+    // tracks the trend of the nonlinear metric across iterations so that a
+    // single noisy step cannot drive the improvement/degradation decision.
+    double adaptive_reference = 0.0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         bool stop_after_iteration = false;
@@ -1865,15 +1869,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (controls.adaptive_relaxation.enabled && result.history.size() >= 2) {
             const double current_metric =
                 result.history.back().nonlinear_convergence_metric;
-            const double previous_metric =
-                result.history[result.history.size() - 2].nonlinear_convergence_metric;
+            // The reference is a smoothed average of the past, not the previous
+            // iteration, so a single noisy step cannot drive the decision.
+            const double reference_metric = adaptive_reference_update(
+                adaptive_reference, current_metric,
+                controls.adaptive_relaxation);
+            adaptive_reference = reference_metric;
             effective_alpha_u = adapt_relaxation_factor(
-                effective_alpha_u, previous_metric, current_metric,
+                effective_alpha_u, reference_metric, current_metric,
                 controls.adaptive_relaxation.min_alpha_u,
                 controls.adaptive_relaxation.max_alpha_u,
                 controls.adaptive_relaxation);
             effective_alpha_p = adapt_relaxation_factor(
-                effective_alpha_p, previous_metric, current_metric,
+                effective_alpha_p, reference_metric, current_metric,
                 controls.adaptive_relaxation.min_alpha_p,
                 controls.adaptive_relaxation.max_alpha_p,
                 controls.adaptive_relaxation);

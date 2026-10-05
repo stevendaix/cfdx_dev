@@ -1,35 +1,28 @@
-# Build
-build*/
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-CTestTestfile.cmake
-build/
-*.o
-*.obj
-*.so
-*.dylib
-*.dll
+# Temporary build artifacts
+artifacts/
 
-# Locally-built dependencies
-third_party/hdf5/
+# Scripts (generated)
+scripts/test_vm2025r2_fluent.py
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-.pytest_cache/
+# Validation worktrees
+validation/cases_fluent/
+validation/extracted/
 
-# IDE
+# Build and test artifacts
+*.log
+*.tmp
+*.cache
+
+# IDE and editor files
 .vscode/
-.idea/
 *.swp
+*.swo
 
-prompt.mdbuild_san/
+# OS files
+.DS_Store
+Thumbs.db
 
-# Executable documentation sources are plain Python/Jupytext; notebooks are generated locally only.
-*.ipynb
-
-# Executable documentation sources are plain Python/Jupytext; notebooks are generated locally only.
-*.ipynb
+# Git ignored temporary files
+.git/index.lock
+.git/refs/heads/*
+.git/refs/remotes/*

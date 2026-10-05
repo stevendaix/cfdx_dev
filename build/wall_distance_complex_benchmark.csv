@@ -1,0 +1,10 @@
+method,l2_relative,linf_relative,near_wall_l2_relative,monotonicity_violations,invalid,iterations,residual_inf,time_ms,eikonal_init_ms,poisson_stage_ms,poisson_iterations,poisson_residual_inf,converged,min_distance,max_distance,wall_ray_hits,wall_ray_misses,wall_fallbacks,wall_bad_alignment,wall_min_alignment,poisson_phi_min,poisson_phi_max,poisson_grad_min,poisson_grad_max,poisson_distance_l2_error,poisson_distance_linf_error
+exact_geometric,0,0,0,0,0,0,0,82.0927,0,0,0,0,true,8.32667e-17,4.47539,0,0,0,0,1,0,0,0,0,0,0
+search_based,0,0,0,0,0,0,0,62.5597,0,0,0,0,true,8.32667e-17,4.47539,0,0,0,0,1,0,0,0,0,0,0
+mesh_wave,0.392223,0.585258,0.137303,153,0,0,0,32.9826,0,0,0,0,true,8.32667e-17,7.01161,0,0,0,0,1,0,0,0,0,0,0
+directional_mesh_wave,0.476909,0.709789,0.160051,1377,0,0,0,197.617,0,0,0,0,true,8.32667e-17,7.52921,0,0,0,0,1,0,0,0,0,0,0
+poisson,0.957953,0.85901,7.08443,4628,0,198,8.40002e-11,1851.74,0,0,0,0,true,0.0122585,5.08245,794,0,0,0,1,0.0232096,14.3958,0.284193,20.1737,0.957953,0.85901
+eikonal,0.0730705,0.0802125,0.0696657,148,0,3,0.304906,54.8883,0,0,0,0,false,8.32667e-17,4.76851,0,0,0,0,1,0,0,0,0,0,0
+hamilton_jacobi,0.12577,0.174257,0.127802,518,0,1184,9.688e-09,2494.66,31.1043,0,0,0,true,8.32667e-17,3.69552,0,0,0,0,1,0,0,0,0,0,0
+advection_diffusion,0.108741,0.106007,0.0883431,332,0,6250,0.719709,57092.6,0,0,0,0,false,8.32667e-17,4.77633,0,0,0,0,1,0,0,0,0,0,0
+hybrid_poisson_eikonal,0.328677,0.333025,0.326077,552,0,1132,9.95739e-09,10785,0,2708.68,198,8.40002e-11,true,8.32667e-17,3.95083,0,0,0,0,1,0,0,0,0,0,0

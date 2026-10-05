@@ -1,0 +1,2 @@
+[console_scripts]
+cfdx-gui = cfdx.gui:launch

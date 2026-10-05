@@ -1,0 +1,216 @@
+{
+  "has_blocking": false,
+  "summary": {
+    "supported": 23,
+    "approximated": 0,
+    "unsupported_nonblocking": 6,
+    "unsupported_blocking": 0,
+    "unavailable": 0,
+    "total": 29
+  },
+  "findings": [
+    {
+      "severity": "supported",
+      "category": "mesh",
+      "feature": "nodes",
+      "detail": "Parsed 30 vertices from .cas",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "mesh",
+      "feature": "face_nodes",
+      "detail": "Parsed 35 face-node connectivities from .cas",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "mesh",
+      "feature": "cells",
+      "detail": "Parsed 1 cells from .cas",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "wall",
+      "detail": "Detected zone 'wall' type=wall",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "inlet",
+      "detail": "Detected zone 'inlet' type=velocity-inlet",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "outlet",
+      "detail": "Detected zone 'outlet' type=pressure-outlet",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "symmetry",
+      "detail": "Detected zone 'symmetry' type=symmetry",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "periodic",
+      "detail": "Detected zone 'periodic' type=periodic",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "interior",
+      "detail": "Detected zone 'interior' type=interior",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "far-field",
+      "detail": "Detected zone 'far-field' type=pressure-far-field",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "overset",
+      "detail": "Detected zone 'overset' type=overset",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_zone",
+      "feature": "fluid",
+      "detail": "Detected zone 'fluid' type=cell",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "material",
+      "feature": "air",
+      "detail": "Parsed material 'air' (\u03c1=1.225, \u03bc=1.789e-05)",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "material",
+      "feature": "water",
+      "detail": "Parsed material 'water' (\u03c1=1000.0, \u03bc=0.001002)",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "material",
+      "feature": "steel",
+      "detail": "Parsed material 'steel' (\u03c1=7830.0, \u03bc=6e-05)",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "wall",
+      "detail": "Mapped Fluent zone 'wall' to wall",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "inlet",
+      "detail": "Mapped Fluent zone 'inlet' to inlet",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "outlet",
+      "detail": "Mapped Fluent zone 'outlet' to pressure_outlet",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "symmetry",
+      "detail": "Mapped Fluent zone 'symmetry' to symmetry",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "periodic",
+      "detail": "Mapped Fluent zone 'periodic' to periodic",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "interior",
+      "detail": "Mapped Fluent zone 'interior' to unknown",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "far-field",
+      "detail": "Mapped Fluent zone 'far-field' to unknown",
+      "suggestion": ""
+    },
+    {
+      "severity": "supported",
+      "category": "boundary_condition",
+      "feature": "overset",
+      "detail": "Mapped Fluent zone 'overset' to interface",
+      "suggestion": ""
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "binary_cas",
+      "detail": "Binary .cas.h5 format not supported (only legacy ASCII .cas)",
+      "suggestion": "Export as legacy ASCII: File \u2192 Export \u2192 Case..."
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "dpm",
+      "detail": "Discrete Phase Model (DPM) particles not supported",
+      "suggestion": "Use single-phase flow for CFDX conversion"
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "udfs",
+      "detail": "UDFs and custom field functions not supported",
+      "suggestion": "Pre-compute and export field values via Fluent surface or volume monitor"
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "multiphase",
+      "detail": "Multiphase models (VOF/Mixture/Eulerian) not supported",
+      "suggestion": "Use single-phase configuration for CFDX conversion"
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "sliding_mesh",
+      "detail": "Sliding mesh and dynamic mesh not supported",
+      "suggestion": "Use steady-state or static mesh for CFDX conversion"
+    },
+    {
+      "severity": "unsupported_nonblocking",
+      "category": "features",
+      "feature": "results",
+      "detail": "Fluent .dat results import requires meshio or neutral export; not parsed natively",
+      "suggestion": "Export results as .cgns, .vtk, or .plt via Fluent File \u2192 Export"
+    }
+  ]
+}
