@@ -12,7 +12,7 @@
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-namespace {
+namespace {\n\nclass TestSparseOperator final : public LinearOperatorBase {\npublic:\n    explicit TestSparseOperator(const SparseMatrix& A) : A_(A) {}\n    std::size_t rows() const noexcept override { return A_.n_rows(); }\n    std::size_t cols() const noexcept override { return A_.n_cols(); }\n    void apply(const Vector& x, Vector& y) const override {\n        const auto values = A_.matvec(x);\n        if (y.size() != values.size()) y.resize(values.size());\n        for (std::size_t i = 0; i < values.size(); ++i) y(i) = values[i];\n    }\nprivate:\n    SparseMatrix A_;\n};
 
 SparseMatrix make_anisotropic_diffusion(std::size_t nx,
                                         std::size_t ny,
