@@ -3,6 +3,7 @@
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/pcd_schur.h"
+#include "cfdx/core/linalg/lsc_bfbt_schur.h"
 
 #include <algorithm>
 #include <array>
@@ -34,7 +35,9 @@ enum class CoupledSchurVelocityApproximation {
 
 enum class CoupledSchurApproximationModel {
     BlockLocal,
-    PCD
+    PCD,
+    LSC,
+    BFBT
 };
 
 struct CoupledBlockSchurOptions {
@@ -80,6 +83,10 @@ public:
         pcd_schur_ = std::move(pcd);
     }
 
+    void set_algebraic_schur(std::unique_ptr<SchurApproximation> schur) {
+        algebraic_schur_ = std::move(schur);
+    }
+
     bool setup(const SparseMatrix& A) override {
         reset();
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
@@ -99,6 +106,21 @@ public:
             if (!pcd_schur_->setup(*pcd_blocks_))
                 return fail("PCD Schur approximation setup failed");
             pcd_ready_ = true;
+            ready_ = true;
+            return true;
+        }
+        if (options_.schur_approximation == CoupledSchurApproximationModel::LSC ||
+            options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
+            if (!algebraic_schur_)
+                return fail("LSC/BFBt Schur approximation was not configured");
+            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            algebraic_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
+            if (!algebraic_schur_->setup(*algebraic_blocks_))
+                return fail("LSC/BFBt Schur approximation setup failed");
+            algebraic_ready_ = true;
             ready_ = true;
             return true;
         }
@@ -177,6 +199,33 @@ public:
             return true;
         }
 
+        if (options_.schur_approximation == CoupledSchurApproximationModel::LSC ||
+            options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
+            if (!algebraic_ready_ || !algebraic_schur_ || !algebraic_blocks_)
+                return fail_update("LSC/BFBt Schur approximation is not initialized");
+            const SparseMatrix new_Auu = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            const SparseMatrix new_G = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            const SparseMatrix new_D = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            const SparseMatrix new_C = extract_block(A, 1, 1, n_cells_, n_cells_);
+            if (!same_pattern(Auu_, new_Auu) || !same_pattern(G_, new_G) ||
+                !same_pattern(D_, new_D) || !same_pattern(C_, new_C))
+                return fail_update("LSC/BFBt coupled block graph changed; explicit setup() required");
+            std::copy(new_Auu.values_data(), new_Auu.values_data() + new_Auu.nnz(), Auu_.values_data());
+            std::copy(new_G.values_data(), new_G.values_data() + new_G.nnz(), G_.values_data());
+            std::copy(new_D.values_data(), new_D.values_data() + new_D.nnz(), D_.values_data());
+            std::copy(new_C.values_data(), new_C.values_data() + new_C.nnz(), C_.values_data());
+            algebraic_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
+            if (!algebraic_schur_->update_values(*algebraic_blocks_))
+                return fail_update("LSC/BFBt Schur numeric update failed");
+            velocity_inv_ = std::move(candidate.velocity_inv_);
+            velocity_inv_diag_ = std::move(candidate.velocity_inv_diag_);
+            row_ = std::move(candidate.row_);
+            col_ = std::move(candidate.col_);
+            val_ = std::move(candidate.val_);
+            schur_ = std::move(candidate.schur_);
+            return true;
+        }
+
         if (!pressure_amg_.update_values(candidate.schur_)) {
             last_error_ = pressure_amg_.last_error();
             return false;
@@ -224,6 +273,11 @@ public:
             if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
                 if (!pcd_ready_ || !pcd_schur_ ||
                     !pcd_schur_->apply(pressure_rhs, pressure))
+                    return false;
+            } else if (options_.schur_approximation == CoupledSchurApproximationModel::LSC ||
+                       options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
+                if (!algebraic_ready_ || !algebraic_schur_ ||
+                    !algebraic_schur_->apply(pressure_rhs, pressure))
                     return false;
             } else if (!pressure_amg_.apply(pressure_rhs, pressure)) return false;
             if (options_.diagonal_schur_sign_flip) {
@@ -544,7 +598,7 @@ private:
     }
 
     void reset() {
-        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); last_error_.clear(); velocity_inv_.clear();
+        ready_=false; pcd_ready_=false; pcd_blocks_.reset(); algebraic_ready_=false; algebraic_blocks_.reset(); algebraic_schur_.reset(); last_error_.clear(); velocity_inv_.clear();
         velocity_inv_diag_.clear();
         row_.clear(); col_.clear(); val_.clear(); schur_=SparseMatrix();
     }
@@ -564,7 +618,10 @@ private:
     NativeBoomerAMGPreconditioner pressure_amg_;
     std::unique_ptr<PcdSchurApproximation> pcd_schur_;
     std::unique_ptr<BlockOperator> pcd_blocks_;
+    std::unique_ptr<SchurApproximation> algebraic_schur_;
+    std::unique_ptr<BlockOperator> algebraic_blocks_;
     bool pcd_ready_{false};
+    bool algebraic_ready_{false};
     bool ready_{false};
     std::string last_error_;
 };
