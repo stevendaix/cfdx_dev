@@ -117,6 +117,13 @@ inline LinearSolveReport solve_linear_system(
     std::vector<double> column_scale(matrix.n_cols(), 1.0);
     if (request.scaling != LinearScalingModel::None) {
         scaling_result = scale_matrix(matrix, to_matrix_scaling(request.scaling));
+        if (scaling_result.zero_rows != 0 || scaling_result.zero_columns != 0) {
+            report.applied_scaling = request.scaling;
+            report.result.status = SolverStatus::NOT_APPLICABLE;
+            report.physical_residual_relative =
+                std::numeric_limits<double>::infinity();
+            return report;
+        }
         solve_matrix = &scaling_result.matrix;
         scaled_rhs = Vector(rhs.size(), 0.0);
         scaled_solution = Vector(solution.size(), 0.0);
