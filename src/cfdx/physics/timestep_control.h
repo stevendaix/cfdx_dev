@@ -386,6 +386,16 @@ public:
             alpha_scale_p_ *= controls_.relaxation_shrink;
     }
 
+    // Record a bounded retry without applying the generic relaxation shrink.
+    // Specialized recovery logic may already have reduced the effective
+    // relaxation factor and must not be compounded by a second scaling.
+    void retry_without_relaxation()
+    {
+        if (!can_retry())
+            throw std::runtime_error("nonlinear retry limit exhausted");
+        ++retry_count_;
+    }
+
     double alpha_u(double base) const
     {
         return std::max(controls_.minimum_alpha_u, base * alpha_scale_u_);
