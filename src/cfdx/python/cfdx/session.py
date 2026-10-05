@@ -1,6 +1,7 @@
 """Headless application session shared by future CLI/TUI/GUI frontends.
 
-The session owns orchestration state only. Numerical kernels remain in C++.
+The session owns orchestration state and the in-memory numerical restart state
+used by the application layer. Numerical kernels remain in C++.
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from enum import Enum
 from typing import Any
 
 from .case import Case
+from .dat_io import DatField
 
 
 class SimulationState(str, Enum):
@@ -60,6 +62,8 @@ class CFDXSession:
     numerics_revision: int = 0
     iteration: int = 0
     time: float = 0.0
+    fields: dict[str, DatField] = field(default_factory=dict)
+    field_cell_ids: tuple[int, ...] | None = None
     _requires_restart: bool = False
 
     def validate(self) -> None:
