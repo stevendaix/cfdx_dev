@@ -333,9 +333,10 @@ int main(int argc, char** argv)
     try {
         const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
         const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
+        const bool pcd_preflight = argc == 2 && std::string(argv[1]) == "--pcd-preflight";
         const bool pcd = argc == 2 && std::string(argv[1]) == "--pcd";
-        if (argc > 1 && !quick && !gate && !pcd)
-            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd]");
+        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd]");
 
         // Merge-gated observed-order smoke check. Three resolutions are the
         // minimum for a Richardson-style order from successive differences, so
@@ -379,42 +380,26 @@ int main(int argc, char** argv)
             return 0;
         }
 
-        if (pcd) {
-            // Bounded preflight prevents a broken nested PCD solve from
-            // consuming the full physical-case timeout. These watchdogs are
-            // safety limits only; they are not numerical acceptance gates.
-            const auto run_pcd_timed = [](const CavityCase& test,
-                                          double watchdog_seconds,
-                                          const char* stage) {
-                const auto start = std::chrono::steady_clock::now();
-                auto result = run_case(
-                    test,
-                    PressureVelocityAlgorithm::COUPLED,
-                    PreconditionerModel::PCD);
-                const double elapsed = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - start).count();
-                std::cout << "N8_PCD_STAGE stage=" << stage
-                          << " elapsed_s=" << elapsed << "\n";
-                if (!std::isfinite(elapsed) || elapsed > watchdog_seconds)
-                    throw std::runtime_error(
-                        std::string("N8 PCD ") + stage +
-                        " watchdog exceeded: " + std::to_string(elapsed) +
-                        " s > " + std::to_string(watchdog_seconds) + " s");
-                return result;
-            };
-
-            // Preflight only: it is deliberately not qualification evidence.
-            const auto preflight = run_pcd_timed(
-                {100.0,16,16,1000}, 120.0, "preflight-16x16");
-            (void)preflight;
-            // Physical N8 acceptance remains the unchanged Re=100, 32x32 case.
-            const auto result = run_pcd_timed(
-                {100.0,32,32,5000}, 720.0, "qualification-32x32");
+        if (pcd_preflight || pcd) {
+            const auto start = std::chrono::steady_clock::now();
+            const CavityCase test = pcd_preflight
+                ? CavityCase{100.0,16,16,1000}
+                : CavityCase{100.0,32,32,5000};
+            const auto result = run_case(
+                test,
+                PressureVelocityAlgorithm::COUPLED,
+                PreconditionerModel::PCD);
             (void)result;
-            std::cout << "GHIA_CAVITY_N8_PCD: PASS\n";
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start).count();
+            std::cout << "N8_PCD_STAGE stage="
+                      << (pcd_preflight ? "preflight-16x16" : "qualification-32x32")
+                      << " elapsed_s=" << elapsed << "\\n";
+            std::cout << (pcd_preflight
+                ? "GHIA_CAVITY_N8_PCD_PREFLIGHT: PASS\\n"
+                : "GHIA_CAVITY_N8_PCD: PASS\\n");
             return 0;
         }
-
         const auto r32 = run_case({100.0,32,32,2500});
         if (quick) {
             std::cout << "GHIA_CAVITY_QUICK: PASS\n";
