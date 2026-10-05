@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts.acquire_mesh_fixtures import parse_manifest, parse_sources, sha256, sha256_tree, verify_sha256
+from scripts.verify_n10_mesh_fixtures import verify_fixture
 
 
 def test_manifest_parsers_preserve_sections():
@@ -69,3 +70,24 @@ def test_public_fixture_provenance_is_fully_verified():
 
     assert fixtures["ansys-vmfl078"]["sha256"] == "null"
     assert sources["ansys-vmfl"]["redistribution"] == "prohibited"
+
+
+def test_independent_verifier_checks_directory_digest(tmp_path):
+    output_root = tmp_path / "output"
+    payload = output_root / "fixture"
+    payload.mkdir(parents=True)
+    (payload / "a").write_text("one", encoding="utf-8")
+    (payload / "b").write_text("two", encoding="utf-8")
+
+    fixture = {
+        "id": "fixture",
+        "source": "public-source",
+        "sha256": "28fe29adbcf0f5e657979954392f18631a1e495dd11c77be6e58e6841a2a2c2d",
+        "acquisition": "pinned_repository_subtree",
+    }
+    source = {"id": "public-source", "redistribution": "verified"}
+
+    result = verify_fixture(fixture, source, output_root)
+
+    assert result["status"] == "VERIFIED"
+    assert result["sha256"] == fixture["sha256"]
