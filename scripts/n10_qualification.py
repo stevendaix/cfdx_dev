@@ -13,6 +13,11 @@ import json
 import re
 import subprocess
 import sys
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None
 import time
 from pathlib import Path
 
@@ -151,6 +156,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--report", type=Path, default=None)
+    parser.add_argument("--fixture-manifest", type=Path, default=None)
     args = parser.parse_args()
 
     build_dir = args.build_dir.resolve()
@@ -159,6 +165,61 @@ def main() -> int:
         return 2
 
     report_path = args.report.resolve() if args.report else build_dir / "n10_qualification.json"
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest_path = (
+        args.fixture_manifest
+        if args.fixture_manifest is not None
+        else repo_root / "tests/fixtures/mesh_sources.yaml"
+    ).resolve()
+    if not manifest_path.exists():
+        print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
+        return 2
+    if yaml is None:
+        print("error: PyYAML is required to parse the N10 fixture manifest", file=sys.stderr)
+        return 2
+    try:
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"error: unable to parse fixture manifest: {exc}", file=sys.stderr)
+        return 2
+
+    if not isinstance(manifest, dict):
+        print("error: fixture manifest root must be a mapping", file=sys.stderr)
+        return 2
+    fixtures = manifest.get("fixtures")
+    if not isinstance(fixtures, list):
+        print("error: fixture manifest 'fixtures' must be a list", file=sys.stderr)
+        return 2
+
+    verified_fixtures: list[dict[str, object]] = []
+    for index, item in enumerate(fixtures):
+        if not isinstance(item, dict):
+            print(f"error: fixture manifest entry {index} must be a mapping", file=sys.stderr)
+            return 2
+        if item.get("status") != "verified_reference":
+            continue
+        required_fields = ("id", "source", "acquisition", "sha256")
+        missing_fields = [field for field in required_fields if not item.get(field)]
+        if missing_fields:
+            print(
+                f"error: verified fixture entry {index} is missing required fields: "
+                + ", ".join(missing_fields),
+                file=sys.stderr,
+            )
+            return 2
+        verified_fixtures.append(
+            {
+                "id": item["id"],
+                "source": item["source"],
+                "acquisition": item["acquisition"],
+                "sha256": item["sha256"],
+                "status": item["status"],
+            }
+        )
+    if not verified_fixtures:
+        print("error: fixture manifest contains no verified_reference fixtures", file=sys.stderr)
+        return 2
+
     available = discover_tests(build_dir)
     missing = [name for name in REQUIRED_TESTS if name not in available]
     if missing:
@@ -200,7 +261,9 @@ def main() -> int:
             "geometry_robustness": True,
             "reconstruction_and_pde_accuracy": "reused from N2/N3 campaigns",
             "solver_robustness": "reported by dedicated N10 campaign",
-            "imported_production_fixtures": "not yet integrated",
+            "imported_production_fixtures": "verified_reference_manifest_integrated",
+            "verified_fixture_count": len(verified_fixtures),
+            "verified_fixtures": verified_fixtures,
         },
         "policy": {
             "reuses_existing_vv_tests": True,
