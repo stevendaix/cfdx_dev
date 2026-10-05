@@ -128,6 +128,41 @@ int main() {
         assert_close(actual, single * -1.0);
     });
 
+    run_case("pcd_owns_pressure_operator_lifetime", [] {
+        PcdSchurApproximation pcd(
+            []() -> SparseMatrix {
+                SparseMatrix A(1, 1); A.push_back(0, 0, 2.0); A.finalize(); return A;
+            }(),
+            []() -> SparseMatrix {
+                SparseMatrix A(1, 1); A.push_back(0, 0, 3.0); A.finalize(); return A;
+            }(),
+            []() -> SparseMatrix {
+                SparseMatrix A(1, 1); A.push_back(0, 0, 4.0); A.finalize(); return A;
+            }(),
+            [](const Vector& rhs, Vector& x) {
+                x = rhs; x *= (1.0 / 3.0); return true;
+            },
+            [](const Vector& rhs, Vector& x) {
+                x = rhs; x *= 0.25; return true;
+            });
+
+        SparseMatrix Auu(1, 1), G(1, 1), D(1, 1), C(1, 1);
+        Auu.push_back(0, 0, 1.0); G.push_back(0, 0, 1.0);
+        D.push_back(0, 0, -1.0); C.push_back(0, 0, 0.0);
+        Auu.finalize(); G.finalize(); D.finalize(); C.finalize();
+        BlockOperator blocks(Auu, G, D, C);
+        EXPECT_TRUE(pcd.setup(blocks));
+
+        Vector rhs(1, 0.0); rhs(0) = 2.0;
+        Vector out(1, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, out));
+        EXPECT_NEAR(out(0), -0.5, 1e-12);
+        EXPECT_TRUE(pcd.has_pressure_operators());
+        EXPECT_NEAR(pcd.pressure_mass()(0, 0), 2.0, 1e-12);
+        EXPECT_NEAR(pcd.pressure_laplacian()(0, 0), 3.0, 1e-12);
+        EXPECT_NEAR(pcd.pressure_convection_diffusion()(0, 0), 4.0, 1e-12);
+    });
+
     run_case("pcd_action_is_a_single_inverse_operator", [&] {
         PcdSchurApproximation pcd(Mp, Kp, Fp, solve_K, solve_F);
         EXPECT_TRUE(pcd.setup(blocks));
