@@ -87,9 +87,10 @@ struct AdaptiveRelaxationControls {
     // more quickly than it is introduced.
     double increase_step = 0.005;
     double decrease_step = 0.02;
-    // A severe residual jump is treated as an overshoot event rather than
-    // waiting for the normal multi-window hysteresis. This guard is checked
-    // on every completed nonlinear iteration.
+    // A severe residual jump immediately following an accepted relaxation
+    // increase is treated as an overshoot event rather than waiting for the
+    // normal multi-window hysteresis. Residual jumps without a causal alpha
+    // increase are not classified as adaptive overshoots.
     double severe_degradation_ratio = 2.0;
     // Number of adaptation windows during which increases are frozen after a
     // severe-degradation rollback.
@@ -190,12 +191,23 @@ inline double adapt_relaxation_factor_windowed(
 inline bool adaptive_relaxation_severe_degradation(
     double previous_metric,
     double current_metric,
+    double previous_alpha,
+    double current_alpha,
     const AdaptiveRelaxationControls& controls)
 {
     validate_adaptive_relaxation_controls(controls);
     if (!std::isfinite(previous_metric) || !std::isfinite(current_metric) ||
-        previous_metric <= 0.0 || current_metric < 0.0)
+        !std::isfinite(previous_alpha) || !std::isfinite(current_alpha) ||
+        previous_metric <= 0.0 || current_metric < 0.0 ||
+        previous_alpha <= 0.0 || current_alpha <= 0.0)
         throw std::invalid_argument("invalid adaptive relaxation guard state");
+
+    // A residual jump is only an adaptive-relaxation overshoot when the
+    // responsible relaxation factor actually increased between two accepted
+    // nonlinear states. This prevents ordinary SIMPLE oscillations from
+    // repeatedly consuming the bounded retry budget.
+    if (!(current_alpha > previous_alpha))
+        return false;
     return current_metric / previous_metric >= controls.severe_degradation_ratio;
 }
 
