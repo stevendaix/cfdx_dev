@@ -1885,7 +1885,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // This keeps the additive bounds while preventing a deterministic
             // alpha oscillation around the nominal value.
             const auto window = controls.adaptive_relaxation.adaptation_window;
-            if (window > 0 && result.history.size() > window) {
+            if (window > 0 && result.history.size() > window &&
+                (result.history.size() - 1) % window == 0) {
                 const double current_metric =
                     result.history.back().nonlinear_convergence_metric;
                 const double reference_metric =
