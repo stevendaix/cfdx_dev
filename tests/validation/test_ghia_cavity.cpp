@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -379,10 +380,36 @@ int main(int argc, char** argv)
         }
 
         if (pcd) {
-            const auto result = run_case(
-                {100.0,32,32,5000},
-                PressureVelocityAlgorithm::COUPLED,
-                PreconditionerModel::PCD);
+            // Bounded preflight prevents a broken nested PCD solve from
+            // consuming the full physical-case timeout. These watchdogs are
+            // safety limits only; they are not numerical acceptance gates.
+            const auto run_pcd_timed = [](const CavityCase& test,
+                                          double watchdog_seconds,
+                                          const char* stage) {
+                const auto start = std::chrono::steady_clock::now();
+                auto result = run_case(
+                    test,
+                    PressureVelocityAlgorithm::COUPLED,
+                    PreconditionerModel::PCD);
+                const double elapsed = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - start).count();
+                std::cout << "N8_PCD_STAGE stage=" << stage
+                          << " elapsed_s=" << elapsed << "\n";
+                if (!std::isfinite(elapsed) || elapsed > watchdog_seconds)
+                    throw std::runtime_error(
+                        std::string("N8 PCD ") + stage +
+                        " watchdog exceeded: " + std::to_string(elapsed) +
+                        " s > " + std::to_string(watchdog_seconds) + " s");
+                return result;
+            };
+
+            // Preflight only: it is deliberately not qualification evidence.
+            const auto preflight = run_pcd_timed(
+                {100.0,16,16,1000}, 120.0, "preflight-16x16");
+            (void)preflight;
+            // Physical N8 acceptance remains the unchanged Re=100, 32x32 case.
+            const auto result = run_pcd_timed(
+                {100.0,32,32,5000}, 720.0, "qualification-32x32");
             (void)result;
             std::cout << "GHIA_CAVITY_N8_PCD: PASS\n";
             return 0;
