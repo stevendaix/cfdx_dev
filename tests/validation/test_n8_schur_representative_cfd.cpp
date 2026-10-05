@@ -1,6 +1,7 @@
 #include "cfdx/core/linalg/exact_schur.h"
 #include "cfdx/core/linalg/block_operator.h"
 #include "cfdx/core/linalg/lsc_bfbt_schur.h"
+#include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/simplerc_schur.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
@@ -176,6 +177,30 @@ Dense subtract(const Dense& A, const Dense& B) {
     return C;
 }
 
+SparseMatrix make_pcd_pressure_operator(std::size_t n, double convection) {
+    const std::size_t np = n * n;
+    std::vector<std::tuple<std::size_t, std::size_t, double>> entries;
+    const auto cell = [n](std::size_t x, std::size_t y) {
+        return y * n + x;
+    };
+    for (std::size_t y = 0; y < n; ++y) {
+        for (std::size_t x = 0; x < n; ++x) {
+            const std::size_t p = cell(x, y);
+            double diagonal = 1.0 + 4.0 + convection;
+            entries.emplace_back(p, p, diagonal);
+            if (x > 0)
+                entries.emplace_back(p, cell(x - 1, y), -1.0 - convection);
+            if (x + 1 < n)
+                entries.emplace_back(p, cell(x + 1, y), -1.0);
+            if (y > 0)
+                entries.emplace_back(p, cell(x, y - 1), -1.0);
+            if (y + 1 < n)
+                entries.emplace_back(p, cell(x, y + 1), -1.0);
+        }
+    }
+    return make_sparse(np, np, entries);
+}
+
 Dense diagonal_inverse(const Dense& A) {
     Dense result(A.size(), std::vector<double>(A.size(), 0.0));
     for (std::size_t i = 0; i < A.size(); ++i) {
@@ -240,6 +265,25 @@ int main() {
             const Dense Q_inv = diagonal_inverse(Auu);
             const Dense P = multiply(multiply(D, Q_inv), G);
             const Dense S = subtract(C, multiply(multiply(D, Auu_inv), G));
+
+            // Pressure-space operators for the PCD inverse action.  The
+            // convection parameter is deliberately non-zero in four of the
+            // six points so Fp and Kp are measurably distinct.
+            const auto Mp = make_sparse(
+                cfg.n * cfg.n, cfg.n * cfg.n,
+                [&] {
+                    std::vector<std::tuple<std::size_t, std::size_t, double>> entries;
+                    for (std::size_t i = 0; i < cfg.n * cfg.n; ++i)
+                        entries.emplace_back(i, i, 1.0);
+                    return entries;
+                }());
+            const auto Kp = make_pcd_pressure_operator(cfg.n, 0.0);
+            const auto Fp = make_pcd_pressure_operator(cfg.n, cfg.convection);
+
+            const Dense Kp_dense = dense(Kp);
+            const Dense Fp_dense = dense(Fp);
+            const Dense Kp_inv = inverse(Kp_dense);
+            const Dense Fp_inv = inverse(Fp_dense);
             const Dense P_inv = inverse(P);
             const Dense S_inv = inverse(S);
 
@@ -266,10 +310,39 @@ int main() {
             double max_simplec_error = 0.0;
             double max_lsc_error = 0.0;
             double max_bfbt_error = 0.0;
+            double max_pcd_error = 0.0;
+            double max_pcd_ordering_separation = 0.0;
 
             for (const double phase : {0.0, 0.7}) {
                 const Vector pressure = make_rhs(cfg.n * cfg.n, phase);
                 const Vector rhs = make_rhs(cfg.n * cfg.n, phase + 0.31);
+
+                // PCD is an inverse-action approximation.  Compare its
+                // measured action directly against the independently assembled
+                // exact Schur inverse; do not introduce an approximation-quality
+                // threshold before the representative-CFD envelope exists.
+                auto solve_kp = [Kp_inv](const Vector& input, Vector& output) {
+                    output = matvec(Kp_inv, input);
+                    return true;
+                };
+                auto solve_fp = [Fp_inv](const Vector& input, Vector& output) {
+                    output = matvec(Fp_inv, input);
+                    return true;
+                };
+                PcdSchurApproximation pcd(
+                    Mp, Kp, Fp, solve_kp, solve_fp);
+                EXPECT_TRUE(pcd.setup(blocks));
+                Vector pcd_action(rhs.size(), 0.0);
+                EXPECT_TRUE(pcd.apply(rhs, pcd_action));
+                const Vector exact_inverse = matvec(S_inv, rhs);
+                max_pcd_error = std::max(
+                    max_pcd_error, relative_error(pcd_action, exact_inverse));
+
+                const Vector fp_action = matvec(Fp_inv, rhs) * -1.0;
+                const Vector kp_action = matvec(Kp_inv, rhs) * -1.0;
+                max_pcd_ordering_separation = std::max(
+                    max_pcd_ordering_separation,
+                    (fp_action - kp_action).norm2());
 
                 Vector exact_operator(rhs.size(), 0.0);
                 EXPECT_TRUE(exact.apply_schur(pressure, exact_operator));
@@ -320,6 +393,8 @@ int main() {
                 << " simplec_error=" << max_simplec_error
                 << " lsc_error=" << max_lsc_error
                 << " bfbt_error=" << max_bfbt_error
+                << " pcd_error=" << max_pcd_error
+                << " pcd_fp_vs_kp_separation=" << max_pcd_ordering_separation
                 << '\n';
 
             // Measurement only: no approximation-quality threshold is invented
@@ -329,6 +404,8 @@ int main() {
             EXPECT_TRUE(std::isfinite(max_simplec_error));
             EXPECT_TRUE(std::isfinite(max_lsc_error));
             EXPECT_TRUE(std::isfinite(max_bfbt_error));
+            EXPECT_TRUE(std::isfinite(max_pcd_error));
+            EXPECT_TRUE(std::isfinite(max_pcd_ordering_separation));
         }
     });
 
