@@ -77,7 +77,7 @@ int main()
         alpha_u = std::max(
             controls.min_alpha_u, alpha_u - controls.decrease_step);
         retry.retry_without_relaxation();
-        EXPECT_EQ(retry.retries(), std::size_t{1});
+        EXPECT_TRUE(retry.retries() == std::size_t{1});
         EXPECT_NEAR(retry.alpha_u(0.705), 0.705, 1e-14);
         EXPECT_NEAR(alpha_u, 0.685, 1e-14);
         EXPECT_EQ(history.size(), std::size_t{1});
