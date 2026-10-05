@@ -2,7 +2,16 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Sequence
+from pathlib import Path
 import math
+
+# Schema written by the native probe exporter (`cfdx::io::write_probe_csv`) and
+# read back here, so a file produced by a solver run is consumable by the
+# application layer without a translation step.
+PROBE_CSV_MAGIC = "cfdx-probe-csv"
+PROBE_CSV_VERSION = 1
+_PROBE_CSV_COLUMNS = ("probe", "iteration", "time", "value")
+
 
 @dataclass(frozen=True)
 class ProbeSample:
@@ -41,3 +50,126 @@ class ProbeSeries:
                     f"probe {self.name!r} exceeds tolerance at iteration {sample.iteration}"
                 )
         return error
+
+
+def _format_probe_csv_value(value: float) -> str:
+    """Render a float so the text round-trips exactly through float().
+
+    ``repr`` gives the shortest representation that parses back to the same
+    double, which is what makes the export byte-stable across runs.
+    """
+    if not math.isfinite(value):
+        raise ValueError("probe CSV values must be finite")
+    return repr(float(value))
+
+
+def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
+    """Write probe series as the native probe CSV schema.
+
+    Rows are ordered by probe name then iteration, matching
+    ``cfdx::io::write_probe_csv``, so the same run produces the same bytes from
+    either language.
+    """
+    if not series:
+        raise ValueError("probe CSV export requires at least one probe series")
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    rows: list[tuple[str, int, float, float]] = []
+    for probe in series:
+        if not probe.name:
+            raise ValueError("probe name must not be empty")
+        if any(character in probe.name for character in ",\r\n"):
+            raise ValueError(
+                f"probe name must not contain a comma or newline: {probe.name!r}"
+            )
+        for sample in probe.samples:
+            if sample.iteration < 0:
+                raise ValueError("probe iteration must be non-negative")
+            if not math.isfinite(sample.time) or not math.isfinite(sample.value):
+                raise ValueError(
+                    f"probe {probe.name!r} has a non-finite sample"
+                )
+            rows.append((probe.name, sample.iteration, sample.time, sample.value))
+    rows.sort(key=lambda row: (row[0], row[1]))
+
+    lines = [
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}",
+        "# columns: " + ",".join(_PROBE_CSV_COLUMNS),
+    ]
+    for name, iteration, time_value, value in rows:
+        lines.append(
+            f"{name},{iteration},{_format_probe_csv_value(time_value)},"
+            f"{_format_probe_csv_value(value)}"
+        )
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
+
+
+def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
+    """Read the native probe CSV schema back into probe series.
+
+    The probe location is not part of the file, so it comes back as an empty
+    tuple: the CSV records what was sampled, not where. Series are returned in
+    probe-name order.
+    """
+    source = Path(path)
+    text = source.read_text(encoding="utf-8")
+
+    magic: str | None = None
+    data_lines: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("#"):
+            body = line[1:].strip()
+            if not magic and body.startswith(PROBE_CSV_MAGIC):
+                parts = body.split()
+                if len(parts) != 2 or parts[0] != PROBE_CSV_MAGIC:
+                    raise ValueError("malformed probe CSV header")
+                try:
+                    version = int(parts[1].removeprefix("v"))
+                except ValueError as exc:
+                    raise ValueError(f"malformed probe CSV header: {body}") from exc
+                if version != PROBE_CSV_VERSION:
+                    raise ValueError(
+                        f"unsupported probe CSV version: {parts[1]}"
+                    )
+                magic = parts[0]
+            continue
+        if line.strip():
+            data_lines.append(line)
+
+    if magic is None:
+        raise ValueError(f"not a CFDX probe CSV: {source}")
+
+    grouped: dict[str, list[ProbeSample]] = {}
+    for line in data_lines:
+        fields = line.split(",")
+        if len(fields) != len(_PROBE_CSV_COLUMNS):
+            raise ValueError(f"probe CSV row must have four columns: {line!r}")
+        name, iteration_text, time_text, value_text = fields
+        if not name:
+            raise ValueError("probe CSV row has an empty probe name")
+        try:
+            iteration = int(iteration_text)
+        except ValueError as exc:
+            raise ValueError(f"probe CSV row has a non-integer iteration: {line!r}") from exc
+        if iteration < 0:
+            raise ValueError("probe CSV iteration must be non-negative")
+        try:
+            time_value = float(time_text)
+            value = float(value_text)
+        except ValueError as exc:
+            raise ValueError(f"probe CSV row has a non-numeric value: {line!r}") from exc
+        if not math.isfinite(time_value) or not math.isfinite(value):
+            raise ValueError(f"probe CSV row has a non-finite value: {line!r}")
+        grouped.setdefault(name, []).append(ProbeSample(iteration, time_value, value))
+
+    if not grouped:
+        raise ValueError("probe CSV contains no samples")
+
+    series = []
+    for name in sorted(grouped):
+        probe = ProbeSeries(name, (), tuple(grouped[name]))
+        probe.validate_monotonic()
+        series.append(probe)
+    return tuple(series)

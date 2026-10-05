@@ -449,6 +449,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_probe_csv tests/unit/test_probe_csv.cpp)
 
     # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
