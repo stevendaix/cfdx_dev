@@ -373,7 +373,7 @@ int main(int argc, char** argv)
         std::cout << "Checkpoint " << dat.string() << "\n";
 
         if (!options.probe_csv.empty()) {
-            write_probe_csv(options.probe_csv.string(), result.probe_samples);
+            write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
             std::cout << "Probe CSV " << options.probe_csv.string() << " ("
                       << result.probe_samples.size() << " samples)\n";
         }

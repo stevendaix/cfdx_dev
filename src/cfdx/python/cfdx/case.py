@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from .probe import Probe
+
 
 @dataclass
 class ExecutionConfig:
@@ -25,6 +27,7 @@ class Case:
     boundaries: dict[str, Any] = field(default_factory=dict)
     materials: dict[str, Any] = field(default_factory=dict)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    probes: list[Probe] = field(default_factory=list)
 
     def enable(self, model: str) -> "Case":
         self.physics[model] = {"enabled": True}

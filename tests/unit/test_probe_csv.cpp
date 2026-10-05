@@ -184,5 +184,37 @@ int main()
         EXPECT_TRUE(std::filesystem::exists(path.string() + ".tmp") == false);
     });
 
+    run_case("emits_probe_metadata_when_probes_given", []() {
+        const auto path = unique_temp_path(".csv");
+        write_probe_csv(path.string(), {
+            {IncompressibleProbeSample{"pressure", 1, 0.0, 1.0}},
+            {IncompressibleProbeSample{"u_mag", 1, 0.1, 0.5}},
+        }, {
+            IncompressiblePointProbe{"pressure", cfdx::core::Vec3{0.5, 0.5, 0.5},
+                                     IncompressibleProbeField::PRESSURE},
+            IncompressiblePointProbe{"u_mag", cfdx::core::Vec3{1.0, 0.0, 0.0},
+                                     IncompressibleProbeField::U_MAGNITUDE},
+        });
+        const std::string text = read_all(path);
+        std::vector<std::string> lines = split_lines(text);
+        EXPECT_TRUE(lines[0] == "# cfdx-probe-csv v1");
+        EXPECT_TRUE(lines[1] == "# columns: probe,iteration,time,value");
+        EXPECT_TRUE(lines[2] == "# probe pressure at 0.5,0.5,0.5 field=p unit=Pa");
+        EXPECT_TRUE(lines[3] == "# probe u_mag at 1.0,0.0,0.0 field=u_mag unit=m/s");
+        EXPECT_TRUE(lines[4] == "pressure,1,0.0,1.0");
+        EXPECT_TRUE(lines[5] == "u_mag,1,0.1,0.5");
+    });
+
+    run_case("omits_metadata_when_no_probes_are_passed", []() {
+        const auto path = unique_temp_path(".csv");
+        write_probe_csv(path.string(), {
+            {IncompressibleProbeSample{"pressure", 1, 0.0, 1.0}},
+        });
+        const std::string text = read_all(path);
+        std::vector<std::string> lines = split_lines(text);
+        EXPECT_TRUE(lines[1] == "# columns: probe,iteration,time,value");
+        EXPECT_TRUE(lines[2] == "pressure,1,0.0,1.0");
+    });
+
     return run_all();
 }

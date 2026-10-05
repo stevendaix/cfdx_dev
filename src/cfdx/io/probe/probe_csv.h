@@ -34,6 +34,8 @@
 #include <charconv>
 #include <cmath>
 #include <fstream>
+#include <map>
+#include <set>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -44,6 +46,29 @@ namespace cfdx::io {
 
 inline constexpr int ProbeCsvVersion = 1;
 inline constexpr const char* ProbeCsvMagic = "cfdx-probe-csv";
+
+// Canonical CLI string and SI unit for a probe field, mirroring
+// cfdx.probe.ProbeField so a CSV written here round-trips through the
+// application-layer reader/writer untouched.
+inline const char* probe_field_cli(cfdx::physics::IncompressibleProbeField field)
+{
+    switch (field) {
+        case cfdx::physics::IncompressibleProbeField::PRESSURE: return "p";
+        case cfdx::physics::IncompressibleProbeField::U_X: return "u_x";
+        case cfdx::physics::IncompressibleProbeField::U_Y: return "u_y";
+        case cfdx::physics::IncompressibleProbeField::U_Z: return "u_z";
+        case cfdx::physics::IncompressibleProbeField::U_MAGNITUDE: return "u_mag";
+    }
+    return "?";
+}
+
+inline const char* probe_field_unit(cfdx::physics::IncompressibleProbeField field)
+{
+    switch (field) {
+        case cfdx::physics::IncompressibleProbeField::PRESSURE: return "Pa";
+        default: return "m/s"; // U_X, U_Y, U_Z, U_MAGNITUDE
+    }
+}
 
 // Canonical float serialization for the probe CSV. The emitted text is the
 // shortest representation that round-trips exactly, using Python ``repr`` float
@@ -82,7 +107,8 @@ inline std::string format_probe_csv_value(double value)
 // half-written export.
 inline void write_probe_csv(
     const std::string& path,
-    const std::vector<cfdx::physics::IncompressibleProbeSample>& samples)
+    const std::vector<cfdx::physics::IncompressibleProbeSample>& samples,
+    const std::vector<cfdx::physics::IncompressiblePointProbe>& probes = {})
 {
     if (samples.empty())
         throw std::invalid_argument("write_probe_csv: no probe samples to write");
@@ -110,6 +136,27 @@ inline void write_probe_csv(
         throw std::runtime_error("write_probe_csv: cannot open " + path);
     out << "# " << ProbeCsvMagic << " v" << ProbeCsvVersion << "\n";
     out << "# columns: probe,iteration,time,value\n";
+
+    // Emit ``# probe`` metadata lines for every declared probe that produced
+    // samples, sorted by name to match cfdx.probe_validation.write_probe_csv.
+    // The location and field/unit survive a cross-language round-trip.
+    if (!probes.empty()) {
+        std::map<std::string, const cfdx::physics::IncompressiblePointProbe*> by_name;
+        for (const auto& probe : probes) by_name[probe.name] = &probe;
+        std::set<std::string> sampled;
+        for (const auto* sample : ordered) sampled.insert(sample->name);
+        for (const auto& name : sampled) {
+            const auto it = by_name.find(name);
+            if (it == by_name.end()) continue;
+            const auto* probe = it->second;
+            out << "# probe " << name << " at "
+                << format_probe_csv_value(probe->location.x) << ","
+                << format_probe_csv_value(probe->location.y) << ","
+                << format_probe_csv_value(probe->location.z)
+                << " field=" << probe_field_cli(probe->field)
+                << " unit=" << probe_field_unit(probe->field) << "\n";
+        }
+    }
     for (const auto* sample : ordered) {
         // A comma or a newline in a probe name would corrupt the row structure,
         // so the name is validated rather than escaped silently.

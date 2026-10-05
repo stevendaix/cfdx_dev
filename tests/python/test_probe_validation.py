@@ -9,6 +9,7 @@ from cfdx.probe_validation import (
     ProbeSample,
     ProbeSeries,
     _format_probe_csv_value,
+    _format_probe_metadata_line,
     read_probe_csv,
     write_probe_csv,
 )
@@ -249,4 +250,69 @@ def test_read_probe_csv_rejects_missing_columns_header(tmp_path):
     csv.write_text(f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\nx,1,0.0,0.0\n")
     with pytest.raises(ValueError, match="missing the # columns: header"):
         read_probe_csv(csv)
+
+
+def test_probe_metadata_line_matches_native_writer_format() -> None:
+    # The C++ writer emits `# probe <name> at <x>,<y>,<z> field=<cli> unit=<u>`
+    # with canonical float coordinates; the Python helper reproduces it verbatim.
+    assert _format_probe_metadata_line("pressure", (0.5, 0.5, 0.5), "p", "Pa") == (
+        "# probe pressure at 0.5,0.5,0.5 field=p unit=Pa"
+    )
+    tiny = 1e-9
+    assert _format_probe_metadata_line("u", (tiny, 1e16, 0.0), "u_mag", "m/s") == (
+        "# probe u at 1e-09,1e+16,0.0 field=u_mag unit=m/s"
+    )
+
+
+def test_write_probe_csv_emits_probe_metadata(tmp_path) -> None:
+    path = write_probe_csv(tmp_path / "probes.csv", [
+        ProbeSeries("pressure", (0.5, 0.5, 0.5), (
+            ProbeSample(1, 0.1, 1.0),
+        ), field="p", unit="Pa"),
+        ProbeSeries("u_mag", (1.0, 0.0, 0.0), (
+            ProbeSample(1, 0.1, 0.5),
+        ), field="u_mag", unit="m/s"),
+    ])
+    lines = path.read_text().splitlines()
+    # Metadata lines sit between the columns header and the first data row,
+    # ordered by probe name to match the native writer.
+    assert lines[0] == f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}"
+    assert lines[1] == "# columns: probe,iteration,time,value"
+    assert lines[2] == "# probe pressure at 0.5,0.5,0.5 field=p unit=Pa"
+    assert lines[3] == "# probe u_mag at 1.0,0.0,0.0 field=u_mag unit=m/s"
+    assert lines[4] == "pressure,1,0.1,1.0"
+    assert lines[5] == "u_mag,1,0.1,0.5"
+
+
+def test_read_probe_csv_round_trips_metadata(tmp_path) -> None:
+    original = [
+        ProbeSeries("pressure", (0.5, 0.5, 0.5), (
+            ProbeSample(1, 0.1, 1.0),
+            ProbeSample(2, 0.2, 1.1),
+        ), field="p", unit="Pa"),
+        ProbeSeries("u_mag", (1.0, 0.0, 0.0), (
+            ProbeSample(1, 0.1, 0.5),
+        ), field="u_mag", unit="m/s"),
+    ]
+    path = write_probe_csv(tmp_path / "probes.csv", original)
+    loaded = read_probe_csv(path)
+    assert [(s.name, s.point, s.field, s.unit) for s in loaded] == [
+        ("pressure", (0.5, 0.5, 0.5), "p", "Pa"),
+        ("u_mag", (1.0, 0.0, 0.0), "u_mag", "m/s"),
+    ]
+    for original_series, loaded_series in zip(original, loaded):
+        assert loaded_series.samples == original_series.samples
+
+
+def test_read_probe_csv_ignores_metadata_when_unavailable(tmp_path) -> None:
+    csv = tmp_path / "legacy.csv"
+    csv.write_text(textwrap.dedent("""\
+        # cfdx-probe-csv v1
+        # columns: probe,iteration,time,value
+        pressure,1,0.5,0.3333333333333333
+    """))
+    loaded = read_probe_csv(csv)
+    assert loaded[0].point == ()
+    assert loaded[0].field is None
+    assert loaded[0].unit is None
 

@@ -12,6 +12,7 @@ from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .mesh_model import read_mesh_catalog
+from .probe import ProbeCatalog
 from .runner import SolverRunner
 from .session import CFDXSession
 from .validation import validate_case
@@ -44,6 +45,7 @@ if QMainWindow is not object:
     from .setup_panel import CaseSetupPanel
     from .run_center_panel import RunCenterPanel
     from .results_panel import ResultsPanel
+    from .probes_panel import ProbesPanel
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
@@ -194,6 +196,14 @@ if QMainWindow is not object:
                 if not restart_option:
                     raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
                 command.extend([restart_option, str(self._restart_dat)])
+            probe_catalog = ProbeCatalog(self.session.case.probes)
+            if probe_catalog.probes:
+                for spec in probe_catalog.specs():
+                    command += ["--probe", spec]
+                command += [
+                    "--probe-csv",
+                    str(probe_catalog.csv_path(self.application.project_path)),
+                ]
             if self.session.case.execution.mpi_ranks > 1:
                 command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
             controller = ExecutionController(
@@ -241,6 +251,13 @@ if QMainWindow is not object:
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
             self._add_dock("Results", "workbench.dock.results", self.results_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
+
+            self.probes_panel = ProbesPanel(self.application)
+            self.probes_panel.setObjectName("workbench.probes_panel")
+            self._add_dock(
+                "Probes", "workbench.dock.probes", self.probes_panel,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
 
             self.setup_panel = CaseSetupPanel(self.session.case)
             self.setup_panel.setObjectName("workbench.setup_panel")
