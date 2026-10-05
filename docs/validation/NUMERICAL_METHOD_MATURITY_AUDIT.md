@@ -30,7 +30,7 @@ The audit uses the following evidence chain: requirement → implementation → 
 | N5 temporal | PARTIAL | measured order matrix verified (Euler~1, CN~2, BDF2~2, RK2~2, RK3~3), variable-step BDF2 + history lifecycle + restart semantics implemented, and production transient MMS closure includes 3-D spatial order plus stiff temporal order via exact linear solves. Remaining limitation is production `advance_time` implicit-Picard robustness for stiff `dt >> h` cases, plus broader production transient qualification |
 | N6 CFL/time-step | PARTIAL | deterministic global/local convective CFL, geometry-aware h=2V/A characteristic length, bounded adaptive controller, auditable decision history, production nonlinear rollback/retry, bounded stagnant-cell pseudo-time policy, dual-time stepping + adaptive field integration, and the transactional physical-time retry/RESTART lifecycle are implemented and unit-verified. Remaining work is broader production qualification of the time-step/CFL controls; Newton-based stiff implicit solving belongs to the solver-level work rather than an N6 timestep-control gap |
 | N7 nonlinear convergence | PARTIAL | convergence monitor + stagnation/divergence detection + bounded deterministic adaptive relaxation + continuation/homotopy are implemented with independent residual/continuity/QoI acceptance gates, deterministic reports and a Re=100 cavity qualification corridor. Provided/uniform/restart initialization modes are explicitly validated. Remaining gaps are automatic initialization selection, a canonical continuation failure/recovery corridor, broader geometry/mesh/parameter qualification, spatial observed-order evidence, which is merge-gated by a 16/32/64 tripwire (test_ghia_cavity_order, order U_RMS=2.05, V_RMS=1.16) while the full 32/64/128 plus Re=400/Re=1000 campaign now runs weekly on schedule and establishes neither the spatial accuracy of the continuation or adaptive paths nor a general order on other schemes, meshes or geometries |
-| N8 linear/preconditioners | PARTIAL | AMG/FieldSplit/Schur advanced; exact-Schur oracle + SIMPLE/SIMPLEC algebraic Schur and LSC/BFBt (vs-oracle error measured, algebraic operators verified at the 1e-16 level); the campaign report is machine-readable and the resolved linear plan is an enforced gate. Remaining: the generic SchurApproximation layer is test-only and not selectable from production, PCD is unimplemented, only a constant pressure null-space policy exists, measured matrix characteristics are not fed to the dispatcher, the anisotropic/strong-scaling AMG sweep is absent and no Schur acceptance envelope exists on representative CFD matrices |
+| N8 linear/preconditioners | PARTIAL | AMG/FieldSplit/Schur infrastructure is implemented; exact-Schur oracle, SIMPLE/SIMPLEC algebraic Schur, LSC/BFBt and PCD now have repository implementations and dedicated evidence. Remaining N8 qualification gaps are production selection/lifecycle of the generic Schur family, pressure null-space coverage beyond the constant projector, dispatcher-fed matrix characteristics, anisotropic/strong-scaling AMG evidence, and representative CFD Schur acceptance envelopes |
 | N9 pressure-velocity | PARTIAL | multiple algorithms are registered; common quantitative acceptance matrix is incomplete |
 | N10 difficult meshes | PARTIAL | #423 supplies mesh robustness infrastructure; numerical degradation campaign is not fully integrated |
 | N11 conservation/boundedness | PARTIAL | #479/#480 provide strong diagnostics; full benchmark campaign remains |
@@ -186,3 +186,34 @@ This entry corrects N8 statements that the merged evidence had already overtaken
 **Closed after this entry was written.** #634 gives `SimplerSchurApproximation` the same two contracts the exact and LSC/BFBt approximations already had: `update_values` rejects a CSR graph change, and an optional pressure `NullSpaceProjector` is honoured (opt-in, so existing callers keep their algebra). The two gaps this entry listed for SIMPLE/SIMPLEC are therefore addressed by #634 rather than outstanding; the pinned-pressure policy is not.
 
 **Status unchanged.** N8 stays PARTIAL. Nothing here promotes a package or requirement to `qualified`; the outstanding work is production integration of the Schur layer, PCD, the null-space and lifecycle gaps above, dispatcher-fed matrix characteristics, the anisotropic AMG sweep, and the measured Schur acceptance envelope.
+
+
+## 2026-10-05 — N9 Schur-family source-of-truth re-baselining
+
+PR #660 is now merged as the N9.6 qualification-matrix contract. This entry re-baselines the Schur-family audit against the exact merged tree and supersedes the older N8 statements that pre-date the PCD implementation.
+
+### Current repository evidence
+
+- **Exact Schur** is implemented as the reference/oracle in `src/cfdx/core/linalg/exact_schur.h`, with dedicated N9 algebraic qualification evidence.
+- **SIMPLE/SIMPLEC** are implemented through `src/cfdx/core/linalg/simplerc_schur.h` and its tests. The lifecycle/null-space contracts added by #634 are retained.
+- **LSC/BFBt** are implemented through `src/cfdx/core/linalg/lsc_bfbt_schur.h`, with unit, null-space, oracle-comparison and quantitative tests.
+- **PCD** is implemented through `src/cfdx/core/linalg/pcd_schur.h`, has explicit setup/update-values lifecycle checks, and is wired into `CoupledBlockSchurAMGPreconditioner` through `CoupledSchurApproximationModel::PCD`.
+- **MGR** remains an N8 coupled-preconditioning path and is to be physically qualified by N9; its implementation is not duplicated here.
+- **SIMPLER, Yosida, Cahouet–Chabard, Augmented-Lagrangian Schur and Inexact Uzawa** are not evidenced as distinct production implementations on the current tree. They remain planned/under assessment and must not be inferred from similarly named infrastructure.
+
+### N8/N9 boundary
+
+N8 owns reusable linear-algebra and preconditioner infrastructure. N9 owns pressure–velocity algorithm integration and common physical qualification. Therefore the presence of PCD/LSC/BFBt classes does **not** by itself close N8 or N9.
+
+The current N9.6 matrix in `docs/validation/N9_PRESSURE_VELOCITY_QUALIFICATION_MATRIX.md` remains a qualification contract. It deliberately does not promote unexecuted cells.
+
+### Required next work
+
+1. Make the common `SchurApproximation` family production-selectable without silent model substitution.
+2. Expose requested/resolved Schur model diagnostics.
+3. Complete production PCD/LSC/BFBt selection and lifecycle coverage.
+4. Build representative non-zero-flow/Oseen qualification evidence.
+5. Keep Exact Schur as a controlled oracle/reference only.
+6. Classify advanced methods before implementation; move methods that belong to N8 or a later advanced-solvers package out of N9.
+
+No tolerance, iteration limit, acceptance gate or fallback policy is relaxed by this audit update.
