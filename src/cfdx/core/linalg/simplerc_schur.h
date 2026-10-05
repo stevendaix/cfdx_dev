@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/vector.h"
 
 #include <cmath>
+#include <map>
 #include <cstddef>
 #include <optional>
 #include <utility>
@@ -133,6 +134,37 @@ public:
             pressure(i) = Cp[i] - Dy[i];
         if (pressure_null_space_) pressure_null_space_->remove(pressure);
         return true;
+    }
+
+    // Assemble the algebraic SIMPLE/SIMPLEC Schur operator
+    // S~=C-D A_d^{-1} G for production pressure AMG. The matrix is built
+    // from the same coefficients used by apply(), so the preconditioner never
+    // treats the operator action as if it were an inverse action.
+    SparseMatrix assembled_operator() const {
+        if (!blocks_) return SparseMatrix();
+        const std::size_t np = blocks_->pressure_size();
+        SparseMatrix out(np, np);
+        for (std::size_t row = 0; row < np; ++row) {
+            std::map<std::size_t, double> entries;
+            for (std::size_t k = blocks_->C().row_offsets_data()[row];
+                 k < blocks_->C().row_offsets_data()[row + 1]; ++k)
+                entries[blocks_->C().columns_data()[k]] += blocks_->C().values_data()[k];
+            for (std::size_t dk = blocks_->D().row_offsets_data()[row];
+                 dk < blocks_->D().row_offsets_data()[row + 1]; ++dk) {
+                const std::size_t u = blocks_->D().columns_data()[dk];
+                const double d = blocks_->D().values_data()[dk] / denominator_[u];
+                for (std::size_t gk = blocks_->G().row_offsets_data()[u];
+                     gk < blocks_->G().row_offsets_data()[u + 1]; ++gk)
+                    entries[blocks_->G().columns_data()[gk]] -=
+                        d * blocks_->G().values_data()[gk];
+            }
+            for (const auto& [col, value] : entries) {
+                if (!std::isfinite(value)) return SparseMatrix();
+                if (value != 0.0) out.push_back(row, col, value);
+            }
+        }
+        out.finalize();
+        return out;
     }
 
     double offdiag_norm() const noexcept { return offdiag_norm_; }
