@@ -149,7 +149,7 @@ inline LinearSolveReport solve_linear_system(
                 report.result = pc
                     ? solve_cg(*solve_matrix, *solve_rhs, solution, *pc, *null_space,
                                max_iterations, tolerance)
-                    : solve_cg(matrix, rhs, solution, *null_space,
+                    : solve_cg(*solve_matrix, *solve_rhs, solution, *null_space,
                                max_iterations, tolerance);
             } else {
                 report.result = pc
