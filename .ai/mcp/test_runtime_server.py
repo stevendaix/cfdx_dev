@@ -63,6 +63,7 @@ async def exercise() -> None:
             assert data["artifact"] == "checkpoint"
             assert data["attributes"]["iteration"] == 42
             assert data["attributes"]["time"] == 0.25
+            assert data["metadata"] == {"version": 2, "cells": 1, "iteration": 42, "time": 0.25}
             assert data["cell_ids_present"] is True
             assert data["fields"][0]["name"] == "p"
 
