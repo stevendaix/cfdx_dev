@@ -98,8 +98,7 @@ public:
             return false;
 
         const std::size_t np = blocks.pressure_size();
-        if (np == 0 || pressure_mass_ == nullptr || pressure_laplacian_ == nullptr ||
-            pressure_convection_diffusion_ == nullptr)
+        if (np == 0)
             return false;
 
         if (!valid_pressure_operator(pressure_mass_, np) ||
@@ -125,16 +124,13 @@ public:
         const std::size_t np = blocks.pressure_size();
         if (!blocks.is_valid() || np == 0 ||
             !laplacian_solve_ || !convection_diffusion_solve_ ||
-            !valid_pressure_operator(*pressure_mass_, np) ||
-            !valid_pressure_operator(*pressure_laplacian_, np) ||
-            !valid_pressure_operator(*pressure_convection_diffusion_, np))
+            !valid_pressure_operator(pressure_mass_, np) ||
+            !valid_pressure_operator(pressure_laplacian_, np) ||
+            !valid_pressure_operator(pressure_convection_diffusion_, np))
             return false;
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != np)
             return false;
-        // Keep blocks_ bound to the object supplied during setup(). In
-        // particular, do not bind it to a temporary BlockOperator created
-        // by a numeric-update caller.
         return true;
     }
 
