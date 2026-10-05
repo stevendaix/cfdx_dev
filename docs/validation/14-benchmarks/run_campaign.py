@@ -75,6 +75,12 @@ CASES = {
         ["ctest", "--test-dir", "{build}", "-R", "^test_naca0012_quick$", "--output-on-failure"],
         "Quick geometry/BC contract only. Force polar qualification is still a separate campaign.",
     ),
+    "n9_s8_naca0012": (
+        "N9-S8-NACA0012",
+        "N9-S8 NASA/TMR NACA0012 laminar contract",
+        ["ctest", "--test-dir", "{build}", "-R", "^test_n9_s8_naca0012_contract$", "--output-on-failure"],
+        "External NASA/TMR mesh provenance and frozen Re=1000 alpha=0 contract. This is not numerical qualification.",
+    ),
     "vmfl036": (
         "FORCE-VMFL036",
         "Axisymmetric sphere, Re=100",
