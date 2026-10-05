@@ -151,6 +151,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--report", type=Path, default=None)
+    parser.add_argument("--fixture-manifest", type=Path, default=Path("tests/fixtures/mesh_sources.yaml"))
     args = parser.parse_args()
 
     build_dir = args.build_dir.resolve()
@@ -159,6 +160,31 @@ def main() -> int:
         return 2
 
     report_path = args.report.resolve() if args.report else build_dir / "n10_qualification.json"
+    manifest_path = args.fixture_manifest.resolve()
+    if not manifest_path.exists():
+        print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
+        return 2
+    try:
+        manifest = json.loads(json.dumps(__import__("yaml").safe_load(manifest_path.read_text(encoding="utf-8"))))
+    except Exception as exc:
+        print(f"error: unable to parse fixture manifest: {exc}", file=sys.stderr)
+        return 2
+    fixtures = manifest.get("fixtures", []) if isinstance(manifest, dict) else []
+    verified_fixtures = [
+        {
+            "id": item.get("id"),
+            "source": item.get("source"),
+            "acquisition": item.get("acquisition"),
+            "sha256": item.get("sha256"),
+            "status": item.get("status"),
+        }
+        for item in fixtures
+        if item.get("status") == "verified_reference"
+    ]
+    if not verified_fixtures:
+        print("error: fixture manifest contains no verified_reference fixtures", file=sys.stderr)
+        return 2
+
     available = discover_tests(build_dir)
     missing = [name for name in REQUIRED_TESTS if name not in available]
     if missing:
@@ -200,7 +226,9 @@ def main() -> int:
             "geometry_robustness": True,
             "reconstruction_and_pde_accuracy": "reused from N2/N3 campaigns",
             "solver_robustness": "reported by dedicated N10 campaign",
-            "imported_production_fixtures": "not yet integrated",
+            "imported_production_fixtures": "verified_reference_manifest_integrated",
+            "verified_fixture_count": len(verified_fixtures),
+            "verified_fixtures": verified_fixtures,
         },
         "policy": {
             "reuses_existing_vv_tests": True,
