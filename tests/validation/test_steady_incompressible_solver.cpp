@@ -340,8 +340,7 @@ int main()
         const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
         EXPECT_TRUE(!result.probe_samples.empty());
 
-        const std::string csv_path = std::filesystem::temp_directory_path()
-            .append("cfdx_probe_analytical.csv").string();
+        const std::string csv_path = unique_temp_path(".csv").string();
         cfdx::io::write_probe_csv(csv_path, result.probe_samples);
 
         std::ifstream in(csv_path);

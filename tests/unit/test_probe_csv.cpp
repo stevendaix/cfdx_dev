@@ -9,7 +9,6 @@
 #include "common/test_harness.h"
 
 #include <cmath>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -30,15 +29,6 @@ std::string read_all(const std::filesystem::path& path)
     std::ostringstream text;
     text << in.rdbuf();
     return text.str();
-}
-
-std::filesystem::path unique_temp_path(const char* suffix)
-{
-    static std::uint64_t counter = 0;
-    auto base = std::filesystem::temp_directory_path() /
-        ("cfdx_probe_csv_test_" + std::to_string(counter++) + suffix);
-    std::filesystem::remove(base);
-    return base;
 }
 
 std::vector<std::string> split_lines(const std::string& text)
@@ -177,21 +167,21 @@ int main()
             EXPECT_TRUE(format_probe_csv_value(c.value) == c.expected);
     });
 
-    run_case("overwrites_existing_file_atomically", []() {
+    run_case("overwrites_existing_file", []() {
         const auto path = unique_temp_path(".csv");
         write_probe_csv(path.string(), {
             {IncompressibleProbeSample{"a", 1, 0.0, 1.0}},
         });
         EXPECT_TRUE(std::filesystem::exists(path));
-        // Second publication to the same path: must replace, not append, and
-        // leave no temp file behind.
+        // Second publication to the same path must replace the contents (the
+        // writer publishes via tmp + rename), not append, and leave no .tmp.
         write_probe_csv(path.string(), {
             {IncompressibleProbeSample{"b", 1, 0.0, 2.0}},
         });
         const std::string text = read_all(path);
         EXPECT_TRUE(text.find("b,1,0.0,2.0") != std::string::npos);
         EXPECT_TRUE(text.find("a,1") == std::string::npos);
-        EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+        EXPECT_TRUE(std::filesystem::exists(path.string() + ".tmp") == false);
     });
 
     return run_all();

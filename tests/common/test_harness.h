@@ -6,9 +6,22 @@
 #include <iostream>
 #include <cmath>
 #include <functional>
+#include <cstdint>
+#include <filesystem>
 
 namespace cfdx {
 namespace testing {
+
+// Returns a unique, pre-removed path under the system temp directory so that
+// concurrent test binaries (or repeated runs) never collide on a fixed name.
+inline std::filesystem::path unique_temp_path(const char* suffix = ".csv")
+{
+    static std::uint64_t counter = 0;
+    auto path = std::filesystem::temp_directory_path() /
+        ("cfdx_test_" + std::to_string(counter++) + suffix);
+    std::filesystem::remove(path);
+    return path;
+}
 
 struct TestCase {
     std::string name;
