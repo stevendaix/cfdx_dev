@@ -41,7 +41,7 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "checkpoint.inspect"}
+            assert {tool.name for tool in listed.tools} == {"case.inspect", "checkpoint.inspect", "checkpoint.field.inspect"}
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -66,7 +66,43 @@ async def exercise() -> None:
             assert data["cell_ids_present"] is True
             assert data["fields"][0]["name"] == "p"
 
-            for name, args in (("case.inspect", {"case_path": "../outside.cfdx.h5"}), ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"})):
+            scalar = await client.call_tool(
+                "checkpoint.field.inspect",
+                {"checkpoint_path": "demo.dat.h5", "field_name": "p"},
+            )
+            assert scalar.is_error is False
+            data = scalar.structured_content
+            assert data["ok"] is True
+            assert data["dimension"] == 1
+            assert data["cell_count"] == 1
+            assert data["finite"] is True
+            assert data["min"] == 1.5
+            assert data["max"] == 1.5
+
+            vector = await client.call_tool(
+                "checkpoint.field.inspect",
+                {"checkpoint_path": "demo.dat.h5", "field_name": "U", "component": 1},
+            )
+            assert vector.structured_content["ok"] is False
+
+            with h5py.File(root / "demo.dat.h5", "a") as h5:
+                h5.create_dataset("fields/U", data=[[1.0, -2.0, 3.0]])
+            vector = await client.call_tool(
+                "checkpoint.field.inspect",
+                {"checkpoint_path": "demo.dat.h5", "field_name": "U", "component": 1},
+            )
+            assert vector.is_error is False
+            data = vector.structured_content
+            assert data["dimension"] == 3
+            assert data["component"] == 1
+            assert data["min"] == -2.0
+            assert data["max"] == -2.0
+
+            for name, args in (
+                ("case.inspect", {"case_path": "../outside.cfdx.h5"}),
+                ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
+                ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
+            ):
                 result = await client.call_tool(name, args)
                 assert result.is_error is False
                 assert result.structured_content["ok"] is False
