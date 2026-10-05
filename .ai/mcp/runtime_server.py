@@ -16,7 +16,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-_SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
+_SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
