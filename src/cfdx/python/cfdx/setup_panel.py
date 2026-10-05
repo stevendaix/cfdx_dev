@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
@@ -34,13 +35,16 @@ class CaseSetupPanel(QWidget):
     def __init__(self, case: Case, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.case = case
-        tabs = QTabWidget(self)
-        tabs.addTab(self._physics_tab(), "Physics")
-        tabs.addTab(self._material_tab(), "Materials")
-        tabs.addTab(self._boundary_tab(), "Boundaries")
-        tabs.addTab(self._initialization_tab(), "Initialization")
+        self.tabs = QTabWidget(self)
+        self.tabs.addTab(self._physics_tab(), "Physics")
+        self.tabs.addTab(self._material_tab(), "Materials")
+        self.tabs.addTab(self._boundary_tab(), "Boundaries")
+        self.tabs.addTab(self._initialization_tab(), "Initialization")
         layout = QVBoxLayout(self)
-        layout.addWidget(tabs)
+        self.validation_summary = QLabel("No validation diagnostics")
+        self.validation_summary.setWordWrap(True)
+        layout.addWidget(self.validation_summary)
+        layout.addWidget(self.tabs)
 
     @staticmethod
     def _real(value: float) -> QDoubleSpinBox:
@@ -267,6 +271,93 @@ class CaseSetupPanel(QWidget):
         self.case = case
         self._rebuild_physics_fields(self.physics_model.currentText())
         self._refresh_boundaries()
+
+    def set_diagnostics(self, diagnostics) -> None:
+        """Show feedback, select the relevant tab, and highlight its editor."""
+        diagnostics = tuple(diagnostics)
+        if not diagnostics:
+            self.validation_summary.setText("No validation diagnostics")
+            self.validation_summary.setStyleSheet("")
+            return
+        errors = sum(item.severity == "error" for item in diagnostics)
+        self.validation_summary.setText(
+            f"Validation: {errors} error(s), {len(diagnostics) - errors} warning(s)"
+            + " — " + "; ".join(item.message for item in diagnostics[:3])
+        )
+        self.validation_summary.setStyleSheet(
+            "color: #a40000;" if errors else "color: #8a5a00;"
+        )
+        widgets = (
+            *self.physics_fields.values(),
+            self.material_name,
+            self.material_density,
+            self.material_viscosity,
+            self.material_cp,
+            self.material_conductivity,
+            self.boundary_name,
+            self.boundary_type,
+            self.boundary_field,
+            self.boundary_scalar_type,
+            self.boundary_value,
+            self.boundary_gradient,
+            self.boundary_x,
+            self.boundary_y,
+            self.boundary_z,
+            self.initialization_mode,
+            self.initialization_field,
+            self.initialization_value,
+        )
+        for widget in widgets:
+            widget.setStyleSheet("")
+            widget.setToolTip("")
+        for item in diagnostics:
+            target, tab_index = self._diagnostic_target(item.path)
+            if target is not None:
+                self.tabs.setCurrentIndex(tab_index)
+                target.setToolTip(f"{item.code}: {item.message}")
+                target.setStyleSheet(
+                    "border: 1px solid #a40000;" if item.severity == "error"
+                    else "border: 1px solid #c58a00;"
+                )
+
+    def _diagnostic_target(self, path: str):
+        """Resolve a validation path to a widget and its Setup tab."""
+        parts = path.split(".")
+        if parts[:1] == ["physics"]:
+            if len(parts) == 2 and parts[1] == "initialization":
+                return self.initialization_mode, 3
+            if len(parts) >= 3:
+                model, field = parts[1], parts[2]
+                if model != self.physics_model.currentText():
+                    self.physics_model.setCurrentText(model)
+                return self.physics_fields.get(field), 0
+            return None, 0
+        if parts[:1] == ["materials"]:
+            field = parts[2] if len(parts) >= 3 else None
+            material_widgets = {
+                "density": self.material_density,
+                "dynamic_viscosity": self.material_viscosity,
+                "cp": self.material_cp,
+                "conductivity": self.material_conductivity,
+            }
+            return material_widgets.get(field, self.material_name), 1
+        if parts[:1] == ["boundaries"]:
+            if len(parts) >= 2:
+                name = parts[1]
+                row = self.boundary_list.findItems(name, Qt.MatchFlag.MatchExactly)
+                if row:
+                    self.boundary_list.setCurrentItem(row[0])
+            field = parts[2] if len(parts) >= 3 else None
+            boundary_widgets = {
+                "type": self.boundary_type,
+                "fields": self.boundary_field,
+                "scalar_type": self.boundary_scalar_type,
+                "value": self.boundary_value,
+                "gradient": self.boundary_gradient,
+                "velocity_type": self.boundary_scalar_type,
+            }
+            return boundary_widgets.get(field, self.boundary_name), 2
+        return None, 0
 
     def _apply_material(self) -> None:
         name = self.material_name.text().strip()

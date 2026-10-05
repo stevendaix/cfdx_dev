@@ -110,6 +110,12 @@ class CFDXSession:
     def requires_restart(self) -> bool:
         return self._requires_restart
 
+    def mark_restart_required(self) -> None:
+        """Record a non-hot configuration change made through the app layer."""
+        if self.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
+            raise RuntimeError("case edits are not allowed while the session is active")
+        self._requires_restart = True
+
     def acknowledge_restart(self) -> None:
         self._requires_restart = False
         self.numerics_revision += 1
