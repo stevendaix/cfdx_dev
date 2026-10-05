@@ -419,7 +419,7 @@ if(CFDX_BUILD_TESTS)
                          ${CMAKE_SOURCE_DIR}/scripts/n8_physical_qualification.py
                          --build-dir ${CMAKE_BINARY_DIR})
         set_tests_properties(test_n8_physical_qualification PROPERTIES
-            LABELS "n8;qualification;validation"
+            LABELS "n8;qualification;validation;sanitizer-slow"
             RUN_SERIAL TRUE)
     endif()
 
@@ -517,7 +517,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
     set_tests_properties(test_n7_convergence_qualification PROPERTIES
-        LABELS "n7;qualification;validation")
+        LABELS "n7;qualification;validation;sanitizer-slow")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
@@ -548,7 +548,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # This exercises SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and COUPLED.
     add_test(NAME test_n8_pressure_velocity_matrix COMMAND test_phase9_acceptance)
     set_tests_properties(test_n8_pressure_velocity_matrix PROPERTIES
-        LABELS "n8;qualification;validation"
+        LABELS "n8;qualification;validation;sanitizer-slow"
         RUN_SERIAL TRUE)
     add_test(NAME test_couette_quick COMMAND test_phase9_acceptance --quick)
     # Phase 9 diagnostics must be deterministic under CTest. The validation
@@ -627,7 +627,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)
     target_include_directories(test_channel_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
-    set_tests_properties(test_channel_quick PROPERTIES LABELS "qualification;validation")
+    set_tests_properties(test_channel_quick PROPERTIES LABELS "qualification;validation;sanitizer-slow")
     if(Python3_Interpreter_FOUND)
         set_tests_properties(test_channel_quick PROPERTIES DEPENDS test_generate_2d_validation_meshes)
     endif()
@@ -725,6 +725,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_radiation_vv
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
+    set_tests_properties(test_couette_quick test_ghia_cavity_quick
+        PROPERTIES LABELS "qualification;validation;sanitizer-slow")
 
     add_test(NAME test_turbulence_qualification_matrix
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_turbulence_qualification_matrix.py
