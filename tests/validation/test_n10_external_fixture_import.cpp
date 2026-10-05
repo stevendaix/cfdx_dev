@@ -144,15 +144,29 @@ int main(int argc, char** argv) {
     const fs::path fixture_root = fs::absolute(argv[1]);
     const fs::path report_path = fs::absolute(argv[2]);
 
-    const std::vector<std::pair<std::string, fs::path>> file_fixtures = {
-        {"meshio-su2-square", fixture_root / "meshio-su2-square"},
-        {"meshio-gmsh-insulated-2-2", fixture_root / "meshio-gmsh-insulated-2-2"},
-        {"meshio-vtk-unstructured", fixture_root / "meshio-vtk-unstructured"},
+    const fs::path file_staging =
+        fs::temp_directory_path() / "cfdx_n10_meshio_fixture_files";
+    fs::remove_all(file_staging);
+    fs::create_directories(file_staging);
+
+    // Acquisition intentionally stores a verified file as <fixture-id> so the
+    // manifest remains the single source of truth. For the production importer
+    // we restore the pinned source filename extension; this is only staging and
+    // does not modify the acquired bytes.
+    const std::vector<std::tuple<std::string, std::string, std::string>> file_fixtures = {
+        {"meshio-su2-square", "square.su2", "meshio-su2-square"},
+        {"meshio-gmsh-insulated-2-2", "insulated-2.2.msh", "meshio-gmsh-insulated-2-2"},
+        {"meshio-vtk-unstructured", "06_unstructured.vtk", "meshio-vtk-unstructured"},
     };
 
     std::vector<FixtureResult> results;
-    for (const auto& [id, path] : file_fixtures)
-        results.push_back(qualify_fixture(id, path));
+    for (const auto& [id, filename, acquired_id] : file_fixtures) {
+        const fs::path acquired = fixture_root / acquired_id;
+        const fs::path staged = file_staging / filename;
+        fs::copy_file(acquired, staged, fs::copy_options::overwrite_existing);
+        results.push_back(qualify_fixture(id, staged));
+    }
+    fs::remove_all(file_staging);
 
     // The OpenFOAM fixture is a pinned polyMesh subtree, while the production
     // importer expects a case root containing constant/polyMesh.
