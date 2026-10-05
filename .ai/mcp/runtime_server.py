@@ -139,6 +139,54 @@ def _field_summary(path: Path, field_name: str, component: int | None) -> dict[s
         return {"ok": False, "errors": [f"invalid CFDX DAT field: {exc}"]}
 
 
+def _checkpoint_compare(
+    left_path: Path, right_path: Path, field_name: str, component: int | None
+) -> dict[str, Any]:
+    if not field_name:
+        return {"ok": False, "errors": ["field_name must be non-empty"]}
+    try:
+        with h5py.File(left_path, "r") as left, h5py.File(right_path, "r") as right:
+            if _scalar(left.attrs.get("format")) != "CFDX-DAT" or _scalar(right.attrs.get("format")) != "CFDX-DAT":
+                return {"ok": False, "errors": ["both artifacts must be CFDX DAT HDF5 checkpoints"]}
+            left_fields, right_fields = left.get("fields"), right.get("fields")
+            if left_fields is None or right_fields is None:
+                return {"ok": False, "errors": ["both checkpoints must contain a fields group"]}
+            if field_name not in left_fields or field_name not in right_fields:
+                return {"ok": False, "errors": [f"field does not exist in both checkpoints: {field_name}"]}
+            a, b = left_fields[field_name], right_fields[field_name]
+            if a.shape != b.shape or a.ndim not in (1, 2):
+                return {"ok": False, "errors": ["field shapes are incompatible"]}
+            dimension = 1 if a.ndim == 1 else int(a.shape[1])
+            if component is not None and not 0 <= component < dimension:
+                return {"ok": False, "errors": [f"component must be in [0, {dimension - 1}]"]}
+            av, bv = a[()], b[()]
+            if a.ndim == 2:
+                av = av[:, component] if component is not None else av.reshape(-1)
+                bv = bv[:, component] if component is not None else bv.reshape(-1)
+            av, bv = av.astype("float64", copy=False), bv.astype("float64", copy=False)
+            if not (np.all(np.isfinite(av)) and np.all(np.isfinite(bv))):
+                return {"ok": False, "errors": ["field comparison requires finite values in both checkpoints"]}
+            delta = bv - av
+            diff_l2 = float(np.linalg.norm(delta.ravel()))
+            reference_l2 = float(np.linalg.norm(av.ravel()))
+            return {
+                "ok": True,
+                "artifact": "checkpoint-field-comparison",
+                "left_checkpoint": left_path.name,
+                "right_checkpoint": right_path.name,
+                "field": field_name,
+                "dimension": dimension,
+                "component": component,
+                "value_count": int(av.size),
+                "max_abs_difference": float(np.max(np.abs(delta))) if delta.size else 0.0,
+                "l2_difference": diff_l2,
+                "reference_l2": reference_l2,
+                "relative_l2_difference": diff_l2 / reference_l2 if reference_l2 else (0.0 if diff_l2 == 0.0 else None),
+            }
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return {"ok": False, "errors": [f"invalid CFDX DAT comparison: {exc}"]}
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
@@ -149,6 +197,19 @@ def create_server(root: str | None = None) -> MCPServer:
         """Inspect a root-relative .cfdx.h5 case without loading solver state."""
         try:
             return _inspect_case(_safe_path(runtime_root, case_path))
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(name="checkpoint.compare", title="Compare CFDX checkpoints", annotations=annotations)
+    def checkpoint_compare(left_checkpoint_path: str, right_checkpoint_path: str, field_name: str, component: int | None = None) -> dict[str, Any]:
+        """Compare one field between two checkpoints without modifying runtime state."""
+        try:
+            left = _safe_path(runtime_root, left_checkpoint_path)
+            right = _safe_path(runtime_root, right_checkpoint_path)
+            for path in (left, right):
+                if not path.is_file() or not path.name.lower().endswith(".dat.h5"):
+                    return {"ok": False, "errors": ["both checkpoints must be existing canonical .dat.h5 artifacts"]}
+            return _checkpoint_compare(left, right, field_name, component)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
