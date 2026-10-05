@@ -72,7 +72,8 @@ int main()
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
         Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
-        U.fill(2.0, 0.0, 0.0);
+        U.set(0, 2.0, 0.0, 0.0);
+        U.set(1, 2.0, 0.0, 0.0);
         p(0) = 1.0;
         p(1) = 3.0;
 
