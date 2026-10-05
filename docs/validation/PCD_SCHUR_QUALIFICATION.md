@@ -195,6 +195,33 @@ non-zero output gauge component.
 
 This is implementation and algebraic verification, not production qualification.
 
+## Representative Schur-envelope measurement
+
+`tests/validation/test_n8_schur_representative_cfd.cpp` now includes PCD in the
+same controlled finite-volume-like family already used for SIMPLE/SIMPLEC and
+LSC/BFBT. The family covers 2-D velocity blocks at 4x4 and 6x6 pressure-cell
+resolution with convection parameters 0, 1 and 4.
+
+For each point the test independently constructs dense `S = C - D Auu^-1 G`
+and `S^-1`, applies PCD as `-Fp^-1`, and records:
+
+- `cond_inf_Auu`;
+- PCD relative action error against the exact-Schur inverse;
+- separation between `-Fp^-1` and the corresponding pure-diffusion
+  `-Kp^-1` action.
+
+The test requires only finite, reproducible measurements. It deliberately does
+**not** turn these values into an approximation-quality pass/fail threshold:
+this family is algebraically representative, not a physical CFD qualification
+population. In particular, the non-zero-convection points make the `Fp` versus
+`Kp` choice measurable, but they do not establish which ordering is generally
+preferable.
+
+This is the first measurement layer for the N8 acceptance envelope. The next
+layer remains physical production matrices (Couette/Poiseuille/Ghia and
+controlled skew/non-orthogonal cases), with independent true-residual and
+conditioning evidence before any automatic-selection threshold is introduced.
+
 ## Production path evidence
 
 The production coupled path is exercised by `test_n8_pressure_velocity_matrix`
