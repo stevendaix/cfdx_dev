@@ -135,7 +135,7 @@ void set_bcs(VelocityBoundaryConditions& u, ScalarBoundaryConditions& p)
 
 int main()
 {
-    return run_case("n7_adaptive_relaxation_re400_16x16", [] {
+    run_case("n7_adaptive_relaxation_re400_16x16", [] {
         const auto mesh=make_cavity_mesh(16,16);
         Field<double,Location::CELL> Ud(mesh.n_cells(),"U","m/s",3);
         Field<double,Location::CELL> pd(mesh.n_cells(),"p","Pa",1);
@@ -179,4 +179,5 @@ int main()
         const double scale=std::max(std::abs(centre_u(Ud)),1e-3);
         EXPECT_TRUE(std::abs(centre_u(Ua)-centre_u(Ud)) <= 1e-2*scale);
     });
+    return run_all_tests();
 }
