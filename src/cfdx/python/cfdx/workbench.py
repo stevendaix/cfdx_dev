@@ -13,7 +13,6 @@ from .dat_io import read_dat_restart
 from .execution import ExecutionController
 from .mesh_model import read_mesh_catalog
 from .runner import SolverRunner
-from .setup_panel import CaseSetupPanel
 from .session import CFDXSession
 from .validation import validate_case
 
