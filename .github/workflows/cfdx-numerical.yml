@@ -113,7 +113,7 @@ jobs:
           - { level: N5, regex: '^(test_temporal_physics|test_temporal_history|test_temporal_order_matrix|test_transient_mms|test_transient_mms_closure)$' }
           - { level: N6, regex: '^(test_adaptive_cfl|test_timestep_control|test_local_time_stepping)$' }
           - { level: N7, regex: '^(test_solver_control|test_simulation_controller|test_newton_field)$' }
-          - { level: N8, regex: '^(test_cg_solver|test_bicgstab_solver|test_gmres_solver|test_krylov_preconditioning|test_amg_chebyshev|test_amg_preconditioner_qualification|test_advanced_preconditioners|test_schur_preconditioner|test_schur_infrastructure|test_exact_schur|test_simplerc_schur|test_mgr_preconditioner|test_coupled_block_schur_amg|test_n8_schur_production_benchmark)$' }
+          - { level: N8, regex: '^(test_cg_solver|test_bicgstab_solver|test_gmres_solver|test_krylov_preconditioning|test_amg_chebyshev|test_amg_preconditioner_qualification|test_advanced_preconditioners|test_schur_preconditioner|test_schur_infrastructure|test_exact_schur|test_simplerc_schur|test_mgr_preconditioner|test_coupled_block_schur_amg|test_n8_schur_production_benchmark|test_n8_amg_anisotropy_scaling)$' }
           - { level: N9, regex: '^(test_n9_schur_oracle|test_steady_incompressible_solver|test_phase9_acceptance|test_couette_quick|test_level_c_coupled_verification|test_m2_m4_solver_validation)$' }
           - { level: N10, regex: '^(test_mesh_quality|test_mesh_family_volumes|test_geometry_invariants|test_nonorthogonal_skew_campaign|test_convection_polyhedral_campaign)$' }
           - { level: N11, regex: '^(test_conservation_boundedness|test_transport_conservation|test_conservation_assembly)$' }
