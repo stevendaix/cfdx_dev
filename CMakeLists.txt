@@ -964,6 +964,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
             LABELS "n9;qualification;validation;total-validation"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
 
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
