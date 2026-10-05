@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import h5py
+import numpy as np
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -92,6 +93,52 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX DAT checkpoint: {exc}"]}
 
 
+def _field_summary(path: Path, field_name: str, component: int | None) -> dict[str, Any]:
+    if not field_name:
+        return {"ok": False, "errors": ["field_name must be non-empty"]}
+    try:
+        with h5py.File(path, "r") as h5:
+            if _scalar(h5.attrs.get("format")) != "CFDX-DAT":
+                return {"ok": False, "errors": ["not a CFDX DAT HDF5 checkpoint"]}
+            fields = h5.get("fields")
+            if fields is None or field_name not in fields:
+                return {"ok": False, "errors": [f"field does not exist: {field_name}"]}
+            dataset = fields[field_name]
+            if dataset.ndim not in (1, 2):
+                return {"ok": False, "errors": [f"field has unsupported rank: {dataset.ndim}"]}
+            dimension = 1 if dataset.ndim == 1 else int(dataset.shape[1])
+            if component is not None and (component < 0 or component >= dimension):
+                return {"ok": False, "errors": [f"component must be in [0, {dimension - 1}]"]}
+            values = dataset[()]
+            if dataset.ndim == 2:
+                values = values[:, component] if component is not None else values.reshape(-1)
+            values = values.astype("float64", copy=False)
+            finite = values[np.isfinite(values)] if hasattr(values, "dtype") else values
+            nonfinite_count = int(values.size - finite.size)
+            result: dict[str, Any] = {
+                "ok": True,
+                "artifact": "checkpoint-field",
+                "checkpoint": path.name,
+                "field": field_name,
+                "dimension": dimension,
+                "component": component,
+                "cell_count": int(dataset.shape[0]),
+                "value_count": int(values.size),
+                "finite": nonfinite_count == 0,
+                "nonfinite_count": nonfinite_count,
+            }
+            if finite.size:
+                result.update({
+                    "min": float(finite.min()),
+                    "max": float(finite.max()),
+                    "mean": float(finite.mean()),
+                    "l2_norm": float((finite * finite).sum() ** 0.5),
+                })
+            return result
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return {"ok": False, "errors": [f"invalid CFDX DAT field: {exc}"]}
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
@@ -102,6 +149,17 @@ def create_server(root: str | None = None) -> MCPServer:
         """Inspect a root-relative .cfdx.h5 case without loading solver state."""
         try:
             return _inspect_case(_safe_path(runtime_root, case_path))
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(name="checkpoint.field.inspect", title="Inspect CFDX checkpoint field", annotations=annotations)
+    def checkpoint_field_inspect(checkpoint_path: str, field_name: str, component: int | None = None) -> dict[str, Any]:
+        """Inspect scalar/vector field statistics without returning field arrays."""
+        try:
+            path = _safe_path(runtime_root, checkpoint_path)
+            if not path.is_file() or not path.name.lower().endswith(".dat.h5"):
+                return {"ok": False, "errors": ["checkpoint must be an existing canonical .dat.h5 artifact"]}
+            return _field_summary(path, field_name, component)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
