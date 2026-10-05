@@ -131,3 +131,29 @@ assert np.array_equal(restored,x)
 # under the same executable revision and numerical configuration, up to explicitly documented floating-point/reduction differences.
 #
 # The repository audit still has open requirements around complete case/geometry hashes and full environment metadata. These belong to the evidence/reproducibility workstream and must not be represented as closed merely because HDF5 round-trip tests pass.
+#
+# %%
+# ## 16.14 Implemented DAT/HDF5 binding contract
+#
+# The Python application path implements the rejection rule of section 16.13 for the paired
+# [`\texttt{case.dat.h5}`]{.math} checkpoint. Saving a case together with a numerical checkpoint
+# writes, in the same HDF5 file handle as the field data:
+#
+# - `\texttt{checkpoint\_schema\_version}`: the checkpoint binding schema version, currently 1;
+# - `\texttt{case\_revision}`, `\texttt{mesh\_revision}`, `\texttt{physics\_revision}`,
+#   `\texttt{numerics\_revision}`: the integer provenance tuple of the session that produced the
+#   checkpoint.
+#
+# The identity gate is evaluated *before* the checkpoint is parsed, so an incompatible artifact is
+# rejected without its numerical state ever entering the session. Reading rejects, with a deterministic
+# [`\texttt{ValueError}`]{.math}:
+#
+# - a missing or unrecognised binding schema, including a checkpoint produced before the contract
+#   existed;
+# - a checkpoint missing any of the four revision attributes;
+# - a revision attribute that is not an integer;
+# - any revision that differs from the case being loaded.
+#
+# The binding is deliberately limited to the Python application layer. The native C++
+# `\texttt{dat\_restart.h}` path still uses the legacy text DAT format and persists no revision
+# identity, so it does not satisfy this contract and must not be reported as covered by it.

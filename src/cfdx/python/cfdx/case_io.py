@@ -110,33 +110,51 @@ def save_case(session: CFDXSession, path: Path) -> Path:
 
 
 _CHECKPOINT_REVISION_NAMES = ("case_revision", "mesh_revision", "physics_revision", "numerics_revision")
+_CHECKPOINT_SCHEMA_VERSION = 1
 
 
-def _write_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
-    """Bind a canonical DAT/HDF5 checkpoint to the case revision identity."""
-    revisions = {name: int(getattr(session, name)) for name in _CHECKPOINT_REVISION_NAMES}
-    if any(value < 0 for value in revisions.values()):
-        raise ValueError("checkpoint revisions must be non-negative")
-    with h5py.File(path, "a") as h5:
-        h5.attrs["checkpoint_schema_version"] = 1
-        for name, value in revisions.items():
-            h5.attrs[name] = value
-        h5.flush()
+def _checkpoint_revision_attributes(session: CFDXSession) -> dict[str, int]:
+    """Build the case identity a canonical checkpoint must be bound to."""
+    attributes = {"checkpoint_schema_version": _CHECKPOINT_SCHEMA_VERSION}
+    for name in _CHECKPOINT_REVISION_NAMES:
+        value = getattr(session, name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"checkpoint field {name!r} must be an integer")
+        if value < 0:
+            raise ValueError(f"checkpoint field {name!r} must be non-negative")
+        attributes[name] = value
+    return attributes
 
 
 def _validate_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
-    """Reject a DAT/HDF5 checkpoint not produced for this case identity."""
+    """Reject a DAT/HDF5 checkpoint not produced for this case identity.
+
+    A checkpoint that carries no recognised schema is rejected before any
+    numerical state is read, so an incompatible artifact is never partially
+    consumed.
+    """
+    expected = _checkpoint_revision_attributes(session)
     with h5py.File(path, "r") as h5:
-        schema = h5.attrs.get("checkpoint_schema_version")
-        if int(schema) != 1:
+        schema = h5.attrs.get("checkpoint_schema_version", -1)
+        try:
+            schema = int(schema)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("unsupported CFDX DAT checkpoint schema") from exc
+        if schema != _CHECKPOINT_SCHEMA_VERSION:
             raise ValueError("unsupported CFDX DAT checkpoint schema")
         missing = [name for name in _CHECKPOINT_REVISION_NAMES if name not in h5.attrs]
         if missing:
             raise ValueError(
                 "DAT checkpoint is missing compatibility metadata: " + ", ".join(missing)
             )
-        expected = {name: int(getattr(session, name)) for name in _CHECKPOINT_REVISION_NAMES}
-        actual = {name: int(h5.attrs[name]) for name in _CHECKPOINT_REVISION_NAMES}
+        actual = {}
+        for name in _CHECKPOINT_REVISION_NAMES:
+            try:
+                actual[name] = int(h5.attrs[name])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"DAT checkpoint has a non-integer {name!r} binding"
+                ) from exc
         mismatches = [name for name in _CHECKPOINT_REVISION_NAMES if actual[name] != expected[name]]
         if mismatches:
             details = ", ".join(f"{name}={actual[name]} expected={expected[name]}" for name in mismatches)
@@ -154,8 +172,9 @@ def save_case_with_dat(
     case_path = save_case(session, path)
     target_dat = _paired_dat_path(case_path)
     restart = read_dat_restart(dat_path)
-    write_dat_hdf5(target_dat, restart)
-    _write_checkpoint_revisions(target_dat, session)
+    write_dat_hdf5(
+        target_dat, restart, attributes=_checkpoint_revision_attributes(session)
+    )
 
     return case_path, target_dat
 
@@ -304,8 +323,11 @@ def read_case_with_dat(
     if not candidate.is_file():
         raise FileNotFoundError(candidate)
 
-    restart = read_dat_restart(candidate)
+    # The case identity is settled before the checkpoint is parsed: an
+    # incompatible artifact must be rejected without its numerical state ever
+    # entering the session.
     _validate_checkpoint_revisions(candidate, session)
+    restart = read_dat_restart(candidate)
     case_cell_ids = _read_case_cell_ids(case_path)
     if case_cell_ids is not None:
         if restart.cell_ids is None:
