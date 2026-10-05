@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import h5py
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 
@@ -123,9 +123,9 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX DAT checkpoint: {exc}"]}
 
 
-def create_server(root: str | None = None) -> FastMCP:
+def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
-    server = FastMCP(
+    server = MCPServer(
         "CFDX Runtime MCP",
         instructions=(
             "Read-only CFDX runtime artifact inspection. "
