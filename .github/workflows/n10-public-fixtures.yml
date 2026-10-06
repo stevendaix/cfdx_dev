@@ -2,6 +2,7 @@ name: N10 Public Fixture Verification
 
 on:
   pull_request:
+    types: [opened, labeled, synchronize, reopened]
   push:
     branches: [master, main, develop]
   workflow_dispatch:
