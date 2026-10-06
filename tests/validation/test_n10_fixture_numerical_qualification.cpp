@@ -49,7 +49,7 @@ Error gradient_error(
     const Field<double, Location::CELL>& gradient,
     bool linear)
 {
-    constexpr Vec3 exact{2.0, -3.0, 0.5};
+    const Vec3 exact{2.0, -3.0, 0.5};
     Error error;
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         const auto& cell = mesh.cells()[c];
