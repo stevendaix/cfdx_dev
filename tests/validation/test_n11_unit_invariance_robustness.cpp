@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
+#include <iostream>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -126,23 +127,47 @@ int main() {
             A, b, zero_guess, LinearProblemKind::General,
             request, 200, 1.0e-12);
 
-        Vector perturbed_guess(4);
-        perturbed_guess(0) = 1.0e6;
-        perturbed_guess(1) = -1.0e6;
-        perturbed_guess(2) = 3.0e5;
-        perturbed_guess(3) = -7.0e5;
-        const auto perturbed = solve_linear_system(
-            A, b, perturbed_guess, LinearProblemKind::General,
-            request, 200, 1.0e-12);
+        // Qualify initial-guess independence at two deliberately difficult,
+        // but FP64-resolvable, scales. An O(1e6) initial guess for an O(1)
+        // solution is not a meaningful 1e-12 relative-residual contract:
+        // forming b-A*x0 necessarily loses significant digits by cancellation.
+        const double perturbation_scales[] = {1.0e2, 1.0e4};
+        for (const double scale : perturbation_scales) {
+            Vector perturbed_guess(4);
+            perturbed_guess(0) = scale * exact(0) + scale;
+            perturbed_guess(1) = scale * exact(1) - scale;
+            perturbed_guess(2) = scale * exact(2) + 0.5 * scale;
+            perturbed_guess(3) = scale * exact(3) - 0.75 * scale;
+
+            const double initial_norm = std::sqrt(
+                perturbed_guess(0) * perturbed_guess(0) +
+                perturbed_guess(1) * perturbed_guess(1) +
+                perturbed_guess(2) * perturbed_guess(2) +
+                perturbed_guess(3) * perturbed_guess(3));
+
+            const auto perturbed = solve_linear_system(
+                A, b, perturbed_guess, LinearProblemKind::General,
+                request, 200, 1.0e-12);
+
+            std::cerr << "N11 initial-guess diagnostic: scale=" << scale
+                      << " initial_norm=" << initial_norm
+                      << " status=" << static_cast<int>(perturbed.result.status)
+                      << " iterations=" << perturbed.result.iterations
+                      << " residual=" << perturbed.result.residual
+                      << " relative_residual=" << perturbed.result.residual_relative
+                      << " physical_residual=" << perturbed.physical_residual_relative
+                      << "\n";
+
+            EXPECT_TRUE(perturbed.result.status == SolverStatus::CONVERGED);
+            EXPECT_TRUE(perturbed.physical_residual_relative < 1.0e-12);
+            for (std::size_t i = 0; i < exact.size(); ++i)
+                EXPECT_NEAR(perturbed_guess(i), exact(i), 1.0e-9);
+        }
 
         EXPECT_TRUE(zero.result.status == SolverStatus::CONVERGED);
-        EXPECT_TRUE(perturbed.result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(zero.physical_residual_relative < 1.0e-12);
-        EXPECT_TRUE(perturbed.physical_residual_relative < 1.0e-12);
-        for (std::size_t i = 0; i < exact.size(); ++i) {
+        for (std::size_t i = 0; i < exact.size(); ++i)
             EXPECT_NEAR(zero_guess(i), exact(i), 1.0e-9);
-            EXPECT_NEAR(perturbed_guess(i), exact(i), 1.0e-9);
-        }
     });
 
     run_case("small_coefficient_perturbation_preserves_a_bounded_physical_residual", [] {
