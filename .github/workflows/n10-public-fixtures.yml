@@ -49,7 +49,7 @@ jobs:
           sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pydantic
+          .venv/bin/python -m pip install "meshio[all]" h5py pydantic PyYAML
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Build production mesh importer qualification target
@@ -85,7 +85,7 @@ jobs:
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
         run: |
           set -euo pipefail
-          python3 scripts/n10_qualification.py \
+          .venv/bin/python scripts/n10_qualification.py \
             --build-dir build \
             --fixture-manifest tests/fixtures/mesh_sources.yaml \
             --report build/n10-fixtures/n10_qualification.json
