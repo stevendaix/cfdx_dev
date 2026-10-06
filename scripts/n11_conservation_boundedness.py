@@ -23,6 +23,7 @@ from pathlib import Path
 REQUIRED_TESTS = (
     "test_conservation_boundedness",
     "test_transport_conservation",
+    "test_n11_scalar_conservation",
     "test_conservation_assembly",
     "test_phase9_acceptance",
     "test_poiseuille_diagnostics",
@@ -44,7 +45,7 @@ CATEGORIES = {
         "test_poiseuille_diagnostics",
         "test_ghia_cavity",
     ],
-    "scalar_mms": ["test_mms_scalar_diffusion"],
+    "scalar_mms": ["test_mms_scalar_diffusion", "test_n11_scalar_conservation"],
     "energy": ["test_cht_validation"],
     "mesh_robustness": ["test_nonorthogonal_skew_campaign"],
     "scheme_boundedness": ["test_convection_polyhedral_campaign"],
