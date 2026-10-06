@@ -235,6 +235,191 @@ def _validate_case(path: Path) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX case artifact: {exc}"]}
 
 
+_CONVERGENCE_REQUIRED = (
+    "format",
+    "schema_version",
+    "converged",
+    "iterations",
+    "reference_momentum_residual",
+    "convergence_status",
+    "convergence_reason",
+    "history",
+)
+
+_CONVERGENCE_HISTORY_REQUIRED = (
+    "iteration",
+    "momentum_residual",
+    "pressure_residual",
+    "continuity_l1",
+    "continuity_linf",
+    "continuity_normalized",
+    "momentum_equation_residual",
+    "momentum_equation_residual_relative",
+    "velocity_change_inf",
+    "pressure_change_inf",
+    "effective_alpha_u",
+    "effective_alpha_p",
+    "nonlinear_convergence_metric",
+    "momentum_linear_iterations",
+    "pressure_linear_iterations",
+    "pressure_correctors_used",
+    "linear_tolerance_used",
+    "corrected_flux_continuity_linf",
+    "reconstructed_velocity_continuity_linf",
+    "flux_velocity_mismatch_linf",
+    "momentum_equation_residual_components",
+    "momentum_equation_residual_internal",
+    "momentum_equation_residual_boundary",
+    "pressure_gradient_linf",
+    "pressure_gradient_l2",
+    "momentum_residual_cell",
+    "momentum_residual_no_pressure",
+    "momentum_pressure_contribution",
+    "momentum_residual_patch",
+    "mass_boundary_flux",
+    "mass_global_cell_balance",
+    "mass_local_l1",
+    "mass_local_linf",
+    "mass_local_l2",
+    "mass_normalized_imbalance",
+    "mass_worst_cell",
+    "mass_nonfinite_faces",
+    "boundedness_nonfinite_velocity",
+    "momentum_conservation_residual",
+    "momentum_conservation_normalized",
+    "momentum_conservation_worst_cell",
+)
+
+_CONVERGENCE_NUMERIC_FIELDS = {
+    "reference_momentum_residual",
+    "momentum_residual",
+    "pressure_residual",
+    "continuity_l1",
+    "continuity_linf",
+    "continuity_normalized",
+    "momentum_equation_residual",
+    "momentum_equation_residual_relative",
+    "velocity_change_inf",
+    "pressure_change_inf",
+    "effective_alpha_u",
+    "effective_alpha_p",
+    "nonlinear_convergence_metric",
+    "linear_tolerance_used",
+    "corrected_flux_continuity_linf",
+    "reconstructed_velocity_continuity_linf",
+    "flux_velocity_mismatch_linf",
+    "momentum_equation_residual_internal",
+    "momentum_equation_residual_boundary",
+    "pressure_gradient_linf",
+    "pressure_gradient_l2",
+    "momentum_residual_no_pressure",
+    "momentum_pressure_contribution",
+    "mass_boundary_flux",
+    "mass_global_cell_balance",
+    "mass_local_l1",
+    "mass_local_linf",
+    "mass_local_l2",
+    "mass_normalized_imbalance",
+}
+
+_CONVERGENCE_INTEGER_FIELDS = {
+    "iteration",
+    "momentum_linear_iterations",
+    "pressure_linear_iterations",
+    "pressure_correctors_used",
+    "momentum_residual_cell",
+    "mass_worst_cell",
+    "mass_nonfinite_faces",
+    "boundedness_nonfinite_velocity",
+}
+
+
+def _reject_nonfinite(value: str) -> None:
+    raise ValueError(f"convergence artifact contains non-finite JSON constant: {value}")
+
+
+def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
+    if not path.is_file():
+        return {"ok": False, "errors": [f"convergence artifact does not exist: {path.name}"]}
+    if not path.name.lower().endswith("convergence.json"):
+        return {"ok": False, "errors": ["convergence artifact must use the canonical convergence.json filename"]}
+    if history_limit < 0 or history_limit > 10000:
+        return {"ok": False, "errors": ["history_limit must be between 0 and 10000"]}
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            document = json.load(stream, parse_constant=_reject_nonfinite)
+        if not isinstance(document, dict):
+            return {"ok": False, "errors": ["convergence artifact root must be an object"]}
+        missing = [key for key in _CONVERGENCE_REQUIRED if key not in document]
+        if missing:
+            return {"ok": False, "errors": [f"convergence artifact is missing required keys: {missing}"]}
+        if document["format"] != "CFDX-CONVERGENCE":
+            return {"ok": False, "errors": ["not a CFDX-CONVERGENCE artifact"]}
+        if document["schema_version"] != 1:
+            return {"ok": False, "errors": [f"unsupported convergence schema version: {document['schema_version']}"]}
+        if not isinstance(document["converged"], bool):
+            return {"ok": False, "errors": ["converged must be a boolean"]}
+        if not isinstance(document["iterations"], int) or isinstance(document["iterations"], bool) or document["iterations"] < 0:
+            return {"ok": False, "errors": ["iterations must be a non-negative integer"]}
+        if not isinstance(document["reference_momentum_residual"], (int, float)) or isinstance(document["reference_momentum_residual"], bool):
+            return {"ok": False, "errors": ["reference_momentum_residual must be numeric"]}
+        if not np.isfinite(float(document["reference_momentum_residual"])):
+            return {"ok": False, "errors": ["reference_momentum_residual must be finite"]}
+        if not isinstance(document["convergence_status"], int) or isinstance(document["convergence_status"], bool):
+            return {"ok": False, "errors": ["convergence_status must be an integer"]}
+        if not isinstance(document["convergence_reason"], str):
+            return {"ok": False, "errors": ["convergence_reason must be a string"]}
+        history = document["history"]
+        if not isinstance(history, list):
+            return {"ok": False, "errors": ["history must be an array"]}
+        for index, record in enumerate(history):
+            if not isinstance(record, dict):
+                return {"ok": False, "errors": [f"history record {index} must be an object"]}
+            missing = [key for key in _CONVERGENCE_HISTORY_REQUIRED if key not in record]
+            if missing:
+                return {"ok": False, "errors": [f"history record {index} is missing required keys: {missing}"]}
+            for key in _CONVERGENCE_NUMERIC_FIELDS:
+                value = record[key]
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or not np.isfinite(float(value)):
+                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be finite numeric"]}
+            for key in _CONVERGENCE_INTEGER_FIELDS:
+                value = record[key]
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a non-negative integer"]}
+            for key in ("momentum_residual_patch",):
+                if not isinstance(record[key], str):
+                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a string"]}
+            for key in ("momentum_equation_residual_components", "momentum_conservation_residual", "momentum_conservation_normalized"):
+                value = record[key]
+                if not isinstance(value, list) or len(value) != 3 or any(
+                    not isinstance(item, (int, float)) or isinstance(item, bool) or not np.isfinite(float(item))
+                    for item in value
+                ):
+                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a finite numeric array of length 3"]}
+            worst_cell = record["momentum_conservation_worst_cell"]
+            if not isinstance(worst_cell, list) or len(worst_cell) != 3 or any(
+                not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in worst_cell
+            ):
+                return {"ok": False, "errors": [f"history record {index} field 'momentum_conservation_worst_cell' must be a non-negative integer array of length 3"]}
+        return {
+            "ok": True,
+            "artifact": "convergence-history",
+            "path": path.name,
+            "format": document["format"],
+            "schema_version": document["schema_version"],
+            "converged": document["converged"],
+            "iterations": document["iterations"],
+            "reference_momentum_residual": float(document["reference_momentum_residual"]),
+            "convergence_status": document["convergence_status"],
+            "convergence_reason": document["convergence_reason"],
+            "history_count": len(history),
+            "history": history[:history_limit],
+            "history_truncated": len(history) > history_limit,
+        }
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return {"ok": False, "errors": [f"invalid CFDX convergence artifact: {exc}"]}
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
@@ -280,6 +465,15 @@ def create_server(root: str | None = None) -> MCPServer:
             if not path.is_file() or not path.name.lower().endswith(".dat.h5"):
                 return {"ok": False, "errors": ["checkpoint must be an existing canonical .dat.h5 artifact"]}
             return _field_summary(path, field_name, component)
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(name="convergence.inspect", title="Inspect CFDX convergence history", annotations=annotations)
+    def convergence_inspect(convergence_path: str, history_limit: int = 100) -> dict[str, Any]:
+        """Inspect canonical convergence.json execution evidence without modifying runtime state."""
+        try:
+            path = _safe_path(runtime_root, convergence_path)
+            return _validate_convergence(path, history_limit)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
