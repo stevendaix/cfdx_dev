@@ -87,6 +87,14 @@ int main(int argc, char** argv)
         if (setup.boundary_conditions.empty())
             throw std::runtime_error("imported fixture has no boundary patches");
 
+        std::cout << "N10 boundary patches:";
+        for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
+            const auto& imported_patch = mesh.boundary().patch(i);
+            std::cout << " [" << i << "]" << imported_patch.name
+                      << " faces=" << imported_patch.face_ids.size();
+        }
+        std::cout << "\n";
+
         setup.has_initial_condition = true;
         setup.initial_condition.velocity_vector = {0.0, 0.0, 0.0};
         setup.initial_condition.pressure = 0.0;
