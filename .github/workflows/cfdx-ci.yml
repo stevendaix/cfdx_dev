@@ -110,6 +110,16 @@ jobs:
       # was fixed, because read_case_with_dat() discarded the DAT it read and a
       # reloaded session came back at iteration 0; #647 restores iteration and
       # time, so the module now runs here too.
+      - name: Run N12 MMS quick gate
+        id: n12_quick
+        if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
+        continue-on-error: true
+        run: |
+          python scripts/n12_mms_quick.py \
+            --build-dir build \
+            --output-dir build/n12-mms-quick \
+            --timeout 600
+
       - name: Run Python regression
         id: python
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
@@ -129,6 +139,7 @@ jobs:
           echo "build=${{ steps.build.outcome }}"
           echo "ctest=${{ steps.ctest.outcome }}"
           echo "python=${{ steps.python.outcome }}"
+          echo "n12_quick=${{ steps.n12_quick.outcome }}"
           if [[ -f build.log ]]; then
             echo "=== Build diagnostics ==="
             grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
@@ -147,6 +158,7 @@ jobs:
             build/Testing/
             build/**/*.log
             build/compile_commands.json
+            build/n12-mms-quick/
             build.log
           if-no-files-found: ignore
 
@@ -156,8 +168,9 @@ jobs:
           build_outcome='${{ steps.build.outcome }}'
           ctest_outcome='${{ steps.ctest.outcome }}'
           python_outcome='${{ steps.python.outcome }}'
+          n12_quick_outcome='${{ steps.n12_quick.outcome }}'
 
-          echo "Final CI gate: build=$build_outcome ctest=$ctest_outcome python=$python_outcome"
+          echo "Final CI gate: build=$build_outcome ctest=$ctest_outcome python=$python_outcome n12_quick=$n12_quick_outcome"
 
           if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
@@ -167,6 +180,11 @@ jobs:
           # Python regression is Release-only. A skipped Python step in
           # DebugSanitizers is therefore a valid state, not a failure.
           if [[ "${{ matrix.build_type }}" == "Release" && "$python_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+
+          if [[ "${{ matrix.build_type }}" == "Release" && "$n12_quick_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi
