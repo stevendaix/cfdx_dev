@@ -49,7 +49,7 @@ int main(int argc, char** argv)
         setup.source.solver = "meshio";
         setup.source.version = "pinned-public-fixture";
         setup.source.case_path = source_path.string();
-        setup.source.case_name = "meshio-vtk-unstructured";
+        setup.source.case_name = source_path.stem().string();
         setup.source.format = "vtk";
         setup.mesh_info.n_vertices = mesh.n_points();
         setup.mesh_info.n_faces = mesh.n_faces();
