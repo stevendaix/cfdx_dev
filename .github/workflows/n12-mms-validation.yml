@@ -117,7 +117,7 @@ jobs:
 
   final-gate:
     name: N12 validation gate
-    if: always()
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'validation-total')
     needs: [prepare, n12-mms]
     runs-on: ubuntu-24.04
     steps:
