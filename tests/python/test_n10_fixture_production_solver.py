@@ -20,6 +20,7 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     fixture_root_value = os.environ.get("CFDX_N10_FIXTURE_ROOT")
     solver_value = os.environ.get("CFDX_PRODUCTION_SOLVER")
     case_builder_value = os.environ.get("CFDX_N10_PRODUCTION_CASE_BUILDER")
+    evidence_value = os.environ.get("CFDX_N10_SOLVER_EVIDENCE")
     if not fixture_root_value or not solver_value or not case_builder_value:
         import pytest
 
@@ -70,10 +71,11 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         env=os.environ.copy(),
     )
     diagnostics = result.stdout + result.stderr
+    restart_path = output_dir / "restart.dat"
     assert result.returncode == 0, diagnostics[-12000:]
     assert "Resolved numerical selections:" in diagnostics
     assert "Converged YES" in diagnostics
-    assert (output_dir / "restart.dat").is_file()
+    assert restart_path.is_file()
 
     evidence = {
         "fixture": "meshio-vtk-unstructured",
@@ -83,10 +85,17 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         "execution_status": "PASS",
         "numerical_support": "execution_and_convergence_smoke_only",
         "physical_validation": "NOT_CLAIMED",
+        "restart_artifact": True,
+        "iteration_budget": 20,
         "case_builder_output_tail": build_diagnostics[-4000:],
         "solver_output_tail": diagnostics[-4000:],
     }
-    report = output_dir / "n10_numerical_support_smoke.json"
+    report = (
+        Path(evidence_value)
+        if evidence_value
+        else output_dir / "n10_numerical_support_smoke.json"
+    )
+    report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 
 
