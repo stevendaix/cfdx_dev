@@ -3,6 +3,7 @@
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/mesh/mesh_importer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
