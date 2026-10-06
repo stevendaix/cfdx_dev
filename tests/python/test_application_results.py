@@ -39,3 +39,33 @@ def test_application_routes_result_selection_as_results_changed(tmp_path: Path) 
 
     with pytest.raises(KeyError):
         application.select_result_field("temperature")
+
+
+def test_result_dataset_is_renderer_independent(tmp_path: Path) -> None:
+    dataset = ResultDataset(
+        stable_id="dataset:0",
+        frame_id="result:0",
+        path=str(tmp_path / "result_000.vtu"),
+        fields=("p", "U"),
+        time=0.25,
+        iteration=12,
+    )
+    assert dataset.field_available("p")
+    assert not dataset.field_available("T")
+
+
+def test_display_object_round_trips_without_gui_dependencies() -> None:
+    obj = DisplayObject(
+        stable_id="display:pressure",
+        kind="contour",
+        dataset_id="dataset:0",
+        field="p",
+        parameters=(("levels", "12"), ("opacity", "0.75")),
+    )
+    assert DisplayObject.from_dict(obj.to_dict()) == obj
+    assert obj.parameter_map() == {"levels": "12", "opacity": "0.75"}
+
+
+def test_display_object_rejects_unknown_renderer_kind() -> None:
+    with pytest.raises(ValueError, match="unsupported display object kind"):
+        DisplayObject(stable_id="display:x", kind="vtk_actor", dataset_id="dataset:0")
