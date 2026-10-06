@@ -28,7 +28,9 @@ inline const char* to_string(SimplerSchurMode m) {
 // The exact Schur complement S = C - D Auu^{-1} G is approximated by replacing
 // Auu^{-1} with a cheap diagonal operator:
 //   SIMPLE  : Ad = diag(Auu)
-//   SIMPLEC : Ad = diag(Auu) - row_offdiag(Auu)      (the "consistent" form)
+//   SIMPLEC : Ad = diag(Auu) - sum(a_nb), with a_nb the positive
+//             finite-volume neighbour coefficients. With the assembled
+//             A_PN=-a_PN convention this is diag(Auu)+sum(A_PN).
 // S~ = C - D Ad^{-1} G is built implicitly (one D matvec, one G matvec) so the
 // only cost per application is two sparse matvecs and one diagonal division.
 // This is the standard pressure-preconditioner approximation used by the
@@ -69,20 +71,31 @@ public:
 
         for (std::size_t i = 0; i < n; ++i) {
             double diag = 0.0;
-            double row_off = 0.0;
+            double row_off_abs = 0.0;
+            double row_off_signed = 0.0;
             for (std::size_t k = auu.row_offsets_data()[i];
                  k < auu.row_offsets_data()[i + 1]; ++k) {
                 const std::size_t j = auu.columns_data()[k];
                 const double v = auu.values_data()[k];
-                if (j == i) diag += v;
-                else row_off += std::abs(v);
+                if (j == i) {
+                    diag += v;
+                } else {
+                    row_off_abs += std::abs(v);
+                    row_off_signed += v;
+                }
             }
             if (!(diag > 0.0) || !std::isfinite(diag)) return false;
             diagonal_[i] = diag;
-            offdiag_norm_ = std::max(offdiag_norm_, row_off);
+            offdiag_norm_ = std::max(offdiag_norm_, row_off_abs);
 
+            // CFDX assembles momentum matrices with positive diagonals and
+            // (for the standard finite-volume neighbour coupling) negative
+            // off-diagonal neighbour coefficients. SIMPLEC is derived from
+            // a_P - sum(a_nb), not a_P - sum(|A_PN|). In matrix form this is
+            // a_P + sum(A_PN). Using an absolute row norm is overly
+            // restrictive and is not the SIMPLEC approximation.
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
-                ? diag - row_off
+                ? diag + row_off_signed
                 : diag;
             if (!(ad > 1e-14) || !std::isfinite(ad)) return false;
             denominator_[i] = ad;
