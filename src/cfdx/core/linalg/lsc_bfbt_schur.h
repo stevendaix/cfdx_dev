@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -148,6 +149,67 @@ public:
         for (std::size_t i = 0; i < np; ++i) pressure(i) = -pressure(i);
         if (pressure_null_space_) pressure_null_space_->remove(pressure);
         return true;
+    }
+
+    // Assemble the exact pressure-side operator used by the LSC/BFBT
+    // algebra, P = D Q^{-1} G.  Production code should use this helper rather
+    // than maintaining a second hand-written P assembly: otherwise a gauge,
+    // sign, or sparsity change can silently make the nested P^{-1} inconsistent
+    // with the Schur approximation.
+    static SparseMatrix assemble_pressure_operator(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        if (!blocks.is_valid() || blocks.pressure_size() == 0 || blocks.velocity_size() == 0)
+            throw std::invalid_argument("LSC/BFBT pressure operator requires valid blocks");
+
+        const std::size_t nu = blocks.velocity_size();
+        std::vector<double> q_inverse(nu, 1.0);
+        if (!q_diagonal.empty()) {
+            if (q_diagonal.size() != nu)
+                throw std::invalid_argument("LSC/BFBT Q diagonal has invalid size");
+            for (std::size_t i = 0; i < nu; ++i) {
+                if (!(q_diagonal[i] > 0.0) || !std::isfinite(q_diagonal[i]))
+                    throw std::invalid_argument("LSC/BFBT Q diagonal must be positive and finite");
+                q_inverse[i] = 1.0 / q_diagonal[i];
+            }
+        } else if (mode == Mode::LSC) {
+            const auto& A = blocks.Auu();
+            for (std::size_t i = 0; i < nu; ++i) {
+                double diagonal = 0.0;
+                for (std::size_t k = A.row_offsets_data()[i];
+                     k < A.row_offsets_data()[i + 1]; ++k) {
+                    if (A.columns_data()[k] == i)
+                        diagonal += A.values_data()[k];
+                }
+                if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                    throw std::invalid_argument(
+                        "LSC pressure operator requires positive finite momentum diagonal");
+                q_inverse[i] = 1.0 / diagonal;
+            }
+        }
+
+        const auto& D = blocks.D();
+        const auto& G = blocks.G();
+        SparseMatrix P(blocks.pressure_size(), blocks.pressure_size());
+        for (std::size_t row = 0; row < blocks.pressure_size(); ++row) {
+            std::map<std::size_t, double> entries;
+            for (std::size_t dk = D.row_offsets_data()[row];
+                 dk < D.row_offsets_data()[row + 1]; ++dk) {
+                const std::size_t velocity_col = D.columns_data()[dk];
+                const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
+                for (std::size_t gk = G.row_offsets_data()[velocity_col];
+                     gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
+                    entries[G.columns_data()[gk]] += d_value * G.values_data()[gk];
+                }
+            }
+            for (const auto& [col, value] : entries) {
+                if (std::isfinite(value) && value != 0.0)
+                    P.push_back(row, col, value);
+            }
+        }
+        P.finalize();
+        return P;
     }
 
     Mode mode() const noexcept { return mode_; }
