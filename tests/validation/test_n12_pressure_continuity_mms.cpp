@@ -104,7 +104,7 @@ struct Norms {
     double linf;
 };
 
-Norms continuity_error(const Mesh& mesh, const FvGeometry& geometry)
+Norms continuity_error(const Mesh& mesh, const cfdx::physics::FvGeometry& geometry)
 {
     Field<double, Location::FACE> phi(mesh.n_faces(), "phi_mms", "kg/s", 1);
 
@@ -145,7 +145,7 @@ int main()
     try {
         for (const std::size_t n : {16u, 32u, 64u}) {
             const Mesh mesh = make_channel(n);
-            const auto geometry = build_fv_geometry(mesh);
+            const auto geometry = cfdx::physics::build_fv_geometry(mesh);
             const auto e = continuity_error(mesh, geometry);
 
             std::cout << std::setprecision(12)
