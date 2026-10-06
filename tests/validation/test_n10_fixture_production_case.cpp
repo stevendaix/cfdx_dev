@@ -68,9 +68,12 @@ int main(int argc, char** argv)
         setup.numerics.max_iterations = 500;
 
         // This case is deliberately an execution fixture, not a physical
-        // validation case. Every imported patch is made no-slip; the first
-        // patch is the moving lid so the production solver sees a non-trivial
-        // incompressible boundary-value problem.
+        // validation case. The public meshio VTK fixture does not define CFD
+        // semantics for its patch ordering, so the execution case must not
+        // invent a "moving lid" from patch index. Homogeneous stationary
+        // no-slip walls with a zero initial state provide a deterministic,
+        // well-posed smoke case while still exercising the complete
+        // production import -> case serialization -> solver path.
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
             const auto& patch = mesh.boundary().patch(i);
             BoundarySpec bc;
@@ -80,8 +83,6 @@ int main(int argc, char** argv)
             bc.velocity_vector = {0.0, 0.0, 0.0};
             bc.source_zone_name = patch.name;
             bc.source_type_name = "CFDX N10 production execution fixture";
-            if (i == 0)
-                bc.velocity_vector = {1.0, 0.0, 0.0};
             setup.boundary_conditions.push_back(std::move(bc));
         }
         if (setup.boundary_conditions.empty())
@@ -124,7 +125,7 @@ int main(int argc, char** argv)
 
         GapAnalysis gap;
         gap.supported("mesh", "vtk", "Imported through the production C++ mesh importer");
-        gap.supported("boundary_condition", "closed_cavity",
+        gap.supported("boundary_condition", "homogeneous_wall",
                       "Deterministic N10 numerical execution fixture");
         gap.supported("numerics", "explicit_selection",
                       "Gradient, convection and pressure-velocity are explicitly selected");
