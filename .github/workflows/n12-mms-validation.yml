@@ -1,0 +1,127 @@
+name: CFDX N12 MMS validation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 4 * * 1"
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-n12-mms-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-n12
+
+jobs:
+  prepare:
+    name: Build N12 MMS laboratory
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-n12
+          .venv-n12/bin/python -m pip install --upgrade pip
+          .venv-n12/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          .venv-n12/bin/python -m pip install -e .
+      - name: Configure
+        id: configure
+        continue-on-error: true
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-n12/bin/python"
+      - name: Build
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --parallel 2
+      - name: Package build
+        if: steps.build.outcome == 'success'
+        run: tar -czf n12-build.tar.gz "$BUILD_DIR"
+      - name: Upload build
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-n12-build-\${{ github.sha }}
+          path: n12-build.tar.gz
+          compression-level: 0
+          retention-days: 3
+      - name: Final prepare gate
+        if: always()
+        run: |
+          echo "configure=\${{ steps.configure.outcome }}"
+          echo "build=\${{ steps.build.outcome }}"
+          [[ "\${{ steps.configure.outcome }}" == "success" && "\${{ steps.build.outcome }}" == "success" ]]
+
+  n12-mms:
+    name: N12 MMS laboratory
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-n12-build-\${{ github.sha }}
+          path: .
+      - name: Restore build
+        run: tar -xzf n12-build.tar.gz
+      - name: Run N12 MMS campaigns
+        id: n12
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$BUILD_DIR/n12-mms"
+          ctest --test-dir "$BUILD_DIR" \
+            -L n12 \
+            --no-tests=error \
+            --output-on-failure \
+            --output-junit "$BUILD_DIR/n12-mms/ctest-results.xml" \
+            --parallel 4 \
+            -V 2>&1 | tee "$BUILD_DIR/n12-mms/n12-mms.log"
+      - name: Upload N12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-n12-mms-evidence-\${{ github.sha }}
+          path: |
+            \${{ env.BUILD_DIR }}/n12-mms/
+            \${{ env.BUILD_DIR }}/Testing/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final N12 gate
+        if: always()
+        run: '[[ "\${{ steps.n12.outcome }}" == "success" ]] || exit 1'
+
+  final-gate:
+    name: N12 validation gate
+    if: always()
+    needs: [prepare, n12-mms]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Evaluate N12 partitions
+        run: |
+          echo "prepare=\${{ needs.prepare.result }}"
+          echo "n12-mms=\${{ needs.n12-mms.result }}"
+          [[ "\${{ needs.prepare.result }}" == "success" && "\${{ needs.n12-mms.result }}" == "success" ]]
