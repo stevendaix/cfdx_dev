@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -72,9 +71,9 @@ int main()
         const std::vector<double> volume{1.0, 1.3, 0.8, 1.7};
 
         std::vector<double> cpu_x(phi.size()), cpu_y(phi.size()), cpu_z(phi.size());
-        gradient_gauss_reference(
+        cfdx::runtime::gpu::gradient_gauss_reference(
             phi.data(), sx.data(), sy.data(), sz.data(),
-            reinterpret_cast<const std::size_t*>(owner.data()), neighbour.data(),
+            owner.data(), neighbour.data(),
             volume.data(), owner.size(), phi.size(),
             cpu_x.data(), cpu_y.data(), cpu_z.data());
 
