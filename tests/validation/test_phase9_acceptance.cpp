@@ -514,7 +514,8 @@ int main(int argc, char** argv)
                 auto result = run_couette_channel(
                     test.algorithm, test.scheme, test.bounded, 8, 16,
                     test.coupled_krylov, test.coupled_preconditioner,
-                    test.pressure_krylov, test.pressure_preconditioner);
+                    test.pressure_krylov, test.pressure_preconditioner,
+                    test.schur_model);
 
                 print_history(test.name, result);
 
