@@ -73,6 +73,8 @@ struct DiagnosticsControls {
     bool freeze_state_probe = false;
     long debug_cell = -1;
     bool debug_cell_auto = false;
+    // Opt-in deep solver diagnostics. This never changes numerical behavior.
+    bool verbose = false;
     // Bounded progress trace for long validation solves. Disabled by default.
     bool iteration_trace = false;
     std::size_t iteration_trace_frequency = 50;
@@ -1214,7 +1216,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area) ||
                     !(D > 0.0) || !std::isfinite(D)) {
-                    if (diagnostics.coupled_matrix_summary) {
+                    if (diagnostics.coupled_matrix_summary || diagnostics.verbose) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
                                   << " cells=" << c << "/" << ncell
                                   << " area=" << area
@@ -1503,6 +1505,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // the assembled system is nonsingular. Use one full Krylov space for
     // small/medium coupled systems so a restart boundary cannot manufacture
     // an artificial MAX_ITER failure.
+    if (controls.diagnostics.verbose) {
+        std::cerr << "SOLVER_VERBOSE_BEGIN algorithm=" << to_string(algorithm)
+                  << " schur_model=" << to_string(schur_model)
+                  << " matrix_rows=" << A.n_rows()
+                  << " matrix_nnz=" << A.nnz()
+                  << " max_iterations=" << max_iterations
+                  << " tolerance=" << tolerance << "\\n";
+    }
     const auto solver_plan = select_linear_solver(
         LinearProblemKind::CoupledPressureVelocity, A.n_rows(), solver_request);
     if (solver_plan.krylov != KrylovModel::GMRES &&
@@ -1522,6 +1532,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     //
     // Selection reads the *resolved* plan, not the request, so an automatically
     // resolved policy takes the same branch an explicit one would.
+    if (controls.diagnostics.verbose) {
+        std::cerr << "SOLVER_PLAN_VERBOSE krylov=" << to_string(solver_plan.krylov)
+                  << " preconditioner=" << to_string(solver_plan.preconditioner)
+                  << " schur_model=" << to_string(schur_model) << "\\n";
+    }
     const bool use_n8_block_schur =
         solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
     const bool use_pcd =
@@ -1570,10 +1585,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             schur_model == CoupledSchurModel::SIMPLE
                 ? CoupledSchurApproximationModel::SIMPLE
                 : CoupledSchurApproximationModel::SIMPLEC;
+        options.verbose = controls.diagnostics.verbose;
+        options.diagnostic_stream = &std::cerr;
 
         auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
         schur->set_simpler_schur(std::move(simpler));
         if (!schur->setup(A)) {
+            if (controls.diagnostics.verbose)
+                std::cerr << "N9_SIMPLEC_PRODUCTION_SETUP_FAILURE reason=" << schur->last_error() << "\\n";
             throw std::runtime_error(
                 std::string("N9 SIMPLE/SIMPLEC Schur setup failed: ") +
                 schur->last_error());
@@ -1660,6 +1679,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             schur_model == CoupledSchurModel::LSC
                 ? CoupledSchurApproximationModel::LSC
                 : CoupledSchurApproximationModel::BFBT;
+        options.verbose = controls.diagnostics.verbose;
+        options.diagnostic_stream = &std::cerr;
 
         auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
         schur->set_algebraic_schur(std::move(algebraic_schur));
