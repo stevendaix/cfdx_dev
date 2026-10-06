@@ -92,6 +92,18 @@ class SetupDiagnostic:
             raise ValueError("diagnostic domain must not be empty")
         if not self.source.strip():
             raise ValueError("diagnostic source must not be empty")
+    def to_dict(self) -> dict[str, str | None]:
+        """Return a JSON-safe diagnostic representation for frontends."""
+        return {
+            "severity": self.severity,
+            "code": self.code,
+            "message": self.message,
+            "path": self.path,
+            "domain": self.domain,
+            "source": self.source,
+            "affected_object": self.affected_object,
+            "remediation": self.remediation,
+        }
 
 def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: tuple[Any, ...] = (), impact: ChangeImpact = ChangeImpact.HOT) -> Parameter:
     """Infer the supported user-facing parameter type."""
