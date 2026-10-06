@@ -1005,6 +1005,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     CoupledSchurModel schur_model,
     const cfdx::core::LinearSolverRequest& solver_request,
     const IncompressibleSolverControls& controls,
+    double momentum_relaxation,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
@@ -1577,7 +1578,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             schur_model == CoupledSchurModel::SIMPLE
                 ? SimplerSchurMode::SIMPLE
                 : SimplerSchurMode::SIMPLEC;
-        auto simpler = std::make_unique<SimplerSchurApproximation>(mode);
+        auto simpler = std::make_unique<SimplerSchurApproximation>(
+            mode, std::nullopt, momentum_relaxation);
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
@@ -1592,7 +1594,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         schur->set_simpler_schur(std::move(simpler));
         if (!schur->setup(A)) {
             if (controls.diagnostics.verbose)
-                std::cerr << "N9_SIMPLEC_PRODUCTION_SETUP_FAILURE reason=" << schur->last_error() << "\\n";
+                std::cerr << "N8_SIMPLE_SCHUR_PRODUCTION_SETUP_FAILURE"
+                          << " model=" << to_string(schur_model)
+                          << " momentum_relaxation=" << momentum_relaxation
+                          << " reason=" << schur->last_error() << "\\n";
             throw std::runtime_error(
                 std::string("N9 SIMPLE/SIMPLEC Schur setup failed: ") +
                 schur->last_error());
@@ -2315,6 +2320,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.schur_model,
                 controls.coupled_linear_solver,
                 controls,
+                retry_controller.alpha_u(effective_alpha_u),
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
