@@ -261,9 +261,14 @@ int main(int argc, char** argv)
         CaseSetup case_setup;
         SourceInfo case_source;
         GapAnalysis case_gap;
+        // A CFDX case is distinct from a generic mesh HDF5 file.  The
+        // suffix is 8 characters (".cfdx.h5"); the previous 9-character
+        // check could never match a valid case path and silently routed
+        // .cfdx.h5 files through the mesh-only HDF5 reader.  That bypassed
+        // case numerics, boundary conditions and initialization metadata.
         const bool is_case_hdf5 =
-            mesh_path.size() >= 9 &&
-            mesh_path.substr(mesh_path.size() - 9) == ".cfdx.h5";
+            mesh_path.size() >= 8 &&
+            mesh_path.substr(mesh_path.size() - 8) == ".cfdx.h5";
         bool ok = false;
         if (is_case_hdf5) {
             ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
