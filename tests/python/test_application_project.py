@@ -1,1 +1,36 @@
-from pathlib import Path\n\nfrom cfdx import CFDXSession\nfrom cfdx.application.application import Application\n\n\ndef test_application_project_lifecycle_uses_shared_case_boundary(tmp_path: Path) -> None:\n    path = tmp_path / "channel.cfdx.h5"\n    session = CFDXSession()\n    session.case.name = "channel"\n    session.case.enable("incompressible")\n    session.case.set_numerics(cfl=0.8)\n\n    app = Application(session)\n    saved = app.save_project(path)\n\n    assert saved.project.path == str(path)\n    assert saved.project.dirty is False\n\n    opened = Application().open_project(path)\n    assert opened.project.path == str(path)\n    assert opened.project.name == "channel"\n    assert opened.project.dirty is False\n    assert opened.case_revision == session.case_revision\n    assert opened.simulation_state.name == "IDLE"\n\n\ndef test_application_requires_project_path_for_save() -> None:\n    app = Application(CFDXSession())\n\n    try:\n        app.save_project()\n    except ValueError as exc:\n        assert "project path" in str(exc)\n    else:\n        raise AssertionError("save_project() must require a path for a new application")
+from pathlib import Path
+
+from cfdx import CFDXSession
+from cfdx.application.application import Application
+
+
+def test_application_project_lifecycle_uses_shared_case_boundary(tmp_path: Path) -> None:
+    path = tmp_path / "channel.cfdx.h5"
+    session = CFDXSession()
+    session.case.name = "channel"
+    session.case.enable("incompressible")
+    session.case.set_numerics(cfl=0.8)
+
+    app = Application(session)
+    saved = app.save_project(path)
+
+    assert saved.project.path == str(path)
+    assert saved.project.dirty is False
+
+    opened = Application().open_project(path)
+    assert opened.project.path == str(path)
+    assert opened.project.name == "channel"
+    assert opened.project.dirty is False
+    assert opened.case_revision == session.case_revision
+    assert opened.simulation_state.name == "IDLE"
+
+
+def test_application_requires_project_path_for_save() -> None:
+    app = Application(CFDXSession())
+
+    try:
+        app.save_project()
+    except ValueError as exc:
+        assert "project path" in str(exc)
+    else:
+        raise AssertionError("save_project() must require a path for a new application")
