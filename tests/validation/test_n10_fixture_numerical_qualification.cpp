@@ -1,5 +1,6 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/core/geometry/mesh_validator.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/mesh/mesh_importer.h"
 
