@@ -6,7 +6,10 @@
 #include "cfdx/core/linalg/vector.h"
 
 #include <cmath>
+#include <limits>
 #include <map>
+#include <ostream>
+#include <sstream>
 #include <cstddef>
 #include <optional>
 #include <utility>
@@ -57,10 +60,14 @@ public:
     SchurAction action() const noexcept override { return SchurAction::Operator; }
 
     bool setup(const BlockOperator& blocks) override {
-        if (!blocks.is_valid()) return false;
+        last_error_.clear();
+        if (!blocks.is_valid()) {
+            last_error_ = "invalid block operator";
+            return false;
+        }
         const SparseMatrix& auu = blocks.Auu();
         const std::size_t n = auu.n_rows();
-        if (n == 0) return false;
+        if (n == 0) { last_error_ = "empty velocity block"; return false; }
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != blocks.pressure_size())
             return false;
@@ -84,7 +91,12 @@ public:
                     row_off_signed += v;
                 }
             }
-            if (!(diag > 0.0) || !std::isfinite(diag)) return false;
+            if (!(diag > 0.0) || !std::isfinite(diag)) {
+                std::ostringstream os;
+                os << "invalid momentum diagonal row=" << i << " diag=" << diag;
+                last_error_ = os.str();
+                return false;
+            }
             diagonal_[i] = diag;
             offdiag_norm_ = std::max(offdiag_norm_, row_off_abs);
 
@@ -97,7 +109,17 @@ public:
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
                 ? diag + row_off_signed
                 : diag;
-            if (!(ad > 1e-14) || !std::isfinite(ad)) return false;
+            if (!(ad > 1e-14) || !std::isfinite(ad)) {
+                std::ostringstream os;
+                os << "invalid SIMPLE/SIMPLEC denominator row=" << i
+                   << " mode=" << to_string(mode_)
+                   << " diag=" << diag
+                   << " offdiag_signed=" << row_off_signed
+                   << " offdiag_abs=" << row_off_abs
+                   << " denominator=" << ad;
+                last_error_ = os.str();
+                return false;
+            }
             denominator_[i] = ad;
         }
         blocks_ = &blocks;
@@ -182,6 +204,22 @@ public:
 
     double offdiag_norm() const noexcept { return offdiag_norm_; }
 
+    const std::string& last_error() const noexcept { return last_error_; }
+
+    void write_diagnostics(std::ostream& os) const {
+        os << "SIMPLEC_SCHUR_DIAGNOSTICS mode=" << to_string(mode_)
+           << " velocity_rows=" << denominator_.size()
+           << " offdiag_norm=" << offdiag_norm_
+           << " ready=" << (blocks_ ? "true" : "false") << "\\n";
+        if (!last_error_.empty()) os << "SIMPLEC_SCHUR_ERROR " << last_error_ << "\\n";
+        const std::size_t n = denominator_.size();
+        if (n == 0) return;
+        double dmin = std::numeric_limits<double>::infinity();
+        double dmax = -std::numeric_limits<double>::infinity();
+        for (double d : denominator_) { dmin = std::min(dmin, d); dmax = std::max(dmax, d); }
+        os << "SIMPLEC_SCHUR_DENOMINATOR_RANGE min=" << dmin << " max=" << dmax << "\\n";
+    }
+
     bool has_pressure_null_space_policy() const noexcept {
         return pressure_null_space_.has_value();
     }
@@ -225,6 +263,7 @@ private:
     std::vector<double> diagonal_;
     std::vector<double> denominator_;
     double offdiag_norm_ = 0.0;
+    std::string last_error_;
     GraphSignature graph_signature_{};
 };
 
