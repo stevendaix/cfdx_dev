@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/lsc_bfbt_schur.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
@@ -1613,70 +1614,30 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const SparseMatrix D = extract_coupled_block(1, 0, nc, 3 * nc);
         const SparseMatrix C = extract_coupled_block(1, 1, nc, nc);
 
-        std::vector<double> q_inverse(3 * nc, 1.0);
-        if (schur_model == CoupledSchurModel::LSC) {
-            for (std::size_t i = 0; i < 3 * nc; ++i) {
-                double diagonal = 0.0;
-                for (std::size_t k = Auu.row_offsets_data()[i];
-                     k < Auu.row_offsets_data()[i + 1]; ++k) {
-                    if (Auu.columns_data()[k] == i)
-                        diagonal += Auu.values_data()[k];
-                }
-                if (!(diagonal > 0.0) || !std::isfinite(diagonal))
-                    throw std::runtime_error(
-                        "LSC Schur setup requires positive finite momentum diagonal");
-                q_inverse[i] = 1.0 / diagonal;
-            }
-        }
-
-        // P = D Q^{-1} G is the pressure operator used by the algebraic
-        // LSC/BFBt inverse.  The production pressure equation is pinned at
-        // reference_cell, so the nested inverse must use the same gauge.
-        //
-        // A row-only replacement is not sufficient: it leaves the pinned
-        // pressure unknown coupled into every other row and can make the
-        // artificial gauge column destabilize ILU(0).  Eliminate both the
-        // reference row and column and impose the identity equation.  Since
-        // the Schur inverse is applied to homogeneous correction equations,
-        // p_ref = 0 is the exact correction-space gauge.
-        SparseMatrix pressure_operator(nc, nc);
-        for (std::size_t row = 0; row < nc; ++row) {
-            if (row == reference_cell) {
-                pressure_operator.push_back(row, row, 1.0);
-                continue;
-            }
-
-            std::map<std::size_t, double> entries;
-            for (std::size_t dk = D.row_offsets_data()[row];
-                 dk < D.row_offsets_data()[row + 1]; ++dk) {
-                const std::size_t velocity_col = D.columns_data()[dk];
-                const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
-                for (std::size_t gk = G.row_offsets_data()[velocity_col];
-                     gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
-                    const std::size_t col = G.columns_data()[gk];
-                    if (col == reference_cell)
-                        continue;
-                    entries[col] += d_value * G.values_data()[gk];
-                }
-            }
-            for (const auto& [col, value] : entries) {
-                if (std::isfinite(value) && value != 0.0)
-                    pressure_operator.push_back(row, col, value);
-            }
-        }
-        pressure_operator.finalize();
+        // Keep one source of truth for P = D Q^{-1} G.  The same
+        // operator is the algebraic object defined by LSC/BFBT and is now
+        // assembled by the core helper used here.  Pressure gauge handling is
+        // deliberately kept outside P: the reference pressure is an explicit
+        // reduction, not a modification of the algebraic Schur operator.
+        const auto lsc_mode =
+            schur_model == CoupledSchurModel::LSC
+                ? LscBfbtSchurApproximation::Mode::LSC
+                : LscBfbtSchurApproximation::Mode::BFBT;
+        const BlockOperator lsc_blocks(Auu, G, D, C);
+        const SparseMatrix pressure_operator =
+            LscBfbtSchurApproximation::assemble_pressure_operator(
+                lsc_blocks, lsc_mode);
 
         // NativeAMG is a positive-diagonal AMG method. The algebraic LSC/BFBT
         // operator P = D Q^{-1} G has the opposite sign for the physical
         // pressure operator (and may be mildly nonsymmetric because D is not
-        // assumed to be -G^T). Do not feed the pinned full matrix to AMG:
-        // the artificial gauge row creates a mixed-sign row/column pattern and
-        // invalidates the smoother assumptions. Eliminate the reference
-        // pressure unknown exactly, then solve the sign-normalized reduced
-        // operator -P_red z = -rhs_red and scatter z back with x_ref = 0.
+        // assumed to be -G^T). Eliminate the reference pressure unknown
+        // exactly and solve the sign-normalized reduced operator
+        // -P_red z = -rhs_red. Reconstruct with x_ref = 0.
         //
-        // This is an algebraic gauge transformation only; it does not alter
-        // the LSC/BFBT approximation or any outer convergence criterion.
+        // This is an algebraic gauge transformation only: P itself remains
+        // unchanged, and therefore the operator seen by the LSC/BFBT algebra
+        // is exactly the operator whose inverse is supplied by this callback.
         SparseMatrix pressure_solver_operator(nc > 0 ? nc - 1 : 0,
                                               nc > 0 ? nc - 1 : 0);
         if (nc > 1) {
@@ -1804,15 +1765,25 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     p1_linf = std::max(p1_linf, std::abs(p1[i]));
                 }
 
-                double gauge_abs_sum = 0.0;
-                double gauge_diag = 0.0;
-                std::size_t gauge_nnz = 0;
+                double reference_row_abs_sum = 0.0;
+                double reference_col_abs_sum = 0.0;
+                std::size_t reference_row_nnz = 0;
+                std::size_t reference_col_nnz = 0;
+                double reference_diag = 0.0;
                 if (reference_cell < pressure_operator.n_rows()) {
                     for (std::size_t k = ro[reference_cell];
                          k < ro[reference_cell + 1]; ++k) {
-                        ++gauge_nnz;
-                        gauge_abs_sum += std::abs(va[k]);
-                        if (co[k] == reference_cell) gauge_diag += va[k];
+                        ++reference_row_nnz;
+                        reference_row_abs_sum += std::abs(va[k]);
+                        if (co[k] == reference_cell) reference_diag += va[k];
+                    }
+                    for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
+                        for (std::size_t k = ro[row]; k < ro[row + 1]; ++k) {
+                            if (co[k] == reference_cell) {
+                                ++reference_col_nnz;
+                                reference_col_abs_sum += std::abs(va[k]);
+                            }
+                        }
                     }
                 }
 
