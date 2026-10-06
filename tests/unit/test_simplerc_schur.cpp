@@ -89,7 +89,7 @@ static double linf(const Vector& diff) {
 int main() {
     // SPD coupled Auu (as in the exact-Schur test), D = G^T, diagonal C.
     const auto Auu = make_sparse(2, 2, {
-        {0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.0}
+        {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 3.0}
     });
     const auto G = make_sparse(2, 2, {
         {0, 0, 1.0}, {0, 1, 0.5}, {1, 0, 0.25}, {1, 1, 1.0}
@@ -127,7 +127,8 @@ int main() {
         Ad_inv[1][1] = inv[1];
         return dense_subtract(Cd, dense_multiply(dense_multiply(Dd, Ad_inv), Gd));
     };
-    // SIMPLE: Ad = diag(Auu) = [4,3]; SIMPLEC: Ad = diag - offdiag = [3,2].
+    // With the FV matrix sign convention A_PN = -a_PN, SIMPLEC uses
+    // diag(Auu) + sum(A_PN), giving [3,2] for this SPD example.
     const Dense S_simple_dense = approx_dense({1.0 / 4.0, 1.0 / 3.0});
     const Dense S_simplec_dense = approx_dense({1.0 / 3.0, 1.0 / 2.0});
 
@@ -139,7 +140,9 @@ int main() {
         SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
         EXPECT_TRUE(!s.setup(BlockOperator(make_sparse(2,1,{{0,0,1.0}}), G, D, C)));
         SimplerSchurApproximation neg(SimplerSchurMode::SIMPLEC);
-        // A non-diagonally-dominant row makes the SIMPLEC denominator non-positive.
+        // A positive diagonal with a sufficiently large positive neighbour
+        // coupling is not a valid FV momentum sign pattern and must not be
+        // used to define the SIMPLEC denominator.
         const auto Auu_nondom = make_sparse(1, 1, {{0, 0, 0.5}, {0, 0, 2.0}});
         (void)Auu_nondom;
         // (single-row diagonal-positive case is accepted; rejection covered by invalid blocks)
