@@ -167,7 +167,7 @@ Metrics run_case(std::size_t n)
 
     const auto momentum_flux = reconstruct_scalar_transport_flux(
         mesh, geometry, mass_flux, Ux, MU, xbc, false,
-        ConvectionScheme::CENTRAL, nullptr, nullptr, &face_values);
+        ConvectionScheme::SECOND_ORDER_UPWIND, nullptr, nullptr, &face_values);
 
     Field<double, Location::CELL> source(
         mesh.n_cells(), "momentum_mms_source", "N/m3", 1);
@@ -235,7 +235,7 @@ int main()
                   << p_l1_16_32 << " " << p_l1_32_64
                   << " Linf=" << p_linf_16_32 << " " << p_linf_32_64 << "\n";
 
-        // Central diffusion and linear face interpolation should give a
+        // The second-order reconstruction and central diffusion should give a
         // second-order asymptotic balance on this orthogonal manufactured field.
         require(p_l1_32_64 > 1.5,
                 "N12 momentum MMS L1 observed order below the verification floor");
