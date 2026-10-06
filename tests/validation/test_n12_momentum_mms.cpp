@@ -19,7 +19,6 @@
 // independently from the discrete transport reconstruction.
 
 #include "cfdx/core/numerics/conservation.h"
-#include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
@@ -29,7 +28,7 @@
 #include <cstddef>
 #include <iomanip>
 #include <iostream>
-#include <stdexcept>
+#include <stdexcept>\n#include <string>
 #include <vector>
 
 using namespace cfdx::core;
@@ -124,7 +123,6 @@ Mesh make_channel(std::size_t n)
 }
 
 double ux(double y) { return std::sin(PI * y); }
-double pressure(double x) { return std::cos(2.0 * PI * x); }
 double pressure_x(double x) { return -2.0 * PI * std::sin(2.0 * PI * x); }
 double forcing_x(double x, double y) {
     return MU * PI * PI * std::sin(PI * y) + pressure_x(x);
@@ -141,7 +139,7 @@ struct Metrics {
 Metrics run_case(std::size_t n)
 {
     const Mesh mesh = make_channel(n);
-    const auto geometry = make_geometry_cache(mesh);
+    const auto geometry = build_fv_geometry(mesh);
 
     Field<double, Location::CELL> Ux(mesh.n_cells(), "Ux_mms", "m/s", 1);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c)
@@ -208,7 +206,7 @@ Metrics run_case(std::size_t n)
     return out;
 }
 
-double observed_order(double coarse, double fine)
+void require(bool condition, const std::string& message) {\n    if (!condition) throw std::runtime_error(message);\n}\n\ndouble observed_order(double coarse, double fine)
 {
     if (!(coarse > 0.0) || !(fine > 0.0) || !(coarse > fine))
         throw std::runtime_error("N12 momentum MMS error is not decreasing");
