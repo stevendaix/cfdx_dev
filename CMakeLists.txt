@@ -697,6 +697,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)
     add_cfdx_test(test_transient_mms_closure tests/validation/test_transient_mms_closure.cpp)
     add_cfdx_test(test_transient_mms_3d_stiff tests/validation/test_transient_mms_3d_stiff.cpp)
+    set_tests_properties(
+        test_mms_scalar_diffusion
+        test_transient_mms
+        test_transient_mms_closure
+        test_transient_mms_3d_stiff
+        PROPERTIES LABELS "n12;mms;validation")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
@@ -816,6 +822,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
+    add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 300
+        RUN_SERIAL TRUE)
     add_cfdx_test(test_n9_s9_rhie_chow_consistency tests/validation/test_n9_s9_rhie_chow_consistency.cpp)
     set_tests_properties(test_n9_s9_rhie_chow_consistency PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
