@@ -79,9 +79,12 @@ int main()
             true, nullptr, nullptr, nullptr, nullptr,
             ConvectionScheme::UPWIND, &scalar);
 
+        Vector solution(mesh.n_cells(), 0.0);
         const auto linear = solve_scalar_equation(
-            equation, scalar, ScalarSolveControls{200,1e-12,1.0});
+            equation, solution, ScalarSolveControls{200,1e-12,1.0});
         EXPECT_TRUE(linear.status == SolverStatus::CONVERGED);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            scalar(cell) = solution(cell);
         EXPECT_TRUE(std::isfinite(scalar(0)));
         EXPECT_TRUE(scalar(0) >= 0.0 && scalar(0) <= 1.0);
 
