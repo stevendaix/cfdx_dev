@@ -77,16 +77,16 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     assert result.returncode == 0, diagnostics[-12000:]
 
     trace_pattern = re.compile(
-        r"^INCOMPRESSIBLE_ITER iter=(?P<iteration>\\d+)"
+        r"^INCOMPRESSIBLE_ITER iter=(?P<iteration>\d+)"
         r" momentum_residual_relative=(?P<momentum>[-+0-9.eE]+)"
         r" continuity_normalized=(?P<continuity>[-+0-9.eE]+)"
         r" velocity_change_inf=(?P<velocity>[-+0-9.eE]+)"
         r" pressure_change_inf=(?P<pressure>[-+0-9.eE]+)"
         r" alpha_u=(?P<alpha_u>[-+0-9.eE]+)"
         r" alpha_p=(?P<alpha_p>[-+0-9.eE]+)"
-        r" pressure_linear_iterations=(?P<pressure_iterations>\\d+)"
+        r" pressure_linear_iterations=(?P<pressure_iterations>\d+)"
         r" pressure_relative_residual=(?P<pressure_residual>[-+0-9.eE]+)"
-        r" momentum_linear_iterations=(?P<momentum_iterations>\\d+)"
+        r" momentum_linear_iterations=(?P<momentum_iterations>\d+)"
         r" flux_velocity_mismatch_linf=(?P<flux_mismatch>[-+0-9.eE]+)"
     )
     history: list[dict[str, float | int]] = []
