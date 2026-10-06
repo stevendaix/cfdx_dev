@@ -702,6 +702,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_n10_external_fixture_import tests/validation/test_n10_external_fixture_import.cpp)
     target_link_libraries(test_n10_external_fixture_import PRIVATE cfdx_core)
     target_include_directories(test_n10_external_fixture_import PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_executable(test_n10_fixture_production_case tests/validation/test_n10_fixture_production_case.cpp)
+    target_link_libraries(test_n10_fixture_production_case PRIVATE cfdx_core)
+    target_include_directories(test_n10_fixture_production_case PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_n10_qualification
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/n10_qualification.py
