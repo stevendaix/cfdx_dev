@@ -139,6 +139,59 @@ int main() {
         return z;
     };
 
+    run_case("pressure_operator_matches_lsc_bfbt_definition", [&] {
+        const auto lsc_p = LscBfbtSchurApproximation::assemble_pressure_operator(
+            blocks, LscBfbtSchurApproximation::Mode::LSC);
+        const auto bfbt_p = LscBfbtSchurApproximation::assemble_pressure_operator(
+            blocks, LscBfbtSchurApproximation::Mode::BFBT);
+
+        const auto expected = [](const SparseMatrix& Dm,
+                                 const SparseMatrix& Gm,
+                                 const std::vector<double>& q_inverse) {
+            SparseMatrix Pm(Dm.n_rows(), Gm.n_cols());
+            for (std::size_t row = 0; row < Dm.n_rows(); ++row) {
+                for (std::size_t dk = Dm.row_offsets_data()[row];
+                     dk < Dm.row_offsets_data()[row + 1]; ++dk) {
+                    const std::size_t v = Dm.columns_data()[dk];
+                    const double d = Dm.values_data()[dk] * q_inverse[v];
+                    for (std::size_t gk = Gm.row_offsets_data()[v];
+                         gk < Gm.row_offsets_data()[v + 1]; ++gk) {
+                        Pm.push_back(row, Gm.columns_data()[gk],
+                                     d * Gm.values_data()[gk]);
+                    }
+                }
+            }
+            Pm.finalize();
+            return Pm;
+        };
+
+        const auto expected_lsc = expected(D, G, {0.25, 1.0 / 3.0});
+        const auto expected_bfbt = expected(D, G, {1.0, 1.0});
+        const auto max_abs_diff = [](const SparseMatrix& a, const SparseMatrix& b) {
+            double result = 0.0;
+            EXPECT_TRUE(a.n_rows() == b.n_rows() && a.n_cols() == b.n_cols());
+            for (std::size_t row = 0; row < a.n_rows(); ++row) {
+                for (std::size_t col = 0; col < a.n_cols(); ++col) {
+                    double av = 0.0;
+                    double bv = 0.0;
+                    for (std::size_t k = a.row_offsets_data()[row];
+                         k < a.row_offsets_data()[row + 1]; ++k)
+                        if (a.columns_data()[k] == col) av += a.values_data()[k];
+                    for (std::size_t k = b.row_offsets_data()[row];
+                         k < b.row_offsets_data()[row + 1]; ++k)
+                        if (b.columns_data()[k] == col) bv += b.values_data()[k];
+                    result = std::max(result, std::abs(av - bv));
+                }
+            }
+            return result;
+        };
+
+        EXPECT_NEAR(max_abs_diff(lsc_p, expected_lsc), 0.0, 1e-15);
+        EXPECT_NEAR(max_abs_diff(bfbt_p, expected_bfbt), 0.0, 1e-15);
+        EXPECT_TRUE(lsc_p.n_rows() == blocks.pressure_size());
+        EXPECT_TRUE(bfbt_p.n_rows() == blocks.pressure_size());
+    });
+
     run_case("lsc_and_bfbt_setup_and_apply", [&] {
         (void)run_mode(LscBfbtSchurApproximation::Mode::LSC, {});
         (void)run_mode(LscBfbtSchurApproximation::Mode::BFBT, {});
