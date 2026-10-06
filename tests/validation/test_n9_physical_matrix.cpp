@@ -209,16 +209,36 @@ Run solve_case(
     return {std::move(U),std::move(p),std::move(result)};
 }
 
-void require_physical_convergence(const Run& r, const char* name)
+void require_physical_convergence(
+    const Run& r,
+    const char* name,
+    PressureVelocityAlgorithm algorithm)
 {
-    if (!r.result.converged || r.result.history.empty())
-        throw std::runtime_error(std::string(name)+" did not converge");
+    const char* algorithm_name = pressure_velocity_algorithm_name(algorithm);
+    if (!r.result.converged || r.result.history.empty()) {
+        std::string detail = std::string(name) + " did not converge [algorithm=" +
+            algorithm_name + "]";
+        if (!r.result.convergence_reason.empty())
+            detail += " reason=" + r.result.convergence_reason;
+        if (!r.result.history.empty()) {
+            const auto& h = r.result.history.back();
+            detail += " iter=" + std::to_string(h.iteration) +
+                " momentum_rel=" + std::to_string(h.momentum_residual) +
+                " continuity_linf=" + std::to_string(h.continuity_linf) +
+                " pressure_rel=" + std::to_string(h.pressure_residual) +
+                " velocity_change=" + std::to_string(h.velocity_change_inf) +
+                " pressure_change=" + std::to_string(h.pressure_change_inf);
+        }
+        throw std::runtime_error(detail);
+    }
     const auto& h=r.result.history.back();
     if (!std::isfinite(h.continuity_linf) ||
         !std::isfinite(h.momentum_residual) ||
         h.continuity_linf > 1e-7 ||
         h.momentum_residual > 1e-7)
-        throw std::runtime_error(std::string(name)+" physical residual gate failed");
+        throw std::runtime_error(
+            std::string(name)+" physical residual gate failed [algorithm="+
+            algorithm_name+"]");
 }
 
 double couette_l2(const Run& r, std::size_t nx, std::size_t ny)
@@ -318,12 +338,12 @@ int main()
 
     for (std::size_t k=0;k<algs.size();++k) {
         couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0));
-        require_physical_convergence(couette[k],"Couette");
+        require_physical_convergence(couette[k],"Couette",algs[k]);
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
         poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
-        require_physical_convergence(poiseuille[k],"Poiseuille");
+        require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
 
@@ -333,7 +353,7 @@ int main()
         cavity_bc["bottom"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
         cavity.push_back(solve_case(make_cavity_mesh(32,32),algs[k],cavity_bc,p_channel,0.0,0.01));
-        require_physical_convergence(cavity[k],"Ghia Re=100 cavity");
+        require_physical_convergence(cavity[k],"Ghia Re=100 cavity",algs[k]);
         if (cavity_profile_linf(cavity[k],32,32)>0.20)
             throw std::runtime_error("Ghia Re=100 centreline oracle gate failed");
     }
@@ -354,7 +374,7 @@ int main()
     for (std::size_t k=0;k<algs.size();++k) {
         const auto skew=solve_case(make_channel_mesh(12,16,0.25),algs[k],
                                    u_channel,p_channel,0.0);
-        require_physical_convergence(skew,"skew Couette");
+        require_physical_convergence(skew,"skew Couette",algs[k]);
         if (couette_l2(skew,12,16)>2e-2)
             throw std::runtime_error("skew Couette analytic L2 gate failed");
         if (max_difference(couette[0],skew)>3e-2)
