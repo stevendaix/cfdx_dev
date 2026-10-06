@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <algorithm>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -101,8 +102,10 @@ int main() {
 
         EXPECT_TRUE(changed.result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(changed.physical_residual_relative < 1.0e-12);
-        for (std::size_t i = 0; i < exact.size(); ++i)
-            EXPECT_NEAR(transformed_solution(i), exact(i) / column_scale, 1.0e-8);
+        for (std::size_t i = 0; i < exact.size(); ++i) {
+            const double expected = exact(i) / column_scale;
+            EXPECT_NEAR(transformed_solution(i), expected, 1.0e-12 * std::max(1.0, std::abs(expected)));
+        }
 
         for (std::size_t i = 0; i < exact.size(); ++i)
             EXPECT_NEAR(reference_solution(i), transformed_solution(i) * column_scale, 1.0e-9);
@@ -120,7 +123,7 @@ int main() {
 
         Vector zero_guess(4, 0.0);
         const auto zero = solve_linear_system(
-            A, b, zero_guess, LinearProblemKind::PressurePoisson,
+            A, b, zero_guess, LinearProblemKind::General,
             request, 200, 1.0e-12);
 
         Vector perturbed_guess(4);
