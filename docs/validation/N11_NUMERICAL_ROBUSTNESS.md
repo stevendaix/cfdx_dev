@@ -100,6 +100,24 @@ This is verification of the scaling contract, not production solver qualificatio
 
 This keeps the first N11 slice inside an already registered CTest target and avoids introducing a second test-registration mechanism.
 
+
+## N11 conservation/boundedness campaign
+
+The repository now has a dedicated executable campaign:
+
+- `scripts/n11_conservation_boundedness.py` reuses existing CTest executables;
+- CMake registers `test_n11_conservation_boundedness` as a serial, long validation target;
+- the campaign retains complete verbose stdout/stderr and writes
+  `<build-dir>/n11_conservation_boundedness.json`;
+- the campaign covers conservation contracts, Couette/coupled production,
+  Poiseuille, Ghia, scalar MMS, energy/CHT, controlled skewness and scheme-level
+  boundedness evidence;
+- a missing dedicated MPI production-conservation test is recorded explicitly
+  as a scope gap rather than inferred from serial evidence.
+
+A campaign PASS means that every declared serial executable ran and passed. It
+is not by itself N11 closure, and it does not qualify MPI conservation.
+
 ## Deliberate non-goals
 
 This PR does **not** claim that the complete N11 programme is closed.
