@@ -1686,7 +1686,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
             LinearSolverRequest nested_request{
                 KrylovModel::GMRES,
-                PreconditionerModel::ILU0,
+                PreconditionerModel::NativeAMG,
                 64,
                 false,
                 NullSpaceModel::None};
