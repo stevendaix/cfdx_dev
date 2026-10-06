@@ -70,6 +70,13 @@ jobs:
             build/n10-fixtures \
             build/n10-fixtures/n10_production_fixture_qualification.json
 
+      - name: Build the N10 numerical applicability matrix
+        run: |
+          set -euo pipefail
+          .venv/bin/python scripts/n10_fixture_applicability.py \\
+            --qualification build/n10-fixtures/n10_production_fixture_qualification.json \\
+            --report build/n10-fixtures/n10_fixture_applicability.json
+
       - name: Exercise verified fixture through production solver
         env:
           CFDX_N10_FIXTURE_ROOT: ${{ github.workspace }}/build/n10-fixtures
@@ -106,6 +113,7 @@ jobs:
           path: |
             build/n10-fixtures/n10_public_fixture_verification.json
             build/n10-fixtures/n10_production_fixture_qualification.json
+            build/n10-fixtures/n10_fixture_applicability.json
             build/n10-fixtures/n10_production_solver_smoke.json
             build/n10-fixtures/n10_fixture_evidence_gate.json
             build/n10-fixtures/n10_qualification.json
