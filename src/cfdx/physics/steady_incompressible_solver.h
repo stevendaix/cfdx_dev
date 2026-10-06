@@ -1977,6 +1977,39 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 }
             }
 
+            // Discriminating diagnostics: solve the exact same reduced system
+            // with identity and Smoothed Aggregation. These are diagnostics-only;
+            // production remains GMRES + NativeAMG.
+            for (const auto diagnostic_preconditioner : {
+                     cfdx::core::PreconditionerModel::None,
+                     cfdx::core::PreconditionerModel::SmoothedAggregationAMG}) {
+                cfdx::core::LinearSolverRequest diagnostic_request{
+                    cfdx::core::KrylovModel::GMRES,
+                    diagnostic_preconditioner,
+                    nested_request.gmres_restart,
+                    false,
+                    cfdx::core::NullSpaceModel::None};
+                Vector diagnostic_x(reduced_rhs.size(), 0.0);
+                const auto diagnostic_selected = solve_linear_system(
+                    pressure_solver_operator, reduced_rhs, diagnostic_x,
+                    cfdx::core::LinearProblemKind::PressurePoisson,
+                    diagnostic_request, max_iterations, tolerance);
+                const auto& diagnostic_result = diagnostic_selected.result;
+                std::cerr << "N8_LSC_BFBT_DIAGNOSTIC_SOLVE"
+                          << " call=" << call_id
+                          << " preconditioner="
+                          << cfdx::core::to_string(diagnostic_selected.plan.preconditioner)
+                          << " krylov="
+                          << cfdx::core::to_string(diagnostic_selected.plan.krylov)
+                          << " iterations=" << diagnostic_result.iterations
+                          << " status=" << static_cast<int>(diagnostic_result.status)
+                          << " residual=" << diagnostic_result.residual
+                          << " relative=" << diagnostic_result.residual_relative
+                          << " physical_relative="
+                          << diagnostic_selected.physical_residual_relative
+                          << "\n";
+            }
+
             Vector reduced_x(pressure_solver_operator.n_rows(), 0.0);
             const auto selected = solve_linear_system(
                 pressure_solver_operator, reduced_rhs, reduced_x,
