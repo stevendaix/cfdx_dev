@@ -207,6 +207,7 @@ RunResult run_couette_channel(
     c.diagnostics.coupled_matrix_summary = true;
     c.diagnostics.freeze_state_probe = true;
     c.diagnostics.debug_cell = 33;
+    c.diagnostics.verbose = verbose;
     c.coupled_linear_solver.krylov = coupled_requested_krylov;
     c.coupled_linear_solver.preconditioner = coupled_preconditioner;
     c.coupling.schur_model = schur_model;
