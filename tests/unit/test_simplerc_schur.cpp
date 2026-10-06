@@ -174,6 +174,50 @@ int main() {
         EXPECT_NEAR(out(0), -2.0 / 3.5, 1e-12);
     });
 
+    run_case("simplerc_relaxed_diagonal_matches_coupled_under_relaxation", [&] {
+        // The production coupled matrix is assembled without equation
+        // relaxation. SIMPLEC must nevertheless use the same consistent
+        // diagonal as the segregated relaxed equation:
+        //   aP_relaxed = aP / alpha_u
+        //   aP'_SIMPLEC = aP_relaxed + sum(A_PN).
+        //
+        // This row is exactly the production failure seen in N8:
+        // aP=0.45 and A_PN=-0.45. Without relaxation the denominator is zero;
+        // with alpha_u=0.7 it is 0.45/0.7 - 0.45 > 0.
+        const auto auu = make_sparse(1, 1, {
+            {0, 0, 0.45}
+        });
+        // Add the neighbour coefficient in a 2x2 velocity block so it remains
+        // a genuine off-diagonal momentum coupling.
+        const auto auu_2 = make_sparse(2, 2, {
+            {0, 0, 0.45}, {0, 1, -0.45},
+            {1, 1, 0.45}
+        });
+        const auto g = make_sparse(2, 1, {
+            {0, 0, 1.0}, {1, 0, 0.0}
+        });
+        const auto d = make_sparse(1, 2, {
+            {0, 0, 1.0}, {0, 1, 0.0}
+        });
+        const auto cmat = make_sparse(1, 1, {{0, 0, 0.0}});
+        const BlockOperator blocks_degenerate(auu_2, g, d, cmat);
+
+        SimplerSchurApproximation unrelaxed(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(!unrelaxed.setup(blocks_degenerate));
+
+        SimplerSchurApproximation relaxed(
+            SimplerSchurMode::SIMPLEC, std::nullopt, 0.7);
+        EXPECT_TRUE(relaxed.setup(blocks_degenerate));
+
+        Vector rhs(1, 0.0);
+        rhs(0) = 1.0;
+        Vector out(1, 0.0);
+        EXPECT_TRUE(relaxed.apply(rhs, out));
+        // S~ = -1 / (0.45/0.7 - 0.45).
+        EXPECT_NEAR(out(0), -1.0 / (0.45 / 0.7 - 0.45), 1e-12);
+        (void)auu;
+    });
+
     run_case("simplerc_apply_matches_dense_approximation", [&] {
         SimplerSchurApproximation simple(SimplerSchurMode::SIMPLE);
         SimplerSchurApproximation simplec(SimplerSchurMode::SIMPLEC);
