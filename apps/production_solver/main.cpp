@@ -388,6 +388,12 @@ int main(int argc, char** argv)
             options.adaptive_convergence;
         controls.acceleration.adaptive_pressure_correctors =
             options.adaptive_convergence;
+        // N10 diagnostic mode: expose the solver's existing per-iteration
+        // convergence metrics without changing any convergence criterion.
+        // This is intentionally diagnostic-only; the production result still
+        // requires the authoritative convergence gates below.
+        controls.diagnostics.iteration_trace = true;
+        controls.diagnostics.iteration_trace_frequency = 1;
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
