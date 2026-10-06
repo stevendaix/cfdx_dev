@@ -26,6 +26,80 @@ def _run(controller: ExecutionController) -> None:
     )
 
 
+
+def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> None:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    mesh = os.environ.get("CFDX_PRODUCTION_MESH")
+    if not solver or not mesh:
+        pytest.skip("CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest")
+    assert Path(solver).is_file()
+    assert Path(mesh).is_file()
+
+    first_dir = tmp_path / "stopped"
+    session = CFDXSession()
+    controller = ExecutionController(
+        session,
+        SolverRunner([
+            solver, "--mesh", mesh,
+            "--output-dir", str(first_dir),
+            "--iterations", "100000",
+        ]),
+    )
+    stop_started = False
+
+    def request_stop(line: str, is_stderr: bool) -> None:
+        nonlocal stop_started
+        if is_stderr or stop_started:
+            return
+        if line.startswith("Iteration "):
+            stop_started = True
+            import threading
+            threading.Thread(target=controller.stop, daemon=True).start()
+
+    controller.on_output = request_stop
+    controller.start()
+    thread = controller.runner._thread
+    assert thread is not None
+    thread.join(timeout=30)
+    assert not thread.is_alive()
+    assert stop_started
+    assert session.state.value == "STOPPED", (
+        f"graceful production stop failed: error={controller.error!r}"
+    )
+
+    checkpoint = first_dir / "restart.dat"
+    assert checkpoint.is_file()
+    restart = read_dat_restart(checkpoint)
+    assert restart.cells > 0
+    assert restart.iteration >= 1
+    assert restart.iteration == session.iteration
+    assert "U" in restart.fields
+    assert "p" in restart.fields
+
+    second_dir = tmp_path / "restarted"
+    restart_session = CFDXSession()
+    restart_session.case.execution.restart_option = "--restart"
+    restart_controller = ExecutionController(
+        restart_session,
+        SolverRunner([
+            solver, "--mesh", mesh,
+            "--output-dir", str(second_dir),
+            "--iterations", "5",
+        ]),
+    )
+    restart_controller.restart(checkpoint)
+    restart_thread = restart_controller.runner._thread
+    assert restart_thread is not None
+    restart_thread.join(timeout=30)
+    assert not restart_thread.is_alive()
+    assert restart_session.state.value == "CONVERGED", (
+        f"restart after graceful stop failed: error={restart_controller.error!r}"
+    )
+    assert restart_controller.latest_metrics is not None
+    assert restart_controller.latest_metrics.iteration is not None
+    assert restart_session.iteration == restart_controller.latest_metrics.iteration
+
+
 def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
     mesh = os.environ.get("CFDX_PRODUCTION_MESH")
