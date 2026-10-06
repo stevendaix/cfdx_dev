@@ -288,9 +288,9 @@ int main() {
 
         // The refresh must be visible in the applied operator, which is what
         // distinguishes an accepted refresh from stale cached denominators.
-        // SIMPLEC denominator = diag - row_offdiag: row 0 becomes 4 - 0.5 = 3.5,
-        // row 1 stays 3 - 1 = 2.
-        const Dense S_simplec_v2 = approx_dense({1.0 / 3.5, 1.0 / 2.0});
+        // With the signed FV convention SIMPLEC uses diag + sum(A_PN):
+        // row 0 becomes 4 + 0.5 = 4.5, row 1 stays 3 + 1 = 4.
+        const Dense S_simplec_v2 = approx_dense({1.0 / 4.5, 1.0 / 4.0});
         Vector out(2, 0.0);
         EXPECT_TRUE(s.apply(p, out));
         const Vector ref = dense_matvec(S_simplec_v2, p);
