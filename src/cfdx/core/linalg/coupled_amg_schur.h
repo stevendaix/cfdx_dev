@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,9 @@ struct CoupledBlockSchurOptions {
     // explicit opt-in because CFDX pressure matrices may already be sign
     // normalized by the discretization.
     bool diagonal_schur_sign_flip = false;
+    // Verbose diagnostics are opt-in and never alter numerical behavior.
+    bool verbose = false;
+    std::ostream* diagnostic_stream = nullptr;
 };
 
 // Block preconditioner for the pressure-based coupled ordering
@@ -101,6 +105,13 @@ public:
             return fail("expected a square 4N coupled matrix");
 
         if (!prepare_numeric_state(A)) return false;
+        if (options_.verbose && options_.diagnostic_stream) {
+            *options_.diagnostic_stream << "COUPLED_SCHUR_SETUP n_cells=" << n_cells_
+                                        << " matrix_rows=" << A.n_rows()
+                                        << " matrix_nnz=" << A.nnz()
+                                        << " schur_model=" << static_cast<int>(options_.schur_approximation)
+                                        << "\\n";
+        }
         if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
             if (!pcd_schur_)
                 return fail("PCD Schur approximation was not configured");
@@ -125,8 +136,14 @@ public:
             D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
             C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
             simpler_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
-            if (!simpler_schur_->setup(*simpler_blocks_))
-                return fail("SIMPLE/SIMPLEC Schur approximation setup failed");
+            if (!simpler_schur_->setup(*simpler_blocks_)) {
+                if (options_.verbose && options_.diagnostic_stream)
+                    simpler_schur_->write_diagnostics(*options_.diagnostic_stream);
+                return fail(std::string("SIMPLE/SIMPLEC Schur approximation setup failed: ") +
+                            simpler_schur_->last_error());
+            }
+            if (options_.verbose && options_.diagnostic_stream)
+                simpler_schur_->write_diagnostics(*options_.diagnostic_stream);
             schur_ = simpler_schur_->assembled_operator();
             if (schur_.n_rows() != n_cells_ || schur_.nnz() == 0)
                 return fail("SIMPLE/SIMPLEC Schur assembly failed");
@@ -146,8 +163,13 @@ public:
             D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
             C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
             algebraic_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
-            if (!algebraic_schur_->setup(*algebraic_blocks_))
+            if (!algebraic_schur_->setup(*algebraic_blocks_)) {
+                if (options_.verbose && options_.diagnostic_stream)
+                    *options_.diagnostic_stream << "LSC_BFBT_SCHUR_SETUP_FAILED\\n";
                 return fail("LSC/BFBt Schur approximation setup failed");
+            }
+            if (options_.verbose && options_.diagnostic_stream)
+                *options_.diagnostic_stream << "LSC_BFBT_SCHUR_SETUP_OK\\n";
             algebraic_ready_ = true;
             ready_ = true;
             return true;
