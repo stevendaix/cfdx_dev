@@ -16,6 +16,7 @@
 #include "cfdx/physics/advanced_convergence.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
+#include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
@@ -46,14 +47,6 @@ struct VelocityBoundaryCondition {
 };
 
 using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
-
-// Pressure gauge policies for pure-Neumann incompressible systems.
-// These are gauge choices only; fixed-pressure boundaries remain authoritative.
-enum class PressureGaugePolicy {
-    REFERENCE_CELL,
-    ZERO_MEAN,
-    NONE,
-};
 
 enum class IncompressibleProbeField {
     PRESSURE,
