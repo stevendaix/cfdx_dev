@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -66,6 +67,14 @@ def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> Non
     assert session.state.value == "STOPPED", (
         f"graceful production stop failed: error={controller.error!r}"
     )
+
+    convergence = first_dir / "convergence.json"
+    assert convergence.is_file()
+    convergence_data = json.loads(convergence.read_text(encoding="utf-8"))
+    assert convergence_data["format"] == "CFDX-CONVERGENCE"
+    assert convergence_data["schema_version"] == 1
+    assert convergence_data["iterations"] == session.iteration
+    assert isinstance(convergence_data["history"], list)
 
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
@@ -166,6 +175,13 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     assert restart_controller.latest_metrics.iteration is not None
     assert 1 <= restart_controller.latest_metrics.iteration <= 5
     assert restart_session.iteration == restart_controller.latest_metrics.iteration
+
+    restarted_convergence = second_dir / "convergence.json"
+    assert restarted_convergence.is_file()
+    restarted_data = json.loads(restarted_convergence.read_text(encoding="utf-8"))
+    assert restarted_data["format"] == "CFDX-CONVERGENCE"
+    assert restarted_data["schema_version"] == 1
+    assert restarted_data["iterations"] == restart_session.iteration
 
     outputs = sorted(second_dir.glob("result_*.vtu"))
     assert outputs
