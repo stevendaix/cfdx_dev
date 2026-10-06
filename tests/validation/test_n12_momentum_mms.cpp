@@ -212,7 +212,8 @@ void require(bool condition, const std::string& message)
 }
 
 double observed_order(double coarse, double fine)
-e > 0.0) || !(fine > 0.0) || !(coarse > fine))
+{
+    if (!(coarse > 0.0) || !(fine > 0.0) || !(coarse > fine))
         throw std::runtime_error("N12 momentum MMS error is not decreasing");
     return std::log(coarse / fine) / std::log(2.0);
 }
