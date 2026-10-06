@@ -5,6 +5,7 @@
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/io/probe/probe_csv.h"
 #include "cfdx/io/runtime/convergence_history.h"
+#include "cfdx/io/runtime/execution_summary.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 
 #include <algorithm>
@@ -430,7 +431,20 @@ int main(int argc, char** argv)
 
         const auto dat = options.output_dir / "restart.dat";
         write_dat_restart(dat.string(), mesh, U, p, result.iterations, 0.0);
+        const auto convergence = options.output_dir / "convergence.json";
+        write_convergence_history(convergence.string(), result);
+        const auto execution = options.output_dir / "execution.json";
+        write_execution_summary(execution.string(), ExecutionSummary{
+            result.converged ? 0 : 1,
+            result.converged,
+            result.iterations,
+            static_cast<int>(result.convergence_status),
+            result.convergence_reason,
+            std::filesystem::exists(dat),
+            std::filesystem::exists(convergence)});
         std::cout << "Checkpoint " << dat.string() << "\n";
+        std::cout << "Convergence history " << convergence.string() << "\n";
+        std::cout << "Execution summary " << execution.string() << "\n";
 
         if (!options.probe_csv.empty()) {
             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
