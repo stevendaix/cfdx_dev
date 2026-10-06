@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
@@ -49,6 +50,7 @@ def main() -> int:
     solver_support = solver_evidence.get("numerical_support")
     solver_physical_validation = solver_evidence.get("physical_validation")
     solver_restart = solver_evidence.get("restart_artifact")
+    quantitative = solver_evidence.get("quantitative_solver_evidence")
 
     ids = sorted(set(verification_rows) | set(qualification_rows))
     mismatches: list[str] = []
@@ -96,6 +98,7 @@ def main() -> int:
                 "numerical_support": solver_support,
                 "physical_validation": solver_physical_validation,
                 "restart_artifact": solver_restart,
+                "quantitative_solver_evidence": quantitative,
             }
 
         rows.append(
@@ -124,6 +127,36 @@ def main() -> int:
         )
     if solver_restart is not True:
         mismatches.append(f"solver evidence restart_artifact={solver_restart}")
+
+    if not isinstance(quantitative, dict):
+        mismatches.append("solver evidence quantitative_solver_evidence is missing")
+    else:
+        trace_count = quantitative.get("trace_count")
+        final_iteration = quantitative.get("final_iteration")
+        iterations = quantitative.get("iterations")
+        if not isinstance(trace_count, int) or trace_count <= 0:
+            mismatches.append(f"solver evidence trace_count={trace_count}")
+        if not isinstance(final_iteration, int) or final_iteration <= 0:
+            mismatches.append(f"solver evidence final_iteration={final_iteration}")
+        if not isinstance(iterations, list) or not iterations:
+            mismatches.append("solver evidence iterations is empty")
+        elif isinstance(trace_count, int) and trace_count != len(iterations):
+            mismatches.append(
+                f"solver evidence trace_count={trace_count} differs from iterations={len(iterations)}"
+            )
+        required_metrics = (
+            "max_momentum_residual_relative",
+            "max_continuity_normalized",
+            "final_momentum_residual_relative",
+            "final_continuity_normalized",
+            "final_velocity_change_inf",
+            "final_pressure_change_inf",
+            "final_flux_velocity_mismatch_linf",
+        )
+        for metric in required_metrics:
+            value = quantitative.get(metric)
+            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                mismatches.append(f"solver evidence {metric}={value}")
 
     report = {
         "campaign": "N10 verified public-fixture evidence gate",
