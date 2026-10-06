@@ -210,7 +210,8 @@ async def exercise() -> None:
             assert data["convergence_reason"] == "converged"
             assert data["artifacts"] == {"restart_dat": True, "convergence_json": True}
 
-            bad_execution = root / "bad.execution.json"
+            bad_execution = root / "bad" / "execution.json"
+            bad_execution.parent.mkdir()
             bad_execution.write_text(
                 (root / "execution.json").read_text(encoding="utf-8").replace(
                     '"schema_version": 1', '"schema_version": 99'
@@ -219,13 +220,14 @@ async def exercise() -> None:
             )
             bad_execution_result = await client.call_tool(
                 "execution.inspect",
-                {"execution_path": "bad.execution.json"},
+                {"execution_path": "bad/execution.json"},
             )
             assert bad_execution_result.is_error is False
             assert bad_execution_result.structured_content["ok"] is False
             assert "schema version" in bad_execution_result.structured_content["errors"][0]
 
-            nonfinite_execution = root / "nonfinite.execution.json"
+            nonfinite_execution = root / "nonfinite" / "execution.json"
+            nonfinite_execution.parent.mkdir()
             nonfinite_execution.write_text(
                 (root / "execution.json").read_text(encoding="utf-8").replace(
                     '"iterations": 42', '"iterations": NaN'
@@ -234,7 +236,7 @@ async def exercise() -> None:
             )
             bad_nonfinite_execution = await client.call_tool(
                 "execution.inspect",
-                {"execution_path": "nonfinite.execution.json"},
+                {"execution_path": "nonfinite/execution.json"},
             )
             assert bad_nonfinite_execution.is_error is False
             assert bad_nonfinite_execution.structured_content["ok"] is False
