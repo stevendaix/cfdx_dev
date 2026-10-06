@@ -60,7 +60,7 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCFDX_ENABLE_GPU=OFF \
             -DPython3_EXECUTABLE=$PWD/.venv/bin/python
-          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case
+          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case test_n10_difficult_mesh_robustness test_gradient_verification test_polyhedral_gradient_campaign test_nonorthogonal_skew_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_laplacian_campaign
 
       - name: Qualify imported fixtures through the production C++ importer
         run: |
@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           python3 tests/python/test_n10_fixture_production_solver.py
 
-      - name: Audit the complete fixture evidence chain
+      - name: Run the complete N10 difficult-mesh qualification campaign\n        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')\n        run: |\n          set -euo pipefail\n          python3 scripts/n10_qualification.py \\\n            --build-dir build \\\n            --fixture-manifest tests/fixtures/mesh_sources.yaml \\\n            --report build/n10-fixtures/n10_qualification.json\n\n      - name: Audit the complete fixture evidence chain
         run: |
           set -euo pipefail
           python3 scripts/audit_n10_fixture_evidence.py \
@@ -97,4 +97,4 @@ jobs:
             build/n10-fixtures/n10_public_fixture_verification.json
             build/n10-fixtures/n10_production_fixture_qualification.json
             build/n10-fixtures/n10_production_solver_smoke.json
-            build/n10-fixtures/n10_fixture_evidence_gate.json
+            build/n10-fixtures/n10_fixture_evidence_gate.json\n            build/n10-fixtures/n10_qualification.json
