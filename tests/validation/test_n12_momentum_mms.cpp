@@ -147,35 +147,29 @@ Metrics run_case(std::size_t n)
     for (std::size_t c = 0; c < mesh.n_cells(); ++c)
         Ux(c) = ux(geometry.cell_centres[c].y);
 
-    VelocityBoundaryConditions ubc;
-    for (const auto& patch : mesh.boundary().patches()) {
-        ScalarBoundaryCondition bc;
-        bc.type = ScalarBoundaryType::FIXED_VALUE;
-        bc.value = 0.0;
-        ubc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+    // Exact conservative mass flux on every face. Using the analytical face
+    // velocity here isolates the momentum transport reconstruction from the
+    // separate velocity-to-face interpolation test.
+    Field<double, Location::FACE> mass_flux(mesh.n_faces(), "phi_exact", "kg/s", 1);
+    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+        const auto& fc = geometry.face_centres[face];
+        mass_flux(face) = ux(fc.y) * geometry.face_area_vectors[face].x;
     }
 
-    Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
-    U.fill(0.0);
-    for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-        U.set(c, Ux(c), 0.0, 0.0);
-
-    // Exact boundary velocity for the scalar transport reconstruction.
     ScalarBoundaryConditions xbc;
-    for (const auto& patch : mesh.boundary().patches()) {
-        double value = 0.0;
-        const auto& faces = patch.face_ids;
-        if (!faces.empty()) {
-            const auto& fc = geometry.face_centres[faces.front()];
-            value = ux(fc.y);
-        }
-        xbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, value, 0.0};
+    ScalarBoundaryFaceValues face_values;
+    for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+        const auto& patch = mesh.boundary().patch(p);
+        xbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        auto& values = face_values.values[patch.name];
+        values.assign(mesh.n_faces(), std::numeric_limits<double>::quiet_NaN());
+        for (const auto face : patch.face_ids)
+            values[face] = ux(geometry.face_centres[face].y);
     }
 
-    const auto mass_flux = make_mass_flux(mesh, geometry, U, 1.0, ubc, {});
     const auto momentum_flux = reconstruct_scalar_transport_flux(
         mesh, geometry, mass_flux, Ux, MU, xbc, false,
-        ConvectionScheme::CENTRAL);
+        ConvectionScheme::CENTRAL, nullptr, nullptr, &face_values);
 
     Field<double, Location::CELL> source(
         mesh.n_cells(), "momentum_mms_source", "N/m3", 1);
