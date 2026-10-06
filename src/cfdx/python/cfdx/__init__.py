@@ -50,6 +50,7 @@ from .execution import ExecutionController, ExecutionError
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
 from .project import Project
 from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnostic, typed_parameter
+from .setup_schema import SetupField, SetupDomain, SetupSchema, build_setup_schema, setup_fields_for_selection
 from .validation import ValidationReport, validate_case
 from .mesh_model import MeshCatalog, MeshPatch, read_mesh_catalog
 from .physics_setup import PhysicsSpec, FieldSpec, physics_spec, default_parameters
@@ -89,7 +90,7 @@ __all__ = [
     "Renderer", "RenderObject", "NullRenderer",
     "ExecutionController", "ExecutionError", "read_case", "read_case_with_dat",
     "save_case", "save_case_with_dat", "Project", "MeshSelection", "Parameter", "ParameterType",
-    "SetupDiagnostic", "typed_parameter", "ValidationReport", "validate_case",
+    "SetupDiagnostic", "typed_parameter", "SetupField", "SetupDomain", "SetupSchema", "build_setup_schema", "setup_fields_for_selection", "ValidationReport", "validate_case",
     "MeshCatalog", "MeshPatch", "PhysicsSpec", "FieldSpec", "physics_spec",
     "default_parameters", "BoundaryFieldSpec", "BoundaryTypeSpec",
     "scalar_fields_for_boundary_type", "boundary_defaults",

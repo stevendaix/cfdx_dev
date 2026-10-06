@@ -31,6 +31,7 @@ from .state import (
 )
 from .workflow import WorkflowStatus, WorkflowStepState, build_workflow_state, workflow_children
 from .properties import PropertyState, properties_for_selection, set_property
+from ..setup_schema import SetupField, SetupDomain, SetupSchema, build_setup_schema, setup_fields_for_selection
 from .run_center import RunCenterModel, RunCenterState
 from .results import ResultFrameState, ResultsState, build_results_state
 
@@ -70,4 +71,9 @@ __all__ = [
     "PropertyState",
     "properties_for_selection",
     "set_property",
+    "SetupField",
+    "SetupDomain",
+    "SetupSchema",
+    "build_setup_schema",
+    "setup_fields_for_selection",
 ]
