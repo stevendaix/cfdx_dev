@@ -214,7 +214,17 @@ void require_physical_convergence(
     const char* name,
     PressureVelocityAlgorithm algorithm)
 {
-    const char* algorithm_name = pressure_velocity_algorithm_name(algorithm);
+    const char* algorithm_name = [&]() {
+        switch (algorithm) {
+        case PressureVelocityAlgorithm::SIMPLE: return "SIMPLE";
+        case PressureVelocityAlgorithm::SIMPLEC: return "SIMPLEC";
+        case PressureVelocityAlgorithm::PISO: return "PISO";
+        case PressureVelocityAlgorithm::PIMPLE: return "PIMPLE";
+        case PressureVelocityAlgorithm::FRACTIONAL_STEP: return "FRACTIONAL_STEP";
+        case PressureVelocityAlgorithm::COUPLED: return "COUPLED";
+        }
+        return "UNKNOWN";
+    }();
     if (!r.result.converged || r.result.history.empty()) {
         std::string detail = std::string(name) + " did not converge [algorithm=" +
             algorithm_name + "]";
