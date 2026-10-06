@@ -36,9 +36,12 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     assert solver.is_file()
     assert case_builder.is_file()
 
+    vtk_source = tmp_path / "06_unstructured.vtk"
+    vtk_source.write_bytes(source.read_bytes())
+
     case_path = tmp_path / "unstructured.cfdx.h5"
     build_case = subprocess.run(
-        [str(case_builder), str(source), str(case_path)],
+        [str(case_builder), str(vtk_source), str(case_path)],
         capture_output=True,
         text=True,
         timeout=60,
