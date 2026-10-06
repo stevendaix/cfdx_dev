@@ -2677,12 +2677,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (controls.diagnostics.iteration_trace &&
             (iter == 1 ||
              iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
+            // Diagnostic-only trace: expose the authoritative nonlinear history
+            // before the convergence gate. No criterion or tolerance is changed.
             std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
+                      << " momentum_residual_relative=" << h.momentum_equation_residual_relative
+                      << " continuity_normalized=" << h.continuity_normalized
+                      << " velocity_change_inf=" << h.velocity_change_inf
+                      << " pressure_change_inf=" << h.pressure_change_inf
+                      << " alpha_u=" << h.effective_alpha_u
+                      << " alpha_p=" << h.effective_alpha_p
                       << " pressure_linear_iterations=" << pressure_iterations
                       << " pressure_relative_residual=" << pressure_residual
                       << " momentum_linear_iterations="
                       << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
                               ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
+                      << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
+                      << " worst_momentum_cell=" << h.momentum_residual_cell
+                      << " worst_momentum_patch=" << h.momentum_residual_patch
                       << "\n";
         }
 
