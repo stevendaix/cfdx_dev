@@ -41,17 +41,17 @@ static Mesh make_two_cell_chain()
     };
     for (std::size_t i=0; i<12; ++i) m.points().set(i,p[i][0],p[i][1],p[i][2]);
 
-    m.faces().push_face({0,4,5,3});       // left
-    m.faces().push_face({1,2,10,11});    // internal
-    m.faces().push_face({0,1,11,4});     // front
-    m.faces().push_face({3,5,10,2});     // back
-    m.faces().push_face({0,3,2,1});      // bottom
-    m.faces().push_face({4,11,10,5});    // top
-    m.faces().push_face({6,7,9,8});      // right
-    m.faces().push_face({1,6,8,11});     // front
-    m.faces().push_face({2,10,9,7});     // back
-    m.faces().push_face({1,2,7,6});      // bottom
-    m.faces().push_face({11,8,9,10});    // top
+    m.faces().push_face({0,4,5,3});
+    m.faces().push_face({1,2,10,11});
+    m.faces().push_face({0,1,11,4});
+    m.faces().push_face({3,5,10,2});
+    m.faces().push_face({0,3,2,1});
+    m.faces().push_face({4,11,10,5});
+    m.faces().push_face({6,7,9,8});
+    m.faces().push_face({1,6,8,11});
+    m.faces().push_face({2,10,9,7});
+    m.faces().push_face({1,2,7,6});
+    m.faces().push_face({11,8,9,10});
 
     m.ownership().resize(11);
     for (std::size_t f=0; f<11; ++f) {
@@ -136,6 +136,42 @@ int main()
         EXPECT_TRUE(nan.nonfinite == 1);
     });
 
+    run_case("generic_cell_balance_is_reusable_for_any_conserved_quantity", [] {
+        const std::vector<double> face_balance{2.0, -1.0, -1.0};
+        const std::vector<double> source_integral{-2.0, 0.5, 0.5};
+        // Each cell must close independently: 2-2=0, -1+0.5-(-0.5)=0,
+        // and -1+0.5-(-0.5)=0.
+        const std::vector<double> accumulation{0.0, -0.5, -0.5};
+        const auto r = audit_cell_balance(face_balance, source_integral, &accumulation);
+        EXPECT_TRUE(r.finite());
+        EXPECT_TRUE(r.closed(1e-15));
+        EXPECT_NEAR(r.residual, 0.0, 1e-15);
+        EXPECT_NEAR(r.l1_cell_residual, 0.0, 1e-15);
+        EXPECT_NEAR(r.l2_cell_residual, 0.0, 1e-15);
+        EXPECT_NEAR(r.max_cell_residual, 0.0, 1e-15);
+    });
+
+    run_case("generic_cell_balance_detects_nonfinite_component", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const std::vector<double> face_balance{1.0, nan};
+        const std::vector<double> source_integral{-1.0, 0.0};
+        const auto r = audit_cell_balance(face_balance, source_integral);
+        EXPECT_TRUE(!r.finite());
+        EXPECT_TRUE(r.nonfinite_balance == 1);
+    });
+
+    run_case("generic_mesh_balance_reuses_independent_face_reconstruction", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::FACE> flux(m.n_faces(),"flux","kg/s",1);
+        Field<double,Location::CELL> source(m.n_cells(),"source","kg/s",1);
+        flux.fill(0.0);
+        source.fill(0.0);
+        flux(0) = 2.0;
+        source(0) = -2.0;
+        const auto r = audit_cell_balance(m, flux, source);
+        EXPECT_TRUE(r.closed(1e-15));
+        EXPECT_NEAR(r.normalized_residual, 0.0, 1e-15);
+    });
 
     run_case("integrated_balance_is_independent_of_linear_residual", [] {
         const Mesh m = make_unit_cube();
@@ -143,7 +179,7 @@ int main()
         Field<double,Location::CELL> source(m.n_cells(),"source","u/V",1);
         flux.fill(0.0); source.fill(0.0);
         flux(0) = 2.0;
-        source(0) = -2.0; // source is represented on the RHS convention.
+        source(0) = -2.0;
         const std::vector<double> volumes{1.0};
         const auto r = audit_integrated_balance(m, flux, source, volumes);
         EXPECT_NEAR(r.residual, 0.0, 1e-15);

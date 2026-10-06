@@ -300,6 +300,137 @@ inline BoundednessDiagnostics audit_positive_field(
 }
 
 
+
+/**
+ * Generic cell-wise balance audit.
+ *
+ * The face-flux reconstruction is deliberately separated from the equation
+ * balance: callers provide the independently reconstructed net face
+ * contribution and integrated source/accumulation terms. This makes the same
+ * contract usable for mass, momentum components, scalar transport, energy,
+ * species and turbulence equations without embedding physics-specific logic.
+ *
+ * Per cell:
+ *   residual[c] = face_balance[c] + source_integral[c] - accumulation[c]
+ */
+struct CellBalanceDiagnostics {
+    double source_integral = 0.0;
+    double accumulation = 0.0;
+    double residual = 0.0;
+    double normalized_residual = 0.0;
+    double max_cell_residual = 0.0;
+    double l1_cell_residual = 0.0;
+    double l2_cell_residual = 0.0;
+    std::size_t worst_cell = 0;
+    std::size_t nonfinite_balance = 0;
+    std::size_t nonfinite_source = 0;
+    std::size_t nonfinite_accumulation = 0;
+
+    bool finite() const noexcept {
+        return nonfinite_balance == 0 && nonfinite_source == 0 &&
+               nonfinite_accumulation == 0 &&
+               std::isfinite(source_integral) &&
+               std::isfinite(accumulation) &&
+               std::isfinite(residual);
+    }
+
+    bool closed(double tolerance = 0.0) const noexcept {
+        return finite() && std::abs(residual) <= tolerance;
+    }
+};
+
+inline CellBalanceDiagnostics audit_cell_balance(
+    const std::vector<double>& face_balance,
+    const std::vector<double>& source_integral,
+    const std::vector<double>* accumulation = nullptr)
+{
+    if (face_balance.empty() || source_integral.size() != face_balance.size())
+        throw std::invalid_argument(
+            "audit_cell_balance: balance/source sizes must match and be non-empty");
+    if (accumulation && accumulation->size() != face_balance.size())
+        throw std::invalid_argument(
+            "audit_cell_balance: accumulation size does not match balance");
+
+    CellBalanceDiagnostics out;
+    double sum_sq = 0.0;
+    double scale = 1.0;
+
+    for (std::size_t c = 0; c < face_balance.size(); ++c) {
+        const double balance = face_balance[c];
+        const double source = source_integral[c];
+        if (!std::isfinite(balance)) {
+            ++out.nonfinite_balance;
+            continue;
+        }
+        if (!std::isfinite(source)) {
+            ++out.nonfinite_source;
+            continue;
+        }
+
+        double acc = 0.0;
+        if (accumulation) {
+            acc = (*accumulation)[c];
+            if (!std::isfinite(acc)) {
+                ++out.nonfinite_accumulation;
+                continue;
+            }
+        }
+
+        const double residual = balance + source - acc;
+        if (!std::isfinite(residual)) {
+            ++out.nonfinite_balance;
+            continue;
+        }
+
+        out.source_integral += source;
+        out.accumulation += acc;
+        out.residual += residual;
+        out.l1_cell_residual += std::abs(residual);
+        sum_sq += residual * residual;
+        scale = std::max({scale, std::abs(balance),
+                          std::abs(source), std::abs(acc)});
+        if (std::abs(residual) > out.max_cell_residual) {
+            out.max_cell_residual = std::abs(residual);
+            out.worst_cell = c;
+        }
+    }
+
+    out.l2_cell_residual = std::sqrt(sum_sq);
+    out.normalized_residual = std::abs(out.residual) / scale;
+    return out;
+}
+
+inline CellBalanceDiagnostics audit_cell_balance(
+    const Mesh& mesh,
+    const Field<double, Location::FACE>& face_flux,
+    const Field<double, Location::CELL>& source_integral,
+    const Field<double, Location::CELL>* accumulation = nullptr)
+{
+    if (source_integral.size() != mesh.n_cells() ||
+        source_integral.dimension() != 1)
+        throw std::invalid_argument(
+            "audit_cell_balance: source field does not match mesh");
+
+    const auto face_balance = reconstruct_cell_balance(mesh, face_flux);
+    std::vector<double> source(source_integral.size());
+    for (std::size_t c = 0; c < source.size(); ++c)
+        source[c] = source_integral(c);
+
+    std::vector<double> acc;
+    if (accumulation) {
+        if (accumulation->size() != mesh.n_cells() ||
+            accumulation->dimension() != 1)
+            throw std::invalid_argument(
+                "audit_cell_balance: accumulation field does not match mesh");
+        acc.resize(accumulation->size());
+        for (std::size_t c = 0; c < acc.size(); ++c)
+            acc[c] = (*accumulation)(c);
+    }
+
+    return audit_cell_balance(face_balance, source,
+                              accumulation ? &acc : nullptr);
+}
+
 struct IntegratedBalanceDiagnostics {
     double boundary_flux = 0.0;
     double volume_source = 0.0;
