@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -22,9 +21,10 @@ struct ExecutionSummary {
 inline void execution_json_string(std::ostream& out, const std::string& value)
 {
     out << '"';
-    for (const unsigned char c : value) {
+    for (const char raw : value) {
+        const auto c = static_cast<unsigned char>(raw);
         switch (c) {
-        case '"': out << "\\""; break;
+        case '"': out << "\\\""; break;
         case '\\': out << "\\\\"; break;
         case '\b': out << "\\b"; break;
         case '\f': out << "\\f"; break;
