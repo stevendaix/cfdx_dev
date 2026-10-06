@@ -1654,7 +1654,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         pressure_operator.finalize();
 
         auto solve_pressure = [pressure_operator, max_iterations, tolerance, schur_model,
-                               verbose = controls.diagnostics.verbose](
+                               verbose = controls.diagnostics.verbose, reference_cell](
             const Vector& rhs, Vector& x) mutable {
             static std::size_t diagnostic_call_counter = 0;
             const std::size_t call_id = ++diagnostic_call_counter;
@@ -1740,7 +1740,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 double p1_l2_sq = 0.0;
                 double p1_linf = 0.0;
                 for (std::size_t i = 0; i < p1.size(); ++i) {
-                    if (!std::isfinite(p1(i))) continue;
+                    if (!std::isfinite(p1[i])) continue;
                     p1_l2_sq += p1(i) * p1(i);
                     p1_linf = std::max(p1_linf, std::abs(p1(i)));
                 }
@@ -1842,7 +1842,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         x_l2_sq += x(i) * x(i);
                         x_linf = std::max(x_linf, std::abs(x(i)));
                     }
-                    if (!std::isfinite(ax(i))) {
+                    if (!std::isfinite(ax[i])) {
                         ++ax_nonfinite;
                         continue;
                     }
