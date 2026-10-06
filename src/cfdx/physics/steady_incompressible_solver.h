@@ -1653,7 +1653,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         pressure_operator.finalize();
 
-        auto solve_pressure = [pressure_operator, max_iterations, tolerance](
+        auto solve_pressure = [pressure_operator, max_iterations, tolerance, schur_model,
+                               verbose = controls.diagnostics.verbose](
             const Vector& rhs, Vector& x) mutable {
             LinearOperator op{
                 pressure_operator.n_rows(),
@@ -1668,6 +1669,41 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 op, rhs, x,
                 static_cast<int>(std::min<std::size_t>(64, pressure_operator.n_rows())),
                 max_iterations, tolerance);
+            if (verbose) {
+                double diag_min = std::numeric_limits<double>::infinity();
+                double diag_max = 0.0;
+                std::size_t diagonal_missing = 0;
+                for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
+                    double diagonal = 0.0;
+                    bool found = false;
+                    for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                         k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                        if (pressure_operator.columns_data()[k] == row) {
+                            diagonal += pressure_operator.values_data()[k];
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        ++diagonal_missing;
+                    } else {
+                        diag_min = std::min(diag_min, diagonal);
+                        diag_max = std::max(diag_max, std::abs(diagonal));
+                    }
+                }
+                std::cerr << "N8_LSC_BFBT_PRESSURE_SOLVE"
+                          << " model=" << to_string(schur_model)
+                          << " n=" << pressure_operator.n_rows()
+                          << " nnz=" << pressure_operator.nnz()
+                          << " rhs_l2=" << std::sqrt(rhs.dot(rhs))
+                          << " diag_min=" << diag_min
+                          << " diag_absmax=" << diag_max
+                          << " diagonal_missing=" << diagonal_missing
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " residual=" << result.residual
+                          << " relative=" << result.residual_relative
+                          << "\\n";
+            }
             return result.status == SolverStatus::CONVERGED;
         };
 
