@@ -206,9 +206,13 @@ Metrics run_case(std::size_t n)
     return out;
 }
 
-void require(bool condition, const std::string& message) {\n    if (!condition) throw std::runtime_error(message);\n}\n\ndouble observed_order(double coarse, double fine)
+void require(bool condition, const std::string& message)
 {
-    if (!(coarse > 0.0) || !(fine > 0.0) || !(coarse > fine))
+    if (!condition) throw std::runtime_error(message);
+}
+
+double observed_order(double coarse, double fine)
+e > 0.0) || !(fine > 0.0) || !(coarse > fine))
         throw std::runtime_error("N12 momentum MMS error is not decreasing");
     return std::log(coarse / fine) / std::log(2.0);
 }
