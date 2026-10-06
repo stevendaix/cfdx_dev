@@ -391,7 +391,8 @@ int main(int argc, char** argv)
             // methods, so it carries the identical physical gate set below.
             {"COUPLED/PCD/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
              ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
-             PreconditionerModel::PCD},
+             PreconditionerModel::PCD, KrylovModel::Auto,
+             PreconditionerModel::Auto, CoupledSchurModel::PCD},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
