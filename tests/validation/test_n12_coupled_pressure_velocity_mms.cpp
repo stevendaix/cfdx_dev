@@ -148,7 +148,8 @@ Metrics run_case(std::size_t n)
     c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
     c.pressure_reference_cell = 0;
     c.pressure_reference_value = 0.5;
-    c.diagnostics.iteration_trace = false;
+    c.diagnostics.iteration_trace = true;
+    c.diagnostics.iteration_trace_frequency = 1;
 
     const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!result.converged)
@@ -162,8 +163,8 @@ Metrics run_case(std::size_t n)
 
     Metrics out;
     out.iterations = result.iterations;
+    const auto geometry = build_fv_geometry(mesh);
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-        const auto geometry = build_fv_geometry(mesh);
         const double x = geometry.cell_centres[cell].x;
         out.u_linf = std::max(out.u_linf,
             std::max({std::abs(U(cell,0) - 1.0), std::abs(U(cell,1)), std::abs(U(cell,2))}));
