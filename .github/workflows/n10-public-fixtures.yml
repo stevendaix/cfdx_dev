@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py
+          .venv/bin/python -m pip install "meshio[all]" h5py pydantic
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Build production mesh importer qualification target
@@ -60,7 +60,7 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCFDX_ENABLE_GPU=OFF \
             -DPython3_EXECUTABLE=$PWD/.venv/bin/python
-          cmake --build build --parallel 4 --target cfdx_convert test_n10_external_fixture_import
+          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case
 
       - name: Qualify imported fixtures through the production C++ importer
         run: |
@@ -68,6 +68,16 @@ jobs:
           ./build/test_n10_external_fixture_import \
             build/n10-fixtures \
             build/n10-fixtures/n10_production_fixture_qualification.json
+
+      - name: Exercise verified fixture through production solver
+        env:
+          CFDX_N10_FIXTURE_ROOT: ${{ github.workspace }}/build/n10-fixtures
+          CFDX_PRODUCTION_SOLVER: ${{ github.workspace }}/build/cfdx_production_solver
+          CFDX_N10_PRODUCTION_CASE_BUILDER: ${{ github.workspace }}/build/test_n10_fixture_production_case
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          set -euo pipefail
+          python3 tests/python/test_n10_fixture_production_solver.py
 
       - name: Audit the complete fixture evidence chain
         run: |

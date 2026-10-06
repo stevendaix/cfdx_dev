@@ -261,9 +261,14 @@ int main(int argc, char** argv)
         CaseSetup case_setup;
         SourceInfo case_source;
         GapAnalysis case_gap;
+        // A CFDX case is distinct from a generic mesh HDF5 file.  The
+        // suffix is 8 characters (".cfdx.h5"); the previous 9-character
+        // check could never match a valid case path and silently routed
+        // .cfdx.h5 files through the mesh-only HDF5 reader.  That bypassed
+        // case numerics, boundary conditions and initialization metadata.
         const bool is_case_hdf5 =
-            mesh_path.size() >= 9 &&
-            mesh_path.substr(mesh_path.size() - 9) == ".cfdx.h5";
+            mesh_path.size() >= 8 &&
+            mesh_path.substr(mesh_path.size() - 8) == ".cfdx.h5";
         bool ok = false;
         if (is_case_hdf5) {
             ok = read_case_cfdx_h5(mesh_path, mesh, case_source, case_setup, case_gap);
@@ -306,10 +311,59 @@ int main(int argc, char** argv)
         ScalarBoundaryConditions pbc;
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
             const auto& patch = mesh.boundary().patch(i);
-            ubc[patch.name] = {
-                VelocityBoundaryCondition::Type::FIXED_VALUE,
-                {0.0, 0.0, 0.0}};
-            pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            if (!is_case_hdf5) {
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::FIXED_VALUE,
+                    {0.0, 0.0, 0.0}};
+                pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                continue;
+            }
+
+            const auto* bc = case_setup.find_boundary(patch.name);
+            if (bc == nullptr)
+                throw std::invalid_argument(
+                    "production solver: case has no boundary condition for mesh patch '" +
+                    patch.name + "'");
+
+            if (bc->value_type == BCValueType::FIXED ||
+                bc->value_type == BCValueType::WALL_NO_SLIP ||
+                bc->value_type == BCValueType::WALL_THERMAL) {
+                cfdx::core::Vec3 value{0.0, 0.0, 0.0};
+                if (!bc->velocity_vector.empty()) {
+                    if (bc->velocity_vector.size() != 3)
+                        throw std::invalid_argument(
+                            "production solver: velocity_vector must have 3 components for patch '" +
+                            patch.name + "'");
+                    value = cfdx::core::Vec3{
+                        bc->velocity_vector[0],
+                        bc->velocity_vector[1],
+                        bc->velocity_vector[2]};
+                } else if (bc->velocity_magnitude != 0.0) {
+                    value = cfdx::core::Vec3{bc->velocity_magnitude, 0.0, 0.0};
+                }
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::FIXED_VALUE, value};
+            } else if (bc->value_type == BCValueType::ZERO_GRADIENT ||
+                       bc->value_type == BCValueType::WALL_SLIP ||
+                       bc->type == BCType::OUTLET ||
+                       bc->type == BCType::PRESSURE_OUTLET ||
+                       bc->type == BCType::SYMMETRY) {
+                ubc[patch.name] = {
+                    VelocityBoundaryCondition::Type::ZERO_GRADIENT,
+                    {0.0, 0.0, 0.0}};
+            } else {
+                throw std::invalid_argument(
+                    "production solver: unsupported velocity BC '" +
+                    patch.name + "'");
+            }
+
+            if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
+                pbc[patch.name] = {
+                    ScalarBoundaryType::FIXED_VALUE, bc->pressure, 0.0};
+            } else {
+                pbc[patch.name] = {
+                    ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            }
         }
 
         IncompressibleSolverControls controls;
@@ -334,6 +388,12 @@ int main(int argc, char** argv)
             options.adaptive_convergence;
         controls.acceleration.adaptive_pressure_correctors =
             options.adaptive_convergence;
+        // N10 diagnostic mode: expose the solver's existing per-iteration
+        // convergence metrics without changing any convergence criterion.
+        // This is intentionally diagnostic-only; the production result still
+        // requires the authoritative convergence gates below.
+        controls.diagnostics.iteration_trace = true;
+        controls.diagnostics.iteration_trace_frequency = 1;
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
