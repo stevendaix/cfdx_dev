@@ -28,3 +28,9 @@ def test_setup_diagnostic_rejects_invalid_severity():
     import pytest
     with pytest.raises(ValueError, match="severity"):
         SetupDiagnostic("fatal", "X", "bad")
+
+
+def test_setup_diagnostic_serializes_shared_fields():
+    diagnostic = SetupDiagnostic("error", "X", "bad", "case.x", domain="results", source="solver")
+    assert diagnostic.to_dict()["domain"] == "results"
+    assert diagnostic.to_dict()["source"] == "solver"
