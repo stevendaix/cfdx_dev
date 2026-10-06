@@ -8,6 +8,7 @@
 #include "cfdx/io/vtu/vtu_writer.h"
 
 #include <algorithm>
+#include <csignal>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -17,6 +18,13 @@ using namespace cfdx::io;
 using namespace cfdx::physics;
 
 namespace {
+volatile std::sig_atomic_t g_stop_requested = 0;
+
+void handle_stop_signal(int) noexcept
+{
+    g_stop_requested = 1;
+}
+
 struct Options {
     std::string mesh;
     std::filesystem::path output_dir;
@@ -254,6 +262,8 @@ Options parse(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+    std::signal(SIGINT, handle_stop_signal);
+    std::signal(SIGTERM, handle_stop_signal);
     try {
         const Options options = parse(argc, argv);
         Mesh mesh;
@@ -420,7 +430,7 @@ int main(int argc, char** argv)
                     return false;
                 std::cout << "Iteration " << iteration
                           << " Time = " << time << "\n";
-                return true;
+                return g_stop_requested == 0;
             };
 
         const auto result = solve_steady_incompressible(
