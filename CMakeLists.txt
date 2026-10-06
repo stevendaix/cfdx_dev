@@ -955,6 +955,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         endif()
     endif()
     add_cfdx_test(test_convergence_history tests/unit/test_convergence_history.cpp)
+    add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
