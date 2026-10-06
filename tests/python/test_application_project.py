@@ -22,7 +22,7 @@ def test_application_project_lifecycle_uses_shared_case_boundary(tmp_path: Path)
     assert opened.project.name == "channel"
     assert opened.project.dirty is False
     assert opened.case_revision == session.case_revision
-    assert opened.simulation_state.name == "IDLE"
+    assert opened.simulation_state.name == "CREATED"
 
 
 def test_application_requires_project_path_for_save() -> None:
