@@ -22,26 +22,28 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         pytest.skip("N10 production-solver fixture environment is provided by the dedicated workflow")
     fixture_root = Path(fixture_root_value)
     solver = Path(solver_value)
-    source = fixture_root / "meshio-su2-square"
+    # Use the independently verified 3-D VTK fixture here. The SU2 square is a
+    # 2-D mesh with zero cell volume and is suitable for importer verification,
+    # but not for the 3-D incompressible production solver.
+    source = fixture_root / "meshio-vtk-unstructured"
 
     assert source.is_file()
     assert solver.is_file()
 
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    source_case = case_dir / "square.su2"
+    source_case = case_dir / "unstructured.vtk"
     shutil.copyfile(source, source_case)
 
-    case_path = case_dir / "square.cfdx.h5"
+    case_path = case_dir / "unstructured.cfdx.h5"
     from cfdx.io.converter import convert
 
     converted = convert(source_case, output=case_path, write_reports=False)
     assert converted.case is not None
 
-    # The public SU2 square is a mesh-only reference fixture. Build a
-    # deterministic solver-ready CFDX case from that verified mesh: all
-    # boundaries are no-slip walls and the first imported patch is the moving
-    # lid. This is a cavity-style numerical execution case, not a reference
+    # Build a deterministic closed-cavity execution case from the verified
+    # 3-D mesh: all boundaries are no-slip walls and the first imported patch
+    # is the moving lid. This is a numerical execution case, not a reference
     # solution or physical qualification claim.
     from cfdx.io.schema import BCType, BCValueType
 
@@ -85,7 +87,7 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     assert (output_dir / "restart.dat").is_file()
 
     evidence = {
-        "fixture": "meshio-su2-square",
+        "fixture": "meshio-vtk-unstructured",
         "case": str(case_path),
         "production_solver": str(solver),
         "execution_status": "PASS",
