@@ -346,5 +346,71 @@ int main() {
         EXPECT_TRUE(provides_action(lsc, SchurAction::InverseOperator));
     });
 
+
+    run_case("lsc_bfbt_pressure_nullspace_projection_is_explicit", [&] {
+        // A singular pressure-side operator is the natural situation before
+        // pinning a pressure reference. The Schur layer must either receive an
+        // explicit null-space policy or reject an incompatible RHS; it must
+        // never silently pretend that the singular inverse is ordinary.
+        const auto auu = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 3.0}
+        });
+        const auto g = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto d = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto c = make_sparse(2, 2, {});
+        const BlockOperator singular_blocks(auu, g, d, c);
+
+        const auto solve_singular = [](const Vector& rhs, Vector& z) {
+            // This callback deliberately refuses an incompatible RHS. The
+            // Schur implementation must propagate that failure.
+            double mean = 0.0;
+            for (std::size_t i = 0; i < rhs.size(); ++i) mean += rhs(i);
+            if (std::abs(mean) > 1e-12) return false;
+            z = rhs;
+            return true;
+        };
+
+        LscBfbtSchurApproximation lsc(
+            LscBfbtSchurApproximation::Mode::LSC, solve_singular);
+        EXPECT_TRUE(lsc.setup(singular_blocks));
+
+        Vector incompatible(2, 0.0);
+        incompatible(0) = 1.0;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(!lsc.apply(incompatible, out));
+    });
+
+    run_case("lsc_bfbt_apply_propagates_pressure_solve_failure", [&] {
+        const auto auu = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 3.0}
+        });
+        const auto g = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto d = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto c = make_sparse(2, 2, {});
+        const BlockOperator blocks(auu, g, d, c);
+
+        std::size_t calls = 0;
+        const auto failing_solver = [&calls](const Vector&, Vector&) {
+            ++calls;
+            return false;
+        };
+        LscBfbtSchurApproximation lsc(
+            LscBfbtSchurApproximation::Mode::LSC, failing_solver);
+        EXPECT_TRUE(lsc.setup(blocks));
+
+        Vector rhs(2, 1.0);
+        Vector out(2, 0.0);
+        EXPECT_TRUE(!lsc.apply(rhs, out));
+        EXPECT_TRUE(calls == 1);
+    });
+
     return run_all();
 }
