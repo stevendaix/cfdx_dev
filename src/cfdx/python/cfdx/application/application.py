@@ -21,7 +21,7 @@ from .properties import PropertyState, properties_for_selection
 from .run_center import RunCenterModel
 from .results import ResultsState, build_results_state
 from ..results_series import ResultSeries, discover_result_series
-from ..project import Project
+from ..project import Project\nfrom ..setup_schema import SetupSchema, build_setup_schema
 
 
 class Application:
@@ -142,7 +142,7 @@ class Application:
     ) -> ApplicationState:
         return self.execute(SetNumericalOption(key, value, impact))
 
-    def properties(self) -> tuple[PropertyState, ...]:
+    def setup_schema(self) -> SetupSchema:\n        """Return the headless schema for the current case."""\n        return build_setup_schema(self.session.case)\n\n    def properties(self) -> tuple[PropertyState, ...]:
         return properties_for_selection(self.session.case, self.selection.stable_id)
 
     def set_property(self, key: str, value: Any) -> ApplicationState:
