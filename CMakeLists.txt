@@ -579,7 +579,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_include_directories(test_phase9_acceptance PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     # Full N8 pressure-velocity matrix: deliberately not the --quick smoke test.
     # This exercises SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and COUPLED.
-    add_test(NAME test_n8_pressure_velocity_matrix COMMAND test_phase9_acceptance)
+    add_test(NAME test_n8_pressure_velocity_matrix COMMAND test_phase9_acceptance --verbose)
     set_tests_properties(test_n8_pressure_velocity_matrix PROPERTIES
         LABELS "n8;qualification;validation;sanitizer-slow"
         RUN_SERIAL TRUE)
