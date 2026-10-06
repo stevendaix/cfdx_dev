@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-n12-build-\${{ github.sha }}
@@ -98,6 +98,7 @@ jobs:
             --no-tests=error \
             --output-on-failure \
             --output-junit "$BUILD_DIR/n12-mms/ctest-results.xml" \
+            --timeout 1200 \
             --parallel 4 \
             -V 2>&1 | tee "$BUILD_DIR/n12-mms/n12-mms.log"
       - name: Upload N12 evidence
@@ -123,5 +124,5 @@ jobs:
       - name: Evaluate N12 partitions
         run: |
           echo "prepare=\${{ needs.prepare.result }}"
-          echo "n12-mms=\${{ needs.n12-mms.result }}"
+          echo "n12-mms=\${{ needs['n12-mms'].result }}"
           [[ "\${{ needs.prepare.result }}" == "success" && "\${{ needs.n12-mms.result }}" == "success" ]]
