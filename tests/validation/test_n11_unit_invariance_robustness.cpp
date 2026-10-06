@@ -47,8 +47,8 @@ static SparseMatrix change_units(
     SparseMatrix transformed(A.n_rows(), A.n_cols());
     for (std::size_t i = 0; i < A.n_rows(); ++i) {
         for (std::size_t k = A.row_ptr()[i]; k < A.row_ptr()[i + 1]; ++k) {
-            const auto j = A.col_ind()[k];
-            transformed.push_back(i, j, row_scale * A.values()[k] * column_scale);
+            const auto j = A.columns_data()[k];
+            transformed.push_back(i, j, row_scale * A.values_data()[k] * column_scale);
         }
     }
     transformed.finalize();
@@ -128,17 +128,12 @@ int main() {
     });
 
     run_case("small_coefficient_perturbation_preserves_a_bounded_physical_residual", [] {
-        auto A = make_reference_matrix();
-        const auto exact = make_exact_solution();
+        const A = make_perturbed_matrix();
+        const exact = make_exact_solution();
+        const b = rhs_from(A, exact);
 
         // Deliberately perturb several coefficients by O(1e-10). This is a
         // sensitivity probe, not a relaxed accuracy requirement.
-        A.add_value(0, 0, 4.0e-10);
-        A.add_value(1, 2, -2.0e-10);
-        A.add_value(3, 3, 3.0e-10);
-        A.finalize();
-        const auto b = rhs_from(A, exact);
-
         LinearSolverRequest request;
         request.krylov = KrylovModel::GMRES;
         request.preconditioner = PreconditionerModel::Jacobi;
