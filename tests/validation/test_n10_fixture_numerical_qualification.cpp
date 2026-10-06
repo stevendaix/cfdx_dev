@@ -47,7 +47,6 @@ struct Error {
 
 Error gradient_error(
     const Mesh& mesh,
-    const cfdx::core::GeometryCache& geometry,
     const Field<double, Location::CELL>& gradient,
     bool linear)
 {
@@ -65,6 +64,27 @@ Error gradient_error(
     return error;
 }
 
+fs::path normalize_vtk_fixture(const fs::path& fixture)
+{
+    if (fs::is_regular_file(fixture)) {
+        require(fixture.extension() == ".vtk",
+                "N10.11 expects the VTK fixture with its .vtk extension");
+        return fixture;
+    }
+
+    require(fs::is_directory(fixture),
+            "N10.11 fixture path is neither a VTK file nor a fixture directory");
+
+    const fs::path acquired = fixture / "06_unstructured.vtk";
+    require(fs::is_regular_file(acquired),
+            "N10.11 VTK fixture directory does not contain 06_unstructured.vtk");
+
+    const fs::path staging =
+        fs::temp_directory_path() / "cfdx_n10_numerical_vtk_fixture.vtk";
+    fs::copy_file(acquired, staging, fs::copy_options::overwrite_existing);
+    return staging;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -76,10 +96,13 @@ int main(int argc, char** argv)
 
     const fs::path fixture = fs::absolute(argv[1]);
     const fs::path report_path = fs::absolute(argv[2]);
+    fs::path staged_fixture;
 
     try {
+        staged_fixture = normalize_vtk_fixture(fixture);
+
         Mesh mesh;
-        require(cfdx::io::mesh::import_mesh(fixture.string(), mesh),
+        require(cfdx::io::mesh::import_mesh(staged_fixture.string(), mesh),
                 "production importer rejected numerical qualification fixture");
         require(mesh.n_cells() > 0 && mesh.n_faces() > 0,
                 "qualification fixture is empty");
@@ -96,7 +119,7 @@ int main(int argc, char** argv)
         const auto constant_gradient =
             cfdx::core::compute_gradient_least_squares(constant, mesh);
         const auto constant_error =
-            gradient_error(mesh, geometry, constant_gradient, false);
+            gradient_error(mesh, constant_gradient, false);
         require(constant_error.count == mesh.n_cells(),
                 "constant-field qualification did not cover all cells");
         require(constant_error.linf <= 1e-12,
@@ -106,7 +129,7 @@ int main(int argc, char** argv)
         const auto linear_gradient =
             cfdx::core::compute_gradient_least_squares(linear, mesh);
         const auto linear_error =
-            gradient_error(mesh, geometry, linear_gradient, true);
+            gradient_error(mesh, linear_gradient, true);
         require(linear_error.count == mesh.n_cells(),
                 "linear-field qualification did not cover all cells");
         require(linear_error.linf <= 1e-9,
@@ -131,12 +154,15 @@ int main(int argc, char** argv)
                << "}\n";
         report.close();
 
+        if (staged_fixture != fixture) fs::remove(staged_fixture);
+
         std::cout << "N10.11 fixture numerical qualification: PASS\n"
                   << "fixture=meshio-vtk-unstructured cells=" << linear_error.count
                   << " constant_gradient_Linf=" << constant_error.linf
                   << " linear_gradient_Linf=" << linear_error.linf << "\n";
         return 0;
     } catch (const std::exception& exc) {
+        if (!staged_fixture.empty() && staged_fixture != fixture) fs::remove(staged_fixture);
         std::cerr << "N10.11 fixture numerical qualification FAILED: "
                   << exc.what() << "\n";
         return 1;
