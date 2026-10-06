@@ -165,3 +165,17 @@ Likewise, this layer never performs:
 ```
 
 A pathological matrix is reported as pathological. Any retry or fallback must remain an explicit, configured policy with evidence.
+## Unit-invariance and perturbation campaign
+
+The next N11 robustness slice is executable as `test_n11_unit_invariance_robustness`. It verifies:
+
+- invariance of the physical solution under an explicit row/variable unit transformation;
+- recovery of the transformed solution with production row+column scaling;
+- convergence from a strongly perturbed initial guess without changing the requested solver;
+- bounded physical residual after deliberately introduced O(1e-10) coefficient perturbations.
+
+These are sensitivity and invariance probes, not claims of a general condition-number bound. The tests retain strict physical-residual gates and do not alter solver tolerances or repair the perturbed matrix.
+
+The campaign complements, rather than replaces, the conservation/boundedness campaign. It also does not qualify AMG/Schur robustness or MPI production conservation.
+
+
