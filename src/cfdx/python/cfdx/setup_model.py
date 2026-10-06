@@ -70,14 +70,40 @@ class MeshSelection:
 
 @dataclass(frozen=True)
 class SetupDiagnostic:
+    """Shared diagnostic contract consumed by setup, execution and results."""
+
     severity: str
     code: str
     message: str
     path: str = ""
+    domain: str = "setup"
+    source: str = "application"
+    affected_object: str | None = None
+    remediation: str | None = None
 
     def __post_init__(self) -> None:
-        if self.severity not in {"error", "warning"}:
-            raise ValueError("severity must be error or warning")
+        if self.severity not in {"info", "warning", "error"}:
+            raise ValueError("severity must be info, warning or error")
+        if not self.code.strip():
+            raise ValueError("diagnostic code must not be empty")
+        if not self.message.strip():
+            raise ValueError("diagnostic message must not be empty")
+        if not self.domain.strip():
+            raise ValueError("diagnostic domain must not be empty")
+        if not self.source.strip():
+            raise ValueError("diagnostic source must not be empty")
+    def to_dict(self) -> dict[str, str | None]:
+        """Return a JSON-safe diagnostic representation for frontends."""
+        return {
+            "severity": self.severity,
+            "code": self.code,
+            "message": self.message,
+            "path": self.path,
+            "domain": self.domain,
+            "source": self.source,
+            "affected_object": self.affected_object,
+            "remediation": self.remediation,
+        }
 
 def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: tuple[Any, ...] = (), impact: ChangeImpact = ChangeImpact.HOT) -> Parameter:
     """Infer the supported user-facing parameter type."""
