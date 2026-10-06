@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <stdexcept>
 #include <ostream>
 #include <sstream>
 #include <cstddef>
@@ -46,8 +47,17 @@ public:
     // keeps its previous algebra exactly.
     explicit SimplerSchurApproximation(
         SimplerSchurMode mode,
-        std::optional<NullSpaceProjector> pressure_null_space = std::nullopt)
-        : mode_(mode), pressure_null_space_(std::move(pressure_null_space)) {}
+        std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
+        double momentum_relaxation = 1.0)
+        : mode_(mode),
+          pressure_null_space_(std::move(pressure_null_space)),
+          momentum_relaxation_(momentum_relaxation) {
+        if (!(momentum_relaxation_ > 0.0) ||
+            !(momentum_relaxation_ <= 1.0) ||
+            !std::isfinite(momentum_relaxation_))
+            throw std::invalid_argument(
+                "SIMPLE/SIMPLEC momentum relaxation must be finite and in (0,1]");
+    }
 
     const char* name() const noexcept override {
         return mode_ == SimplerSchurMode::SIMPLE ? "simple_schur" : "simplec_schur";
@@ -106,14 +116,27 @@ public:
             // a_P - sum(a_nb), not a_P - sum(|A_PN|). In matrix form this is
             // a_P + sum(A_PN). Using an absolute row norm is overly
             // restrictive and is not the SIMPLEC approximation.
+            // Coupled solves do not relax the momentum matrix before the
+            // monolithic Krylov solve. SIMPLEC, however, is defined from the
+            // consistently relaxed momentum diagonal. Match the segregated
+            // SIMPLEC construction by applying alpha_u to the diagonal only:
+            //
+            //   aP_relaxed = aP / alpha_u
+            //   aP'_SIMPLEC = aP_relaxed + sum(A_PN)
+            //
+            // The neighbour coefficients themselves are not relaxed.
+            const double relaxed_diag =
+                diag / momentum_relaxation_;
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
-                ? diag + row_off_signed
-                : diag;
+                ? relaxed_diag + row_off_signed
+                : relaxed_diag;
             if (!(ad > 1e-14) || !std::isfinite(ad)) {
                 std::ostringstream os;
                 os << "invalid SIMPLE/SIMPLEC denominator row=" << i
                    << " mode=" << to_string(mode_)
                    << " diag=" << diag
+                   << " relaxed_diag=" << relaxed_diag
+                   << " momentum_relaxation=" << momentum_relaxation_
                    << " offdiag_signed=" << row_off_signed
                    << " offdiag_abs=" << row_off_abs
                    << " denominator=" << ad;
@@ -208,6 +231,7 @@ public:
 
     void write_diagnostics(std::ostream& os) const {
         os << "SIMPLEC_SCHUR_DIAGNOSTICS mode=" << to_string(mode_)
+           << " momentum_relaxation=" << momentum_relaxation_
            << " velocity_rows=" << denominator_.size()
            << " offdiag_norm=" << offdiag_norm_
            << " ready=" << (blocks_ ? "true" : "false") << "\\n";
@@ -259,6 +283,7 @@ private:
 
     SimplerSchurMode mode_;
     std::optional<NullSpaceProjector> pressure_null_space_;
+    double momentum_relaxation_ = 1.0;
     const BlockOperator* blocks_ = nullptr;
     std::vector<double> diagonal_;
     std::vector<double> denominator_;
