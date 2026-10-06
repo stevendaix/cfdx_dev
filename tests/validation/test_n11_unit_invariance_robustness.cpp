@@ -132,7 +132,7 @@ int main() {
         perturbed_guess(2) = 3.0e5;
         perturbed_guess(3) = -7.0e5;
         const auto perturbed = solve_linear_system(
-            A, b, perturbed_guess, LinearProblemKind::PressurePoisson,
+            A, b, perturbed_guess, LinearProblemKind::General,
             request, 200, 1.0e-12);
 
         EXPECT_TRUE(zero.result.status == SolverStatus::CONVERGED);
