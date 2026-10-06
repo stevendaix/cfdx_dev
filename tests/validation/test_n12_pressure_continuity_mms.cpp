@@ -1,4 +1,4 @@
-#include "cfdx/core/geometry/geometry_cache.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 
 #include <algorithm>
