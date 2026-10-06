@@ -16,6 +16,7 @@
 #include "cfdx/physics/advanced_convergence.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
+#include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
@@ -152,6 +153,7 @@ struct IncompressibleSolverControls {
     double kinematic_viscosity = 1.0e-3;
     double turbulent_viscosity = 0.0;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
+    PressureGaugePolicy pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
     std::size_t pressure_reference_cell = 0;
     double pressure_reference_value = 0.0;
     cfdx::core::LinearSolverRequest momentum_linear_solver;
@@ -394,6 +396,33 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument("pressure reference cell out of range");
     if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0))
         throw std::invalid_argument("invalid linear solver controls");
+}
+
+inline void apply_pressure_gauge_policy(
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    const FvGeometry& geometry,
+    PressureGaugePolicy policy,
+    std::size_t reference_cell,
+    double reference_value,
+    bool has_fixed_pressure_boundary)
+{
+    if (has_fixed_pressure_boundary || policy == PressureGaugePolicy::NONE) return;
+    if (policy == PressureGaugePolicy::REFERENCE_CELL) {
+        const double shift = reference_value - p(reference_cell);
+        for (std::size_t c = 0; c < p.size(); ++c) p(c) += shift;
+        return;
+    }
+    if (policy == PressureGaugePolicy::ZERO_MEAN) {
+        double volume = 0.0, weighted_sum = 0.0;
+        for (std::size_t c = 0; c < p.size(); ++c) {
+            volume += geometry.cell_volumes[c];
+            weighted_sum += geometry.cell_volumes[c] * p(c);
+        }
+        if (!(volume > 0.0) || !std::isfinite(volume) || !std::isfinite(weighted_sum))
+            throw std::runtime_error("pressure gauge: invalid volume-weighted mean");
+        const double mean = weighted_sum / volume;
+        for (std::size_t c = 0; c < p.size(); ++c) p(c) -= mean;
+    }
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::CELL>
@@ -2317,6 +2346,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 p(c) = p_old(c) +
                     retry_controller.alpha_p(effective_alpha_p) * (p(c) - p_old(c));
             }
+            apply_pressure_gauge_policy(
+                p, geometry, controls.pressure_gauge_policy,
+                controls.pressure_reference_cell, controls.pressure_reference_value,
+                has_fixed_pressure_boundary);
 
             // The coupled solve has already enforced the discrete continuity
             // equation. Rebuild the authoritative flux from the same RC
@@ -2630,12 +2663,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const double alpha_p = retry_controller.alpha_p(effective_alpha_p);
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += alpha_p * p_corr(c);
-            if (!has_fixed_pressure_boundary) {
-                const double shift =
-                    controls.pressure_reference_value - p(controls.pressure_reference_cell);
-                for (std::size_t c = 0; c < nc; ++c)
-                    p(c) += shift;
-            }
+            apply_pressure_gauge_policy(
+                p, geometry, controls.pressure_gauge_policy,
+                controls.pressure_reference_cell, controls.pressure_reference_value,
+                has_fixed_pressure_boundary);
 
             auto corrected_grad_p =
                 gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
