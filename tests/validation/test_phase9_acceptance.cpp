@@ -143,7 +143,8 @@ RunResult run_couette_channel(
     PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
     KrylovModel pressure_requested_krylov = KrylovModel::Auto,
     PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto,
-    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal)
+    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal,
+    bool verbose = false)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -523,7 +524,7 @@ int main(int argc, char** argv)
                     test.algorithm, test.scheme, test.bounded, 8, 16,
                     test.coupled_krylov, test.coupled_preconditioner,
                     test.pressure_krylov, test.pressure_preconditioner,
-                    test.schur_model);
+                    test.schur_model, verbose);
 
                 print_history(test.name, result);
 
