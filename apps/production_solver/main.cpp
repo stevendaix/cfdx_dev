@@ -435,7 +435,7 @@ int main(int argc, char** argv)
 
         const auto result = solve_steady_incompressible(
             mesh, U, p, ubc, pbc, controls, options.restart.string());
-        if (!options.restart.empty())
+        const auto convergence = options.output_dir / "convergence.json";\n        write_convergence_history(convergence.string(), result);\n        std::cout << "Convergence history " << convergence << "\\n";\n\n        if (!options.restart.empty())
             std::cout << "Restart checkpoint " << options.restart.string() << "\n";
 
         const auto dat = options.output_dir / "restart.dat";
