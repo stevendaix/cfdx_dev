@@ -1656,6 +1656,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto solve_pressure = [pressure_operator, max_iterations, tolerance, schur_model,
                                verbose = controls.diagnostics.verbose](
             const Vector& rhs, Vector& x) mutable {
+            static std::size_t diagnostic_call_counter = 0;
+            const std::size_t call_id = ++diagnostic_call_counter;
+
             LinearOperator op{
                 pressure_operator.n_rows(),
                 [&pressure_operator](const Vector& input, Vector& output) {
@@ -1665,58 +1668,210 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     for (std::size_t i = 0; i < values.size(); ++i)
                         output(i) = values[i];
                 }};
-            // LSC/BFBT applies two nested inverses of the pressure-side
-            // operator P = D Q^{-1} G.  An unpreconditioned GMRES here can
-            // stagnate even when the outer coupled system is well posed.
-            // Use the already-qualified scalar ILU0 path as an inner
-            // preconditioner, without changing the requested tolerance or
-            // iteration budget.  This is part of the LSC/BFBT method, not a
-            // fallback to another coupled Schur model.
+
             LinearSolverRequest nested_request{
                 KrylovModel::GMRES,
                 PreconditionerModel::ILU0,
                 64,
                 false,
                 NullSpaceModel::None};
+
+            if (verbose) {
+                const auto* ro = pressure_operator.row_offsets_data();
+                const auto* co = pressure_operator.columns_data();
+                const auto* va = pressure_operator.values_data();
+                double abs_min = std::numeric_limits<double>::infinity();
+                double abs_max = 0.0;
+                double diag_min = std::numeric_limits<double>::infinity();
+                double diag_absmax = 0.0;
+                double row_sum_min = std::numeric_limits<double>::infinity();
+                double row_sum_max = 0.0;
+                std::size_t zero_rows = 0;
+                std::size_t zero_cols = 0;
+                std::size_t nonfinite = 0;
+                std::size_t diagonal_missing = 0;
+                std::size_t diagonal_zero = 0;
+                std::vector<std::size_t> col_counts(pressure_operator.n_cols(), 0);
+
+                for (std::size_t r = 0; r < pressure_operator.n_rows(); ++r) {
+                    double row_sum = 0.0;
+                    bool has_diag = false;
+                    for (std::size_t k = ro[r]; k < ro[r + 1]; ++k) {
+                        const std::size_t c = co[k];
+                        const double v = va[k];
+                        if (c < col_counts.size()) ++col_counts[c];
+                        if (!std::isfinite(v)) {
+                            ++nonfinite;
+                            continue;
+                        }
+                        const double av = std::abs(v);
+                        abs_max = std::max(abs_max, av);
+                        if (av > 0.0) abs_min = std::min(abs_min, av);
+                        row_sum += av;
+                        if (c == r) {
+                            has_diag = true;
+                            diag_min = std::min(diag_min, v);
+                            diag_absmax = std::max(diag_absmax, av);
+                            if (av == 0.0) ++diagonal_zero;
+                        }
+                    }
+                    row_sum_min = std::min(row_sum_min, row_sum);
+                    row_sum_max = std::max(row_sum_max, row_sum);
+                    if (ro[r] == ro[r + 1]) ++zero_rows;
+                    if (!has_diag) ++diagonal_missing;
+                }
+                for (const auto count : col_counts)
+                    if (count == 0) ++zero_cols;
+
+                double rhs_l2_sq = 0.0;
+                double rhs_linf = 0.0;
+                std::size_t rhs_nonfinite = 0;
+                for (std::size_t i = 0; i < rhs.size(); ++i) {
+                    if (!std::isfinite(rhs(i))) {
+                        ++rhs_nonfinite;
+                        continue;
+                    }
+                    rhs_l2_sq += rhs(i) * rhs(i);
+                    rhs_linf = std::max(rhs_linf, std::abs(rhs(i)));
+                }
+
+                Vector ones(pressure_operator.n_rows(), 1.0);
+                const auto p1 = pressure_operator.matvec(ones);
+                double p1_l2_sq = 0.0;
+                double p1_linf = 0.0;
+                for (std::size_t i = 0; i < p1.size(); ++i) {
+                    if (!std::isfinite(p1(i))) continue;
+                    p1_l2_sq += p1(i) * p1(i);
+                    p1_linf = std::max(p1_linf, std::abs(p1(i)));
+                }
+
+                double gauge_abs_sum = 0.0;
+                double gauge_diag = 0.0;
+                std::size_t gauge_nnz = 0;
+                if (reference_cell < pressure_operator.n_rows()) {
+                    for (std::size_t k = ro[reference_cell];
+                         k < ro[reference_cell + 1]; ++k) {
+                        ++gauge_nnz;
+                        gauge_abs_sum += std::abs(va[k]);
+                        if (co[k] == reference_cell) gauge_diag += va[k];
+                    }
+                }
+
+                std::cerr << "N8_LSC_BFBT_PRESSURE_MATRIX"
+                          << " call=" << call_id
+                          << " model=" << to_string(schur_model)
+                          << " n=" << pressure_operator.n_rows()
+                          << " nnz=" << pressure_operator.nnz()
+                          << " abs_min_nonzero=" << abs_min
+                          << " abs_max=" << abs_max
+                          << " diag_min=" << diag_min
+                          << " diag_absmax=" << diag_absmax
+                          << " row_abs_sum_min=" << row_sum_min
+                          << " row_abs_sum_max=" << row_sum_max
+                          << " zero_rows=" << zero_rows
+                          << " zero_cols=" << zero_cols
+                          << " nonfinite=" << nonfinite
+                          << " diagonal_missing=" << diagonal_missing
+                          << " diagonal_zero=" << diagonal_zero
+                          << " rhs_l2=" << std::sqrt(rhs_l2_sq)
+                          << " rhs_linf=" << rhs_linf
+                          << " rhs_nonfinite=" << rhs_nonfinite
+                          << " rhs_reference="
+                          << (reference_cell < rhs.size()
+                                  ? rhs(reference_cell)
+                                  : std::numeric_limits<double>::quiet_NaN())
+                          << " P1_l2=" << std::sqrt(p1_l2_sq)
+                          << " P1_linf=" << p1_linf
+                          << " gauge_nnz=" << gauge_nnz
+                          << " gauge_abs_sum=" << gauge_abs_sum
+                          << " gauge_diag=" << gauge_diag
+                          << " reference_row=" << reference_cell
+                          << "\n";
+
+                auto diagnostic_ilu =
+                    make_scalar_preconditioner(PreconditionerModel::ILU0);
+                const bool ilu_setup =
+                    diagnostic_ilu && diagnostic_ilu->setup(pressure_operator);
+                std::cerr << "N8_LSC_BFBT_ILU0_SETUP"
+                          << " call=" << call_id
+                          << " ok=" << (ilu_setup ? 1 : 0)
+                          << " name="
+                          << (diagnostic_ilu ? diagnostic_ilu->name() : "null")
+                          << "\n";
+                if (ilu_setup) {
+                    Vector z(rhs.size(), 0.0);
+                    const bool ilu_apply = diagnostic_ilu->apply(rhs, z);
+                    double z_l2_sq = 0.0;
+                    double z_linf = 0.0;
+                    std::size_t z_nonfinite = 0;
+                    for (std::size_t i = 0; i < z.size(); ++i) {
+                        if (!std::isfinite(z(i))) {
+                            ++z_nonfinite;
+                            continue;
+                        }
+                        z_l2_sq += z(i) * z(i);
+                        z_linf = std::max(z_linf, std::abs(z(i)));
+                    }
+                    std::cerr << "N8_LSC_BFBT_ILU0_APPLY"
+                              << " call=" << call_id
+                              << " ok=" << (ilu_apply ? 1 : 0)
+                              << " z_l2=" << std::sqrt(z_l2_sq)
+                              << " z_linf=" << z_linf
+                              << " z_nonfinite=" << z_nonfinite
+                              << "\n";
+                }
+            }
+
             const auto selected = solve_linear_system(
                 pressure_operator, rhs, x,
                 LinearProblemKind::PressurePoisson,
                 nested_request, max_iterations, tolerance);
             const auto result = selected.result;
+
             if (verbose) {
-                double diag_min = std::numeric_limits<double>::infinity();
-                double diag_max = 0.0;
-                std::size_t diagonal_missing = 0;
-                for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
-                    double diagonal = 0.0;
-                    bool found = false;
-                    for (std::size_t k = pressure_operator.row_offsets_data()[row];
-                         k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
-                        if (pressure_operator.columns_data()[k] == row) {
-                            diagonal += pressure_operator.values_data()[k];
-                            found = true;
-                        }
+                const auto ax = pressure_operator.matvec(x);
+                double residual_l2_sq = 0.0;
+                double residual_linf = 0.0;
+                double x_l2_sq = 0.0;
+                double x_linf = 0.0;
+                std::size_t x_nonfinite = 0;
+                std::size_t ax_nonfinite = 0;
+                for (std::size_t i = 0; i < x.size(); ++i) {
+                    if (!std::isfinite(x(i))) ++x_nonfinite;
+                    else {
+                        x_l2_sq += x(i) * x(i);
+                        x_linf = std::max(x_linf, std::abs(x(i)));
                     }
-                    if (!found) {
-                        ++diagonal_missing;
-                    } else {
-                        diag_min = std::min(diag_min, diagonal);
-                        diag_max = std::max(diag_max, std::abs(diagonal));
+                    if (!std::isfinite(ax(i))) {
+                        ++ax_nonfinite;
+                        continue;
+                    }
+                    const double ri = ax(i) - rhs(i);
+                    if (std::isfinite(ri)) {
+                        residual_l2_sq += ri * ri;
+                        residual_linf = std::max(residual_linf, std::abs(ri));
                     }
                 }
                 std::cerr << "N8_LSC_BFBT_PRESSURE_SOLVE"
+                          << " call=" << call_id
                           << " model=" << to_string(schur_model)
-                          << " n=" << pressure_operator.n_rows()
-                          << " nnz=" << pressure_operator.nnz()
-                          << " rhs_l2=" << std::sqrt(rhs.dot(rhs))
-                          << " diag_min=" << diag_min
-                          << " diag_absmax=" << diag_max
-                          << " diagonal_missing=" << diagonal_missing
+                          << " krylov=" << to_string(selected.plan.krylov)
+                          << " preconditioner=" << to_string(selected.plan.preconditioner)
+                          << " restart=" << nested_request.gmres_restart
+                          << " max_iterations=" << max_iterations
+                          << " tolerance=" << tolerance
                           << " status=" << static_cast<int>(result.status)
                           << " iterations=" << result.iterations
-                          << " residual=" << result.residual
-                          << " relative=" << result.residual_relative
-                          << "\\n";
+                          << " solver_residual=" << result.residual
+                          << " solver_relative=" << result.residual_relative
+                          << " physical_relative=" << selected.physical_residual_relative
+                          << " true_residual_l2=" << std::sqrt(residual_l2_sq)
+                          << " true_residual_linf=" << residual_linf
+                          << " x_l2=" << std::sqrt(x_l2_sq)
+                          << " x_linf=" << x_linf
+                          << " x_nonfinite=" << x_nonfinite
+                          << " Ax_nonfinite=" << ax_nonfinite
+                          << "\n";
             }
             return result.status == SolverStatus::CONVERGED;
         };
