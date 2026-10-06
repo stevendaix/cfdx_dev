@@ -291,7 +291,6 @@ _CONVERGENCE_HISTORY_REQUIRED = (
 )
 
 _CONVERGENCE_NUMERIC_FIELDS = {
-    "reference_momentum_residual",
     "momentum_residual",
     "pressure_residual",
     "continuity_l1",
