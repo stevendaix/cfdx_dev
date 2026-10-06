@@ -48,6 +48,7 @@ from .metrics import SolverMetrics, SolverMetricsParser
 from .renderer import Renderer, RenderObject, NullRenderer
 from .execution import ExecutionController, ExecutionError
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .project import Project
 from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnostic, typed_parameter
 from .validation import ValidationReport, validate_case
 from .mesh_model import MeshCatalog, MeshPatch, read_mesh_catalog
@@ -87,7 +88,7 @@ __all__ = [
     "SolverRunner", "SolverMetrics", "SolverMetricsParser",
     "Renderer", "RenderObject", "NullRenderer",
     "ExecutionController", "ExecutionError", "read_case", "read_case_with_dat",
-    "save_case", "save_case_with_dat", "MeshSelection", "Parameter", "ParameterType",
+    "save_case", "save_case_with_dat", "Project", "MeshSelection", "Parameter", "ParameterType",
     "SetupDiagnostic", "typed_parameter", "ValidationReport", "validate_case",
     "MeshCatalog", "MeshPatch", "PhysicsSpec", "FieldSpec", "physics_spec",
     "default_parameters", "BoundaryFieldSpec", "BoundaryTypeSpec",
