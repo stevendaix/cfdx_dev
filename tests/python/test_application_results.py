@@ -3,7 +3,13 @@ from pathlib import Path
 import pytest
 
 from cfdx import CFDXSession
-from cfdx.application import Application, ResultsChanged, build_results_state
+from cfdx.application import (
+    Application,
+    DisplayObject,
+    ResultDataset,
+    ResultsChanged,
+    build_results_state,
+)
 from cfdx.results_series import ResultFrame, ResultSeries
 
 
