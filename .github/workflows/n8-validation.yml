@@ -79,7 +79,7 @@ jobs:
             --no-tests=error \
             -V 2>&1 | tee "$BUILD_DIR/n8-production-schur.log"
 
-      - name: Verify four Schur models independently
+      - name: Verify all production Schur models independently
         id: evidence
         if: always()
         shell: bash
@@ -88,15 +88,28 @@ jobs:
           log="$BUILD_DIR/n8-production-schur.log"
           test -s "$log"
 
-          for model in SIMPLE SIMPLEC LSC BFBT; do
-            case "$model" in
-              SIMPLE)  resolved=simple ;;
-              SIMPLEC) resolved=simplec ;;
-              LSC)     resolved=lsc ;;
-              BFBT)    resolved=bfbt ;;
-            esac
-            grep -E "MODEL_PLAN algorithm=COUPLED/${model}-Schur/upwind/bounded .*schur_requested=${resolved} schur_resolved=${resolved}" "$log"
-            grep -E "MODEL_RESULT COUPLED/${model}-Schur/upwind/bounded .*solver_converged=true .*gates_failed=0" "$log"
+          # This is the complete production Schur model set exposed by
+          # CoupledSchurApproximationModel/CoupledSchurModel at this revision.
+          # Keep the list explicit: adding a production model without adding it
+          # here must make N8 fail rather than silently reducing coverage.
+          declare -A resolved=(
+            [BlockSchur]=block_local
+            [MGR]=block_local
+            [PCD]=pcd
+            [SIMPLE]=simple
+            [SIMPLEC]=simplec
+            [LSC]=lsc
+            [BFBT]=bfbt
+          )
+
+          for model in "${!resolved[@]}"; do
+            if [[ "$model" == "BlockSchur" || "$model" == "MGR" || "$model" == "PCD" ]]; then
+              algorithm="COUPLED/$model/upwind/bounded"
+            else
+              algorithm="COUPLED/$model-Schur/upwind/bounded"
+            fi
+            grep -E "MODEL_PLAN algorithm=$algorithm .*schur_requested=${resolved[$model]} schur_resolved=${resolved[$model]}" "$log"
+            grep -E "MODEL_RESULT $algorithm .*solver_converged=true .*gates_failed=0" "$log"
           done
 
           if grep -E "n8_coupled_schur_(unresolved|model_mismatch)" "$log"; then
@@ -104,7 +117,7 @@ jobs:
             exit 1
           fi
 
-          echo "All four requested Schur models resolved exactly and passed the production gates."
+          echo "All seven production Schur paths resolved exactly and passed the production gates."
 
       - name: Upload N8 qualification evidence
         if: always()
