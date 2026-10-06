@@ -1,1 +1,73 @@
-"""Project/case lifecycle boundary shared by GUI, TUI and CLI.\n\nA Project owns the canonical CFDX case artifact and its paired numerical DAT\nrestart artifact. It deliberately does not introduce a project manifest:\n.cfdx.h5 remains setup/mesh state and .dat.h5 remains numerical state.\n"""\nfrom __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom pathlib import Path\n\nfrom .case_io import (\n    _paired_dat_path,\n    read_case,\n    read_case_with_dat,\n    save_case,\n    save_case_with_dat,\n    validate_case_bundle,\n)\nfrom .session import CFDXSession\n\n\n@dataclass(frozen=True)\nclass Project:\n    """Canonical on-disk identity of one CFDX case.\n\n    ``path`` is always the authoritative ``*.cfdx.h5`` setup artifact.\n    The numerical restart, when present, is its sibling ``*.dat.h5``.\n    """\n\n    path: Path\n\n    def __post_init__(self) -> None:\n        path = Path(self.path)\n        if not path.name.lower().endswith(".cfdx.h5"):\n            raise ValueError("CFDX project case must use the canonical .cfdx.h5 extension")\n        object.__setattr__(self, "path", path)\n\n    @property\n    def dat_path(self) -> Path:\n        """Return the canonical sibling numerical checkpoint path."""\n        return _paired_dat_path(self.path)\n\n    @property\n    def name(self) -> str:\n        """Return the project stem without CFDX artifact suffixes."""\n        return self.path.name[: -len(".cfdx.h5")]\n\n    def save(self, session: CFDXSession) -> Path:\n        """Persist setup/mesh state only; never consumes or writes DAT state."""\n        return save_case(session, self.path)\n\n    def save_with_dat(self, session: CFDXSession, source_dat: Path) -> tuple[Path, Path]:\n        """Persist the case and canonicalize an explicit numerical checkpoint."""\n        return save_case_with_dat(session, self.path, Path(source_dat))\n\n    def load(self) -> CFDXSession:\n        """Load setup/mesh state without loading numerical restart state."""\n        return read_case(self.path)\n\n    def load_with_dat(self, dat_path: Path | None = None) -> tuple[CFDXSession, Path]:\n        """Load setup and explicitly restore the paired numerical state."""\n        return read_case_with_dat(self.path, dat_path)\n\n    def validate(self) -> dict[str, bool]:\n        """Validate the self-contained CFDX case artifact."""\n        return validate_case_bundle(self.path)\n\n    def exists(self) -> bool:\n        return self.path.is_file()\n\n    def has_dat(self) -> bool:\n        return self.dat_path.is_file()\n
+"""Project/case lifecycle boundary shared by GUI, TUI and CLI.
+
+A Project owns the canonical CFDX case artifact and its paired numerical DAT
+restart artifact. It deliberately does not introduce a project manifest:
+.cfdx.h5 remains setup/mesh state and .dat.h5 remains numerical state.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from .case_io import (
+    _paired_dat_path,
+    read_case,
+    read_case_with_dat,
+    save_case,
+    save_case_with_dat,
+    validate_case_bundle,
+)
+from .session import CFDXSession
+
+
+@dataclass(frozen=True)
+class Project:
+    """Canonical on-disk identity of one CFDX case.
+
+    ``path`` is always the authoritative ``*.cfdx.h5`` setup artifact.
+    The numerical restart, when present, is its sibling ``*.dat.h5``.
+    """
+
+    path: Path
+
+    def __post_init__(self) -> None:
+        path = Path(self.path)
+        if not path.name.lower().endswith(".cfdx.h5"):
+            raise ValueError("CFDX project case must use the canonical .cfdx.h5 extension")
+        object.__setattr__(self, "path", path)
+
+    @property
+    def dat_path(self) -> Path:
+        """Return the canonical sibling numerical checkpoint path."""
+        return _paired_dat_path(self.path)
+
+    @property
+    def name(self) -> str:
+        """Return the project stem without CFDX artifact suffixes."""
+        return self.path.name[: -len(".cfdx.h5")]
+
+    def save(self, session: CFDXSession) -> Path:
+        """Persist setup/mesh state only; never consumes or writes DAT state."""
+        return save_case(session, self.path)
+
+    def save_with_dat(self, session: CFDXSession, source_dat: Path) -> tuple[Path, Path]:
+        """Persist the case and canonicalize an explicit numerical checkpoint."""
+        return save_case_with_dat(session, self.path, Path(source_dat))
+
+    def load(self) -> CFDXSession:
+        """Load setup/mesh state without loading numerical restart state."""
+        return read_case(self.path)
+
+    def load_with_dat(self, dat_path: Path | None = None) -> tuple[CFDXSession, Path]:
+        """Load setup and explicitly restore the paired numerical state."""
+        return read_case_with_dat(self.path, dat_path)
+
+    def validate(self) -> dict[str, bool]:
+        """Validate the self-contained CFDX case artifact."""
+        return validate_case_bundle(self.path)
+
+    def exists(self) -> bool:
+        return self.path.is_file()
+
+    def has_dat(self) -> bool:
+        return self.dat_path.is_file()
