@@ -570,6 +570,22 @@ int main(int argc, char** argv)
                         gates.push_back("continuity_normalized");
                     if (!(h.momentum_equation_residual_relative < 1e-7))
                         gates.push_back("momentum_equation_residual_relative");
+
+                    // N11: independently reconstructed momentum balances must
+                    // close after the accepted solve. This is deliberately
+                    // separate from the assembled matrix residual: the
+                    // conservation audit rebuilds the physical face flux from
+                    // the final field and applies the generic balance contract.
+                    for (std::size_t component = 0; component < 3; ++component) {
+                        if (!std::isfinite(h.momentum_conservation_normalized[component]) ||
+                            !(h.momentum_conservation_normalized[component] < 1e-7))
+                            gates.push_back(
+                                "independent_momentum_conservation_" +
+                                std::to_string(component));
+                    }
+                    if (h.boundedness_nonfinite_velocity != 0)
+                        gates.push_back("velocity_nonfinite");
+
                     if (!(h.corrected_flux_continuity_linf < 1e-7))
                         gates.push_back("corrected_flux_continuity");
                     if (test.algorithm == PressureVelocityAlgorithm::COUPLED) {
@@ -648,6 +664,13 @@ int main(int argc, char** argv)
                           << " continuity=" << h.continuity_linf
                           << " continuity_norm=" << h.continuity_normalized
                           << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                          << " momentum_cons_x=" << h.momentum_conservation_normalized[0]
+                          << " momentum_cons_y=" << h.momentum_conservation_normalized[1]
+                          << " momentum_cons_z=" << h.momentum_conservation_normalized[2]
+                          << " momentum_cons_worst_x=" << h.momentum_conservation_worst_cell[0]
+                          << " momentum_cons_worst_y=" << h.momentum_conservation_worst_cell[1]
+                          << " momentum_cons_worst_z=" << h.momentum_conservation_worst_cell[2]
+                          << " velocity_nonfinite=" << h.boundedness_nonfinite_velocity
                           << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
                           << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
                           << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
