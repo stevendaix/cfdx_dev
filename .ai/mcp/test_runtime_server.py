@@ -41,7 +41,7 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare"}
+            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare", "convergence.inspect"}
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -117,6 +117,107 @@ async def exercise() -> None:
             assert data["min"] == -2.0
             assert data["max"] == -2.0
 
+
+            convergence = root / "convergence.json"
+            convergence.write_text(
+                """{
+                  "format": "CFDX-CONVERGENCE",
+                  "schema_version": 1,
+                  "converged": true,
+                  "iterations": 1,
+                  "reference_momentum_residual": 2.0,
+                  "convergence_status": 1,
+                  "convergence_reason": "converged",
+                  "history": [{
+                    "iteration": 1,
+                    "momentum_residual": 1.0,
+                    "pressure_residual": 0.5,
+                    "continuity_l1": 0.1,
+                    "continuity_linf": 0.2,
+                    "continuity_normalized": 0.3,
+                    "momentum_equation_residual": 0.4,
+                    "momentum_equation_residual_relative": 0.5,
+                    "velocity_change_inf": 0.01,
+                    "pressure_change_inf": 0.02,
+                    "effective_alpha_u": 0.7,
+                    "effective_alpha_p": 0.8,
+                    "nonlinear_convergence_metric": 0.5,
+                    "momentum_linear_iterations": 11,
+                    "pressure_linear_iterations": 12,
+                    "pressure_correctors_used": 2,
+                    "linear_tolerance_used": 1e-8,
+                    "corrected_flux_continuity_linf": 0.01,
+                    "reconstructed_velocity_continuity_linf": 0.02,
+                    "flux_velocity_mismatch_linf": 0.03,
+                    "momentum_equation_residual_components": [0.1, 0.2, 0.3],
+                    "momentum_equation_residual_internal": 0.4,
+                    "momentum_equation_residual_boundary": 0.5,
+                    "pressure_gradient_linf": 0.6,
+                    "pressure_gradient_l2": 0.7,
+                    "momentum_residual_cell": 4,
+                    "momentum_residual_no_pressure": 0.8,
+                    "momentum_pressure_contribution": 0.9,
+                    "momentum_residual_patch": "wall",
+                    "mass_boundary_flux": 1.0,
+                    "mass_global_cell_balance": 1.1,
+                    "mass_local_l1": 1.2,
+                    "mass_local_linf": 1.3,
+                    "mass_local_l2": 1.4,
+                    "mass_normalized_imbalance": 1.5,
+                    "mass_worst_cell": 5,
+                    "mass_nonfinite_faces": 0,
+                    "boundedness_nonfinite_velocity": 0,
+                    "momentum_conservation_residual": [0.2, 0.3, 0.4],
+                    "momentum_conservation_normalized": [0.5, 0.6, 0.7],
+                    "momentum_conservation_worst_cell": [1, 2, 3]
+                  }]
+                }""",
+                encoding="utf-8",
+            )
+            convergence_result = await client.call_tool(
+                "convergence.inspect",
+                {"convergence_path": "convergence.json", "history_limit": 1},
+            )
+            assert convergence_result.is_error is False
+            data = convergence_result.structured_content
+            assert data["ok"] is True
+            assert data["format"] == "CFDX-CONVERGENCE"
+            assert data["schema_version"] == 1
+            assert data["converged"] is True
+            assert data["history_count"] == 1
+            assert len(data["history"]) == 1
+            assert data["history_truncated"] is False
+
+            malformed = root / "bad.convergence.json"
+            malformed.write_text(
+                convergence.read_text(encoding="utf-8").replace(
+                    '"schema_version": 1', '"schema_version": 99'
+                ),
+                encoding="utf-8",
+            )
+            bad_schema = await client.call_tool(
+                "convergence.inspect",
+                {"convergence_path": "bad.convergence.json"},
+            )
+            assert bad_schema.is_error is False
+            assert bad_schema.structured_content["ok"] is False
+            assert "schema version" in bad_schema.structured_content["errors"][0]
+
+            nonfinite = root / "nonfinite.convergence.json"
+            nonfinite.write_text(
+                convergence.read_text(encoding="utf-8").replace(
+                    '"momentum_residual": 1.0', '"momentum_residual": NaN'
+                ),
+                encoding="utf-8",
+            )
+            bad_nonfinite = await client.call_tool(
+                "convergence.inspect",
+                {"convergence_path": "nonfinite.convergence.json"},
+            )
+            assert bad_nonfinite.is_error is False
+            assert bad_nonfinite.structured_content["ok"] is False
+            assert "non-finite JSON constant" in bad_nonfinite.structured_content["errors"][0]
+
             with h5py.File(root / "later.dat.h5", "w") as h5:
                 h5.attrs["format"] = "CFDX-DAT"
                 h5.create_group("fields").create_dataset("p", data=[2.0])
@@ -136,6 +237,8 @@ async def exercise() -> None:
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
                 ("checkpoint.compare", {"left_checkpoint_path": "../a.dat.h5", "right_checkpoint_path": "later.dat.h5", "field_name": "p"}),
+                ("convergence.inspect", {"convergence_path": "../outside/convergence.json"}),
+                ("convergence.inspect", {"convergence_path": "/etc/convergence.json"}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
             ):
