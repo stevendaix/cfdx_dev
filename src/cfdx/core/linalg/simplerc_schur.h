@@ -129,7 +129,7 @@ public:
                 diag / momentum_relaxation_;
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
                 ? relaxed_diag + row_off_signed
-                : relaxed_diag;
+                : diag;
             if (!(ad > 1e-14) || !std::isfinite(ad)) {
                 std::ostringstream os;
                 os << "invalid SIMPLE/SIMPLEC denominator row=" << i
