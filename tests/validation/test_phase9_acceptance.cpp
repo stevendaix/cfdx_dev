@@ -347,13 +347,19 @@ void run_pure_neumann_gauge()
 int main(int argc, char** argv)
 {
     try {
-        const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
-        if (argc > 1 && !quick)
-            throw std::invalid_argument("usage: test_phase9_acceptance [--quick]");
+        bool quick = false;
+        bool verbose = false;
+        for (int i = 1; i < argc; ++i) {
+            const std::string arg = argv[i];
+            if (arg == "--quick") quick = true;
+            else if (arg == "--verbose") verbose = true;
+            else throw std::invalid_argument("usage: test_phase9_acceptance [--quick] [--verbose]");
+        }
 
         std::cout << (quick
             ? "PHASE9: Couette SIMPLE/PISO/COUPLED smoke verification\n"
             : "PHASE9: Couette full pressure-velocity-system verification\n");
+        std::cout << "PHASE9: diagnostics.verbose=" << (verbose ? "true" : "false") << "\n";
 
         struct Case {
             const char* name;
