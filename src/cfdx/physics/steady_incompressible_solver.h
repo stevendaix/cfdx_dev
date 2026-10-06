@@ -1665,10 +1665,24 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     for (std::size_t i = 0; i < values.size(); ++i)
                         output(i) = values[i];
                 }};
-            const auto result = solve_gmres(
-                op, rhs, x,
-                static_cast<int>(std::min<std::size_t>(64, pressure_operator.n_rows())),
-                max_iterations, tolerance);
+            // LSC/BFBT applies two nested inverses of the pressure-side
+            // operator P = D Q^{-1} G.  An unpreconditioned GMRES here can
+            // stagnate even when the outer coupled system is well posed.
+            // Use the already-qualified scalar ILU0 path as an inner
+            // preconditioner, without changing the requested tolerance or
+            // iteration budget.  This is part of the LSC/BFBT method, not a
+            // fallback to another coupled Schur model.
+            LinearSolverRequest nested_request{
+                KrylovModel::GMRES,
+                PreconditionerModel::ILU0,
+                64,
+                false,
+                NullSpaceModel::None};
+            const auto selected = solve_linear_system(
+                pressure_operator, rhs, x,
+                LinearProblemKind::PressurePoisson,
+                nested_request, max_iterations, tolerance);
+            const auto result = selected.result;
             if (verbose) {
                 double diag_min = std::numeric_limits<double>::infinity();
                 double diag_max = 0.0;
