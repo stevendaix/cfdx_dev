@@ -54,8 +54,7 @@ Error gradient_error(
     const Vec3 exact{2.0, -3.0, 0.5};
     Error error;
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-        const auto& cell = mesh.cells()[c];
-        if (cell.faces.empty()) continue;
+        if (mesh.cells().cell_size(c) == 0) continue;
         const Vec3 got{gradient(c, 0), gradient(c, 1), gradient(c, 2)};
         const Vec3 want = linear ? exact : Vec3{0.0, 0.0, 0.0};
         const double err = (got - want).mag();
