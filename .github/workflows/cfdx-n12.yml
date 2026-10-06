@@ -1,0 +1,93 @@
+name: CFDX N12 numerical coverage
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: cfdx-n12-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  n12:
+    name: N12 MMS numerical coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DPython3_EXECUTABLE="$PWD/.venv/bin/python"
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Run complete N12 MMS set
+        id: n12
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build \
+            -R '^test_(mms_scalar_diffusion|transient_mms|transient_mms_closure|transient_mms_3d_stiff|n12_momentum_mms|n12_pressure_continuity_mms|n12_coupled_pressure_velocity_mms)$' \
+            --output-on-failure \
+            --no-tests=error \
+            --parallel 4 2>&1 | tee n12-ctest.log
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "N12 test outcome: ${{ steps.n12.outcome }}"
+          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
+            tail -n 500 build/Testing/Temporary/LastTest.log
+          fi
+          if [[ -f n12-ctest.log ]]; then
+            grep -E -B3 -A8 'FAILED|Fail|error|Error' n12-ctest.log | tail -n 250 || true
+          fi
+
+      - name: Upload N12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-n12-evidence
+          path: |
+            build/Testing/
+            build/**/*.log
+            n12-ctest.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Final N12 gate
+        if: always()
+        run: |
+          if [[ "${{ steps.n12.outcome }}" != "success" ]]; then
+            echo "N12 numerical coverage: FAIL"
+            exit 1
+          fi
+          echo "N12 numerical coverage: PASS"
