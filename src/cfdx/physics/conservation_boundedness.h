@@ -2,6 +2,7 @@
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/core/numerics/conservation.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -35,50 +36,25 @@ inline TransportConservationReport audit_transport_balance(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>* accumulation = nullptr)
 {
-    const std::size_t nf=mesh.n_faces(), nc=mesh.n_cells();
-    if(face_flux.size()!=nf || face_flux.dimension()!=1 ||
-       source.size()!=nc || source.dimension()!=1)
-        throw std::invalid_argument("audit_transport_balance: field dimensions do not match mesh");
-    if(accumulation && (accumulation->size()!=nc || accumulation->dimension()!=1))
-        throw std::invalid_argument("audit_transport_balance: invalid accumulation field");
+    if (source.size() != mesh.n_cells() || source.dimension() != 1)
+        throw std::invalid_argument(
+            "audit_transport_balance: source field does not match mesh");
+    const auto r = cfdx::core::audit_cell_balance(
+        mesh, face_flux, source, accumulation);
 
-    TransportConservationReport r;
-    const auto& own=mesh.ownership();
-    std::vector<double> cell(nc,0.0);
-    for(std::size_t f=0;f<nf;++f) {
-        const double phi=face_flux(f);
-        if(!std::isfinite(phi)) { ++r.nonfinite_cells; continue; }
-        const std::size_t o=own.owner(f);
-        if(o>=nc) throw std::runtime_error("audit_transport_balance: invalid owner");
-        cell[o]+=phi;
-        const auto n=own.neighbour(f);
-        if(n>=0) {
-            const auto ni=static_cast<std::size_t>(n);
-            if(ni>=nc) throw std::runtime_error("audit_transport_balance: invalid neighbour");
-            cell[ni]-=phi;
-        } else {
-            r.boundary_flux+=phi;
-        }
-    }
-    for(std::size_t c=0;c<nc;++c) {
-        const double s=source(c);
-        if(!std::isfinite(s)) { ++r.nonfinite_sources; continue; }
-        r.source_sum+=s;
-        const double a=accumulation ? (*accumulation)(c) : 0.0;
-        if(!std::isfinite(a)) { ++r.nonfinite_cells; continue; }
-        r.accumulation+=a;
-        const double rc=cell[c]+s-a;
-        r.residual+=rc;
-        if(std::abs(rc)>r.max_cell_residual) {
-            r.max_cell_residual=std::abs(rc);
-            r.worst_cell=c;
-        }
-    }
-    const double scale=std::max({std::abs(r.boundary_flux),
-                                 std::abs(r.source_sum),
-                                 std::abs(r.accumulation),1.0});
-    r.normalized_residual=std::abs(r.residual)/scale;
-    return r;
+    TransportConservationReport out;
+    out.boundary_flux =
+        cfdx::core::audit_face_flux_conservation(mesh, face_flux).global_boundary_flux;
+    out.source_sum = r.source_integral;
+    out.accumulation = r.accumulation;
+    out.residual = r.residual;
+    out.normalized_residual = r.normalized_residual;
+    out.max_cell_residual = r.max_cell_residual;
+    out.worst_cell = r.worst_cell;
+    out.nonfinite_cells =
+        r.nonfinite_balance + r.nonfinite_accumulation;
+    out.nonfinite_sources = r.nonfinite_source;
+    return out;
 }
 
 struct ScalarBoundReport {
@@ -102,36 +78,30 @@ inline ScalarBoundReport audit_scalar_bounds(
     double lower, double upper=std::numeric_limits<double>::infinity(),
     double tolerance=0.0)
 {
-    if(field.dimension()!=1 || field.size()==0)
-        throw std::invalid_argument("audit_scalar_bounds: expected non-empty scalar cell field");
-    if(!std::isfinite(lower) || (std::isfinite(upper)&&lower>upper) ||
-       (std::isinf(upper)&&upper<0.0) || !std::isfinite(tolerance) || tolerance<0.0)
-        throw std::invalid_argument("audit_scalar_bounds: invalid bounds");
-    ScalarBoundReport r{.lower=lower,.upper=upper};
-    const double lo=lower-tolerance, hi=upper+tolerance;
-    for(std::size_t c=0;c<field.size();++c) {
-        const double v=field(c);
-        if(!std::isfinite(v)) { ++r.nonfinite; continue; }
-        r.minimum=std::min(r.minimum,v);
-        r.maximum=std::max(r.maximum,v);
-        const double violation=std::max(lo-v, std::isfinite(hi)?v-hi:0.0);
-        if(v<lo) ++r.below;
-        if(std::isfinite(hi)&&v>hi) ++r.above;
-        if(violation>r.worst_violation) {
-            r.worst_violation=violation;
-            r.worst_cell=c;
-        }
-    }
-    return r;
+    const auto d = cfdx::core::audit_boundedness(
+        field, lower, upper, tolerance);
+    ScalarBoundReport out;
+    out.minimum = d.minimum;
+    out.maximum = d.maximum;
+    out.lower = lower;
+    out.upper = upper;
+    out.nonfinite = d.nonfinite;
+    out.below = d.below_lower;
+    out.above = d.above_upper;
+    out.worst_cell = d.worst_cell;
+    out.worst_violation = d.worst_violation;
+    return out;
 }
+
 
 inline ScalarBoundReport audit_positive_scalar(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& field,
     double floor=0.0)
 {
-    if(!std::isfinite(floor) || floor<0.0)
+    if (!std::isfinite(floor) || floor < 0.0)
         throw std::invalid_argument("audit_positive_scalar: invalid floor");
-    return audit_scalar_bounds(field,floor);
+    return audit_scalar_bounds(field, floor);
 }
+
 
 } // namespace cfdx::physics
