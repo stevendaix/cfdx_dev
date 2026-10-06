@@ -123,9 +123,11 @@ Mesh make_channel(std::size_t n)
 }
 
 double ux(double y) { return std::sin(PI * y); }
-double pressure_x(double x) { return -2.0 * PI * std::sin(2.0 * PI * x); }
-double forcing_x(double x, double y) {
-    return MU * PI * PI * std::sin(PI * y) + pressure_x(x);
+double transport_source_x(double y) {
+    // The reconstructed transport flux contains div(U U - mu grad U).
+    // Pressure is therefore moved to the manufactured forcing as f - grad(p):
+    // for this field the result is simply -mu*laplacian(Ux).
+    return MU * PI * PI * std::sin(PI * y);
 }
 
 struct Metrics {
@@ -173,7 +175,7 @@ Metrics run_case(std::size_t n)
         mesh.n_cells(), "momentum_mms_source", "N/m3", 1);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         const auto& cc = geometry.cell_centres[c];
-        source(c) = forcing_x(cc.x, cc.y);
+        source(c) = transport_source_x(cc.y);
     }
 
     const auto balance = audit_integrated_balance(
