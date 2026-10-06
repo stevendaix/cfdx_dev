@@ -2,6 +2,7 @@ name: N10 Public Fixture Verification
 
 on:
   pull_request:
+    types: [opened, labeled, synchronize, reopened]
   push:
     branches: [master, main, develop]
   workflow_dispatch:
@@ -48,7 +49,7 @@ jobs:
           sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pydantic
+          .venv/bin/python -m pip install "meshio[all]" h5py pydantic PyYAML
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Build production mesh importer qualification target
@@ -60,7 +61,7 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCFDX_ENABLE_GPU=OFF \
             -DPython3_EXECUTABLE=$PWD/.venv/bin/python
-          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case
+          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case test_n10_difficult_mesh_robustness test_gradient_verification test_polyhedral_gradient_campaign test_nonorthogonal_skew_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_laplacian_campaign
 
       - name: Qualify imported fixtures through the production C++ importer
         run: |
@@ -80,6 +81,15 @@ jobs:
           set -euo pipefail
           python3 tests/python/test_n10_fixture_production_solver.py
 
+      - name: Run the complete N10 difficult-mesh qualification campaign
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+        run: |
+          set -euo pipefail
+          .venv/bin/python scripts/n10_qualification.py \
+            --build-dir build \
+            --fixture-manifest tests/fixtures/mesh_sources.yaml \
+            --report build/n10-fixtures/n10_qualification.json
+
       - name: Audit the complete fixture evidence chain
         run: |
           set -euo pipefail
@@ -98,3 +108,4 @@ jobs:
             build/n10-fixtures/n10_production_fixture_qualification.json
             build/n10-fixtures/n10_production_solver_smoke.json
             build/n10-fixtures/n10_fixture_evidence_gate.json
+            build/n10-fixtures/n10_qualification.json
