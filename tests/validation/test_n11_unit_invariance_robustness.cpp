@@ -144,8 +144,8 @@ int main() {
 
     run_case("small_coefficient_perturbation_preserves_a_bounded_physical_residual", [] {
         const auto A = make_perturbed_matrix();
-        const exact = make_exact_solution();
-        const b = rhs_from(A, exact);
+        const auto exact = make_exact_solution();
+        const auto b = rhs_from(A, exact);
 
         // Deliberately perturb several coefficients by O(1e-10). This is a
         // sensitivity probe, not a relaxed accuracy requirement.
