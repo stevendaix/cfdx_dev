@@ -21,6 +21,7 @@ from .properties import PropertyState, properties_for_selection
 from .run_center import RunCenterModel
 from .results import ResultsState, build_results_state
 from ..results_series import ResultSeries, discover_result_series
+from ..project import Project
 
 
 class Application:
@@ -94,6 +95,41 @@ class Application:
         self.results = ResultsState()
         self.dirty = False
         return self._publish_state()
+
+    def open_project(
+        self,
+        path: str | Path,
+        *,
+        with_dat: bool = False,
+        dat_path: str | Path | None = None,
+    ) -> ApplicationState:
+        """Open a canonical CFDX project through the shared case lifecycle."""
+        project = Project(Path(path))
+        if with_dat:
+            session, _ = project.load_with_dat(Path(dat_path) if dat_path is not None else None)
+        else:
+            session = project.load()
+        return self.replace_session(session, project_path=project.path)
+
+    def save_project(self, path: str | Path | None = None) -> ApplicationState:
+        """Save the current setup/mesh state without consuming DAT state."""
+        target = Path(path) if path is not None else self.project_path
+        if target is None:
+            raise ValueError("a .cfdx.h5 project path is required")
+        project = Project(Path(target))
+        project.save(self.session)
+        return self.set_project_path(project.path, dirty=False)
+
+    def save_project_with_dat(
+        self, source_dat: str | Path, path: str | Path | None = None
+    ) -> ApplicationState:
+        """Save setup plus an explicit numerical checkpoint as a paired DAT."""
+        target = Path(path) if path is not None else self.project_path
+        if target is None:
+            raise ValueError("a .cfdx.h5 project path is required")
+        project = Project(Path(target))
+        project.save_with_dat(self.session, Path(source_dat))
+        return self.set_project_path(project.path, dirty=False)
 
     def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
         self.project_path = path
