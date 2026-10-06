@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Audit the verified N10 public-fixture evidence chain.
 
-The gate combines independent byte verification with the production importer
-qualification. It does not claim numerical solver support: that remains a
-separate N10 milestone requiring solver iterations/residual evidence.
+The gate combines independent byte verification, production importer
+qualification and the persisted production-solver smoke evidence for the
+fixture that has an explicit solver-execution contract. It does not claim
+physical validation or qualification.
 """
 
 from __future__ import annotations
@@ -24,11 +25,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--verification", type=Path, required=True)
     parser.add_argument("--qualification", type=Path, required=True)
+    parser.add_argument("--solver-evidence", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
 
     verification = load(args.verification)
     qualification = load(args.qualification)
+    solver_evidence = load(args.solver_evidence)
 
     verification_rows = {
         str(row["id"]): row
@@ -40,6 +43,12 @@ def main() -> int:
         for row in qualification.get("fixtures", [])
         if isinstance(row, dict) and "id" in row
     }
+
+    solver_fixture = str(solver_evidence.get("fixture", ""))
+    solver_status = solver_evidence.get("execution_status")
+    solver_support = solver_evidence.get("numerical_support")
+    solver_physical_validation = solver_evidence.get("physical_validation")
+    solver_restart = solver_evidence.get("restart_artifact")
 
     ids = sorted(set(verification_rows) | set(qualification_rows))
     mismatches: list[str] = []
@@ -75,6 +84,20 @@ def main() -> int:
         ):
             mismatches.append(f"{fixture_id}: invalid positive mesh counts")
 
+        solver_row: dict[str, object] = {
+            "execution_status": "NOT_CLAIMED",
+            "numerical_support": "NOT_CLAIMED",
+            "physical_validation": "NOT_CLAIMED",
+            "restart_artifact": False,
+        }
+        if fixture_id == solver_fixture:
+            solver_row = {
+                "execution_status": solver_status,
+                "numerical_support": solver_support,
+                "physical_validation": solver_physical_validation,
+                "restart_artifact": solver_restart,
+            }
+
         rows.append(
             {
                 "id": fixture_id,
@@ -83,8 +106,24 @@ def main() -> int:
                 "topology_valid": topology is True,
                 "geometry_quality_valid": geometry is True,
                 "counts": counts,
+                "solver_evidence": solver_row,
             }
         )
+
+    if solver_fixture != "meshio-vtk-unstructured":
+        mismatches.append(
+            "solver evidence must target the verified meshio-vtk-unstructured fixture"
+        )
+    if solver_status != "PASS":
+        mismatches.append(f"solver evidence execution_status={solver_status}")
+    if solver_support != "execution_and_convergence_smoke_only":
+        mismatches.append(f"solver evidence numerical_support={solver_support}")
+    if solver_physical_validation != "NOT_CLAIMED":
+        mismatches.append(
+            f"solver evidence physical_validation={solver_physical_validation}"
+        )
+    if solver_restart is not True:
+        mismatches.append(f"solver evidence restart_artifact={solver_restart}")
 
     report = {
         "campaign": "N10 verified public-fixture evidence gate",
@@ -97,7 +136,11 @@ def main() -> int:
             "production_import": "import_mesh dispatcher",
             "topology": "Mesh::topo_validate",
             "geometry": "existing 3D validator or explicit 2D edge-mesh validation",
-            "numerical_solver_support": "NOT_CLAIMED",
+            "numerical_solver_support": (
+                "production execution/convergence smoke evidence for "
+                "meshio-vtk-unstructured only"
+            ),
+            "physical_validation": "NOT_CLAIMED",
         },
         "policy": {
             "changes_numerical_tolerances": False,
