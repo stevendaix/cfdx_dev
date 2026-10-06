@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import math
+import re
 import subprocess
 from pathlib import Path
 
@@ -73,6 +75,49 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     diagnostics = result.stdout + result.stderr
     restart_path = output_dir / "restart.dat"
     assert result.returncode == 0, diagnostics[-12000:]
+
+    trace_pattern = re.compile(
+        r"^INCOMPRESSIBLE_ITER iter=(?P<iteration>\d+)"
+        r" momentum_residual_relative=(?P<momentum>[-+0-9.eE]+)"
+        r" continuity_normalized=(?P<continuity>[-+0-9.eE]+)"
+        r" velocity_change_inf=(?P<velocity>[-+0-9.eE]+)"
+        r" pressure_change_inf=(?P<pressure>[-+0-9.eE]+)"
+        r" alpha_u=(?P<alpha_u>[-+0-9.eE]+)"
+        r" alpha_p=(?P<alpha_p>[-+0-9.eE]+)"
+        r" pressure_linear_iterations=(?P<pressure_iterations>\d+)"
+        r" pressure_relative_residual=(?P<pressure_residual>[-+0-9.eE]+)"
+        r" momentum_linear_iterations=(?P<momentum_iterations>\d+)"
+        r" flux_velocity_mismatch_linf=(?P<flux_mismatch>[-+0-9.eE]+)"
+    )
+    history: list[dict[str, float | int]] = []
+    for line in diagnostics.splitlines():
+        match = trace_pattern.match(line.strip())
+        if not match:
+            continue
+        row: dict[str, float | int] = {
+            "iteration": int(match.group("iteration")),
+            "momentum_residual_relative": float(match.group("momentum")),
+            "continuity_normalized": float(match.group("continuity")),
+            "velocity_change_inf": float(match.group("velocity")),
+            "pressure_change_inf": float(match.group("pressure")),
+            "alpha_u": float(match.group("alpha_u")),
+            "alpha_p": float(match.group("alpha_p")),
+            "pressure_linear_iterations": int(match.group("pressure_iterations")),
+            "pressure_relative_residual": float(match.group("pressure_residual")),
+            "momentum_linear_iterations": int(match.group("momentum_iterations")),
+            "flux_velocity_mismatch_linf": float(match.group("flux_mismatch")),
+        }
+        assert all(
+            math.isfinite(float(value))
+            for key, value in row.items()
+            if key not in {"iteration", "pressure_linear_iterations", "momentum_linear_iterations"}
+        )
+        history.append(row)
+
+    assert history, diagnostics[-12000:]
+    assert [int(row["iteration"]) for row in history] == sorted(
+        int(row["iteration"]) for row in history
+    )
     assert "Resolved numerical selections:" in diagnostics
     assert "Converged YES" in diagnostics
     assert restart_path.is_file()
@@ -87,6 +132,26 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         "physical_validation": "NOT_CLAIMED",
         "restart_artifact": True,
         "iteration_budget": 20,
+        "quantitative_solver_evidence": {
+            "trace_count": len(history),
+            "iterations": history,
+            "final_iteration": int(history[-1]["iteration"]),
+            "max_momentum_residual_relative": max(
+                float(row["momentum_residual_relative"]) for row in history
+            ),
+            "max_continuity_normalized": max(
+                float(row["continuity_normalized"]) for row in history
+            ),
+            "final_momentum_residual_relative": float(
+                history[-1]["momentum_residual_relative"]
+            ),
+            "final_continuity_normalized": float(history[-1]["continuity_normalized"]),
+            "final_velocity_change_inf": float(history[-1]["velocity_change_inf"]),
+            "final_pressure_change_inf": float(history[-1]["pressure_change_inf"]),
+            "final_flux_velocity_mismatch_linf": float(
+                history[-1]["flux_velocity_mismatch_linf"]
+            ),
+        },
         "case_builder_output_tail": build_diagnostics[-4000:],
         "solver_output_tail": diagnostics[-4000:],
     }
