@@ -137,6 +137,40 @@ int main()
     });
 
 
+    run_case("generic_cell_balance_is_reusable_for_any_conserved_quantity", [] {
+        const std::vector<double> face_balance{2.0, -1.0, -1.0};
+        const std::vector<double> source_integral{-2.0, 0.5, 0.5};
+        const std::vector<double> accumulation{0.0, -0.5, 0.5};
+        const auto r = audit_cell_balance(
+            face_balance, source_integral, &accumulation);
+        EXPECT_TRUE(r.finite());
+        EXPECT_TRUE(r.closed(1e-15));
+        EXPECT_NEAR(r.residual, 0.0, 1e-15);
+        EXPECT_NEAR(r.l1_cell_residual, 0.0, 1e-15);
+    });
+
+    run_case("generic_cell_balance_detects_nonfinite_component", [] {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const std::vector<double> face_balance{1.0, nan};
+        const std::vector<double> source_integral{-1.0, 0.0};
+        const auto r = audit_cell_balance(face_balance, source_integral);
+        EXPECT_TRUE(!r.finite());
+        EXPECT_TRUE(r.nonfinite_balance == 1);
+    });
+
+    run_case("generic_mesh_balance_reuses_independent_face_reconstruction", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::FACE> flux(m.n_faces(),"flux","kg/s",1);
+        Field<double,Location::CELL> source(m.n_cells(),"source","kg/s",1);
+        flux.fill(0.0);
+        source.fill(0.0);
+        flux(0) = 2.0;
+        source(0) = -2.0;
+        const auto r = audit_cell_balance(m, flux, source);
+        EXPECT_TRUE(r.closed(1e-15));
+        EXPECT_NEAR(r.normalized_residual, 0.0, 1e-15);
+    });
+
     run_case("integrated_balance_is_independent_of_linear_residual", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::FACE> flux(m.n_faces(),"flux","u",1);
