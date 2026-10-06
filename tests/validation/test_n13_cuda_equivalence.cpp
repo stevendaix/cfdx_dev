@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <limits>
-#include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -66,7 +66,8 @@ int main()
         const std::vector<double> sx{1.0, 0.7, -1.2, -0.4, 0.3, -0.8};
         const std::vector<double> sy{0.2, -0.6, 0.9, -0.3, 0.5, -0.7};
         const std::vector<double> sz{-0.4, 0.8, 0.1, 0.6, -0.9, 0.2};
-        const std::vector<std::uint32_t> owner{0, 0, 1, 1, 2, 3};
+        const std::vector<std::uint32_t> owner_u32{0, 0, 1, 1, 2, 3};
+        const std::vector<std::size_t> owner{0, 0, 1, 1, 2, 3};
         const std::vector<std::int64_t> neighbour{1, -1, 2, -1, 3, -1};
         const std::vector<double> volume{1.0, 1.3, 0.8, 1.7};
 
@@ -80,7 +81,7 @@ int main()
         std::vector<double> cuda_x, cuda_y, cuda_z;
         GpuExecutionMetrics metrics;
         execute_gradient_cuda_with_metrics(
-            phi, sx, sy, sz, owner, neighbour, volume,
+            phi, sx, sy, sz, owner_u32, neighbour, volume,
             cuda_x, cuda_y, cuda_z, 0, &metrics);
 
         const auto mx = compare_field(cpu_x, cuda_x);
