@@ -1852,10 +1852,78 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " gauge_column_eliminated=1"
                           << "\n";
 
+                // Compare the exact same reduced operator/RHS with ILU0.
+                // This is diagnostics-only: production remains GMRES+NativeAMG.
+                const auto* sro = pressure_solver_operator.row_offsets_data();
+                const auto* sco = pressure_solver_operator.columns_data();
+                const auto* sva = pressure_solver_operator.values_data();
+                double solver_diag_min = std::numeric_limits<double>::infinity();
+                double solver_diag_max = -std::numeric_limits<double>::infinity();
+                std::size_t solver_negative_diag = 0;
+                std::size_t solver_zero_diag = 0;
+                std::size_t solver_missing_diag = 0;
+                double solver_row_sum_min = std::numeric_limits<double>::infinity();
+                double solver_row_sum_max = -std::numeric_limits<double>::infinity();
+                double solver_abs_row_sum_min = std::numeric_limits<double>::infinity();
+                double solver_abs_row_sum_max = 0.0;
+                std::map<std::pair<std::size_t, std::size_t>, double> solver_entries;
+                double solver_abs_max = 0.0;
+                for (std::size_t r = 0; r < pressure_solver_operator.n_rows(); ++r) {
+                    double row_sum = 0.0;
+                    double abs_row_sum = 0.0;
+                    bool has_diag = false;
+                    for (std::size_t k = sro[r]; k < sro[r + 1]; ++k) {
+                        const std::size_t col = sco[k];
+                        const double v = sva[k];
+                        solver_entries[{r, col}] = v;
+                        if (!std::isfinite(v)) continue;
+                        solver_abs_max = std::max(solver_abs_max, std::abs(v));
+                        row_sum += v;
+                        abs_row_sum += std::abs(v);
+                        if (col == r) {
+                            has_diag = true;
+                            solver_diag_min = std::min(solver_diag_min, v);
+                            solver_diag_max = std::max(solver_diag_max, v);
+                            if (v < 0.0) ++solver_negative_diag;
+                            if (v == 0.0) ++solver_zero_diag;
+                        }
+                    }
+                    solver_row_sum_min = std::min(solver_row_sum_min, row_sum);
+                    solver_row_sum_max = std::max(solver_row_sum_max, row_sum);
+                    solver_abs_row_sum_min = std::min(solver_abs_row_sum_min, abs_row_sum);
+                    solver_abs_row_sum_max = std::max(solver_abs_row_sum_max, abs_row_sum);
+                    if (!has_diag) ++solver_missing_diag;
+                }
+                double solver_symmetry_abs_max = 0.0;
+                for (const auto& [ij, value] : solver_entries) {
+                    const auto it = solver_entries.find({ij.second, ij.first});
+                    const double transpose = it == solver_entries.end() ? 0.0 : it->second;
+                    solver_symmetry_abs_max =
+                        std::max(solver_symmetry_abs_max, std::abs(value - transpose));
+                }
+                const double solver_symmetry_relative =
+                    solver_abs_max > 0.0 ? solver_symmetry_abs_max / solver_abs_max : 0.0;
+                std::cerr << "N8_LSC_BFBT_REDUCED_OPERATOR"
+                          << " call=" << call_id
+                          << " rows=" << pressure_solver_operator.n_rows()
+                          << " nnz=" << pressure_solver_operator.nnz()
+                          << " diag_min=" << solver_diag_min
+                          << " diag_max=" << solver_diag_max
+                          << " negative_diag=" << solver_negative_diag
+                          << " zero_diag=" << solver_zero_diag
+                          << " missing_diag=" << solver_missing_diag
+                          << " row_sum_min=" << solver_row_sum_min
+                          << " row_sum_max=" << solver_row_sum_max
+                          << " abs_row_sum_min=" << solver_abs_row_sum_min
+                          << " abs_row_sum_max=" << solver_abs_row_sum_max
+                          << " symmetry_abs_max=" << solver_symmetry_abs_max
+                          << " symmetry_relative=" << solver_symmetry_relative
+                          << "\n";
+
                 auto diagnostic_ilu =
                     make_scalar_preconditioner(PreconditionerModel::ILU0);
                 const bool ilu_setup =
-                    diagnostic_ilu && diagnostic_ilu->setup(pressure_operator);
+                    diagnostic_ilu && diagnostic_ilu->setup(pressure_solver_operator);
                 std::cerr << "N8_LSC_BFBT_ILU0_SETUP"
                           << " call=" << call_id
                           << " ok=" << (ilu_setup ? 1 : 0)
@@ -1863,8 +1931,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << (diagnostic_ilu ? diagnostic_ilu->name() : "null")
                           << "\n";
                 if (ilu_setup) {
-                    Vector z(rhs.size(), 0.0);
-                    const bool ilu_apply = diagnostic_ilu->apply(rhs, z);
+                    Vector z(reduced_rhs.size(), 0.0);
+                    const bool ilu_apply = diagnostic_ilu->apply(reduced_rhs, z);
                     double z_l2_sq = 0.0;
                     double z_linf = 0.0;
                     std::size_t z_nonfinite = 0;
@@ -1882,6 +1950,29 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                               << " z_l2=" << std::sqrt(z_l2_sq)
                               << " z_linf=" << z_linf
                               << " z_nonfinite=" << z_nonfinite
+                              << "\n";
+
+                    LinearSolverRequest ilu_request{
+                        KrylovModel::GMRES,
+                        PreconditionerModel::ILU0,
+                        nested_request.gmres_restart,
+                        false,
+                        NullSpaceModel::None};
+                    Vector ilu_x(reduced_rhs.size(), 0.0);
+                    const auto ilu_selected = solve_linear_system(
+                        pressure_solver_operator, reduced_rhs, ilu_x,
+                        LinearProblemKind::PressurePoisson,
+                        ilu_request, max_iterations, tolerance);
+                    const auto& ilu_result = ilu_selected.result;
+                    std::cerr << "N8_LSC_BFBT_ILU0_SOLVE"
+                              << " call=" << call_id
+                              << " krylov=" << to_string(ilu_selected.plan.krylov)
+                              << " preconditioner=" << to_string(ilu_selected.plan.preconditioner)
+                              << " iterations=" << ilu_result.iterations
+                              << " status=" << static_cast<int>(ilu_result.status)
+                              << " residual=" << ilu_result.residual
+                              << " relative=" << ilu_result.residual_relative
+                              << " physical_relative=" << ilu_selected.physical_residual_relative
                               << "\n";
                 }
             }
@@ -1931,6 +2022,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         residual_linf = std::max(residual_linf, std::abs(ri));
                     }
                 }
+                const auto reduced_ax = pressure_solver_operator.matvec(reduced_x);
+                double reduction_identity_abs_max = 0.0;
+                for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
+                    if (row == reference_cell) continue;
+                    const std::size_t reduced_row =
+                        row < reference_cell ? row : row - 1;
+                    const double full_residual = ax[row] - rhs(row);
+                    const double reduced_residual =
+                        reduced_ax[reduced_row] - reduced_rhs(reduced_row);
+                    reduction_identity_abs_max = std::max(
+                        reduction_identity_abs_max,
+                        std::abs(reduced_residual + full_residual));
+                }
                 std::cerr << "N8_LSC_BFBT_PRESSURE_SOLVE"
                           << " call=" << call_id
                           << " stage=" << pressure_solve_stage
@@ -1954,6 +2058,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " x_linf=" << x_linf
                           << " x_nonfinite=" << x_nonfinite
                           << " Ax_nonfinite=" << ax_nonfinite
+                          << " reduction_identity_abs_max=" << reduction_identity_abs_max
                           << "\n";
             }
             return result.status == SolverStatus::CONVERGED;
