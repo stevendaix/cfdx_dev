@@ -1741,8 +1741,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 double p1_linf = 0.0;
                 for (std::size_t i = 0; i < p1.size(); ++i) {
                     if (!std::isfinite(p1[i])) continue;
-                    p1_l2_sq += p1(i) * p1(i);
-                    p1_linf = std::max(p1_linf, std::abs(p1(i)));
+                    p1_l2_sq += p1[i] * p1[i];
+                    p1_linf = std::max(p1_linf, std::abs(p1[i]));
                 }
 
                 double gauge_abs_sum = 0.0;
@@ -1846,7 +1846,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         ++ax_nonfinite;
                         continue;
                     }
-                    const double ri = ax(i) - rhs(i);
+                    const double ri = ax[i] - rhs(i);
                     if (std::isfinite(ri)) {
                         residual_l2_sq += ri * ri;
                         residual_linf = std::max(residual_linf, std::abs(ri));
