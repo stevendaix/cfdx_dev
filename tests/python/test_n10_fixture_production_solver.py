@@ -30,7 +30,7 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     fixture_root = Path(fixture_root_value)
     solver = Path(solver_value)
     case_builder = Path(case_builder_value)
-    source = fixture_root / "meshio-vtk-unstructured" / "06_unstructured.vtk"
+    source = fixture_root / "meshio-vtk-unstructured"
 
     assert source.is_file()
     assert solver.is_file()
