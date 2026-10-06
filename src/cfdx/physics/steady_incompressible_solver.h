@@ -1920,6 +1920,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         ++ax_nonfinite;
                         continue;
                     }
+                    // The reference row is an artificial gauge equation. The
+                    // Schur inverse is defined in the correction space p_ref=0,
+                    // so the reference RHS is intentionally projected out.
+                    if (i == reference_cell)
+                        continue;
                     const double ri = ax[i] - rhs(i);
                     if (std::isfinite(ri)) {
                         residual_l2_sq += ri * ri;
@@ -1940,8 +1945,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " solver_residual=" << result.residual
                           << " solver_relative=" << result.residual_relative
                           << " physical_relative=" << selected.physical_residual_relative
-                          << " true_residual_l2=" << std::sqrt(residual_l2_sq)
-                          << " true_residual_linf=" << residual_linf
+                          << " true_residual_l2_non_gauge=" << std::sqrt(residual_l2_sq)
+                          << " true_residual_linf_non_gauge=" << residual_linf
+                          << " gauge_rhs_ignored="
+                          << (reference_cell < rhs.size() ? rhs(reference_cell) : 0.0)
+                          << " x_ref=" << x(reference_cell)
                           << " x_l2=" << std::sqrt(x_l2_sq)
                           << " x_linf=" << x_linf
                           << " x_nonfinite=" << x_nonfinite
