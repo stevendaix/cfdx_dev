@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -56,6 +57,19 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
 
     checkpoint = first_dir / "restart.dat"
     assert checkpoint.is_file()
+    convergence = first_dir / "convergence.json"
+    execution = first_dir / "execution.json"
+    assert convergence.is_file()
+    assert execution.is_file()
+    convergence_document = json.loads(convergence.read_text(encoding="utf-8"))
+    execution_document = json.loads(execution.read_text(encoding="utf-8"))
+    assert convergence_document["format"] == "CFDX-CONVERGENCE"
+    assert convergence_document["converged"] is True
+    assert execution_document["format"] == "CFDX-EXECUTION"
+    assert execution_document["process_exit_code"] == 0
+    assert execution_document["converged"] is True
+    assert execution_document["artifacts"]["restart_dat"] is True
+    assert execution_document["artifacts"]["convergence_json"] is True
 
     restart = read_dat_restart(checkpoint)
     assert restart.cells > 0
