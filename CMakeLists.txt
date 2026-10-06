@@ -423,6 +423,20 @@ if(CFDX_BUILD_TESTS)
             RUN_SERIAL TRUE)
     endif()
 
+    # N11 conservation/boundedness qualification reuses the existing
+    # executable evidence and writes a machine-readable campaign report.
+    # It is intentionally separate from the individual tests so their
+    # independent evidence remains visible in CI.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n11_conservation_boundedness
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/n11_conservation_boundedness.py
+                         --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n11_conservation_boundedness PROPERTIES
+            LABELS "n11;qualification;validation;long"
+            RUN_SERIAL TRUE)
+    endif()
+
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
