@@ -71,3 +71,26 @@ The machine-readable campaign runner is scripts/run_n13_equivalence.py.
 N13 requires executable evidence for all six requested axes, no silent CPU fallback,
 no tolerance relaxation used to hide a defect, and explicit BLOCKED status whenever
 required hardware is unavailable.
+
+
+## Evidence runner hardening
+
+The campaign runner is an evidence gate, not only a collection of process exit codes.
+
+It now records:
+
+- exact Git commit SHA;
+- CMake build type and C++ compiler identity/version;
+- MPI implementation/version;
+- CUDA device, driver and toolkit when available;
+- GitHub runner provenance when executed in Actions;
+- captured test diagnostics and extracted equivalence metrics;
+- explicit PASS, FAIL or BLOCKED state for every required test;
+- explicit production 2-rank -> 3-rank MPI/HDF5 restart campaign when parallel HDF5 is present.
+
+Unavailable infrastructure remains BLOCKED and is never converted into PASS. CPU-only CI may therefore produce
+`PASS_WITH_BLOCKED_AXES`; hardware qualification runs must use `--require-cuda` and, when applicable,
+`--require-parallel-hdf5`.
+
+The CUDA campaign is exposed through the manually dispatched workflow
+`.github/workflows/n13-cuda-equivalence.yml`. It requires a GitHub GPU runner and never falls back to CPU.
