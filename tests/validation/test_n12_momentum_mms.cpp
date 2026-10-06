@@ -252,10 +252,15 @@ int main()
         const double p_l1_32_64 = observed_order(m32.normalized_l1, m64.normalized_l1);
         const double p_linf_16_32 = observed_order(m16.linf, m32.linf);
         const double p_linf_32_64 = observed_order(m32.linf, m64.linf);
+        const double p_global_16_32 =
+            observed_order(m16.global_residual, m32.global_residual);
+        const double p_global_32_64 =
+            observed_order(m32.global_residual, m64.global_residual);
 
         std::cout << "N12_MOMENTUM_MMS_ORDER L1="
                   << p_l1_16_32 << " " << p_l1_32_64
-                  << " Linf=" << p_linf_16_32 << " " << p_linf_32_64 << "\n";
+                  << " Linf=" << p_linf_16_32 << " " << p_linf_32_64
+                  << " global=" << p_global_16_32 << " " << p_global_32_64 << "\n";
 
         // The second-order reconstruction and central diffusion should give a
         // second-order asymptotic balance on this orthogonal manufactured field.
@@ -263,6 +268,8 @@ int main()
                 "N12 momentum MMS L1 observed order below the verification floor");
         require(p_linf_32_64 > 1.5,
                 "N12 momentum MMS Linf observed order below the verification floor");
+        require(p_global_32_64 > 0.8,
+                "N12 momentum MMS global balance residual is not decreasing at first order");
         require(p_global_32_64 > 0.8,
                 "N12 momentum MMS global balance residual is not decreasing at first order");
 
