@@ -49,7 +49,8 @@ from .renderer import Renderer, RenderObject, NullRenderer
 from .execution import ExecutionController, ExecutionError
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
 from .project import Project
-from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnostic, typed_parameter\nfrom .setup_schema import SetupField, SetupDomain, SetupSchema, build_setup_schema, setup_fields_for_selection
+from .setup_model import MeshSelection, Parameter, ParameterType, SetupDiagnostic, typed_parameter
+from .setup_schema import SetupField, SetupDomain, SetupSchema, build_setup_schema, setup_fields_for_selection
 from .validation import ValidationReport, validate_case
 from .mesh_model import MeshCatalog, MeshPatch, read_mesh_catalog
 from .physics_setup import PhysicsSpec, FieldSpec, physics_spec, default_parameters
