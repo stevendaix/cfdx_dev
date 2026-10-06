@@ -127,7 +127,7 @@ double transport_source_x(double y) {
     // The reconstructed transport flux contains div(U U - mu grad U).
     // Pressure is therefore moved to the manufactured forcing as f - grad(p):
     // for this field the result is simply -mu*laplacian(Ux).
-    return -2.0 * MU * PI * PI * std::cos(2.0 * PI * y);
+    return 2.0 * MU * PI * PI * std::cos(2.0 * PI * y);
 }
 
 struct Metrics {
