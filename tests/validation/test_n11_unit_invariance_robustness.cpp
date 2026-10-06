@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <cstddef>
-#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -40,13 +39,29 @@ static Vector rhs_from(const SparseMatrix& A, const Vector& x) {
     return b;
 }
 
+static SparseMatrix make_perturbed_matrix() {
+    SparseMatrix A(4, 4);
+    A.push_back(0, 0, 4.0 + 4.0e-10);
+    A.push_back(0, 1, -1.0);
+    A.push_back(1, 0, -2.0);
+    A.push_back(1, 1, 5.0);
+    A.push_back(1, 2, -1.0 - 2.0e-10);
+    A.push_back(2, 1, -3.0);
+    A.push_back(2, 2, 7.0);
+    A.push_back(2, 3, -2.0);
+    A.push_back(3, 2, -1.0);
+    A.push_back(3, 3, 3.0 + 3.0e-10);
+    A.finalize();
+    return A;
+}
+
 static SparseMatrix change_units(
     const SparseMatrix& A,
     const double row_scale,
     const double column_scale) {
     SparseMatrix transformed(A.n_rows(), A.n_cols());
     for (std::size_t i = 0; i < A.n_rows(); ++i) {
-        for (std::size_t k = A.row_ptr()[i]; k < A.row_ptr()[i + 1]; ++k) {
+        for (std::size_t k = A.row_offsets_data()[i]; k < A.row_offsets_data()[i + 1]; ++k) {
             const auto j = A.columns_data()[k];
             transformed.push_back(i, j, row_scale * A.values_data()[k] * column_scale);
         }
@@ -128,7 +143,7 @@ int main() {
     });
 
     run_case("small_coefficient_perturbation_preserves_a_bounded_physical_residual", [] {
-        const A = make_perturbed_matrix();
+        const auto A = make_perturbed_matrix();
         const exact = make_exact_solution();
         const b = rhs_from(A, exact);
 
