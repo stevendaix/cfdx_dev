@@ -148,6 +148,32 @@ int main() {
         // (single-row diagonal-positive case is accepted; rejection covered by invalid blocks)
     });
 
+    run_case("simplerc_uses_signed_fv_neighbour_sum", [&] {
+        // A_PN = -a_PN is the FV convention. A mixed-sign row is useful here:
+        // the SIMPLEC denominator must be diag + sum(A_PN), not diag - sum(|A_PN|).
+        const auto mixed_auu = make_sparse(3, 3, {
+            {0, 0, 4.0}, {0, 1, -1.0}, {0, 2, 0.5},
+            {1, 1, 3.0}, {2, 2, 3.0}
+        });
+        const auto mixed_g = make_sparse(3, 1, {
+            {0, 0, 1.0}, {1, 0, 0.0}, {2, 0, 0.0}
+        });
+        const auto mixed_d = make_sparse(1, 3, {
+            {0, 0, 1.0}, {0, 1, 0.0}, {0, 2, 0.0}
+        });
+        const auto mixed_c = make_sparse(1, 1, {{0, 0, 0.0}});
+        const BlockOperator mixed(mixed_auu, mixed_g, mixed_d, mixed_c);
+        SimplerSchurApproximation simplec(SimplerSchurMode::SIMPLEC);
+        EXPECT_TRUE(simplec.setup(mixed));
+
+        Vector rhs(1, 0.0);
+        rhs(0) = 2.0;
+        Vector out(1, 0.0);
+        EXPECT_TRUE(simplec.apply(rhs, out));
+        // denominator = 4 - 1 + 0.5 = 3.5, hence S~ rhs = -2/3.5.
+        EXPECT_NEAR(out(0), -2.0 / 3.5, 1e-12);
+    });
+
     run_case("simplerc_apply_matches_dense_approximation", [&] {
         SimplerSchurApproximation simple(SimplerSchurMode::SIMPLE);
         SimplerSchurApproximation simplec(SimplerSchurMode::SIMPLEC);
