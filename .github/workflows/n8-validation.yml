@@ -89,7 +89,13 @@ jobs:
           test -s "$log"
 
           for model in SIMPLE SIMPLEC LSC BFBT; do
-            grep -E "MODEL_PLAN algorithm=COUPLED/${model}-Schur/upwind/bounded .*schur_requested=${model} schur_resolved=${model}" "$log"
+            case "$model" in
+              SIMPLE)  resolved=simple ;;
+              SIMPLEC) resolved=simplec ;;
+              LSC)     resolved=lsc ;;
+              BFBT)    resolved=bfbt ;;
+            esac
+            grep -E "MODEL_PLAN algorithm=COUPLED/${model}-Schur/upwind/bounded .*schur_requested=${resolved} schur_resolved=${resolved}" "$log"
             grep -E "MODEL_RESULT COUPLED/${model}-Schur/upwind/bounded .*solver_converged=true .*gates_failed=0" "$log"
           done
 
