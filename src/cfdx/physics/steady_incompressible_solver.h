@@ -1506,7 +1506,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // small/medium coupled systems so a restart boundary cannot manufacture
     // an artificial MAX_ITER failure.
     if (controls.diagnostics.verbose) {
-        std::cerr << "SOLVER_VERBOSE_BEGIN algorithm=COUPLED
+        std::cerr << "SOLVER_VERBOSE_BEGIN algorithm=COUPLED"
                   << " schur_model=" << to_string(schur_model)
                   << " matrix_rows=" << A.n_rows()
                   << " matrix_nnz=" << A.nnz()
