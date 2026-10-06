@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cfdx-n12-mms-\${{ github.event.pull_request.number || github.ref }}
+  group: cfdx-n12-mms-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -60,16 +60,16 @@ jobs:
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-n12-build-\${{ github.sha }}
+          name: cfdx-n12-build-${{ github.sha }}
           path: n12-build.tar.gz
           compression-level: 0
           retention-days: 3
       - name: Final prepare gate
         if: always()
         run: |
-          echo "configure=\${{ steps.configure.outcome }}"
-          echo "build=\${{ steps.build.outcome }}"
-          [[ "\${{ steps.configure.outcome }}" == "success" && "\${{ steps.build.outcome }}" == "success" ]]
+          echo "configure=${{ steps.configure.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          [[ "${{ steps.configure.outcome }}" == "success" && "${{ steps.build.outcome }}" == "success" ]]
 
   n12-mms:
     name: N12 MMS laboratory
@@ -82,7 +82,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
       - uses: actions/download-artifact@v4
         with:
-          name: cfdx-n12-build-\${{ github.sha }}
+          name: cfdx-n12-build-${{ github.sha }}
           path: .
       - name: Restore build
         run: tar -xzf n12-build.tar.gz
@@ -105,15 +105,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-n12-mms-evidence-\${{ github.sha }}
+          name: cfdx-n12-mms-evidence-${{ github.sha }}
           path: |
-            \${{ env.BUILD_DIR }}/n12-mms/
-            \${{ env.BUILD_DIR }}/Testing/
+            ${{ env.BUILD_DIR }}/n12-mms/
+            ${{ env.BUILD_DIR }}/Testing/
           if-no-files-found: warn
           retention-days: 30
       - name: Final N12 gate
         if: always()
-        run: '[[ "\${{ steps.n12.outcome }}" == "success" ]] || exit 1'
+        run: '[[ "${{ steps.n12.outcome }}" == "success" ]] || exit 1'
 
   final-gate:
     name: N12 validation gate
@@ -123,6 +123,6 @@ jobs:
     steps:
       - name: Evaluate N12 partitions
         run: |
-          echo "prepare=\${{ needs.prepare.result }}"
-          echo "n12-mms=\${{ needs['n12-mms'].result }}"
-          [[ "\${{ needs.prepare.result }}" == "success" && "\${{ needs.n12-mms.result }}" == "success" ]]
+          echo "prepare=${{ needs.prepare.result }}"
+          echo "n12-mms=${{ needs['n12-mms'].result }}"
+          [[ "${{ needs.prepare.result }}" == "success" && "${{ needs['n12-mms'].result }}" == "success" ]]
