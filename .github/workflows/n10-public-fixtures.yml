@@ -84,9 +84,9 @@ jobs:
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
         run: |
           set -euo pipefail
-          python3 scripts/n10_qualification.py \\
-            --build-dir build \\
-            --fixture-manifest tests/fixtures/mesh_sources.yaml \\
+          python3 scripts/n10_qualification.py \
+            --build-dir build \
+            --fixture-manifest tests/fixtures/mesh_sources.yaml \
             --report build/n10-fixtures/n10_qualification.json
 
       - name: Audit the complete fixture evidence chain
