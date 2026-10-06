@@ -1666,7 +1666,43 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         pressure_operator.finalize();
 
-        auto solve_pressure = [pressure_operator, max_iterations, tolerance, schur_model,
+        // NativeAMG is a positive-diagonal AMG method. The algebraic LSC/BFBT
+        // operator P = D Q^{-1} G has the opposite sign for the physical
+        // pressure operator (and may be mildly nonsymmetric because D is not
+        // assumed to be -G^T). Do not feed the pinned full matrix to AMG:
+        // the artificial gauge row creates a mixed-sign row/column pattern and
+        // invalidates the smoother assumptions. Eliminate the reference
+        // pressure unknown exactly, then solve the sign-normalized reduced
+        // operator -P_red z = -rhs_red and scatter z back with x_ref = 0.
+        //
+        // This is an algebraic gauge transformation only; it does not alter
+        // the LSC/BFBT approximation or any outer convergence criterion.
+        SparseMatrix pressure_solver_operator(nc > 0 ? nc - 1 : 0,
+                                              nc > 0 ? nc - 1 : 0);
+        if (nc > 1) {
+            for (std::size_t row = 0; row < nc; ++row) {
+                if (row == reference_cell) continue;
+                const std::size_t reduced_row =
+                    row < reference_cell ? row : row - 1;
+                std::map<std::size_t, double> entries;
+                for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                     k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                    const std::size_t col = pressure_operator.columns_data()[k];
+                    if (col == reference_cell) continue;
+                    const std::size_t reduced_col =
+                        col < reference_cell ? col : col - 1;
+                    entries[reduced_col] -= pressure_operator.values_data()[k];
+                }
+                for (const auto& [col, value] : entries) {
+                    if (std::isfinite(value) && value != 0.0)
+                        pressure_solver_operator.push_back(reduced_row, col, value);
+                }
+            }
+        }
+        pressure_solver_operator.finalize();
+
+        auto solve_pressure = [pressure_operator, pressure_solver_operator,
+                               max_iterations, tolerance, schur_model,
                                verbose = controls.diagnostics.verbose, reference_cell](
             const Vector& rhs, Vector& x) mutable {
             static std::size_t diagnostic_call_counter = 0;
@@ -1675,14 +1711,22 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 call_id % 2 == 1 ? "P_inverse_rhs" : "P_inverse_Ey";
 
             LinearOperator op{
-                pressure_operator.n_rows(),
-                [&pressure_operator](const Vector& input, Vector& output) {
-                    const auto values = pressure_operator.matvec(input);
+                pressure_solver_operator.n_rows(),
+                [&pressure_solver_operator](const Vector& input, Vector& output) {
+                    const auto values = pressure_solver_operator.matvec(input);
                     if (output.size() != values.size())
                         output.resize(values.size());
                     for (std::size_t i = 0; i < values.size(); ++i)
                         output(i) = values[i];
                 }};
+
+            Vector reduced_rhs(pressure_solver_operator.n_rows(), 0.0);
+            for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
+                if (row == reference_cell) continue;
+                const std::size_t reduced_row =
+                    row < reference_cell ? row : row - 1;
+                reduced_rhs(reduced_row) = -rhs(row);
+            }
 
             LinearSolverRequest nested_request{
                 KrylovModel::GMRES,
@@ -1789,6 +1833,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " nonfinite=" << nonfinite
                           << " diagonal_missing=" << diagonal_missing
                           << " diagonal_zero=" << diagonal_zero
+                          << " solver_operator_rows=" << pressure_solver_operator.n_rows()
+                          << " solver_operator_nnz=" << pressure_solver_operator.nnz()
+                          << " solver_operator_sign_normalized=1"
                           << " rhs_l2=" << std::sqrt(rhs_l2_sq)
                           << " rhs_linf=" << rhs_linf
                           << " rhs_nonfinite=" << rhs_nonfinite
@@ -1839,11 +1886,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 }
             }
 
+            Vector reduced_x(pressure_solver_operator.n_rows(), 0.0);
             const auto selected = solve_linear_system(
-                pressure_operator, rhs, x,
+                pressure_solver_operator, reduced_rhs, reduced_x,
                 LinearProblemKind::PressurePoisson,
                 nested_request, max_iterations, tolerance);
             const auto result = selected.result;
+
+            x.resize(pressure_operator.n_rows());
+            for (std::size_t i = 0; i < x.size(); ++i) x(i) = 0.0;
+            for (std::size_t row = 0; row < pressure_operator.n_rows(); ++row) {
+                if (row == reference_cell) continue;
+                const std::size_t reduced_row =
+                    row < reference_cell ? row : row - 1;
+                x(row) = reduced_x(reduced_row);
+            }
 
             if (verbose) {
                 const auto ax = pressure_operator.matvec(x);
