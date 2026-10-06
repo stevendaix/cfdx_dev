@@ -112,7 +112,7 @@ struct Metrics {
     std::size_t iterations = 0;
 };
 
-Metrics run_case(std::size_t n)
+Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
 {
     const Mesh mesh = make_channel(n);
     Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
@@ -138,6 +138,8 @@ Metrics run_case(std::size_t n)
     c.coupling.schur_model = CoupledSchurModel::BlockLocal;
     c.coupling.coupled_max_iterations = 500;
     c.coupling.coupled_linear_tolerance = 1e-12;
+    c.coupling.alpha_u = alpha_u;
+    c.coupling.alpha_p = alpha_p;
     c.convergence.max_iterations = 20;
     c.convergence.relative_tolerance = 1e-10;
     c.convergence.continuity_tolerance = 1e-12;
@@ -183,7 +185,25 @@ Metrics run_case(std::size_t n)
               << " momentum_rel=" << out.momentum_rel
               << " mass_normalized=" << out.mass_balance
               << " iterations=" << out.iterations
+              << " alpha_u=" << alpha_u
+              << " alpha_p=" << alpha_p
               << " schur=block_local\n";
+
+    for (std::size_t i = 0; i < result.history.size(); ++i) {
+        const auto& hi = result.history[i];
+        std::cout << std::setprecision(12)
+                  << "N12_COUPLED_TRACE n=" << n
+                  << " iter=" << (i + 1)
+                  << " continuity=" << hi.corrected_flux_continuity_linf
+                  << " momentum_rel=" << hi.momentum_equation_residual_relative
+                  << " mass=" << hi.mass_normalized_imbalance
+                  << " du=" << hi.velocity_change_inf
+                  << " dp=" << hi.pressure_change_inf
+                  << " eff_alpha_u=" << hi.effective_alpha_u
+                  << " eff_alpha_p=" << hi.effective_alpha_p
+                  << " nonlinear=" << hi.nonlinear_convergence_metric
+                  << "\n";
+    }
 
     if (!std::isfinite(out.u_linf) || !std::isfinite(out.p_linf) ||
         !std::isfinite(out.continuity_linf) || !std::isfinite(out.momentum_rel) ||
@@ -199,6 +219,12 @@ int main()
 {
     try {
         const auto m16 = run_case(16);
+        try {
+            (void)run_case(16, 1.0, 1.0);
+            std::cout << "N12_COUPLED_AB alpha=1 probe completed\n";
+        } catch (const std::exception& e) {
+            std::cout << "N12_COUPLED_AB alpha=1 probe failed: " << e.what() << "\n";
+        }
         const auto m32 = run_case(32);
         const auto m64 = run_case(64);
 
