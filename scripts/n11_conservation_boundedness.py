@@ -246,7 +246,7 @@ def main() -> int:
         "GHIA": 4,
         "POISEUILLE_RESULT": 4,
         "N11_ENERGY_RESULT": 1,
-        "N11_MPI_RESULT": 1,
+        "N11_MPI_RESULT": 1 if "test_n13_mpi_equivalence" in required_tests else 0,
     }
     quantitative_coverage = {
         key: {
