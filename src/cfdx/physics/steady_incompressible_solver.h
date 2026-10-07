@@ -1692,7 +1692,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             LinearSolverRequest nested_request{
                 KrylovModel::GMRES,
                 PreconditionerModel::NativeAMG,
-                64,
+                std::max<std::size_t>(1, pressure_solver_operator.n_rows()),
                 false,
                 NullSpaceModel::None};
 
