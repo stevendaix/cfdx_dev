@@ -87,6 +87,13 @@ def main() -> int:
             "production qualification fixture set does not match the required N10 public fixtures"
         )
 
+    expected_applicability = {
+        "meshio-su2-square": "NOT_APPLICABLE_TO_CURRENT_3D_SOLVER",
+        "meshio-gmsh-insulated-2-2": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+        "meshio-vtk-unstructured": "APPLICABLE_FOR_3D_EXECUTION_SMOKE",
+        "openfoam-airfoil2d": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+    }
+
     ids = sorted(verification_ids | qualification_ids)
     rows: list[dict[str, object]] = []
 
@@ -195,12 +202,6 @@ def main() -> int:
         mismatches.append(f"numerical evidence observed_order={numerical_observed_order}")
     if numerical_tolerances_changed is not False:
         mismatches.append(f"numerical evidence numerical_tolerances_changed={numerical_tolerances_changed}")
-    expected_applicability = {
-        "meshio-su2-square": "NOT_APPLICABLE_TO_CURRENT_3D_SOLVER",
-        "meshio-gmsh-insulated-2-2": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
-        "meshio-vtk-unstructured": "APPLICABLE_FOR_3D_EXECUTION_SMOKE",
-        "openfoam-airfoil2d": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
-    }
     if not isinstance(applicability_matrix, list):
         mismatches.append("applicability matrix is missing")
     else:
