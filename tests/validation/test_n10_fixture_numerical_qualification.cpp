@@ -152,20 +152,20 @@ int main(int argc, char** argv)
                 "constant field must have zero least-squares gradient");
 
         const auto linear = make_field(mesh, geometry, true);
-        std::vector<BoundaryGradientCondition> linear_boundary(mesh.n_faces());
+        std::vector<cfdx::core::BoundaryGradientCondition> linear_boundary(mesh.n_faces());
         for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
             if (mesh.ownership().neighbour(face) >= 0) continue;
             const Vec3 exact{2.0, -3.0, 0.5};
             const Vec3 normal = geometry.face_normals[face];
             linear_boundary[face] = {
-                BoundaryGradientConditionType::NEUMANN,
+                cfdx::core::BoundaryGradientConditionType::NEUMANN,
                 exact.dot(normal)};
         }
 
         const auto linear_gradient = cfdx::core::compute_gradient_weighted_least_squares(
-            linear, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            linear, mesh, cfdx::core::GradientWeighting::INVERSE_DISTANCE_SQUARED,
             std::numeric_limits<double>::infinity(),
-            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &linear_boundary);
+            cfdx::core::BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &linear_boundary);
         const auto linear_error =
             gradient_error(mesh, linear_gradient, true);
         require(linear_error.count == mesh.n_cells(),
