@@ -193,13 +193,13 @@ class CaseSetup(BaseModel):
     solver_mode: str = "steady"
     source_metadata: dict[str, str] = Field(default_factory=dict)
 
-    def find_boundary(self, name: str) -> Optional[BoundarySpec]:
+    def find_boundary(self, name: str) -> BoundarySpec | None:
         for bc in self.boundary_conditions:
             if bc.patch_name == name:
                 return bc
         return None
 
-    def find_material(self, name: str) -> Optional[MaterialSpec]:
+    def find_material(self, name: str) -> MaterialSpec | None:
         for m in self.materials:
             if m.name == name:
                 return m
