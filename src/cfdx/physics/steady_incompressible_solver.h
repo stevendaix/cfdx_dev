@@ -1618,7 +1618,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const SparseMatrix D = extract_coupled_block(1, 0, nc, 3 * nc);
         const SparseMatrix C = extract_coupled_block(1, 1, nc, nc);
 
-        std::vector<double> q_inverse(3 * nc, 1.0);
+        std::vector<double> q_diagonal(3 * nc, 1.0);
         if (schur_model == CoupledSchurModel::LSC) {
             for (std::size_t i = 0; i < 3 * nc; ++i) {
                 double diagonal = 0.0;
@@ -1630,7 +1630,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (!(diagonal > 0.0) || !std::isfinite(diagonal))
                     throw std::runtime_error(
                         "LSC Schur setup requires positive finite momentum diagonal");
-                q_inverse[i] = 1.0 / diagonal;
+                q_diagonal[i] = diagonal;
             }
         }
 
@@ -1641,7 +1641,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 schur_model == CoupledSchurModel::LSC
                     ? LscBfbtSchurApproximation::Mode::LSC
                     : LscBfbtSchurApproximation::Mode::BFBT,
-                q_inverse);
+                q_diagonal);
 
         for (std::size_t k = pressure_operator.row_offsets_data()[reference_cell];
              k < pressure_operator.row_offsets_data()[reference_cell + 1]; ++k) {
@@ -1674,8 +1674,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
 
         auto pressure_preconditioner =
-            cfdx::core::make_scalar_preconditioner(
-                cfdx::core::PreconditionerModel::NativeAMG);
+            std::shared_ptr<cfdx::core::Preconditioner>(
+                cfdx::core::make_scalar_preconditioner(
+                    cfdx::core::PreconditionerModel::NativeAMG).release());
         if (!pressure_preconditioner ||
             !pressure_preconditioner->setup(pressure_operator)) {
             throw std::runtime_error(
@@ -1683,7 +1684,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
 
         auto solve_pressure = [pressure_operator,
-                               pressure_preconditioner = pressure_preconditioner.get(),
+                               pressure_preconditioner,
                                max_iterations, tolerance](
             const Vector& rhs, Vector& x) mutable {
             const int restart = static_cast<int>(std::min<std::size_t>(
@@ -1691,7 +1692,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const auto result = solve_gmres(
                 pressure_operator, rhs, x, restart,
                 max_iterations, tolerance,
-                pressure_preconditioner);
+                pressure_preconditioner.get());
             return result.status == cfdx::core::SolverStatus::CONVERGED;
         };
 
@@ -1700,7 +1701,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? LscBfbtSchurApproximation::Mode::LSC
                 : LscBfbtSchurApproximation::Mode::BFBT,
             std::move(solve_pressure),
-            std::move(q_inverse));
+            std::move(q_diagonal));
 
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
