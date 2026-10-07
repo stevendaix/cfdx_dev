@@ -175,18 +175,24 @@ public:
         // assemble_scaled_divergence_gradient() returns a finalized CSR matrix.
         // SparseMatrix deliberately forbids post-finalize assembly, so build the
         // stabilized operator from both finalized components into one fresh COO
-        // matrix before the single finalization.
+        // matrix before the single finalization. Aggregate duplicate (row,col)
+        // contributions so the returned CSR remains canonical.
         const SparseMatrix P = assemble_scaled_divergence_gradient(blocks, mode, q_diagonal);
         const auto& C = blocks.C();
         SparseMatrix H(P.n_rows(), P.n_cols());
         for (std::size_t row = 0; row < P.n_rows(); ++row) {
+            std::map<std::size_t, double> entries;
             for (std::size_t k = P.row_offsets_data()[row];
                  k < P.row_offsets_data()[row + 1]; ++k) {
-                H.push_back(row, P.columns_data()[k], P.values_data()[k]);
+                entries[P.columns_data()[k]] += P.values_data()[k];
             }
             for (std::size_t k = C.row_offsets_data()[row];
                  k < C.row_offsets_data()[row + 1]; ++k) {
-                H.push_back(row, C.columns_data()[k], -C.values_data()[k]);
+                entries[C.columns_data()[k]] -= C.values_data()[k];
+            }
+            for (const auto& [col, value] : entries) {
+                if (std::isfinite(value) && value != 0.0)
+                    H.push_back(row, col, value);
             }
         }
         H.finalize();
