@@ -40,6 +40,8 @@ def output(cmd: list[str]) -> str:
 
 
 def staged_files() -> list[str]:
+    if os.environ.get("CFDX_PRECOMMIT_ALL_FILES") == "1":
+        return [x for x in output(["git", "ls-files"]).splitlines() if x]
     return [
         x for x in output(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"]
@@ -49,6 +51,8 @@ def staged_files() -> list[str]:
 
 
 def staged_diff() -> str:
+    if os.environ.get("CFDX_PRECOMMIT_ALL_FILES") == "1":
+        return output(["git", "diff", "HEAD", "--unified=0", "--"])
     return output(["git", "diff", "--cached", "--unified=0", "--"])
 
 
