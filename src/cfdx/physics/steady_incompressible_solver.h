@@ -1663,6 +1663,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         pressure_solver_operator.finalize();
 
         auto solve_pressure = [pressure_operator, pressure_solver_operator,
+                               Auu, G, D,
                                max_iterations, tolerance, schur_model,
                                verbose = controls.diagnostics.verbose, reference_cell](
             const Vector& rhs, Vector& x) mutable {
@@ -1824,6 +1825,182 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                           << " reference_diag=" << reference_diag
                           << " gauge_handling=explicit_reduction"
                           << "\n";
+
+                // Independent dense algebraic oracle. This is diagnostics-only and is
+                // deliberately restricted to the tiny N8 pressure system. It answers three
+                // questions that iterative diagnostics cannot answer:
+                //   (1) does the reduced operator have a finite direct solution?
+                //   (2) how small are its Gaussian pivots?
+                //   (3) how far is the sign-normalized LSC/BFBT P from the true
+                //       Schur complement -D*Auu^{-1}*G?
+                //
+                // No dense path is used by production solves.
+                if (call_id == 1 && pressure_solver_operator.n_rows() <= 256) {
+                    const std::size_t np = pressure_solver_operator.n_rows();
+                    const std::size_t nu = Auu.n_rows();
+                    auto dense_of = [](const SparseMatrix& M) {
+                        std::vector<std::vector<double>> out(
+                            M.n_rows(), std::vector<double>(M.n_cols(), 0.0));
+                        for (std::size_t r = 0; r < M.n_rows(); ++r)
+                            for (std::size_t k = M.row_offsets_data()[r];
+                                 k < M.row_offsets_data()[r + 1]; ++k)
+                                out[r][M.columns_data()[k]] += M.values_data()[k];
+                        return out;
+                    };
+                    auto dense_solve = [](std::vector<std::vector<double>> M,
+                                          std::vector<double> b,
+                                          double& pivot_min,
+                                          double& pivot_max) {
+                        const std::size_t n = M.size();
+                        pivot_min = std::numeric_limits<double>::infinity();
+                        pivot_max = 0.0;
+                        if (n == 0 || b.size() != n) return std::vector<double>{};
+                        for (std::size_t k = 0; k < n; ++k) {
+                            std::size_t pivot = k;
+                            for (std::size_t i = k + 1; i < n; ++i)
+                                if (std::abs(M[i][k]) > std::abs(M[pivot][k]))
+                                    pivot = i;
+                            const double p = std::abs(M[pivot][k]);
+                            if (!(p > 1e-14) || !std::isfinite(p))
+                                return std::vector<double>{};
+                            pivot_min = std::min(pivot_min, p);
+                            pivot_max = std::max(pivot_max, p);
+                            std::swap(M[k], M[pivot]);
+                            std::swap(b[k], b[pivot]);
+                            for (std::size_t i = k + 1; i < n; ++i) {
+                                const double factor = M[i][k] / M[k][k];
+                                if (factor == 0.0) continue;
+                                M[i][k] = 0.0;
+                                for (std::size_t j = k + 1; j < n; ++j)
+                                    M[i][j] -= factor * M[k][j];
+                                b[i] -= factor * b[k];
+                            }
+                        }
+                        std::vector<double> x(n, 0.0);
+                        for (std::size_t ii = 0; ii < n; ++ii) {
+                            const std::size_t i = n - 1 - ii;
+                            double sum = b[i];
+                            for (std::size_t j = i + 1; j < n; ++j)
+                                sum -= M[i][j] * x[j];
+                            x[i] = sum / M[i][i];
+                        }
+                        return x;
+                    };
+                    const auto P = dense_of(pressure_solver_operator);
+                    double pivot_min = 0.0, pivot_max = 0.0;
+                    const auto direct_x = dense_solve(
+                        P,
+                        [&] {
+                            std::vector<double> b(np, 0.0);
+                            for (std::size_t i = 0; i < np; ++i) b[i] = reduced_rhs(i);
+                            return b;
+                        }(),
+                        pivot_min, pivot_max);
+                    double direct_residual = std::numeric_limits<double>::infinity();
+                    double direct_x_l2 = std::numeric_limits<double>::infinity();
+                    if (direct_x.size() == np) {
+                        double rr = 0.0, xx = 0.0;
+                        for (std::size_t i = 0; i < np; ++i) {
+                            double ax = 0.0;
+                            for (std::size_t j = 0; j < np; ++j) ax += P[i][j] * direct_x[j];
+                            const double ri = ax - reduced_rhs(i);
+                            rr += ri * ri;
+                            xx += direct_x[i] * direct_x[i];
+                        }
+                        direct_residual = std::sqrt(rr);
+                        direct_x_l2 = std::sqrt(xx);
+                    }
+
+                    // Build the exact Schur with a dense inverse of Auu. This is an
+                    // oracle only; N8 has 384 velocity unknowns and the calculation is
+                    // performed once under verbose diagnostics.
+                    const auto Md = dense_of(Auu);
+                    const auto Gd = dense_of(G);
+                    const auto Dd = dense_of(D);
+                    std::vector<std::vector<double>> Aug(
+                        nu, std::vector<double>(2 * nu, 0.0));
+                    for (std::size_t i = 0; i < nu; ++i) {
+                        for (std::size_t j = 0; j < nu; ++j) Aug[i][j] = Md[i][j];
+                        Aug[i][nu + i] = 1.0;
+                    }
+                    double auu_pivot_min = std::numeric_limits<double>::infinity();
+                    double auu_pivot_max = 0.0;
+                    bool auu_invertible = true;
+                    for (std::size_t k = 0; k < nu; ++k) {
+                        std::size_t pivot = k;
+                        for (std::size_t i = k + 1; i < nu; ++i)
+                            if (std::abs(Aug[i][k]) > std::abs(Aug[pivot][k])) pivot = i;
+                        const double p = std::abs(Aug[pivot][k]);
+                        if (!(p > 1e-14) || !std::isfinite(p)) {
+                            auu_invertible = false;
+                            break;
+                        }
+                        auu_pivot_min = std::min(auu_pivot_min, p);
+                        auu_pivot_max = std::max(auu_pivot_max, p);
+                        std::swap(Aug[k], Aug[pivot]);
+                        const double d = Aug[k][k];
+                        for (std::size_t j = k; j < 2 * nu; ++j) Aug[k][j] /= d;
+                        for (std::size_t i = 0; i < nu; ++i) {
+                            if (i == k) continue;
+                            const double factor = Aug[i][k];
+                            if (factor == 0.0) continue;
+                            for (std::size_t j = k; j < 2 * nu; ++j)
+                                Aug[i][j] -= factor * Aug[k][j];
+                        }
+                    }
+                    double exact_schur_rel = std::numeric_limits<double>::infinity();
+                    double exact_schur_abs = std::numeric_limits<double>::infinity();
+                    if (auu_invertible) {
+                        std::vector<std::vector<double>> Minv(
+                            nu, std::vector<double>(nu, 0.0));
+                        for (std::size_t i = 0; i < nu; ++i)
+                            for (std::size_t j = 0; j < nu; ++j)
+                                Minv[i][j] = Aug[i][nu + j];
+
+                        double diff2 = 0.0, exact2 = 0.0;
+                        for (std::size_t r = 0; r < np; ++r) {
+                            const std::size_t fr = r < reference_cell ? r : r + 1;
+                            for (std::size_t c = 0; c < np; ++c) {
+                                const std::size_t fc = c < reference_cell ? c : c + 1;
+                                double exact = 0.0;
+                                for (std::size_t i = 0; i < nu; ++i) {
+                                    double dy = 0.0;
+                                    for (std::size_t j = 0; j < nu; ++j)
+                                        dy += Minv[i][j] * Gd[j][fc];
+                                    exact -= Dd[fr][i] * dy;
+                                }
+                                const double approx = P[r][c];
+                                const double delta = approx - exact;
+                                diff2 += delta * delta;
+                                exact2 += exact * exact;
+                            }
+                        }
+                        exact_schur_abs = std::sqrt(diff2);
+                        exact_schur_rel = exact_schur_abs /
+                            std::max(std::sqrt(exact2), std::numeric_limits<double>::min());
+                    }
+
+                    std::cerr << "N8_LSC_BFBT_DENSE_ORACLE"
+                              << " call=" << call_id
+                              << " rows=" << np
+                              << " direct_solve=" << (direct_x.size() == np ? 1 : 0)
+                              << " direct_residual=" << direct_residual
+                              << " direct_x_l2=" << direct_x_l2
+                              << " reduced_pivot_min=" << pivot_min
+                              << " reduced_pivot_max=" << pivot_max
+                              << " reduced_pivot_ratio="
+                              << (pivot_min > 0.0 ? pivot_max / pivot_min
+                                                  : std::numeric_limits<double>::infinity())
+                              << " auu_invertible=" << (auu_invertible ? 1 : 0)
+                              << " auu_pivot_min=" << auu_pivot_min
+                              << " auu_pivot_max=" << auu_pivot_max
+                              << " auu_pivot_ratio="
+                              << (auu_pivot_min > 0.0 ? auu_pivot_max / auu_pivot_min
+                                                      : std::numeric_limits<double>::infinity())
+                              << " exact_schur_abs_error=" << exact_schur_abs
+                              << " exact_schur_relative_error=" << exact_schur_rel
+                              << "\n";
+                }
 
                 // Compare the exact same reduced operator/RHS with ILU0.
                 // This is diagnostics-only: production remains GMRES+NativeAMG.
