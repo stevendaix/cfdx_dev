@@ -89,10 +89,11 @@ The first executable Runtime MCP surface is deliberately read-only and inspects 
 | `checkpoint.field.inspect` | root-relative `.dat.h5` path + field name + optional component | finite-value status and descriptive scalar statistics without returning field arrays |
 | `checkpoint.compare` | two root-relative `.dat.h5` paths + field name + optional component | descriptive field difference metrics between two checkpoints |
 | `convergence.inspect` | root-relative `convergence.json` path + optional history limit | validated convergence execution metadata and a bounded history slice |
+| `execution.inspect` | root-relative `execution.json` path | validated execution outcome, convergence status and produced-artifact flags |
 
 Paths are confined to the configured runtime root. These tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
 
 
 Field statistics are descriptive only: they do not establish convergence, verification, validation, or qualification. Vector fields may be summarized as a whole or one component at a time. The field tool reads the selected dataset but never modifies the checkpoint.
 
-Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.\n\nConvergence inspection is also descriptive execution evidence. The tool validates the canonical `CFDX-CONVERGENCE` schema, rejects non-finite JSON values and malformed history records, and bounds the returned history with an explicit `history_limit` (0–10000). A valid convergence artifact is not itself a validation or qualification verdict.
+Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.\n\nConvergence inspection is also descriptive execution evidence. The tool validates the canonical `CFDX-CONVERGENCE` schema, rejects non-finite JSON values and malformed history records, and bounds the returned history with an explicit `history_limit` (0–10000). A valid convergence artifact is not itself a validation or qualification verdict. Execution inspection is likewise descriptive evidence: it does not execute CFDX, infer missing process state, or turn the recorded outcome into a verification, validation, or qualification verdict.
