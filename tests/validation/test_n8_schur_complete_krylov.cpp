@@ -280,6 +280,11 @@ int main() {
             };
             LinearOperator schur_operator{cfg.n * cfg.n, exact_action};
 
+            std::size_t method_records = 0;
+            std::size_t converged_approximation_records = 0;
+            double max_true_residual = 0.0;
+            double max_reported_true_residual_gap = 0.0;
+
             auto run_method = [&](const char* name,
                                   long long setup_us,
                                   CountingCallbackPreconditioner& pc,
