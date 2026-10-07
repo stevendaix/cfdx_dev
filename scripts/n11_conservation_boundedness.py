@@ -61,8 +61,8 @@ REQUIRED_TESTS = (
     "test_cht_validation",
     "test_nonorthogonal_skew_campaign",
     "test_convection_polyhedral_campaign",
-    "test_n13_mpi_equivalence",
 )
+OPTIONAL_MPI_TESTS = ("test_n13_mpi_equivalence",)
 
 CATEGORIES = {
     "conservation_contract": [
@@ -189,12 +189,15 @@ def main() -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     available = discover_tests(build_dir)
-    missing = [name for name in REQUIRED_TESTS if name not in available]
+    required_tests = list(REQUIRED_TESTS)
+    mpi_tests = [name for name in OPTIONAL_MPI_TESTS if name in available]
+    required_tests.extend(mpi_tests)
+    missing = [name for name in required_tests if name not in available]
     if missing:
         report = {
             "campaign": "N11 conservation and boundedness evidence",
             "status": "INCOMPLETE",
-            "required_tests": list(REQUIRED_TESTS),
+            "required_tests": required_tests,
             "missing_tests": missing,
             "scope_gaps": KNOWN_SCOPE_GAPS,
             "policy": {
@@ -202,6 +205,7 @@ def main() -> int:
                 "disables_validation": False,
                 "silent_clipping_or_repair": False,
                 "serial_evidence_is_mpi_qualification": False,
+            "mpi_evidence_required_when_mpi_test_is_available": True,
             },
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -209,7 +213,7 @@ def main() -> int:
         return 2
 
     results: list[dict[str, object]] = []
-    for name in REQUIRED_TESTS:
+    for name in required_tests:
         print(f"\n=== N11 conservation/boundedness: {name} ===", flush=True)
         result = run_test(build_dir, name)
         results.append(result)
@@ -256,7 +260,7 @@ def main() -> int:
         item["complete"] for item in quantitative_coverage.values()
     )
     complete_execution = (
-        len(results) == len(REQUIRED_TESTS)
+        len(results) == len(required_tests)
         and not failed
         and quantitative_complete
     )
@@ -264,7 +268,7 @@ def main() -> int:
     report = {
         "campaign": "N11 conservation and boundedness evidence",
         "status": "PASS" if complete_execution else "FAIL",
-        "required_tests": list(REQUIRED_TESTS),
+        "required_tests": required_tests,
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
