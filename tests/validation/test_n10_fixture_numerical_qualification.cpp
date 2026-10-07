@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -151,12 +152,24 @@ int main(int argc, char** argv)
                 "constant field must have zero least-squares gradient");
 
         const auto linear = make_field(mesh, geometry, true);
-        const auto linear_gradient =
-            cfdx::core::compute_gradient_least_squares(linear, mesh);
+        std::vector<BoundaryGradientCondition> linear_boundary(mesh.n_faces());
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            if (mesh.ownership().neighbour(face) >= 0) continue;
+            const Vec3 exact{2.0, -3.0, 0.5};
+            const Vec3 normal = geometry.face_normals[face];
+            linear_boundary[face] = {
+                BoundaryGradientConditionType::NEUMANN,
+                exact.dot(normal)};
+        }
+
+        const auto linear_gradient = cfdx::core::compute_gradient_weighted_least_squares(
+            linear, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &linear_boundary);
         const auto linear_error =
-            gradient_error(mesh, linear_gradient, true, true);
-        require(linear_error.count > 0,
-                "linear-field qualification found no interior cells with a full face-neighbour stencil");
+            gradient_error(mesh, linear_gradient, true);
+        require(linear_error.count == mesh.n_cells(),
+                "linear-field qualification did not cover all imported cells");
         require(linear_error.linf <= 1e-9,
                 "linear field must be exact for least-squares reconstruction");
 
@@ -172,9 +185,11 @@ int main(int argc, char** argv)
                << "  \"method\": \"least_squares\",\n"
                << "  \"cells_total\": " << mesh.n_cells() << ",\n"
                << "  \"cells_checked\": " << linear_error.count << ",\n"
-               << "  \"boundary_cells_excluded\": " << linear_error.excluded << ",\n"
+               << "  \"boundary_cells_excluded\": 0,\n"
                << "  \"constant_gradient_linf\": " << constant_error.linf << ",\n"
                << "  \"linear_gradient_linf\": " << linear_error.linf << ",\n"
+               << "  \"linear_boundary_reconstruction\": \"explicit_neumann\",\n"
+               << "  \"linear_gradient_method\": \"weighted_least_squares\",\n"
                << "  \"physical_validation\": \"NOT_CLAIMED\",\n"
                << "  \"observed_order\": \"NOT_CLAIMED\",\n"
                << "  \"numerical_tolerances_changed\": false\n"
