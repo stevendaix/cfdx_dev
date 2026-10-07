@@ -89,7 +89,7 @@ static double linf(const Vector& diff) {
 int main() {
     // SPD coupled Auu (as in the exact-Schur test), D = G^T, diagonal C.
     const auto Auu = make_sparse(2, 2, {
-        {0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.0}
+        {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 3.0}
     });
     const auto G = make_sparse(2, 2, {
         {0, 0, 1.0}, {0, 1, 0.5}, {1, 0, 0.25}, {1, 1, 1.0}
@@ -127,9 +127,9 @@ int main() {
         Ad_inv[1][1] = inv[1];
         return dense_subtract(Cd, dense_multiply(dense_multiply(Dd, Ad_inv), Gd));
     };
-    // SIMPLE: Ad = diag(Auu) = [4,3]; SIMPLEC: Ad = diag - offdiag = [3,2].
+    // SIMPLE: Ad = diag(Auu) = [4,3]; SIMPLEC: Ad = diag - sum(offdiag) = [5,4].
     const Dense S_simple_dense = approx_dense({1.0 / 4.0, 1.0 / 3.0});
-    const Dense S_simplec_dense = approx_dense({1.0 / 3.0, 1.0 / 2.0});
+    const Dense S_simplec_dense = approx_dense({1.0 / 5.0, 1.0 / 4.0});
 
     Vector p(2, 0.0);
     p(0) = 1.3;
@@ -206,18 +206,18 @@ int main() {
         SimplerSchurApproximation s(SimplerSchurMode::SIMPLEC);
         EXPECT_TRUE(s.setup(blocks));
 
-        // Same graph, one coefficient changed: Auu[0][1] 1.0 -> 0.5.
+        // Same graph, one coefficient changed: Auu[0][1] -1.0 -> -0.5.
         const auto Auu_v2 = make_sparse(2, 2, {
-            {0, 0, 4.0}, {0, 1, 0.5}, {1, 0, 1.0}, {1, 1, 3.0}
+            {0, 0, 4.0}, {0, 1, -0.5}, {1, 0, -1.0}, {1, 1, 3.0}
         });
         const BlockOperator blocks_v2(Auu_v2, G, D, C);
         EXPECT_TRUE(s.update_values(blocks_v2));
 
         // The refresh must be visible in the applied operator, which is what
         // distinguishes an accepted refresh from stale cached denominators.
-        // SIMPLEC denominator = diag - row_offdiag: row 0 becomes 4 - 0.5 = 3.5,
-        // row 1 stays 3 - 1 = 2.
-        const Dense S_simplec_v2 = approx_dense({1.0 / 3.5, 1.0 / 2.0});
+        // SIMPLEC denominator = diag - signed row off-diagonal sum: row 0 becomes
+        // 4 - (-0.5) = 4.5, row 1 becomes 3 - (-1) = 4.
+        const Dense S_simplec_v2 = approx_dense({1.0 / 4.5, 1.0 / 4.0});
         Vector out(2, 0.0);
         EXPECT_TRUE(s.apply(p, out));
         const Vector ref = dense_matvec(S_simplec_v2, p);
