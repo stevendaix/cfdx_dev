@@ -41,7 +41,7 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare", "convergence.inspect"}
+            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare", "convergence.inspect", "execution.inspect"}
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -188,6 +188,52 @@ async def exercise() -> None:
             assert len(data["history"]) == 1
             assert data["history_truncated"] is False
 
+            execution = root / "execution.json"
+            execution.write_text(
+                """{
+                  "format": "CFDX-EXECUTION",
+                  "schema_version": 1,
+                  "process_exit_code": 0,
+                  "converged": true,
+                  "iterations": 1,
+                  "convergence_status": 1,
+                  "convergence_reason": "converged",
+                  "artifacts": {
+                    "restart_dat": true,
+                    "convergence_json": true
+                  }
+                }""",
+                encoding="utf-8",
+            )
+            execution_result = await client.call_tool(
+                "execution.inspect",
+                {"execution_path": "execution.json"},
+            )
+            assert execution_result.is_error is False
+            data = execution_result.structured_content
+            assert data["ok"] is True
+            assert data["format"] == "CFDX-EXECUTION"
+            assert data["schema_version"] == 1
+            assert data["process_exit_code"] == 0
+            assert data["converged"] is True
+            assert data["iterations"] == 1
+            assert data["artifacts"] == {"restart_dat": True, "convergence_json": True}
+
+            bad_execution = root / "bad.execution.json"
+            bad_execution.write_text(
+                execution.read_text(encoding="utf-8").replace(
+                    '"schema_version": 1', '"schema_version": 99'
+                ),
+                encoding="utf-8",
+            )
+            bad_execution_result = await client.call_tool(
+                "execution.inspect",
+                {"execution_path": "bad.execution.json"},
+            )
+            assert bad_execution_result.is_error is False
+            assert bad_execution_result.structured_content["ok"] is False
+            assert "schema version" in bad_execution_result.structured_content["errors"][0]
+
             malformed = root / "bad.convergence.json"
             malformed.write_text(
                 convergence.read_text(encoding="utf-8").replace(
@@ -239,6 +285,8 @@ async def exercise() -> None:
                 ("checkpoint.compare", {"left_checkpoint_path": "../a.dat.h5", "right_checkpoint_path": "later.dat.h5", "field_name": "p"}),
                 ("convergence.inspect", {"convergence_path": "../outside/convergence.json"}),
                 ("convergence.inspect", {"convergence_path": "/etc/convergence.json"}),
+                ("execution.inspect", {"execution_path": "../outside/execution.json"}),
+                ("execution.inspect", {"execution_path": "/etc/execution.json"}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
             ):
