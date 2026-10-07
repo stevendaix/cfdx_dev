@@ -24,6 +24,7 @@ QUANTITATIVE_RECORD_PREFIXES = (
     "GHIA ",
     "POISEUILLE_RESULT ",
     "N11_ENERGY_RESULT ",
+    "N11_MPI_RESULT ",
 )
 
 
@@ -60,6 +61,7 @@ REQUIRED_TESTS = (
     "test_cht_validation",
     "test_nonorthogonal_skew_campaign",
     "test_convection_polyhedral_campaign",
+    "test_n13_mpi_equivalence",
 )
 
 CATEGORIES = {
@@ -77,6 +79,7 @@ CATEGORIES = {
     "energy": ["test_cht_validation"],
     "mesh_robustness": ["test_nonorthogonal_skew_campaign"],
     "scheme_boundedness": ["test_convection_polyhedral_campaign"],
+    "mpi_conservation": ["test_n13_mpi_equivalence"],
 }
 
 KNOWN_SCOPE_GAPS = [
@@ -229,12 +232,16 @@ def main() -> int:
         "N11_ENERGY_RESULT": sum(
             r["record_type"] == "N11_ENERGY_RESULT" for r in quantitative_records
         ),
+        "N11_MPI_RESULT": sum(
+            r["record_type"] == "N11_MPI_RESULT" for r in quantitative_records
+        ),
     }
     quantitative_requirements = {
         "MODEL_RESULT": 1,
         "GHIA": 4,
         "POISEUILLE_RESULT": 4,
         "N11_ENERGY_RESULT": 1,
+        "N11_MPI_RESULT": 1,
     }
     quantitative_coverage = {
         key: {
