@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cfdx-fast
+        name: CFDX fast build/test guards
+        entry: python3 tools/precommit/cfdx_precommit.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
