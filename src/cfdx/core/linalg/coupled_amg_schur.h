@@ -405,7 +405,21 @@ public:
     }
 
     const char* name() const override {
-        return "CoupledBlockSchur-AMG";
+        switch (options_.schur_approximation) {
+            case CoupledSchurApproximationModel::BlockLocal:
+                return "CoupledBlockSchur-AMG[block_local]";
+            case CoupledSchurApproximationModel::PCD:
+                return "CoupledBlockSchur-AMG[pcd]";
+            case CoupledSchurApproximationModel::LSC:
+                return "CoupledBlockSchur-AMG[lsc]";
+            case CoupledSchurApproximationModel::BFBT:
+                return "CoupledBlockSchur-AMG[bfbt]";
+            case CoupledSchurApproximationModel::SIMPLE:
+                return "CoupledBlockSchur-AMG[simple]";
+            case CoupledSchurApproximationModel::SIMPLEC:
+                return "CoupledBlockSchur-AMG[simplec]";
+        }
+        return "CoupledBlockSchur-AMG[unknown]";
     }
 
     bool is_ready() const noexcept { return ready_; }

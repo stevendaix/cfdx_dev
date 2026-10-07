@@ -4,6 +4,9 @@
 #include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -188,6 +191,26 @@ int main() {
             // preserve it rather than silently replacing the requested model.
             EXPECT_NEAR(z(3), 1.0, 1e-12);
             EXPECT_TRUE(std::isfinite(z.norm_inf()));
+        }
+    });
+
+    run_case("coupled_block_schur_diagnostic_names_are_model_specific", [] {
+        const std::vector<std::pair<CoupledSchurApproximationModel, std::string>> models{
+            {CoupledSchurApproximationModel::BlockLocal, "block_local"},
+            {CoupledSchurApproximationModel::PCD, "pcd"},
+            {CoupledSchurApproximationModel::LSC, "lsc"},
+            {CoupledSchurApproximationModel::BFBT, "bfbt"},
+            {CoupledSchurApproximationModel::SIMPLE, "simple"},
+            {CoupledSchurApproximationModel::SIMPLEC, "simplec"},
+        };
+
+        for (const auto& [model, token] : models) {
+            CoupledBlockSchurOptions options;
+            options.schur_approximation = model;
+            CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+            const std::string name = preconditioner.name();
+            EXPECT_TRUE(name.find("CoupledBlockSchur-AMG[" + token + "]") !=
+                        std::string::npos);
         }
     });
 
