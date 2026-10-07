@@ -38,16 +38,20 @@ def main() -> int:
     numerical_evidence = load(args.numerical_evidence)
     applicability = load(args.applicability)
 
-    verification_rows = {
-        str(row["id"]): row
+    verification_fixture_rows = [
+        row
         for row in verification.get("fixtures", [])
-        if isinstance(row, dict) and "id" in row
-    }
-    qualification_rows = {
-        str(row["id"]): row
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    ]
+    qualification_fixture_rows = [
+        row
         for row in qualification.get("fixtures", [])
-        if isinstance(row, dict) and "id" in row
-    }
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    ]
+    verification_ids_list = [str(row["id"]) for row in verification_fixture_rows]
+    qualification_ids_list = [str(row["id"]) for row in qualification_fixture_rows]
+    verification_rows = {str(row["id"]): row for row in verification_fixture_rows}
+    qualification_rows = {str(row["id"]): row for row in qualification_fixture_rows}
 
     solver_fixture = str(solver_evidence.get("fixture", ""))
     solver_status = solver_evidence.get("execution_status")
@@ -69,8 +73,36 @@ def main() -> int:
     numerical_tolerances_changed = numerical_evidence.get("numerical_tolerances_changed")
     applicability_matrix = applicability.get("matrix")
 
-    ids = sorted(set(verification_rows) | set(qualification_rows))
+    expected_fixture_ids = {
+        "meshio-su2-square",
+        "meshio-gmsh-insulated-2-2",
+        "meshio-vtk-unstructured",
+        "openfoam-airfoil2d",
+    }
+    verification_ids = set(verification_rows)
+    qualification_ids = set(qualification_rows)
     mismatches: list[str] = []
+    if len(verification_ids_list) != len(verification_ids):
+        mismatches.append("independent verification contains duplicate fixture ids")
+    if len(qualification_ids_list) != len(qualification_ids):
+        mismatches.append("production qualification contains duplicate fixture ids")
+    if verification_ids != expected_fixture_ids:
+        mismatches.append(
+            "independent verification fixture set does not match the required N10 public fixtures"
+        )
+    if qualification_ids != expected_fixture_ids:
+        mismatches.append(
+            "production qualification fixture set does not match the required N10 public fixtures"
+        )
+
+    expected_applicability = {
+        "meshio-su2-square": "NOT_APPLICABLE_TO_CURRENT_3D_SOLVER",
+        "meshio-gmsh-insulated-2-2": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+        "meshio-vtk-unstructured": "APPLICABLE_FOR_3D_EXECUTION_SMOKE",
+        "openfoam-airfoil2d": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+    }
+
+    ids = sorted(verification_ids | qualification_ids)
     rows: list[dict[str, object]] = []
 
     for fixture_id in ids:
@@ -127,6 +159,9 @@ def main() -> int:
                 "geometry_quality_valid": geometry is True,
                 "counts": counts,
                 "solver_evidence": solver_row,
+                "numerical_applicability": expected_applicability.get(
+                    fixture_id, "NOT_CLAIMED"
+                ),
             }
         )
 
@@ -175,28 +210,40 @@ def main() -> int:
         mismatches.append(f"numerical evidence observed_order={numerical_observed_order}")
     if numerical_tolerances_changed is not False:
         mismatches.append(f"numerical evidence numerical_tolerances_changed={numerical_tolerances_changed}")
-    expected_applicability = {
-        "meshio-su2-square": "NOT_APPLICABLE_TO_CURRENT_3D_SOLVER",
-        "meshio-gmsh-insulated-2-2": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
-        "meshio-vtk-unstructured": "APPLICABLE_FOR_3D_EXECUTION_SMOKE",
-        "openfoam-airfoil2d": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
-    }
     if not isinstance(applicability_matrix, list):
         mismatches.append("applicability matrix is missing")
     else:
-        applicability_rows = {
-            str(row.get("id")): row
+        applicability_ids = [
+            str(row.get("id"))
             for row in applicability_matrix
             if isinstance(row, dict) and isinstance(row.get("id"), str)
+        ]
+        applicability_rows = {
+            fixture_id: row
+            for fixture_id, row in (
+                (str(row.get("id")), row)
+                for row in applicability_matrix
+                if isinstance(row, dict) and isinstance(row.get("id"), str)
+            )
         }
-        if set(applicability_rows) != set(expected_applicability):
-            mismatches.append("applicability matrix fixture set does not match the required N10 public fixtures")
+        if len(applicability_ids) != len(set(applicability_ids)):
+            mismatches.append("applicability matrix contains duplicate fixture ids")
+        if set(applicability_ids) != set(expected_applicability):
+            mismatches.append(
+                "applicability matrix fixture set does not match the required N10 public fixtures"
+            )
+        if set(applicability_ids) != verification_ids or set(applicability_ids) != qualification_ids:
+            mismatches.append(
+                "applicability matrix fixture set does not match verification and production qualification fixture sets"
+            )
         for fixture_id, expected_status in expected_applicability.items():
             row = applicability_rows.get(fixture_id)
             if row is None:
                 continue
             if row.get("numerical_applicability") != expected_status:
-                mismatches.append(f"{fixture_id}: numerical_applicability={row.get('numerical_applicability')}")
+                mismatches.append(
+                    f"{fixture_id}: numerical_applicability={row.get('numerical_applicability')}"
+                )
     applicability_policy = applicability.get("policy")
     if not isinstance(applicability_policy, dict):
         mismatches.append("applicability policy is missing")
@@ -260,6 +307,14 @@ def main() -> int:
             ),
             "physical_validation": "NOT_CLAIMED",
             "numerical_applicability": "persisted fixture-specific matrix",
+            "acceptance_matrix": {
+                "fixture_set": sorted(expected_fixture_ids),
+                "verification_fixture_set": sorted(verification_ids),
+                "qualification_fixture_set": sorted(qualification_ids),
+                "applicability_fixture_set": sorted(applicability_ids)
+                if isinstance(applicability_matrix, list)
+                else [],
+            },
         },
         "policy": {
             "changes_numerical_tolerances": False,
