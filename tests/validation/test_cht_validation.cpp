@@ -1,4 +1,5 @@
 #include "cfdx/physics/cht_solver.h"
+#include "cfdx/physics/energy_solver.h"
 #include "common/test_harness.h"
 
 using namespace cfdx::core;
@@ -25,7 +26,7 @@ static Mesh cube(const char* patch_name)
 
 int main()
 {
-    run_case("two_region_cht_matches_interface_and_balances_flux",[] {
+    run_case("two_region_cht_independent_energy_conservation",[] {
         Mesh m1=cube("interface1"),m2=cube("interface2");
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
         Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
@@ -33,17 +34,71 @@ int main()
         phi1.fill(0);phi2.fill(0);
         Field<double,Location::CELL> T1(1,"T1","K",1),T2(1,"T2","K",1);
         Field<double,Location::CELL> q1(1,"q1","W/m3",1),q2(1,"q2","W/m3",1);
-        T1(0)=400;T2(0)=300;q1(0)=0;q2(0)=0;
-        EnergySolverControls e1;e1.conductivity=1;e1.max_iterations=10;e1.tolerance=1e-10;e1.relaxation=1.0;
+        T1(0)=400;T2(0)=300;q1(0)=100;q2(0)=-100;
+
+        EnergySolverControls e1;e1.conductivity=1;e1.max_iterations=20;
+        e1.tolerance=1e-10;e1.relaxation=1.0;
         EnergySolverControls e2=e1;
         ChtInterfaceControls c;c.region1_patch="interface1";c.region2_patch="interface2";
         c.conductivity1=1;c.conductivity2=1;c.matching_tolerance=1e-12;
+
         auto r=solve_two_region_cht(m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
         EXPECT_TRUE(r.converged);
-        EXPECT_NEAR(T1(0),350.0,1e-8);
-        EXPECT_NEAR(T2(0),350.0,1e-8);
+        EXPECT_TRUE(std::isfinite(T1(0)) && std::isfinite(T2(0)));
+        EXPECT_TRUE(T1(0)>T2(0));
+
+        // Reconstruct the interface state from the accepted temperatures and
+        // independently rebuild each region's physical energy flux.
+        const double d1=(g1.face_centres[0]-g1.cell_centres[0]).mag();
+        const double d2=(g2.face_centres[0]-g2.cell_centres[0]).mag();
+        const double h1=c.conductivity1/d1;
+        const double h2=c.conductivity2/d2;
+        const double tint=(h1*T1(0)+h2*T2(0))/(h1+h2);
+
+        ScalarBoundaryFaceValues fv1,fv2;
+        fv1.values["interface1"].assign(m1.n_faces(),tint);
+        fv2.values["interface2"].assign(m2.n_faces(),tint);
+
+        const auto b1=reconstruct_energy_balance(
+            m1,g1,phi1,T1,T1,q1,e1,{},&fv1);
+        const auto b2=reconstruct_energy_balance(
+            m2,g2,phi2,T2,T2,q2,e2,{},&fv2);
+
+        EXPECT_TRUE(b1.nonfinite_faces==0 && b1.nonfinite_cells==0);
+        EXPECT_TRUE(b2.nonfinite_faces==0 && b2.nonfinite_cells==0);
+        EXPECT_NEAR(b1.residual,0.0,1e-10);
+        EXPECT_NEAR(b2.residual,0.0,1e-10);
+        EXPECT_TRUE(b1.normalized_residual<1e-12);
+        EXPECT_TRUE(b2.normalized_residual<1e-12);
+        EXPECT_TRUE(b1.max_cell_residual<1e-10);
+        EXPECT_TRUE(b2.max_cell_residual<1e-10);
+
+        // Independent interface heat-flow equality: each side must carry the
+        // same physical heat rate, with opposite outward signs.
+        const double interface_area=g1.face_area_vectors[0].mag()*static_cast<double>(m1.boundary().patch(0).face_ids.size());
+        const double qflux1=c.conductivity1*(T1(0)-tint)/d1;
+        const double qflux2=c.conductivity2*(tint-T2(0))/d2;
+        EXPECT_TRUE(std::isfinite(qflux1) && std::isfinite(qflux2));
+        EXPECT_NEAR(qflux1,qflux2,1e-10);
+        EXPECT_NEAR(qflux1*interface_area,100.0,1e-10);
+        EXPECT_NEAR(qflux2*interface_area,100.0,1e-10);
         EXPECT_NEAR(r.interface_imbalance,0.0,1e-10);
     });
+
+    run_case("cht_independent_energy_balance_detects_nonconservative_state",[] {
+        Mesh m=cube("interface");
+        auto g=build_fv_geometry(m);
+        Field<double,Location::FACE> phi(m.n_faces(),"phi","kg/s",1); phi.fill(0.0);
+        Field<double,Location::CELL> T(1,"T","K",1),oldT(1,"oldT","K",1),source(1,"S","W/m3",1);
+        T(0)=300.0; oldT(0)=300.0; source(0)=0.0;
+        EnergySolverControls e; e.conductivity=1.0;
+        ScalarBoundaryFaceValues fv; fv.values["interface"].assign(m.n_faces(),400.0);
+        const auto b=reconstruct_energy_balance(m,g,phi,T,oldT,source,e,{},&fv);
+        EXPECT_TRUE(b.nonfinite_faces==0 && b.nonfinite_cells==0);
+        EXPECT_TRUE(std::abs(b.normalized_residual)>0.9);
+        EXPECT_TRUE(b.max_cell_residual>0.0);
+    });
+
     run_case("cht_face_override_is_used_by_independent_energy_balance",[] {
         Mesh m=cube("interface");
         auto g=build_fv_geometry(m);
