@@ -7,11 +7,7 @@ selection, not these source-specific strings.
 
 from __future__ import annotations
 
-from cfdx.io.schema import (
-    NumericalScheme,
-    NumericalSelection,
-    NumericalSelectionConfig,
-)
+from cfdx.io.schema import NumericalScheme, NumericalSelection, NumericalSelectionConfig
 
 
 _GRADIENT_KEYS = {
