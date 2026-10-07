@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the reproducible N10 difficult-mesh qualification campaign.
 
 This driver reuses the existing N10-labelled V&V executables. It does not
@@ -48,7 +47,9 @@ def ctest(build_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def discover_tests(build_dir: Path) -> set[str]:
     result = ctest(build_dir, "-N")
     if result.returncode != 0:
-        raise RuntimeError(f"ctest -N failed with exit code {result.returncode}\n{result.stdout}")
+        raise RuntimeError(
+            f"ctest -N failed with exit code {result.returncode}\n{result.stdout}"
+        )
     return {
         match.group(1)
         for line in result.stdout.splitlines()
@@ -90,7 +91,9 @@ def parse_records(output: str, prefix: str) -> list[dict[str, object]]:
             if not sep:
                 continue
             try:
-                parsed: object = float(value) if any(c in value for c in ".eE") else int(value)
+                parsed: object = (
+                    float(value) if any(c in value for c in ".eE") else int(value)
+                )
             except ValueError:
                 parsed = value
             record[key] = parsed
@@ -99,7 +102,9 @@ def parse_records(output: str, prefix: str) -> list[dict[str, object]]:
     return records
 
 
-def extract_evidence(results: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+def extract_evidence(
+    results: list[dict[str, object]],
+) -> dict[str, list[dict[str, object]]]:
     evidence: dict[str, list[dict[str, object]]] = {
         "quality": [],
         "solver": [],
@@ -179,7 +184,7 @@ def main() -> int:
         return 2
     try:
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except (OSError, yaml.YAMLError) as exc:
         print(f"error: unable to parse fixture manifest: {exc}", file=sys.stderr)
         return 2
 
@@ -246,7 +251,11 @@ def main() -> int:
     coverage = audit_evidence(evidence)
     failed = [r["name"] for r in results if r["status"] == "FAIL"]
     complete = len(results) == len(REQUIRED_TESTS)
-    status = "PASS" if complete and not failed and coverage["status"] == "COMPLETE" else "FAIL"
+    status = (
+        "PASS"
+        if complete and not failed and coverage["status"] == "COMPLETE"
+        else "FAIL"
+    )
 
     try:
         git_revision = subprocess.run(
