@@ -645,7 +645,6 @@ int main(int argc, char** argv)
                         if (result.solve.coupled_schur_model_resolved &&
                             result.solve.resolved_coupled_schur_model != test.schur_model)
                             gates.push_back("n8_coupled_schur_model_mismatch");
-                        }
                     }
                     if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
                         result.solve.iterations < 2)
