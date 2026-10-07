@@ -140,7 +140,7 @@ The campaign records true residual, Krylov iterations, setup/solve time and NNZ 
 - [ ] No automatic relaxation of numerical tolerances.
 - [ ] Unsupported combinations fail explicitly and diagnostically.
 
-The remaining three are unverified for N8 specifically. `PreconditionerModel::LSC` exists in the model enum and catalogue but `make_scalar_preconditioner` rejects block preconditioners and the scalar dispatcher throws `not available in scalar dispatch`; that is an explicit failure, but the enum entry advertising an unavailable path is itself an unresolved item rather than evidence for this section.
+The remaining policy items are broader maturity/qualification controls rather than missing Schur selection: explicit coupled selection and unsupported explicit requests are rejected rather than silently substituted. CPU/GPU fallback policy and package-level qualification remain separate gates.
 
 **Exit evidence:** documented production policy and tests proving unsupported configurations do not silently change method.
 
@@ -161,7 +161,7 @@ The remaining three are unverified for N8 specifically. `PreconditionerModel::LS
 - [x] All mandatory gates are present in CTest. The campaign is registered as `test_n8_physical_qualification` (`CMakeLists.txt`), all 22 required tests resolve against `ctest -N`, and the audit validator runs in the `cfdx-maturity` workflow.
 - [ ] No validation case is disabled merely to obtain a green build.
 - [ ] No tolerance inflation. Both are claims about development history rather than properties of the current tree, so they are not checked here. The report asserts `changes_numerical_tolerances: false` and `disables_validation: false` in its own policy block, but a self-assertion is not independent evidence; this item stays open until reviewed against the diffs.
-- [ ] No silent fallback. No silent *solver substitution* is enforced (section 8); silent CPU/GPU fallback is unverified.
+- [x] No silent fallback. Explicit Schur and linear-solver requests are rejected when unresolved; Exact Schur is reference-only and is not an automatic production fallback. Silent CPU/GPU fallback remains governed by the cross-backend qualification package.
 - [ ] Numerical maturity passes on the exact HEAD.
 - [ ] Numerical maturity audit passes on the exact HEAD.
 - [ ] CFDX CI passes on the exact HEAD.
@@ -182,3 +182,8 @@ The remaining three are unverified for N8 specifically. `PreconditionerModel::LS
 ## Qualification rule
 
 Passing the orchestration script is **not** sufficient for N8 qualification. The campaign must produce numerical evidence that is representative of the production CFD operators and satisfies the acceptance criteria without tolerance inflation, disabled validation, or silent method substitution.
+
+
+## 2026-10-07 — N8 common Schur production integration closure
+
+PR #804 centralized production 4N CSR extraction into reusable Auu/G/D/C blocks. Issue #723 was then audited and closed: explicit Schur family selection, requested/resolved diagnostics, lifecycle/CSR-graph guards and production regression coverage are present for BlockLocal, PCD, SIMPLE, SIMPLEC, LSC and BFBT. MatrixCharacteristics is already closed by #790 and is not a remaining N8 task. N9 physical qualification remains outside this document's production-integration scope.
