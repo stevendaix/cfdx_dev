@@ -379,8 +379,11 @@ int main() {
                 });
             const auto simple_result =
                 run_method("simple", simple_setup_us, simple_pc, rhs);
+            const auto simple_action_values = simple_op.matvec(rhs);
+            Vector simple_action(rhs.size(), 0.0);
+            std::copy(simple_action_values.begin(), simple_action_values.end(), simple_action.data());
             const double simple_action_error = relative_action_error(
-                matvec(simple_op, rhs), exact_operator_action);
+                simple_action, exact_operator_action);
             EXPECT_TRUE(std::isfinite(simple_action_error));
             std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
                       << " convection=" << cfg.convection
@@ -404,8 +407,11 @@ int main() {
                 });
             const auto simplec_result =
                 run_method("simplec", simplec_setup_us, simplec_pc, rhs);
+            const auto simplec_action_values = simplec_op.matvec(rhs);
+            Vector simplec_action(rhs.size(), 0.0);
+            std::copy(simplec_action_values.begin(), simplec_action_values.end(), simplec_action.data());
             const double simplec_action_error = relative_action_error(
-                matvec(simplec_op, rhs), exact_operator_action);
+                simplec_action, exact_operator_action);
             EXPECT_TRUE(std::isfinite(simplec_action_error));
             std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
                       << " convection=" << cfg.convection
