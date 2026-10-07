@@ -299,6 +299,14 @@ int main() {
                     setup_us,
                     std::chrono::duration_cast<std::chrono::microseconds>(
                         end - begin).count()};
+                ++method_records;
+                max_true_residual = std::max(max_true_residual, out.true_residual);
+                max_reported_true_residual_gap = std::max(
+                    max_reported_true_residual_gap,
+                    std::abs(out.solver.residual_relative - out.true_residual));
+                if (out.solver.status == SolverStatus::CONVERGED &&
+                    std::string(name) != "exact")
+                    ++converged_approximation_records;
                 EXPECT_TRUE(std::isfinite(out.true_residual));
                 EXPECT_TRUE(out.solver.status != SolverStatus::NOT_APPLICABLE);
                 std::cout
@@ -447,6 +455,25 @@ int main() {
             // empirical envelope used by the subsequent N8 acceptance decision.
             EXPECT_TRUE(std::isfinite(simple_result.true_residual));
             EXPECT_TRUE(std::isfinite(simplec_result.true_residual));
+
+            // The empirical envelope is only meaningful if every declared
+            // method is exercised on every representative matrix. This is a
+            // coverage gate, not an approximation-quality threshold.
+            EXPECT_TRUE(method_records == 6);
+            EXPECT_TRUE(std::isfinite(max_true_residual));
+            EXPECT_TRUE(std::isfinite(max_reported_true_residual_gap));
+
+            std::cout
+                << "n8_schur_envelope"
+                << " cells=" << cfg.n * cfg.n
+                << " convection=" << cfg.convection
+                << " method_records=" << method_records
+                << " converged_approximation_records="
+                << converged_approximation_records
+                << " max_true_residual=" << max_true_residual
+                << " max_reported_true_residual_gap="
+                << max_reported_true_residual_gap
+                << '\n';
         }
     });
 
