@@ -24,7 +24,27 @@ jobs:
       - name: Install pre-commit and Ruff
         run: python -m pip install --upgrade pre-commit ruff
 
-      - name: Run pre-commit on changed files
-        run: pre-commit run --all-files --show-diff-on-failure
+      - name: Run Ruff/pre-commit on changed Python files
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          status=0
+          mapfile -t python_files < <(
+            git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py'
+          )
+
+          if ((${#python_files[@]} > 0)); then
+            pre-commit run --files "${python_files[@]}" --show-diff-on-failure || status=$?
+          else
+            echo "No changed Python files in $CFDX_PRECOMMIT_RANGE; skipping Python hooks."
+          fi
+
+          exit "$status"
+        env:
+          CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
+
+      - name: Run CFDX fast build/test guard
+        run: pre-commit run cfdx-fast --all-files
         env:
           CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
