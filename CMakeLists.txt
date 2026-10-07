@@ -873,6 +873,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
         add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
         add_executable(test_phase8_mpi_poisson tests/validation/test_phase8_mpi_poisson.cpp)
+        add_executable(test_n8_mpi_boundary tests/validation/test_n8_mpi_boundary.cpp)
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_executable(cfdx_mpi_poisson_restart apps/mpi_poisson_restart/main.cpp)
             target_link_libraries(cfdx_mpi_poisson_restart PRIVATE cfdx_core MPI::MPI_CXX)
@@ -892,6 +893,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_krylov_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_phase8_mpi_poisson PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n8_mpi_boundary PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_n13_mpi_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
@@ -921,6 +923,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_phase8_mpi_poisson
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n8_mpi_boundary
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n8_mpi_boundary> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n8_mpi_boundary PROPERTIES
+            LABELS "n8;qualification;validation;mpi")
         set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_test(NAME test_phase5_distributed
@@ -961,7 +968,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             # external-library teardown check is disabled for these MPI tests.
             set_tests_properties(test_n13_mpi_equivalence test_mpi_deterministic
                 test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction
-                test_phase8_mpi_poisson PROPERTIES
+                test_phase8_mpi_poisson test_n8_mpi_boundary PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
