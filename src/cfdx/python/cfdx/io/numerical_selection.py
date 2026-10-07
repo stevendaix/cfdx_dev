@@ -65,6 +65,15 @@ _LINEAR_SOLVER_KEYS = {
     "fgmres": "linear.fgmres",
 }
 
+_SCHUR_KEYS = {
+    "block_local": "schur.block_local",
+    "pcd": "schur.pcd",
+    "lsc": "schur.lsc",
+    "bfbt": "schur.bfbt",
+    "simple": "schur.simple",
+    "simplec": "schur.simplec",
+}
+
 _PRECONDITIONER_KEYS = {
     "native_amg": "preconditioner.native_amg",
     "amg": "preconditioner.native_amg",
@@ -109,6 +118,9 @@ def build_numerical_selection(numerics: NumericalScheme) -> NumericalSelectionCo
     if numerics.linear_solver:
         _add(cfg, "linear_solver", numerics.linear_solver, _LINEAR_SOLVER_KEYS)
 
+    if numerics.coupled_schur:
+        _add(cfg, "schur", numerics.coupled_schur, _SCHUR_KEYS)
+
     if numerics.preconditioner:
         _add(cfg, "preconditioner", numerics.preconditioner, _PRECONDITIONER_KEYS)
 
@@ -129,6 +141,7 @@ def validate_numerical_selection(numerics: NumericalScheme) -> list[str]:
         ("gradient", numerics.gradient_operator, _GRADIENT_KEYS),
         ("convection", numerics.momentum_scheme, _CONVECTION_KEYS),
         ("pressure_velocity", numerics.coupled_solver, _PRESSURE_VELOCITY_KEYS),
+        ("schur", numerics.coupled_schur, _SCHUR_KEYS),
     )
     for family, value, mapping in checks:
         if str(value).strip() and _normalise(value) not in mapping:
