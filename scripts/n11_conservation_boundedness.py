@@ -20,6 +20,36 @@ import sys
 import time
 from pathlib import Path
 
+
+QUANTITATIVE_RECORD_PREFIXES = (
+    "MODEL_RESULT ",
+    "GHIA ",
+    "POISEUILLE_RESULT ",
+    "N11_ENERGY_RESULT ",
+)
+
+
+def parse_quantitative_records(output: str) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for line in output.splitlines():
+        prefix = next(
+            (p for p in QUANTITATIVE_RECORD_PREFIXES if line.startswith(p)),
+            None,
+        )
+        if prefix is None:
+            continue
+        record: dict[str, object] = {"record_type": prefix.strip()}
+        for token in line[len(prefix):].split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            try:
+                record[key] = float(value)
+            except ValueError:
+                record[key] = value
+        records.append(record)
+    return records
+
 REQUIRED_TESTS = (
     "test_conservation_boundedness",
     "test_transport_conservation",
@@ -196,6 +226,11 @@ def main() -> int:
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
+        "quantitative_records": [
+            record
+            for item in results
+            for record in parse_quantitative_records(str(item["output"]))
+        ],
         "categories": categories,
         "scope_gaps": KNOWN_SCOPE_GAPS,
         "qualification_boundary": (
