@@ -4,6 +4,7 @@ import os
 import stat
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,9 +18,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _wait_for_convergence(window: CFDXWorkbenchWindow, timeout: float = 45.0) -> None:
-    from PySide6.QtWidgets import QApplication
+def _wait_for_convergence(window: Any, timeout: float = 45.0) -> None:
     from cfdx.session import SimulationState
+    from PySide6.QtWidgets import QApplication
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -27,7 +28,7 @@ def _wait_for_convergence(window: CFDXWorkbenchWindow, timeout: float = 45.0) ->
         if window.session.state is SimulationState.CONVERGED:
             return
         if window.session.state is SimulationState.FAILED:
-            raise AssertionError("production solver entered ERROR state")
+            raise AssertionError("production solver entered FAILED state")
         time.sleep(0.05)
     raise AssertionError(
         f"production solver did not converge within {timeout}s; "
