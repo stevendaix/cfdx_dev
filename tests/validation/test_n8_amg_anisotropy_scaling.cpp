@@ -6,7 +6,9 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <iostream>\n#include <limits>\n#include <vector>
+#include <iostream>
+#include <limits>
+#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -96,7 +98,8 @@ QualificationRow run_amg_case(const SparseMatrix& A,
               << " fine=" << A.n_rows();
 
     if (!setup_ok) {
-        std::cout << " qualification=FAIL reason=setup\n";
+        std::cout << " qualification=FAIL reason=setup
+";
         qualification_ok = false;
         return {anisotropy, scale, 0, std::numeric_limits<double>::infinity()};
     }
@@ -129,7 +132,8 @@ QualificationRow run_amg_case(const SparseMatrix& A,
               << " cg_true_residual=" << true_residual
               << " tolerance=" << tolerance
               << " qualification=" << (case_ok ? "PASS" : "FAIL")
-              << '\n';
+              << '
+';
 
     qualification_ok = qualification_ok && case_ok;
     return {anisotropy, scale, result.iterations, true_residual};
@@ -146,7 +150,9 @@ int main() {
     constexpr double anisotropies[] = {1.0, 10.0, 100.0, 1000.0};
     constexpr double scales[] = {1e-3, 1.0, 1e3};
 
-    constexpr double cg_tolerance = 1e-9;\n    bool qualification_ok = true;\n    std::vector<QualificationRow> rows;
+    constexpr double cg_tolerance = 1e-9;
+    bool qualification_ok = true;
+    std::vector<QualificationRow> rows;
 
     for (const double anisotropy : anisotropies) {
         for (const double scale : scales) {
@@ -162,15 +168,18 @@ int main() {
                       << " ax=" << ax
                       << " ay=" << ay
                       << " rows=" << A.n_rows()
-                      << " cols=" << A.n_cols() << '\n';
+                      << " cols=" << A.n_cols() << '
+';
 
-            run_amg_case<NativeBoomerAMGPreconditioner>(
-                A, b, "NativeBoomerAMG", anisotropy, scale, structural_ok);
+            rows.push_back(run_amg_case<NativeBoomerAMGPreconditioner>(
+                A, b, "NativeBoomerAMG", anisotropy, scale, cg_tolerance,
+                qualification_ok));
         }
     }
 
     EXPECT_TRUE(structural_ok);
     std::cout << "N8 AMG anisotropy/scaling qualification: "
-              << (structural_ok ? "PASS" : "FAIL") << '\n';
+              << (structural_ok ? "PASS" : "FAIL") << '
+';
     return 0;
 }
