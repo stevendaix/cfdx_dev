@@ -70,6 +70,13 @@ double relative_true_residual(const SparseMatrix& A,
     return std::sqrt(r2 / std::max(b2, 1e-300));
 }
 
+struct QualificationRow {
+    double anisotropy;
+    double scale;
+    std::size_t iterations;
+    double true_residual;
+};
+
 template <typename AMG>
 QualificationRow run_amg_case(const SparseMatrix& A,
                               const Vector& b,
@@ -157,7 +164,7 @@ int main() {
                       << " rows=" << A.n_rows()
                       << " cols=" << A.n_cols() << '\n';
 
-            run_amg_case<NativeBoomerAMGPreconditioner>(
+            rows.push_back(run_amg_case<NativeBoomerAMGPreconditioner>(
                 A, b, "NativeBoomerAMG", anisotropy, scale, cg_tolerance,
                 qualification_ok));
         }
