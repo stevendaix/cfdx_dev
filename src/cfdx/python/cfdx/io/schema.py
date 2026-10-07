@@ -11,7 +11,6 @@ Corresponds to the C++ headers:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -123,6 +122,7 @@ class NumericalScheme(BaseModel):
     under_relaxation_momentum: float = 0.7
     under_relaxation_pressure: float = 0.3
     coupled_solver: str = "SIMPLE"
+    coupled_schur: str = ""
     preconditioner: str = ""
     linear_solver: str = ""
     residual_target: str = "1e-5"
@@ -192,13 +192,13 @@ class CaseSetup(BaseModel):
     solver_mode: str = "steady"
     source_metadata: dict[str, str] = Field(default_factory=dict)
 
-    def find_boundary(self, name: str) -> Optional[BoundarySpec]:
+    def find_boundary(self, name: str) -> BoundarySpec | None:
         for bc in self.boundary_conditions:
             if bc.patch_name == name:
                 return bc
         return None
 
-    def find_material(self, name: str) -> Optional[MaterialSpec]:
+    def find_material(self, name: str) -> MaterialSpec | None:
         for m in self.materials:
             if m.name == name:
                 return m

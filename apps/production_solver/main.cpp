@@ -112,6 +112,7 @@ void apply_explicit_case_numerics(
     bool pressure_velocity_selected = false;
     bool convection_selected = false;
     bool gradient_selected = false;
+    bool schur_selected = false;
     for (const auto& selection : setup.numerical_report.resolved) {
         if (selection.family == NumericalMethodFamily::PressureVelocity) {
             pressure_velocity_selected = true;
@@ -187,6 +188,16 @@ void apply_explicit_case_numerics(
             throw std::invalid_argument(
                 "steady production solver does not consume a temporal selection: " +
                 selection.method_id);
+        } else if (selection.family == NumericalMethodFamily::Schur) {
+            schur_selected = true;
+            if (selection.method_id.rfind("schur.", 0) != 0)
+                throw std::invalid_argument(
+                    "unsupported resolved Schur selection: " + selection.method_id);
+            CoupledSchurModel model = CoupledSchurModel::BlockLocal;
+            if (!parse_coupled_schur_model(selection.method_id.substr(6), model))
+                throw std::invalid_argument(
+                    "unsupported resolved Schur selection: " + selection.method_id);
+            controls.coupling.schur_model = model;
         } else if (selection.family == NumericalMethodFamily::Preconditioner) {
             PreconditionerModel model = PreconditionerModel::Auto;
             if (selection.method_id == "preconditioner.native_amg")
@@ -218,6 +229,9 @@ void apply_explicit_case_numerics(
     if (!gradient_selected)
         throw std::invalid_argument(
             "case numerics.selection does not select a consumed gradient method");
+    if (controls.algorithm == PressureVelocityAlgorithm::COUPLED && !schur_selected)
+        throw std::invalid_argument(
+            "coupled production solver requires an explicit Schur numerical selection");
 }
 
 Options parse(int argc, char** argv)

@@ -47,6 +47,20 @@ int main() {
         EXPECT_TRUE(a.find("scheme[") != std::string::npos);
     });
 
+    run_case("case_report_resolves_explicit_schur_family", [] {
+        const std::vector<CaseNumericsEntry> config = {
+            {NumericalMethodFamily::PressureVelocity, "pressure_velocity.coupled"},
+            {NumericalMethodFamily::Schur, "schur.pcd"},
+        };
+        const auto report = resolve_case_numerics("coupled", config);
+        EXPECT_TRUE(report.errors.empty());
+        EXPECT_TRUE(report.valid());
+        EXPECT_TRUE(report.resolved.size() == 2);
+        EXPECT_TRUE(report.resolved[1].family == NumericalMethodFamily::Schur);
+        EXPECT_TRUE(report.resolved[1].method_id == "schur.pcd");
+        EXPECT_TRUE(format_numerics_report(report).find("scheme[schur]=schur.pcd") != std::string::npos);
+    });
+
     run_case("case_report_unknown_and_empty_keys_are_errors", [] {
         std::vector<CaseNumericsEntry> config = {
             {NumericalMethodFamily::Convection, "numerics.convection.does_not_exist"},

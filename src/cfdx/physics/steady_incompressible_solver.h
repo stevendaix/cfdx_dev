@@ -1561,8 +1561,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // resolved policy takes the same branch an explicit one would.
     const bool use_n8_block_schur =
         solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+    // The Schur family is the production method selector. The outer
+    // preconditioner family selects the surrounding block infrastructure;
+    // PCD therefore remains reachable even when the outer plan is the generic
+    // coupled-block Schur container.
     const bool use_pcd =
-        solver_plan.preconditioner == PreconditionerModel::PCD;
+        schur_model == CoupledSchurModel::PCD;
     const bool use_lsc_bfbt =
         schur_model == CoupledSchurModel::LSC ||
         schur_model == CoupledSchurModel::BFBT;
