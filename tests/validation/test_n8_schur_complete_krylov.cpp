@@ -187,6 +187,10 @@ double relative_residual(const Dense& A, const Vector& x, const Vector& b) {
     return r.norm2() / std::max(b.norm2(), 1e-300);
 }
 
+double relative_action_error(const Vector& approximate, const Vector& reference) {
+    return (approximate - reference).norm2() / std::max(reference.norm2(), 1e-300);
+}
+
 Vector make_rhs(std::size_t n, double phase) {
     Vector r(n, 0.0);
     for (std::size_t i = 0; i < n; ++i)
@@ -338,6 +342,10 @@ int main() {
             };
 
             const Vector rhs = make_rhs(cfg.n * cfg.n, 0.23);
+            const Vector exact_inverse_action = matvec(S_inv, rhs);
+            const Vector exact_operator_action = matvec(S, rhs);
+            const double schur_norm = exact_operator_action.norm2();
+            const double schur_inverse_norm = exact_inverse_action.norm2();
 
             const auto exact_setup_begin = std::chrono::steady_clock::now();
             CountingCallbackPreconditioner exact_pc(
@@ -371,6 +379,16 @@ int main() {
                 });
             const auto simple_result =
                 run_method("simple", simple_setup_us, simple_pc, rhs);
+            const auto simple_action_values = simple_op.matvec(rhs);
+            Vector simple_action(rhs.size(), 0.0);
+            std::copy(simple_action_values.begin(), simple_action_values.end(), simple_action.data());
+            const double simple_action_error = relative_action_error(
+                simple_action, exact_operator_action);
+            EXPECT_TRUE(std::isfinite(simple_action_error));
+            std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
+                      << " convection=" << cfg.convection
+                      << " method=simple action=operator relative_action_error="
+                      << simple_action_error << " reference_norm=" << schur_norm << '\n';
 
             SimplerSchurApproximation simplec(SimplerSchurMode::SIMPLEC);
             begin = std::chrono::steady_clock::now();
@@ -389,6 +407,16 @@ int main() {
                 });
             const auto simplec_result =
                 run_method("simplec", simplec_setup_us, simplec_pc, rhs);
+            const auto simplec_action_values = simplec_op.matvec(rhs);
+            Vector simplec_action(rhs.size(), 0.0);
+            std::copy(simplec_action_values.begin(), simplec_action_values.end(), simplec_action.data());
+            const double simplec_action_error = relative_action_error(
+                simplec_action, exact_operator_action);
+            EXPECT_TRUE(std::isfinite(simplec_action_error));
+            std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
+                      << " convection=" << cfg.convection
+                      << " method=simplec action=operator relative_action_error="
+                      << simplec_action_error << " reference_norm=" << schur_norm << '\n';
 
             const auto pressure_solve =
                 [P_inv](const Vector& r, Vector& z) {
@@ -419,6 +447,15 @@ int main() {
                         return approx.apply(r, z);
                     });
                 run_method(name, setup_us, pc, rhs);
+                Vector approximate_action(rhs.size(), 0.0);
+                EXPECT_TRUE(approx.apply(rhs, approximate_action));
+                const double action_error = relative_action_error(
+                    approximate_action, exact_inverse_action);
+                EXPECT_TRUE(std::isfinite(action_error));
+                std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
+                          << " convection=" << cfg.convection
+                          << " method=" << name << " action=inverse relative_action_error="
+                          << action_error << " reference_norm=" << schur_inverse_norm << '\n';
             }
 
             begin = std::chrono::steady_clock::now();
@@ -442,6 +479,15 @@ int main() {
                     return pcd.apply(r, z);
                 });
             const auto pcd_result = run_method("pcd", pcd_setup_us, pcd_pc, rhs);
+            Vector pcd_action(rhs.size(), 0.0);
+            EXPECT_TRUE(pcd.apply(rhs, pcd_action));
+            const double pcd_action_error = relative_action_error(
+                pcd_action, exact_inverse_action);
+            EXPECT_TRUE(std::isfinite(pcd_action_error));
+            std::cout << "n8_schur_action_error cells=" << cfg.n * cfg.n
+                      << " convection=" << cfg.convection
+                      << " method=pcd action=inverse relative_action_error="
+                      << pcd_action_error << " reference_norm=" << schur_inverse_norm << '\n';
 
             // A non-zero convection point must actually distinguish the two
             // pressure operators. This prevents the PCD campaign from passing
@@ -478,6 +524,8 @@ int main() {
                 << " max_true_residual=" << max_true_residual
                 << " max_reported_true_residual_gap="
                 << max_reported_true_residual_gap
+                << " schur_norm=" << schur_norm
+                << " schur_inverse_norm=" << schur_inverse_norm
                 << '\n';
         }
     });
