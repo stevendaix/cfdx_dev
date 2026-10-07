@@ -7,7 +7,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .application import Application, ApplicationStateChanged, ResultsChanged, WorkflowStatus, workflow_children
+from .application import (
+    Application,
+    ApplicationStateChanged,
+    ResultsChanged,
+    WorkflowStatus,
+    workflow_children,
+)
 from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
@@ -132,8 +138,9 @@ if QMainWindow is not object:
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
                 action.setEnabled(False)
+                mode = label.lower()
                 action.triggered.connect(
-                    lambda _checked=False, mode=label.lower(): self._postprocess(mode)
+                    lambda _checked=False, mode=mode: self._postprocess(mode)
                 )
                 toolbar.addAction(action)
                 setattr(self, f"{label.lower()}_action", action)
