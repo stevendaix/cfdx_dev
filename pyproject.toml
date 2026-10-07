@@ -21,6 +21,7 @@ gui = [
 ]
 
 [project.scripts]
+cfdx = "cfdx.cli:main"
 cfdx-gui = "cfdx.gui:launch"
 
 [tool.setuptools]
