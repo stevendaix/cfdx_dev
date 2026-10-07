@@ -176,7 +176,7 @@ def main() -> int:
             parts = Path(path).parts
             if len(parts) >= 3 and parts[0] == "tests" and Path(path).suffix.lower() in CPP_EXT:
                 stem = Path(path).stem
-                if stem.startswith("test_"):
+                if stem.startswith("test_") and stem in available:
                     targets.append(stem)
         available = existing_ctest_names()
         for smoke in SMOKE_TESTS:
