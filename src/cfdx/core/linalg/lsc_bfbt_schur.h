@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -21,21 +22,23 @@ namespace cfdx::core {
 //         [ D    C ]
 //
 // For incompressible problems the pressure Schur complement is commonly
-// dominated by S = -D Auu^{-1} G.  LSC/BFBt approximate the inverse action
+// dominated by S = C - D Auu^{-1} G.  LSC/BFBt approximate the inverse action
 // without forming Auu^{-1}.  With a positive diagonal velocity scaling Q,
 // define
 //
 //     P = D Q^{-1} G
 //     E = D Q^{-1} Auu Q^{-1} G
 //
-// and use
+// and use the stabilized algebraic form
 //
-//     S^{-1} r ~= - P^{-1} E P^{-1} r.
+//     H = D Q^{-1} G - C
+//     K = D Q^{-1} Auu Q^{-1} G - C
+//     S^{-1} r ~= - H^{-1} K H^{-1} r.
 //
-// This is the LSC/BFBt algebraic form documented by PETSc and the CFD
-// literature.  The pressure solve P^{-1} is supplied by the caller so that
-// CFDX can use AMG/Krylov without coupling the Schur approximation to a
-// particular pressure solver.
+// When C = 0 this reduces exactly to the classical LSC/BFBt construction
+// -P^{-1} E P^{-1} r.  When Q = Auu the stabilized form is exact.  The
+// production collocated Rhie-Chow discretisation produces a nonzero C block,
+// so the stabilized form is the default production implementation.
 //
 // LSC uses a momentum-based diagonal scaling Q = diag(Auu) by default.
 // BFBt uses an explicitly supplied velocity-space scaling; the identity
@@ -53,7 +56,7 @@ public:
         BFBT
     };
 
-    // Solve P*z = rhs, where P = D Q^{-1} G for the current setup.
+    // Solve H*z = rhs, where H = D Q^{-1} G - C for the stabilized setup.
     using PressureSolve = std::function<bool(const Vector& rhs, Vector& z)>;
 
     LscBfbtSchurApproximation(Mode mode,
@@ -69,7 +72,8 @@ public:
         return mode_ == Mode::LSC ? "lsc_schur" : "bfbt_schur";
     }
 
-    // apply() returns -P^{-1} E P^{-1} r, which approximates S^{-1} r.
+    // apply() returns -H^{-1} K H^{-1} r, which approximates S^{-1} r.
+    // When C = 0 this reduces to -P^{-1} E P^{-1} r.
     SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
 
     bool setup(const BlockOperator& blocks) override {
@@ -139,8 +143,9 @@ public:
         for (std::size_t i = 0; i < Aqg.size(); ++i) qAqg(i) = q_inverse_[i] * Aqg[i];
 
         const auto Eq = blocks_->D().matvec(qAqg);
+        const auto Cy = blocks_->C().matvec(y);
         Vector z(np, 0.0);
-        for (std::size_t i = 0; i < np; ++i) z(i) = Eq[i];
+        for (std::size_t i = 0; i < np; ++i) z(i) = Eq[i] - Cy[i];
         if (pressure_null_space_) pressure_null_space_->remove(z);
 
         if (!pressure_solve_(z, pressure)) return false;
@@ -148,6 +153,48 @@ public:
         for (std::size_t i = 0; i < np; ++i) pressure(i) = -pressure(i);
         if (pressure_null_space_) pressure_null_space_->remove(pressure);
         return true;
+    }
+
+    // Assemble the classical LSC/BFBt component P = D Q^{-1} G.  It is
+    // retained as a diagnostic/reference operator.
+    static SparseMatrix assemble_pressure_operator(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        return assemble_scaled_divergence_gradient(blocks, mode, q_diagonal);
+    }
+
+    // Assemble the stabilized pressure-side operator
+    //
+    //     H = D Q^{-1} G - C.
+    //
+    // The physical Schur approximation is S_hat = -H.  Keeping H as the
+    // pressure solve operator gives the caller the same sign-normalized,
+    // positive-diagonal system used by the existing CFDX pressure solvers.
+    static SparseMatrix assemble_stabilized_pressure_operator(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        const SparseMatrix P = assemble_scaled_divergence_gradient(blocks, mode, q_diagonal);
+        const auto& C = blocks.C();
+        SparseMatrix H(P.n_rows(), P.n_cols());
+        for (std::size_t row = 0; row < P.n_rows(); ++row) {
+            std::map<std::size_t, double> entries;
+            for (std::size_t k = P.row_offsets_data()[row];
+                 k < P.row_offsets_data()[row + 1]; ++k) {
+                entries[P.columns_data()[k]] += P.values_data()[k];
+            }
+            for (std::size_t k = C.row_offsets_data()[row];
+                 k < C.row_offsets_data()[row + 1]; ++k) {
+                entries[C.columns_data()[k]] -= C.values_data()[k];
+            }
+            for (const auto& [col, value] : entries) {
+                if (std::isfinite(value) && value != 0.0)
+                    H.push_back(row, col, value);
+            }
+        }
+        H.finalize();
+        return H;
     }
 
     Mode mode() const noexcept { return mode_; }
@@ -159,6 +206,71 @@ public:
     }
 
 private:
+    static std::vector<double> make_q_inverse(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal) {
+        const std::size_t nu = blocks.velocity_size();
+        std::vector<double> q_inverse(nu, 1.0);
+        if (q_diagonal.empty()) {
+            if (mode == Mode::LSC) {
+                const auto& A = blocks.Auu();
+                for (std::size_t i = 0; i < nu; ++i) {
+                    double d = 0.0;
+                    for (std::size_t k = A.row_offsets_data()[i];
+                         k < A.row_offsets_data()[i + 1]; ++k) {
+                        if (A.columns_data()[k] == i) d += A.values_data()[k];
+                    }
+                    if (!(d > 0.0) || !std::isfinite(d))
+                        throw std::invalid_argument(
+                            "LSC/BFBT Schur assembly requires positive finite momentum diagonal");
+                    q_inverse[i] = 1.0 / d;
+                }
+            }
+        } else {
+            if (q_diagonal.size() != nu)
+                throw std::invalid_argument("LSC/BFBT Schur assembly scaling size mismatch");
+            for (std::size_t i = 0; i < nu; ++i) {
+                if (!(q_diagonal[i] > 0.0) || !std::isfinite(q_diagonal[i]))
+                    throw std::invalid_argument(
+                        "LSC/BFBT Schur assembly requires positive finite scaling");
+                q_inverse[i] = 1.0 / q_diagonal[i];
+            }
+        }
+        return q_inverse;
+    }
+
+    static SparseMatrix assemble_scaled_divergence_gradient(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        const auto q_inverse = make_q_inverse(blocks, mode, q_diagonal);
+        const std::size_t nu = blocks.velocity_size();
+        const auto& D = blocks.D();
+        const auto& G = blocks.G();
+        SparseMatrix P(blocks.pressure_size(), blocks.pressure_size());
+        for (std::size_t row = 0; row < blocks.pressure_size(); ++row) {
+            std::map<std::size_t, double> entries;
+            for (std::size_t dk = D.row_offsets_data()[row];
+                 dk < D.row_offsets_data()[row + 1]; ++dk) {
+                const std::size_t velocity_col = D.columns_data()[dk];
+                if (velocity_col >= nu)
+                    throw std::invalid_argument("LSC/BFBT D column is outside velocity space");
+                const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
+                for (std::size_t gk = G.row_offsets_data()[velocity_col];
+                     gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
+                    entries[G.columns_data()[gk]] += d_value * G.values_data()[gk];
+                }
+            }
+            for (const auto& [col, value] : entries) {
+                if (std::isfinite(value) && value != 0.0)
+                    P.push_back(row, col, value);
+            }
+        }
+        P.finalize();
+        return P;
+    }
+
     struct GraphSignature {
         std::size_t hash = 0;
         bool operator==(const GraphSignature& other) const noexcept {

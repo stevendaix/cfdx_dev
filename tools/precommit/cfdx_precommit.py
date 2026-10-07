@@ -177,6 +177,10 @@ def main() -> int:
                 stem = Path(path).stem
                 if stem.startswith("test_"):
                     targets.append(stem)
+        available = existing_ctest_names()
+        for smoke in SMOKE_TESTS:
+            if smoke in available and smoke not in targets:
+                targets.append(smoke)
         build_targets(list(dict.fromkeys(targets)))
         run_ctest(SMOKE_TESTS)
 

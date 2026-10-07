@@ -179,14 +179,15 @@ int main() {
                 Dense P = multiply(multiply(dense(D),
                                              {{qinv[0], 0.0}, {0.0, qinv[1]}}),
                                    dense(G));
-                const Dense Pinv = inverse(P);
                 const Dense Qinv{{qinv[0], 0.0}, {0.0, qinv[1]}};
                 const Dense E = multiply(
                     multiply(multiply(multiply(dense(D), Qinv), Ad), Qinv),
                     dense(G));
+                const Dense H = subtract(P, dense(C));
+                const Dense Hinv = inverse(H);
 
-                auto pressure_solve = [Pinv](const Vector& r, Vector& z) {
-                    z = matvec(Pinv, r);
+                auto pressure_solve = [Hinv](const Vector& r, Vector& z) {
+                    z = matvec(Hinv, r);
                     return true;
                 };
                 LscBfbtSchurApproximation approx(mode, pressure_solve, qdiag);
@@ -195,14 +196,16 @@ int main() {
                 Vector estimated(2, 0.0);
                 EXPECT_TRUE(approx.apply(rhs, estimated));
 
-                Vector y(2, 0.0);
-                EXPECT_TRUE(pressure_solve(rhs, y));
-                const Vector e = matvec(E, y);
+                const Dense K = subtract(E, dense(C));
+                const Dense KHinv = multiply(K, Hinv);
+                const Dense HinvKHinv = multiply(Hinv, KHinv);
                 Vector reference(2, 0.0);
-                EXPECT_TRUE(pressure_solve(e, reference));
+                for (std::size_t i = 0; i < 2; ++i)
+                    for (std::size_t j = 0; j < 2; ++j)
+                        reference(i) += HinvKHinv[i][j] * rhs(j);
                 reference *= -1.0;
 
-                // Verify implementation against its documented -P^-1 E P^-1
+                // Verify implementation against its documented -H^-1 K H^-1
                 // algebra before comparing that operator to the exact Schur.
                 EXPECT_TRUE(relative_error(estimated, reference) < 1e-12);
 
