@@ -4,6 +4,9 @@
 #include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
