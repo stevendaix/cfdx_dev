@@ -26,7 +26,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_info(args: argparse.Namespace) -> int:
     app = _application(args.case, args.dat)
-    print(json.dumps(app.state.to_dict(), indent=2, default=str))
+    state = app.state\n    print(json.dumps({\n        "project_path": state.project.path,\n        "simulation_state": state.simulation_state.value,\n        "iteration": state.execution.iteration,\n        "time": state.execution.time,\n        "requires_restart": state.requires_restart,\n    }, indent=2, default=str))
     return 0
 
 
