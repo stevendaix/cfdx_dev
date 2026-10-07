@@ -6,9 +6,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from cfdx import CFDXSession
+
+import pytest
 
 
 pytestmark = pytest.mark.skipif(
