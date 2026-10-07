@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <iostream>
+#include <iostream>\n#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -68,13 +68,21 @@ double relative_true_residual(const SparseMatrix& A,
     return std::sqrt(r2 / std::max(b2, 1e-300));
 }
 
+struct QualificationRow {
+    double anisotropy;
+    double scale;
+    std::size_t iterations;
+    double true_residual;
+};
+
 template <typename AMG>
-void run_amg_case(const SparseMatrix& A,
-                  const Vector& b,
-                  const char* method,
-                  double anisotropy,
-                  double scale,
-                  bool& structural_ok) {
+QualificationRow run_amg_case(const SparseMatrix& A,
+                              const Vector& b,
+                              const char* method,
+                              double anisotropy,
+                              double scale,
+                              double tolerance,
+                              bool& qualification_ok) {
     AMG amg;
     const bool setup_ok = amg.setup(A);
     const auto levels = amg.hierarchy_level_sizes();
@@ -88,9 +96,9 @@ void run_amg_case(const SparseMatrix& A,
               << " fine=" << A.n_rows();
 
     if (!setup_ok) {
-        std::cout << " structural=FAIL\n";
-        structural_ok = false;
-        return;
+        std::cout << " qualification=FAIL reason=setup\n";
+        qualification_ok = false;
+        return {anisotropy, scale, 0, std::numeric_limits<double>::infinity()};
     }
 
     Vector z(A.n_rows(), 0.0);
@@ -98,13 +106,19 @@ void run_amg_case(const SparseMatrix& A,
     const double apply_residual = relative_true_residual(A, z, b);
 
     Vector x(A.n_rows(), 0.0);
-    const auto result = solve_cg(A, b, x, amg, 5000, 1e-9);
+    const auto result = solve_cg(A, b, x, amg, 5000, tolerance);
     const double true_residual = relative_true_residual(A, x, b);
 
     const bool finite_evidence = std::isfinite(apply_residual) &&
                                  std::isfinite(true_residual);
     const bool hierarchy_ok = levels.size() >= 2 &&
                               amg.first_prolongation_nnz() > 0;
+    const bool converged = result.status == SolverStatus::CONVERGED;
+    // The solve tolerance is the acceptance contract; no independent
+    // iteration-count threshold or arbitrary residual margin is introduced.
+    const bool residual_ok = finite_evidence && true_residual <= tolerance;
+    const bool case_ok = apply_ok && hierarchy_ok && finite_evidence &&
+                         converged && residual_ok;
 
     std::cout << " apply=" << (apply_ok ? "PASS" : "FAIL")
               << " hierarchy=" << (hierarchy_ok ? "PASS" : "FAIL")
@@ -113,10 +127,12 @@ void run_amg_case(const SparseMatrix& A,
               << " cg_status=" << static_cast<int>(result.status)
               << " cg_iterations=" << result.iterations
               << " cg_true_residual=" << true_residual
-              << " evidence=" << (finite_evidence ? "FINITE" : "NONFINITE")
+              << " tolerance=" << tolerance
+              << " qualification=" << (case_ok ? "PASS" : "FAIL")
               << '\n';
 
-    structural_ok = structural_ok && apply_ok && hierarchy_ok && finite_evidence;
+    qualification_ok = qualification_ok && case_ok;
+    return {anisotropy, scale, result.iterations, true_residual};
 }
 
 } // namespace
@@ -130,7 +146,7 @@ int main() {
     constexpr double anisotropies[] = {1.0, 10.0, 100.0, 1000.0};
     constexpr double scales[] = {1e-3, 1.0, 1e3};
 
-    bool structural_ok = true;
+    constexpr double cg_tolerance = 1e-9;\n    bool qualification_ok = true;\n    std::vector<QualificationRow> rows;
 
     for (const double anisotropy : anisotropies) {
         for (const double scale : scales) {
