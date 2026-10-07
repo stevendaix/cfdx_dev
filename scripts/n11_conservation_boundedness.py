@@ -217,7 +217,43 @@ def main() -> int:
 
     failed = [str(item["name"]) for item in results if item["status"] != "PASS"]
     categories = build_category_results(results)
-    complete_execution = len(results) == len(REQUIRED_TESTS) and not failed
+    quantitative_records = [
+        record
+        for item in results
+        for record in parse_quantitative_records(str(item["output"]))
+    ]
+    quantitative_counts = {
+        "MODEL_RESULT": sum(r["record_type"] == "MODEL_RESULT" for r in quantitative_records),
+        "GHIA": sum(r["record_type"] == "GHIA" for r in quantitative_records),
+        "POISEUILLE_RESULT": sum(
+            r["record_type"] == "POISEUILLE_RESULT" for r in quantitative_records
+        ),
+        "N11_ENERGY_RESULT": sum(
+            r["record_type"] == "N11_ENERGY_RESULT" for r in quantitative_records
+        ),
+    }
+    quantitative_requirements = {
+        "MODEL_RESULT": 1,
+        "GHIA": 4,
+        "POISEUILLE_RESULT": 4,
+        "N11_ENERGY_RESULT": 1,
+    }
+    quantitative_coverage = {
+        key: {
+            "required": required,
+            "observed": quantitative_counts[key],
+            "complete": quantitative_counts[key] >= required,
+        }
+        for key, required in quantitative_requirements.items()
+    }
+    quantitative_complete = all(
+        item["complete"] for item in quantitative_coverage.values()
+    )
+    complete_execution = (
+        len(results) == len(REQUIRED_TESTS)
+        and not failed
+        and quantitative_complete
+    )
 
     report = {
         "campaign": "N11 conservation and boundedness evidence",
@@ -226,11 +262,8 @@ def main() -> int:
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
-        "quantitative_records": [
-            record
-            for item in results
-            for record in parse_quantitative_records(str(item["output"]))
-        ],
+        "quantitative_records": quantitative_records,
+        "quantitative_coverage": quantitative_coverage,
         "categories": categories,
         "scope_gaps": KNOWN_SCOPE_GAPS,
         "qualification_boundary": (
