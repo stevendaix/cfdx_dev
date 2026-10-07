@@ -12,6 +12,7 @@
 #include <csignal>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
 
 using namespace cfdx::core;
@@ -265,8 +266,11 @@ int main(int argc, char** argv)
 {
     std::signal(SIGINT, handle_stop_signal);
     std::signal(SIGTERM, handle_stop_signal);
+    std::filesystem::path execution_output_dir;
+    std::optional<IncompressibleSolveResult> execution_result;
     try {
         const Options options = parse(argc, argv);
+        execution_output_dir = options.output_dir;
         Mesh mesh;
         const std::string mesh_path = options.mesh;
         CaseSetup case_setup;
@@ -436,6 +440,21 @@ int main(int argc, char** argv)
 
         const auto result = solve_steady_incompressible(
             mesh, U, p, ubc, pbc, controls, options.restart.string());
+        execution_result = result;
+        const auto execution = options.output_dir / "execution.json";
+        const auto solver_exit_code = execution_exit_code_for_solver(result.converged);
+        // Persist the solver outcome before any secondary artifact is written.
+        // This guarantees that a restart/convergence/probe write failure still
+        // leaves an execution artifact which the catch block can finalize with
+        // the actual process error code (2).
+        write_execution_summary(execution.string(), ExecutionSummary{
+            solver_exit_code,
+            result.converged,
+            result.iterations,
+            static_cast<int>(result.convergence_status),
+            result.convergence_reason,
+            false,
+            false});
         if (!options.restart.empty())
             std::cout << "Restart checkpoint " << options.restart.string() << "\n";
 
@@ -443,15 +462,14 @@ int main(int argc, char** argv)
         write_dat_restart(dat.string(), mesh, U, p, result.iterations, 0.0);
         const auto convergence = options.output_dir / "convergence.json";
         write_convergence_history(convergence.string(), result);
-        const auto execution = options.output_dir / "execution.json";
         write_execution_summary(execution.string(), ExecutionSummary{
-            result.converged ? 0 : 1,
+            solver_exit_code,
             result.converged,
             result.iterations,
             static_cast<int>(result.convergence_status),
             result.convergence_reason,
-            std::filesystem::exists(dat),
-            std::filesystem::exists(convergence)});
+            std::filesystem::is_regular_file(dat),
+            std::filesystem::is_regular_file(convergence)});
         std::cout << "Checkpoint " << dat.string() << "\n";
         std::cout << "Convergence history " << convergence.string() << "\n";
         std::cout << "Execution summary " << execution.string() << "\n";
@@ -467,6 +485,30 @@ int main(int argc, char** argv)
         return result.converged ? 0 : 1;
     } catch (const std::exception& exc) {
         std::cerr << "CFDX production solver error: " << exc.what() << "\n";
-        return 2;
+        if (!execution_output_dir.empty()) {
+            try {
+                const auto execution = execution_output_dir / "execution.json";
+                const bool has_restart =
+                    std::filesystem::is_regular_file(execution_output_dir / "restart.dat");
+                const bool has_convergence =
+                    std::filesystem::is_regular_file(execution_output_dir / "convergence.json");
+                write_execution_summary(execution.string(), ExecutionSummary{
+                    kExecutionExitError,
+                    execution_result.has_value() ? execution_result->converged : false,
+                    execution_result.has_value() ? execution_result->iterations : 0,
+                    execution_result.has_value()
+                        ? static_cast<int>(execution_result->convergence_status)
+                        : 0,
+                    execution_result.has_value()
+                        ? execution_result->convergence_reason
+                        : exc.what(),
+                    has_restart,
+                    has_convergence});
+            } catch (const std::exception& summary_exc) {
+                std::cerr << "CFDX production solver: failed to persist execution summary: "
+                          << summary_exc.what() << "\n";
+            }
+        }
+        return kExecutionExitError;
     }
 }
