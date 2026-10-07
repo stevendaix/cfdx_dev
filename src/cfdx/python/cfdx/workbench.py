@@ -18,7 +18,7 @@ from .session import CFDXSession
 from .validation import validate_case
 
 try:
-    from PySide6.QtCore import QSettings, Qt
+    from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QDockWidget,
@@ -50,6 +50,12 @@ if QMainWindow is not object:
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
 
+        # Execution callbacks originate from SolverRunner worker threads. Qt
+        # widgets must only be touched on the GUI thread, so application events
+        # cross this boundary through queued Qt signal delivery.
+        _state_event = Signal(object)
+        _results_event = Signal(object)
+
         SETTINGS_ORGANIZATION = "CFDX"
         SETTINGS_APPLICATION = "Workbench"
 
@@ -64,8 +70,10 @@ if QMainWindow is not object:
             self.session = self.application.session
             self._restart_dat: Path | None = None
             self._application_state = self.application.state
-            self.application.events.subscribe(ApplicationStateChanged, self._state_changed)
-            self.application.events.subscribe(ResultsChanged, self._results_changed)
+            self._state_event.connect(self._state_changed)
+            self._results_event.connect(self._results_changed)
+            self.application.events.subscribe(ApplicationStateChanged, self._state_event.emit)
+            self.application.events.subscribe(ResultsChanged, self._results_event.emit)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
