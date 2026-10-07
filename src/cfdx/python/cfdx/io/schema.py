@@ -11,8 +11,6 @@ Corresponds to the C++ headers:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 CFDX_SCHEMA_VERSION: int = 1
