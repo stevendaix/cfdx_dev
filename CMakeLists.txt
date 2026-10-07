@@ -723,6 +723,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_transient_mms_3d_stiff
         test_n12_momentum_mms
         test_n12_pressure_continuity_mms
+        PROPERTIES LABELS "n12;mms;validation")
+    set_tests_properties(
         test_n12_coupled_pressure_velocity_mms
         PROPERTIES LABELS "n12;mms;validation;long;validation-total")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
