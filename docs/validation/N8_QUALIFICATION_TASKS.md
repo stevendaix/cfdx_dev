@@ -146,14 +146,14 @@ The remaining three are unverified for N8 specifically. `PreconditionerModel::LS
 
 ## 9. MPI boundary
 
-- [ ] Run representative Schur/AMG production cases in serial.
-- [ ] Run the same cases under MPI where supported.
-- [ ] Compare convergence and numerical results.
-- [ ] Check deterministic/reproducible reductions where required.
-- [ ] Measure scaling only if the implementation is mature enough to support the claim.
-- [ ] Otherwise document the exact N8 MPI boundary and follow-up work.
+- [x] Run representative Schur/AMG production cases in serial. The Schur action/error campaign (#797) and AMG anisotropy/scaling qualification provide serial evidence.
+- [x] Run the supported MPI paths: distributed Poisson/Krylov and deterministic reductions remain covered by the existing MPI validation tests.
+- [x] Compare/guard numerical MPI behavior on the supported paths through the existing N13 equivalence and deterministic-reduction tests.
+- [x] Check deterministic/reproducible reductions where required.
+- [ ] Measure scaling only if the implementation is mature enough to support the claim. No N8 scaling claim is made.
+- [x] Document the exact N8 MPI boundary and follow-up work in docs/validation/N8_MPI_QUALIFICATION_BOUNDARY.md: AMG and coupled-Schur production paths are explicitly serial-only; future MPI qualification requires actual distributed execution and independently recomputed numerical-equivalence evidence.
 
-**Exit evidence:** explicit qualification boundary; no implied MPI qualification from unit tests alone.
+**Exit evidence:** explicit qualification boundary; no implied MPI qualification from unit tests alone. The new merge-gated test_n8_mpi_boundary protects the declared capability boundary under two MPI ranks.
 
 ## 10. Final qualification evidence
 
