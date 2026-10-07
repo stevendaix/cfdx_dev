@@ -70,13 +70,6 @@ double relative_true_residual(const SparseMatrix& A,
     return std::sqrt(r2 / std::max(b2, 1e-300));
 }
 
-struct QualificationRow {
-    double anisotropy;
-    double scale;
-    std::size_t iterations;
-    double true_residual;
-};
-
 template <typename AMG>
 QualificationRow run_amg_case(const SparseMatrix& A,
                               const Vector& b,
@@ -98,8 +91,7 @@ QualificationRow run_amg_case(const SparseMatrix& A,
               << " fine=" << A.n_rows();
 
     if (!setup_ok) {
-        std::cout << " qualification=FAIL reason=setup
-";
+        std::cout << " qualification=FAIL reason=setup\n";
         qualification_ok = false;
         return {anisotropy, scale, 0, std::numeric_limits<double>::infinity()};
     }
@@ -117,8 +109,6 @@ QualificationRow run_amg_case(const SparseMatrix& A,
     const bool hierarchy_ok = levels.size() >= 2 &&
                               amg.first_prolongation_nnz() > 0;
     const bool converged = result.status == SolverStatus::CONVERGED;
-    // The solve tolerance is the acceptance contract; no independent
-    // iteration-count threshold or arbitrary residual margin is introduced.
     const bool residual_ok = finite_evidence && true_residual <= tolerance;
     const bool case_ok = apply_ok && hierarchy_ok && finite_evidence &&
                          converged && residual_ok;
@@ -132,14 +122,11 @@ QualificationRow run_amg_case(const SparseMatrix& A,
               << " cg_true_residual=" << true_residual
               << " tolerance=" << tolerance
               << " qualification=" << (case_ok ? "PASS" : "FAIL")
-              << '
-';
+              << '\n';
 
     qualification_ok = qualification_ok && case_ok;
     return {anisotropy, scale, result.iterations, true_residual};
 }
-
-} // namespace
 
 int main() {
     std::cout << std::setprecision(17);
@@ -168,18 +155,27 @@ int main() {
                       << " ax=" << ax
                       << " ay=" << ay
                       << " rows=" << A.n_rows()
-                      << " cols=" << A.n_cols() << '
-';
+                      << " cols=" << A.n_cols() << '\n';
 
-            rows.push_back(run_amg_case<NativeBoomerAMGPreconditioner>(
+            run_amg_case<NativeBoomerAMGPreconditioner>(
                 A, b, "NativeBoomerAMG", anisotropy, scale, cg_tolerance,
                 qualification_ok));
         }
     }
 
-    EXPECT_TRUE(structural_ok);
+    std::cout << "n8_amg_qualification_summary"
+              << " cases=" << rows.size()
+              << " tolerance=" << cg_tolerance << '\n';
+    for (const auto& row : rows) {
+        std::cout << "n8_amg_qualification_result"
+                  << " anisotropy=" << row.anisotropy
+                  << " scale=" << row.scale
+                  << " iterations=" << row.iterations
+                  << " true_residual=" << row.true_residual << '\n';
+    }
+    EXPECT_TRUE(rows.size() == 12);
+    EXPECT_TRUE(qualification_ok);
     std::cout << "N8 AMG anisotropy/scaling qualification: "
-              << (structural_ok ? "PASS" : "FAIL") << '
-';
+              << (qualification_ok ? "PASS" : "FAIL") << '\n';
     return 0;
 }
