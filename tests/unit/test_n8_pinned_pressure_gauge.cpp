@@ -108,7 +108,8 @@ int main()
 
             const auto assembled = schur.assembled_operator();
             EXPECT_TRUE(assembled.n_rows() == 2 && assembled.n_cols() == 2);
-            EXPECT_NEAR(assembled.matvec(rhs)(0), rhs(0), 1e-12);
+            const auto assembled_rhs = assembled.matvec(rhs);
+            EXPECT_NEAR(assembled_rhs[0], rhs(0), 1e-12);
         }
     });
 
