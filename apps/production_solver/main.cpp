@@ -112,6 +112,7 @@ void apply_explicit_case_numerics(
     bool pressure_velocity_selected = false;
     bool convection_selected = false;
     bool gradient_selected = false;
+    bool schur_selected = false;
     for (const auto& selection : setup.numerical_report.resolved) {
         if (selection.family == NumericalMethodFamily::PressureVelocity) {
             pressure_velocity_selected = true;
@@ -187,6 +188,24 @@ void apply_explicit_case_numerics(
             throw std::invalid_argument(
                 "steady production solver does not consume a temporal selection: " +
                 selection.method_id);
+        } else if (selection.family == NumericalMethodFamily::Schur) {
+            schur_selected = true;
+            if (selection.method_id == "schur.block_local")
+                controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
+            else if (selection.method_id == "schur.pcd")
+                controls.coupling.schur_model = CoupledSchurModel::PCD;
+            else if (selection.method_id == "schur.lsc")
+                controls.coupling.schur_model = CoupledSchurModel::LSC;
+            else if (selection.method_id == "schur.bfbt")
+                controls.coupling.schur_model = CoupledSchurModel::BFBT;
+            else if (selection.method_id == "schur.simple")
+                controls.coupling.schur_model = CoupledSchurModel::SIMPLE;
+            else if (selection.method_id == "schur.simplec")
+                controls.coupling.schur_model = CoupledSchurModel::SIMPLEC;
+            else
+                throw std::invalid_argument(
+                    "unsupported resolved Schur selection: " +
+                    selection.method_id);
         } else if (selection.family == NumericalMethodFamily::Preconditioner) {
             PreconditionerModel model = PreconditionerModel::Auto;
             if (selection.method_id == "preconditioner.native_amg")
@@ -218,6 +237,9 @@ void apply_explicit_case_numerics(
     if (!gradient_selected)
         throw std::invalid_argument(
             "case numerics.selection does not select a consumed gradient method");
+    if (controls.algorithm == PressureVelocityAlgorithm::COUPLED && !schur_selected)
+        throw std::invalid_argument(
+            "coupled production solver requires an explicit Schur numerical selection");
 }
 
 Options parse(int argc, char** argv)
