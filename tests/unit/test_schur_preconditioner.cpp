@@ -1,5 +1,6 @@
 #include "cfdx/core/linalg/block_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/coupled_block_extraction.h"
 #include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
@@ -21,6 +22,45 @@ static SparseMatrix make_block_system() {
 }
 
 int main() {
+    run_case("coupled_block_extraction_preserves_4n_layout", [] {
+        SparseMatrix A(8, 8);
+        A.push_back(0, 0, 10.0);
+        A.push_back(0, 6, 1.0);
+        A.push_back(1, 1, 11.0);
+        A.push_back(1, 7, 2.0);
+        A.push_back(2, 2, 12.0);
+        A.push_back(2, 6, 3.0);
+        A.push_back(6, 0, -4.0);
+        A.push_back(6, 6, 20.0);
+        A.push_back(7, 1, -5.0);
+        A.push_back(7, 7, 21.0);
+        A.finalize();
+
+        const auto Auu = extract_coupled_block(A, 0, 0, 6, 6);
+        const auto G = extract_coupled_block(A, 0, 1, 6, 2);
+        const auto D = extract_coupled_block(A, 1, 0, 2, 6);
+        const auto C = extract_coupled_block(A, 1, 1, 2, 2);
+
+        EXPECT_TRUE(Auu.n_rows() == 6 && Auu.n_cols() == 6);
+        EXPECT_TRUE(G.n_rows() == 6 && G.n_cols() == 2);
+        EXPECT_TRUE(D.n_rows() == 2 && D.n_cols() == 6);
+        EXPECT_TRUE(C.n_rows() == 2 && C.n_cols() == 2);
+        EXPECT_NEAR(G.values_data()[0], 1.0, 1e-12);
+        EXPECT_NEAR(G.values_data()[1], 2.0, 1e-12);
+        EXPECT_NEAR(D.values_data()[0], -4.0, 1e-12);
+        EXPECT_NEAR(D.values_data()[1], -5.0, 1e-12);
+        EXPECT_NEAR(C.values_data()[0], 20.0, 1e-12);
+        EXPECT_NEAR(C.values_data()[1], 21.0, 1e-12);
+    });
+
+    run_case("coupled_block_extraction_rejects_non_4n_square_ranges", [] {
+        SparseMatrix A(5, 5);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        const auto block = extract_coupled_block(A, 0, 0, 3, 3);
+        EXPECT_TRUE(block.n_rows() == 0 && block.n_cols() == 0);
+    });
+
     run_case("schur_complement_setup_and_apply", [] {
         const auto A = make_block_system();
         SchurComplementPreconditioner p({0,1}, {2});
