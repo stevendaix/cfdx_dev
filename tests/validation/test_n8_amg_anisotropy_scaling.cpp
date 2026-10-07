@@ -135,6 +135,8 @@ QualificationRow run_amg_case(const SparseMatrix& A,
     return {anisotropy, scale, result.iterations, true_residual};
 }
 
+} // namespace
+
 int main() {
     std::cout << std::setprecision(17);
 
