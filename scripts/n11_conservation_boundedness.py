@@ -87,9 +87,10 @@ KNOWN_SCOPE_GAPS = [
         "id": "mpi-production-conservation",
         "status": "missing",
         "description": (
-            "No dedicated production-physics N11 test currently executes the "
-            "independent conservation audit under MPI; serial evidence must not "
-            "be presented as MPI qualification."
+            "The active distributed MPI Poisson path now has an independent "
+            "conservation gate, but the production incompressible/thermal "
+            "physics solvers are not yet distributed under MPI; this PR must "
+            "not be presented as production-physics MPI qualification."
         ),
     },
 ]
