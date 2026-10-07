@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the reproducible N11 conservation/boundedness evidence campaign.
 
 The campaign reuses existing executable CFDX tests. It does not duplicate
