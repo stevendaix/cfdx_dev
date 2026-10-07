@@ -66,10 +66,15 @@ Error gradient_error(
 
 fs::path normalize_vtk_fixture(const fs::path& fixture)
 {
-    if (fs::is_regular_file(fixture)) {
-        require(fixture.extension() == ".vtk",
-                "N10.11 expects the VTK fixture with its .vtk extension");
+    if (fs::is_regular_file(fixture) && fixture.extension() == ".vtk") {
         return fixture;
+    }
+
+    if (fs::is_regular_file(fixture)) {
+        const fs::path staging =
+            fs::temp_directory_path() / "cfdx_n10_numerical_vtk_fixture.vtk";
+        fs::copy_file(fixture, staging, fs::copy_options::overwrite_existing);
+        return staging;
     }
 
     require(fs::is_directory(fixture),
