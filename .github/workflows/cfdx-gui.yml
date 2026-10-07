@@ -3,6 +3,12 @@ name: CFDX GUI CI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_opengl_smoke:
+        description: "Run the controlled PyVistaQt/OpenGL smoke test"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: cfdx-gui-${{ github.workflow }}-${{ github.ref }}
@@ -68,5 +74,16 @@ jobs:
               tests/python/test_specialized_setup.py \
               tests/python/test_workbench.py \
               tests/python/test_gui_browser_widgets.py \
+              tests/python/test_renderer.py \
+              tests/python/test_renderer_headless_contract.py \
               tests/python/test_renderer_pyvista.py \
               tests/python/test_gui_3d.py
+
+
+      - name: Run controlled OpenGL smoke
+        if: github.event_name == 'workflow_dispatch' && inputs.run_opengl_smoke == true
+        env:
+          QT_QPA_PLATFORM: xcb
+          CFDX_RUN_PYVISTA_QT_SMOKE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x1024x24"             python -m pytest -q tests/python/test_gui_3d.py -k smoke
