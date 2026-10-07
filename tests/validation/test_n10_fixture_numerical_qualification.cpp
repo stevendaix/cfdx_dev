@@ -43,6 +43,7 @@ Field<double, Location::CELL> make_field(
 struct Error {
     double linf{0.0};
     std::size_t count{0};
+    std::size_t excluded{0};
 };
 
 Error gradient_error(
@@ -67,7 +68,10 @@ Error gradient_error(
                     break;
                 }
             }
-            if (has_boundary_face) continue;
+            if (has_boundary_face) {
+                ++error.excluded;
+                continue;
+            }
         }
 
         const Vec3 got{gradient(c, 0), gradient(c, 1), gradient(c, 2)};
@@ -168,7 +172,7 @@ int main(int argc, char** argv)
                << "  \"method\": \"least_squares\",\n"
                << "  \"cells_total\": " << mesh.n_cells() << ",\n"
                << "  \"cells_checked\": " << linear_error.count << ",\n"
-               << "  \"boundary_cells_excluded\": " << (mesh.n_cells() - linear_error.count) << ",\n"
+               << "  \"boundary_cells_excluded\": " << linear_error.excluded << ",\n"
                << "  \"constant_gradient_linf\": " << constant_error.linf << ",\n"
                << "  \"linear_gradient_linf\": " << linear_error.linf << ",\n"
                << "  \"physical_validation\": \"NOT_CLAIMED\",\n"
