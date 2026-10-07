@@ -112,6 +112,7 @@ jobs:
             --qualification build/n10-fixtures/n10_production_fixture_qualification.json \
             --solver-evidence build/n10-fixtures/n10_production_solver_smoke.json \
             --numerical-evidence build/n10-fixtures/n10_fixture_numerical_qualification.json \
+            --applicability build/n10-fixtures/n10_fixture_applicability.json \
             --report build/n10-fixtures/n10_fixture_evidence_gate.json
 
       - name: Publish verification evidence

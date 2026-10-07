@@ -28,6 +28,7 @@ def main() -> int:
     parser.add_argument("--qualification", type=Path, required=True)
     parser.add_argument("--solver-evidence", type=Path, required=True)
     parser.add_argument("--numerical-evidence", type=Path, required=True)
+    parser.add_argument("--applicability", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
 
@@ -35,6 +36,7 @@ def main() -> int:
     qualification = load(args.qualification)
     solver_evidence = load(args.solver_evidence)
     numerical_evidence = load(args.numerical_evidence)
+    applicability = load(args.applicability)
 
     verification_rows = {
         str(row["id"]): row
@@ -65,6 +67,7 @@ def main() -> int:
     numerical_physical_validation = numerical_evidence.get("physical_validation")
     numerical_observed_order = numerical_evidence.get("observed_order")
     numerical_tolerances_changed = numerical_evidence.get("numerical_tolerances_changed")
+    applicability_matrix = applicability.get("matrix")
 
     ids = sorted(set(verification_rows) | set(qualification_rows))
     mismatches: list[str] = []
@@ -172,6 +175,43 @@ def main() -> int:
         mismatches.append(f"numerical evidence observed_order={numerical_observed_order}")
     if numerical_tolerances_changed is not False:
         mismatches.append(f"numerical evidence numerical_tolerances_changed={numerical_tolerances_changed}")
+    expected_applicability = {
+        "meshio-su2-square": "NOT_APPLICABLE_TO_CURRENT_3D_SOLVER",
+        "meshio-gmsh-insulated-2-2": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+        "meshio-vtk-unstructured": "APPLICABLE_FOR_3D_EXECUTION_SMOKE",
+        "openfoam-airfoil2d": "NUMERICAL_APPLICABILITY_NOT_CLAIMED",
+    }
+    if not isinstance(applicability_matrix, list):
+        mismatches.append("applicability matrix is missing")
+    else:
+        applicability_rows = {
+            str(row.get("id")): row
+            for row in applicability_matrix
+            if isinstance(row, dict) and isinstance(row.get("id"), str)
+        }
+        if set(applicability_rows) != set(expected_applicability):
+            mismatches.append("applicability matrix fixture set does not match the required N10 public fixtures")
+        for fixture_id, expected_status in expected_applicability.items():
+            row = applicability_rows.get(fixture_id)
+            if row is None:
+                continue
+            if row.get("numerical_applicability") != expected_status:
+                mismatches.append(f"{fixture_id}: numerical_applicability={row.get('numerical_applicability')}")
+    applicability_policy = applicability.get("policy")
+    if not isinstance(applicability_policy, dict):
+        mismatches.append("applicability policy is missing")
+    else:
+        required_policy = {
+            "import_success_is_not_numerical_qualification": True,
+            "physical_validation_claimed": False,
+            "forces_unsupported_2d_fixtures_through_3d_solver": False,
+            "changes_numerical_tolerances": False,
+            "disables_validation": False,
+            "silent_fallbacks": False,
+        }
+        for key, expected in required_policy.items():
+            if applicability_policy.get(key) is not expected:
+                mismatches.append(f"applicability policy {key}={applicability_policy.get(key)!r}")
 
     if not isinstance(quantitative, dict):
         mismatches.append("solver evidence quantitative_solver_evidence is missing")
@@ -219,6 +259,7 @@ def main() -> int:
                 "meshio-vtk-unstructured only"
             ),
             "physical_validation": "NOT_CLAIMED",
+            "numerical_applicability": "persisted fixture-specific matrix",
         },
         "policy": {
             "changes_numerical_tolerances": False,
