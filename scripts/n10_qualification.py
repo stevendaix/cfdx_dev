@@ -166,10 +166,15 @@ def main() -> int:
 
     build_dir = args.build_dir.resolve()
     if not (build_dir / "CTestTestfile.cmake").exists():
-        print(f"error: {build_dir} is not a configured CMake build directory", file=sys.stderr)
+        print(
+            f"error: {build_dir} is not a configured CMake build directory",
+            file=sys.stderr,
+        )
         return 2
 
-    report_path = args.report.resolve() if args.report else build_dir / "n10_qualification.json"
+    report_path = (
+        args.report.resolve() if args.report else build_dir / "n10_qualification.json"
+    )
     repo_root = Path(__file__).resolve().parents[1]
     manifest_path = (
         args.fixture_manifest
@@ -177,10 +182,15 @@ def main() -> int:
         else repo_root / "tests/fixtures/mesh_sources.yaml"
     ).resolve()
     if not manifest_path.exists():
-        print(f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr)
+        print(
+            f"error: fixture manifest does not exist: {manifest_path}", file=sys.stderr
+        )
         return 2
     if yaml is None:
-        print("error: PyYAML is required to parse the N10 fixture manifest", file=sys.stderr)
+        print(
+            "error: PyYAML is required to parse the N10 fixture manifest",
+            file=sys.stderr,
+        )
         return 2
     try:
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
@@ -199,7 +209,10 @@ def main() -> int:
     verified_fixtures: list[dict[str, object]] = []
     for index, item in enumerate(fixtures):
         if not isinstance(item, dict):
-            print(f"error: fixture manifest entry {index} must be a mapping", file=sys.stderr)
+            print(
+                f"error: fixture manifest entry {index} must be a mapping",
+                file=sys.stderr,
+            )
             return 2
         if item.get("status") != "verified_reference":
             continue
@@ -222,7 +235,10 @@ def main() -> int:
             }
         )
     if not verified_fixtures:
-        print("error: fixture manifest contains no verified_reference fixtures", file=sys.stderr)
+        print(
+            "error: fixture manifest contains no verified_reference fixtures",
+            file=sys.stderr,
+        )
         return 2
 
     available = discover_tests(build_dir)
