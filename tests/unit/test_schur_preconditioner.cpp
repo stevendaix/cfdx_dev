@@ -191,6 +191,26 @@ int main() {
         }
     });
 
+    run_case("coupled_block_schur_diagnostic_names_are_model_specific", [] {
+        const std::vector<std::pair<CoupledSchurApproximationModel, std::string>> models{
+            {CoupledSchurApproximationModel::BlockLocal, "block_local"},
+            {CoupledSchurApproximationModel::PCD, "pcd"},
+            {CoupledSchurApproximationModel::LSC, "lsc"},
+            {CoupledSchurApproximationModel::BFBT, "bfbt"},
+            {CoupledSchurApproximationModel::SIMPLE, "simple"},
+            {CoupledSchurApproximationModel::SIMPLEC, "simplec"},
+        };
+
+        for (const auto& [model, token] : models) {
+            CoupledBlockSchurOptions options;
+            options.schur_approximation = model;
+            CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+            const std::string name = preconditioner.name();
+            EXPECT_TRUE(name.find("CoupledBlockSchur-AMG[" + token + "]") !=
+                        std::string::npos);
+        }
+    });
+
     run_case("coupled_block_schur_accepts_pressure_gauge_row", [] {
         SparseMatrix A(4, 4);
         A.push_back(0, 0, 2.0);
