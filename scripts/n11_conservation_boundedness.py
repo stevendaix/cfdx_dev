@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-
 QUANTITATIVE_RECORD_PREFIXES = (
     "MODEL_RESULT ",
     "GHIA ",
