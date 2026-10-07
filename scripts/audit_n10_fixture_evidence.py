@@ -38,16 +38,20 @@ def main() -> int:
     numerical_evidence = load(args.numerical_evidence)
     applicability = load(args.applicability)
 
-    verification_rows = {
-        str(row["id"]): row
+    verification_fixture_rows = [
+        row
         for row in verification.get("fixtures", [])
-        if isinstance(row, dict) and "id" in row
-    }
-    qualification_rows = {
-        str(row["id"]): row
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    ]
+    qualification_fixture_rows = [
+        row
         for row in qualification.get("fixtures", [])
-        if isinstance(row, dict) and "id" in row
-    }
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    ]
+    verification_ids_list = [str(row["id"]) for row in verification_fixture_rows]
+    qualification_ids_list = [str(row["id"]) for row in qualification_fixture_rows]
+    verification_rows = {str(row["id"]): row for row in verification_fixture_rows}
+    qualification_rows = {str(row["id"]): row for row in qualification_fixture_rows}
 
     solver_fixture = str(solver_evidence.get("fixture", ""))
     solver_status = solver_evidence.get("execution_status")
@@ -78,6 +82,10 @@ def main() -> int:
     verification_ids = set(verification_rows)
     qualification_ids = set(qualification_rows)
     mismatches: list[str] = []
+    if len(verification_ids_list) != len(verification_ids):
+        mismatches.append("independent verification contains duplicate fixture ids")
+    if len(qualification_ids_list) != len(qualification_ids):
+        mismatches.append("production qualification contains duplicate fixture ids")
     if verification_ids != expected_fixture_ids:
         mismatches.append(
             "independent verification fixture set does not match the required N10 public fixtures"
