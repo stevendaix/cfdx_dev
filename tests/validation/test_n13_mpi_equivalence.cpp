@@ -1,6 +1,7 @@
 #include "cfdx/core/numerics/backend_equivalence.h"
 #include "cfdx/core/parallel/distributed_poisson.h"
 #include "cfdx/core/parallel/mpi_utils.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 
 #include <cmath>
 #include <cstdio>
@@ -84,6 +85,49 @@ int main(int argc, char** argv)
     const auto gathered = mpi_allgather(local_values);
     const std::vector<double> serial_reference{0.25, 0.75};
 
+    // Independently reconstruct physical diffusion fluxes from the accepted
+    // distributed field; this is separate from the Krylov residual.
+    const auto geometry = make_geometry_cache(mesh);
+    double local_l1_balance = 0.0;
+    double local_linf_balance = 0.0;
+    const auto& cell_faces = mesh.cells().faces();
+    const auto& offsets = mesh.cells().offsets();
+    const auto& ownership = mesh.ownership();
+    for (std::size_t local = 0; local < result.solution.local_size(); ++local) {
+        const std::size_t cell = result.solution.global_id(local);
+        double cell_balance = 0.0;
+        for (std::size_t k = offsets[cell]; k < offsets[cell + 1]; ++k) {
+            const std::size_t face = cell_faces[k];
+            const std::size_t owner = ownership.owner(face);
+            const auto neighbour = ownership.neighbour(face);
+            const double area = geometry.face_Sf[face].mag();
+            const double outward_sign = owner == cell ? 1.0 : -1.0;
+            double face_flux = 0.0;
+            if (neighbour >= 0) {
+                const std::size_t other =
+                    owner == cell ? static_cast<std::size_t>(neighbour) : owner;
+                const double d =
+                    (geometry.cell_centres[other] - geometry.cell_centres[cell]).mag();
+                const double grad_normal = (gathered[other] - gathered[cell]) / d;
+                face_flux = -grad_normal * area * outward_sign;
+            } else {
+                const double d =
+                    (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
+                const double grad_normal = (bc.face_values[face] - gathered[cell]) / d;
+                face_flux = -grad_normal * area * outward_sign;
+            }
+            cell_balance += face_flux;
+        }
+        local_l1_balance += std::abs(cell_balance);
+        local_linf_balance = std::max(local_linf_balance, std::abs(cell_balance));
+    }
+    const double global_l1_balance = mpi_allreduce_sum(local_l1_balance);
+    const double global_linf_balance = mpi_allreduce_max(local_linf_balance);
+    const bool conservation_ok = std::isfinite(global_l1_balance) &&
+                                  std::isfinite(global_linf_balance) &&
+                                  global_l1_balance < 1e-12 &&
+                                  global_linf_balance < 1e-12;
+
     if (rank == 0) {
         const auto metrics = compare_vectors(serial_reference, gathered);
         local_ok = local_ok &&
@@ -96,6 +140,12 @@ int main(int argc, char** argv)
                         metrics.l2_relative, metrics.max_relative);
     }
 
+    if (rank == 0) {
+        std::printf("N11_MPI_RESULT converged=%s global_balance_L1=%.17g global_balance_Linf=%.17g residual=%.17g ranks=%d\\n",
+                    result.linear_result.status == SolverStatus::CONVERGED ? "true" : "false",
+                    global_l1_balance, global_linf_balance, result.global_residual, size);
+    }
+    local_ok = local_ok && conservation_ok;
     const bool global_ok = mpi_allreduce_min(static_cast<double>(local_ok ? 1 : 0)) >= 0.5;
     if (!global_ok) {
         mpi_finalize();
