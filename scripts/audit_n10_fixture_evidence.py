@@ -27,12 +27,14 @@ def main() -> int:
     parser.add_argument("--verification", type=Path, required=True)
     parser.add_argument("--qualification", type=Path, required=True)
     parser.add_argument("--solver-evidence", type=Path, required=True)
+    parser.add_argument("--numerical-evidence", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
 
     verification = load(args.verification)
     qualification = load(args.qualification)
     solver_evidence = load(args.solver_evidence)
+    numerical_evidence = load(args.numerical_evidence)
 
     verification_rows = {
         str(row["id"]): row
@@ -51,6 +53,18 @@ def main() -> int:
     solver_physical_validation = solver_evidence.get("physical_validation")
     solver_restart = solver_evidence.get("restart_artifact")
     quantitative = solver_evidence.get("quantitative_solver_evidence")
+    numerical_fixture = str(numerical_evidence.get("fixture", ""))
+    numerical_status = numerical_evidence.get("status")
+    numerical_cells_total = numerical_evidence.get("cells_total")
+    numerical_cells_checked = numerical_evidence.get("cells_checked")
+    numerical_boundary_excluded = numerical_evidence.get("boundary_cells_excluded")
+    numerical_constant_linf = numerical_evidence.get("constant_gradient_linf")
+    numerical_linear_linf = numerical_evidence.get("linear_gradient_linf")
+    numerical_boundary_method = numerical_evidence.get("linear_boundary_reconstruction")
+    numerical_gradient_method = numerical_evidence.get("linear_gradient_method")
+    numerical_physical_validation = numerical_evidence.get("physical_validation")
+    numerical_observed_order = numerical_evidence.get("observed_order")
+    numerical_tolerances_changed = numerical_evidence.get("numerical_tolerances_changed")
 
     ids = sorted(set(verification_rows) | set(qualification_rows))
     mismatches: list[str] = []
@@ -127,6 +141,37 @@ def main() -> int:
         )
     if solver_restart is not True:
         mismatches.append(f"solver evidence restart_artifact={solver_restart}")
+
+    if numerical_fixture != "meshio-vtk-unstructured":
+        mismatches.append("numerical evidence must target the verified meshio-vtk-unstructured fixture")
+    if numerical_status != "PASS":
+        mismatches.append(f"numerical evidence status={numerical_status}")
+    if not isinstance(numerical_cells_total, int) or numerical_cells_total <= 0:
+        mismatches.append(f"numerical evidence cells_total={numerical_cells_total}")
+    if not isinstance(numerical_cells_checked, int) or numerical_cells_checked <= 0:
+        mismatches.append(f"numerical evidence cells_checked={numerical_cells_checked}")
+    elif numerical_cells_total != numerical_cells_checked:
+        mismatches.append(f"numerical evidence cells_checked={numerical_cells_checked} differs from cells_total={numerical_cells_total}")
+    if numerical_boundary_excluded != 0:
+        mismatches.append(f"numerical evidence boundary_cells_excluded={numerical_boundary_excluded}")
+    if not isinstance(numerical_constant_linf, (int, float)) or not math.isfinite(float(numerical_constant_linf)):
+        mismatches.append(f"numerical evidence constant_gradient_linf={numerical_constant_linf}")
+    elif float(numerical_constant_linf) > 1e-12:
+        mismatches.append(f"numerical evidence constant_gradient_linf={numerical_constant_linf} > 1e-12")
+    if not isinstance(numerical_linear_linf, (int, float)) or not math.isfinite(float(numerical_linear_linf)):
+        mismatches.append(f"numerical evidence linear_gradient_linf={numerical_linear_linf}")
+    elif float(numerical_linear_linf) > 1e-9:
+        mismatches.append(f"numerical evidence linear_gradient_linf={numerical_linear_linf} > 1e-9")
+    if numerical_boundary_method != "explicit_neumann":
+        mismatches.append(f"numerical evidence linear_boundary_reconstruction={numerical_boundary_method}")
+    if numerical_gradient_method != "weighted_least_squares":
+        mismatches.append(f"numerical evidence linear_gradient_method={numerical_gradient_method}")
+    if numerical_physical_validation != "NOT_CLAIMED":
+        mismatches.append(f"numerical evidence physical_validation={numerical_physical_validation}")
+    if numerical_observed_order != "NOT_CLAIMED":
+        mismatches.append(f"numerical evidence observed_order={numerical_observed_order}")
+    if numerical_tolerances_changed is not False:
+        mismatches.append(f"numerical evidence numerical_tolerances_changed={numerical_tolerances_changed}")
 
     if not isinstance(quantitative, dict):
         mismatches.append("solver evidence quantitative_solver_evidence is missing")
