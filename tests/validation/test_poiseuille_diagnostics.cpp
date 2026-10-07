@@ -430,6 +430,7 @@ int main(int argc, char** argv)
             d.exception("level/N=" + std::to_string(n), e);
             results.push_back(Result{});
         }
+        const auto& r = results.back();
         std::cout << "POISEUILLE_RESULT N=" << r.n
                   << " L2=" << r.l2
                   << " Linf=" << r.linf
