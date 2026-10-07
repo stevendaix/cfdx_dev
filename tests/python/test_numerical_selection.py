@@ -11,7 +11,10 @@ sys.path.insert(0, str(ROOT / "src" / "cfdx" / "python"))
 import h5py
 
 from cfdx.io.converter import convert
-from cfdx.io.numerical_selection import build_numerical_selection, validate_numerical_selection
+from cfdx.io.numerical_selection import (
+    build_numerical_selection,
+    validate_numerical_selection,
+)
 from cfdx.io.schema import NumericalScheme
 
 
@@ -89,8 +92,10 @@ def test_adapter_recorded_unmapped_setting_is_reported():
     )
     errors = validate_numerical_selection(scheme)
     assert errors == [
-        "unmapped numerical setting for convection: 'JST' "
-        "(no faithful CFDX convection registry equivalent)"
+        (
+            "unmapped numerical setting for convection: 'JST' "
+            "(no faithful CFDX convection registry equivalent)"
+        )
     ]
 
 
