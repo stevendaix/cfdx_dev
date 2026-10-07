@@ -248,8 +248,21 @@ def main() -> int:
     complete = len(results) == len(REQUIRED_TESTS)
     status = "PASS" if complete and not failed and coverage["status"] == "COMPLETE" else "FAIL"
 
+    try:
+        git_revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        git_revision = "UNKNOWN"
+
     report = {
         "campaign": "N10 difficult-mesh qualification",
+        "git_revision": git_revision,
         "status": status,
         "required_tests": list(REQUIRED_TESTS),
         "completed_tests": len(results),
