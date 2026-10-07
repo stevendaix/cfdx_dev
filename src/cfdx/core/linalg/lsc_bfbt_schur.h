@@ -193,6 +193,40 @@ public:
     }
 
 private:
+    static std::vector<double> make_q_inverse(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal) {
+        const std::size_t nu = blocks.velocity_size();
+        std::vector<double> q_inverse(nu, 1.0);
+        if (q_diagonal.empty()) {
+            if (mode == Mode::LSC) {
+                const auto& A = blocks.Auu();
+                for (std::size_t i = 0; i < nu; ++i) {
+                    double d = 0.0;
+                    for (std::size_t k = A.row_offsets_data()[i];
+                         k < A.row_offsets_data()[i + 1]; ++k) {
+                        if (A.columns_data()[k] == i) d += A.values_data()[k];
+                    }
+                    if (!(d > 0.0) || !std::isfinite(d))
+                        throw std::invalid_argument(
+                            "LSC Schur assembly requires positive finite momentum diagonal");
+                    q_inverse[i] = 1.0 / d;
+                }
+            }
+        } else {
+            if (q_diagonal.size() != nu)
+                throw std::invalid_argument("LSC/BFBT Schur assembly scaling size mismatch");
+            for (std::size_t i = 0; i < nu; ++i) {
+                if (!(q_diagonal[i] > 0.0) || !std::isfinite(q_diagonal[i]))
+                    throw std::invalid_argument(
+                        "LSC/BFBT Schur assembly requires positive finite scaling");
+                q_inverse[i] = 1.0 / q_diagonal[i];
+            }
+        }
+        return q_inverse;
+    }
+
     static SparseMatrix assemble_scaled_divergence_gradient(
         const BlockOperator& blocks,
         Mode mode,
