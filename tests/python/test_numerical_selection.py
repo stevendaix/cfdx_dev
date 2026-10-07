@@ -5,10 +5,10 @@ import shutil
 import sys
 from pathlib import Path
 
+import h5py
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src" / "cfdx" / "python"))
-
-import h5py
 
 from cfdx.io.converter import convert
 from cfdx.io.numerical_selection import (
