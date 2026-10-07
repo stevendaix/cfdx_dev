@@ -288,7 +288,7 @@ int main() {
                 Vector x(rhs.size(), 0.0);
                 const auto begin = std::chrono::steady_clock::now();
                 const SolverResult result = solve_fgmres(
-                    schur_operator, rhs, x, 20, 200, 1e-10, &pc);
+                    schur_operator, rhs, x, std::min<std::size_t>(cfg.n * cfg.n, 64), 200, 1e-10, &pc);
                 const auto end = std::chrono::steady_clock::now();
                 MethodResult out{
                     name,
