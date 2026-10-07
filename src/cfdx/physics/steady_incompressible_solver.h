@@ -1816,11 +1816,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                                   : std::numeric_limits<double>::quiet_NaN())
                           << " P1_l2=" << std::sqrt(p1_l2_sq)
                           << " P1_linf=" << p1_linf
-                          << " gauge_nnz=" << gauge_nnz
-                          << " gauge_abs_sum=" << gauge_abs_sum
-                          << " gauge_diag=" << gauge_diag
                           << " reference_row=" << reference_cell
-                          << " gauge_column_eliminated=1"
+                          << " reference_row_nnz=" << reference_row_nnz
+                          << " reference_row_abs_sum=" << reference_row_abs_sum
+                          << " reference_col_nnz=" << reference_col_nnz
+                          << " reference_col_abs_sum=" << reference_col_abs_sum
+                          << " reference_diag=" << reference_diag
+                          << " gauge_handling=explicit_reduction"
                           << "\n";
 
                 // Compare the exact same reduced operator/RHS with ILU0.
