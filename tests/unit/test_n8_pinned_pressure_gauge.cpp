@@ -9,6 +9,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 
+#include <cmath>
 #include <initializer_list>
 #include <optional>
 #include <tuple>
