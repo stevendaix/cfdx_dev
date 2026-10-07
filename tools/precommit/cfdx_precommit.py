@@ -118,10 +118,16 @@ def python_guard(files: list[str]) -> None:
 
 
 def integrity_guard(diff: str) -> None:
-    added = [
-        line[1:] for line in diff.splitlines()
-        if line.startswith("+") and not line.startswith("+++")
-    ]
+    added: list[str] = []
+    current_file = ""
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            # The guard necessarily contains the tokens it is looking for.
+            if current_file != "tools/precommit/cfdx_precommit.py":
+                added.append(line[1:])
     forbidden = [
         (r"\bDISABLED_[A-Za-z0-9_]+", "new disabled test"),
         (r"\bGTEST_SKIP\s*\(", "new GTEST_SKIP"),
