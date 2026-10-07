@@ -419,6 +419,60 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX convergence artifact: {exc}"]}
 
 
+_EXECUTION_REQUIRED = (
+    "format", "schema_version", "process_exit_code", "converged",
+    "iterations", "convergence_status", "convergence_reason", "artifacts",
+)
+
+
+def _validate_execution(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {"ok": False, "errors": [f"execution artifact does not exist: {path.name}"]}
+    if path.name.lower() != "execution.json":
+        return {"ok": False, "errors": ["execution artifact must use the canonical execution.json filename"]}
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            document = json.load(stream, parse_constant=_reject_nonfinite)
+        if not isinstance(document, dict):
+            return {"ok": False, "errors": ["execution artifact root must be an object"]}
+        missing = [key for key in _EXECUTION_REQUIRED if key not in document]
+        if missing:
+            return {"ok": False, "errors": [f"execution artifact is missing required keys: {missing}"]}
+        if document["format"] != "CFDX-EXECUTION":
+            return {"ok": False, "errors": ["not a CFDX-EXECUTION artifact"]}
+        if document["schema_version"] != 1:
+            return {"ok": False, "errors": [f"unsupported execution schema version: {document['schema_version']}"]}
+        if not isinstance(document["process_exit_code"], int) or isinstance(document["process_exit_code"], bool) or document["process_exit_code"] < 0:
+            return {"ok": False, "errors": ["process_exit_code must be a non-negative integer"]}
+        if not isinstance(document["converged"], bool):
+            return {"ok": False, "errors": ["converged must be a boolean"]}
+        if not isinstance(document["iterations"], int) or isinstance(document["iterations"], bool) or document["iterations"] < 0:
+            return {"ok": False, "errors": ["iterations must be a non-negative integer"]}
+        if not isinstance(document["convergence_status"], int) or isinstance(document["convergence_status"], bool):
+            return {"ok": False, "errors": ["convergence_status must be an integer"]}
+        if not isinstance(document["convergence_reason"], str):
+            return {"ok": False, "errors": ["convergence_reason must be a string"]}
+        artifacts = document["artifacts"]
+        if not isinstance(artifacts, dict):
+            return {"ok": False, "errors": ["artifacts must be an object"]}
+        required_artifacts = ("restart_dat", "convergence_json")
+        missing_artifacts = [key for key in required_artifacts if key not in artifacts]
+        if missing_artifacts:
+            return {"ok": False, "errors": [f"execution artifact is missing artifact flags: {missing_artifacts}"]}
+        for key in required_artifacts:
+            if not isinstance(artifacts[key], bool):
+                return {"ok": False, "errors": [f"artifacts.{key} must be a boolean"]}
+        return {
+            "ok": True, "artifact": "execution-summary", "path": path.name,
+            "format": document["format"], "schema_version": document["schema_version"],
+            "process_exit_code": document["process_exit_code"], "converged": document["converged"],
+            "iterations": document["iterations"], "convergence_status": document["convergence_status"],
+            "convergence_reason": document["convergence_reason"], "artifacts": dict(artifacts),
+        }
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return {"ok": False, "errors": [f"invalid CFDX execution artifact: {exc}"]}
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
@@ -473,6 +527,14 @@ def create_server(root: str | None = None) -> MCPServer:
         try:
             path = _safe_path(runtime_root, convergence_path)
             return _validate_convergence(path, history_limit)
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(name="execution.inspect", title="Inspect CFDX execution summary", annotations=annotations)
+    def execution_inspect(execution_path: str) -> dict[str, Any]:
+        """Inspect canonical execution.json evidence without modifying runtime state."""
+        try:
+            return _validate_execution(_safe_path(runtime_root, execution_path))
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
