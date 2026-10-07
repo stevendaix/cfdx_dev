@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fast, change-aware CFDX pre-commit gate.
 
-This is not numerical qualification. It checks that staged changes can still
+This is not numerical qualification. It checks that changed additions can still
 configure/build, that cheap relevant tests execute, and that obvious test
 bypasses were not introduced. Long validation and N1-N17 remain CI gates.
 """
@@ -39,9 +39,15 @@ def output(cmd: list[str]) -> str:
     return subprocess.check_output(cmd, cwd=ROOT, text=True, stderr=subprocess.STDOUT)
 
 
-def staged_files() -> list[str]:
-    if os.environ.get("CFDX_PRECOMMIT_ALL_FILES") == "1":
-        return [x for x in output(["git", "ls-files"]).splitlines() if x]
+def changed_files() -> list[str]:
+    range_spec = os.environ.get("CFDX_PRECOMMIT_RANGE")
+    if range_spec:
+        return [
+            x for x in output(
+                ["git", "diff", range_spec, "--name-only", "--diff-filter=ACMR"]
+            ).splitlines()
+            if x
+        ]
     return [
         x for x in output(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"]
@@ -50,9 +56,10 @@ def staged_files() -> list[str]:
     ]
 
 
-def staged_diff() -> str:
-    if os.environ.get("CFDX_PRECOMMIT_ALL_FILES") == "1":
-        return output(["git", "diff", "HEAD", "--unified=0", "--"])
+def changed_diff() -> str:
+    range_spec = os.environ.get("CFDX_PRECOMMIT_RANGE")
+    if range_spec:
+        return output(["git", "diff", range_spec, "--unified=0", "--"])
     return output(["git", "diff", "--cached", "--unified=0", "--"])
 
 
@@ -137,12 +144,12 @@ def integrity_guard(diff: str) -> None:
 
 
 def main() -> int:
-    files = staged_files()
+    files = changed_files()
     if not files:
         return 0
 
-    print(f"CFDX pre-commit: {len(files)} staged files")
-    integrity_guard(staged_diff())
+    print(f"CFDX pre-commit: {len(files)} changed files")
+    integrity_guard(changed_diff())
 
     python_changed = any(x.endswith(".py") for x in files)
     cpp_changed = any(Path(x).suffix.lower() in CPP_EXT for x in files)
