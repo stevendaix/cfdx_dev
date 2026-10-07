@@ -170,7 +170,7 @@ def main() -> int:
 
     if cpp_changed or cmake_changed:
         configure()
-        targets = ["cfdx_core"]
+        targets = ["cfdx_core", *SMOKE_TESTS]
         for path in files:
             parts = Path(path).parts
             if len(parts) >= 3 and parts[0] == "tests" and Path(path).suffix.lower() in CPP_EXT:
