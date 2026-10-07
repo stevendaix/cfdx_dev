@@ -45,7 +45,6 @@ def test_build_numerical_selection_uses_registry_keys():
     ]
 
 
-
 def test_coupled_schur_is_a_distinct_canonical_family():
     scheme = NumericalScheme(coupled_solver="coupled", coupled_schur="pcd")
     selection = build_numerical_selection(scheme)
