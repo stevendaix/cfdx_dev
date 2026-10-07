@@ -190,22 +190,14 @@ void apply_explicit_case_numerics(
                 selection.method_id);
         } else if (selection.family == NumericalMethodFamily::Schur) {
             schur_selected = true;
-            if (selection.method_id == "schur.block_local")
-                controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
-            else if (selection.method_id == "schur.pcd")
-                controls.coupling.schur_model = CoupledSchurModel::PCD;
-            else if (selection.method_id == "schur.lsc")
-                controls.coupling.schur_model = CoupledSchurModel::LSC;
-            else if (selection.method_id == "schur.bfbt")
-                controls.coupling.schur_model = CoupledSchurModel::BFBT;
-            else if (selection.method_id == "schur.simple")
-                controls.coupling.schur_model = CoupledSchurModel::SIMPLE;
-            else if (selection.method_id == "schur.simplec")
-                controls.coupling.schur_model = CoupledSchurModel::SIMPLEC;
-            else
+            if (!selection.method_id.starts_with("schur."))
                 throw std::invalid_argument(
-                    "unsupported resolved Schur selection: " +
-                    selection.method_id);
+                    "unsupported resolved Schur selection: " + selection.method_id);
+            CoupledSchurModel model = CoupledSchurModel::BlockLocal;
+            if (!parse_coupled_schur_model(selection.method_id.substr(6), model))
+                throw std::invalid_argument(
+                    "unsupported resolved Schur selection: " + selection.method_id);
+            controls.coupling.schur_model = model;
         } else if (selection.family == NumericalMethodFamily::Preconditioner) {
             PreconditionerModel model = PreconditionerModel::Auto;
             if (selection.method_id == "preconditioner.native_amg")
