@@ -7,7 +7,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .application import Application, ApplicationStateChanged, ResultsChanged, WorkflowStatus, workflow_children
+from .application import (
+    Application,
+    ApplicationStateChanged,
+    ResultsChanged,
+    WorkflowStatus,
+    workflow_children,
+)
 from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
 from .execution import ExecutionController
@@ -18,7 +24,7 @@ from .session import CFDXSession
 from .validation import validate_case
 
 try:
-    from PySide6.QtCore import QSettings, Qt
+    from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QDockWidget,
@@ -30,9 +36,9 @@ try:
         QPushButton,
         QStatusBar,
         QTextEdit,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
-        QToolBar,
         QWidget,
     )
 except ImportError:  # pragma: no cover
@@ -42,13 +48,19 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
-    from .setup_panel import CaseSetupPanel
-    from .run_center_panel import RunCenterPanel
-    from .results_panel import ResultsPanel
     from .probes_panel import ProbesPanel
+    from .results_panel import ResultsPanel
+    from .run_center_panel import RunCenterPanel
+    from .setup_panel import CaseSetupPanel
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
+
+        # Execution callbacks originate from SolverRunner worker threads. Qt
+        # widgets must only be touched on the GUI thread, so application events
+        # cross this boundary through queued Qt signal delivery.
+        _state_event = Signal(object)
+        _results_event = Signal(object)
 
         SETTINGS_ORGANIZATION = "CFDX"
         SETTINGS_APPLICATION = "Workbench"
@@ -64,8 +76,10 @@ if QMainWindow is not object:
             self.session = self.application.session
             self._restart_dat: Path | None = None
             self._application_state = self.application.state
-            self.application.events.subscribe(ApplicationStateChanged, self._state_changed)
-            self.application.events.subscribe(ResultsChanged, self._results_changed)
+            self._state_event.connect(self._state_changed)
+            self._results_event.connect(self._results_changed)
+            self.application.events.subscribe(ApplicationStateChanged, self._state_event.emit)
+            self.application.events.subscribe(ResultsChanged, self._results_event.emit)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -124,8 +138,9 @@ if QMainWindow is not object:
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
                 action.setEnabled(False)
+                mode = label.lower()
                 action.triggered.connect(
-                    lambda _checked=False, mode=label.lower(): self._postprocess(mode)
+                    lambda _checked=False, mode=mode: self._postprocess(mode)
                 )
                 toolbar.addAction(action)
                 setattr(self, f"{label.lower()}_action", action)
