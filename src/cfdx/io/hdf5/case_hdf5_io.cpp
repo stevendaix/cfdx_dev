@@ -769,7 +769,6 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
                         cfdx::core::NumericalMethodFamily::PressureVelocity,
                         cfdx::core::NumericalMethodFamily::Conservation,
                         cfdx::core::NumericalMethodFamily::Reconstruction,
-                        cfdx::core::NumericalMethodFamily::Initialization,
                         cfdx::core::NumericalMethodFamily::Schur}) {
                         if (family_v.string == cfdx::core::to_string(candidate)) {
                             setup.numerical_config.required_families.push_back(candidate);
