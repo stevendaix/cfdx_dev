@@ -271,6 +271,61 @@ inline MatrixDiagnostics diagnose_matrix(
     return d;
 }
 
+
+/// Convert measured CSR diagnostics into the dispatcher-facing matrix profile.
+///
+/// This is descriptive classification only. It does not modify the matrix and
+/// none of the thresholds below are solver convergence tolerances.
+inline MatrixCharacteristics measure_matrix_characteristics(
+    const SparseMatrix& matrix,
+    bool saddle_point = false,
+    double symmetry_relative_tolerance = 1e-12) {
+    if (!(symmetry_relative_tolerance >= 0.0) ||
+        !std::isfinite(symmetry_relative_tolerance))
+        throw std::invalid_argument(
+            "matrix symmetry relative tolerance must be finite and non-negative");
+
+    const auto d = diagnose_matrix(matrix);
+    MatrixCharacteristics c;
+    c.equations = d.rows;
+    c.average_nnz_per_row =
+        d.rows == 0 ? 0.0 : static_cast<double>(d.nnz) / static_cast<double>(d.rows);
+    c.coefficient_range =
+        d.min_nonzero_abs_value == std::numeric_limits<double>::infinity()
+            ? 1.0
+            : d.max_abs_value / d.min_nonzero_abs_value;
+    c.square = d.rows == d.columns;
+    c.diagonally_dominant =
+        c.square && std::isfinite(d.minimum_gershgorin_margin) &&
+        d.minimum_gershgorin_margin >=
+            -1e-14 * std::max(1.0, d.max_abs_diagonal);
+    c.strongly_scaled = std::isfinite(c.coefficient_range) &&
+                        c.coefficient_range >= 1.0e8;
+    c.anisotropic = std::isfinite(d.diagonal_dynamic_range) &&
+                    d.diagonal_dynamic_range >= 1.0e4;
+    c.saddle_point = saddle_point;
+
+    if (c.square && matrix.n_rows() > 0) {
+        const auto* row = matrix.row_offsets_data();
+        const auto* col = matrix.columns_data();
+        const auto* val = matrix.values_data();
+        const double scale = std::max(1.0, d.max_abs_value);
+        c.numerically_symmetric = true;
+        for (std::size_t i = 0; i < matrix.n_rows() && c.numerically_symmetric; ++i) {
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                const double aji = matrix(j, i);
+                if (std::abs(val[k] - aji) > symmetry_relative_tolerance * scale) {
+                    c.numerically_symmetric = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    return c;
+}
+
 inline std::vector<MatrixPathology> classify_matrix_pathologies(
     const MatrixDiagnostics& d) {
     std::vector<MatrixPathology> result;
