@@ -190,7 +190,7 @@ void apply_explicit_case_numerics(
                 selection.method_id);
         } else if (selection.family == NumericalMethodFamily::Schur) {
             schur_selected = true;
-            if (!selection.method_id.starts_with("schur."))
+            if (selection.method_id.rfind("schur.", 0) != 0)
                 throw std::invalid_argument(
                     "unsupported resolved Schur selection: " + selection.method_id);
             CoupledSchurModel model = CoupledSchurModel::BlockLocal;
