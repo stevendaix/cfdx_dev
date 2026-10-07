@@ -89,6 +89,7 @@ The first executable Runtime MCP surface is deliberately read-only and inspects 
 | `checkpoint.field.inspect` | root-relative `.dat.h5` path + field name + optional component | finite-value status and descriptive scalar statistics without returning field arrays |
 | `checkpoint.compare` | two root-relative `.dat.h5` paths + field name + optional component | descriptive field difference metrics between two checkpoints |
 | `convergence.inspect` | root-relative `convergence.json` path + optional history limit | validated convergence execution metadata and a bounded history slice |
+| `execution.inspect` | root-relative `execution.json` path | validated canonical execution outcome, convergence status, and artifact-presence metadata |
 
 Paths are confined to the configured runtime root. These tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
 
