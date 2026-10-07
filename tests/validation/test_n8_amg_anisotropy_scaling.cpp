@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
-#include <iostream>\n#include <limits>
+#include <iostream>\n#include <limits>\n#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
