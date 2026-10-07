@@ -123,6 +123,7 @@ class NumericalScheme(BaseModel):
     under_relaxation_momentum: float = 0.7
     under_relaxation_pressure: float = 0.3
     coupled_solver: str = "SIMPLE"
+    coupled_schur: str = ""
     preconditioner: str = ""
     linear_solver: str = ""
     residual_target: str = "1e-5"
