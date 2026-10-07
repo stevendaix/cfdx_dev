@@ -550,6 +550,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n7_causal_overshoot_regression tests/unit/test_n7_causal_overshoot_regression.cpp)
     set_tests_properties(test_n7_causal_overshoot_regression PROPERTIES
         LABELS "n7;regression;unit")
+    add_executable(test_n11_scalar_conservation tests/validation/test_n11_scalar_conservation.cpp)
+    target_link_libraries(test_n11_scalar_conservation PRIVATE cfdx_core)
+    target_include_directories(test_n11_scalar_conservation PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n11_scalar_conservation COMMAND test_n11_scalar_conservation)
+    set_tests_properties(test_n11_scalar_conservation PROPERTIES
+        LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
