@@ -482,7 +482,7 @@ int main(int argc, char** argv)
 
         std::cout << "Converged " << (result.converged ? "YES" : "NO")
                   << " Iterations " << result.iterations << "\n";
-        return result.converged ? 0 : 1;
+        return execution_exit_code_for_solver(result.converged);
     } catch (const std::exception& exc) {
         std::cerr << "CFDX production solver error: " << exc.what() << "\n";
         if (!execution_output_dir.empty()) {
