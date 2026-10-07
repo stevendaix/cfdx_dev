@@ -70,24 +70,20 @@ public:
         for (std::size_t i = 0; i < n; ++i) {
             double diag = 0.0;
             double row_off_sum = 0.0;
+            double row_off_norm = 0.0;
             for (std::size_t k = auu.row_offsets_data()[i];
                  k < auu.row_offsets_data()[i + 1]; ++k) {
                 const std::size_t j = auu.columns_data()[k];
                 const double v = auu.values_data()[k];
                 if (j == i) diag += v;
-                else row_off_sum += v;
+                else {
+                    row_off_sum += v;
+                    row_off_norm += std::abs(v);
+                }
             }
             if (!(diag > 0.0) || !std::isfinite(diag)) return false;
             diagonal_[i] = diag;
-            offdiag_norm_ = std::max(offdiag_norm_, [&]() {
-                double norm = 0.0;
-                for (std::size_t k = auu.row_offsets_data()[i];
-                     k < auu.row_offsets_data()[i + 1]; ++k) {
-                    if (auu.columns_data()[k] != i)
-                        norm += std::abs(auu.values_data()[k]);
-                }
-                return norm;
-            }());
+            offdiag_norm_ = std::max(offdiag_norm_, row_off_norm);
 
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
                 ? diag - row_off_sum
