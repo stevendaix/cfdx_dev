@@ -51,6 +51,21 @@ CATEGORIES = {
     "scheme_boundedness": ["test_convection_polyhedral_campaign"],
 }
 
+QUANTITATIVE_EVIDENCE = {
+    "test_conservation_boundedness": [r"(?mi)^.*(?:residual|balance|conservation).*$"],
+    "test_transport_conservation": [r"(?mi)^.*(?:transport|conservation|balance).*$"],
+    "test_conservation_assembly": [r"(?mi)^.*(?:assembly|conservation|balance).*$"],
+    "test_phase9_acceptance": [r"(?m)^MODEL_SUMMARY\\b.*\\bsuccessful=\\d+", r"(?m)^ALGORITHM_INVARIANCE\\b.*"],
+    "test_poiseuille_diagnostics": [r"(?m)^--- refinement level N=\\d+ ---$", r"(?m)^=== Refinement diagnostics ===$"],
+    "test_ghia_cavity": [r"(?m)^GHIA Re=100 observed_order\\b.*", r"(?m)^GHIA_CAVITY_VALIDATION: PASS$"],
+    "test_mms_scalar_diffusion": [r"(?mi)^.*(?:MMS|observed.order|L2|Linf).*$"],
+    "test_n11_scalar_conservation": [r"(?m)^N11_SCALAR_QUALIFICATION: PASS\\b.*"],
+    "test_cht_validation": [r"(?mi)^.*(?:CHT|heat|energy).*(?:PASS|residual|balance|flux).*$"],
+    "test_nonorthogonal_skew_campaign": [r"(?m)^PHASE3_6\\s+skew=.*corrected_conservation=.*$"],
+    "test_convection_polyhedral_campaign": [r"(?m)^N4_POLY_ORDER\\b.*order=.*$", r"(?m)^N4_POLY_BOUNDED\\b.*worst=.*$"],
+}
+
+
 KNOWN_SCOPE_GAPS = [
     {
         "id": "mpi-production-conservation",
@@ -102,12 +117,34 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     elapsed = time.monotonic() - start
     no_test = "No tests were found" in result.stdout
     status = "PASS" if result.returncode == 0 and not no_test else "FAIL"
+    quantitative = extract_quantitative_evidence(name, result.stdout)
+    if status == "PASS" and not quantitative["complete"]:
+        status = "FAIL"
     return {
         "name": name,
         "status": status,
         "returncode": 1 if no_test else result.returncode,
         "elapsed_s": round(elapsed, 3),
         "output": result.stdout,
+        "quantitative_evidence": quantitative,
+    }
+
+
+def extract_quantitative_evidence(name: str, output: str) -> dict[str, object]:
+    patterns = QUANTITATIVE_EVIDENCE.get(name, [])
+    records: list[str] = []
+    missing: list[str] = []
+    for pattern in patterns:
+        matches = re.findall(pattern, output)
+        if matches:
+            records.extend(matches)
+        else:
+            missing.append(pattern)
+    return {
+        "required_patterns": patterns,
+        "records": records,
+        "missing_patterns": missing,
+        "complete": not missing,
     }
 
 
@@ -199,7 +236,7 @@ def main() -> int:
         "categories": categories,
         "scope_gaps": KNOWN_SCOPE_GAPS,
         "qualification_boundary": (
-            "PASS means every declared serial campaign test executed and passed. "
+            "PASS means every declared serial campaign test executed and passed, with its required quantitative evidence records present. "
             "It does not close N11 or imply MPI qualification. N11 closure still "
             "requires the complete declared conservation/boundedness population "
             "and its independent evidence."
