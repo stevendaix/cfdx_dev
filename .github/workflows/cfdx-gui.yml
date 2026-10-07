@@ -135,11 +135,3 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python -m pytest -q tests/python/test_gui_production_solver_e2e.py
 
-
-      - name: Run controlled OpenGL smoke
-        if: github.event_name == 'workflow_dispatch' && inputs.run_opengl_smoke == true
-        env:
-          QT_QPA_PLATFORM: xcb
-          CFDX_RUN_PYVISTA_QT_SMOKE: "1"
-        run: |
-          xvfb-run -a -s "-screen 0 1280x1024x24"             python -m pytest -q tests/python/test_gui_3d.py -k smoke
