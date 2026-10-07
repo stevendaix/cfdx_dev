@@ -205,11 +205,17 @@
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
         "tests/validation/test_polyhedral_laplacian_campaign.cpp",
         "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
-        "docs/validation/03-conservation/chapter.py"
+        "docs/validation/03-conservation/chapter.py",
+        "tests/fixtures/mesh_sources.yaml",
+        ".github/workflows/n10-public-fixtures.yml",
+        "scripts/audit_n10_fixture_evidence.py"
       ],
       "gaps": [
-        "integration with #423 imported-fixture manifest and production mesh corpus",
-        "retained quantitative evidence from the exact CI HEAD for the complete N10-labelled subset"
+        "the four pinned #423 public fixtures are now independently acquired/verified and exercised through the production importer with explicit 2D/3D topology and geometry/quality contracts",
+        "the authoritative acceptance matrix is now reconciled across independent verification, production qualification and fixture-specific applicability evidence; duplicate fixture identifiers are rejected",
+        "numerical solver-support evidence is currently qualified only as execution/convergence smoke for meshio-vtk-unstructured; SU2/Gmsh/OpenFOAM solver applicability remains explicitly unclaimed",
+        "the complete N10 difficult-mesh subset still requires retained quantitative evidence from the exact CI HEAD before package-level promotion",
+        "physical validation and broad fixture-specific accuracy claims remain unclaimed"
       ]
     },
     {
