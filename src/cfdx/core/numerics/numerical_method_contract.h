@@ -11,7 +11,7 @@ namespace cfdx::core {
 enum class NumericalMethodFamily {
     Gradient, Interpolation, Convection, Diffusion, Source, Temporal,
     TimeStep, Nonlinear, LinearSolver, Preconditioner, PressureVelocity,
-    Conservation, Reconstruction, Initialization
+    Conservation, Reconstruction, Initialization, Schur
 };
 
 enum class VerificationStatus { Planned, Implemented, Verified, Validated };
@@ -51,6 +51,7 @@ inline const char* to_string(NumericalMethodFamily family) {
         case NumericalMethodFamily::Conservation: return "conservation";
         case NumericalMethodFamily::Reconstruction: return "reconstruction";
         case NumericalMethodFamily::Initialization: return "initialization";
+        case NumericalMethodFamily::Schur: return "schur";
     }
     return "unknown";
 }
