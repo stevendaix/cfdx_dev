@@ -69,8 +69,25 @@ def main() -> int:
     numerical_tolerances_changed = numerical_evidence.get("numerical_tolerances_changed")
     applicability_matrix = applicability.get("matrix")
 
-    ids = sorted(set(verification_rows) | set(qualification_rows))
+    expected_fixture_ids = {
+        "meshio-su2-square",
+        "meshio-gmsh-insulated-2-2",
+        "meshio-vtk-unstructured",
+        "openfoam-airfoil2d",
+    }
+    verification_ids = set(verification_rows)
+    qualification_ids = set(qualification_rows)
     mismatches: list[str] = []
+    if verification_ids != expected_fixture_ids:
+        mismatches.append(
+            "independent verification fixture set does not match the required N10 public fixtures"
+        )
+    if qualification_ids != expected_fixture_ids:
+        mismatches.append(
+            "production qualification fixture set does not match the required N10 public fixtures"
+        )
+
+    ids = sorted(verification_ids | qualification_ids)
     rows: list[dict[str, object]] = []
 
     for fixture_id in ids:
@@ -127,6 +144,9 @@ def main() -> int:
                 "geometry_quality_valid": geometry is True,
                 "counts": counts,
                 "solver_evidence": solver_row,
+                "numerical_applicability": expected_applicability.get(
+                    fixture_id, "NOT_CLAIMED"
+                ),
             }
         )
 
@@ -184,19 +204,37 @@ def main() -> int:
     if not isinstance(applicability_matrix, list):
         mismatches.append("applicability matrix is missing")
     else:
-        applicability_rows = {
-            str(row.get("id")): row
+        applicability_ids = [
+            str(row.get("id"))
             for row in applicability_matrix
             if isinstance(row, dict) and isinstance(row.get("id"), str)
+        ]
+        applicability_rows = {
+            fixture_id: row
+            for fixture_id, row in (
+                (str(row.get("id")), row)
+                for row in applicability_matrix
+                if isinstance(row, dict) and isinstance(row.get("id"), str)
+            )
         }
-        if set(applicability_rows) != set(expected_applicability):
-            mismatches.append("applicability matrix fixture set does not match the required N10 public fixtures")
+        if len(applicability_ids) != len(set(applicability_ids)):
+            mismatches.append("applicability matrix contains duplicate fixture ids")
+        if set(applicability_ids) != set(expected_applicability):
+            mismatches.append(
+                "applicability matrix fixture set does not match the required N10 public fixtures"
+            )
+        if set(applicability_ids) != verification_ids or set(applicability_ids) != qualification_ids:
+            mismatches.append(
+                "applicability matrix fixture set does not match verification and production qualification fixture sets"
+            )
         for fixture_id, expected_status in expected_applicability.items():
             row = applicability_rows.get(fixture_id)
             if row is None:
                 continue
             if row.get("numerical_applicability") != expected_status:
-                mismatches.append(f"{fixture_id}: numerical_applicability={row.get('numerical_applicability')}")
+                mismatches.append(
+                    f"{fixture_id}: numerical_applicability={row.get('numerical_applicability')}"
+                )
     applicability_policy = applicability.get("policy")
     if not isinstance(applicability_policy, dict):
         mismatches.append("applicability policy is missing")
@@ -260,6 +298,14 @@ def main() -> int:
             ),
             "physical_validation": "NOT_CLAIMED",
             "numerical_applicability": "persisted fixture-specific matrix",
+            "acceptance_matrix": {
+                "fixture_set": sorted(expected_fixture_ids),
+                "verification_fixture_set": sorted(verification_ids),
+                "qualification_fixture_set": sorted(qualification_ids),
+                "applicability_fixture_set": sorted(applicability_ids)
+                if isinstance(applicability_matrix, list)
+                else [],
+            },
         },
         "policy": {
             "changes_numerical_tolerances": False,
