@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from cfdx import CFDXSession
-from cfdx.workbench import CFDXWorkbenchWindow
 
 
 pytestmark = pytest.mark.skipif(
@@ -27,7 +26,7 @@ def _wait_for_convergence(window: CFDXWorkbenchWindow, timeout: float = 45.0) ->
         QApplication.processEvents()
         if window.session.state is SimulationState.CONVERGED:
             return
-        if window.session.state is SimulationState.ERROR:
+        if window.session.state is SimulationState.FAILED:
             raise AssertionError("production solver entered ERROR state")
         time.sleep(0.05)
     raise AssertionError(
@@ -60,9 +59,10 @@ def _write_solver_adapter(path: Path, output_dir: Path) -> None:
     reason="PySide6 optional",
 )
 def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
-    from PySide6.QtWidgets import QApplication
     from cfdx.results_series import discover_result_series
     from cfdx.session import SimulationState
+    from cfdx.workbench import CFDXWorkbenchWindow
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication(["cfdx-p2i-e2e"])
     case_path = tmp_path / "production.cfdx.h5"
