@@ -6,9 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from cfdx import CFDXSession
+import pytest
 
 
 pytestmark = pytest.mark.skipif(
@@ -78,14 +77,9 @@ def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
 
     window = CFDXWorkbenchWindow(session)
     try:
-        # The Workbench uses the shared Application persistence boundary.
         window.application.save_project(case_path)
         assert case_path.is_file()
 
-        # Run through the actual Workbench action path. The adapter only
-        # translates the Workbench's case-path argv to the production solver's
-        # explicit --mesh/--output-dir interface; the executed binary is the
-        # real cfdx_production_solver.
         window._run()
         _wait_for_convergence(window)
 
@@ -99,8 +93,6 @@ def test_workbench_production_solver_and_3d_result_e2e(tmp_path: Path) -> None:
         frame = series.frames[-1]
         assert frame.complete
 
-        # Exercise the same renderer boundary used by the Workbench central
-        # viewport, with the actual production-solver result.
         assert window.view3d is not None
         window.view3d.load(str(frame.path))
         assert window.view3d._current_result == frame.path
