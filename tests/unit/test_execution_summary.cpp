@@ -47,7 +47,8 @@ int main()
     } catch (const std::invalid_argument&) {
         rejected_invalid_exit = true;
     }
-    assert(rejected_invalid_exit);
+    if (!rejected_invalid_exit)
+        return 1;
     in.close();
     in.open(path);
     buffer.str({});
