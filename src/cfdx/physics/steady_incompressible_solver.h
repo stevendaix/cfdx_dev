@@ -1532,8 +1532,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // the assembled system is nonsingular. Use one full Krylov space for
     // small/medium coupled systems so a restart boundary cannot manufacture
     // an artificial MAX_ITER failure.
+    // Feed the dispatcher the characteristics measured from the assembled
+    // production CSR matrix. The convenience overload only knows the problem
+    // kind and equation count; it cannot see coefficient scaling, symmetry,
+    // diagonal dominance or the actual sparsity pattern.
+    const auto matrix_characteristics =
+        cfdx::core::measure_matrix_characteristics(A, true);
     const auto solver_plan = select_linear_solver(
-        LinearProblemKind::CoupledPressureVelocity, A.n_rows(), solver_request);
+        LinearProblemKind::CoupledPressureVelocity,
+        matrix_characteristics,
+        solver_request);
     if (solver_plan.krylov != KrylovModel::GMRES &&
         solver_plan.krylov != KrylovModel::FGMRES)
         throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
