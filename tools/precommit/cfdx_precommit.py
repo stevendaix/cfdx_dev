@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fast, change-aware CFDX pre-commit gate.
 
 This is not numerical qualification. It checks that changed additions can still
@@ -30,7 +29,7 @@ CPP_EXT = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
 
 def run(cmd: list[str], *, cwd: Path = ROOT) -> None:
     print("+", " ".join(cmd), flush=True)
-    result = subprocess.run(cmd, cwd=cwd)
+    result = subprocess.run(cmd, cwd=cwd, check=False)
     if result.returncode:
         raise SystemExit(result.returncode)
 
@@ -124,10 +123,12 @@ def integrity_guard(diff: str) -> None:
         if line.startswith("+++ b/"):
             current_file = line[6:]
             continue
-        if line.startswith("+") and not line.startswith("+++"):
-            # The guard necessarily contains the tokens it is looking for.
-            if current_file != "tools/precommit/cfdx_precommit.py":
-                added.append(line[1:])
+        if (
+            line.startswith("+")
+            and not line.startswith("+++")
+            and current_file != "tools/precommit/cfdx_precommit.py"
+        ):
+            added.append(line[1:])
     forbidden = [
         (r"\bDISABLED_[A-Za-z0-9_]+", "new disabled test"),
         (r"\bGTEST_SKIP\s*\(", "new GTEST_SKIP"),
