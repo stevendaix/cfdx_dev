@@ -34,11 +34,15 @@ class NullRenderer:
         self.selected: str | None = None
 
     def load(self, source: str) -> tuple[RenderObject, ...]:
+        if not source.strip():
+            raise ValueError("renderer source must not be empty")
         self.objects = (RenderObject("dataset", source),)
+        self.selected = None
         return self.objects
 
     def clear(self) -> None:
         self.objects = ()
+        self.selected = None
 
     def select(self, object_id: str) -> None:
         if not any(obj.object_id == object_id for obj in self.objects):
