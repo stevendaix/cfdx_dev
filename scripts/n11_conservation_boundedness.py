@@ -24,6 +24,7 @@ QUANTITATIVE_RECORD_PREFIXES = (
     "GHIA ",
     "POISEUILLE_RESULT ",
     "N11_ENERGY_RESULT ",
+    "N11_MPI_RESULT ",
 )
 
 
@@ -61,6 +62,7 @@ REQUIRED_TESTS = (
     "test_nonorthogonal_skew_campaign",
     "test_convection_polyhedral_campaign",
 )
+OPTIONAL_MPI_TESTS = ("test_n13_mpi_equivalence",)
 
 CATEGORIES = {
     "conservation_contract": [
@@ -77,6 +79,7 @@ CATEGORIES = {
     "energy": ["test_cht_validation"],
     "mesh_robustness": ["test_nonorthogonal_skew_campaign"],
     "scheme_boundedness": ["test_convection_polyhedral_campaign"],
+    "mpi_conservation": ["test_n13_mpi_equivalence"],
 }
 
 KNOWN_SCOPE_GAPS = [
@@ -84,9 +87,10 @@ KNOWN_SCOPE_GAPS = [
         "id": "mpi-production-conservation",
         "status": "missing",
         "description": (
-            "No dedicated production-physics N11 test currently executes the "
-            "independent conservation audit under MPI; serial evidence must not "
-            "be presented as MPI qualification."
+            "The active distributed MPI Poisson path now has an independent "
+            "conservation gate, but the production incompressible/thermal "
+            "physics solvers are not yet distributed under MPI; this PR must "
+            "not be presented as production-physics MPI qualification."
         ),
     },
 ]
@@ -185,12 +189,15 @@ def main() -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     available = discover_tests(build_dir)
-    missing = [name for name in REQUIRED_TESTS if name not in available]
+    required_tests = list(REQUIRED_TESTS)
+    mpi_tests = [name for name in OPTIONAL_MPI_TESTS if name in available]
+    required_tests.extend(mpi_tests)
+    missing = [name for name in required_tests if name not in available]
     if missing:
         report = {
             "campaign": "N11 conservation and boundedness evidence",
             "status": "INCOMPLETE",
-            "required_tests": list(REQUIRED_TESTS),
+            "required_tests": required_tests,
             "missing_tests": missing,
             "scope_gaps": KNOWN_SCOPE_GAPS,
             "policy": {
@@ -198,6 +205,7 @@ def main() -> int:
                 "disables_validation": False,
                 "silent_clipping_or_repair": False,
                 "serial_evidence_is_mpi_qualification": False,
+                "mpi_evidence_required_when_mpi_test_is_available": True,
             },
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -205,7 +213,7 @@ def main() -> int:
         return 2
 
     results: list[dict[str, object]] = []
-    for name in REQUIRED_TESTS:
+    for name in required_tests:
         print(f"\n=== N11 conservation/boundedness: {name} ===", flush=True)
         result = run_test(build_dir, name)
         results.append(result)
@@ -229,12 +237,16 @@ def main() -> int:
         "N11_ENERGY_RESULT": sum(
             r["record_type"] == "N11_ENERGY_RESULT" for r in quantitative_records
         ),
+        "N11_MPI_RESULT": sum(
+            r["record_type"] == "N11_MPI_RESULT" for r in quantitative_records
+        ),
     }
     quantitative_requirements = {
         "MODEL_RESULT": 1,
         "GHIA": 4,
         "POISEUILLE_RESULT": 4,
         "N11_ENERGY_RESULT": 1,
+        "N11_MPI_RESULT": 1 if "test_n13_mpi_equivalence" in required_tests else 0,
     }
     quantitative_coverage = {
         key: {
@@ -248,7 +260,7 @@ def main() -> int:
         item["complete"] for item in quantitative_coverage.values()
     )
     complete_execution = (
-        len(results) == len(REQUIRED_TESTS)
+        len(results) == len(required_tests)
         and not failed
         and quantitative_complete
     )
