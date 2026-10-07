@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 
 #include <algorithm>
