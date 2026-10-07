@@ -2,6 +2,7 @@
 
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/preconditioner.h"
+#include "cfdx/core/linalg/coupled_block_extraction.h"
 #include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/lsc_bfbt_schur.h"
 #include "cfdx/core/linalg/simplerc_schur.h"
@@ -104,10 +105,10 @@ public:
         if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
             if (!pcd_schur_)
                 return fail("PCD Schur approximation was not configured");
-            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
-            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
-            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
-            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            Auu_ = extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            G_ = extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             pcd_blocks_ =
                 std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
             if (!pcd_schur_->setup(*pcd_blocks_))
@@ -120,10 +121,10 @@ public:
             options_.schur_approximation == CoupledSchurApproximationModel::SIMPLEC) {
             if (!simpler_schur_)
                 return fail("SIMPLE/SIMPLEC Schur approximation was not configured");
-            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
-            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
-            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
-            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            Auu_ = extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            G_ = extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             simpler_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
             if (!simpler_schur_->setup(*simpler_blocks_))
                 return fail("SIMPLE/SIMPLEC Schur approximation setup failed");
@@ -141,10 +142,10 @@ public:
             options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
             if (!algebraic_schur_)
                 return fail("LSC/BFBt Schur approximation was not configured");
-            Auu_ = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
-            G_ = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
-            D_ = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
-            C_ = extract_block(A, 1, 1, n_cells_, n_cells_);
+            Auu_ = extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            G_ = extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            D_ = extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            C_ = extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             algebraic_blocks_ = std::make_unique<BlockOperator>(Auu_, G_, D_, C_);
             if (!algebraic_schur_->setup(*algebraic_blocks_))
                 return fail("LSC/BFBt Schur approximation setup failed");
@@ -188,10 +189,10 @@ public:
             options_.schur_approximation == CoupledSchurApproximationModel::SIMPLEC) {
             if (!simpler_ready_ || !simpler_schur_ || !simpler_blocks_)
                 return fail_update("SIMPLE/SIMPLEC Schur approximation is not initialized");
-            const SparseMatrix new_Auu = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
-            const SparseMatrix new_G = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
-            const SparseMatrix new_D = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
-            const SparseMatrix new_C = extract_block(A, 1, 1, n_cells_, n_cells_);
+            const SparseMatrix new_Auu = extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            const SparseMatrix new_G = extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            const SparseMatrix new_D = extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            const SparseMatrix new_C = extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             if (!same_pattern(Auu_, new_Auu) || !same_pattern(G_, new_G) ||
                 !same_pattern(D_, new_D) || !same_pattern(C_, new_C))
                 return fail_update("SIMPLE/SIMPLEC coupled block graph changed; explicit setup() required");
@@ -229,13 +230,13 @@ public:
             if (!pcd_ready_ || !pcd_schur_)
                 return fail_update("PCD Schur approximation is not initialized");
             const SparseMatrix new_Auu =
-                extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+                extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
             const SparseMatrix new_G =
-                extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
+                extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
             const SparseMatrix new_D =
-                extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
+                extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
             const SparseMatrix new_C =
-                extract_block(A, 1, 1, n_cells_, n_cells_);
+                extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             if (!same_pattern(Auu_, new_Auu) ||
                 !same_pattern(G_, new_G) ||
                 !same_pattern(D_, new_D) ||
@@ -267,10 +268,10 @@ public:
             options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
             if (!algebraic_ready_ || !algebraic_schur_ || !algebraic_blocks_)
                 return fail_update("LSC/BFBt Schur approximation is not initialized");
-            const SparseMatrix new_Auu = extract_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
-            const SparseMatrix new_G = extract_block(A, 0, 1, 3 * n_cells_, n_cells_);
-            const SparseMatrix new_D = extract_block(A, 1, 0, n_cells_, 3 * n_cells_);
-            const SparseMatrix new_C = extract_block(A, 1, 1, n_cells_, n_cells_);
+            const SparseMatrix new_Auu = extract_coupled_block(A, 0, 0, 3 * n_cells_, 3 * n_cells_);
+            const SparseMatrix new_G = extract_coupled_block(A, 0, 1, 3 * n_cells_, n_cells_);
+            const SparseMatrix new_D = extract_coupled_block(A, 1, 0, n_cells_, 3 * n_cells_);
+            const SparseMatrix new_C = extract_coupled_block(A, 1, 1, n_cells_, n_cells_);
             if (!same_pattern(Auu_, new_Auu) || !same_pattern(G_, new_G) ||
                 !same_pattern(D_, new_D) || !same_pattern(C_, new_C))
                 return fail_update("LSC/BFBt coupled block graph changed; explicit setup() required");
@@ -442,29 +443,6 @@ public:
     const std::string& last_error() const noexcept { return last_error_; }
 
 private:
-    static SparseMatrix extract_block(const SparseMatrix& A,
-                                      std::size_t row_block,
-                                      std::size_t col_block,
-                                      std::size_t row_size,
-                                      std::size_t col_size) {
-        SparseMatrix block(row_size, col_size);
-        // For the 4N ordering [Ux,Uy,Uz,p], velocity occupies 3N rows/cols.
-        const std::size_t velocity_size = A.n_rows() * 3 / 4;
-        const std::size_t roffset = row_block == 0 ? 0 : velocity_size;
-        const std::size_t coffset = col_block == 0 ? 0 : velocity_size;
-        for (std::size_t r = 0; r < row_size; ++r) {
-            const std::size_t gr = roffset + r;
-            for (std::uint32_t k = A.row_offsets_data()[gr];
-                 k < A.row_offsets_data()[gr + 1]; ++k) {
-                const std::size_t gc = A.columns_data()[k];
-                if (gc < coffset || gc >= coffset + col_size) continue;
-                block.push_back(r, gc - coffset, A.values_data()[k]);
-            }
-        }
-        block.finalize();
-        return block;
-    }
-
     static bool invert3x3(const std::array<double, 9>& a,
                           std::array<double, 9>& inv) {
         const double det =
