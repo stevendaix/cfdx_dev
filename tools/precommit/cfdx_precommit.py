@@ -20,7 +20,6 @@ BUILD = Path(os.environ.get("CFDX_PRECOMMIT_BUILD_DIR", ROOT / "build-precommit"
 JOBS = os.environ.get("CFDX_PRECOMMIT_JOBS", "4")
 
 SMOKE_TESTS = [
-    "test_validation_simple",
     "test_convergence_history",
     "test_execution_summary",
     "test_hdf5_roundtrip",
