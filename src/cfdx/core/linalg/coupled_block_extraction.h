@@ -18,7 +18,8 @@ inline SparseMatrix extract_coupled_block(const SparseMatrix& A,
                                           std::size_t col_block,
                                           std::size_t row_size,
                                           std::size_t col_size) {
-    if (A.n_rows() != A.n_cols())
+    if (A.n_rows() != A.n_cols() || A.n_rows() == 0 ||
+        A.n_rows() % 4 != 0 || row_block > 1 || col_block > 1)
         return SparseMatrix();
 
     const std::size_t velocity_size = A.n_rows() * 3 / 4;
