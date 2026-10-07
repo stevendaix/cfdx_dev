@@ -75,13 +75,13 @@ int main()
 
         // Independent interface heat-flow equality: each side must carry the
         // same physical heat rate, with opposite outward signs.
-        const double area=g1.face_area_vectors[0].mag();
+        const double interface_area=g1.face_area_vectors[0].mag()*static_cast<double>(m1.boundary().patch(0).face_ids.size());
         const double qflux1=c.conductivity1*(T1(0)-tint)/d1;
         const double qflux2=c.conductivity2*(tint-T2(0))/d2;
         EXPECT_TRUE(std::isfinite(qflux1) && std::isfinite(qflux2));
         EXPECT_NEAR(qflux1,qflux2,1e-10);
-        EXPECT_NEAR(qflux1*area,100.0,1e-10);
-        EXPECT_NEAR(qflux2*area,100.0,1e-10);
+        EXPECT_NEAR(qflux1*interface_area,100.0,1e-10);
+        EXPECT_NEAR(qflux2*interface_area,100.0,1e-10);
         EXPECT_NEAR(r.interface_imbalance,0.0,1e-10);
     });
 
