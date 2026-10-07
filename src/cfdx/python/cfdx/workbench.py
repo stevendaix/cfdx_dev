@@ -36,9 +36,9 @@ try:
         QPushButton,
         QStatusBar,
         QTextEdit,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
-        QToolBar,
         QWidget,
     )
 except ImportError:  # pragma: no cover
@@ -48,10 +48,10 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
-    from .setup_panel import CaseSetupPanel
-    from .run_center_panel import RunCenterPanel
-    from .results_panel import ResultsPanel
     from .probes_panel import ProbesPanel
+    from .results_panel import ResultsPanel
+    from .run_center_panel import RunCenterPanel
+    from .setup_panel import CaseSetupPanel
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
