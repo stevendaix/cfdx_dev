@@ -35,7 +35,7 @@ def cmd_results(args: argparse.Namespace) -> int:
     state = app.open_results(args.directory)
     print(json.dumps({
         "directory": str(args.directory),
-        "frames": [frame.to_dict() for frame in state.results.frames],
+        "frames": [\n            {\n                "stable_id": frame.stable_id,\n                "path": frame.path,\n                "sequence": frame.sequence,\n                "time": frame.time,\n                "iteration": frame.iteration,\n                "complete": frame.complete,\n                "fields": list(frame.fields),\n            }\n            for frame in state.results.frames\n        ],
         "fields": list(state.results.field_names),
     }, indent=2, default=str))
     return 0
