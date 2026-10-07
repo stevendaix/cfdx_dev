@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the reproducible N11 conservation/boundedness evidence campaign.
 
 The campaign reuses existing executable CFDX tests. It does not duplicate
@@ -19,6 +18,35 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+QUANTITATIVE_RECORD_PREFIXES = (
+    "MODEL_RESULT ",
+    "GHIA ",
+    "POISEUILLE_RESULT ",
+    "N11_ENERGY_RESULT ",
+)
+
+
+def parse_quantitative_records(output: str) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for line in output.splitlines():
+        prefix = next(
+            (p for p in QUANTITATIVE_RECORD_PREFIXES if line.startswith(p)),
+            None,
+        )
+        if prefix is None:
+            continue
+        record: dict[str, object] = {"record_type": prefix.strip()}
+        for token in line[len(prefix):].split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            try:
+                record[key] = float(value)
+            except ValueError:
+                record[key] = value
+        records.append(record)
+    return records
 
 REQUIRED_TESTS = (
     "test_conservation_boundedness",
@@ -187,7 +215,43 @@ def main() -> int:
 
     failed = [str(item["name"]) for item in results if item["status"] != "PASS"]
     categories = build_category_results(results)
-    complete_execution = len(results) == len(REQUIRED_TESTS) and not failed
+    quantitative_records = [
+        record
+        for item in results
+        for record in parse_quantitative_records(str(item["output"]))
+    ]
+    quantitative_counts = {
+        "MODEL_RESULT": sum(r["record_type"] == "MODEL_RESULT" for r in quantitative_records),
+        "GHIA": sum(r["record_type"] == "GHIA" for r in quantitative_records),
+        "POISEUILLE_RESULT": sum(
+            r["record_type"] == "POISEUILLE_RESULT" for r in quantitative_records
+        ),
+        "N11_ENERGY_RESULT": sum(
+            r["record_type"] == "N11_ENERGY_RESULT" for r in quantitative_records
+        ),
+    }
+    quantitative_requirements = {
+        "MODEL_RESULT": 1,
+        "GHIA": 4,
+        "POISEUILLE_RESULT": 4,
+        "N11_ENERGY_RESULT": 1,
+    }
+    quantitative_coverage = {
+        key: {
+            "required": required,
+            "observed": quantitative_counts[key],
+            "complete": quantitative_counts[key] >= required,
+        }
+        for key, required in quantitative_requirements.items()
+    }
+    quantitative_complete = all(
+        item["complete"] for item in quantitative_coverage.values()
+    )
+    complete_execution = (
+        len(results) == len(REQUIRED_TESTS)
+        and not failed
+        and quantitative_complete
+    )
 
     report = {
         "campaign": "N11 conservation and boundedness evidence",
@@ -196,6 +260,8 @@ def main() -> int:
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
+        "quantitative_records": quantitative_records,
+        "quantitative_coverage": quantitative_coverage,
         "categories": categories,
         "scope_gaps": KNOWN_SCOPE_GAPS,
         "qualification_boundary": (
