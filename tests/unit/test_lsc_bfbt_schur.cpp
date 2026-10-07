@@ -193,6 +193,54 @@ int main() {
         EXPECT_TRUE(bfbt_p.n_rows() == blocks.pressure_size());
     });
 
+    run_case("stabilized_lsc_bfbt_includes_nonzero_C", [&] {
+        const auto Auu_stab = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto G_stab = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto D_stab = make_sparse(2, 2, {
+            {0, 0, 1.0}, {1, 1, 1.0}
+        });
+        const auto C_stab = make_sparse(2, 2, {
+            {0, 0, 0.25}, {1, 1, 0.25}
+        });
+        const BlockOperator stabilized_blocks(Auu_stab, G_stab, D_stab, C_stab);
+
+        // Here Q=Auu=I, so H=DQ^-1G-C=0.75 I and the physical
+        // Schur complement is S=C-DQ^-1G=-0.75 I. The stabilized
+        // LSC/BFBT action must therefore be exactly S^-1=-4/3 I.
+        const auto H = LscBfbtSchurApproximation::assemble_stabilized_pressure_operator(
+            stabilized_blocks, LscBfbtSchurApproximation::Mode::LSC);
+        EXPECT_TRUE(H.n_rows() == 2 && H.n_cols() == 2);
+        EXPECT_NEAR(H.values_data()[H.row_offsets_data()[0]], 0.75, 1e-15);
+        EXPECT_NEAR(H.values_data()[H.row_offsets_data()[1]], 0.75, 1e-15);
+
+        auto solve_H = [](const Vector& rhs, Vector& z) {
+            z = Vector(rhs.size(), 0.0);
+            for (std::size_t i = 0; i < rhs.size(); ++i) z(i) = rhs(i) / 0.75;
+            return true;
+        };
+        LscBfbtSchurApproximation lsc(
+            LscBfbtSchurApproximation::Mode::LSC, solve_H);
+        EXPECT_TRUE(lsc.setup(stabilized_blocks));
+
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.5;
+        Vector pressure(2, 0.0);
+        EXPECT_TRUE(lsc.apply(rhs, pressure));
+        EXPECT_NEAR(pressure(0), -4.0 / 3.0, 1e-12);
+        EXPECT_NEAR(pressure(1),  2.0 / 3.0, 1e-12);
+
+        const auto H_bfbt =
+            LscBfbtSchurApproximation::assemble_stabilized_pressure_operator(
+                stabilized_blocks, LscBfbtSchurApproximation::Mode::BFBT);
+        EXPECT_NEAR(H_bfbt.values_data()[H_bfbt.row_offsets_data()[0]], 0.75, 1e-15);
+        EXPECT_NEAR(H_bfbt.values_data()[H_bfbt.row_offsets_data()[1]], 0.75, 1e-15);
+    });
+
     run_case("lsc_and_bfbt_setup_and_apply", [&] {
         (void)run_mode(LscBfbtSchurApproximation::Mode::LSC, {});
         (void)run_mode(LscBfbtSchurApproximation::Mode::BFBT, {});
