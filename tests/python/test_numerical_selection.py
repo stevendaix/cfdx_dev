@@ -45,6 +45,20 @@ def test_build_numerical_selection_uses_registry_keys():
     ]
 
 
+
+def test_coupled_schur_is_a_distinct_canonical_family():
+    scheme = NumericalScheme(coupled_solver="coupled", coupled_schur="pcd")
+    selection = build_numerical_selection(scheme)
+    assert ("pressure_velocity", "pressure_velocity.coupled") in [
+        (e.family, e.configuration_key) for e in selection.entries
+    ]
+    assert ("schur", "schur.pcd") in [
+        (e.family, e.configuration_key) for e in selection.entries
+    ]
+    assert "schur" in selection.required_families
+    assert validate_numerical_selection(scheme) == []
+
+
 def test_unmapped_source_value_is_not_silently_rewritten():
     scheme = NumericalScheme(momentum_scheme="source_specific_unknown")
     selection = build_numerical_selection(scheme)
