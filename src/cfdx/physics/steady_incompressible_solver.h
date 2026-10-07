@@ -1634,53 +1634,73 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             }
         }
 
-        SparseMatrix pressure_operator(nc, nc);
-        for (std::size_t row = 0; row < nc; ++row) {
-            std::map<std::size_t, double> entries;
-            for (std::size_t dk = D.row_offsets_data()[row];
-                 dk < D.row_offsets_data()[row + 1]; ++dk) {
-                const std::size_t velocity_col = D.columns_data()[dk];
-                const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
-                for (std::size_t gk = G.row_offsets_data()[velocity_col];
-                     gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
-                    entries[G.columns_data()[gk]] +=
-                        d_value * G.values_data()[gk];
-                }
-            }
-            if (row == reference_cell) {
-                pressure_operator.push_back(row, row, 1.0);
-            } else {
-                for (const auto& [col, value] : entries) {
-                    if (std::isfinite(value) && value != 0.0)
-                        pressure_operator.push_back(row, col, value);
-                }
+        const BlockOperator lsc_blocks(Auu, G, D, C);
+        SparseMatrix pressure_operator =
+            LscBfbtSchurApproximation::assemble_stabilized_pressure_operator(
+                lsc_blocks,
+                schur_model == CoupledSchurModel::LSC
+                    ? LscBfbtSchurApproximation::Mode::LSC
+                    : LscBfbtSchurApproximation::Mode::BFBT,
+                q_inverse);
+
+        for (std::size_t k = pressure_operator.row_offsets_data()[reference_cell];
+             k < pressure_operator.row_offsets_data()[reference_cell + 1]; ++k) {
+            pressure_operator.values_data()[k] = 0.0;
+        }
+        bool ref_diag_set = false;
+        for (std::size_t k = pressure_operator.row_offsets_data()[reference_cell];
+             k < pressure_operator.row_offsets_data()[reference_cell + 1]; ++k) {
+            if (pressure_operator.columns_data()[k] == reference_cell) {
+                pressure_operator.values_data()[k] = 1.0;
+                ref_diag_set = true;
+                break;
             }
         }
-        pressure_operator.finalize();
+        if (!ref_diag_set) {
+            SparseMatrix rebuilt(nc, nc);
+            for (std::size_t row = 0; row < nc; ++row) {
+                if (row == reference_cell) {
+                    rebuilt.push_back(row, row, 1.0);
+                    continue;
+                }
+                for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                     k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                    rebuilt.push_back(row, pressure_operator.columns_data()[k],
+                                     pressure_operator.values_data()[k]);
+                }
+            }
+            rebuilt.finalize();
+            pressure_operator = std::move(rebuilt);
+        }
 
-        auto solve_pressure = [pressure_operator, max_iterations, tolerance](
+        auto pressure_preconditioner =
+            cfdx::core::make_scalar_preconditioner(
+                cfdx::core::PreconditionerModel::NativeAMG);
+        if (!pressure_preconditioner ||
+            !pressure_preconditioner->setup(pressure_operator)) {
+            throw std::runtime_error(
+                "N8 LSC/BFBt pressure AMG setup failed");
+        }
+
+        auto solve_pressure = [pressure_operator,
+                               pressure_preconditioner = pressure_preconditioner.get(),
+                               max_iterations, tolerance](
             const Vector& rhs, Vector& x) mutable {
-            LinearOperator op{
-                pressure_operator.n_rows(),
-                [&pressure_operator](const Vector& input, Vector& output) {
-                    const auto values = pressure_operator.matvec(input);
-                    if (output.size() != values.size())
-                        output.resize(values.size());
-                    for (std::size_t i = 0; i < values.size(); ++i)
-                        output(i) = values[i];
-                }};
+            const int restart = static_cast<int>(std::min<std::size_t>(
+                64, pressure_operator.n_rows()));
             const auto result = solve_gmres(
-                op, rhs, x,
-                static_cast<int>(std::min<std::size_t>(64, pressure_operator.n_rows())),
-                max_iterations, tolerance);
-            return result.status == SolverStatus::CONVERGED;
+                pressure_operator, rhs, x, restart,
+                max_iterations, tolerance,
+                pressure_preconditioner);
+            return result.status == cfdx::core::SolverStatus::CONVERGED;
         };
 
         auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
             schur_model == CoupledSchurModel::LSC
                 ? LscBfbtSchurApproximation::Mode::LSC
                 : LscBfbtSchurApproximation::Mode::BFBT,
-            std::move(solve_pressure));
+            std::move(solve_pressure),
+            std::move(q_inverse));
 
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
