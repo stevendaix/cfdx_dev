@@ -83,6 +83,13 @@ int main()
         EXPECT_NEAR(qflux1*interface_area,100.0,1e-10);
         EXPECT_NEAR(qflux2*interface_area,100.0,1e-10);
         EXPECT_NEAR(r.interface_imbalance,0.0,1e-10);
+        std::cout << "N11_ENERGY_RESULT converged=" << (r.converged ? "true" : "false")
+                  << " T1=" << T1(0) << " T2=" << T2(0)
+                  << " qflux=" << qflux1
+                  << " heat_rate=" << qflux1*interface_area
+                  << " balance1=" << b1.normalized_residual
+                  << " balance2=" << b2.normalized_residual
+                  << " interface_imbalance=" << r.interface_imbalance << "\\n";
     });
 
     run_case("cht_independent_energy_balance_detects_nonconservative_state",[] {
