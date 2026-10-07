@@ -170,13 +170,13 @@ def main() -> int:
 
     if cpp_changed or cmake_changed:
         configure()
-        available_smoke = existing_ctest_names()
-        targets = ["cfdx_core", *(name for name in SMOKE_TESTS if name in available_smoke)]
+        available_tests = existing_ctest_names()
+        targets = ["cfdx_core", *(name for name in SMOKE_TESTS if name in available_tests)]
         for path in files:
             parts = Path(path).parts
             if len(parts) >= 3 and parts[0] == "tests" and Path(path).suffix.lower() in CPP_EXT:
                 stem = Path(path).stem
-                if stem.startswith("test_") and stem in available_smoke:
+                if stem.startswith("test_") and stem in available_tests:
                     targets.append(stem)
         available = existing_ctest_names()
         for smoke in SMOKE_TESTS:
