@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from cfdx import CFDXSession
+
 pytestmark = pytest.mark.skipif(
     os.environ.get("CFDX_PRODUCTION_SOLVER") is None
     or os.environ.get("CFDX_PRODUCTION_MESH") is None,
