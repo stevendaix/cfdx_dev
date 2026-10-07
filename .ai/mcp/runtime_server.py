@@ -20,9 +20,9 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
+from cfdx.case_io import validate_case_bundle
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
-from cfdx.case_io import validate_case_bundle
 
 
 def _root(configured: str | None) -> Path:
