@@ -1625,7 +1625,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 : LscBfbtSchurApproximation::Mode::BFBT;
         const BlockOperator lsc_blocks(Auu, G, D, C);
         const SparseMatrix pressure_operator =
-            LscBfbtSchurApproximation::assemble_pressure_operator(
+            LscBfbtSchurApproximation::assemble_stabilized_pressure_operator(
                 lsc_blocks, lsc_mode);
 
         // NativeAMG is a positive-diagonal AMG method. The algebraic LSC/BFBT
@@ -1633,11 +1633,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         // pressure operator (and may be mildly nonsymmetric because D is not
         // assumed to be -G^T). Eliminate the reference pressure unknown
         // exactly and solve the sign-normalized reduced operator
-        // -P_red z = -rhs_red. Reconstruct with x_ref = 0.
+        // H_red z = rhs_red, where H = D Q^-1 G - C. Reconstruct with x_ref = 0.
         //
-        // This is an algebraic gauge transformation only: P itself remains
-        // unchanged, and therefore the operator seen by the LSC/BFBT algebra
-        // is exactly the operator whose inverse is supplied by this callback.
+        // This is an algebraic gauge transformation only: the stabilized H operator
+        // is unchanged, and the same H inverse is supplied to both pressure solves.
         SparseMatrix pressure_solver_operator(nc > 0 ? nc - 1 : 0,
                                               nc > 0 ? nc - 1 : 0);
         if (nc > 1) {
@@ -1652,7 +1651,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     if (col == reference_cell) continue;
                     const std::size_t reduced_col =
                         col < reference_cell ? col : col - 1;
-                    entries[reduced_col] -= pressure_operator.values_data()[k];
+                    entries[reduced_col] += pressure_operator.values_data()[k];
                 }
                 for (const auto& [col, value] : entries) {
                     if (std::isfinite(value) && value != 0.0)
@@ -1687,7 +1686,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (row == reference_cell) continue;
                 const std::size_t reduced_row =
                     row < reference_cell ? row : row - 1;
-                reduced_rhs(reduced_row) = -rhs(row);
+                reduced_rhs(reduced_row) = rhs(row);
             }
 
             LinearSolverRequest nested_request{

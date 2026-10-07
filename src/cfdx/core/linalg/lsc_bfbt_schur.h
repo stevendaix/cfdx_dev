@@ -54,7 +54,7 @@ public:
         BFBT
     };
 
-    // Solve P*z = rhs, where P = D Q^{-1} G for the current setup.
+    // Solve H*z = rhs, where H = D Q^{-1} G - C for the stabilized setup.
     using PressureSolve = std::function<bool(const Vector& rhs, Vector& z)>;
 
     LscBfbtSchurApproximation(Mode mode,
@@ -70,7 +70,7 @@ public:
         return mode_ == Mode::LSC ? "lsc_schur" : "bfbt_schur";
     }
 
-    // apply() returns -P^{-1} E P^{-1} r, which approximates S^{-1} r.
+    // apply() returns -H^{-1} K H^{-1} r, which approximates S^{-1} r.
     SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
 
     bool setup(const BlockOperator& blocks) override {
@@ -140,8 +140,9 @@ public:
         for (std::size_t i = 0; i < Aqg.size(); ++i) qAqg(i) = q_inverse_[i] * Aqg[i];
 
         const auto Eq = blocks_->D().matvec(qAqg);
+        const auto Cy = blocks_->C().matvec(y);
         Vector z(np, 0.0);
-        for (std::size_t i = 0; i < np; ++i) z(i) = Eq[i];
+        for (std::size_t i = 0; i < np; ++i) z(i) = Eq[i] - Cy[i];
         if (pressure_null_space_) pressure_null_space_->remove(z);
 
         if (!pressure_solve_(z, pressure)) return false;
@@ -151,44 +152,53 @@ public:
         return true;
     }
 
-    // Assemble the exact pressure-side operator used by the LSC/BFBT
-    // algebra, P = D Q^{-1} G.  Production code should use this helper rather
-    // than maintaining a second hand-written P assembly: otherwise a gauge,
-    // sign, or sparsity change can silently make the nested P^{-1} inconsistent
-    // with the Schur approximation.
+    // Assemble the classical LSC/BFBT component P = D Q^{-1} G.  It is
+    // retained as a diagnostic/reference operator.
     static SparseMatrix assemble_pressure_operator(
         const BlockOperator& blocks,
         Mode mode,
         const std::vector<double>& q_diagonal = {}) {
-        if (!blocks.is_valid() || blocks.pressure_size() == 0 || blocks.velocity_size() == 0)
-            throw std::invalid_argument("LSC/BFBT pressure operator requires valid blocks");
+        return assemble_scaled_divergence_gradient(blocks, mode, q_diagonal);
+    }
 
-        const std::size_t nu = blocks.velocity_size();
-        std::vector<double> q_inverse(nu, 1.0);
-        if (!q_diagonal.empty()) {
-            if (q_diagonal.size() != nu)
-                throw std::invalid_argument("LSC/BFBT Q diagonal has invalid size");
-            for (std::size_t i = 0; i < nu; ++i) {
-                if (!(q_diagonal[i] > 0.0) || !std::isfinite(q_diagonal[i]))
-                    throw std::invalid_argument("LSC/BFBT Q diagonal must be positive and finite");
-                q_inverse[i] = 1.0 / q_diagonal[i];
-            }
-        } else if (mode == Mode::LSC) {
-            const auto& A = blocks.Auu();
-            for (std::size_t i = 0; i < nu; ++i) {
-                double diagonal = 0.0;
-                for (std::size_t k = A.row_offsets_data()[i];
-                     k < A.row_offsets_data()[i + 1]; ++k) {
-                    if (A.columns_data()[k] == i)
-                        diagonal += A.values_data()[k];
-                }
-                if (!(diagonal > 0.0) || !std::isfinite(diagonal))
-                    throw std::invalid_argument(
-                        "LSC pressure operator requires positive finite momentum diagonal");
-                q_inverse[i] = 1.0 / diagonal;
+    // Assemble the stabilized pressure-side operator
+    //
+    //     H = D Q^{-1} G - C.
+    //
+    // The physical Schur approximation is S_hat = -H.  Keeping H as the
+    // pressure solve operator gives NativeAMG the same sign-normalized,
+    // positive-diagonal system used by the existing CFDX pressure solvers.
+    static SparseMatrix assemble_stabilized_pressure_operator(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        SparseMatrix H = assemble_scaled_divergence_gradient(blocks, mode, q_diagonal);
+        const auto& C = blocks.C();
+        for (std::size_t row = 0; row < C.n_rows(); ++row) {
+            for (std::size_t k = C.row_offsets_data()[row];
+                 k < C.row_offsets_data()[row + 1]; ++k) {
+                H.push_back(row, C.columns_data()[k], -C.values_data()[k]);
             }
         }
+        H.finalize();
+        return H;
+    }
 
+    Mode mode() const noexcept { return mode_; }
+
+    bool uses_default_scaling() const noexcept { return q_diagonal_.empty(); }
+
+    bool has_pressure_null_space_policy() const noexcept {
+        return pressure_null_space_.has_value();
+    }
+
+private:
+    static SparseMatrix assemble_scaled_divergence_gradient(
+        const BlockOperator& blocks,
+        Mode mode,
+        const std::vector<double>& q_diagonal = {}) {
+        const auto q_inverse = make_q_inverse(blocks, mode, q_diagonal);
+        const std::size_t nu = blocks.velocity_size();
         const auto& D = blocks.D();
         const auto& G = blocks.G();
         SparseMatrix P(blocks.pressure_size(), blocks.pressure_size());
@@ -197,6 +207,8 @@ public:
             for (std::size_t dk = D.row_offsets_data()[row];
                  dk < D.row_offsets_data()[row + 1]; ++dk) {
                 const std::size_t velocity_col = D.columns_data()[dk];
+                if (velocity_col >= nu)
+                    throw std::invalid_argument("LSC/BFBT D column is outside velocity space");
                 const double d_value = D.values_data()[dk] * q_inverse[velocity_col];
                 for (std::size_t gk = G.row_offsets_data()[velocity_col];
                      gk < G.row_offsets_data()[velocity_col + 1]; ++gk) {
@@ -212,15 +224,6 @@ public:
         return P;
     }
 
-    Mode mode() const noexcept { return mode_; }
-
-    bool uses_default_scaling() const noexcept { return q_diagonal_.empty(); }
-
-    bool has_pressure_null_space_policy() const noexcept {
-        return pressure_null_space_.has_value();
-    }
-
-private:
     struct GraphSignature {
         std::size_t hash = 0;
         bool operator==(const GraphSignature& other) const noexcept {
