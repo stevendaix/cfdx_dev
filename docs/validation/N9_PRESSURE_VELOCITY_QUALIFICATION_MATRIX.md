@@ -91,6 +91,34 @@ No tolerance relaxation, iteration-limit inflation, disabled test, fixed-
 iteration pass condition, silent fallback, or geometry-specific empirical
 correction is permitted.
 
+## N9-S7 — common physical qualification campaign
+
+N9-S7 promotes the four executable common physical cells to the total-validation
+campaign. The campaign runs all six pressure–velocity algorithms on the same
+production meshes, boundary conditions and convergence contract:
+
+- Couette;
+- Poiseuille;
+- Ghia/lid-driven cavity at Re=100;
+- controlled skew/non-orthogonal Couette.
+
+The CTest target is `test_n9_physical_matrix`. It is labelled
+`n9;qualification;validation;long;validation-total`, so it is excluded from the
+fast partition and executed by the long partition of `.github/workflows/cfdx-validation.yml`
+when the `validation-total` label is present (and on scheduled/manual total
+validation runs).
+
+The test reports independent convergence/residual gates, analytical QoI gates
+where an oracle exists, and cross-algorithm equivalence. It does **not** claim
+external-flow qualification: the former uniform-channel "external flow" case
+was removed because it is not a genuine external-flow benchmark. That remains
+N9-S8 work and must use an actual external geometry with an independent
+reference/oracle.
+
+N9-S7 therefore does not close N9 by itself. It establishes the common physical
+matrix required before N9-S8 (external flow), N9-S9 (Rhie–Chow / pressure–velocity
+consistency), and N9-S10 (pressure-reference policies) are qualified.
+
 ## Next execution order
 
 1. Couette — retain the N9.5 all-algorithm evidence as the baseline.
