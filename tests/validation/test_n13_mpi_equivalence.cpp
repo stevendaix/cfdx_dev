@@ -110,13 +110,13 @@ int main(int argc, char** argv)
                 const double d =
                     (geometry.cell_centres[other] - geometry.cell_centres[cell]).mag();
                 const double grad_normal =
-                    (gathered[cell] - gathered[other]) / d;
+                    (gathered[other] - gathered[cell]) / d;
                 face_flux = -grad_normal * area * outward_sign;
             } else {
                 const double d =
                     (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
                 const double grad_normal =
-                    (boundary.face_values[face] - gathered[cell]) / d;
+                    (bc.face_values[face] - gathered[cell]) / d;
                 face_flux = -grad_normal * area * outward_sign;
             }
             cell_balance += face_flux;
