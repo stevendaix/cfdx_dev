@@ -26,7 +26,14 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_info(args: argparse.Namespace) -> int:
     app = _application(args.case, args.dat)
-    state = app.state\n    print(json.dumps({\n        "project_path": state.project.path,\n        "simulation_state": state.simulation_state.value,\n        "iteration": state.execution.iteration,\n        "time": state.execution.time,\n        "requires_restart": state.requires_restart,\n    }, indent=2, default=str))
+    state = app.state
+    print(json.dumps({
+        "project_path": state.project.path,
+        "simulation_state": state.simulation_state.value,
+        "iteration": state.execution.iteration,
+        "time": state.execution.time,
+        "requires_restart": state.requires_restart,
+    }, indent=2, default=str))
     return 0
 
 
@@ -35,7 +42,18 @@ def cmd_results(args: argparse.Namespace) -> int:
     state = app.open_results(args.directory)
     print(json.dumps({
         "directory": str(args.directory),
-        "frames": [\n            {\n                "stable_id": frame.stable_id,\n                "path": frame.path,\n                "sequence": frame.sequence,\n                "time": frame.time,\n                "iteration": frame.iteration,\n                "complete": frame.complete,\n                "fields": list(frame.fields),\n            }\n            for frame in state.results.frames\n        ],
+        "frames": [
+            {
+                "stable_id": frame.stable_id,
+                "path": frame.path,
+                "sequence": frame.sequence,
+                "time": frame.time,
+                "iteration": frame.iteration,
+                "complete": frame.complete,
+                "fields": list(frame.fields),
+            }
+            for frame in state.results.frames
+        ],
         "fields": list(state.results.field_names),
     }, indent=2, default=str))
     return 0
