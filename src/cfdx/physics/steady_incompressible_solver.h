@@ -1693,7 +1693,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             LinearSolverRequest nested_request{
                 KrylovModel::GMRES,
                 PreconditionerModel::NativeAMG,
-                std::max<std::size_t>(1, pressure_solver_operator.n_rows()),
+                std::min<std::size_t>(64, std::max<std::size_t>(1, pressure_solver_operator.n_rows())),
                 false,
                 NullSpaceModel::None};
 
@@ -1850,10 +1850,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     auto dense_solve = [](std::vector<std::vector<double>> M,
                                           std::vector<double> b,
                                           double& pivot_min,
-                                          double& pivot_max) {
+                                          double& pivot_max,
+                                          double& breakdown_pivot) {
                         const std::size_t n = M.size();
                         pivot_min = std::numeric_limits<double>::infinity();
                         pivot_max = 0.0;
+                        breakdown_pivot = std::numeric_limits<double>::quiet_NaN();
                         if (n == 0 || b.size() != n) return std::vector<double>{};
                         for (std::size_t k = 0; k < n; ++k) {
                             std::size_t pivot = k;
@@ -1861,8 +1863,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                                 if (std::abs(M[i][k]) > std::abs(M[pivot][k]))
                                     pivot = i;
                             const double p = std::abs(M[pivot][k]);
-                            if (!(p > 1e-14) || !std::isfinite(p))
+                            if (!(p > 1e-14) || !std::isfinite(p)) {
+                                breakdown_pivot = p;
                                 return std::vector<double>{};
+                            }
                             pivot_min = std::min(pivot_min, p);
                             pivot_max = std::max(pivot_max, p);
                             std::swap(M[k], M[pivot]);
@@ -1888,6 +1892,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     };
                     const auto P = dense_of(pressure_solver_operator);
                     double pivot_min = 0.0, pivot_max = 0.0;
+                    double direct_breakdown_pivot =
+                        std::numeric_limits<double>::quiet_NaN();
                     const auto direct_x = dense_solve(
                         P,
                         [&] {
@@ -1895,7 +1901,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                             for (std::size_t i = 0; i < np; ++i) b[i] = reduced_rhs(i);
                             return b;
                         }(),
-                        pivot_min, pivot_max);
+                        pivot_min, pivot_max, direct_breakdown_pivot);
                     double direct_residual = std::numeric_limits<double>::infinity();
                     double direct_x_l2 = std::numeric_limits<double>::infinity();
                     if (direct_x.size() == np) {
@@ -1988,6 +1994,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                               << " direct_x_l2=" << direct_x_l2
                               << " reduced_pivot_min=" << pivot_min
                               << " reduced_pivot_max=" << pivot_max
+                              << " reduced_breakdown_pivot=" << direct_breakdown_pivot
                               << " reduced_pivot_ratio="
                               << (pivot_min > 0.0 ? pivot_max / pivot_min
                                                   : std::numeric_limits<double>::infinity())
@@ -2127,37 +2134,41 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 }
             }
 
-            // Discriminating diagnostics: solve the exact same reduced system
-            // with identity and Smoothed Aggregation. These are diagnostics-only;
-            // production remains GMRES + NativeAMG.
-            for (const auto diagnostic_preconditioner : {
-                     cfdx::core::PreconditionerModel::None,
-                     cfdx::core::PreconditionerModel::SmoothedAggregationAMG}) {
-                cfdx::core::LinearSolverRequest diagnostic_request{
-                    cfdx::core::KrylovModel::GMRES,
-                    diagnostic_preconditioner,
-                    nested_request.gmres_restart,
-                    false,
-                    cfdx::core::NullSpaceModel::None};
-                Vector diagnostic_x(reduced_rhs.size(), 0.0);
-                const auto diagnostic_selected = solve_linear_system(
-                    pressure_solver_operator, reduced_rhs, diagnostic_x,
-                    cfdx::core::LinearProblemKind::PressurePoisson,
-                    diagnostic_request, max_iterations, tolerance);
-                const auto& diagnostic_result = diagnostic_selected.result;
-                std::cerr << "N8_LSC_BFBT_DIAGNOSTIC_SOLVE"
-                          << " call=" << call_id
-                          << " preconditioner="
-                          << cfdx::core::to_string(diagnostic_selected.plan.preconditioner)
-                          << " krylov="
-                          << cfdx::core::to_string(diagnostic_selected.plan.krylov)
-                          << " iterations=" << diagnostic_result.iterations
-                          << " status=" << static_cast<int>(diagnostic_result.status)
-                          << " residual=" << diagnostic_result.residual
-                          << " relative=" << diagnostic_result.residual_relative
-                          << " physical_relative="
-                          << diagnostic_selected.physical_residual_relative
-                          << "\n";
+            if (verbose) {
+                // Discriminating diagnostics: solve the exact same reduced system
+                // with identity and Smoothed Aggregation. These are diagnostics-only;
+                // production remains GMRES + NativeAMG.
+                for (const auto diagnostic_preconditioner : {
+                         cfdx::core::PreconditionerModel::None,
+                         cfdx::core::PreconditionerModel::SmoothedAggregationAMG}) {
+                    cfdx::core::LinearSolverRequest diagnostic_request{
+                        cfdx::core::KrylovModel::GMRES,
+                        diagnostic_preconditioner,
+                        nested_request.gmres_restart,
+                        false,
+                        cfdx::core::NullSpaceModel::None};
+                    Vector diagnostic_x(reduced_rhs.size(), 0.0);
+                    const auto diagnostic_selected = solve_linear_system(
+                        pressure_solver_operator, reduced_rhs, diagnostic_x,
+                        cfdx::core::LinearProblemKind::PressurePoisson,
+                        diagnostic_request, max_iterations, tolerance);
+                    const auto& diagnostic_result = diagnostic_selected.result;
+                    std::cerr << "N8_LSC_BFBT_DIAGNOSTIC_SOLVE"
+                              << " call=" << call_id
+                              << " preconditioner="
+                              << cfdx::core::to_string(diagnostic_selected.plan.preconditioner)
+                              << " krylov="
+                              << cfdx::core::to_string(diagnostic_selected.plan.krylov)
+                              << " iterations=" << diagnostic_result.iterations
+                              << " status=" << static_cast<int>(diagnostic_result.status)
+                              << " residual=" << diagnostic_result.residual
+                              << " relative=" << diagnostic_result.residual_relative
+                              << " physical_relative="
+                              << diagnostic_selected.physical_residual_relative
+                              << "\n";
+                }
+    
+    
             }
 
             Vector reduced_x(pressure_solver_operator.n_rows(), 0.0);
