@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ..dat_io import read_dat_restart
+from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..probe import ProbeCatalog
 from ..project import Project
@@ -144,7 +144,10 @@ class Application:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
         if self._restart_dat is not None:
-            project.save_with_dat(self.session, self._restart_dat)
+            _, canonical_dat = project.save_with_dat(
+                self.session, self._restart_dat
+            )
+            self._restart_dat = canonical_dat
         else:
             project.save(self.session)
         return self.set_project_path(project.path, dirty=False)
@@ -161,13 +164,16 @@ class Application:
         self._restart_dat = canonical_dat
         return self.set_project_path(project.path, dirty=False)
 
-    def load_dat(self, path: str | Path, *, use_for_restart: bool = False):
+    def load_dat(
+        self, path: str | Path, *, use_for_restart: bool = False
+    ) -> DatRestart:
         """Read a numerical DAT artifact without involving a frontend renderer."""
         if self.project_path is None:
             raise ValueError("load a CFDX case before loading a DAT file")
         restart = read_dat_restart(Path(path))
         if use_for_restart:
             self._restart_dat = Path(path)
+            self._publish_state()
         return restart
 
     def clear_restart(self) -> ApplicationState:
