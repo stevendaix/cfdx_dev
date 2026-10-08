@@ -138,7 +138,7 @@ IncompressibleSolverControls controls_for(
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
-    // SIMPLEC uses a consistent pressure correction; standard SIMPLEC practice\n    // leaves pressure unrelaxed (alpha_p=1). Keep the velocity relaxation\n    // common to the matrix while using the algorithm-specific pressure control.\n    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 0.7 : 0.3;
+    // N9 uses the same baseline coupling controls as the N8 qualification\n    // campaigns. N9 qualifies physical integration; it does not retune the\n    // underlying numerical method per algorithm.
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::PISO ||
          algorithm == PressureVelocityAlgorithm::PIMPLE) ? 2 : 1;
@@ -146,7 +146,7 @@ IncompressibleSolverControls controls_for(
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
     c.coupling.n_fractional_steps =
         algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
-    c.coupling.coupled_max_iterations = 1000;
+    c.coupling.coupled_max_iterations = 1000;\n    c.coupling.schur_model = CoupledSchurModel::PCD;
     // The block solve must be at least two orders tighter than the nonlinear
     // gate it feeds. solve_gmres stops on a 2-norm relative residual while the
     // acceptance gate is an infinity-norm momentum residual scaled by the RHS
@@ -156,7 +156,7 @@ IncompressibleSolverControls controls_for(
     // frozen and the residual floor is set by the Krylov solve, not the
     // nonlinearity. The block solve is a direct solve of the coupled system, so
     // the tolerance is tightened rather than the gate relaxed.
-    c.coupling.coupled_linear_tolerance = 1e-12;
+    c.coupling.coupled_linear_tolerance = 1e-12;\n    // Use the N8-qualified production Schur path explicitly. The coupled\n    // solver must not silently select a different Schur model during N9.
     c.convergence.max_iterations = 1500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
