@@ -42,13 +42,15 @@ def changed_files() -> list[str]:
     range_spec = os.environ.get("CFDX_PRECOMMIT_RANGE")
     if range_spec:
         return [
-            x for x in output(
+            x
+            for x in output(
                 ["git", "diff", range_spec, "--name-only", "--diff-filter=ACMR"]
             ).splitlines()
             if x
         ]
     return [
-        x for x in output(
+        x
+        for x in output(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"]
         ).splitlines()
         if x
@@ -74,7 +76,11 @@ def configure() -> None:
     if (BUILD / "CMakeCache.txt").exists():
         return
     cmd = [
-        "cmake", "-S", ".", "-B", str(BUILD),
+        "cmake",
+        "-S",
+        ".",
+        "-B",
+        str(BUILD),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCFDX_BUILD_TESTS=ON",
         "-DCFDX_BUILD_RUNTIME_TESTS=ON",
@@ -96,13 +102,22 @@ def run_ctest(names: list[str]) -> None:
     available = existing_ctest_names()
     selected = [name for name in names if name in available]
     if not selected:
-        print("CFDX pre-commit: no smoke test registered; build-only guard remains active.")
+        print(
+            "CFDX pre-commit: no smoke test registered; "
+            "build-only guard remains active."
+        )
         return
     for name in selected:
-        run([
-            "ctest", "--test-dir", str(BUILD),
-            "-R", f"^{re.escape(name)}$", "--output-on-failure",
-        ])
+        run(
+            [
+                "ctest",
+                "--test-dir",
+                str(BUILD),
+                "-R",
+                f"^{re.escape(name)}$",
+                "--output-on-failure",
+            ]
+        )
 
 
 def python_guard(files: list[str]) -> None:
@@ -135,11 +150,15 @@ def integrity_guard(diff: str) -> None:
         (r"\bSKIP_RETURN_CODE\b", "new SKIP_RETURN_CODE"),
     ]
     hits = [
-        label for pattern, label in forbidden
+        label
+        for pattern, label in forbidden
         if any(re.search(pattern, line) for line in added)
     ]
     if hits:
-        print("CFDX pre-commit: test-integrity guard rejected staged changes:", file=sys.stderr)
+        print(
+            "CFDX pre-commit: test-integrity guard rejected staged changes:",
+            file=sys.stderr,
+        )
         for hit in sorted(set(hits)):
             print(f"  - {hit}", file=sys.stderr)
         print(
@@ -170,13 +189,20 @@ def main() -> int:
 
     if cpp_changed or cmake_changed:
         configure()
-        available_smoke = existing_ctest_names()
-        targets = ["cfdx_core", *(name for name in SMOKE_TESTS if name in available_smoke)]
+        available_tests = existing_ctest_names()
+        targets = [
+            "cfdx_core",
+            *(name for name in SMOKE_TESTS if name in available_tests),
+        ]
         for path in files:
             parts = Path(path).parts
-            if len(parts) >= 3 and parts[0] == "tests" and Path(path).suffix.lower() in CPP_EXT:
+            if (
+                len(parts) >= 3
+                and parts[0] == "tests"
+                and Path(path).suffix.lower() in CPP_EXT
+            ):
                 stem = Path(path).stem
-                if stem.startswith("test_") and stem in available_smoke:
+                if stem.startswith("test_") and stem in available_tests:
                     targets.append(stem)
         available = existing_ctest_names()
         for smoke in SMOKE_TESTS:
