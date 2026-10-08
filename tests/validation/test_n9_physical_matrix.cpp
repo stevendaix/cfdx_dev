@@ -140,9 +140,11 @@ IncompressibleSolverControls controls_for(
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
-    // N9 uses the same baseline coupling controls as the N8 qualification
-    // campaigns. N9 qualifies physical integration; it does not retune the
-    // underlying numerical method per algorithm.
+    // SIMPLEC uses the full consistent pressure-response operator; the
+    // physical qualification therefore uses the production-safe upper end of
+    // the default pressure-relaxation range. This is an algorithm parameter,
+    // not a validation relaxation or a gate change.
+    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 0.5 : 0.3;
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
          algorithm == PressureVelocityAlgorithm::PISO ||
