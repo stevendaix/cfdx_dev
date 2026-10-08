@@ -1,4 +1,4 @@
-"""Canonical N1 numerical selections for the Python adapter boundary.
+""""Canonical N1 numerical selections for the Python adapter boundary.
 
 The adapter layer owns translation from source-specific numerical names to the
 stable CFDX registry configuration keys.  The solver must consume the canonical
@@ -154,17 +154,34 @@ def validate_numerical_selection(numerics: NumericalScheme) -> list[str]:
     # selection. The C++ production boundary already enforces this invariant;
     # keep the Python selection contract equally strict so a case cannot pass
     # adapter validation while remaining ambiguous at the solver boundary.
-    if _normalise(numerics.coupled_solver) == "coupled" and not str(numerics.coupled_schur).strip():
-        errors.append("coupled production solver requires an explicit Schur numerical selection")
+    if (
+        _normalise(numerics.coupled_solver) == "coupled"
+        and not str(numerics.coupled_schur).strip()
+    ):
+        errors.append(
+            "coupled production solver requires an explicit Schur numerical selection"
+        )
 
     transient = _normalise(numerics.transient_scheme)
     if transient not in ("", "steady") and transient not in _TEMPORAL_KEYS:
-        errors.append(f"unmapped numerical setting for temporal: {numerics.transient_scheme!r}")
+        errors.append(
+            f"unmapped numerical setting for temporal: {numerics.transient_scheme!r}"
+        )
 
-    if numerics.linear_solver and _normalise(numerics.linear_solver) not in _LINEAR_SOLVER_KEYS:
-        errors.append(f"unmapped numerical setting for linear_solver: {numerics.linear_solver!r}")
-    if numerics.preconditioner and _normalise(numerics.preconditioner) not in _PRECONDITIONER_KEYS:
-        errors.append(f"unmapped numerical setting for preconditioner: {numerics.preconditioner!r}")
+    if (
+        numerics.linear_solver
+        and _normalise(numerics.linear_solver) not in _LINEAR_SOLVER_KEYS
+    ):
+        errors.append(
+            f"unmapped numerical setting for linear_solver: {numerics.linear_solver!r}"
+        )
+    if (
+        numerics.preconditioner
+        and _normalise(numerics.preconditioner) not in _PRECONDITIONER_KEYS
+    ):
+        errors.append(
+            f"unmapped numerical setting for preconditioner: {numerics.preconditioner!r}"
+        )
     for entry in numerics.unmapped_settings:
         errors.append(f"unmapped numerical setting for {entry}")
     return errors
