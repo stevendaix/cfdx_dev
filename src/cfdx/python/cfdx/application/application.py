@@ -1,4 +1,5 @@
 """Application facade shared by CFDX frontends."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -90,7 +91,7 @@ class Application:
     def replace_session(
         self, session: CFDXSession, *, project_path: str | Path | None = None
     ) -> ApplicationState:
-        runner = getattr(self.controller, "runner", None) if self.controller is not None else None
+        runner = (\n            getattr(self.controller, "runner", None)\n            if self.controller is not None\n            else None\n        )
         if getattr(runner, "running", False):
             raise RuntimeError("cannot replace an active session")
         if self.run_center is not None:
@@ -116,7 +117,7 @@ class Application:
         """Open a canonical CFDX project through the shared case lifecycle."""
         project = Project(Path(path))
         if with_dat:
-            session, _ = project.load_with_dat(Path(dat_path) if dat_path is not None else None)
+            session, _ = project.load_with_dat(\n                Path(dat_path) if dat_path is not None else None\n            )
         else:
             session = project.load()
         return self.replace_session(session, project_path=project.path)
@@ -191,7 +192,7 @@ class Application:
                 command += ["--probe", spec]
             command += ["--probe-csv", str(probe_catalog.csv_path(self.project_path))]
         if self.session.case.execution.mpi_ranks > 1:
-            command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
+            command = [\n                "mpiexec",\n                "-n",\n                str(self.session.case.execution.mpi_ranks),\n                *command,\n            ]
         controller = ExecutionController(
             self.session,
             SolverRunner(command, cwd=Path(self.project_path).parent),
@@ -243,7 +244,7 @@ class Application:
 
     def open_results(self, directory: str | Path) -> ApplicationState:
         path = Path(directory)
-        return self.set_results(discover_result_series(path, inspect_fields=True), directory=path)
+        return self.set_results(\n            discover_result_series(path, inspect_fields=True), directory=path\n        )
 
     def select_result_frame(self, stable_id: str) -> ApplicationState:
         if stable_id not in {frame.stable_id for frame in self.results.frames}:
