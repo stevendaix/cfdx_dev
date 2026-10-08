@@ -167,7 +167,7 @@ if QMainWindow is not object:
 
         def _open_case(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5 *.h5)"
+                self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5)"
             )
             if not path:
                 return
