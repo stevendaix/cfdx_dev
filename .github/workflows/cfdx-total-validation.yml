@@ -1,4 +1,4 @@
-name: CFDX total validation
+name: CFDX total validation v2
 
 # Long/expensive validation is deliberately separated from the fast PR gate.
 # Add the `validation-total` label to a PR to run this workflow; it can also
