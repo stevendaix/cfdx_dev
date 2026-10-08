@@ -8,7 +8,7 @@ from ..execution import ExecutionController
 from ..dat_io import read_dat_restart
 from ..probe import ProbeCatalog
 from ..runner import SolverRunner
-from ..validation import validate_case
+from ..validation import validate_case as _validate_case
 from ..session import CFDXSession, ChangeImpact
 from .commands import (
     Command,
@@ -196,7 +196,7 @@ class Application:
 
     def validate_case(self, mesh=None) -> ApplicationState:
         """Validate the current case through the shared application contract."""
-        return self.validate(validate_case, mesh)
+        return self.validate(_validate_case, mesh)
 
     def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
         self.project_path = path
