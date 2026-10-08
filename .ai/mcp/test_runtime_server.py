@@ -118,7 +118,9 @@ async def exercise() -> None:
                 h5.attrs["time"] = 0.1
                 h5.create_dataset("cell_ids", data=[1, 1])
                 h5.create_dataset("fields/p", data=[1.0])
-            invalid = await client.call_tool("checkpoint.inspect", {"checkpoint_path": "invalid.dat.h5"})
+            invalid = await client.call_tool(
+                "checkpoint.inspect", {"checkpoint_path": "invalid.dat.h5"}
+            )
             assert invalid.is_error is False
             assert invalid.structured_content["ok"] is False
             assert "duplicate cell ids" in invalid.structured_content["errors"][0]
