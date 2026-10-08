@@ -59,7 +59,14 @@ def _datasets(group: h5py.Group, prefix: str = "") -> list[dict[str, Any]]:
     for name, item in group.items():
         path = f"{prefix}/{name}" if prefix else name
         if isinstance(item, h5py.Dataset):
-            rows.append({"path": path, "shape": list(item.shape), "dtype": str(item.dtype), "size": int(item.size)})
+            rows.append(
+                {
+                    "path": path,
+                    "shape": list(item.shape),
+                    "dtype": str(item.dtype),
+                    "size": int(item.size),
+                }
+            )
         elif isinstance(item, h5py.Group):
             rows.extend(_datasets(item, path))
     return rows
