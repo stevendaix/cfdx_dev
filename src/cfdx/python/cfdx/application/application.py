@@ -87,7 +87,9 @@ class Application:
         self.run_center.on_change = lambda _state: self._publish_state()
         return self._publish_state()
 
-    def replace_session(self, session: CFDXSession, *, project_path: str | Path | None = None) -> ApplicationState:
+    def replace_session(
+        self, session: CFDXSession, *, project_path: str | Path | None = None
+    ) -> ApplicationState:
         runner = getattr(self.controller, "runner", None) if self.controller is not None else None
         if getattr(runner, "running", False):
             raise RuntimeError("cannot replace an active session")
@@ -179,7 +181,9 @@ class Application:
         if self._restart_dat is not None:
             restart_option = self.session.case.execution.restart_option
             if not restart_option:
-                raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
+                raise ValueError(
+                    "a DAT checkpoint is loaded but no restart option is configured"
+                )
             command.extend([restart_option, str(self._restart_dat)])
         probe_catalog = ProbeCatalog(self.session.case.probes)
         if probe_catalog.probes:
@@ -199,7 +203,9 @@ class Application:
         """Validate the current case through the shared application contract."""
         return self.validate(_validate_case, mesh)
 
-    def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
+    def set_project_path(
+        self, path: str | Path | None, *, dirty: bool | None = None
+    ) -> ApplicationState:
         self.project_path = path
         if dirty is not None:
             self.dirty = dirty
@@ -228,7 +234,9 @@ class Application:
         report = validator(self.session.case, mesh)
         return self.set_diagnostics(report.diagnostics)
 
-    def set_results(self, series: ResultSeries | None, *, directory: str | Path | None = None) -> ApplicationState:
+    def set_results(
+        self, series: ResultSeries | None, *, directory: str | Path | None = None
+    ) -> ApplicationState:
         self.results = build_results_state(series, directory=directory)
         self.events.publish(ResultsChanged(self.state))
         return self.state
