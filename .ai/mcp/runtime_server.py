@@ -308,7 +308,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"ok": False, "errors": [f"execution artifact does not exist: {path.name}"]}
     if path.name.lower() != "execution.json":
-        return {"ok": False, "errors": ["execution artifact must use the canonical execution.json filename"]}
+        return {
+            "ok": False,
+            "errors": ["execution artifact must use the canonical execution.json filename"],
+        }
     try:
         with path.open("r", encoding="utf-8") as stream:
             document = json.load(stream, parse_constant=_reject_nonfinite)
@@ -320,7 +323,12 @@ def _validate_execution(path: Path) -> dict[str, Any]:
         if document["format"] != "CFDX-EXECUTION":
             return {"ok": False, "errors": ["not a CFDX-EXECUTION artifact"]}
         if document["schema_version"] != 1:
-            return {"ok": False, "errors": [f"unsupported execution schema version: {document['schema_version']}"]}
+            return {
+                "ok": False,
+                "errors": [
+                    f"unsupported execution schema version: {document['schema_version']}"
+                ],
+            }
         exit_code = document["process_exit_code"]
         if exit_code not in (0, 1, 2):
             return {"ok": False, "errors": ["process_exit_code must be 0, 1, or 2"]}
@@ -328,8 +336,15 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             return {"ok": False, "errors": ["process_exit_code must be an integer"]}
         if not isinstance(document["converged"], bool):
             return {"ok": False, "errors": ["converged must be a boolean"]}
-        if not isinstance(document["iterations"], int) or isinstance(document["iterations"], bool) or document["iterations"] < 0:
-            return {"ok": False, "errors": ["iterations must be a non-negative integer"]}
+        if (
+            not isinstance(document["iterations"], int)
+            or isinstance(document["iterations"], bool)
+            or document["iterations"] < 0
+        ):
+            return {
+                "ok": False,
+                "errors": ["iterations must be a non-negative integer"],
+            }
         if not isinstance(document["convergence_status"], int) or isinstance(document["convergence_status"], bool):
             return {"ok": False, "errors": ["convergence_status must be an integer"]}
         if not isinstance(document["convergence_reason"], str):
@@ -346,7 +361,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             return {"ok": False, "errors": [f"execution artifacts are missing required keys: {missing}"]}
         for key in _EXECUTION_ARTIFACT_REQUIRED:
             if not isinstance(artifacts[key], bool):
-                return {"ok": False, "errors": [f"execution artifacts field {key!r} must be a boolean"]}
+                return {
+                "ok": False,
+                "errors": [f"execution artifacts field {key!r} must be a boolean"],
+            }
         return {
             "ok": True,
             "artifact": "execution",
@@ -550,7 +568,11 @@ def create_server(root: str | None = None) -> MCPServer:
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="execution.inspect", title="Inspect CFDX execution summary", annotations=annotations)
+    @server.tool(
+        name="execution.inspect",
+        title="Inspect CFDX execution summary",
+        annotations=annotations,
+    )
     def execution_inspect(execution_path: str) -> dict[str, Any]:
         """Inspect canonical execution.json evidence without modifying runtime state."""
         try:
