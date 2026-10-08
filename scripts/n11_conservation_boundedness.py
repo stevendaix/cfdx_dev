@@ -272,11 +272,7 @@ def main() -> int:
     quantitative_complete = all(
         item["complete"] for item in quantitative_coverage.values()
     )
-    complete_execution = (
-        len(results) == len(required_tests)
-        and not failed
-        and quantitative_complete
-    )
+    complete_execution = len(results) == len(required_tests) and not failed and quantitative_complete
 
     report = {
         "campaign": "N11 conservation and boundedness evidence",
@@ -301,6 +297,7 @@ def main() -> int:
             "silent_clipping_or_repair": False,
             "independent_conservation_over_linear_residual": True,
             "serial_evidence_is_mpi_qualification": False,
+            "mpi_evidence_required_when_mpi_test_is_available": True,
             "stops_on_first_failed_gate": True,
         },
     }
