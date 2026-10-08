@@ -157,7 +157,6 @@ async def exercise() -> None:
             assert data["min"] == -2.0
             assert data["max"] == -2.0
 
-
             convergence = root / "convergence.json"
             convergence.write_text(
                 """{
