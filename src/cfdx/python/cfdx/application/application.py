@@ -147,8 +147,8 @@ class Application:
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        project.save_with_dat(self.session, Path(source_dat))
-        self._restart_dat = Path(source_dat)
+        _, canonical_dat = project.save_with_dat(self.session, Path(source_dat))
+        self._restart_dat = canonical_dat
         return self.set_project_path(project.path, dirty=False)
 
     def load_dat(self, path: str | Path, *, use_for_restart: bool = False):
