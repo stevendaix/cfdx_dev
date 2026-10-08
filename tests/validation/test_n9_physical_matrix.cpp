@@ -352,7 +352,7 @@ int main()
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
-        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),poiseuille_pressure_bc(),0.0));
+        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
         require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
