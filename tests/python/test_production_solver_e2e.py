@@ -94,7 +94,9 @@ def test_production_solver_exception_exit_is_persisted(tmp_path: Path) -> None:
     assert execution["artifacts"]["convergence_json"] is False
 
 
-def test_production_solver_artifact_failure_updates_execution_exit(tmp_path: Path) -> None:
+def test_production_solver_artifact_failure_updates_execution_exit(
+    tmp_path: Path,
+) -> None:
     solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
     mesh = os.environ.get("CFDX_PRODUCTION_MESH")
     if not solver or not mesh:
