@@ -796,8 +796,10 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
             "ok": False,
             "executed": False,
             "errors": [
-                "controlled execution is disabled; set "
-                f"{_EXECUTION_ENABLE_ENV}=1 in the trusted server environment"
+                (
+                    "controlled execution is disabled; set "
+                    f"{_EXECUTION_ENABLE_ENV}=1 in the trusted server environment"
+                )
             ],
         }
     if not case_path.is_file() or not case_path.name.lower().endswith(".cfdx.h5"):
@@ -863,9 +865,7 @@ def create_server(root: str | None = None) -> MCPServer:
         ),
     )
     annotations = ToolAnnotations(read_only_hint=True, open_world_hint=False)
-    execution_annotations = ToolAnnotations(
-        read_only_hint=False, open_world_hint=False
-    )
+    execution_annotations = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 
     @server.tool(
         name="case.inspect", title="Inspect CFDX case", annotations=annotations
