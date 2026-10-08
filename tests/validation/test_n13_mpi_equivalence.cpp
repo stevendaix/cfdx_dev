@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstdint>
 #include <vector>
 
 using namespace cfdx::core;
@@ -116,11 +115,18 @@ int main(int argc, char** argv)
                     (geometry.cell_centres[other] - geometry.cell_centres[cell]).mag();
                 const double grad_normal = (global_values[other] - global_values[cell]) / d;
                 face_flux = -grad_normal * area * outward_sign;
-            } else {
-                const double d =
-                    (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
-                const double grad_normal = (bc.face_values[face] - global_values[cell]) / d;
-                face_flux = -grad_normal * area * outward_sign;
+            } else if (std::isfinite(bc.face_values[face])) {
+                if (bc.type_for_face(face) == PoissonBoundaryType::DIRICHLET) {
+                    const double d =
+                        (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
+                    const double grad_normal =
+                        (bc.face_values[face] - global_values[cell]) / d;
+                    face_flux = -grad_normal * area * outward_sign;
+                } else if (bc.type_for_face(face) == PoissonBoundaryType::NEUMANN) {
+                    face_flux = bc.face_values[face] * area * outward_sign;
+                } else {
+                    throw std::runtime_error("unsupported Poisson boundary type");
+                }
             }
             cell_balance += face_flux;
         }
