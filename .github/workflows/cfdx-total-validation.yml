@@ -10,8 +10,6 @@ name: CFDX total validation v2
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * 1"
   pull_request:
     types: [labeled, synchronize, reopened]
 
