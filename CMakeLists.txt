@@ -723,6 +723,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_transient_mms_3d_stiff tests/validation/test_transient_mms_3d_stiff.cpp)
     add_cfdx_test(test_n12_momentum_mms tests/validation/test_n12_momentum_mms.cpp)
     add_cfdx_test(test_n12_pressure_continuity_mms tests/validation/test_n12_pressure_continuity_mms.cpp)
+    add_cfdx_test(test_n12_coupled_pressure_velocity_mms tests/validation/test_n12_coupled_pressure_velocity_mms.cpp)
     set_tests_properties(
         test_mms_scalar_diffusion
         test_transient_mms
@@ -731,6 +732,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_n12_momentum_mms
         test_n12_pressure_continuity_mms
         PROPERTIES LABELS "n12;mms;validation")
+    set_tests_properties(
+        test_n12_coupled_pressure_velocity_mms
+        PROPERTIES LABELS "n12;mms;validation;long;validation-total")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
