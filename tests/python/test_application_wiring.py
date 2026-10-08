@@ -100,9 +100,7 @@ def test_application_open_project_with_dat_preserves_restart_identity(tmp_path):
             return loaded
 
     with patch("cfdx.application.application.Project", return_value=ProjectStub()):
-        state = application.open_project(
-            project_path, with_dat=True, dat_path=dat_path
-        )
+        state = application.open_project(project_path, with_dat=True, dat_path=dat_path)
 
     assert state.project.path.endswith("case.cfdx.h5")
     assert application.restart_dat == dat_path
