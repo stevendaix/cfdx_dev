@@ -126,43 +126,99 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
             ]
             attributes = _attributes(h5)
             required_metadata = ("version", "cells", "iteration", "time")
-            missing_metadata = [name for name in required_metadata if name not in attributes]
+            missing_metadata = [
+                name for name in required_metadata if name not in attributes
+            ]
             if missing_metadata:
-                return {"ok": False, "errors": [f"checkpoint is missing required metadata: {missing_metadata}"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        f"checkpoint is missing required metadata: {missing_metadata}"
+                    ],
+                }
             try:
                 cells = int(attributes["cells"])
                 iteration = int(attributes["iteration"])
                 time_value = float(attributes["time"])
             except (TypeError, ValueError) as exc:
-                return {"ok": False, "errors": [f"checkpoint metadata is invalid: {exc}"]}
+                return {
+                    "ok": False,
+                    "errors": [f"checkpoint metadata is invalid: {exc}"],
+                }
             if cells < 0 or iteration < 0 or not np.isfinite(time_value):
-                return {"ok": False, "errors": ["checkpoint metadata contains invalid cells, iteration, or time"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        "checkpoint metadata contains invalid cells, iteration, or time"
+                    ],
+                }
             cell_ids_present = "cell_ids" in h5
             if cell_ids_present and h5["cell_ids"].ndim != 1:
-                return {"ok": False, "errors": ["checkpoint cell_ids must be one-dimensional"]}
+                return {
+                    "ok": False,
+                    "errors": ["checkpoint cell_ids must be one-dimensional"],
+                }
             if cell_ids_present and h5["cell_ids"].shape[0] != cells:
-                return {"ok": False, "errors": ["checkpoint cell_ids count differs from cells"]}
+                return {
+                    "ok": False,
+                    "errors": ["checkpoint cell_ids count differs from cells"],
+                }
             if cell_ids_present:
                 cell_ids = np.asarray(h5["cell_ids"][()], dtype=np.int64)
                 if np.any(cell_ids < 0):
-                    return {"ok": False, "errors": ["checkpoint contains negative cell ids"]}
+                    return {
+                        "ok": False,
+                        "errors": ["checkpoint contains negative cell ids"],
+                    }
                 if np.unique(cell_ids).size != cell_ids.size:
-                    return {"ok": False, "errors": ["checkpoint contains duplicate cell ids"]}
+                    return {
+                        "ok": False,
+                        "errors": ["checkpoint contains duplicate cell ids"],
+                    }
             for name, dataset in h5["fields"].items():
                 if dataset.ndim not in (1, 2):
-                    return {"ok": False, "errors": [f"field {name!r} has unsupported rank: {dataset.ndim}"]}
+                    return {
+                        "ok": False,
+                        "errors": [
+                            f"field {name!r} has unsupported rank: {dataset.ndim}"
+                        ],
+                    }
                 if dataset.shape[0] != cells:
-                    return {"ok": False, "errors": [f"field {name!r} cell count mismatch"]}
+                    return {
+                        "ok": False,
+                        "errors": [f"field {name!r} cell count mismatch"],
+                    }
                 if dataset.ndim == 2 and dataset.shape[1] <= 0:
-                    return {"ok": False, "errors": [f"field {name!r} has invalid dimension"]}
+                    return {
+                        "ok": False,
+                        "errors": [f"field {name!r} has invalid dimension"],
+                    }
                 if not np.all(np.isfinite(dataset[()])):
-                    return {"ok": False, "errors": [f"field {name!r} contains non-finite values"]}
-            return {"ok": True, "artifact": "checkpoint", "path": path.name, "attributes": attributes, "metadata": {"version": int(attributes["version"]), "cells": cells, "iteration": iteration, "time": time_value}, "cell_ids_present": cell_ids_present, "fields": fields}
+                    return {
+                        "ok": False,
+                        "errors": [f"field {name!r} contains non-finite values"],
+                    }
+            return {
+                "ok": True,
+                "artifact": "checkpoint",
+                "path": path.name,
+                "attributes": attributes,
+                "metadata": {
+                    "version": int(attributes["version"]),
+                    "cells": cells,
+                    "iteration": iteration,
+                    "time": time_value,
+                },
+                "cell_ids_present": cell_ids_present,
+                "fields": fields,
+            }
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX DAT checkpoint: {exc}"]}
 
 
-def _field_summary(path: Path, field_name: str, component: int | None) -> dict[str, Any]:
+def _field_summary(
+    path: Path, field_name: str, component: int | None
+) -> dict[str, Any]:
     if not field_name:
         return {"ok": False, "errors": ["field_name must be non-empty"]}
     try:
@@ -174,13 +230,23 @@ def _field_summary(path: Path, field_name: str, component: int | None) -> dict[s
                 return {"ok": False, "errors": [f"field does not exist: {field_name}"]}
             dataset = fields[field_name]
             if dataset.ndim not in (1, 2):
-                return {"ok": False, "errors": [f"field has unsupported rank: {dataset.ndim}"]}
+                return {
+                    "ok": False,
+                    "errors": [f"field has unsupported rank: {dataset.ndim}"],
+                }
             dimension = 1 if dataset.ndim == 1 else int(dataset.shape[1])
             if component is not None and (component < 0 or component >= dimension):
-                return {"ok": False, "errors": [f"component must be in [0, {dimension - 1}]"]}
+                return {
+                    "ok": False,
+                    "errors": [f"component must be in [0, {dimension - 1}]"],
+                }
             values = dataset[()]
             if dataset.ndim == 2:
-                values = values[:, component] if component is not None else values.reshape(-1)
+                values = (
+                    values[:, component]
+                    if component is not None
+                    else values.reshape(-1)
+                )
             values = values.astype("float64", copy=False)
             finite = values[np.isfinite(values)] if hasattr(values, "dtype") else values
             nonfinite_count = int(values.size - finite.size)
@@ -197,12 +263,14 @@ def _field_summary(path: Path, field_name: str, component: int | None) -> dict[s
                 "nonfinite_count": nonfinite_count,
             }
             if finite.size:
-                result.update({
-                    "min": float(finite.min()),
-                    "max": float(finite.max()),
-                    "mean": float(finite.mean()),
-                    "l2_norm": float((finite * finite).sum() ** 0.5),
-                })
+                result.update(
+                    {
+                        "min": float(finite.min()),
+                        "max": float(finite.max()),
+                        "mean": float(finite.mean()),
+                        "l2_norm": float((finite * finite).sum() ** 0.5),
+                    }
+                )
             return result
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX DAT field: {exc}"]}
@@ -215,26 +283,48 @@ def _checkpoint_compare(
         return {"ok": False, "errors": ["field_name must be non-empty"]}
     try:
         with h5py.File(left_path, "r") as left, h5py.File(right_path, "r") as right:
-            if _scalar(left.attrs.get("format")) != "CFDX-DAT" or _scalar(right.attrs.get("format")) != "CFDX-DAT":
-                return {"ok": False, "errors": ["both artifacts must be CFDX DAT HDF5 checkpoints"]}
+            if (
+                _scalar(left.attrs.get("format")) != "CFDX-DAT"
+                or _scalar(right.attrs.get("format")) != "CFDX-DAT"
+            ):
+                return {
+                    "ok": False,
+                    "errors": ["both artifacts must be CFDX DAT HDF5 checkpoints"],
+                }
             left_fields, right_fields = left.get("fields"), right.get("fields")
             if left_fields is None or right_fields is None:
-                return {"ok": False, "errors": ["both checkpoints must contain a fields group"]}
+                return {
+                    "ok": False,
+                    "errors": ["both checkpoints must contain a fields group"],
+                }
             if field_name not in left_fields or field_name not in right_fields:
-                return {"ok": False, "errors": [f"field does not exist in both checkpoints: {field_name}"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        f"field does not exist in both checkpoints: {field_name}"
+                    ],
+                }
             a, b = left_fields[field_name], right_fields[field_name]
             if a.shape != b.shape or a.ndim not in (1, 2):
                 return {"ok": False, "errors": ["field shapes are incompatible"]}
             dimension = 1 if a.ndim == 1 else int(a.shape[1])
             if component is not None and not 0 <= component < dimension:
-                return {"ok": False, "errors": [f"component must be in [0, {dimension - 1}]"]}
+                return {
+                    "ok": False,
+                    "errors": [f"component must be in [0, {dimension - 1}]"],
+                }
             av, bv = a[()], b[()]
             if a.ndim == 2:
                 av = av[:, component] if component is not None else av.reshape(-1)
                 bv = bv[:, component] if component is not None else bv.reshape(-1)
             av, bv = av.astype("float64", copy=False), bv.astype("float64", copy=False)
             if not (np.all(np.isfinite(av)) and np.all(np.isfinite(bv))):
-                return {"ok": False, "errors": ["field comparison requires finite values in both checkpoints"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        "field comparison requires finite values in both checkpoints"
+                    ],
+                }
             delta = bv - av
             diff_l2 = float(np.linalg.norm(delta.ravel()))
             reference_l2 = float(np.linalg.norm(av.ravel()))
@@ -247,10 +337,14 @@ def _checkpoint_compare(
                 "dimension": dimension,
                 "component": component,
                 "value_count": int(av.size),
-                "max_abs_difference": float(np.max(np.abs(delta))) if delta.size else 0.0,
+                "max_abs_difference": float(np.max(np.abs(delta)))
+                if delta.size
+                else 0.0,
                 "l2_difference": diff_l2,
                 "reference_l2": reference_l2,
-                "relative_l2_difference": diff_l2 / reference_l2 if reference_l2 else (0.0 if diff_l2 == 0.0 else None),
+                "relative_l2_difference": diff_l2 / reference_l2
+                if reference_l2
+                else (0.0 if diff_l2 == 0.0 else None),
             }
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX DAT comparison: {exc}"]}
@@ -259,7 +353,12 @@ def _checkpoint_compare(
 def _validate_case(path: Path) -> dict[str, Any]:
     try:
         result = validate_case_bundle(path)
-        return {"ok": True, "artifact": "case-validation", "path": path.name, "checks": result}
+        return {
+            "ok": True,
+            "artifact": "case-validation",
+            "path": path.name,
+            "checks": result,
+        }
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX case artifact: {exc}"]}
 
@@ -342,13 +441,18 @@ def _validate_execution(path: Path) -> dict[str, Any]:
     if path.name.lower() != "execution.json":
         return {
             "ok": False,
-            "errors": ["execution artifact must use the canonical execution.json filename"],
+            "errors": [
+                "execution artifact must use the canonical execution.json filename"
+            ],
         }
     try:
         with path.open("r", encoding="utf-8") as stream:
-            document = json.load(stream, parse_constant=_reject_nonfinite)
+            document = json.load(stream, parse_constant=_reject_execution_nonfinite)
         if not isinstance(document, dict):
-            return {"ok": False, "errors": ["execution artifact root must be an object"]}
+            return {
+                "ok": False,
+                "errors": ["execution artifact root must be an object"],
+            }
         missing = [key for key in _EXECUTION_REQUIRED if key not in document]
         if missing:
             return {
@@ -387,9 +491,8 @@ def _validate_execution(path: Path) -> dict[str, Any]:
                 "errors": ["iterations must be a non-negative integer"],
             }
         convergence_status = document["convergence_status"]
-        if (
-            not isinstance(convergence_status, int)
-            or isinstance(convergence_status, bool)
+        if not isinstance(convergence_status, int) or isinstance(
+            convergence_status, bool
         ):
             return {"ok": False, "errors": ["convergence_status must be an integer"]}
         if not isinstance(document["convergence_reason"], str):
@@ -411,9 +514,7 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             if not isinstance(artifacts[key], bool):
                 return {
                     "ok": False,
-                    "errors": [
-                        f"execution artifacts field {key!r} must be a boolean"
-                    ],
+                    "errors": [f"execution artifacts field {key!r} must be a boolean"],
                 }
         return {
             "ok": True,
@@ -476,37 +577,77 @@ _CONVERGENCE_INTEGER_FIELDS = {
 
 
 def _reject_nonfinite(value: str) -> None:
+    raise ValueError(f"convergence artifact contains non-finite JSON constant: {value}")
+
+
+def _reject_execution_nonfinite(value: str) -> None:
     raise ValueError(f"JSON artifact contains non-finite constant: {value}")
 
 
 def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
     if not path.is_file():
-        return {"ok": False, "errors": [f"convergence artifact does not exist: {path.name}"]}
+        return {
+            "ok": False,
+            "errors": [f"convergence artifact does not exist: {path.name}"],
+        }
     if not path.name.lower().endswith("convergence.json"):
-        return {"ok": False, "errors": ["convergence artifact must use the canonical convergence.json filename"]}
+        return {
+            "ok": False,
+            "errors": [
+                "convergence artifact must use the canonical convergence.json filename"
+            ],
+        }
     if history_limit < 0 or history_limit > 10000:
         return {"ok": False, "errors": ["history_limit must be between 0 and 10000"]}
     try:
         with path.open("r", encoding="utf-8") as stream:
             document = json.load(stream, parse_constant=_reject_nonfinite)
         if not isinstance(document, dict):
-            return {"ok": False, "errors": ["convergence artifact root must be an object"]}
+            return {
+                "ok": False,
+                "errors": ["convergence artifact root must be an object"],
+            }
         missing = [key for key in _CONVERGENCE_REQUIRED if key not in document]
         if missing:
-            return {"ok": False, "errors": [f"convergence artifact is missing required keys: {missing}"]}
+            return {
+                "ok": False,
+                "errors": [f"convergence artifact is missing required keys: {missing}"],
+            }
         if document["format"] != "CFDX-CONVERGENCE":
             return {"ok": False, "errors": ["not a CFDX-CONVERGENCE artifact"]}
         if document["schema_version"] != 1:
-            return {"ok": False, "errors": [f"unsupported convergence schema version: {document['schema_version']}"]}
+            return {
+                "ok": False,
+                "errors": [
+                    f"unsupported convergence schema version: {document['schema_version']}"
+                ],
+            }
         if not isinstance(document["converged"], bool):
             return {"ok": False, "errors": ["converged must be a boolean"]}
-        if not isinstance(document["iterations"], int) or isinstance(document["iterations"], bool) or document["iterations"] < 0:
-            return {"ok": False, "errors": ["iterations must be a non-negative integer"]}
-        if not isinstance(document["reference_momentum_residual"], (int, float)) or isinstance(document["reference_momentum_residual"], bool):
-            return {"ok": False, "errors": ["reference_momentum_residual must be numeric"]}
+        if (
+            not isinstance(document["iterations"], int)
+            or isinstance(document["iterations"], bool)
+            or document["iterations"] < 0
+        ):
+            return {
+                "ok": False,
+                "errors": ["iterations must be a non-negative integer"],
+            }
+        if not isinstance(
+            document["reference_momentum_residual"], (int, float)
+        ) or isinstance(document["reference_momentum_residual"], bool):
+            return {
+                "ok": False,
+                "errors": ["reference_momentum_residual must be numeric"],
+            }
         if not np.isfinite(float(document["reference_momentum_residual"])):
-            return {"ok": False, "errors": ["reference_momentum_residual must be finite"]}
-        if not isinstance(document["convergence_status"], int) or isinstance(document["convergence_status"], bool):
+            return {
+                "ok": False,
+                "errors": ["reference_momentum_residual must be finite"],
+            }
+        if not isinstance(document["convergence_status"], int) or isinstance(
+            document["convergence_status"], bool
+        ):
             return {"ok": False, "errors": ["convergence_status must be an integer"]}
         if not isinstance(document["convergence_reason"], str):
             return {"ok": False, "errors": ["convergence_reason must be a string"]}
@@ -515,33 +656,87 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
             return {"ok": False, "errors": ["history must be an array"]}
         for index, record in enumerate(history):
             if not isinstance(record, dict):
-                return {"ok": False, "errors": [f"history record {index} must be an object"]}
-            missing = [key for key in _CONVERGENCE_HISTORY_REQUIRED if key not in record]
+                return {
+                    "ok": False,
+                    "errors": [f"history record {index} must be an object"],
+                }
+            missing = [
+                key for key in _CONVERGENCE_HISTORY_REQUIRED if key not in record
+            ]
             if missing:
-                return {"ok": False, "errors": [f"history record {index} is missing required keys: {missing}"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        f"history record {index} is missing required keys: {missing}"
+                    ],
+                }
             for key in _CONVERGENCE_NUMERIC_FIELDS:
                 value = record[key]
-                if not isinstance(value, (int, float)) or isinstance(value, bool) or not np.isfinite(float(value)):
-                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be finite numeric"]}
+                if (
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not np.isfinite(float(value))
+                ):
+                    return {
+                        "ok": False,
+                        "errors": [
+                            f"history record {index} field {key!r} must be finite numeric"
+                        ],
+                    }
             for key in _CONVERGENCE_INTEGER_FIELDS:
                 value = record[key]
                 if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a non-negative integer"]}
+                    return {
+                        "ok": False,
+                        "errors": [
+                            f"history record {index} field {key!r} must be a non-negative integer"
+                        ],
+                    }
             for key in ("momentum_residual_patch",):
                 if not isinstance(record[key], str):
-                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a string"]}
-            for key in ("momentum_equation_residual_components", "momentum_conservation_residual", "momentum_conservation_normalized"):
-                value = record[key]
-                if not isinstance(value, list) or len(value) != 3 or any(
-                    not isinstance(item, (int, float)) or isinstance(item, bool) or not np.isfinite(float(item))
-                    for item in value
-                ):
-                    return {"ok": False, "errors": [f"history record {index} field {key!r} must be a finite numeric array of length 3"]}
-            worst_cell = record["momentum_conservation_worst_cell"]
-            if not isinstance(worst_cell, list) or len(worst_cell) != 3 or any(
-                not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in worst_cell
+                    return {
+                        "ok": False,
+                        "errors": [
+                            f"history record {index} field {key!r} must be a string"
+                        ],
+                    }
+            for key in (
+                "momentum_equation_residual_components",
+                "momentum_conservation_residual",
+                "momentum_conservation_normalized",
             ):
-                return {"ok": False, "errors": [f"history record {index} field 'momentum_conservation_worst_cell' must be a non-negative integer array of length 3"]}
+                value = record[key]
+                if (
+                    not isinstance(value, list)
+                    or len(value) != 3
+                    or any(
+                        not isinstance(item, (int, float))
+                        or isinstance(item, bool)
+                        or not np.isfinite(float(item))
+                        for item in value
+                    )
+                ):
+                    return {
+                        "ok": False,
+                        "errors": [
+                            f"history record {index} field {key!r} must be a finite numeric array of length 3"
+                        ],
+                    }
+            worst_cell = record["momentum_conservation_worst_cell"]
+            if (
+                not isinstance(worst_cell, list)
+                or len(worst_cell) != 3
+                or any(
+                    not isinstance(item, int) or isinstance(item, bool) or item < 0
+                    for item in worst_cell
+                )
+            ):
+                return {
+                    "ok": False,
+                    "errors": [
+                        f"history record {index} field 'momentum_conservation_worst_cell' must be a non-negative integer array of length 3"
+                    ],
+                }
         return {
             "ok": True,
             "artifact": "convergence-history",
@@ -550,7 +745,9 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
             "schema_version": document["schema_version"],
             "converged": document["converged"],
             "iterations": document["iterations"],
-            "reference_momentum_residual": float(document["reference_momentum_residual"]),
+            "reference_momentum_residual": float(
+                document["reference_momentum_residual"]
+            ),
             "convergence_status": document["convergence_status"],
             "convergence_reason": document["convergence_reason"],
             "history_count": len(history),
@@ -563,10 +760,15 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
 
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
-    server = MCPServer("CFDX Runtime MCP", instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.")
+    server = MCPServer(
+        "CFDX Runtime MCP",
+        instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.",
+    )
     annotations = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
-    @server.tool(name="case.inspect", title="Inspect CFDX case", annotations=annotations)
+    @server.tool(
+        name="case.inspect", title="Inspect CFDX case", annotations=annotations
+    )
     def case_inspect(case_path: str) -> dict[str, Any]:
         """Inspect a root-relative .cfdx.h5 case without loading solver state."""
         try:
@@ -574,43 +776,79 @@ def create_server(root: str | None = None) -> MCPServer:
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="case.validate", title="Validate CFDX case", annotations=annotations)
+    @server.tool(
+        name="case.validate", title="Validate CFDX case", annotations=annotations
+    )
     def case_validate(case_path: str) -> dict[str, Any]:
         """Validate a root-relative .cfdx.h5 case using the canonical CFDX bundle contract."""
         try:
             path = _safe_path(runtime_root, case_path)
             if not path.is_file() or not path.name.lower().endswith(".cfdx.h5"):
-                return {"ok": False, "errors": ["case must be an existing canonical .cfdx.h5 artifact"]}
+                return {
+                    "ok": False,
+                    "errors": ["case must be an existing canonical .cfdx.h5 artifact"],
+                }
             return _validate_case(path)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="checkpoint.compare", title="Compare CFDX checkpoints", annotations=annotations)
-    def checkpoint_compare(left_checkpoint_path: str, right_checkpoint_path: str, field_name: str, component: int | None = None) -> dict[str, Any]:
+    @server.tool(
+        name="checkpoint.compare",
+        title="Compare CFDX checkpoints",
+        annotations=annotations,
+    )
+    def checkpoint_compare(
+        left_checkpoint_path: str,
+        right_checkpoint_path: str,
+        field_name: str,
+        component: int | None = None,
+    ) -> dict[str, Any]:
         """Compare one field between two checkpoints without modifying runtime state."""
         try:
             left = _safe_path(runtime_root, left_checkpoint_path)
             right = _safe_path(runtime_root, right_checkpoint_path)
             for path in (left, right):
                 if not path.is_file() or not path.name.lower().endswith(".dat.h5"):
-                    return {"ok": False, "errors": ["both checkpoints must be existing canonical .dat.h5 artifacts"]}
+                    return {
+                        "ok": False,
+                        "errors": [
+                            "both checkpoints must be existing canonical .dat.h5 artifacts"
+                        ],
+                    }
             return _checkpoint_compare(left, right, field_name, component)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="checkpoint.field.inspect", title="Inspect CFDX checkpoint field", annotations=annotations)
-    def checkpoint_field_inspect(checkpoint_path: str, field_name: str, component: int | None = None) -> dict[str, Any]:
+    @server.tool(
+        name="checkpoint.field.inspect",
+        title="Inspect CFDX checkpoint field",
+        annotations=annotations,
+    )
+    def checkpoint_field_inspect(
+        checkpoint_path: str, field_name: str, component: int | None = None
+    ) -> dict[str, Any]:
         """Inspect scalar/vector field statistics without returning field arrays."""
         try:
             path = _safe_path(runtime_root, checkpoint_path)
             if not path.is_file() or not path.name.lower().endswith(".dat.h5"):
-                return {"ok": False, "errors": ["checkpoint must be an existing canonical .dat.h5 artifact"]}
+                return {
+                    "ok": False,
+                    "errors": [
+                        "checkpoint must be an existing canonical .dat.h5 artifact"
+                    ],
+                }
             return _field_summary(path, field_name, component)
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="convergence.inspect", title="Inspect CFDX convergence history", annotations=annotations)
-    def convergence_inspect(convergence_path: str, history_limit: int = 100) -> dict[str, Any]:
+    @server.tool(
+        name="convergence.inspect",
+        title="Inspect CFDX convergence history",
+        annotations=annotations,
+    )
+    def convergence_inspect(
+        convergence_path: str, history_limit: int = 100
+    ) -> dict[str, Any]:
         """Inspect canonical convergence.json execution evidence without modifying runtime state."""
         try:
             path = _safe_path(runtime_root, convergence_path)
@@ -630,7 +868,11 @@ def create_server(root: str | None = None) -> MCPServer:
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-    @server.tool(name="checkpoint.inspect", title="Inspect CFDX checkpoint", annotations=annotations)
+    @server.tool(
+        name="checkpoint.inspect",
+        title="Inspect CFDX checkpoint",
+        annotations=annotations,
+    )
     def checkpoint_inspect(checkpoint_path: str) -> dict[str, Any]:
         """Inspect a root-relative .dat.h5 checkpoint without executing CFDX."""
         try:
