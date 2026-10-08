@@ -143,18 +143,31 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     }
 
 
-def build_category_results(results: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+def build_category_results(
+    results: list[dict[str, object]], required_tests: list[str]
+) -> dict[str, dict[str, object]]:
     by_name = {str(item["name"]): item for item in results}
+    required_set = set(required_tests)
     categories: dict[str, dict[str, object]] = {}
     for category, names in CATEGORIES.items():
-        missing = [name for name in names if name not in by_name]
+        active_names = [name for name in names if name in required_set]
+        if not active_names:
+            categories[category] = {
+                "required_tests": [],
+                "completed": 0,
+                "missing": [],
+                "failed": [],
+                "status": "SKIPPED",
+            }
+            continue
+        missing = [name for name in active_names if name not in by_name]
         failed = [
-            name for name in names
+            name for name in active_names
             if name in by_name and by_name[name]["status"] != "PASS"
         ]
         categories[category] = {
-            "required_tests": names,
-            "completed": len(names) - len(missing),
+            "required_tests": active_names,
+            "completed": len(active_names) - len(missing),
             "missing": missing,
             "failed": failed,
             "status": "PASS" if not missing and not failed else "FAIL",
@@ -222,7 +235,7 @@ def main() -> int:
             break
 
     failed = [str(item["name"]) for item in results if item["status"] != "PASS"]
-    categories = build_category_results(results)
+    categories = build_category_results(results, required_tests)
     quantitative_records = [
         record
         for item in results
@@ -268,7 +281,7 @@ def main() -> int:
     report = {
         "campaign": "N11 conservation and boundedness evidence",
         "status": "PASS" if complete_execution else "FAIL",
-        "required_tests": list(REQUIRED_TESTS),
+        "required_tests": required_tests,
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
