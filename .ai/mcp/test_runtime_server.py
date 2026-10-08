@@ -20,7 +20,10 @@ def make_artifacts(root: pathlib.Path) -> None:
         h5.attrs["dimension"] = 3
         h5.attrs["precision"] = "float64"
         h5.attrs["case_revision"] = 4
-        h5.create_dataset("case/config", data='{"name":"demo","physics":{"laminar":{"enabled":true}},"numerics":{"scheme":"simple"},"boundaries":{},"materials":{},"execution":{"policy":"AUTO","solver":null,"mpi_ranks":1,"deterministic":true,"restart_option":"--restart"}}')
+        h5.create_dataset(
+            "case/config",
+            data='{"name":"demo","physics":{"laminar":{"enabled":true}},"numerics":{"scheme":"simple"},"boundaries":{},"materials":{},"execution":{"policy":"AUTO","solver":null,"mpi_ranks":1,"deterministic":true,"restart_option":"--restart"}}',
+        )
         h5.create_dataset("points", data=[[0.0, 0.0, 0.0]])
         h5.create_dataset("fields/values", data=[[1.0]])
 
