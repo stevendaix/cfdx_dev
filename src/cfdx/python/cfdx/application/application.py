@@ -149,9 +149,7 @@ class Application:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
         if self._restart_dat is not None:
-            _, canonical_dat = project.save_with_dat(
-                self.session, self._restart_dat
-            )
+            _, canonical_dat = project.save_with_dat(self.session, self._restart_dat)
             self._restart_dat = canonical_dat
         else:
             project.save(self.session)
@@ -165,9 +163,7 @@ class Application:
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        _, canonical_dat = project.save_with_dat(
-            self.session, Path(source_dat)
-        )
+        _, canonical_dat = project.save_with_dat(self.session, Path(source_dat))
         self._restart_dat = canonical_dat
         return self.set_project_path(project.path, dirty=False)
 
@@ -209,7 +205,10 @@ class Application:
         if probe_catalog.probes:
             for spec in probe_catalog.specs():
                 command += ["--probe", spec]
-            command += ["--probe-csv", str(probe_catalog.csv_path(self.project_path))]
+            command += [
+                "--probe-csv",
+                str(probe_catalog.csv_path(self.project_path)),
+            ]
         if self.session.case.execution.mpi_ranks > 1:
             command = [
                 "mpiexec",
