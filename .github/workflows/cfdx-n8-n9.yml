@@ -51,11 +51,16 @@ jobs:
             -DPython3_EXECUTABLE="$PWD/.venv-n8-n9/bin/python"
       - name: Build
         run: cmake --build "$BUILD_DIR" --parallel 4
+      - name: Package numerical build
+        run: tar -czf cfdx-n8-n9-build.tar.gz "$BUILD_DIR"
+
       - name: Upload numerical build
         uses: actions/upload-artifact@v4
         with:
           name: cfdx-n8-n9-build-${{ github.run_id }}
-          path: ${{ env.BUILD_DIR }}
+          path: cfdx-n8-n9-build.tar.gz
+          compression-level: 0
+          if-no-files-found: error
           retention-days: 1
 
   n8:
@@ -75,11 +80,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-n8-n9-build-${{ github.run_id }}
-          path: ${{ env.BUILD_DIR }}
+          path: .
+      - name: Restore numerical build
+        run: tar -xzf cfdx-n8-n9-build.tar.gz
+      - name: Recreate Python test environment
+        run: |
+          python3 -m venv .venv-n8-n9
+          .venv-n8-n9/bin/python -m pip install --upgrade pip
+          .venv-n8-n9/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
       - name: Verify restored build
         run: |
           test -d "$BUILD_DIR"
           test -f "$BUILD_DIR/CTestTestfile.cmake"
+          test -x "$BUILD_DIR/test_steady_incompressible_solver"
+          test -x "$BUILD_DIR/test_phase9_acceptance"
+          test -x "$BUILD_DIR/test_poiseuille_diagnostics"
+          test -x "$BUILD_DIR/test_n9_schur_oracle"
+          test -x "$BUILD_DIR/test_n9_common_schur_qualification"
       - name: Run N8
         run: |
           ctest --test-dir "$BUILD_DIR" \
