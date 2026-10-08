@@ -1,4 +1,4 @@
-""""Canonical N1 numerical selections for the Python adapter boundary.
+"""Canonical N1 numerical selections for the Python adapter boundary.
 
 The adapter layer owns translation from source-specific numerical names to the
 stable CFDX registry configuration keys.  The solver must consume the canonical
