@@ -336,7 +336,7 @@ jobs:
           echo "N16 has no mandatory executable gate: advanced methods remain explicitly deferred."
       - name: Final N16 gate
         if: always()
-        run: '[[ "\${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1'
+        run: '[[ "${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1'
 
   validation-report:
     name: Validation report and metadata
