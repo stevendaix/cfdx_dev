@@ -120,13 +120,18 @@ class Application:
     ) -> ApplicationState:
         """Open a canonical CFDX project through the shared case lifecycle."""
         project = Project(Path(path))
+        restart_path: Path | None = None
         if with_dat:
-            session, _ = project.load_with_dat(
+            session, restart_path = project.load_with_dat(
                 Path(dat_path) if dat_path is not None else None
             )
         else:
             session = project.load()
-        return self.replace_session(session, project_path=project.path)
+        state = self.replace_session(session, project_path=project.path)
+        if restart_path is not None:
+            self._restart_dat = restart_path
+            state = self._publish_state()
+        return state
 
     @property
     def restart_dat(self) -> Path | None:
@@ -160,7 +165,9 @@ class Application:
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        _, canonical_dat = project.save_with_dat(self.session, Path(source_dat))
+        _, canonical_dat = project.save_with_dat(
+            self.session, Path(source_dat)
+        )
         self._restart_dat = canonical_dat
         return self.set_project_path(project.path, dirty=False)
 
