@@ -37,7 +37,7 @@ For active N8/N9 work, `.github/workflows/cfdx-n8-n9.yml` provides label-driven 
 
 ## 3. Total validation
 
-`.github/workflows/cfdx-validation.yml`
+`.github/workflows/cfdx-total-validation.yml`
 
 Long/full qualification campaigns only:
 - all non-long CTest tests;
@@ -70,4 +70,4 @@ Do not use path-filtered workflows for required checks. A required workflow must
 
 ## Removed duplication
 
-The old standalone N1 workflow, the overlapping MPI/HDF5 build workflow, and the path-filtered numerical maturity workflow are replaced by the four-layer structure above.
+The old standalone N1 workflow, the overlapping MPI/HDF5 build workflow, and the path-filtered numerical maturity workflow are replaced by the four-layer structure above. The former `cfdx-validation.yml` trigger is retained only as a manual legacy workflow while the fresh `cfdx-total-validation.yml` owns the active label/schedule triggers.
