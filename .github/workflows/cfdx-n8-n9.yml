@@ -135,7 +135,6 @@ jobs:
           test -x "$BUILD_DIR/test_n9_schur_oracle"
           test -x "$BUILD_DIR/test_n9_common_schur_qualification"
           test -x "$BUILD_DIR/test_n9_s10_pressure_reference_policies"
-          test -x "$BUILD_DIR/test_n9_s8_naca0012_contract"
       - name: Run N9
         run: |
           ctest --test-dir "$BUILD_DIR" \
