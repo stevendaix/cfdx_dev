@@ -306,7 +306,10 @@ _EXECUTION_ARTIFACT_REQUIRED = ("restart_dat", "convergence_json")
 
 def _validate_execution(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        return {"ok": False, "errors": [f"execution artifact does not exist: {path.name}"]}
+        return {
+            "ok": False,
+            "errors": [f"execution artifact does not exist: {path.name}"],
+        }
     if path.name.lower() != "execution.json":
         return {
             "ok": False,
@@ -319,7 +322,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             return {"ok": False, "errors": ["execution artifact root must be an object"]}
         missing = [key for key in _EXECUTION_REQUIRED if key not in document]
         if missing:
-            return {"ok": False, "errors": [f"execution artifact is missing required keys: {missing}"]}
+            return {
+                "ok": False,
+                "errors": [f"execution artifact is missing required keys: {missing}"],
+            }
         if document["format"] != "CFDX-EXECUTION":
             return {"ok": False, "errors": ["not a CFDX-EXECUTION artifact"]}
         if document["schema_version"] != 1:
@@ -345,7 +351,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
                 "ok": False,
                 "errors": ["iterations must be a non-negative integer"],
             }
-        if not isinstance(document["convergence_status"], int) or isinstance(document["convergence_status"], bool):
+        if (
+            not isinstance(document["convergence_status"], int)
+            or isinstance(document["convergence_status"], bool)
+        ):
             return {"ok": False, "errors": ["convergence_status must be an integer"]}
         if not isinstance(document["convergence_reason"], str):
             return {"ok": False, "errors": ["convergence_reason must be a string"]}
@@ -358,7 +367,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             return {"ok": False, "errors": ["artifacts must be an object"]}
         missing = [key for key in _EXECUTION_ARTIFACT_REQUIRED if key not in artifacts]
         if missing:
-            return {"ok": False, "errors": [f"execution artifacts are missing required keys: {missing}"]}
+            return {
+                "ok": False,
+                "errors": [f"execution artifacts are missing required keys: {missing}"],
+            }
         for key in _EXECUTION_ARTIFACT_REQUIRED:
             if not isinstance(artifacts[key], bool):
                 return {
