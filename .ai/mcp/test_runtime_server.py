@@ -86,7 +86,10 @@ async def exercise() -> None:
             )
             assert case_validation.is_error is False
             assert case_validation.structured_content["ok"] is False
-            assert "mesh data is missing" in case_validation.structured_content["errors"][0]
+            assert (
+                "mesh data is missing"
+                in case_validation.structured_content["errors"][0]
+            )
 
             checkpoint = await client.call_tool(
                 "checkpoint.inspect",
