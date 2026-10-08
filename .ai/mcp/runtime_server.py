@@ -121,7 +121,7 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
                     "shape": list(dataset.shape),
                     "dtype": str(dataset.dtype),
                     "size": int(dataset.size),
-                }
+                },
                 for name, dataset in h5["fields"].items()
             ]
             attributes = _attributes(h5)
