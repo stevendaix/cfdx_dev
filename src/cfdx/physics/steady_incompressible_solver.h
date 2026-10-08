@@ -2471,9 +2471,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const auto col = eqs[d]->matrix.columns_data()[k];
                         // Boundary contributions are assembled into the owner
                         // diagonal/source; off-diagonal entries are therefore
-                        // genuine internal neighbour coefficients.
+                        // genuine internal neighbour coefficients. SIMPLEC uses
+                        // the consistent denominator a_P - sum(a_N), with the
+                        // assembled off-diagonal coefficients a_N retaining
+                        // their physical sign (normally negative for diffusion).
                         if (col != c)
-                            h1 -= eqs[d]->matrix.values_data()[k];
+                            h1 += eqs[d]->matrix.values_data()[k];
                     }
                     const double denom = 1.0/rAU[d][c] - h1;
                     if (!(denom > 0.0) || !std::isfinite(denom))
