@@ -38,7 +38,9 @@ def test_application_replaces_session_and_clears_project_context() -> None:
     assert application.controller is None
 
 
-def test_application_owns_controller_construction_and_restart_selection(tmp_path) -> None:
+def test_application_owns_controller_construction_and_restart_selection(
+    tmp_path,
+) -> None:
     application = Application(CFDXSession(), project_path=tmp_path / "case.cfdx.h5")
     application.session.case.execution.solver = "/usr/bin/cfdx-solver"
     application.session.case.execution.restart_option = "--restart"
