@@ -38,7 +38,7 @@ def parse_quantitative_records(output: str) -> list[dict[str, object]]:
         if prefix is None:
             continue
         record: dict[str, object] = {"record_type": prefix.strip()}
-        for token in line[len(prefix):].split():
+        for token in line[len(prefix) :].split():
             if "=" not in token:
                 continue
             key, value = token.split("=", 1)
@@ -162,7 +162,8 @@ def build_category_results(
             continue
         missing = [name for name in active_names if name not in by_name]
         failed = [
-            name for name in active_names
+            name
+            for name in active_names
             if name in by_name and by_name[name]["status"] != "PASS"
         ]
         categories[category] = {
@@ -242,7 +243,9 @@ def main() -> int:
         for record in parse_quantitative_records(str(item["output"]))
     ]
     quantitative_counts = {
-        "MODEL_RESULT": sum(r["record_type"] == "MODEL_RESULT" for r in quantitative_records),
+        "MODEL_RESULT": sum(
+            r["record_type"] == "MODEL_RESULT" for r in quantitative_records
+        ),
         "GHIA": sum(r["record_type"] == "GHIA" for r in quantitative_records),
         "POISEUILLE_RESULT": sum(
             r["record_type"] == "POISEUILLE_RESULT" for r in quantitative_records
@@ -272,7 +275,9 @@ def main() -> int:
     quantitative_complete = all(
         item["complete"] for item in quantitative_coverage.values()
     )
-    complete_execution = len(results) == len(required_tests) and not failed and quantitative_complete
+    complete_execution = (
+        len(results) == len(required_tests) and not failed and quantitative_complete
+    )
 
     report = {
         "campaign": "N11 conservation and boundedness evidence",
