@@ -75,7 +75,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-n8-n9-build-${{ github.run_id }}
-          path: .
+          path: ${{ env.BUILD_DIR }}
+      - name: Verify restored build
+        run: |
+          test -d "$BUILD_DIR"
+          test -f "$BUILD_DIR/CTestTestfile.cmake"
       - name: Run N8
         run: |
           ctest --test-dir "$BUILD_DIR" \
@@ -99,7 +103,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-n8-n9-build-${{ github.run_id }}
-          path: .
+          path: ${{ env.BUILD_DIR }}
+      - name: Verify restored build
+        run: |
+          test -d "$BUILD_DIR"
+          test -f "$BUILD_DIR/CTestTestfile.cmake"
       - name: Run N9
         run: |
           ctest --test-dir "$BUILD_DIR" \
