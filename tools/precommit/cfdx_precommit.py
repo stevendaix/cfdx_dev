@@ -103,7 +103,8 @@ def run_ctest(names: list[str]) -> None:
     selected = [name for name in names if name in available]
     if not selected:
         print(
-            "CFDX pre-commit: no smoke test registered; build-only guard remains active."
+            "CFDX pre-commit: no smoke test registered; "
+            "build-only guard remains active."
         )
         return
     for name in selected:
