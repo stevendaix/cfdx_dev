@@ -206,9 +206,6 @@ if QMainWindow is not object:
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Save failed: {exc}")
 
-        def _ensure_controller(self):
-            return self.application.ensure_controller()
-
         def _check_case(self) -> None:
             try:
                 state = self.application.validate_case()
@@ -223,7 +220,6 @@ if QMainWindow is not object:
 
         def _run(self) -> None:
             try:
-                self._ensure_controller()
                 self.application.run()
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Run failed: {exc}")
