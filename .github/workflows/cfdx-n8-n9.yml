@@ -120,11 +120,22 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-n8-n9-build-${{ github.run_id }}
-          path: ${{ env.BUILD_DIR }}
+          path: .
+      - name: Restore numerical build
+        run: tar -xzf cfdx-n8-n9-build.tar.gz
+      - name: Recreate Python test environment
+        run: |
+          python3 -m venv .venv-n8-n9
+          .venv-n8-n9/bin/python -m pip install --upgrade pip
+          .venv-n8-n9/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
       - name: Verify restored build
         run: |
           test -d "$BUILD_DIR"
           test -f "$BUILD_DIR/CTestTestfile.cmake"
+          test -x "$BUILD_DIR/test_n9_schur_oracle"
+          test -x "$BUILD_DIR/test_n9_common_schur_qualification"
+          test -x "$BUILD_DIR/test_n9_s10_pressure_reference_policies"
+          test -x "$BUILD_DIR/test_n9_s8_naca0012_contract"
       - name: Run N9
         run: |
           ctest --test-dir "$BUILD_DIR" \
