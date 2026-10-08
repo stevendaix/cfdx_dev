@@ -1023,6 +1023,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             LABELS "n9;qualification;validation;total-validation"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif()
+    if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
+        add_test(NAME test_n9_coupled_schur_case_selection
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)
+        set_tests_properties(test_n9_coupled_schur_case_selection PROPERTIES
+            LABELS "n9;schur;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
 
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
