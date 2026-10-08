@@ -150,6 +150,13 @@ def validate_numerical_selection(numerics: NumericalScheme) -> list[str]:
         if str(value).strip() and _normalise(value) not in mapping:
             errors.append(f"unmapped numerical setting for {family}: {value!r}")
 
+    # A coupled production solve is incomplete without an explicit Schur
+    # selection. The C++ production boundary already enforces this invariant;
+    # keep the Python selection contract equally strict so a case cannot pass
+    # adapter validation while remaining ambiguous at the solver boundary.
+    if _normalise(numerics.coupled_solver) == "coupled" and not str(numerics.coupled_schur).strip():
+        errors.append("coupled production solver requires an explicit Schur numerical selection")
+
     transient = _normalise(numerics.transient_scheme)
     if transient not in ("", "steady") and transient not in _TEMPORAL_KEYS:
         errors.append(f"unmapped numerical setting for temporal: {numerics.transient_scheme!r}")
