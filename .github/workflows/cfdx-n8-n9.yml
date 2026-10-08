@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cfdx-n8-n9-\${{ github.event.pull_request.number || github.ref }}
+  group: cfdx-n8-n9-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -54,8 +54,8 @@ jobs:
       - name: Upload numerical build
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-n8-n9-build-\${{ github.run_id }}
-          path: \${{ env.BUILD_DIR }}
+          name: cfdx-n8-n9-build-${{ github.run_id }}
+          path: ${{ env.BUILD_DIR }}
           retention-days: 1
 
   n8:
@@ -74,7 +74,7 @@ jobs:
             openmpi-bin python3-venv libglu1-mesa
       - uses: actions/download-artifact@v4
         with:
-          name: cfdx-n8-n9-build-\${{ github.run_id }}
+          name: cfdx-n8-n9-build-${{ github.run_id }}
           path: .
       - name: Run N8
         run: |
@@ -98,7 +98,7 @@ jobs:
             openmpi-bin python3-venv libglu1-mesa
       - uses: actions/download-artifact@v4
         with:
-          name: cfdx-n8-n9-build-\${{ github.run_id }}
+          name: cfdx-n8-n9-build-${{ github.run_id }}
           path: .
       - name: Run N9
         run: |
