@@ -16,7 +16,6 @@ from xml.etree import ElementTree
 
 import h5py
 import pytest
-
 from cfdx.application.application import Application
 from cfdx.case_io import read_case_with_dat, save_case_with_dat
 from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
@@ -31,16 +30,35 @@ from cfdx.validation import validate_case
 def _write_mesh(path: Path) -> None:
     """Create the smallest real CFDX mesh/catalog accepted by the application."""
     with h5py.File(path, "w") as h5:
-        h5.create_dataset("points", data=[
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            1.0, 1.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0,
-            1.0, 0.0, 1.0,
-            1.0, 1.0, 1.0,
-            0.0, 1.0, 1.0,
-        ])
+        h5.create_dataset(
+            "points",
+            data=[
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+            ],
+        )
         # One quad face; the application catalog only needs consistent topology
         # and patch identity for this orchestration acceptance test.
         h5.create_dataset("face_vertices", data=[0, 1, 2, 3])
@@ -103,7 +121,9 @@ def _wait_for(path: Path, timeout: float = 5.0) -> None:
     raise AssertionError(f"timeout waiting for {path}")
 
 
-def _wait_for_state(session: CFDXSession, state: SimulationState, timeout: float = 5.0) -> None:
+def _wait_for_state(
+    session: CFDXSession, state: SimulationState, timeout: float = 5.0
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if session.state is state:
@@ -136,7 +156,11 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     }
     session.case.set_numerics(cfl=0.5)
     session.case.set_boundary("inlet", type="inlet", value="1.0")
-    session.case.physics["initialization"] = {"mode": "uniform", "field": "U", "value": 0.0}
+    session.case.physics["initialization"] = {
+        "mode": "uniform",
+        "field": "U",
+        "value": 0.0,
+    }
     session.case.execution.solver = sys.executable
     session.case.execution.restart_option = "--restart"
     report = validate_case(session.case, catalog)
@@ -180,9 +204,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
             cell_ids=(0,),
         ),
     )
-    case_path, dat_path = save_case_with_dat(
-        session, mesh_path, source_dat
-    )
+    case_path, dat_path = save_case_with_dat(session, mesh_path, source_dat)
     assert dat_path.is_file()
 
     controller.resume()
