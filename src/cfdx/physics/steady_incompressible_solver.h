@@ -2462,6 +2462,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         std::array<std::vector<double>,3> rAU, rAtU, hbya;
+        std::array<double, 3> simplec_signed_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_abs_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_signed_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
+        std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
         for (std::size_t d = 0; d < 3; ++d) {
             rAU[d].resize(mesh.n_cells());
             rAtU[d].resize(mesh.n_cells());
@@ -2497,23 +2503,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     // visible in exact-head validation artifacts.
                     const double abs_denom =
                         diagonal - abs_offdiag_sum;
-                    h.simplec_signed_offdiag_sum_linf[d] =
-                        std::max(h.simplec_signed_offdiag_sum_linf[d],
+                    simplec_signed_offdiag_sum_audit[d] =
+                        std::max(simplec_signed_offdiag_sum_audit[d],
                                  std::abs(signed_offdiag_sum));
-                    h.simplec_abs_offdiag_sum_linf[d] =
-                        std::max(h.simplec_abs_offdiag_sum_linf[d],
-                                 abs_offdiag_sum);
-                    h.simplec_denominator_signed_linf[d] =
-                        std::max(h.simplec_denominator_signed_linf[d],
-                                 std::abs(denom));
-                    h.simplec_denominator_abs_linf[d] =
-                        std::max(h.simplec_denominator_abs_linf[d],
-                                 std::abs(abs_denom));
+                    simplec_abs_offdiag_sum_audit[d] =
+                        std::max(simplec_abs_offdiag_sum_audit[d], abs_offdiag_sum);
+                    simplec_denominator_signed_audit[d] =
+                        std::max(simplec_denominator_signed_audit[d], std::abs(denom));
+                    simplec_denominator_abs_audit[d] =
+                        std::max(simplec_denominator_abs_audit[d], std::abs(abs_denom));
                     const double gap = std::abs(denom - abs_denom);
-                    if (gap > h.simplec_denominator_gap_linf[d])
-                        h.simplec_denominator_worst_cell[d] = c;
-                    h.simplec_denominator_gap_linf[d] =
-                        std::max(h.simplec_denominator_gap_linf[d], gap);
+                    if (gap > simplec_denominator_gap_audit[d])
+                        simplec_denominator_worst_cell_audit[d] = c;
+                    simplec_denominator_gap_audit[d] =
+                        std::max(simplec_denominator_gap_audit[d], gap);
                     rAtU[d][c] = 1.0 / denom;
                 }
             }
@@ -3008,6 +3011,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_change_inf = pressure_change_inf;
         h.effective_alpha_u = effective_alpha_u;
         h.effective_alpha_p = effective_alpha_p;
+        h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
+        h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
+        h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;
+        h.simplec_denominator_abs_linf = simplec_denominator_abs_audit;
+        h.simplec_denominator_gap_linf = simplec_denominator_gap_audit;
+        h.simplec_denominator_worst_cell = simplec_denominator_worst_cell_audit;
         h.momentum_linear_iterations =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED
                 ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations});
