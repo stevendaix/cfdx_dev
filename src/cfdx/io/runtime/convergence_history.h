@@ -119,6 +119,12 @@ inline void write_convergence_history(
             out << "      \"corrected_flux_continuity_linf\": "; convergence_json_number(out, h.corrected_flux_continuity_linf); out << ",\n";
             out << "      \"reconstructed_velocity_continuity_linf\": "; convergence_json_number(out, h.reconstructed_velocity_continuity_linf); out << ",\n";
             out << "      \"flux_velocity_mismatch_linf\": "; convergence_json_number(out, h.flux_velocity_mismatch_linf); out << ",\n";
+            out << "      \"simplec_signed_offdiag_sum_linf\": [" << h.simplec_signed_offdiag_sum_linf[0] << "," << h.simplec_signed_offdiag_sum_linf[1] << "," << h.simplec_signed_offdiag_sum_linf[2] << "],\n";
+            out << "      \"simplec_abs_offdiag_sum_linf\": [" << h.simplec_abs_offdiag_sum_linf[0] << "," << h.simplec_abs_offdiag_sum_linf[1] << "," << h.simplec_abs_offdiag_sum_linf[2] << "],\n";
+            out << "      \"simplec_denominator_signed_linf\": [" << h.simplec_denominator_signed_linf[0] << "," << h.simplec_denominator_signed_linf[1] << "," << h.simplec_denominator_signed_linf[2] << "],\n";
+            out << "      \"simplec_denominator_abs_linf\": [" << h.simplec_denominator_abs_linf[0] << "," << h.simplec_denominator_abs_linf[1] << "," << h.simplec_denominator_abs_linf[2] << "],\n";
+            out << "      \"simplec_denominator_gap_linf\": [" << h.simplec_denominator_gap_linf[0] << "," << h.simplec_denominator_gap_linf[1] << "," << h.simplec_denominator_gap_linf[2] << "],\n";
+            out << "      \"simplec_denominator_worst_cell\": [" << h.simplec_denominator_worst_cell[0] << "," << h.simplec_denominator_worst_cell[1] << "," << h.simplec_denominator_worst_cell[2] << "],\n";
             out << "      \"momentum_equation_residual_components\": "; convergence_json_array3(out, h.momentum_equation_residual_components); out << ",\n";
             out << "      \"momentum_equation_residual_internal\": "; convergence_json_number(out, h.momentum_equation_residual_internal); out << ",\n";
             out << "      \"momentum_equation_residual_boundary\": "; convergence_json_number(out, h.momentum_equation_residual_boundary); out << ",\n";
