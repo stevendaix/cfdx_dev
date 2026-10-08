@@ -2779,14 +2779,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
 
             if (corr + 1 < pressure_correctors) {
-                // PISO's next pressure correction is driven by the current
-                // conservative face flux, not by the original predictor.
-                // The momentum matrix is intentionally frozen inside the
-                // inner PISO loop; the updated flux is the split-operator
-                // correction that carries the first pressure solve into the
-                // next one. Rebuilding HbyA here would incorrectly restart
-                // the correction sequence from the same predictor.
-                phiHbyA = mass_flux;
+                // PISO/PIMPLE pressure correctors reuse the same momentum
+                // predictor. The inner pressure loop changes p and phi, but
+                // does not replace phiHbyA with the already pressure-corrected
+                // flux; doing so applies the previous correction twice and
+                // breaks the split-operator sequence.
             }
         }
 
