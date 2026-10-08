@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -25,6 +26,93 @@ def _run(controller: ExecutionController) -> None:
         f"production solver failed: error={controller.error!r}; "
         f"output={output[-40:]!r}"
     )
+
+
+def _run_production(
+    solver: str, mesh: str, output_dir: Path, iterations: int
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            solver,
+            "--mesh",
+            mesh,
+            "--output-dir",
+            str(output_dir),
+            "--iterations",
+            str(iterations),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def _read_execution(path: Path) -> dict:
+    assert path.is_file(), f"missing execution artifact: {path}"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["format"] == "CFDX-EXECUTION"
+    assert document["schema_version"] == 1
+    return document
+
+
+def test_production_solver_non_converged_exit_is_persisted(tmp_path: Path) -> None:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    mesh = os.environ.get("CFDX_PRODUCTION_MESH")
+    if not solver or not mesh:
+        pytest.skip("CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest")
+
+    output_dir = tmp_path / "non_converged"
+    completed = _run_production(solver, mesh, output_dir, 1)
+
+    assert completed.returncode == 1, completed.stderr
+    execution = _read_execution(output_dir / "execution.json")
+    assert execution["process_exit_code"] == 1
+    assert execution["converged"] is False
+    assert execution["artifacts"]["restart_dat"] is True
+    assert execution["artifacts"]["convergence_json"] is True
+
+
+def test_production_solver_exception_exit_is_persisted(tmp_path: Path) -> None:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    if not solver:
+        pytest.skip("CFDX_PRODUCTION_SOLVER is provided by ctest")
+
+    output_dir = tmp_path / "exception"
+    completed = _run_production(
+        solver,
+        str(tmp_path / "missing_mesh.msh"),
+        output_dir,
+        2,
+    )
+
+    assert completed.returncode == 2
+    execution = _read_execution(output_dir / "execution.json")
+    assert execution["process_exit_code"] == 2
+    assert execution["converged"] is False
+    assert execution["artifacts"]["restart_dat"] is False
+    assert execution["artifacts"]["convergence_json"] is False
+
+
+def test_production_solver_artifact_failure_updates_execution_exit(tmp_path: Path) -> None:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    mesh = os.environ.get("CFDX_PRODUCTION_MESH")
+    if not solver or not mesh:
+        pytest.skip("CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest")
+
+    output_dir = tmp_path / "artifact_failure"
+    output_dir.mkdir()
+    (output_dir / "restart.dat").mkdir()
+
+    completed = _run_production(solver, mesh, output_dir, 20)
+
+    assert completed.returncode == 2, completed.stderr
+    execution = _read_execution(output_dir / "execution.json")
+    assert execution["process_exit_code"] == 2
+    assert execution["converged"] is True
+    assert execution["artifacts"]["restart_dat"] is False
+    assert execution["artifacts"]["convergence_json"] is False
+    assert not (output_dir / "convergence.json").exists()
 
 
 
