@@ -14,14 +14,9 @@ from .application import (
     WorkflowStatus,
     workflow_children,
 )
-from .case_io import read_case, save_case, save_case_with_dat
 from .dat_io import read_dat_restart
-from .execution import ExecutionController
 from .mesh_model import read_mesh_catalog
-from .probe import ProbeCatalog
-from .runner import SolverRunner
 from .session import CFDXSession
-from .validation import validate_case
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
@@ -74,7 +69,6 @@ if QMainWindow is not object:
             super().__init__()
             self.application = application or Application(session or CFDXSession())
             self.session = self.application.session
-            self._restart_dat: Path | None = None
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
@@ -152,9 +146,8 @@ if QMainWindow is not object:
             self.toolbar = toolbar
 
         def _new_project(self) -> None:
-            self.application.replace_session(CFDXSession())
+            self.application.new_project()
             self.session = self.application.session
-            self._restart_dat = None
             self._refresh_setup_case()
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
 
@@ -163,9 +156,8 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                self.application.replace_session(read_case(Path(path)), project_path=path)
+                self.application.open_project(path)
                 self.session = self.application.session
-                self._restart_dat = None
                 self._refresh_setup_case()
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             except (OSError, ValueError) as exc:
@@ -181,56 +173,22 @@ if QMainWindow is not object:
                     return
                 path = Path(selected)
             try:
-                if self._restart_dat is not None:
-                    _, self._restart_dat = save_case_with_dat(
-                        self.session, path, self._restart_dat
-                    )
+                self.application.save_project(path)
+                if self.application.restart_dat is not None:
                     self.statusBar().showMessage(
                         f"Case and restart checkpoint saved: {path.name}"
                     )
                 else:
-                    save_case(self.session, path)
                     self.statusBar().showMessage(f"Case saved: {path.name}")
-                self.application.set_project_path(path, dirty=False)
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Save failed: {exc}")
 
-        def _ensure_controller(self) -> ExecutionController:
-            if self.application.controller is not None:
-                return self.application.controller
-            if self.application.project_path is None:
-                self._save_case()
-            if self.application.project_path is None:
-                raise ValueError("save the case before starting the solver")
-            solver = self.session.case.execution.solver
-            if not solver:
-                raise ValueError("execution.solver must be configured before Run")
-            command = [solver, str(self.application.project_path)]
-            if self._restart_dat is not None:
-                restart_option = self.session.case.execution.restart_option
-                if not restart_option:
-                    raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
-                command.extend([restart_option, str(self._restart_dat)])
-            probe_catalog = ProbeCatalog(self.session.case.probes)
-            if probe_catalog.probes:
-                for spec in probe_catalog.specs():
-                    command += ["--probe", spec]
-                command += [
-                    "--probe-csv",
-                    str(probe_catalog.csv_path(self.application.project_path)),
-                ]
-            if self.session.case.execution.mpi_ranks > 1:
-                command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
-            controller = ExecutionController(
-                self.session,
-                SolverRunner(command, cwd=Path(self.application.project_path).parent),
-            )
-            self.application.attach_controller(controller)
-            return controller
+        def _ensure_controller(self):
+            return self.application.ensure_controller()
 
         def _check_case(self) -> None:
             try:
-                state = self.application.validate(validate_case)
+                state = self.application.validate_case()
                 if state.diagnostics:
                     self.statusBar().showMessage(
                         f"Validation: {len(state.diagnostics)} diagnostic(s)"
@@ -340,12 +298,11 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                loaded = read_dat_restart(Path(path))
+                loaded = self.application.load_dat(path, use_for_restart=use_for_restart)
                 fields = []
                 if self.view3d is not None:
                     fields = self.view3d.load_cfdx_dat(str(self.application.project_path), path)
                 if use_for_restart:
-                    self._restart_dat = Path(path)
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
