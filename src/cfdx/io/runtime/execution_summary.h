@@ -8,6 +8,21 @@
 
 namespace cfdx::io {
 
+// CFDX-EXECUTION v1 uses the same process semantics as main():
+//   0 = solver converged and the process returns success;
+//   1 = solver completed but did not converge;
+//   2 = an execution error occurred (including artifact persistence failure).
+// The file is written before secondary artifacts and finalized afterwards so
+// an execution error does not erase the evidence that the run was attempted.
+inline constexpr int kExecutionExitSuccess = 0;
+inline constexpr int kExecutionExitNotConverged = 1;
+inline constexpr int kExecutionExitError = 2;
+
+inline int execution_exit_code_for_solver(bool converged) noexcept
+{
+    return converged ? kExecutionExitSuccess : kExecutionExitNotConverged;
+}
+
 struct ExecutionSummary {
     int process_exit_code = 0;
     bool converged = false;
@@ -46,8 +61,10 @@ inline void write_execution_summary(
     const std::string& path,
     const ExecutionSummary& summary)
 {
-    if (summary.process_exit_code < 0)
-        throw std::invalid_argument("execution process_exit_code must be non-negative");
+    if (summary.process_exit_code != kExecutionExitSuccess &&
+        summary.process_exit_code != kExecutionExitNotConverged &&
+        summary.process_exit_code != kExecutionExitError)
+        throw std::invalid_argument("execution process_exit_code must be 0, 1, or 2");
 
     const std::filesystem::path target(path);
     if (target.empty())
