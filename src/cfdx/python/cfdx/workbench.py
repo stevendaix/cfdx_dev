@@ -302,7 +302,6 @@ if QMainWindow is not object:
                 fields = []
                 if self.view3d is not None:
                     fields = self.view3d.load_cfdx_dat(str(self.application.project_path), path)
-                if use_for_restart:
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
