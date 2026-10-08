@@ -85,7 +85,15 @@ def _inspect_case(path: Path) -> dict[str, Any]:
             if isinstance(raw_config, bytes):
                 raw_config = raw_config.decode("utf-8")
             config = json.loads(raw_config)
-            return {"ok": True, "artifact": "case", "path": path.name, "attributes": _attributes(h5), "configuration": config, "datasets": _datasets(h5), "runtime_state_present": "runtime" in h5}
+            return {
+                "ok": True,
+                "artifact": "case",
+                "path": path.name,
+                "attributes": _attributes(h5),
+                "configuration": config,
+                "datasets": _datasets(h5),
+                "runtime_state_present": "runtime" in h5,
+            }
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return {"ok": False, "errors": [f"invalid CFDX case artifact: {exc}"]}
 
