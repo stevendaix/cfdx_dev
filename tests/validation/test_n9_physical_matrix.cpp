@@ -137,7 +137,7 @@ IncompressibleSolverControls controls_for(
     c.algorithm = algorithm;
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
-    c.coupling.alpha_u = 0.7;
+    c.coupling.alpha_u = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 0.9 : 0.7;
     // SIMPLEC uses a consistent pressure correction; standard SIMPLEC practice\n    // leaves pressure unrelaxed (alpha_p=1). Keep the velocity relaxation\n    // common to the matrix while using the algorithm-specific pressure control.\n    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 1.0 : 0.3;
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::PISO ||
