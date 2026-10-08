@@ -283,9 +283,7 @@ if QMainWindow is not object:
                 viewport = PyVistaQtView()
                 self.view3d = viewport
             except RuntimeError as exc:
-                viewport = QLabel(f"3D renderer unavailable
-
-{exc}")
+                viewport = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
             viewport.setObjectName("workbench.viewport")
             viewport.setMinimumSize(480, 320)
