@@ -94,7 +94,7 @@ correction is permitted.
 ## Next execution order
 
 1. Couette — retain the N9.5 all-algorithm evidence as the baseline.
-2. Poiseuille — execute all six algorithms with the analytical pressure/flow
+2. Poiseuille — execute all six algorithms with the analytical body-force/flow
    reference and independent conservation checks.
 3. Ghia Re=100 — execute all six algorithms only through the common N9
    contract; preserve the existing Ghia validation gates.
