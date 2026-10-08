@@ -1,0 +1,76 @@
+name: N9 physical validation
+
+# Heavy N9-S7 pressure-velocity qualification is opt-in.
+# It runs only for pull requests carrying the `validation-total` label.
+# The numerical test itself keeps its own physical gates and 30 min CTest timeout.
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n9-physical-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-n9-validation
+
+jobs:
+  n9-physical-validation:
+    name: N9 Physical Validation
+    if: contains(github.event.pull_request.labels.*.name, 'validation-total')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure N9 validation build
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build N9 physical qualification test
+        run: |
+          cmake --build "$BUILD_DIR" \
+            --target test_n9_physical_matrix \
+            --parallel 2
+
+      - name: Run N9-S7 physical qualification
+        id: n9_test
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir "$BUILD_DIR" \
+            --output-on-failure \
+            --verbose \
+            -R '^test_n9_physical_matrix$' \
+            2>&1 | tee "$BUILD_DIR/n9-physical-validation.log"
+
+      - name: Upload N9 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n9-s7-physical-validation-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: |
+            ${{ env.BUILD_DIR }}/n9-physical-validation.log
+            ${{ env.BUILD_DIR }}/Testing/
+          if-no-files-found: warn
+          retention-days: 30
