@@ -2471,12 +2471,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const auto col = eqs[d]->matrix.columns_data()[k];
                         // Boundary contributions are assembled into the owner
                         // diagonal/source; off-diagonal entries are therefore
-                        // genuine internal neighbour coefficients. SIMPLEC uses
-                        // the consistent denominator a_P - sum(a_N), with the
-                        // assembled off-diagonal coefficients a_N retaining
-                        // their physical sign (normally negative for diffusion).
+                        // genuine internal neighbour coefficients.
                         if (col != c)
-                            h1 += eqs[d]->matrix.values_data()[k];
+                            h1 -= eqs[d]->matrix.values_data()[k];
                     }
                     const double denom = 1.0/rAU[d][c] - h1;
                     if (!(denom > 0.0) || !std::isfinite(denom))
@@ -2507,13 +2504,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // pressure equation, avoiding a second, incompatible face operator.
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs);
-        // SIMPLEC's consistent face predictor contains an explicit
-        // (rAtU-rAU) * snGrad(p_old) term in addition to the cell-centred
-        // HbyA correction. Retain the pressure predictor because the final
-        // authoritative flux must use the same face operator as the pressure
-        // equation; reconstructing it only from the relaxed pressure loses
-        // this explicit term and can leave a continuity floor.
-        const auto pressure_predictor = p;
 
         if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
@@ -2734,56 +2724,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                // Match OpenFOAM's SIMPLEC phiHbyA construction: the
-                // predictor pressure gradient is explicit at the face,
-                // whereas the current pressure gradient is the implicit
-                // correction. The cell HbyA correction above is retained;
-                // this face term is the complementary flux correction.
-                const auto& own = mesh.ownership();
-                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                    const auto nr = own.neighbour(f);
-                    if (nr < 0) continue;
-                    const std::size_t o = own.owner(f);
-                    const std::size_t n = static_cast<std::size_t>(nr);
-                    const Vec3 Sf = geometry.face_area_vectors[f];
-                    const double area = Sf.mag();
-                    const double d =
-                        (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                    if (!(area > 0.0) || !(d > 0.0))
-                        throw std::runtime_error(
-                            "solve_steady_incompressible: degenerate SIMPLEC face");
-                    const Vec3 nf{Sf.x / area, Sf.y / area, Sf.z / area};
-                    const double d_ox =
-                        0.5 * (geometry.cell_volumes[o] * rAtU[0][o] +
-                               geometry.cell_volumes[n] * rAtU[0][n] -
-                               geometry.cell_volumes[o] * rAU[0][o] -
-                               geometry.cell_volumes[n] * rAU[0][n]);
-                    const double d_oy =
-                        0.5 * (geometry.cell_volumes[o] * rAtU[1][o] +
-                               geometry.cell_volumes[n] * rAtU[1][n] -
-                               geometry.cell_volumes[o] * rAU[1][o] -
-                               geometry.cell_volumes[n] * rAU[1][n]);
-                    const double d_oz =
-                        0.5 * (geometry.cell_volumes[o] * rAtU[2][o] +
-                               geometry.cell_volumes[n] * rAtU[2][n] -
-                               geometry.cell_volumes[o] * rAU[2][o] -
-                               geometry.cell_volumes[n] * rAU[2][n]);
-                    const double delta_rfn =
-                        d_ox * nf.x * nf.x +
-                        d_oy * nf.y * nf.y +
-                        d_oz * nf.z * nf.z;
-                    mass_flux(f) += controls.density * delta_rfn *
-                        (pressure_predictor(n) - pressure_predictor(o)) / d * area;
-                }
-            }
-
             if (corr + 1 < pressure_correctors) {
-                // PISO/PIMPLE pressure correctors reuse the same momentum
-                // predictor. The inner pressure loop changes p and phi, but
-                // does not replace phiHbyA with the already pressure-corrected
-                // flux; doing so applies the previous correction twice and
-                // breaks the split-operator sequence.
+                // PISO's next pressure correction is driven by the current
+                // conservative face flux, not by the original predictor.
+                // The momentum matrix is intentionally frozen inside the
+                // inner PISO loop; the updated flux is the split-operator
+                // correction that carries the first pressure solve into the
+                // next one. Rebuilding HbyA here would incorrectly restart
+                // the correction sequence from the same predictor.
+                phiHbyA = mass_flux;
             }
         }
 
