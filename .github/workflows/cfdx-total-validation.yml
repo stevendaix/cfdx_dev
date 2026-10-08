@@ -1,0 +1,442 @@
+name: CFDX total validation
+
+# Long/expensive validation is deliberately separated from the fast PR gate.
+# Add the `validation-total` label to a PR to run this workflow; it can also
+# be started explicitly with workflow_dispatch, or run weekly on schedule.
+# Ordinary PR synchronization does not execute the expensive job unless that
+# label is present. The fast/long CTest partitions together cover the complete
+# CTest registration; N1-N15 executable tests are therefore included in total
+# validation. N16 is checked separately because it has no executable gate.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-total-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-validation
+  VENV_DIR: .venv-validation
+
+jobs:
+  prepare:
+    name: Prepare validation build
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build and report dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv \
+            latexmk texlive-latex-base texlive-latex-recommended \
+            texlive-latex-extra
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+
+      - name: Configure
+        id: configure
+        continue-on-error: true
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python"
+
+      - name: Build complete validation suite
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --parallel 2
+
+      - name: Package validation build
+        if: steps.build.outcome == 'success'
+        run: tar -czf cfdx-validation-build.tar.gz "$BUILD_DIR"
+
+      - name: Upload validation build
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: cfdx-validation-build.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Final prepare gate
+        if: always()
+        run: |
+          echo "configure=${{ steps.configure.outcome }}"
+          echo "build=${{ steps.build.outcome }}"
+          if [[ "${{ steps.configure.outcome }}" != "success" || "${{ steps.build.outcome }}" != "success" ]]; then
+            echo "validation preparation: FAIL"
+            exit 1
+          fi
+          echo "validation preparation: PASS"
+
+  fast-tests:
+    name: Fast regression and validation tests
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run fast regression and validation tests
+        id: fast_tests
+        continue-on-error: true
+        run: |
+          ctest --test-dir "$BUILD_DIR" \
+            -LE long \
+            --output-on-failure \
+            --output-junit "$BUILD_DIR/ctest-fast-results.xml"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-fast-evidence
+          path: |
+            ${{ env.BUILD_DIR }}/Testing/
+            ${{ env.BUILD_DIR }}/**/*.log
+            ${{ env.BUILD_DIR }}/ctest-fast-results.xml
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final fast-test gate
+        if: always()
+        run: '[[ "${{ steps.fast_tests.outcome }}" == "success" ]] || exit 1'
+
+  long-tests:
+    name: Long validation campaigns
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run long validation campaigns
+        id: long_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir "$BUILD_DIR" \
+            -L long \
+            --no-tests=error \
+            --parallel 4 \
+            -V 2>&1 | tee "$BUILD_DIR/long-validation.log"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-long-evidence
+          path: |
+            ${{ env.BUILD_DIR }}/Testing/
+            ${{ env.BUILD_DIR }}/**/*.log
+            ${{ env.BUILD_DIR }}/long-validation.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final long-test gate
+        if: always()
+        run: '[[ "${{ steps.long_tests.outcome }}" == "success" ]] || exit 1'
+
+  wall-distance:
+    name: Wall-distance benchmarks
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run wall-distance benchmarks
+        id: wall
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/cfdx_wall_distance_controlled_benchmark \
+            build-validation/wall_distance_controlled_benchmark.csv 16 32 64
+          ./build-validation/cfdx_wall_distance_controlled_benchmark \
+            build-validation/wall_distance_controlled_benchmark_fine.csv 128
+          ./build-validation/cfdx_wall_distance_poisson_manufactured \
+            build-validation/wall_distance_poisson_manufactured.csv
+          ./build-validation/cfdx_wall_distance_poisson_decomposition \
+            build-validation/wall_distance_poisson_decomposition.csv
+          cat build-validation/wall_distance_controlled_benchmark.csv
+          cat build-validation/wall_distance_controlled_benchmark_fine.csv
+          cat build-validation/wall_distance_poisson_manufactured.csv
+          cat build-validation/wall_distance_poisson_decomposition.csv
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-wall-evidence
+          path: ${{ env.BUILD_DIR }}/*.csv
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final wall-distance gate
+        if: always()
+        run: '[[ "${{ steps.wall.outcome }}" == "success" ]] || exit 1'
+
+  thermal-radiation:
+    name: Thermal and radiation regression
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run thermal and radiation regression campaign
+        id: thermal_radiation
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/thermal_radiation_regression.py \
+            --build-dir "$BUILD_DIR" \
+            --output-dir "$BUILD_DIR/thermal-radiation-regression" \
+            2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-thermal-radiation
+          path: |
+            ${{ env.BUILD_DIR }}/thermal-radiation-regression/
+            ${{ env.BUILD_DIR }}/thermal-radiation-regression.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final thermal/radiation gate
+        if: always()
+        run: '[[ "${{ steps.thermal_radiation.outcome }}" == "success" ]] || exit 1'
+
+  application-e2e:
+    name: Application E2E regression
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run application E2E regression
+        id: application_e2e
+        continue-on-error: true
+        run: "$VENV_DIR/bin/python" -m pytest -q tests/python/test_application_e2e.py
+      - name: Final application E2E gate
+        if: always()
+        run: '[[ "${{ steps.application_e2e.outcome }}" == "success" ]] || exit 1'
+
+  n16-audit:
+    name: N16 maturity audit
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python
+        run: sudo apt-get update && sudo apt-get install -y python3
+      - name: Validate N16 deferred scope
+        id: n16_scope
+        run: |
+          python3 scripts/validate_numerical_maturity_audit.py \
+            docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json \
+            docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+          echo "N16 has no mandatory executable gate: advanced methods remain explicitly deferred."
+      - name: Final N16 gate
+        if: always()
+        run: '[[ "\${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1'
+
+  validation-report:
+    name: Validation report and metadata
+    if: always()
+    needs:
+      - prepare
+      - long-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install report dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv latexmk texlive-latex-base texlive-latex-recommended texlive-latex-extra
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-long-evidence
+          path: long-evidence
+      - name: Verify long-validation evidence is present
+        run: test -s long-evidence/build-validation/long-validation.log
+
+      - name: Build numerical validation report
+        id: validation_report
+        continue-on-error: true
+        run: |
+          python3 scripts/validation_report.py \
+            --build-dir "$BUILD_DIR" \
+            --output-dir "$BUILD_DIR/validation-report" \
+            --ghia-log long-evidence/build-validation/long-validation.log \
+            --vmfl036-log long-evidence/build-validation/long-validation.log
+      - name: Capture validation metadata
+        if: always()
+        run: |
+          python3 scripts/ci_capture_validation.py \
+            --build-dir "$BUILD_DIR" \
+            --output-dir "$BUILD_DIR/diagnostic-evidence"
+      - name: Upload report evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-report
+          path: |
+            ${{ env.BUILD_DIR }}/validation-report/
+            ${{ env.BUILD_DIR }}/diagnostic-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final report gate
+        if: always()
+        run: '[[ "${{ steps.validation_report.outcome }}" == "success" ]] || exit 1'
+
+  final-gate:
+    name: Total validation gate
+    if: always()
+    needs:
+      - prepare
+      - fast-tests
+      - long-tests
+      - wall-distance
+      - thermal-radiation
+      - application-e2e
+      - n16-audit
+      - validation-report
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Evaluate all validation partitions
+        shell: bash
+        run: |
+          echo "prepare=${{ needs.prepare.result }}"
+          echo "fast-tests=${{ needs.fast-tests.result }}"
+          echo "long-tests=${{ needs.long-tests.result }}"
+          echo "wall-distance=${{ needs.wall-distance.result }}"
+          echo "thermal-radiation=${{ needs.thermal-radiation.result }}"
+          echo "application-e2e=${{ needs.application-e2e.result }}"
+          echo "n16-audit=${{ needs.n16-audit.result }}"
+          echo "validation-report=${{ needs.validation-report.result }}"
+          for result in \
+            "${{ needs.prepare.result }}" \
+            "${{ needs.fast-tests.result }}" \
+            "${{ needs.long-tests.result }}" \
+            "${{ needs.wall-distance.result }}" \
+            "${{ needs.thermal-radiation.result }}" \
+            "${{ needs.application-e2e.result }}" \
+            "${{ needs.n16-audit.result }}" \
+            "${{ needs.validation-report.result }}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "CFDX total validation: FAIL"
+              exit 1
+            fi
+          done
+          echo "CFDX total validation: PASS"
