@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from cfdx import CFDXSession
 from cfdx.application import Application, ApplicationStateChanged
 
@@ -33,4 +35,44 @@ def test_application_replaces_session_and_clears_project_context() -> None:
     assert state.project.name == "loaded"
     assert state.project.path.endswith("loaded.cfdx.h5")
     assert state.project.dirty is False
+    assert application.controller is None
+
+
+def test_application_owns_controller_construction_and_restart_selection(tmp_path) -> None:
+    application = Application(CFDXSession(), project_path=tmp_path / "case.cfdx.h5")
+    application.session.case.execution.solver = "/usr/bin/cfdx-solver"
+    application.session.case.execution.restart_option = "--restart"
+    dat_path = tmp_path / "checkpoint.dat.h5"
+
+    # The DAT parser is intentionally not bypassed by the application facade.
+    # A valid artifact is not required to test the ownership boundary.
+    from unittest.mock import patch
+
+    class Restart:
+        iteration = 12
+        time = 0.25
+        fields = ("p",)
+
+    with patch("cfdx.application.application.read_dat_restart", return_value=Restart()):
+        loaded = application.load_dat(dat_path, use_for_restart=True)
+
+    assert loaded.iteration == 12
+    assert application.restart_dat == dat_path
+
+    controller = application.ensure_controller()
+    assert controller.session is application.session
+    assert controller.runner.command == (
+        "/usr/bin/cfdx-solver",
+        str(tmp_path / "case.cfdx.h5"),
+        "--restart",
+        str(dat_path),
+    )
+
+
+def test_application_new_project_clears_restart_and_controller() -> None:
+    application = Application(CFDXSession(), project_path="case.cfdx.h5")
+    application._restart_dat = Path("checkpoint.dat.h5")
+    application.new_project()
+
+    assert application.restart_dat is None
     assert application.controller is None
