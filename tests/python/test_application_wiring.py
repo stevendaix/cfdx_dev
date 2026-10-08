@@ -102,3 +102,44 @@ def test_application_open_project_with_dat_preserves_restart_identity(tmp_path):
 
     assert state.project.path.endswith("case.cfdx.h5")
     assert application.restart_dat == dat_path
+
+
+def test_application_open_dat_restart_round_trip_keeps_controller_contract(tmp_path):
+    application = Application(CFDXSession())
+    project_path = tmp_path / "case.cfdx.h5"
+    dat_path = tmp_path / "case.dat.h5"
+    canonical_dat = tmp_path / "canonical.dat.h5"
+
+    loaded = CFDXSession()
+    loaded.case.name = "loaded"
+    loaded.case.execution.solver = "/usr/bin/cfdx-solver"
+    loaded.case.execution.restart_option = "--restart"
+    calls = []
+
+    class ProjectStub:
+        path = project_path
+
+        def load_with_dat(self, requested):
+            assert requested == dat_path
+            return loaded, dat_path
+
+        def save_with_dat(self, session, source_dat):
+            calls.append((session, source_dat))
+            return project_path, canonical_dat
+
+        def load(self):
+            return loaded
+
+    with patch("cfdx.application.application.Project", return_value=ProjectStub()):
+        application.open_project(project_path, with_dat=True, dat_path=dat_path)
+        controller = application.ensure_controller()
+        application.save_project()
+
+    assert controller.runner.command == (
+        "/usr/bin/cfdx-solver",
+        str(project_path),
+        "--restart",
+        str(dat_path),
+    )
+    assert application.restart_dat == canonical_dat
+    assert calls == [(loaded, dat_path)]
