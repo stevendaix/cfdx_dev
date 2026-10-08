@@ -61,6 +61,6 @@ def test_application_routes_execution_to_controller_and_publishes_state() -> Non
     ]
 
 
-def test_execution_command_requires_controller() -> None:
-    with pytest.raises(RuntimeError, match="execution controller"):
+def test_application_run_requires_a_saved_project() -> None:
+    with pytest.raises(ValueError, match="save the case before starting the solver"):
         Application(CFDXSession()).run()

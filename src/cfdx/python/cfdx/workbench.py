@@ -3,6 +3,7 @@
 Domain actions remain owned by the application/session layer; Qt wires those
 contracts to the optional mesh and result renderer adapters.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,14 +15,8 @@ from .application import (
     WorkflowStatus,
     workflow_children,
 )
-from .case_io import read_case, save_case, save_case_with_dat
-from .dat_io import read_dat_restart
-from .execution import ExecutionController
 from .mesh_model import read_mesh_catalog
-from .probe import ProbeCatalog
-from .runner import SolverRunner
 from .session import CFDXSession
-from .validation import validate_case
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
@@ -35,7 +30,6 @@ try:
         QMainWindow,
         QPushButton,
         QStatusBar,
-        QTextEdit,
         QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
@@ -74,11 +68,12 @@ if QMainWindow is not object:
             super().__init__()
             self.application = application or Application(session or CFDXSession())
             self.session = self.application.session
-            self._restart_dat: Path | None = None
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
-            self.application.events.subscribe(ApplicationStateChanged, self._state_event.emit)
+            self.application.events.subscribe(
+                ApplicationStateChanged, self._state_event.emit
+            )
             self.application.events.subscribe(ResultsChanged, self._results_event.emit)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
@@ -97,9 +92,18 @@ if QMainWindow is not object:
             toolbar.setMovable(False)
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
-            for label in ("New Project", "Open", "Save", "Open Mesh", "Open DAT Result", "Open DAT Checkpoint"):
+            for label in (
+                "New Project",
+                "Open",
+                "Save",
+                "Open Mesh",
+                "Open DAT Result",
+                "Open DAT Checkpoint",
+            ):
                 action = QAction(label, self)
-                action.setObjectName(f"workbench.action.{label.lower().replace(' ', '_')}")
+                action.setObjectName(
+                    f"workbench.action.{label.lower().replace(' ', '_')}"
+                )
                 toolbar.addAction(action)
                 if label == "New Project":
                     action.triggered.connect(self._new_project)
@@ -111,10 +115,14 @@ if QMainWindow is not object:
                     action.triggered.connect(self._open_mesh)
                     self.open_mesh_action = action
                 elif label == "Open DAT Result":
-                    action.triggered.connect(lambda _checked=False: self._open_dat(use_for_restart=False))
+                    action.triggered.connect(
+                        lambda _checked=False: self._open_dat(use_for_restart=False)
+                    )
                     self.open_dat_result_action = action
                 elif label == "Open DAT Checkpoint":
-                    action.triggered.connect(lambda _checked=False: self._open_dat(use_for_restart=True))
+                    action.triggered.connect(
+                        lambda _checked=False: self._open_dat(use_for_restart=True)
+                    )
                     self.open_dat_checkpoint_action = action
                 else:
                     action.triggered.connect(self._save_case)
@@ -152,85 +160,55 @@ if QMainWindow is not object:
             self.toolbar = toolbar
 
         def _new_project(self) -> None:
-            self.application.replace_session(CFDXSession())
+            self.application.new_project()
             self.session = self.application.session
-            self._restart_dat = None
             self._refresh_setup_case()
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
 
         def _open_case(self) -> None:
-            path, _ = QFileDialog.getOpenFileName(self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5 *.h5)")
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5)"
+            )
             if not path:
                 return
             try:
-                self.application.replace_session(read_case(Path(path)), project_path=path)
+                self.application.open_project(path)
                 self.session = self.application.session
-                self._restart_dat = None
                 self._refresh_setup_case()
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
 
         def _save_case(self) -> None:
-            path = Path(self.application.project_path) if self.application.project_path else None
+            path = (
+                Path(self.application.project_path)
+                if self.application.project_path
+                else None
+            )
             if path is None:
                 selected, _ = QFileDialog.getSaveFileName(
-                    self, "Save CFDX Case", f"{self.session.case.name}.cfdx.h5", "CFDX Case (*.cfdx.h5)"
+                    self,
+                    "Save CFDX Case",
+                    f"{self.session.case.name}.cfdx.h5",
+                    "CFDX Case (*.cfdx.h5)",
                 )
                 if not selected:
                     return
                 path = Path(selected)
             try:
-                if self._restart_dat is not None:
-                    _, self._restart_dat = save_case_with_dat(
-                        self.session, path, self._restart_dat
-                    )
+                self.application.save_project(path)
+                if self.application.restart_dat is not None:
                     self.statusBar().showMessage(
                         f"Case and restart checkpoint saved: {path.name}"
                     )
                 else:
-                    save_case(self.session, path)
                     self.statusBar().showMessage(f"Case saved: {path.name}")
-                self.application.set_project_path(path, dirty=False)
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Save failed: {exc}")
 
-        def _ensure_controller(self) -> ExecutionController:
-            if self.application.controller is not None:
-                return self.application.controller
-            if self.application.project_path is None:
-                self._save_case()
-            if self.application.project_path is None:
-                raise ValueError("save the case before starting the solver")
-            solver = self.session.case.execution.solver
-            if not solver:
-                raise ValueError("execution.solver must be configured before Run")
-            command = [solver, str(self.application.project_path)]
-            if self._restart_dat is not None:
-                restart_option = self.session.case.execution.restart_option
-                if not restart_option:
-                    raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
-                command.extend([restart_option, str(self._restart_dat)])
-            probe_catalog = ProbeCatalog(self.session.case.probes)
-            if probe_catalog.probes:
-                for spec in probe_catalog.specs():
-                    command += ["--probe", spec]
-                command += [
-                    "--probe-csv",
-                    str(probe_catalog.csv_path(self.application.project_path)),
-                ]
-            if self.session.case.execution.mpi_ranks > 1:
-                command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
-            controller = ExecutionController(
-                self.session,
-                SolverRunner(command, cwd=Path(self.application.project_path).parent),
-            )
-            self.application.attach_controller(controller)
-            return controller
-
         def _check_case(self) -> None:
             try:
-                state = self.application.validate(validate_case)
+                state = self.application.validate_case()
                 if state.diagnostics:
                     self.statusBar().showMessage(
                         f"Validation: {len(state.diagnostics)} diagnostic(s)"
@@ -242,7 +220,6 @@ if QMainWindow is not object:
 
         def _run(self) -> None:
             try:
-                self._ensure_controller()
                 self.application.run()
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Run failed: {exc}")
@@ -258,26 +235,48 @@ if QMainWindow is not object:
             self.workflow_tree.setObjectName("workbench.workflow_tree")
             self.workflow_tree.setHeaderLabel("Workflow")
             self.workflow_tree.itemSelectionChanged.connect(self._selection_changed)
-            self._add_dock("Workflow", "workbench.dock.workflow", self.workflow_tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+            self._add_dock(
+                "Workflow",
+                "workbench.dock.workflow",
+                self.workflow_tree,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
             self._refresh_workflow(self._application_state)
             self.mesh_browser = MeshBrowserPanel()
             self.mesh_browser.selection_changed.connect(self._mesh_selection_changed)
-            self._add_dock("Mesh", "workbench.dock.mesh", self.mesh_browser, Qt.DockWidgetArea.LeftDockWidgetArea)
+            self._add_dock(
+                "Mesh",
+                "workbench.dock.mesh",
+                self.mesh_browser,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
-            self._add_dock("Results", "workbench.dock.results", self.results_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
+            self._add_dock(
+                "Results",
+                "workbench.dock.results",
+                self.results_panel,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
 
             self.probes_panel = ProbesPanel(self.application)
             self.probes_panel.setObjectName("workbench.probes_panel")
             self._add_dock(
-                "Probes", "workbench.dock.probes", self.probes_panel,
+                "Probes",
+                "workbench.dock.probes",
+                self.probes_panel,
                 Qt.DockWidgetArea.LeftDockWidgetArea,
             )
 
             self.setup_panel = CaseSetupPanel(self.session.case)
             self.setup_panel.setObjectName("workbench.setup_panel")
             self.setup_panel.changed.connect(self._setup_changed)
-            self._add_dock("Case Setup", "workbench.dock.setup", self.setup_panel, Qt.DockWidgetArea.RightDockWidgetArea)
+            self._add_dock(
+                "Case Setup",
+                "workbench.dock.setup",
+                self.setup_panel,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
 
             try:
                 viewport = PyVistaQtView()
@@ -289,13 +288,22 @@ if QMainWindow is not object:
             viewport.setMinimumSize(480, 320)
             self.setCentralWidget(viewport)
 
-            properties = QTextEdit()
             properties = self._build_properties_panel()
-            self._add_dock("Properties", "workbench.dock.properties", properties, Qt.DockWidgetArea.RightDockWidgetArea)
+            self._add_dock(
+                "Properties",
+                "workbench.dock.properties",
+                properties,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
 
             monitor = RunCenterPanel(self.application)
             monitor.setObjectName("workbench.monitor")
-            self._add_dock("Monitors / Console", "workbench.dock.monitor", monitor, Qt.DockWidgetArea.BottomDockWidgetArea)
+            self._add_dock(
+                "Monitors / Console",
+                "workbench.dock.monitor",
+                monitor,
+                Qt.DockWidgetArea.BottomDockWidgetArea,
+            )
 
         def _build_properties_panel(self) -> QWidget:
             panel = QWidget()
@@ -307,7 +315,9 @@ if QMainWindow is not object:
             return panel
 
         def _open_results_directory(self) -> None:
-            directory = QFileDialog.getExistingDirectory(self, "Open CFDX Results Directory")
+            directory = QFileDialog.getExistingDirectory(
+                self, "Open CFDX Results Directory"
+            )
             if not directory:
                 return
             try:
@@ -316,7 +326,9 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Results error: {exc}")
 
         def _open_mesh(self) -> None:
-            path, _ = QFileDialog.getOpenFileName(self, "Open CFDX Mesh", "", "CFDX mesh (*.h5);;All files (*)")
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open CFDX Mesh", "", "CFDX mesh (*.h5);;All files (*)"
+            )
             if not path:
                 return
             try:
@@ -329,7 +341,9 @@ if QMainWindow is not object:
 
         def _open_dat(self, *, use_for_restart: bool) -> None:
             if self.application.project_path is None:
-                self.statusBar().showMessage("Save or open a CFDX case before loading a DAT file")
+                self.statusBar().showMessage(
+                    "Save or open a CFDX case before loading a DAT file"
+                )
                 return
             path, _ = QFileDialog.getOpenFileName(
                 self,
@@ -340,12 +354,14 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                loaded = read_dat_restart(Path(path))
+                loaded = self.application.load_dat(
+                    path, use_for_restart=use_for_restart
+                )
                 fields = []
                 if self.view3d is not None:
-                    fields = self.view3d.load_cfdx_dat(str(self.application.project_path), path)
-                if use_for_restart:
-                    self._restart_dat = Path(path)
+                    fields = self.view3d.load_cfdx_dat(
+                        str(self.application.project_path), path
+                    )
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
@@ -367,7 +383,9 @@ if QMainWindow is not object:
             self._refresh_postprocess_actions(event.state)
 
         def _refresh_postprocess_actions(self, state) -> None:
-            enabled = self.view3d is not None and state.results.selected_frame is not None
+            enabled = (
+                self.view3d is not None and state.results.selected_frame is not None
+            )
             for name in ("contour_action", "slice_action", "glyph_action"):
                 if hasattr(self, name):
                     getattr(self, name).setEnabled(enabled)
@@ -394,7 +412,9 @@ if QMainWindow is not object:
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":
                 try:
-                    self.view3d.select(selection.stable_id or f"patch:{selection.index}")
+                    self.view3d.select(
+                        selection.stable_id or f"patch:{selection.index}"
+                    )
                 except KeyError:
                     pass
 
@@ -416,7 +436,11 @@ if QMainWindow is not object:
                 editor.setReadOnly(not prop.editable)
                 button = QPushButton("Apply")
                 button.setEnabled(prop.editable)
-                button.clicked.connect(lambda _checked=False, p=prop, e=editor: self._apply_property(p.key, e.text()))
+                button.clicked.connect(
+                    lambda _checked=False, p=prop, e=editor: self._apply_property(
+                        p.key, e.text()
+                    )
+                )
                 form.addRow(prop.label, editor)
                 form.addRow("", button)
 
@@ -437,7 +461,9 @@ if QMainWindow is not object:
             else:
                 self._refresh_properties()
 
-        def _add_dock(self, title: str, object_name: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
+        def _add_dock(
+            self, title: str, object_name: str, widget: QWidget, area: Qt.DockWidgetArea
+        ) -> QDockWidget:
             dock = QDockWidget(title, self)
             dock.setObjectName(object_name)
             dock.setWidget(widget)
@@ -466,13 +492,17 @@ if QMainWindow is not object:
             self.workflow_tree.clear()
             roots = workflow_children(state.workflow, None)
             for step in roots:
-                root = QTreeWidgetItem([f"{step.label}  {self._status_marker(step.status)}"])
+                root = QTreeWidgetItem(
+                    [f"{step.label}  {self._status_marker(step.status)}"]
+                )
                 root.setData(0, Qt.ItemDataRole.UserRole, step.id)
                 root.setData(0, Qt.ItemDataRole.UserRole + 1, step.kind)
                 root.setToolTip(0, step.message or step.status.value)
                 self.workflow_tree.addTopLevelItem(root)
                 for child in workflow_children(state.workflow, step.id):
-                    item = QTreeWidgetItem([f"{child.label}  {self._status_marker(child.status)}"])
+                    item = QTreeWidgetItem(
+                        [f"{child.label}  {self._status_marker(child.status)}"]
+                    )
                     item.setData(0, Qt.ItemDataRole.UserRole, child.id)
                     item.setData(0, Qt.ItemDataRole.UserRole + 1, child.kind)
                     item.setToolTip(0, child.message or child.status.value)

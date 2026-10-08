@@ -1,11 +1,20 @@
 """Application facade shared by CFDX frontends."""
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
+from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
+from ..probe import ProbeCatalog
+from ..project import Project
+from ..results_series import ResultSeries, discover_result_series
+from ..runner import SolverRunner
 from ..session import CFDXSession, ChangeImpact
+from ..setup_schema import SetupSchema, build_setup_schema
+from ..validation import validate_case as _validate_case
 from .commands import (
     Command,
     PauseSolver,
@@ -16,13 +25,10 @@ from .commands import (
     StopSolver,
 )
 from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
-from .state import ApplicationState, SelectionState, build_application_state
 from .properties import PropertyState, properties_for_selection
-from .run_center import RunCenterModel
 from .results import ResultsState, build_results_state
-from ..results_series import ResultSeries, discover_result_series
-from ..project import Project
-from ..setup_schema import SetupSchema, build_setup_schema
+from .run_center import RunCenterModel
+from .state import ApplicationState, SelectionState, build_application_state
 
 
 class Application:
@@ -45,6 +51,7 @@ class Application:
         self.dirty = False
         self.events = EventBus()
         self.results = ResultsState()
+        self._restart_dat: Path | None = None
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
             self.run_center.on_change = lambda _state: self._publish_state()
@@ -81,8 +88,14 @@ class Application:
         self.run_center.on_change = lambda _state: self._publish_state()
         return self._publish_state()
 
-    def replace_session(self, session: CFDXSession, *, project_path: str | Path | None = None) -> ApplicationState:
-        runner = getattr(self.controller, "runner", None) if self.controller is not None else None
+    def replace_session(
+        self, session: CFDXSession, *, project_path: str | Path | None = None
+    ) -> ApplicationState:
+        runner = (
+            getattr(self.controller, "runner", None)
+            if self.controller is not None
+            else None
+        )
         if getattr(runner, "running", False):
             raise RuntimeError("cannot replace an active session")
         if self.run_center is not None:
@@ -94,6 +107,7 @@ class Application:
         self.selection = SelectionState()
         self.diagnostics = ()
         self.results = ResultsState()
+        self._restart_dat = None
         self.dirty = False
         return self._publish_state()
 
@@ -106,11 +120,27 @@ class Application:
     ) -> ApplicationState:
         """Open a canonical CFDX project through the shared case lifecycle."""
         project = Project(Path(path))
+        restart_path: Path | None = None
         if with_dat:
-            session, _ = project.load_with_dat(Path(dat_path) if dat_path is not None else None)
+            session, restart_path = project.load_with_dat(
+                Path(dat_path) if dat_path is not None else None
+            )
         else:
             session = project.load()
-        return self.replace_session(session, project_path=project.path)
+        state = self.replace_session(session, project_path=project.path)
+        if restart_path is not None:
+            self._restart_dat = restart_path
+            state = self._publish_state()
+        return state
+
+    @property
+    def restart_dat(self) -> Path | None:
+        """Return the explicitly selected numerical checkpoint, if any."""
+        return self._restart_dat
+
+    def new_project(self) -> ApplicationState:
+        """Create a new in-memory project through the shared lifecycle."""
+        return self.replace_session(CFDXSession())
 
     def save_project(self, path: str | Path | None = None) -> ApplicationState:
         """Save the current setup/mesh state without consuming DAT state."""
@@ -118,7 +148,11 @@ class Application:
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        project.save(self.session)
+        if self._restart_dat is not None:
+            _, canonical_dat = project.save_with_dat(self.session, self._restart_dat)
+            self._restart_dat = canonical_dat
+        else:
+            project.save(self.session)
         return self.set_project_path(project.path, dirty=False)
 
     def save_project_with_dat(
@@ -129,10 +163,73 @@ class Application:
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        project.save_with_dat(self.session, Path(source_dat))
+        _, canonical_dat = project.save_with_dat(self.session, Path(source_dat))
+        self._restart_dat = canonical_dat
         return self.set_project_path(project.path, dirty=False)
 
-    def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
+    def load_dat(
+        self, path: str | Path, *, use_for_restart: bool = False
+    ) -> DatRestart:
+        """Read a numerical DAT artifact without involving a frontend renderer."""
+        if self.project_path is None:
+            raise ValueError("load a CFDX case before loading a DAT file")
+        restart = read_dat_restart(Path(path))
+        if use_for_restart:
+            self._restart_dat = Path(path)
+            self._publish_state()
+        return restart
+
+    def clear_restart(self) -> ApplicationState:
+        """Clear the selected numerical restart without changing case setup."""
+        self._restart_dat = None
+        return self._publish_state()
+
+    def ensure_controller(self) -> ExecutionController:
+        """Construct the canonical solver execution controller on demand."""
+        if self.controller is not None:
+            return self.controller
+        if self.project_path is None:
+            raise ValueError("save the case before starting the solver")
+        solver = self.session.case.execution.solver
+        if not solver:
+            raise ValueError("execution.solver must be configured before Run")
+        command = [solver, str(self.project_path)]
+        if self._restart_dat is not None:
+            restart_option = self.session.case.execution.restart_option
+            if not restart_option:
+                raise ValueError(
+                    "a DAT checkpoint is loaded but no restart option is configured"
+                )
+            command.extend([restart_option, str(self._restart_dat)])
+        probe_catalog = ProbeCatalog(self.session.case.probes)
+        if probe_catalog.probes:
+            for spec in probe_catalog.specs():
+                command += ["--probe", spec]
+            command += [
+                "--probe-csv",
+                str(probe_catalog.csv_path(self.project_path)),
+            ]
+        if self.session.case.execution.mpi_ranks > 1:
+            command = [
+                "mpiexec",
+                "-n",
+                str(self.session.case.execution.mpi_ranks),
+                *command,
+            ]
+        controller = ExecutionController(
+            self.session,
+            SolverRunner(command, cwd=Path(self.project_path).parent),
+        )
+        self.attach_controller(controller)
+        return controller
+
+    def validate_case(self, mesh=None) -> ApplicationState:
+        """Validate the current case through the shared application contract."""
+        return self.validate(_validate_case, mesh)
+
+    def set_project_path(
+        self, path: str | Path | None, *, dirty: bool | None = None
+    ) -> ApplicationState:
         self.project_path = path
         if dirty is not None:
             self.dirty = dirty
@@ -161,14 +258,18 @@ class Application:
         report = validator(self.session.case, mesh)
         return self.set_diagnostics(report.diagnostics)
 
-    def set_results(self, series: ResultSeries | None, *, directory: str | Path | None = None) -> ApplicationState:
+    def set_results(
+        self, series: ResultSeries | None, *, directory: str | Path | None = None
+    ) -> ApplicationState:
         self.results = build_results_state(series, directory=directory)
         self.events.publish(ResultsChanged(self.state))
         return self.state
 
     def open_results(self, directory: str | Path) -> ApplicationState:
         path = Path(directory)
-        return self.set_results(discover_result_series(path, inspect_fields=True), directory=path)
+        return self.set_results(
+            discover_result_series(path, inspect_fields=True), directory=path
+        )
 
     def select_result_frame(self, stable_id: str) -> ApplicationState:
         if stable_id not in {frame.stable_id for frame in self.results.frames}:
@@ -195,6 +296,8 @@ class Application:
         return self.state
 
     def run(self) -> ApplicationState:
+        """Start the configured solver through the shared application facade."""
+        self.ensure_controller()
         return self.execute(RunSolver())
 
     def pause(self) -> ApplicationState:
@@ -206,7 +309,9 @@ class Application:
     def stop(self) -> ApplicationState:
         return self.execute(StopSolver())
 
-    def select(self, stable_id: str | None, kind: str | None, label: str | None) -> ApplicationState:
+    def select(
+        self, stable_id: str | None, kind: str | None, label: str | None
+    ) -> ApplicationState:
         self.selection = SelectionState(stable_id, kind, label)
         snapshot = self.state
         self.events.publish(SelectionChanged(snapshot))
