@@ -3,8 +3,10 @@
 #include "cfdx/core/parallel/mpi_utils.h"
 #include "cfdx/core/geometry/geometry_cache.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <vector>
 
 using namespace cfdx::core;
@@ -83,6 +85,10 @@ int main(int argc, char** argv)
         local_values.push_back(result.solution(i));
 
     const auto gathered = mpi_allgather(local_values);
+    const auto gathered_ids = mpi_allgather(result.solution.global_ids());
+    std::vector<double> global_values(mesh.n_cells(), 0.0);
+    for (std::size_t i = 0; i < gathered_ids.size(); ++i)
+        global_values[static_cast<std::size_t>(gathered_ids[i])] = gathered[i];
     const std::vector<double> serial_reference{0.25, 0.75};
 
     // Independently reconstruct physical diffusion fluxes from the accepted
@@ -94,7 +100,7 @@ int main(int argc, char** argv)
     const auto& offsets = mesh.cells().offsets();
     const auto& ownership = mesh.ownership();
     for (std::size_t local = 0; local < result.solution.local_size(); ++local) {
-        const std::size_t cell = result.solution.global_id(local);
+        const std::size_t cell = result.solution.global_ids()[local];
         double cell_balance = 0.0;
         for (std::size_t k = offsets[cell]; k < offsets[cell + 1]; ++k) {
             const std::size_t face = cell_faces[k];
@@ -108,12 +114,12 @@ int main(int argc, char** argv)
                     owner == cell ? static_cast<std::size_t>(neighbour) : owner;
                 const double d =
                     (geometry.cell_centres[other] - geometry.cell_centres[cell]).mag();
-                const double grad_normal = (gathered[other] - gathered[cell]) / d;
+                const double grad_normal = (global_values[other] - global_values[cell]) / d;
                 face_flux = -grad_normal * area * outward_sign;
             } else {
                 const double d =
                     (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
-                const double grad_normal = (bc.face_values[face] - gathered[cell]) / d;
+                const double grad_normal = (bc.face_values[face] - global_values[cell]) / d;
                 face_flux = -grad_normal * area * outward_sign;
             }
             cell_balance += face_flux;
@@ -129,7 +135,7 @@ int main(int argc, char** argv)
                                   global_linf_balance < 1e-12;
 
     if (rank == 0) {
-        const auto metrics = compare_vectors(serial_reference, gathered);
+        const auto metrics = compare_vectors(serial_reference, global_values);
         local_ok = local_ok &&
                    numerically_equivalent(metrics, 1e-12, 1e-12);
         if (!local_ok)
