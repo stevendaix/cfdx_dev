@@ -3,6 +3,7 @@
 Domain actions remain owned by the application/session layer; Qt wires those
 contracts to the optional mesh and result renderer adapters.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,7 +30,6 @@ try:
         QMainWindow,
         QPushButton,
         QStatusBar,
-        QTextEdit,
         QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
@@ -71,7 +71,7 @@ if QMainWindow is not object:
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
-            self.application.events.subscribe(ApplicationStateChanged, self._state_event.emit)
+            self.application.events.subscribe(\n                ApplicationStateChanged, self._state_event.emit\n            )
             self.application.events.subscribe(ResultsChanged, self._results_event.emit)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
@@ -178,7 +178,7 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Open failed: {exc}")
 
         def _save_case(self) -> None:
-            path = Path(self.application.project_path) if self.application.project_path else None
+            path = (\n                Path(self.application.project_path)\n                if self.application.project_path\n                else None\n            )
             if path is None:
                 selected, _ = QFileDialog.getSaveFileName(
                     self,
@@ -349,7 +349,7 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                loaded = self.application.load_dat(path, use_for_restart=use_for_restart)
+                loaded = self.application.load_dat(\n                    path, use_for_restart=use_for_restart\n                )
                 fields = []
                 if self.view3d is not None:
                     fields = self.view3d.load_cfdx_dat(
