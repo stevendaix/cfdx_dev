@@ -601,7 +601,7 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
         return {"ok": False, "errors": ["history_limit must be between 0 and 10000"]}
     try:
         with path.open("r", encoding="utf-8") as stream:
-            document = json.load(stream, parse_constant=_reject_nonfinite)
+            document = json.load(stream, parse_constant=_reject_execution_nonfinite)
         if not isinstance(document, dict):
             return {
                 "ok": False,
