@@ -81,14 +81,16 @@ async def exercise() -> None:
             assert data["runtime_state_present"] is False
 
             case_validation = await client.call_tool(
-                "case.validate", {"case_path": "demo.cfdx.h5"}
+                "case.validate",
+                {"case_path": "demo.cfdx.h5"},
             )
             assert case_validation.is_error is False
             assert case_validation.structured_content["ok"] is False
             assert "mesh data is missing" in case_validation.structured_content["errors"][0]
 
             checkpoint = await client.call_tool(
-                "checkpoint.inspect", {"checkpoint_path": "demo.dat.h5"}
+                "checkpoint.inspect",
+                {"checkpoint_path": "demo.dat.h5"},
             )
             assert checkpoint.is_error is False
             data = checkpoint.structured_content
@@ -96,7 +98,12 @@ async def exercise() -> None:
             assert data["artifact"] == "checkpoint"
             assert data["attributes"]["iteration"] == 42
             assert data["attributes"]["time"] == 0.25
-            assert data["metadata"] == {"version": 2, "cells": 1, "iteration": 42, "time": 0.25}
+            assert data["metadata"] == {
+                "version": 2,
+                "cells": 1,
+                "iteration": 42,
+                "time": 0.25,
+            }
             assert data["cell_ids_present"] is True
             assert data["fields"][0]["name"] == "p"
 
