@@ -242,7 +242,7 @@ async def exercise() -> None:
             )
             assert bad_nonfinite_execution.is_error is False
             assert bad_nonfinite_execution.structured_content["ok"] is False
-            assert "non-finite JSON constant" in (
+            assert "non-finite constant" in (
                 bad_nonfinite_execution.structured_content["errors"][0]
             )
 
@@ -260,7 +260,10 @@ async def exercise() -> None:
             )
             assert bad_exit_result.is_error is False
             assert bad_exit_result.structured_content["ok"] is False
-            assert "0, 1, or 2" in bad_exit_result.structured_content["errors"][0]
+            assert (
+                "0, 1, or 2"
+                in bad_exit_result.structured_content["errors"][0]
+            )
 
             inconsistent = root / "inconsistent" / "execution.json"
             inconsistent.parent.mkdir()
@@ -276,8 +279,9 @@ async def exercise() -> None:
             )
             assert inconsistent_result.is_error is False
             assert inconsistent_result.structured_content["ok"] is False
-            assert "exit code 0 requires converged=true" in (
-                inconsistent_result.structured_content["errors"][0]
+            assert (
+                "exit code 0 requires converged=true"
+                in inconsistent_result.structured_content["errors"][0]
             )
 
             convergence_result = await client.call_tool(
@@ -341,8 +345,18 @@ async def exercise() -> None:
             for name, args in (
                 ("case.inspect", {"case_path": "../outside.cfdx.h5"}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
-                ("checkpoint.field.inspect", {"checkpoint_path": "../outside.dat.h5", "field_name": "p"}),
-                ("checkpoint.compare", {"left_checkpoint_path": "../a.dat.h5", "right_checkpoint_path": "later.dat.h5", "field_name": "p"}),
+                (
+                    "checkpoint.field.inspect",
+                    {"checkpoint_path": "../outside.dat.h5", "field_name": "p"},
+                ),
+                (
+                    "checkpoint.compare",
+                    {
+                        "left_checkpoint_path": "../a.dat.h5",
+                        "right_checkpoint_path": "later.dat.h5",
+                        "field_name": "p",
+                    },
+                ),
                 ("convergence.inspect", {"convergence_path": "../outside/convergence.json"}),
                 ("convergence.inspect", {"convergence_path": "/etc/convergence.json"}),
                 ("execution.inspect", {"execution_path": "../outside/execution.json"}),
