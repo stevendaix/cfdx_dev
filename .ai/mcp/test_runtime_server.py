@@ -54,7 +54,15 @@ async def exercise() -> None:
         client = Client(create_server(str(root)))
         async with client:
             listed = await client.list_tools()
-            assert {tool.name for tool in listed.tools} == {"case.inspect", "case.validate", "checkpoint.inspect", "checkpoint.field.inspect", "checkpoint.compare", "convergence.inspect", "execution.inspect"}
+            assert {tool.name for tool in listed.tools} == {
+                "case.inspect",
+                "case.validate",
+                "checkpoint.inspect",
+                "checkpoint.field.inspect",
+                "checkpoint.compare",
+                "convergence.inspect",
+                "execution.inspect",
+            }
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["readOnlyHint"] is True
@@ -232,7 +240,9 @@ async def exercise() -> None:
             )
             assert bad_nonfinite_execution.is_error is False
             assert bad_nonfinite_execution.structured_content["ok"] is False
-            assert "non-finite JSON constant" in bad_nonfinite_execution.structured_content["errors"][0]
+            assert "non-finite JSON constant" in (
+                bad_nonfinite_execution.structured_content["errors"][0]
+            )
 
             bad_exit = root / "bad-exit" / "execution.json"
             bad_exit.parent.mkdir()
