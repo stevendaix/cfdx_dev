@@ -24,6 +24,7 @@ QUANTITATIVE_RECORD_PREFIXES = (
     "GHIA ",
     "POISEUILLE_RESULT ",
     "N11_ENERGY_RESULT ",
+    "N11_MPI_RESULT ",
 )
 
 
@@ -48,6 +49,7 @@ def parse_quantitative_records(output: str) -> list[dict[str, object]]:
         records.append(record)
     return records
 
+
 REQUIRED_TESTS = (
     "test_conservation_boundedness",
     "test_transport_conservation",
@@ -61,6 +63,7 @@ REQUIRED_TESTS = (
     "test_nonorthogonal_skew_campaign",
     "test_convection_polyhedral_campaign",
 )
+OPTIONAL_MPI_TESTS = ("test_n13_mpi_equivalence",)
 
 CATEGORIES = {
     "conservation_contract": [
@@ -77,6 +80,7 @@ CATEGORIES = {
     "energy": ["test_cht_validation"],
     "mesh_robustness": ["test_nonorthogonal_skew_campaign"],
     "scheme_boundedness": ["test_convection_polyhedral_campaign"],
+    "mpi_conservation": ["test_n13_mpi_equivalence"],
 }
 
 KNOWN_SCOPE_GAPS = [
@@ -84,9 +88,10 @@ KNOWN_SCOPE_GAPS = [
         "id": "mpi-production-conservation",
         "status": "missing",
         "description": (
-            "No dedicated production-physics N11 test currently executes the "
-            "independent conservation audit under MPI; serial evidence must not "
-            "be presented as MPI qualification."
+            "The active distributed MPI Poisson path now has an independent "
+            "conservation gate, but the production incompressible/thermal "
+            "physics solvers are not yet distributed under MPI; this PR must "
+            "not be presented as production-physics MPI qualification."
         ),
     },
 ]
@@ -139,18 +144,32 @@ def run_test(build_dir: Path, name: str) -> dict[str, object]:
     }
 
 
-def build_category_results(results: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+def build_category_results(
+    results: list[dict[str, object]], required_tests: list[str]
+) -> dict[str, dict[str, object]]:
     by_name = {str(item["name"]): item for item in results}
+    required_set = set(required_tests)
     categories: dict[str, dict[str, object]] = {}
     for category, names in CATEGORIES.items():
-        missing = [name for name in names if name not in by_name]
+        active_names = [name for name in names if name in required_set]
+        if not active_names:
+            categories[category] = {
+                "required_tests": [],
+                "completed": 0,
+                "missing": [],
+                "failed": [],
+                "status": "SKIPPED",
+            }
+            continue
+        missing = [name for name in active_names if name not in by_name]
         failed = [
-            name for name in names
+            name
+            for name in active_names
             if name in by_name and by_name[name]["status"] != "PASS"
         ]
         categories[category] = {
-            "required_tests": names,
-            "completed": len(names) - len(missing),
+            "required_tests": active_names,
+            "completed": len(active_names) - len(missing),
             "missing": missing,
             "failed": failed,
             "status": "PASS" if not missing and not failed else "FAIL",
@@ -165,7 +184,10 @@ def main() -> int:
         "--report",
         type=Path,
         default=None,
-        help="JSON report path (default: <build-dir>/n11_conservation_boundedness.json)",
+        help=(
+            "JSON report path (default: <build-dir>/"
+            "n11_conservation_boundedness.json)"
+        ),
     )
     args = parser.parse_args()
 
@@ -185,12 +207,15 @@ def main() -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     available = discover_tests(build_dir)
-    missing = [name for name in REQUIRED_TESTS if name not in available]
+    required_tests = list(REQUIRED_TESTS)
+    mpi_tests = [name for name in OPTIONAL_MPI_TESTS if name in available]
+    required_tests.extend(mpi_tests)
+    missing = [name for name in required_tests if name not in available]
     if missing:
         report = {
             "campaign": "N11 conservation and boundedness evidence",
             "status": "INCOMPLETE",
-            "required_tests": list(REQUIRED_TESTS),
+            "required_tests": required_tests,
             "missing_tests": missing,
             "scope_gaps": KNOWN_SCOPE_GAPS,
             "policy": {
@@ -198,6 +223,7 @@ def main() -> int:
                 "disables_validation": False,
                 "silent_clipping_or_repair": False,
                 "serial_evidence_is_mpi_qualification": False,
+                "mpi_evidence_required_when_mpi_test_is_available": True,
             },
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -205,7 +231,7 @@ def main() -> int:
         return 2
 
     results: list[dict[str, object]] = []
-    for name in REQUIRED_TESTS:
+    for name in required_tests:
         print(f"\n=== N11 conservation/boundedness: {name} ===", flush=True)
         result = run_test(build_dir, name)
         results.append(result)
@@ -214,14 +240,16 @@ def main() -> int:
             break
 
     failed = [str(item["name"]) for item in results if item["status"] != "PASS"]
-    categories = build_category_results(results)
+    categories = build_category_results(results, required_tests)
     quantitative_records = [
         record
         for item in results
         for record in parse_quantitative_records(str(item["output"]))
     ]
     quantitative_counts = {
-        "MODEL_RESULT": sum(r["record_type"] == "MODEL_RESULT" for r in quantitative_records),
+        "MODEL_RESULT": sum(
+            r["record_type"] == "MODEL_RESULT" for r in quantitative_records
+        ),
         "GHIA": sum(r["record_type"] == "GHIA" for r in quantitative_records),
         "POISEUILLE_RESULT": sum(
             r["record_type"] == "POISEUILLE_RESULT" for r in quantitative_records
@@ -229,12 +257,16 @@ def main() -> int:
         "N11_ENERGY_RESULT": sum(
             r["record_type"] == "N11_ENERGY_RESULT" for r in quantitative_records
         ),
+        "N11_MPI_RESULT": sum(
+            r["record_type"] == "N11_MPI_RESULT" for r in quantitative_records
+        ),
     }
     quantitative_requirements = {
         "MODEL_RESULT": 1,
         "GHIA": 4,
         "POISEUILLE_RESULT": 4,
         "N11_ENERGY_RESULT": 1,
+        "N11_MPI_RESULT": 1 if "test_n13_mpi_equivalence" in required_tests else 0,
     }
     quantitative_coverage = {
         key: {
@@ -248,15 +280,13 @@ def main() -> int:
         item["complete"] for item in quantitative_coverage.values()
     )
     complete_execution = (
-        len(results) == len(REQUIRED_TESTS)
-        and not failed
-        and quantitative_complete
+        len(results) == len(required_tests) and not failed and quantitative_complete
     )
 
     report = {
         "campaign": "N11 conservation and boundedness evidence",
         "status": "PASS" if complete_execution else "FAIL",
-        "required_tests": list(REQUIRED_TESTS),
+        "required_tests": required_tests,
         "completed_tests": len(results),
         "failed_tests": failed,
         "results": results,
@@ -276,6 +306,7 @@ def main() -> int:
             "silent_clipping_or_repair": False,
             "independent_conservation_over_linear_residual": True,
             "serial_evidence_is_mpi_qualification": False,
+            "mpi_evidence_required_when_mpi_test_is_available": True,
             "stops_on_first_failed_gate": True,
         },
     }
