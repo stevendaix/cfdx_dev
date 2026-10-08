@@ -149,6 +149,7 @@ def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> Non
         if line.startswith("Iteration "):
             stop_started = True
             import threading
+
             threading.Thread(target=controller.stop, daemon=True).start()
 
     controller.on_output = request_stop
@@ -176,11 +177,17 @@ def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> Non
     restart_session.case.execution.restart_option = "--restart"
     restart_controller = ExecutionController(
         restart_session,
-        SolverRunner([
-            solver, "--mesh", mesh,
-            "--output-dir", str(second_dir),
-            "--iterations", "5",
-        ]),
+        SolverRunner(
+            [
+                solver,
+                "--mesh",
+                mesh,
+                "--output-dir",
+                str(second_dir),
+                "--iterations",
+                "5",
+            ]
+        ),
     )
     restart_controller.restart(checkpoint)
     restart_thread = restart_controller.runner._thread
