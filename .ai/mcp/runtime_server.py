@@ -328,7 +328,13 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             }
         if document["format"] != "CFDX-EXECUTION":
             return {"ok": False, "errors": ["not a CFDX-EXECUTION artifact"]}
-        if document["schema_version"] != 1:
+        schema_version = document["schema_version"]
+        if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+            return {
+                "ok": False,
+                "errors": ["schema_version must be an integer"],
+            }
+        if schema_version != 1:
             return {
                 "ok": False,
                 "errors": [
@@ -351,9 +357,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
                 "ok": False,
                 "errors": ["iterations must be a non-negative integer"],
             }
+        convergence_status = document["convergence_status"]
         if (
-            not isinstance(document["convergence_status"], int)
-            or isinstance(document["convergence_status"], bool)
+            not isinstance(convergence_status, int)
+            or isinstance(convergence_status, bool)
         ):
             return {"ok": False, "errors": ["convergence_status must be an integer"]}
         if not isinstance(document["convergence_reason"], str):
@@ -384,7 +391,7 @@ def _validate_execution(path: Path) -> dict[str, Any]:
             "artifact": "execution",
             "path": path.name,
             "format": document["format"],
-            "schema_version": document["schema_version"],
+            "schema_version": schema_version,
             "process_exit_code": exit_code,
             "converged": document["converged"],
             "iterations": document["iterations"],
