@@ -128,9 +128,29 @@ def extract_evidence(
 
 def audit_evidence(evidence: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     required = {
-        "quality": ("case", "cells", "max_skewness", "max_nonorth_deg", "max_aspect", "min_volume", "max_volume"),
-        "solver": ("case", "cells", "iterations", "reported_relative_residual", "true_relative_residual"),
-        "polyhedral": ("cells", "max_skewness", "max_nonorth_deg", "max_aspect", "linear_gradient_Linf"),
+        "quality": (
+            "case",
+            "cells",
+            "max_skewness",
+            "max_nonorth_deg",
+            "max_aspect",
+            "min_volume",
+            "max_volume",
+        ),
+        "solver": (
+            "case",
+            "cells",
+            "iterations",
+            "reported_relative_residual",
+            "true_relative_residual",
+        ),
+        "polyhedral": (
+            "cells",
+            "max_skewness",
+            "max_nonorth_deg",
+            "max_aspect",
+            "linear_gradient_Linf",
+        ),
         "near_degenerate": ("max_aspect", "min_volume"),
         "invalid": ("rejected_errors",),
     }
