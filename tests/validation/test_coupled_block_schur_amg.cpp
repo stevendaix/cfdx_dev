@@ -35,10 +35,45 @@ SparseMatrix make_coupled_changed_pattern(std::size_t n, double velocity_diag=4.
     A.finalize();
     return A;
 }
+SparseMatrix make_gauged_coupled(std::size_t n, std::size_t reference_cell,
+                                      double velocity_diag=4.0) {
+    SparseMatrix A(4*n,4*n);
+    for(std::size_t c=0;c<n;++c){
+        for(std::size_t d=0;d<3;++d) A.push_back(d*n+c,d*n+c,velocity_diag);
+        if(c == reference_cell) {
+            A.push_back(3*n+c,3*n+c,1.0);
+            continue;
+        }
+        A.push_back(3*n+c,3*n+c,1.0);
+        A.push_back(3*n+c,c,1.0);
+        A.push_back(c,3*n+c,1.0);
+        if(c+1<n && c+1 != reference_cell){
+            A.push_back(c,3*n+c+1,-1.0);
+            A.push_back(3*n+c+1,c,-1.0);
+        }
+    }
+    A.finalize();
+    return A;
+}
+
 Vector matvec(const SparseMatrix&A,const Vector&x){auto v=A.matvec(x);Vector y(v.size());for(std::size_t i=0;i<v.size();++i)y(i)=v[i];return y;}
 double relres(const SparseMatrix&A,const Vector&x,const Vector&b){auto ax=A.matvec(x);double r=0,q=0;for(std::size_t i=0;i<b.size();++i){double e=b(i)-ax[i];r+=e*e;q+=b(i)*b(i);}return std::sqrt(r/std::max(q,1e-300));}
 }
 int main(){
+ run_case("coupled_4n_block_schur_preserves_pinned_pressure_gauge",[] {
+   constexpr std::size_t n = 32;
+   constexpr std::size_t reference_cell = 7;
+   const auto A=make_gauged_coupled(n, reference_cell);
+   CoupledBlockSchurAMGPreconditioner pc(n, CoupledBlockSchurOptions{}, reference_cell);
+   EXPECT_TRUE(pc.setup(A));
+   EXPECT_TRUE(pc.is_ready());
+   EXPECT_TRUE(pc.pressure_hierarchy_builds()==1);
+   EXPECT_TRUE(pc.pressure_coarse_size() < n-1);
+   Vector rhs(4*n, 0.0), z(4*n, 0.0);
+   for(std::size_t i=0;i<4*n;++i) rhs(i)=std::sin(0.037*(i+1));
+   EXPECT_TRUE(pc.apply(rhs,z));
+   EXPECT_TRUE(std::abs(z(3*n+reference_cell)) < 1e-14);
+ });
  run_case("coupled_4n_block_schur_uses_pressure_amg",[] {
    const auto A=make_coupled(16); Vector exact(64);
    for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.07*(i+1));
