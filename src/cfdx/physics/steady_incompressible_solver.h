@@ -224,6 +224,16 @@ struct IncompressibleIteration {
     double reconstructed_velocity_continuity_linf = std::numeric_limits<double>::infinity();
     // Maximum face-flux discrepancy between the conservative flux and reconstructed U flux.
     double flux_velocity_mismatch_linf = std::numeric_limits<double>::infinity();
+    // SIMPLEC coefficient audit: compare the signed row sum used by the
+    // production denominator with the absolute-value alternative. These are
+    // diagnostics only; validation gates remain independent.
+    std::array<double, 3> simplec_signed_offdiag_sum_linf{0.0, 0.0, 0.0};
+    std::array<double, 3> simplec_abs_offdiag_sum_linf{0.0, 0.0, 0.0};
+    std::array<double, 3> simplec_denominator_signed_linf{0.0, 0.0, 0.0};
+    std::array<double, 3> simplec_denominator_abs_linf{0.0, 0.0, 0.0};
+    std::array<double, 3> simplec_denominator_gap_linf{0.0, 0.0, 0.0};
+    std::array<std::size_t, 3> simplec_denominator_worst_cell{0, 0, 0};
+
     // Component-wise and location-aware diagnostics for independently
     // reassembled momentum equations. These are diagnostic signals only;
     // acceptance thresholds remain owned by the validation tests.
@@ -2464,7 +2474,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 rAU[d][c] = 1.0 / a;
                 rAtU[d][c] = rAU[d][c];
                 if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                    double h1 = 0.0;
+                    double signed_offdiag_sum = 0.0;
+                    double abs_offdiag_sum = 0.0;
                     const auto begin = eqs[d]->matrix.row_offsets_data()[c];
                     const auto end = eqs[d]->matrix.row_offsets_data()[c + 1];
                     for (std::uint32_t k = begin; k < end; ++k) {
@@ -2472,13 +2483,37 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         // Boundary contributions are assembled into the owner
                         // diagonal/source; off-diagonal entries are therefore
                         // genuine internal neighbour coefficients.
-                        if (col != c)
-                            h1 -= eqs[d]->matrix.values_data()[k];
+                        if (col != c) {
+                            const double value = eqs[d]->matrix.values_data()[k];
+                            signed_offdiag_sum += value;
+                            abs_offdiag_sum += std::abs(value);
+                        }
                     }
-                    const double denom = 1.0/rAU[d][c] - h1;
-                    if (!(denom > 0.0) || !std::isfinite(denom))
-                        throw std::runtime_error(
-                            "solve_steady_incompressible: invalid SIMPLEC consistent diagonal");
+                    const double diagonal = 1.0 / rAU[d][c];
+                    const double denom =
+                        simplec_consistent_diagonal(diagonal, signed_offdiag_sum);
+                    // Diagnostic counterpart only: using abs(A_PN) is not the
+                    // SIMPLEC contract. Retain it to make sign/convention drift
+                    // visible in exact-head validation artifacts.
+                    const double abs_denom =
+                        diagonal - abs_offdiag_sum;
+                    h.simplec_signed_offdiag_sum_linf[d] =
+                        std::max(h.simplec_signed_offdiag_sum_linf[d],
+                                 std::abs(signed_offdiag_sum));
+                    h.simplec_abs_offdiag_sum_linf[d] =
+                        std::max(h.simplec_abs_offdiag_sum_linf[d],
+                                 abs_offdiag_sum);
+                    h.simplec_denominator_signed_linf[d] =
+                        std::max(h.simplec_denominator_signed_linf[d],
+                                 std::abs(denom));
+                    h.simplec_denominator_abs_linf[d] =
+                        std::max(h.simplec_denominator_abs_linf[d],
+                                 std::abs(abs_denom));
+                    const double gap = std::abs(denom - abs_denom);
+                    if (gap > h.simplec_denominator_gap_linf[d])
+                        h.simplec_denominator_worst_cell[d] = c;
+                    h.simplec_denominator_gap_linf[d] =
+                        std::max(h.simplec_denominator_gap_linf[d], gap);
                     rAtU[d][c] = 1.0 / denom;
                 }
             }
