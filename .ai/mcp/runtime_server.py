@@ -20,9 +20,9 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
+from cfdx.case_io import validate_case_bundle
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
-from cfdx.case_io import validate_case_bundle
 
 
 def _root(configured: str | None) -> Path:
@@ -336,10 +336,10 @@ def _validate_execution(path: Path) -> dict[str, Any]:
                 ],
             }
         exit_code = document["process_exit_code"]
-        if exit_code not in (0, 1, 2):
-            return {"ok": False, "errors": ["process_exit_code must be 0, 1, or 2"]}
         if not isinstance(exit_code, int) or isinstance(exit_code, bool):
             return {"ok": False, "errors": ["process_exit_code must be an integer"]}
+        if exit_code not in (0, 1, 2):
+            return {"ok": False, "errors": ["process_exit_code must be 0, 1, or 2"]}
         if not isinstance(document["converged"], bool):
             return {"ok": False, "errors": ["converged must be a boolean"]}
         if (
@@ -438,7 +438,7 @@ _CONVERGENCE_INTEGER_FIELDS = {
 
 
 def _reject_nonfinite(value: str) -> None:
-    raise ValueError(f"convergence artifact contains non-finite JSON constant: {value}")
+    raise ValueError(f"JSON artifact contains non-finite constant: {value}")
 
 
 def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
