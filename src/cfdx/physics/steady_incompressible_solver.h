@@ -1622,7 +1622,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::SIMPLE
                 : CoupledSchurApproximationModel::SIMPLEC;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options, reference_cell);
         schur->set_simpler_schur(std::move(simpler));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1733,7 +1733,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::LSC
                 : CoupledSchurApproximationModel::BFBT;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options, reference_cell);
         schur->set_algebraic_schur(std::move(algebraic_schur));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1858,7 +1858,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("unsupported coupled Schur model");
         }
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options, reference_cell);
         if (schur_model == CoupledSchurModel::PCD)
             schur->set_pcd_schur(std::move(pcd));
         // Set the preconditioner up here for the same reason the BlockSchur
@@ -1876,7 +1876,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
-        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
+        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, CoupledBlockSchurOptions{}, reference_cell);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(
                 std::string("N8 coupled BlockSchur AMG setup failed: ") +
