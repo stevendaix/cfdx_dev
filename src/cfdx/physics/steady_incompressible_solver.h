@@ -2571,7 +2571,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t f = cell_faces[off+k];
                     continuity[c] += mesh.ownership().owner(f) == c
                         ? phiHbyA(f) : -phiHbyA(f);
-                    if (mesh.ownership().neighbour(f) >= 0) {
+                    if (mesh.ownership().neighbour(f) >= 0 && corr == 0) {
+                        // The first correction starts from HbyA, so the
+                        // already-known absolute pressure contribution must be
+                        // removed from the predictor. For PISO/PIMPLE/Fractional
+                        // Step subsequent corrections, phiHbyA is the
+                        // authoritative mass flux produced by the previous
+                        // correction; subtracting the current absolute pressure
+                        // term again would double-count p and make the pressure
+                        // correction solve a different continuity equation from
+                        // the flux that is actually accepted.
                         const double phi_nonorth = rhie_chow_pressure_flux_internal(
                             mesh, geometry, f, p, current_grad_p,
                             controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
