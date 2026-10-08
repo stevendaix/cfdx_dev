@@ -2543,33 +2543,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs);
 
-        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                const auto nr = mesh.ownership().neighbour(f);
-                if (nr < 0) continue;
-                const std::size_t o = mesh.ownership().owner(f);
-                const std::size_t n = static_cast<std::size_t>(nr);
-                const auto Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
-                const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
-                const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
-                                       geometry.cell_volumes[n]*rAtU[0][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[0][o] +
-                                       geometry.cell_volumes[n]*rAU[0][n]);
-                const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
-                                       geometry.cell_volumes[n]*rAtU[1][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[1][o] +
-                                       geometry.cell_volumes[n]*rAU[1][n]);
-                const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
-                                       geometry.cell_volumes[n]*rAtU[2][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[2][o] +
-                                       geometry.cell_volumes[n]*rAU[2][n]);
-                const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                phiHbyA(f) += controls.density * drn *
-                    (p(n)-p(o))/d * area;
-            }
-        }
+        // SIMPLEC already embeds the consistent-diagonal pressure term in
+        // HbyA above. Do not add a second face-level (rAtU-rAU) pressure
+        // contribution here: make_rhie_chow_mass_flux() uses the same HbyA
+        // and rAtU operator for the authoritative conservative flux. Adding
+        // it only to phiHbyA makes the pressure-correction matrix solve a
+        // different continuity operator from the flux that is later accepted,
+        // which creates a non-zero continuity floor even when the pressure
+        // correction solve itself converges.
 
         for (std::size_t corr = 0; corr < pressure_correctors; ++corr) {
             const std::size_t nc = mesh.n_cells();
