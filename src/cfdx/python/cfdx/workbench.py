@@ -249,7 +249,10 @@ if QMainWindow is not object:
             self.mesh_browser = MeshBrowserPanel()
             self.mesh_browser.selection_changed.connect(self._mesh_selection_changed)
             self._add_dock(
-                "Mesh", "workbench.dock.mesh", self.mesh_browser, Qt.DockWidgetArea.LeftDockWidgetArea
+                "Mesh",
+                "workbench.dock.mesh",
+                self.mesh_browser,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
             )
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
