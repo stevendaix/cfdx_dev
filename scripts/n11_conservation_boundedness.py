@@ -38,7 +38,7 @@ def parse_quantitative_records(output: str) -> list[dict[str, object]]:
         if prefix is None:
             continue
         record: dict[str, object] = {"record_type": prefix.strip()}
-        for token in line[len(prefix):].split():
+        for token in line[len(prefix) :].split():
             if "=" not in token:
                 continue
             key, value = token.split("=", 1)
@@ -185,8 +185,7 @@ def main() -> int:
         type=Path,
         default=None,
         help=(
-            "JSON report path (default: <build-dir>/"
-            "n11_conservation_boundedness.json)"
+            "JSON report path (default: <build-dir>/n11_conservation_boundedness.json)"
         ),
     )
     args = parser.parse_args()
