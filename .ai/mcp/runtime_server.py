@@ -374,9 +374,11 @@ def _validate_execution(path: Path) -> dict[str, Any]:
         for key in _EXECUTION_ARTIFACT_REQUIRED:
             if not isinstance(artifacts[key], bool):
                 return {
-                "ok": False,
-                "errors": [f"execution artifacts field {key!r} must be a boolean"],
-            }
+                    "ok": False,
+                    "errors": [
+                        f"execution artifacts field {key!r} must be a boolean"
+                    ],
+                }
         return {
             "ok": True,
             "artifact": "execution",
