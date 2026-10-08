@@ -49,8 +49,6 @@ def test_application_owns_controller_construction_and_restart_selection(
 
     # The DAT parser is intentionally not bypassed by the application facade.
     # A valid artifact is not required to test the ownership boundary.
-    from unittest.mock import patch
-
     class Restart:
         iteration = 12
         time = 0.25
