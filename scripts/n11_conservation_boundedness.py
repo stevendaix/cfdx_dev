@@ -38,7 +38,7 @@ def parse_quantitative_records(output: str) -> list[dict[str, object]]:
         if prefix is None:
             continue
         record: dict[str, object] = {"record_type": prefix.strip()}
-        for token in line[len(prefix) :].split():
+        for token in line[len(prefix):].split():
             if "=" not in token:
                 continue
             key, value = token.split("=", 1)
@@ -48,6 +48,7 @@ def parse_quantitative_records(output: str) -> list[dict[str, object]]:
                 record[key] = value
         records.append(record)
     return records
+
 
 REQUIRED_TESTS = (
     "test_conservation_boundedness",
