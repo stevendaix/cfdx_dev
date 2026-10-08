@@ -483,10 +483,8 @@ private:
     }
 
     bool setup_pressure_amg() {
-        if (reference_cell_ >= n_cells_) {
-            last_error_ = "pressure reference cell is required for coupled Schur AMG";
-            return false;
-        }
+        if (reference_cell_ >= n_cells_)
+            return pressure_amg_.setup(schur_);
         if (!build_reduced_pressure_operator(schur_)) return false;
         return pressure_amg_.setup(pressure_operator_);
     }
@@ -550,9 +548,10 @@ private:
     }
 
     bool apply_pressure_amg(const Vector& rhs, Vector& pressure) const {
-        if (reference_cell_ >= n_cells_ || rhs.size() != n_cells_ ||
-            pressure.size() != n_cells_)
+        if (rhs.size() != n_cells_ || pressure.size() != n_cells_)
             return false;
+        if (reference_cell_ >= n_cells_)
+            return pressure_amg_.apply(rhs, pressure);
         Vector reduced_rhs(n_cells_ - 1, 0.0), reduced_pressure(n_cells_ - 1, 0.0);
         for (std::size_t c = 0; c < n_cells_; ++c) {
             if (c == reference_cell_) continue;
