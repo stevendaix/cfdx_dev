@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from cfdx.dat_io import read_dat_restart
 
 from cfdx import CFDXSession, ExecutionController, SolverRunner
