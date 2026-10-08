@@ -190,6 +190,18 @@ ScalarBoundaryConditions channel_pressure_bc()
     return bc;
 }
 
+ScalarBoundaryConditions poiseuille_pressure_bc()
+{
+    auto bc = channel_pressure_bc();
+    // Pressure-driven Poiseuille flow: impose the exact pressure drop across
+    // the unit-length channel. This avoids using a body-force-driven,
+    // pure-Neumann pressure formulation for the physical benchmark, while
+    // retaining the same velocity oracle and convergence gates.
+    bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+    bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+    return bc;
+}
+
 Run solve_case(
     Mesh mesh,
     PressureVelocityAlgorithm algorithm,
@@ -352,7 +364,7 @@ int main()
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
-        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
+        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),poiseuille_pressure_bc(),0.0));
         require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
