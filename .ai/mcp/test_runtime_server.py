@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import pathlib
 import sys
 import tempfile
@@ -10,6 +11,7 @@ from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import runtime_server
 from runtime_server import create_server
 
 
@@ -65,6 +67,7 @@ async def exercise() -> None:
                 "checkpoint.compare",
                 "convergence.inspect",
                 "execution.inspect",
+                "execution.run",
             }
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
