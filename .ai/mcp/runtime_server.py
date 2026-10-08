@@ -796,7 +796,8 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
             "ok": False,
             "executed": False,
             "errors": [
-                f"controlled execution is disabled; set {_EXECUTION_ENABLE_ENV}=1 in the trusted server environment"
+                "controlled execution is disabled; set "
+                f"{_EXECUTION_ENABLE_ENV}=1 in the trusted server environment"
             ],
         }
     if not case_path.is_file() or not case_path.name.lower().endswith(".cfdx.h5"):
