@@ -130,3 +130,31 @@ def test_converted_case_contains_canonical_selection(tmp_path):
         assert "numerical_selection_report" in h5.attrs
         report = h5.attrs["numerical_selection_report"]
         assert "scheme[" in report
+
+
+
+def test_coupled_schur_registry_covers_all_production_models():
+    expected = {
+        "block_local": "schur.block_local",
+        "pcd": "schur.pcd",
+        "lsc": "schur.lsc",
+        "bfbt": "schur.bfbt",
+        "simple": "schur.simple",
+        "simplec": "schur.simplec",
+    }
+    for name, key in expected.items():
+        scheme = NumericalScheme(coupled_solver="coupled", coupled_schur=name)
+        selection = build_numerical_selection(scheme)
+        assert ("schur", key) in [
+            (entry.family, entry.configuration_key) for entry in selection.entries
+        ]
+        assert "schur" in selection.required_families
+        assert validate_numerical_selection(scheme) == []
+
+
+def test_coupled_case_without_schur_is_blocking():
+    scheme = NumericalScheme(coupled_solver="coupled")
+    errors = validate_numerical_selection(scheme)
+    assert errors == [
+        "coupled production solver requires an explicit Schur numerical selection"
+    ]
