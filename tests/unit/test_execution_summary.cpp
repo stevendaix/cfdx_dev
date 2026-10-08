@@ -9,11 +9,15 @@
 int main()
 {
     using cfdx::io::ExecutionSummary;
+    using cfdx::io::execution_exit_code_for_solver;
     using cfdx::io::write_execution_summary;
 
     const auto path = std::filesystem::temp_directory_path() /
                       "cfdx_execution_summary_test.json";
     std::error_code ec;
+    assert(execution_exit_code_for_solver(true) == 0);
+    assert(execution_exit_code_for_solver(false) == 1);
+
     std::filesystem::remove(path, ec);
 
     write_execution_summary(path.string(), ExecutionSummary{
@@ -36,6 +40,15 @@ int main()
 
     write_execution_summary(path.string(), ExecutionSummary{
         1, false, 9, 0, "iteration limit", true, true});
+    bool rejected_invalid_exit = false;
+    try {
+        write_execution_summary(path.string(), ExecutionSummary{
+            3, false, 0, 0, "invalid exit code", false, false});
+    } catch (const std::invalid_argument&) {
+        rejected_invalid_exit = true;
+    }
+    if (!rejected_invalid_exit)
+        return 1;
     in.close();
     in.open(path);
     buffer.str({});
