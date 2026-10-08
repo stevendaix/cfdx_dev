@@ -87,6 +87,7 @@ static double linf(const Vector& diff) {
     return m;
 }
 
+int main() {
     run_case("simplerc_signed_offdiag_contract", [&] {
         // The production convention is signed: A_t = A_P - sum(A_PN).
         // For the usual negative FV neighbour coefficients this is A_P + |sum|.
@@ -100,7 +101,6 @@ static double linf(const Vector& diff) {
             2.5, 1e-12);
     });
 
-int main() {
     // SPD coupled Auu (as in the exact-Schur test), D = G^T, diagonal C.
     const auto Auu = make_sparse(2, 2, {
         {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 3.0}
