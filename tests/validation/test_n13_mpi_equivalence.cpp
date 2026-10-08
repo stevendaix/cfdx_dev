@@ -154,7 +154,7 @@ int main(int argc, char** argv)
     }
 
     if (rank == 0) {
-        std::printf("N11_MPI_RESULT converged=%s global_balance_L1=%.17g global_balance_Linf=%.17g residual=%.17g ranks=%d\\n",
+        std::printf("N11_MPI_RESULT converged=%s global_balance_L1=%.17g global_balance_Linf=%.17g residual=%.17g ranks=%d\n",
                     result.linear_result.status == SolverStatus::CONVERGED ? "true" : "false",
                     global_l1_balance, global_linf_balance, result.global_residual, size);
     }
