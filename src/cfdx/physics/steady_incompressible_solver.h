@@ -2353,6 +2353,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         cfdx::core::SolverResult rx{}, ry{}, rz{};
         double pressure_residual = std::numeric_limits<double>::infinity();
         std::size_t pressure_iterations = 0;
+        std::array<double, 3> simplec_signed_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_abs_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_signed_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
+        std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -2462,12 +2468,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         std::array<std::vector<double>,3> rAU, rAtU, hbya;
-        std::array<double, 3> simplec_signed_offdiag_sum_audit{0.0, 0.0, 0.0};
-        std::array<double, 3> simplec_abs_offdiag_sum_audit{0.0, 0.0, 0.0};
-        std::array<double, 3> simplec_denominator_signed_audit{0.0, 0.0, 0.0};
-        std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
-        std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
-        std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
         for (std::size_t d = 0; d < 3; ++d) {
             rAU[d].resize(mesh.n_cells());
             rAtU[d].resize(mesh.n_cells());
