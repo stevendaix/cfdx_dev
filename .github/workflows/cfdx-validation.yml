@@ -4,7 +4,9 @@ name: CFDX total validation
 # Add the `validation-total` label to a PR to run this workflow; it can also
 # be started explicitly with workflow_dispatch, or run weekly on schedule.
 # Ordinary PR synchronization does not execute the expensive job unless that
-# label is present.
+# label is present. The fast/long CTest partitions together cover the complete
+# CTest registration; N1-N15 executable tests are therefore included in total
+# validation. N16 is checked separately because it has no executable gate.
 
 on:
   workflow_dispatch:
@@ -316,6 +318,26 @@ jobs:
         if: always()
         run: '[[ "${{ steps.application_e2e.outcome }}" == "success" ]] || exit 1'
 
+  n16-audit:
+    name: N16 maturity audit
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python
+        run: sudo apt-get update && sudo apt-get install -y python3
+      - name: Validate N16 deferred scope
+        id: n16_scope
+        run: |
+          python3 scripts/validate_numerical_maturity_audit.py \
+            docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.json \
+            docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+          echo "N16 has no mandatory executable gate: advanced methods remain explicitly deferred."
+      - name: Final N16 gate
+        if: always()
+        run: '[[ "\${{ steps.n16_scope.outcome }}" == "success" ]] || exit 1'
+
   validation-report:
     name: Validation report and metadata
     if: always()
@@ -388,6 +410,7 @@ jobs:
       - wall-distance
       - thermal-radiation
       - application-e2e
+      - n16-audit
       - validation-report
     runs-on: ubuntu-24.04
     steps:
@@ -400,6 +423,7 @@ jobs:
           echo "wall-distance=${{ needs.wall-distance.result }}"
           echo "thermal-radiation=${{ needs.thermal-radiation.result }}"
           echo "application-e2e=${{ needs.application-e2e.result }}"
+          echo "n16-audit=${{ needs.n16-audit.result }}"
           echo "validation-report=${{ needs.validation-report.result }}"
           for result in \
             "${{ needs.prepare.result }}" \
@@ -408,6 +432,7 @@ jobs:
             "${{ needs.wall-distance.result }}" \
             "${{ needs.thermal-radiation.result }}" \
             "${{ needs.application-e2e.result }}" \
+            "${{ needs.n16-audit.result }}" \
             "${{ needs.validation-report.result }}"; do
             if [[ "$result" != "success" ]]; then
               echo "CFDX total validation: FAIL"
