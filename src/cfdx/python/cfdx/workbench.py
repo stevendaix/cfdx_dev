@@ -71,7 +71,9 @@ if QMainWindow is not object:
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
-            self.application.events.subscribe(\n                ApplicationStateChanged, self._state_event.emit\n            )
+            self.application.events.subscribe(
+                ApplicationStateChanged, self._state_event.emit
+            )
             self.application.events.subscribe(ResultsChanged, self._results_event.emit)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
@@ -178,7 +180,11 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Open failed: {exc}")
 
         def _save_case(self) -> None:
-            path = (\n                Path(self.application.project_path)\n                if self.application.project_path\n                else None\n            )
+            path = (
+                Path(self.application.project_path)
+                if self.application.project_path
+                else None
+            )
             if path is None:
                 selected, _ = QFileDialog.getSaveFileName(
                     self,
@@ -277,7 +283,9 @@ if QMainWindow is not object:
                 viewport = PyVistaQtView()
                 self.view3d = viewport
             except RuntimeError as exc:
-                viewport = QLabel(f"3D renderer unavailable\n\n{exc}")
+                viewport = QLabel(f"3D renderer unavailable
+
+{exc}")
                 self.view3d = None
             viewport.setObjectName("workbench.viewport")
             viewport.setMinimumSize(480, 320)
@@ -349,7 +357,9 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                loaded = self.application.load_dat(\n                    path, use_for_restart=use_for_restart\n                )
+                loaded = self.application.load_dat(
+                    path, use_for_restart=use_for_restart
+                )
                 fields = []
                 if self.view3d is not None:
                     fields = self.view3d.load_cfdx_dat(
