@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from cfdx import CFDXSession
 from cfdx.application import Application, ApplicationStateChanged
@@ -78,3 +79,30 @@ def test_application_new_project_clears_restart_and_controller() -> None:
 
     assert application.restart_dat is None
     assert application.controller is None
+
+
+def test_application_open_project_with_dat_preserves_restart_identity(tmp_path):
+    application = Application(CFDXSession())
+    project_path = tmp_path / "case.cfdx.h5"
+    dat_path = tmp_path / "case.dat.h5"
+
+    loaded = CFDXSession()
+    loaded.case.name = "loaded"
+
+    class ProjectStub:
+        path = project_path
+
+        def load_with_dat(self, requested):
+            assert requested == dat_path
+            return loaded, dat_path
+
+        def load(self):
+            return loaded
+
+    with patch("cfdx.application.application.Project", return_value=ProjectStub()):
+        state = application.open_project(
+            project_path, with_dat=True, dat_path=dat_path
+        )
+
+    assert state.project.path.endswith("case.cfdx.h5")
+    assert application.restart_dat == dat_path
