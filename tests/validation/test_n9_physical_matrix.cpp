@@ -142,7 +142,8 @@ IncompressibleSolverControls controls_for(
     // campaigns. N9 qualifies physical integration; it does not retune the
     // underlying numerical method per algorithm.
     c.coupling.n_pressure_correctors =
-        (algorithm == PressureVelocityAlgorithm::PISO ||
+        (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
+         algorithm == PressureVelocityAlgorithm::PISO ||
          algorithm == PressureVelocityAlgorithm::PIMPLE) ? 2 : 1;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
