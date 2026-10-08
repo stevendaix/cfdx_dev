@@ -106,7 +106,6 @@ int main(int argc, char** argv)
             const std::size_t owner = ownership.owner(face);
             const auto neighbour = ownership.neighbour(face);
             const double area = geometry.face_Sf[face].mag();
-            const double outward_sign = owner == cell ? 1.0 : -1.0;
             double face_flux = 0.0;
             if (neighbour >= 0) {
                 const std::size_t other =
@@ -114,7 +113,9 @@ int main(int argc, char** argv)
                 const double d =
                     (geometry.cell_centres[other] - geometry.cell_centres[cell]).mag();
                 const double grad_normal = (global_values[other] - global_values[cell]) / d;
-                face_flux = -grad_normal * area * outward_sign;
+                // grad_normal is already oriented from this cell towards its
+                // neighbour; do not apply the owner orientation a second time.
+                face_flux = -grad_normal * area;
             } else if (std::isfinite(bc.face_values[face])) {
                 if (bc.type_for_face(face) == PoissonBoundaryType::DIRICHLET) {
                     const double d =
