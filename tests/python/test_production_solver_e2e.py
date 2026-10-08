@@ -128,11 +128,17 @@ def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> Non
     session = CFDXSession()
     controller = ExecutionController(
         session,
-        SolverRunner([
-            solver, "--mesh", mesh,
-            "--output-dir", str(first_dir),
-            "--iterations", "100000",
-        ]),
+        SolverRunner(
+            [
+                solver,
+                "--mesh",
+                mesh,
+                "--output-dir",
+                str(first_dir),
+                "--iterations",
+                "100000",
+            ]
+        ),
     )
     stop_started = False
 
