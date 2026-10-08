@@ -601,7 +601,7 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
         return {"ok": False, "errors": ["history_limit must be between 0 and 10000"]}
     try:
         with path.open("r", encoding="utf-8") as stream:
-            document = json.load(stream, parse_constant=_reject_execution_nonfinite)
+            document = json.load(stream, parse_constant=_reject_nonfinite)
         if not isinstance(document, dict):
             return {
                 "ok": False,
@@ -889,9 +889,13 @@ mcp = create_server()
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=None)
-    parser.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
+    parser.add_argument(
+        "--transport", choices=("stdio", "streamable-http"), default="stdio"
+    )
     args = parser.parse_args()
-    create_server(str(args.root) if args.root is not None else None).run(transport=args.transport)
+    create_server(str(args.root) if args.root is not None else None).run(
+        transport=args.transport
+    )
     return 0
 
 
