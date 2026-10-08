@@ -115,7 +115,15 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
                 return {"ok": False, "errors": ["not a CFDX DAT HDF5 checkpoint"]}
             if "fields" not in h5:
                 return {"ok": False, "errors": ["checkpoint has no fields group"]}
-            fields = [{"name": name, "shape": list(dataset.shape), "dtype": str(dataset.dtype), "size": int(dataset.size)} for name, dataset in h5["fields"].items()]
+            fields = [
+                {
+                    "name": name,
+                    "shape": list(dataset.shape),
+                    "dtype": str(dataset.dtype),
+                    "size": int(dataset.size),
+                }
+                for name, dataset in h5["fields"].items()
+            ]
             attributes = _attributes(h5)
             required_metadata = ("version", "cells", "iteration", "time")
             missing_metadata = [name for name in required_metadata if name not in attributes]
