@@ -1,4 +1,5 @@
 """Headless CLI using the same Application contracts as the GUI."""
+
 from __future__ import annotations
 
 import argparse
