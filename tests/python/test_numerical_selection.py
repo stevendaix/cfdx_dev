@@ -66,7 +66,9 @@ def test_unmapped_source_value_is_not_silently_rewritten():
     selection = build_numerical_selection(scheme)
     assert all(e.family != "convection" for e in selection.entries)
     errors = validate_numerical_selection(scheme)
-    assert errors == ["unmapped numerical setting for convection: 'source_specific_unknown'"]
+    assert errors == [
+        "unmapped numerical setting for convection: 'source_specific_unknown'"
+    ]
 
 
 def test_known_source_values_have_no_mapping_gaps():
@@ -88,7 +90,9 @@ def test_adapter_recorded_unmapped_setting_is_reported():
     """
     scheme = NumericalScheme(
         momentum_scheme="",
-        unmapped_settings=["convection: 'JST' (no faithful CFDX convection registry equivalent)"],
+        unmapped_settings=[
+            "convection: 'JST' (no faithful CFDX convection registry equivalent)"
+        ],
     )
     errors = validate_numerical_selection(scheme)
     assert errors == [
@@ -108,8 +112,14 @@ def test_converted_case_with_unmappable_scheme_is_blocking(tmp_path):
     result = convert(source)
 
     assert result.success is False
-    blocking = [f for f in result.gap_analysis.findings if f.severity.value == "unsupported_blocking"]
-    assert any(f.feature == "canonical_selection" and "JST" in f.detail for f in blocking)
+    blocking = [
+        f
+        for f in result.gap_analysis.findings
+        if f.severity.value == "unsupported_blocking"
+    ]
+    assert any(
+        f.feature == "canonical_selection" and "JST" in f.detail for f in blocking
+    )
 
 
 def test_converted_case_contains_canonical_selection(tmp_path):
@@ -130,3 +140,30 @@ def test_converted_case_contains_canonical_selection(tmp_path):
         assert "numerical_selection_report" in h5.attrs
         report = h5.attrs["numerical_selection_report"]
         assert "scheme[" in report
+
+
+def test_coupled_schur_registry_covers_all_production_models():
+    expected = {
+        "block_local": "schur.block_local",
+        "pcd": "schur.pcd",
+        "lsc": "schur.lsc",
+        "bfbt": "schur.bfbt",
+        "simple": "schur.simple",
+        "simplec": "schur.simplec",
+    }
+    for name, key in expected.items():
+        scheme = NumericalScheme(coupled_solver="coupled", coupled_schur=name)
+        selection = build_numerical_selection(scheme)
+        assert ("schur", key) in [
+            (entry.family, entry.configuration_key) for entry in selection.entries
+        ]
+        assert "schur" in selection.required_families
+        assert validate_numerical_selection(scheme) == []
+
+
+def test_coupled_case_without_schur_is_blocking():
+    scheme = NumericalScheme(coupled_solver="coupled")
+    errors = validate_numerical_selection(scheme)
+    assert errors == [
+        "coupled production solver requires an explicit Schur numerical selection"
+    ]
