@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from cfdx import CFDXSession, ExecutionController, SolverRunner
 from cfdx.dat_io import read_dat_restart
+from cfdx import CFDXSession, ExecutionController, SolverRunner
 
 
 def _run(controller: ExecutionController) -> None:
@@ -23,8 +23,7 @@ def _run(controller: ExecutionController) -> None:
     thread.join(timeout=30)
     assert not thread.is_alive()
     assert controller.session.state.value == "CONVERGED", (
-        f"production solver failed: error={controller.error!r}; "
-        f"output={output[-40:]!r}"
+        f"production solver failed: error={controller.error!r}; output={output[-40:]!r}"
     )
 
 
@@ -115,7 +114,6 @@ def test_production_solver_artifact_failure_updates_execution_exit(
     assert execution["artifacts"]["restart_dat"] is False
     assert execution["artifacts"]["convergence_json"] is False
     assert not (output_dir / "convergence.json").exists()
-
 
 
 def test_production_solver_stop_checkpoint_reload_restart(tmp_path: Path) -> None:
