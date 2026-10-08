@@ -105,7 +105,10 @@ def _inspect_checkpoint(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"ok": False, "errors": [f"checkpoint file does not exist: {path.name}"]}
     if not path.name.lower().endswith(".dat.h5"):
-        return {"ok": False, "errors": ["checkpoint must use the canonical .dat.h5 extension"]}
+        return {
+            "ok": False,
+            "errors": ["checkpoint must use the canonical .dat.h5 extension"],
+        }
     try:
         with h5py.File(path, "r") as h5:
             if _scalar(h5.attrs.get("format")) != "CFDX-DAT":
