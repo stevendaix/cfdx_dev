@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/simplerc_schur.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "common/test_harness.h"
 
 #include <cmath>
@@ -87,6 +88,19 @@ static double linf(const Vector& diff) {
 }
 
 int main() {
+    run_case("simplerc_signed_offdiag_contract", [&] {
+        // The production convention is signed: A_t = A_P - sum(A_PN).
+        // For the usual negative FV neighbour coefficients this is A_P + |sum|.
+        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, -1.5), 5.5, 1e-12);
+        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, 0.5), 3.5, 1e-12);
+
+        // The absolute-value construction is a diagnostic anti-contract and is
+        // intentionally not used by SIMPLEC.
+        EXPECT_NEAR(
+            cfdx::physics::simplec_abs_sum_diagnostic_denominator(4.0, 1.5),
+            2.5, 1e-12);
+    });
+
     // SPD coupled Auu (as in the exact-Schur test), D = G^T, diagonal C.
     const auto Auu = make_sparse(2, 2, {
         {0, 0, 4.0}, {0, 1, -1.0}, {1, 0, -1.0}, {1, 1, 3.0}

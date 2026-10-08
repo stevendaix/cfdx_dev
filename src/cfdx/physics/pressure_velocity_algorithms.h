@@ -219,6 +219,36 @@ inline double relaxed_value(double old_value, double computed_value, double alph
     return old_value + alpha * (computed_value - old_value);
 }
 
+// SIMPLEC uses the signed momentum-row off-diagonal coefficients.  The
+// consistent diagonal is A_P - sum_{N != P}(A_PN).  Keeping this helper next
+// to the pressure-velocity coefficient conventions prevents the physical
+// segregated path from silently drifting from the N8 algebraic Schur contract.
+inline double simplec_consistent_diagonal(
+    double diagonal,
+    double signed_offdiag_sum)
+{
+    if (!std::isfinite(diagonal) || !std::isfinite(signed_offdiag_sum) ||
+        diagonal <= 0.0)
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal: invalid momentum coefficients");
+    const double denominator = diagonal - signed_offdiag_sum;
+    if (!(denominator > 0.0) || !std::isfinite(denominator))
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal: non-positive/non-finite denominator");
+    return denominator;
+}
+
+inline double simplec_abs_sum_diagnostic_denominator(
+    double diagonal,
+    double abs_offdiag_sum)
+{
+    if (!std::isfinite(diagonal) || !std::isfinite(abs_offdiag_sum) ||
+        diagonal <= 0.0 || abs_offdiag_sum < 0.0)
+        throw std::invalid_argument(
+            "simplec_abs_sum_diagnostic_denominator: invalid coefficients");
+    return diagonal - abs_offdiag_sum;
+}
+
 // Discrete coefficient convention used throughout the pressure-velocity path:
 //
 //   A_P   = integrated FV momentum diagonal
