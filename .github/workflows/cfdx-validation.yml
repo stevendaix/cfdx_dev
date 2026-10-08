@@ -1,4 +1,4 @@
-name: CFDX total validation
+name: CFDX total validation (legacy)
 
 # Long/expensive validation is deliberately separated from the fast PR gate.
 # Add the `validation-total` label to a PR to run this workflow; it can also
@@ -10,10 +10,6 @@ name: CFDX total validation
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * 1"
-  pull_request:
-    types: [labeled, synchronize, reopened]
 
 permissions:
   contents: read
