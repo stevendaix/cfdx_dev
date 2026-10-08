@@ -24,7 +24,7 @@ env:
 jobs:
   build:
     name: Build N8/N9 numerical suite
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'n8') || contains(github.event.pull_request.labels.*.name, 'n9')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'N8') || contains(github.event.pull_request.labels.*.name, 'N9')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -61,7 +61,7 @@ jobs:
   n8:
     name: N8 dedicated tests
     needs: build
-    if: contains(github.event.pull_request.labels.*.name, 'n8') || github.event_name == 'workflow_dispatch'
+    if: contains(github.event.pull_request.labels.*.name, 'N8') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -85,7 +85,7 @@ jobs:
   n9:
     name: N9 dedicated tests
     needs: build
-    if: contains(github.event.pull_request.labels.*.name, 'n9') || github.event_name == 'workflow_dispatch'
+    if: contains(github.event.pull_request.labels.*.name, 'N9') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
