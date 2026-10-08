@@ -290,6 +290,8 @@ class Application:
         return self.state
 
     def run(self) -> ApplicationState:
+        """Start the configured solver through the shared application facade."""
+        self.ensure_controller()
         return self.execute(RunSolver())
 
     def pause(self) -> ApplicationState:
