@@ -76,7 +76,10 @@ def _inspect_case(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"ok": False, "errors": [f"case file does not exist: {path.name}"]}
     if not path.name.lower().endswith(".cfdx.h5"):
-        return {"ok": False, "errors": ["case must use the canonical .cfdx.h5 extension"]}
+        return {
+            "ok": False,
+            "errors": ["case must use the canonical .cfdx.h5 extension"],
+        }
     try:
         with h5py.File(path, "r") as h5:
             if _scalar(h5.attrs.get("format")) != "CFDX":
