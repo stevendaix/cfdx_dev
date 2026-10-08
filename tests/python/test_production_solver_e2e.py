@@ -264,11 +264,17 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     restart_session.case.execution.restart_option = "--restart"
     restart_controller = ExecutionController(
         restart_session,
-        SolverRunner([
-            solver, "--mesh", mesh,
-            "--output-dir", str(second_dir),
-            "--iterations", "5",
-        ]),
+        SolverRunner(
+            [
+                solver,
+                "--mesh",
+                mesh,
+                "--output-dir",
+                str(second_dir),
+                "--iterations",
+                "5",
+            ]
+        ),
     )
     restart_output: list[str] = []
     restart_controller.on_output = lambda line, is_stderr: restart_output.append(
