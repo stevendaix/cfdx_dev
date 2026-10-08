@@ -214,11 +214,17 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     session = CFDXSession()
     controller = ExecutionController(
         session,
-        SolverRunner([
-            solver, "--mesh", mesh,
-            "--output-dir", str(first_dir),
-            "--iterations", "20",
-        ]),
+        SolverRunner(
+            [
+                solver,
+                "--mesh",
+                mesh,
+                "--output-dir",
+                str(first_dir),
+                "--iterations",
+                "20",
+            ]
+        ),
     )
     _run(controller)
 
