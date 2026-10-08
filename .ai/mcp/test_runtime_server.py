@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import pathlib
 import sys
 import tempfile
@@ -11,7 +10,6 @@ from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import runtime_server
 from runtime_server import create_server
 
 
