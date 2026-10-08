@@ -770,7 +770,8 @@ def _configured_solver() -> Path:
     configured = os.environ.get(_EXECUTION_SOLVER_ENV)
     if not configured:
         raise PermissionError(
-            f"controlled execution requires {_EXECUTION_SOLVER_ENV} to name the approved solver executable"
+            "controlled execution requires "
+            f"{_EXECUTION_SOLVER_ENV} to name the approved solver executable"
         )
     solver = Path(configured).expanduser().resolve()
     if not solver.is_file():
@@ -783,12 +784,13 @@ def _configured_solver() -> Path:
 def _execution_timeout(value: float) -> float:
     if not np.isfinite(value) or value <= 0 or value > _EXECUTION_MAX_TIMEOUT:
         raise ValueError(
-            f"timeout must be greater than 0 and at most {_EXECUTION_MAX_TIMEOUT:g} seconds"
+            "timeout must be greater than 0 and at most "
+            f"{_EXECUTION_MAX_TIMEOUT:g} seconds"
         )
     return value
 
 
-def _execute_case(root: Path, case_path: Path, timeout: float) -> dict[str, Any]:
+def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
     if os.environ.get(_EXECUTION_ENABLE_ENV) != "1":
         return {
             "ok": False,
@@ -852,7 +854,12 @@ def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer(
         "CFDX Runtime MCP",
-        instructions="Read-only artifact inspection plus explicitly permission-gated execution. Runtime execution is disabled unless the trusted server environment sets CFDX_RUNTIME_ALLOW_EXECUTE=1 and CFDX_RUNTIME_SOLVER to an approved executable. Client inputs never select an arbitrary executable.",
+        instructions=(
+            "Read-only artifact inspection plus explicitly permission-gated execution. "
+            "Runtime execution is disabled unless the trusted server environment sets "
+            "CFDX_RUNTIME_ALLOW_EXECUTE=1 and CFDX_RUNTIME_SOLVER to an approved "
+            "executable. Client inputs never select an arbitrary executable."
+        ),
     )
     annotations = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     execution_annotations = ToolAnnotations(
@@ -967,11 +974,11 @@ def create_server(root: str | None = None) -> MCPServer:
         annotations=execution_annotations,
     )
     def execution_run(case_path: str, timeout: float = 3600.0) -> dict[str, Any]:
-        """Run the configured solver for one root-relative case under explicit server-side permission."""
+        """Run the configured solver for one root-relative case under explicit permission."""
         try:
             case = _safe_path(runtime_root, case_path)
-            return _execute_case(runtime_root, case, _execution_timeout(timeout))
-        except (PermissionError, ValueError, OSError) as exc:
+            return _execute_case(case, _execution_timeout(timeout))
+        except (OSError, PermissionError, TypeError, ValueError) as exc:
             return {"ok": False, "executed": False, "errors": [str(exc)]}
 
     @server.tool(
