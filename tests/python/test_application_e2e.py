@@ -23,9 +23,9 @@ from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 from cfdx.execution import ExecutionController
 from cfdx.mesh_model import read_mesh_catalog
 from cfdx.results_series import discover_result_series
+from cfdx.runner import SolverRunner
 from cfdx.session import CFDXSession, SimulationState
 from cfdx.validation import validate_case
-from cfdx.runner import SolverRunner
 
 
 def _write_mesh(path: Path) -> None:
