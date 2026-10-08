@@ -90,8 +90,9 @@ The first executable Runtime MCP surface is deliberately read-only and inspects 
 | `checkpoint.compare` | two root-relative `.dat.h5` paths + field name + optional component | descriptive field difference metrics between two checkpoints |
 | `convergence.inspect` | root-relative `convergence.json` path + optional history limit | validated convergence execution metadata and a bounded history slice |
 | `execution.inspect` | root-relative `execution.json` path | validated process outcome, convergence status/reason, iteration count, and artifact presence |
+| `execution.run` | root-relative `.cfdx.h5` path + bounded timeout | runs only the trusted server-configured solver when explicit execution permission is enabled |
 
-Paths are confined to the configured runtime root. These tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
+Inspection paths are confined to the configured runtime root. Read-only tools never create, modify, execute, monitor, restart, or delete CFDX state, and they do not claim convergence, verification, validation, or qualification.
 
 
 Field statistics are descriptive only: they do not establish convergence, verification, validation, or qualification. Vector fields may be summarized as a whole or one component at a time. The field tool reads the selected dataset but never modifies the checkpoint.
@@ -99,3 +100,18 @@ Field statistics are descriptive only: they do not establish convergence, verifi
 Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.\n\nConvergence inspection is also descriptive execution evidence. The tool validates the canonical `CFDX-CONVERGENCE` schema, rejects non-finite JSON values and malformed history records, and bounds the returned history with an explicit `history_limit` (0–10000). A valid convergence artifact is not itself a validation or qualification verdict.
 
 Execution inspection is descriptive execution evidence only. The tool validates the canonical `CFDX-EXECUTION` schema, rejects non-finite JSON values and malformed fields, enforces the process-exit semantics, and never claims solver success, verification, validation, or qualification.
+
+
+## Controlled Runtime execution
+
+`execution.run` is the first non-read-only Runtime MCP operation. It is intentionally disabled by default and is not an arbitrary shell interface.
+
+The trusted server environment must explicitly set:
+- `CFDX_RUNTIME_ALLOW_EXECUTE=1`;
+- `CFDX_RUNTIME_SOLVER` to an existing executable approved by the deployment administrator.
+
+The MCP client can select only a root-relative canonical `.cfdx.h5` case and a bounded timeout. It cannot select the executable, inject shell syntax, or supply arbitrary solver arguments. POSIX execution starts a new process group so a timeout can terminate the solver group rather than only the parent process. Captured stdout/stderr are bounded before being returned.
+
+Tool annotations mark `execution.run` as non-read-only while keeping `openWorldHint=false`. This annotation is descriptive and the environment gate remains the actual permission boundary.
+
+Execution results report the underlying process return code and output. They do not infer verification, validation, or qualification. The solver itself remains responsible for canonical execution/convergence artifact persistence.
