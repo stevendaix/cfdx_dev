@@ -8,11 +8,12 @@ from pathlib import Path
 import h5py
 import pytest
 
-
 SCHUR_MODELS = ("block_local", "pcd", "lsc", "bfbt", "simple", "simplec")
 
 
-def test_n9_coupled_schur_uses_case_selection_and_production_resolution(tmp_path: Path) -> None:
+def test_n9_coupled_schur_uses_case_selection_and_production_resolution(
+    tmp_path: Path,
+) -> None:
     """Prove requested -> resolved -> production dispatch through case.cfdx.h5.
 
     This is deliberately an integration/selection gate, not a physical
