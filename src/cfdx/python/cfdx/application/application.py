@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..execution import ExecutionController
+from ..dat_io import read_dat_restart
+from ..probe import ProbeCatalog
+from ..runner import SolverRunner
+from ..validation import validate_case
 from ..session import CFDXSession, ChangeImpact
 from .commands import (
     Command,
@@ -45,6 +49,7 @@ class Application:
         self.dirty = False
         self.events = EventBus()
         self.results = ResultsState()
+        self._restart_dat: Path | None = None
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
             self.run_center.on_change = lambda _state: self._publish_state()
@@ -94,6 +99,7 @@ class Application:
         self.selection = SelectionState()
         self.diagnostics = ()
         self.results = ResultsState()
+        self._restart_dat = None
         self.dirty = False
         return self._publish_state()
 
@@ -112,13 +118,25 @@ class Application:
             session = project.load()
         return self.replace_session(session, project_path=project.path)
 
+    @property
+    def restart_dat(self) -> Path | None:
+        """Return the explicitly selected numerical checkpoint, if any."""
+        return self._restart_dat
+
+    def new_project(self) -> ApplicationState:
+        """Create a new in-memory project through the shared lifecycle."""
+        return self.replace_session(CFDXSession())
+
     def save_project(self, path: str | Path | None = None) -> ApplicationState:
         """Save the current setup/mesh state without consuming DAT state."""
         target = Path(path) if path is not None else self.project_path
         if target is None:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
-        project.save(self.session)
+        if self._restart_dat is not None:
+            project.save_with_dat(self.session, self._restart_dat)
+        else:
+            project.save(self.session)
         return self.set_project_path(project.path, dirty=False)
 
     def save_project_with_dat(
@@ -130,7 +148,55 @@ class Application:
             raise ValueError("a .cfdx.h5 project path is required")
         project = Project(Path(target))
         project.save_with_dat(self.session, Path(source_dat))
+        self._restart_dat = Path(source_dat)
         return self.set_project_path(project.path, dirty=False)
+
+    def load_dat(self, path: str | Path, *, use_for_restart: bool = False):
+        """Read a numerical DAT artifact without involving a frontend renderer."""
+        if self.project_path is None:
+            raise ValueError("load a CFDX case before loading a DAT file")
+        restart = read_dat_restart(Path(path))
+        if use_for_restart:
+            self._restart_dat = Path(path)
+        return restart
+
+    def clear_restart(self) -> ApplicationState:
+        """Clear the selected numerical restart without changing case setup."""
+        self._restart_dat = None
+        return self._publish_state()
+
+    def ensure_controller(self) -> ExecutionController:
+        """Construct the canonical solver execution controller on demand."""
+        if self.controller is not None:
+            return self.controller
+        if self.project_path is None:
+            raise ValueError("save the case before starting the solver")
+        solver = self.session.case.execution.solver
+        if not solver:
+            raise ValueError("execution.solver must be configured before Run")
+        command = [solver, str(self.project_path)]
+        if self._restart_dat is not None:
+            restart_option = self.session.case.execution.restart_option
+            if not restart_option:
+                raise ValueError("a DAT checkpoint is loaded but no restart option is configured")
+            command.extend([restart_option, str(self._restart_dat)])
+        probe_catalog = ProbeCatalog(self.session.case.probes)
+        if probe_catalog.probes:
+            for spec in probe_catalog.specs():
+                command += ["--probe", spec]
+            command += ["--probe-csv", str(probe_catalog.csv_path(self.project_path))]
+        if self.session.case.execution.mpi_ranks > 1:
+            command = ["mpiexec", "-n", str(self.session.case.execution.mpi_ranks), *command]
+        controller = ExecutionController(
+            self.session,
+            SolverRunner(command, cwd=Path(self.project_path).parent),
+        )
+        self.attach_controller(controller)
+        return controller
+
+    def validate_case(self, mesh=None) -> ApplicationState:
+        """Validate the current case through the shared application contract."""
+        return self.validate(validate_case, mesh)
 
     def set_project_path(self, path: str | Path | None, *, dirty: bool | None = None) -> ApplicationState:
         self.project_path = path
