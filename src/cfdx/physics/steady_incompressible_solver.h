@@ -2464,18 +2464,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 rAU[d][c] = 1.0 / a;
                 rAtU[d][c] = rAU[d][c];
                 if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                    double h1 = 0.0;
+                    double offdiag_sum = 0.0;
                     const auto begin = eqs[d]->matrix.row_offsets_data()[c];
                     const auto end = eqs[d]->matrix.row_offsets_data()[c + 1];
                     for (std::uint32_t k = begin; k < end; ++k) {
                         const auto col = eqs[d]->matrix.columns_data()[k];
-                        // Boundary contributions are assembled into the owner
-                        // diagonal/source; off-diagonal entries are therefore
-                        // genuine internal neighbour coefficients.
+                        // SIMPLEC uses the signed row off-diagonal sum:
+                        // A_t = A_P - sum_{N} A_PN. The off-diagonal
+                        // coefficients of the momentum matrix are normally
+                        // negative, so this is A_P + sum |A_PN|, not
+                        // A_P - sum |A_PN|. This must match the N8
+                        // SimplerSchurApproximation contract exactly.
                         if (col != c)
-                            h1 -= eqs[d]->matrix.values_data()[k];
+                            offdiag_sum += eqs[d]->matrix.values_data()[k];
                     }
-                    const double denom = 1.0/rAU[d][c] - h1;
+                    const double denom = 1.0/rAU[d][c] - offdiag_sum;
                     if (!(denom > 0.0) || !std::isfinite(denom))
                         throw std::runtime_error(
                             "solve_steady_incompressible: invalid SIMPLEC consistent diagonal");
