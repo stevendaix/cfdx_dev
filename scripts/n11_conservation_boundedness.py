@@ -183,7 +183,10 @@ def main() -> int:
         "--report",
         type=Path,
         default=None,
-        help="JSON report path (default: <build-dir>/n11_conservation_boundedness.json)",
+        help=(
+            "JSON report path (default: <build-dir>/"
+            "n11_conservation_boundedness.json)"
+        ),
     )
     args = parser.parse_args()
 
