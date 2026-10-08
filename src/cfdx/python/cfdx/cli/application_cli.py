@@ -27,22 +27,14 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_info(args: argparse.Namespace) -> int:
     app = _application(args.case, args.dat)
     state = app.state
-    print(json.dumps({
-        "project_path": state.project.path,
-        "simulation_state": state.simulation_state.value,
-        "iteration": state.execution.iteration,
-        "time": state.execution.time,
-        "requires_restart": state.requires_restart,
-    }, indent=2, default=str))
+    print(\n        json.dumps(\n            {\n                "project_path": state.project.path,\n                "simulation_state": state.simulation_state.value,\n                "iteration": state.execution.iteration,\n                "time": state.execution.time,\n                "requires_restart": state.requires_restart,\n            },\n            indent=2,\n            default=str,\n        )\n    )
     return 0
 
 
 def cmd_results(args: argparse.Namespace) -> int:
     app = _application(args.case)
     state = app.open_results(args.directory)
-    print(json.dumps({
-        "directory": str(args.directory),
-        "frames": [
+    print(\n        json.dumps(\n            {\n                "directory": str(args.directory),\n                "frames": [
             {
                 "stable_id": frame.stable_id,
                 "path": frame.path,
@@ -51,11 +43,7 @@ def cmd_results(args: argparse.Namespace) -> int:
                 "iteration": frame.iteration,
                 "complete": frame.complete,
                 "fields": list(frame.fields),
-            }
-            for frame in state.results.frames
-        ],
-        "fields": list(state.results.field_names),
-    }, indent=2, default=str))
+                    }\n                    for frame in state.results.frames\n                ],\n                "fields": list(state.results.field_names),\n            },\n            indent=2,\n            default=str,\n        )\n    )
     return 0
 
 
