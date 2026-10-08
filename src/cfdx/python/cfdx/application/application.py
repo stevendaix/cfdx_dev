@@ -1,15 +1,19 @@
 """Application facade shared by CFDX frontends."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from ..execution import ExecutionController
 from ..dat_io import read_dat_restart
+from ..execution import ExecutionController
 from ..probe import ProbeCatalog
+from ..project import Project
+from ..results_series import ResultSeries, discover_result_series
 from ..runner import SolverRunner
-from ..validation import validate_case as _validate_case
 from ..session import CFDXSession, ChangeImpact
+from ..setup_schema import SetupSchema, build_setup_schema
+from ..validation import validate_case as _validate_case
 from .commands import (
     Command,
     PauseSolver,
@@ -20,13 +24,10 @@ from .commands import (
     StopSolver,
 )
 from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
-from .state import ApplicationState, SelectionState, build_application_state
 from .properties import PropertyState, properties_for_selection
-from .run_center import RunCenterModel
 from .results import ResultsState, build_results_state
-from ..results_series import ResultSeries, discover_result_series
-from ..project import Project
-from ..setup_schema import SetupSchema, build_setup_schema
+from .run_center import RunCenterModel
+from .state import ApplicationState, SelectionState, build_application_state
 
 
 class Application:
