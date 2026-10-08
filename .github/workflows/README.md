@@ -30,17 +30,26 @@ N16 has no executable acceptance gate because advanced methods are explicitly de
 
 The test mapping is kept in this workflow so GitHub remains the orchestration layer while CTest remains the source of executable test definitions.
 
+For active N8/N9 work, `.github/workflows/cfdx-n8-n9.yml` provides label-driven dedicated gates:
+- GitHub label `n8` runs the exact N8 numerical selection;
+- GitHub label `n9` runs the exact N9 numerical selection;
+- the labels persist across `synchronize`, so pushing a correction reruns the dedicated gate.
+
 ## 3. Total validation
 
 `.github/workflows/cfdx-validation.yml`
 
 Long/full qualification campaigns only:
-- long CTest;
+- all non-long CTest tests;
+- all long CTest tests;
 - wall-distance campaigns;
 - validation report;
 - thermal/radiation regression;
 - application E2E;
+- N16 maturity-scope audit;
 - retained evidence.
+
+The non-long and long CTest partitions are complementary: together they execute the complete CTest registration, so N1-N15 executable tests are not silently omitted from total validation.
 
 It is intentionally not a second N1 gate.
 
