@@ -54,7 +54,7 @@ jobs:
       - name: Upload numerical build
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-n8-n9-build-\${{ github.sha }}
+          name: cfdx-n8-n9-build-\${{ github.run_id }}
           path: \${{ env.BUILD_DIR }}
           retention-days: 1
 
