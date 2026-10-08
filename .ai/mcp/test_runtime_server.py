@@ -224,7 +224,9 @@ async def exercise() -> None:
             )
             assert bad_execution_result.is_error is False
             assert bad_execution_result.structured_content["ok"] is False
-            assert "schema version" in bad_execution_result.structured_content["errors"][0]
+            assert "schema version" in (
+                bad_execution_result.structured_content["errors"][0]
+            )
 
             nonfinite_execution = root / "nonfinite" / "execution.json"
             nonfinite_execution.parent.mkdir()
@@ -274,7 +276,9 @@ async def exercise() -> None:
             )
             assert inconsistent_result.is_error is False
             assert inconsistent_result.structured_content["ok"] is False
-            assert "exit code 0 requires converged=true" in inconsistent_result.structured_content["errors"][0]
+            assert "exit code 0 requires converged=true" in (
+                inconsistent_result.structured_content["errors"][0]
+            )
 
             convergence_result = await client.call_tool(
                 "convergence.inspect",
