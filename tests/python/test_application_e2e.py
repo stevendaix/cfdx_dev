@@ -17,6 +17,7 @@ from xml.etree import ElementTree
 import h5py
 import pytest
 
+from cfdx.application.application import Application
 from cfdx.case_io import read_case_with_dat, save_case_with_dat
 from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 from cfdx.execution import ExecutionController
@@ -201,15 +202,22 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     assert reloaded.fields["p"].values == [101325.0]
     assert reloaded_dat == dat_path
 
-    # 6. Restart from the persisted DAT through the real execution controller.
-    restart_session = reloaded
-    restart_runner = SolverRunner([sys.executable, str(solver_path), str(mesh_path)])
-    restart_controller = ExecutionController(restart_session, restart_runner)
-    restart_controller.restart(reloaded_dat)
+    # 6. Restart from the persisted DAT through the Application facade.
+    application = Application()
+    application.open_project(case_path, with_dat=True, dat_path=reloaded_dat)
+    restart_controller = application.ensure_controller()
+    assert restart_controller.runner.command == (
+        sys.executable,
+        str(case_path),
+        "--restart",
+        str(reloaded_dat),
+    )
+    application.run()
+    restart_runner = restart_controller.runner
     restart_runner._thread.join(timeout=5.0)
-    assert restart_session.state is SimulationState.CONVERGED
-    assert restart_session.iteration == 4
-    assert restart_session.time == pytest.approx(0.4)
+    assert application.session.state is SimulationState.CONVERGED
+    assert application.session.iteration == 4
+    assert application.session.time == pytest.approx(0.4)
     assert restart_controller.monitor_series.samples[-1].iteration == 4
 
     # 7. Discover the complete result series and inspect authoritative metadata.
