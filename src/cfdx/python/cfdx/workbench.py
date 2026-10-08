@@ -14,7 +14,6 @@ from .application import (
     WorkflowStatus,
     workflow_children,
 )
-from .dat_io import read_dat_restart
 from .mesh_model import read_mesh_catalog
 from .session import CFDXSession
 
