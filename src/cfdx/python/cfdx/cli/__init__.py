@@ -1,4 +1,6 @@
-"""CFDX CLI subpackage."""
-from cfdx.cli.convert_cli import main as convert_main
+"""Command-line frontends over the shared CFDX application facade."""
 
-__all__ = ["convert_main"]
+from .application_cli import main
+from .convert_cli import main as convert_main
+
+__all__ = ["convert_main", "main"]
