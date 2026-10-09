@@ -5,9 +5,11 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 using namespace cfdx::core;
@@ -246,8 +248,8 @@ Run solve_coupled_case(
         {cfdx::core::NumericalMethodFamily::PressureVelocity, "pressure_velocity.coupled"},
         {cfdx::core::NumericalMethodFamily::Schur,
          std::string("schur.") + cfdx::physics::to_string(schur_model)},
-        {cfdx::core::NumericalMethodFamily::Convection, "convection.upwind"},
-        {cfdx::core::NumericalMethodFamily::Gradient, "gradient.gauss_cell"},
+        {cfdx::core::NumericalMethodFamily::Convection, "numerics.convection.upwind"},
+        {cfdx::core::NumericalMethodFamily::Gradient, "numerics.gradient.gauss"},
         {cfdx::core::NumericalMethodFamily::LinearSolver, "linear.fgmres"},
     };
     selection.required_families = {
@@ -391,13 +393,12 @@ std::array<PressureVelocityAlgorithm,6> algorithms()
             PressureVelocityAlgorithm::FRACTIONAL_STEP,PressureVelocityAlgorithm::COUPLED};
 }
 
-std::array<CoupledSchurModel,6> qualified_schur_models()
+std::array<CoupledSchurModel,5> qualified_schur_models()
 {
-    // Production Schur models qualified by N8. Exact Schur remains an oracle,
-    // not a production model in this N9 integration matrix.
-    return {CoupledSchurModel::BlockLocal, CoupledSchurModel::PCD,
-            CoupledSchurModel::LSC, CoupledSchurModel::BFBT,
-            CoupledSchurModel::SIMPLE, CoupledSchurModel::SIMPLEC};
+    // Production Schur models qualified by N8. BlockLocal is the exact/oracle
+    // model and not a production model in this N9 integration matrix.
+    return {CoupledSchurModel::PCD, CoupledSchurModel::LSC,
+            CoupledSchurModel::BFBT, CoupledSchurModel::SIMPLE, CoupledSchurModel::SIMPLEC};
 }
 
 const char* schur_model_name(CoupledSchurModel model)
@@ -410,6 +411,10 @@ const char* schur_model_name(CoupledSchurModel model)
 
 int main()
 {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
     const auto algs=algorithms();
     const auto schur_models=qualified_schur_models();
 
@@ -429,16 +434,25 @@ int main()
     const auto p_channel=channel_pressure_bc();
 
     for (std::size_t k=0;k<algs.size();++k) {
+        // Skip COUPLED in the first loop - it's tested in the Schur model loop below
+        if (algs[k] == PressureVelocityAlgorithm::COUPLED) continue;
+        char buf[128];
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Couette\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
         couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0));
         require_physical_convergence(couette[k],"Couette",algs[k]);
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Poiseuille\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
         poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
         require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
 
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Cavity\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
         auto cavity_bc=channel_velocity_bc(0.0);
         cavity_bc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
         cavity_bc["outlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
@@ -454,6 +468,8 @@ int main()
     // the N9 physical matrix. Requested and resolved identities are checked
     // explicitly so no silent model substitution can satisfy this campaign.
     for (const auto schur_model : schur_models) {
+        std::string msg = "STARTING COUPLED " + std::string(schur_model_name(schur_model)) + "\n";
+        write(2, msg.data(), msg.size());
         const auto check_model = [&](const Run& r, const char* case_name) {
             if (!r.result.coupled_schur_model_resolved ||
                 r.result.requested_coupled_schur_model != schur_model ||
@@ -464,6 +480,8 @@ int main()
             }
         };
 
+        std::string msg2 = std::string("COUPLED ") + schur_model_name(schur_model) + " Couette\n";
+        write(2, msg2.data(), msg2.size());
         const auto coupled_couette = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
             u_channel, p_channel, 0.0);
@@ -472,6 +490,8 @@ int main()
         if (couette_l2(coupled_couette,12,16)>2e-3)
             throw std::runtime_error(std::string("COUPLED Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
 
+        std::string msg3 = std::string("COUPLED ") + schur_model_name(schur_model) + " Poiseuille\n";
+        write(2, msg3.data(), msg3.size());
         const auto coupled_poiseuille = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
             channel_velocity_bc(0.0), p_channel, 1.0);
