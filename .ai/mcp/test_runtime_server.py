@@ -38,7 +38,7 @@ def make_valid_case(path: pathlib.Path) -> pathlib.Path:
         h5.create_dataset("neighbour", data=[])
         h5.create_dataset("cell_faces", data=[0])
         h5.create_dataset("cell_offsets", data=[0, 1])
-        h5.create_dataset("fields/values", data=[0.0])
+        h5.require_group("fields").create_dataset("values", data=[0.0])
     assert all(validate_case_bundle(path).values())
     return path
 
@@ -168,6 +168,7 @@ async def exercise() -> None:
                 assert "inside the configured runtime root" in (
                     symlink_write.structured_content["errors"][0]
                 )
+                outside_case.unlink(missing_ok=True)
 
                 invalid_write = await client.call_tool(
                     "case.configure",
