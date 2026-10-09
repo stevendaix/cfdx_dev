@@ -267,9 +267,9 @@ async def exercise() -> None:
                 execution_escape.symlink_to(outside_case)
                 solver_marker = root / "solver-was-launched.marker"
                 solver.write_text(
-                    "#!/usr/bin/env python3\\n"
-                    "from pathlib import Path\\n"
-                    f"Path({str(solver_marker)!r}).write_text('launched')\\n",
+                    "#!/usr/bin/env python3\n"
+                    "from pathlib import Path\n"
+                    f"Path({str(solver_marker)!r}).write_text('launched')\n",
                     encoding="utf-8",
                 )
                 solver.chmod(0o755)
