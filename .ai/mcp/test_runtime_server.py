@@ -12,11 +12,10 @@ from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from runtime_server import create_server
-
 from cfdx.case import Case
 from cfdx.case_io import save_case, validate_case_bundle
 from cfdx.session import CFDXSession
+from runtime_server import create_server
 
 
 def make_valid_case(path: pathlib.Path) -> pathlib.Path:
@@ -137,8 +136,9 @@ async def exercise() -> None:
                 assert denied_write.is_error is False
                 assert denied_write.structured_content["ok"] is False
                 assert denied_write.structured_content["written"] is False
-                assert "case configuration is disabled" in (
-                    denied_write.structured_content["errors"][0]
+                assert (
+                    "case configuration is disabled"
+                    in (denied_write.structured_content["errors"][0])
                 )
                 os.environ["CFDX_RUNTIME_ALLOW_WRITE"] = "1"
 
@@ -163,8 +163,9 @@ async def exercise() -> None:
                     },
                 )
                 assert symlink_write.structured_content["ok"] is False
-                assert "inside the configured runtime root" in (
-                    symlink_write.structured_content["errors"][0]
+                assert (
+                    "inside the configured runtime root"
+                    in (symlink_write.structured_content["errors"][0])
                 )
                 outside_case.unlink(missing_ok=True)
 
@@ -602,7 +603,10 @@ async def exercise() -> None:
                 ("execution.inspect", {"execution_path": "../outside/execution.json"}),
                 ("execution.inspect", {"execution_path": "/etc/execution.json"}),
                 ("execution.run", {"case_path": "../outside.cfdx.h5"}),
-                ("case.configure", {"case_path": "../outside.cfdx.h5", "updates": {"name": "bad"}}),
+                (
+                    "case.configure",
+                    {"case_path": "../outside.cfdx.h5", "updates": {"name": "bad"}},
+                ),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 (
                     "checkpoint.field.inspect",
