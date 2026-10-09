@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import pathlib
 import sys
 import tempfile
@@ -65,11 +66,91 @@ async def exercise() -> None:
                 "checkpoint.compare",
                 "convergence.inspect",
                 "execution.inspect",
+                "execution.run",
             }
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
-                assert annotations["readOnlyHint"] is True
                 assert annotations["openWorldHint"] is False
+                assert annotations["readOnlyHint"] is (tool.name != "execution.run")
+
+            disabled_execution = await client.call_tool(
+                "execution.run", {"case_path": "demo.cfdx.h5"}
+            )
+            assert disabled_execution.is_error is False
+            assert disabled_execution.structured_content["ok"] is False
+            assert disabled_execution.structured_content["executed"] is False
+            assert (
+                "controlled execution is disabled"
+                in (disabled_execution.structured_content["errors"][0])
+            )
+
+            invalid_timeout = await client.call_tool(
+                "execution.run", {"case_path": "demo.cfdx.h5", "timeout": 0}
+            )
+            assert invalid_timeout.is_error is False
+            assert invalid_timeout.structured_content["ok"] is False
+            assert (
+                "timeout must be greater than 0"
+                in (invalid_timeout.structured_content["errors"][0])
+            )
+
+            solver = root / "fake-solver"
+            solver.write_text(
+                "#!/usr/bin/env python3\n"
+                "print('O' * 20000)\n"
+                "import sys\n"
+                "print('E' * 20000, file=sys.stderr)\n",
+                encoding="utf-8",
+            )
+            solver.chmod(0o755)
+            old_enable = os.environ.get("CFDX_RUNTIME_ALLOW_EXECUTE")
+            old_solver = os.environ.get("CFDX_RUNTIME_SOLVER")
+            os.environ["CFDX_RUNTIME_ALLOW_EXECUTE"] = "1"
+            os.environ["CFDX_RUNTIME_SOLVER"] = str(solver)
+            try:
+                successful_execution = await client.call_tool(
+                    "execution.run",
+                    {"case_path": "demo.cfdx.h5", "timeout": 10},
+                )
+                assert successful_execution.is_error is False
+                execution_data = successful_execution.structured_content
+                assert execution_data["ok"] is True
+                assert execution_data["executed"] is True
+                assert execution_data["timed_out"] is False
+                assert execution_data["returncode"] == 0
+                assert len(execution_data["stdout"]) <= 16384
+                assert len(execution_data["stderr"]) <= 16384
+                assert execution_data["stdout"].rstrip().endswith("O" * 100)
+                assert execution_data["stderr"].rstrip().endswith("E" * 100)
+
+                solver.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "import signal, time\n"
+                    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                    "while True: time.sleep(0.1)\n",
+                    encoding="utf-8",
+                )
+                solver.chmod(0o755)
+                timed_execution = await client.call_tool(
+                    "execution.run",
+                    {"case_path": "demo.cfdx.h5", "timeout": 0.1},
+                )
+                assert timed_execution.is_error is False
+                timeout_data = timed_execution.structured_content
+                assert timeout_data["ok"] is False
+                assert timeout_data["executed"] is True
+                assert timeout_data["timed_out"] is True
+                assert timeout_data["returncode"] is not None
+                assert "exceeded timeout" in timeout_data["errors"][0]
+            finally:
+                if old_enable is None:
+                    os.environ.pop("CFDX_RUNTIME_ALLOW_EXECUTE", None)
+                else:
+                    os.environ["CFDX_RUNTIME_ALLOW_EXECUTE"] = old_enable
+                if old_solver is None:
+                    os.environ.pop("CFDX_RUNTIME_SOLVER", None)
+                else:
+                    os.environ["CFDX_RUNTIME_SOLVER"] = old_solver
 
             case = await client.call_tool("case.inspect", {"case_path": "demo.cfdx.h5"})
             assert case.is_error is False
@@ -388,6 +469,7 @@ async def exercise() -> None:
                 ("convergence.inspect", {"convergence_path": "/etc/convergence.json"}),
                 ("execution.inspect", {"execution_path": "../outside/execution.json"}),
                 ("execution.inspect", {"execution_path": "/etc/execution.json"}),
+                ("execution.run", {"case_path": "../outside.cfdx.h5"}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 (
                     "checkpoint.field.inspect",

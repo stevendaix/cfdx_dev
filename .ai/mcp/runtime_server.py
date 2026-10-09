@@ -1,7 +1,8 @@
-"""Read-only CFDX Runtime MCP server.
+"""CFDX Runtime MCP server with read-only inspection and gated execution.
 
-This first Runtime MCP surface inspects existing CFDX case/checkpoint artifacts.
-It never creates, modifies, executes, or deletes cases or solver state.
+Artifact inspection is read-only. Solver execution is disabled by default and
+requires explicit trusted-server configuration; the client cannot choose an
+arbitrary executable or command.
 """
 
 from __future__ import annotations
@@ -9,7 +10,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
+import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -758,13 +763,155 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX convergence artifact: {exc}"]}
 
 
+_EXECUTION_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_EXECUTE"
+_EXECUTION_SOLVER_ENV = "CFDX_RUNTIME_SOLVER"
+_EXECUTION_MAX_TIMEOUT = 24 * 60 * 60
+_EXECUTION_OUTPUT_LIMIT = 16_384
+
+
+def _configured_solver() -> Path:
+    configured = os.environ.get(_EXECUTION_SOLVER_ENV)
+    if not configured:
+        raise PermissionError(
+            "controlled execution requires "
+            f"{_EXECUTION_SOLVER_ENV} to name the approved solver executable"
+        )
+    solver = Path(configured).expanduser().resolve()
+    if not solver.is_file():
+        raise PermissionError("configured runtime solver does not exist")
+    if not os.access(solver, os.X_OK):
+        raise PermissionError("configured runtime solver is not executable")
+    return solver
+
+
+def _execution_timeout(value: float) -> float:
+    if not np.isfinite(value) or value <= 0 or value > _EXECUTION_MAX_TIMEOUT:
+        raise ValueError(
+            "timeout must be greater than 0 and at most "
+            f"{_EXECUTION_MAX_TIMEOUT:g} seconds"
+        )
+    return value
+
+
+def _capture_output_tail(stream: Any, buffers: dict[str, str], key: str) -> None:
+    while chunk := stream.read(4096):
+        decoded = chunk.decode("utf-8", errors="replace")
+        buffers[key] = (buffers[key] + decoded)[-_EXECUTION_OUTPUT_LIMIT:]
+
+
+def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
+    if os.environ.get(_EXECUTION_ENABLE_ENV) != "1":
+        return {
+            "ok": False,
+            "executed": False,
+            "errors": [
+                (
+                    "controlled execution is disabled; set "
+                    f"{_EXECUTION_ENABLE_ENV}=1 in the trusted server environment"
+                )
+            ],
+        }
+    if not case_path.is_file() or not case_path.name.lower().endswith(".cfdx.h5"):
+        return {
+            "ok": False,
+            "executed": False,
+            "errors": ["case must be an existing canonical .cfdx.h5 artifact"],
+        }
+
+    solver = _configured_solver()
+    command = [str(solver), str(case_path)]
+    kwargs: dict[str, Any] = {
+        "cwd": str(case_path.parent),
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "bufsize": 0,
+    }
+    if os.name == "posix":
+        kwargs["start_new_session"] = True
+    elif os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+    process = subprocess.Popen(command, **kwargs)
+    buffers = {"stdout": "", "stderr": ""}
+    readers = [
+        threading.Thread(
+            target=_capture_output_tail,
+            args=(process.stdout, buffers, "stdout"),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_capture_output_tail,
+            args=(process.stderr, buffers, "stderr"),
+            daemon=True,
+        ),
+    ]
+    for reader in readers:
+        reader.start()
+
+    timed_out = False
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(process.pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.wait()
+        else:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+    for reader in readers:
+        reader.join(timeout=2)
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
+
+    result = {
+        "ok": process.returncode == 0 and not timed_out,
+        "executed": True,
+        "timed_out": timed_out,
+        "returncode": process.returncode,
+        "command": command,
+        "stdout": buffers["stdout"],
+        "stderr": buffers["stderr"],
+    }
+    if timed_out:
+        result["errors"] = [f"solver exceeded timeout of {timeout:g} seconds"]
+    return result
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer(
         "CFDX Runtime MCP",
-        instructions="Read-only CFDX runtime artifact inspection. These tools inspect case/checkpoint files only; they never execute CFDX, mutate artifacts, or claim solver success.",
+        instructions=(
+            "Read-only artifact inspection plus explicitly permission-gated execution. "
+            "Runtime execution is disabled unless the trusted server environment sets "
+            "CFDX_RUNTIME_ALLOW_EXECUTE=1 and CFDX_RUNTIME_SOLVER to an approved "
+            "executable. Client inputs never select an arbitrary executable."
+        ),
     )
     annotations = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+    execution_annotations = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 
     @server.tool(
         name="case.inspect", title="Inspect CFDX case", annotations=annotations
@@ -879,6 +1026,19 @@ def create_server(root: str | None = None) -> MCPServer:
             return _inspect_checkpoint(_safe_path(runtime_root, checkpoint_path))
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
+
+    @server.tool(
+        name="execution.run",
+        title="Run CFDX with controlled permission",
+        annotations=execution_annotations,
+    )
+    def execution_run(case_path: str, timeout: float = 3600.0) -> dict[str, Any]:
+        """Run the configured solver for one root-relative case under explicit permission."""
+        try:
+            case = _safe_path(runtime_root, case_path)
+            return _execute_case(case, _execution_timeout(timeout))
+        except (OSError, PermissionError, TypeError, ValueError) as exc:
+            return {"ok": False, "executed": False, "errors": [str(exc)]}
 
     return server
 
