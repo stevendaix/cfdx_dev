@@ -11,8 +11,10 @@ import argparse
 import json
 import os
 import signal
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -25,7 +27,9 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
-from cfdx.case_io import validate_case_bundle
+from cfdx.case import ExecutionConfig
+from cfdx.case_io import read_case, save_case, validate_case_bundle
+from cfdx.probe import Probe
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -899,6 +903,150 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
     return result
 
 
+
+_CASE_WRITE_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_WRITE"
+_CASE_CONFIG_MAX_BYTES = 1_048_576
+_CASE_CONFIG_KEYS = frozenset(
+    {"name", "physics", "numerics", "boundaries", "materials", "execution", "probes"}
+)
+_CASE_MAPPING_KEYS = ("physics", "numerics", "boundaries", "materials")
+_EXECUTION_CONFIG_KEYS = frozenset(
+    {"policy", "solver", "mpi_ranks", "deterministic", "restart_option"}
+)
+
+
+def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
+    if os.environ.get(_CASE_WRITE_ENABLE_ENV) != "1":
+        return {
+            "ok": False,
+            "written": False,
+            "errors": [
+                "case configuration is disabled; set "
+                f"{_CASE_WRITE_ENABLE_ENV}=1 in the trusted server environment"
+            ],
+        }
+    if not path.is_file() or not path.name.lower().endswith(".cfdx.h5"):
+        return {
+            "ok": False,
+            "written": False,
+            "errors": ["case must be an existing canonical .cfdx.h5 artifact"],
+        }
+    if not isinstance(updates, dict) or not updates:
+        raise ValueError("updates must be a non-empty JSON object")
+    unknown = sorted(set(updates) - _CASE_CONFIG_KEYS)
+    if unknown:
+        raise ValueError("unsupported case configuration keys: " + ", ".join(unknown))
+    try:
+        encoded_updates = json.dumps(
+            updates, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("updates must contain finite JSON values only") from exc
+    if len(encoded_updates) > _CASE_CONFIG_MAX_BYTES:
+        raise ValueError("case configuration update exceeds the 1 MiB limit")
+
+    checks = validate_case_bundle(path)
+    if not all(checks.values()):
+        raise ValueError("existing case bundle failed canonical integrity validation")
+    session = read_case(path)
+    case = session.case
+
+    if "name" in updates:
+        name = updates["name"]
+        if not isinstance(name, str) or not name.strip() or len(name) > 128:
+            raise ValueError("name must be a non-empty string of at most 128 characters")
+        case.name = name
+
+    for key in _CASE_MAPPING_KEYS:
+        if key in updates:
+            if not isinstance(updates[key], dict):
+                raise ValueError(f"{key} must be a JSON object")
+            setattr(case, key, updates[key])
+
+    if "execution" in updates:
+        if not isinstance(updates["execution"], dict):
+            raise ValueError("execution must be a JSON object")
+        unknown_execution = sorted(set(updates["execution"]) - _EXECUTION_CONFIG_KEYS)
+        if unknown_execution:
+            raise ValueError(
+                "unsupported execution configuration keys: "
+                + ", ".join(unknown_execution)
+            )
+        execution_data = {**case.execution.__dict__, **updates["execution"]}
+        try:
+            execution = ExecutionConfig(**execution_data)
+        except TypeError as exc:
+            raise ValueError("invalid execution configuration") from exc
+        if not isinstance(execution.policy, str) or not execution.policy.strip():
+            raise ValueError("execution.policy must be a non-empty string")
+        if execution.solver is not None and not isinstance(execution.solver, str):
+            raise ValueError("execution.solver must be a string or null")
+        if (
+            isinstance(execution.mpi_ranks, bool)
+            or not isinstance(execution.mpi_ranks, int)
+            or execution.mpi_ranks < 1
+        ):
+            raise ValueError("execution.mpi_ranks must be a positive integer")
+        if not isinstance(execution.deterministic, bool):
+            raise ValueError("execution.deterministic must be a boolean")
+        if execution.restart_option is not None and not isinstance(
+            execution.restart_option, str
+        ):
+            raise ValueError("execution.restart_option must be a string or null")
+        case.execution = execution
+
+    if "probes" in updates:
+        probes = updates["probes"]
+        if not isinstance(probes, list) or any(not isinstance(item, dict) for item in probes):
+            raise ValueError("probes must be a list of JSON objects")
+        try:
+            case.probes = [Probe.from_dict(item) for item in probes]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid probe configuration") from exc
+
+    try:
+        encoded_case = json.dumps(
+            case.as_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("case configuration must contain finite JSON values only") from exc
+    if len(encoded_case) > _CASE_CONFIG_MAX_BYTES:
+        raise ValueError("resulting case configuration exceeds the 1 MiB limit")
+
+    session.case_revision += 1
+    if any(key in updates for key in ("physics", "boundaries", "materials")):
+        session.physics_revision += 1
+    if "numerics" in updates:
+        session.numerics_revision += 1
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.stem}.", suffix=".cfdx.h5", dir=path.parent
+    )
+    os.close(descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        shutil.copy2(path, temporary_path)
+        save_case(session, temporary_path)
+        final_checks = validate_case_bundle(temporary_path)
+        if not all(final_checks.values()):
+            raise ValueError("updated case failed canonical integrity validation")
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return {
+        "ok": True,
+        "written": True,
+        "case_path": path.name,
+        "updated_sections": sorted(updates),
+        "case_revision": session.case_revision,
+        "physics_revision": session.physics_revision,
+        "numerics_revision": session.numerics_revision,
+        "atomic_replace": True,
+    }
+
+
+
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer(
@@ -912,6 +1060,7 @@ def create_server(root: str | None = None) -> MCPServer:
     )
     annotations = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     execution_annotations = ToolAnnotations(read_only_hint=False, open_world_hint=False)
+    write_annotations = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 
     @server.tool(
         name="case.inspect", title="Inspect CFDX case", annotations=annotations
@@ -1026,6 +1175,20 @@ def create_server(root: str | None = None) -> MCPServer:
             return _inspect_checkpoint(_safe_path(runtime_root, checkpoint_path))
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
+
+
+    @server.tool(
+        name="case.configure",
+        title="Configure CFDX case with controlled permission",
+        annotations=write_annotations,
+    )
+    def case_configure(case_path: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """Apply a validated partial configuration update to an existing case."""
+        try:
+            case = _safe_path(runtime_root, case_path)
+            return _configure_case(case, updates)
+        except (OSError, TypeError, ValueError) as exc:
+            return {"ok": False, "written": False, "errors": [str(exc)]}
 
     @server.tool(
         name="execution.run",
