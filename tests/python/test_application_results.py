@@ -10,15 +10,25 @@ from cfdx.application import (
     ResultsChanged,
     build_results_state,
 )
-from cfdx.results_series import ResultFrame, ResultSeries
 from cfdx.probe_validation import ProbeSample, ProbeSeries
+from cfdx.results_series import ResultFrame, ResultSeries
 
 
 def sample_series(tmp_path: Path) -> ResultSeries:
     return ResultSeries(
         (
-            ResultFrame(tmp_path / "result_000.vtu", 0, 0.0, True, ("pressure", "velocity"), 0, "metadata"),
-            ResultFrame(tmp_path / "result_001.vtu", 1, 0.1, True, ("pressure",), 1, "metadata"),
+            ResultFrame(
+                tmp_path / "result_000.vtu",
+                0,
+                0.0,
+                True,
+                ("pressure", "velocity"),
+                0,
+                "metadata",
+            ),
+            ResultFrame(
+                tmp_path / "result_001.vtu", 1, 0.1, True, ("pressure",), 1, "metadata"
+            ),
         )
     )
 
@@ -78,7 +88,9 @@ def test_display_object_rejects_unknown_renderer_kind() -> None:
         DisplayObject(stable_id="display:x", kind="vtk_actor", dataset_id="dataset:0")
 
 
-def test_application_probe_csv_contract_round_trips_solver_history(tmp_path: Path) -> None:
+def test_application_probe_csv_contract_round_trips_solver_history(
+    tmp_path: Path,
+) -> None:
     application = Application(CFDXSession())
     original = (
         ProbeSeries(
