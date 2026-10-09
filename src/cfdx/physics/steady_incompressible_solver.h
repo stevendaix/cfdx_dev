@@ -1945,6 +1945,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\\n";
     }
+    if (!has_fixed_pressure && diagnostics.coupled_matrix_summary) {
+        std::cerr << "GMRES_INIT_GAUGE index=" << (nv + reference_cell)
+                  << " value=" << x(nv + reference_cell) << '\\n';
+    }
     SolverResult result;
     if (solver_plan.krylov == KrylovModel::FGMRES) {
         result = solve_fgmres(
