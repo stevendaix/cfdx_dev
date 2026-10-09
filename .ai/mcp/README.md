@@ -98,7 +98,7 @@ Field statistics are descriptive only: they do not establish convergence, verifi
 
 Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.\n\nConvergence inspection is also descriptive execution evidence. The tool validates the canonical `CFDX-CONVERGENCE` schema, rejects non-finite JSON values and malformed history records, and bounds the returned history with an explicit `history_limit` (0–10000). A valid convergence artifact is not itself a validation or qualification verdict.
 
-Controlled Runtime case configuration
+## Controlled Runtime case configuration
 
 `case.configure` is the first controlled Runtime MCP write operation. It is disabled unless the trusted server environment sets `CFDX_RUNTIME_ALLOW_WRITE=1`. It updates only whitelisted case configuration sections on an existing canonical `.cfdx.h5` file; supplied sections replace their prior section and omitted sections are preserved. It rejects unknown keys, non-JSON/non-finite values, and configuration payloads over 1 MiB. Writes occur to a same-directory temporary case, use the canonical `read_case` / `save_case` persistence contract, revalidate the full case bundle, then commit with atomic `os.replace`. Mesh datasets are preserved, and a failed write leaves the original path unchanged. This permission is independent from the `execution.run` gate.
 
