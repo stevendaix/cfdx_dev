@@ -1630,7 +1630,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::SIMPLE
                 : CoupledSchurApproximationModel::SIMPLEC;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         schur->set_simpler_schur(std::move(simpler));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1741,7 +1743,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::LSC
                 : CoupledSchurApproximationModel::BFBT;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         schur->set_algebraic_schur(std::move(algebraic_schur));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1866,7 +1870,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("unsupported coupled Schur model");
         }
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (schur_model == CoupledSchurModel::PCD)
             schur->set_pcd_schur(std::move(pcd));
         // Set the preconditioner up here for the same reason the BlockSchur
@@ -1884,7 +1890,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
-        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
+        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, CoupledBlockSchurOptions{}, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(
                 std::string("N8 coupled BlockSchur AMG setup failed: ") +
@@ -2551,33 +2559,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs);
 
-        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                const auto nr = mesh.ownership().neighbour(f);
-                if (nr < 0) continue;
-                const std::size_t o = mesh.ownership().owner(f);
-                const std::size_t n = static_cast<std::size_t>(nr);
-                const auto Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
-                const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
-                const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
-                                       geometry.cell_volumes[n]*rAtU[0][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[0][o] +
-                                       geometry.cell_volumes[n]*rAU[0][n]);
-                const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
-                                       geometry.cell_volumes[n]*rAtU[1][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[1][o] +
-                                       geometry.cell_volumes[n]*rAU[1][n]);
-                const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
-                                       geometry.cell_volumes[n]*rAtU[2][n]) -
-                                  0.5*(geometry.cell_volumes[o]*rAU[2][o] +
-                                       geometry.cell_volumes[n]*rAU[2][n]);
-                const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                phiHbyA(f) += controls.density * drn *
-                    (p(n)-p(o))/d * area;
-            }
-        }
+        // SIMPLEC's consistent-diagonal pressure contribution is already
+        // represented by HbyA/rAtU. Adding another face-level correction here
+        // makes the predictor flux inconsistent with the continuity operator.
 
         for (std::size_t corr = 0; corr < pressure_correctors; ++corr) {
             const std::size_t nc = mesh.n_cells();
@@ -2598,7 +2582,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t f = cell_faces[off+k];
                     continuity[c] += mesh.ownership().owner(f) == c
                         ? phiHbyA(f) : -phiHbyA(f);
-                    if (mesh.ownership().neighbour(f) >= 0) {
+                    if (mesh.ownership().neighbour(f) >= 0 && corr == 0) {
+                        // Later PISO/PIMPLE/Fractional Step corrections start from
+                        // the authoritative flux produced by the previous correction.
                         const double phi_nonorth = rhie_chow_pressure_flux_internal(
                             mesh, geometry, f, p, current_grad_p,
                             controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
