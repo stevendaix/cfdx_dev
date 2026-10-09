@@ -31,7 +31,7 @@ class ProbeSeries:
         for a, b in zip(self.samples, self.samples[1:]):
             if b.iteration <= a.iteration or b.time < a.time:
                 raise ValueError(
-                    "probe samples must have strictly increasing iterations "
+                    "probe samples must be monotonic: iterations must be strictly increasing "
                     "and non-decreasing time"
                 )
 
@@ -129,7 +129,7 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
     for probe in series:
         if not probe.name:
             raise ValueError("probe name must not be empty")
-        if any(character in probe.name for character in ",\\r\\n"):
+        if any(character in probe.name for character in ",\r\n"):
             raise ValueError(
                 f"probe name must not contain a comma or newline: {probe.name!r}"
             )
