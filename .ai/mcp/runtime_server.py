@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import signal
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -902,7 +902,6 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
         result["errors"] = [f"solver exceeded timeout of {timeout:g} seconds"]
     return result
 
-
 _CASE_WRITE_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_WRITE"
 _CASE_CONFIG_MAX_BYTES = 1_048_576
 _CASE_CONFIG_KEYS = frozenset(
@@ -920,8 +919,10 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
             "ok": False,
             "written": False,
             "errors": [
-                "case configuration is disabled; set "
-                f"{_CASE_WRITE_ENABLE_ENV}=1 in the trusted server environment"
+                (
+                    "case configuration is disabled; set "
+                    f"{_CASE_WRITE_ENABLE_ENV}=1 in the trusted server environment"
+                )
             ],
         }
     if not path.is_file() or not path.name.lower().endswith(".cfdx.h5"):
@@ -960,7 +961,9 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
     if "name" in updates:
         name = updates["name"]
         if not isinstance(name, str) or not name.strip() or len(name) > 128:
-            raise ValueError("name must be a non-empty string of at most 128 characters")
+            raise ValueError(
+                "name must be a non-empty string of at most 128 characters"
+            )
         case.name = name
 
     for key in _CASE_MAPPING_KEYS:
@@ -1003,7 +1006,9 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
 
     if "probes" in updates:
         probes = updates["probes"]
-        if not isinstance(probes, list) or any(not isinstance(item, dict) for item in probes):
+        if not isinstance(probes, list) or any(
+            not isinstance(item, dict) for item in probes
+        ):
             raise ValueError("probes must be a list of JSON objects")
         try:
             case.probes = [Probe.from_dict(item) for item in probes]
@@ -1018,7 +1023,9 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
             case.as_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ValueError("case configuration must contain finite JSON values only") from exc
+        raise ValueError(
+            "case configuration must contain finite JSON values only"
+        ) from exc
     if len(encoded_case) > _CASE_CONFIG_MAX_BYTES:
         raise ValueError("resulting case configuration exceeds the 1 MiB limit")
 
