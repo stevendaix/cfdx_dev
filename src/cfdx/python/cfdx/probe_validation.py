@@ -129,10 +129,22 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
     for probe in series:
         if not probe.name:
             raise ValueError("probe name must not be empty")
-        if any(character in probe.name for character in ",\r\n"):
+        if any(character in probe.name for character in ",\\r\\n"):
             raise ValueError(
                 f"probe name must not contain a comma or newline: {probe.name!r}"
             )
+        if probe.name in seen_names:
+            raise ValueError(f"probe names must be unique: {probe.name!r}")
+        seen_names.add(probe.name)
+        has_metadata = bool(probe.point) or probe.field is not None or probe.unit is not None
+        if has_metadata and (
+            len(probe.point) != 3 or not probe.field or not probe.unit
+        ):
+            raise ValueError(
+                f"probe {probe.name!r} has incomplete metadata; expected "
+                "three coordinates, field, and unit"
+            )
+        seen_iterations: set[int] = set()
         for sample in probe.samples:
             if sample.iteration < 0:
                 raise ValueError("probe iteration must be non-negative")
