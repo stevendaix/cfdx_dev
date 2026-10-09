@@ -175,6 +175,7 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
             f"{name},{iteration},{_format_probe_csv_value(time_value)},"
             f"{_format_probe_csv_value(value)}"
         )
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return destination
 
