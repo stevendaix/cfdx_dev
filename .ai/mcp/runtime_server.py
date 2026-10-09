@@ -1,7 +1,8 @@
-"""Read-only CFDX Runtime MCP server.
+"""CFDX Runtime MCP server with read-only inspection and gated execution.
 
-This first Runtime MCP surface inspects existing CFDX case/checkpoint artifacts.
-It never creates, modifies, executes, or deletes cases or solver state.
+Artifact inspection is read-only. Solver execution is disabled by default and
+requires explicit trusted-server configuration; the client cannot choose an
+arbitrary executable or command.
 """
 
 from __future__ import annotations
