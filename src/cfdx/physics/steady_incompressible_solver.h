@@ -1948,8 +1948,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // The Schur pressure solve eliminates the reference-pressure correction.
     // Keep the full-system initial iterate in the same gauge subspace; otherwise
     // GMRES cannot change this component through preconditioned corrections.
+    // The gauge equation is p_ref = reference_value, not necessarily zero.
+    // Keep the initial iterate consistent with the assembled gauge RHS.
     if (!has_fixed_pressure)
-        x(nv + reference_cell) = 0.0;
+        x(nv + reference_cell) = reference_value;
     if (!has_fixed_pressure && diagnostics.coupled_matrix_summary) {
         std::cerr << "GMRES_INIT_GAUGE index=" << (nv + reference_cell)
                   << " value=" << x(nv + reference_cell) << '\\n';
