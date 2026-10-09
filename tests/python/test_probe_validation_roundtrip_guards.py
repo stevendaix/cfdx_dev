@@ -1,7 +1,6 @@
 """Regression tests for ambiguous probe CSV histories and metadata."""
 
 import pytest
-
 from cfdx.probe_validation import (
     PROBE_CSV_MAGIC,
     PROBE_CSV_VERSION,
