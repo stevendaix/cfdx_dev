@@ -29,8 +29,11 @@ class ProbeSeries:
 
     def validate_monotonic(self) -> None:
         for a, b in zip(self.samples, self.samples[1:]):
-            if b.iteration < a.iteration or b.time < a.time:
-                raise ValueError("probe samples must be monotonic")
+            if b.iteration <= a.iteration or b.time < a.time:
+                raise ValueError(
+                    "probe samples must have strictly increasing iterations "
+                    "and non-decreasing time"
+                )
 
     def max_relative_error(self, reference: Sequence[float]) -> float:
         if len(reference) != len(self.samples):
@@ -120,9 +123,9 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
     if not series:
         raise ValueError("probe CSV export requires at least one probe series")
     destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
 
     rows: list[tuple[str, int, float, float]] = []
+    seen_names: set[str] = set()
     for probe in series:
         if not probe.name:
             raise ValueError("probe name must not be empty")
@@ -133,6 +136,11 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
         for sample in probe.samples:
             if sample.iteration < 0:
                 raise ValueError("probe iteration must be non-negative")
+            if sample.iteration in seen_iterations:
+                raise ValueError(
+                    f"probe {probe.name!r} has duplicate iteration {sample.iteration}"
+                )
+            seen_iterations.add(sample.iteration)
             if not math.isfinite(sample.time) or not math.isfinite(sample.value):
                 raise ValueError(
                     f"probe {probe.name!r} has a non-finite sample"
