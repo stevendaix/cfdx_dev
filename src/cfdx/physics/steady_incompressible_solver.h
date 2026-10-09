@@ -1959,7 +1959,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Capture the true residual at the pressure gauge equation even when
     // GMRES/FGMRES fails. This is diagnostic-only and does not alter convergence
     // criteria, the matrix, the RHS, or the physical boundary conditions.
-    if (diagnostics.coupled_matrix_summary && !has_fixed_pressure) {
+    if (!has_fixed_pressure &&
+        (diagnostics.coupled_matrix_summary || result.status != SolverStatus::CONVERGED)) {
         const std::size_t gauge_row = nv + reference_cell;
         double ax_gauge = 0.0;
         const auto* gauge_ro = A.row_offsets_data();
