@@ -794,7 +794,8 @@ def _execution_timeout(value: float) -> float:
 
 def _capture_output_tail(stream: Any, buffers: dict[str, str], key: str) -> None:
     while chunk := stream.read(4096):
-        buffers[key] = (buffers[key] + chunk)[-_EXECUTION_OUTPUT_LIMIT:]
+        decoded = chunk.decode("utf-8", errors="replace")
+        buffers[key] = (buffers[key] + decoded)[-_EXECUTION_OUTPUT_LIMIT:]
 
 
 def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
@@ -822,9 +823,6 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
         "cwd": str(case_path.parent),
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
-        "text": True,
-        "encoding": "utf-8",
-        "errors": "replace",
         "bufsize": 0,
     }
     if os.name == "posix":
