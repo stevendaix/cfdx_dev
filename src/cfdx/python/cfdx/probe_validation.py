@@ -154,6 +154,7 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
                 "three coordinates, field, and unit"
             )
         seen_iterations: set[int] = set()
+        history: list[ProbeSample] = []
         for sample in probe.samples:
             if sample.iteration < 0:
                 raise ValueError("probe iteration must be non-negative")
@@ -164,7 +165,18 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
             seen_iterations.add(sample.iteration)
             if not math.isfinite(sample.time) or not math.isfinite(sample.value):
                 raise ValueError(f"probe {probe.name!r} has a non-finite sample")
+            history.append(sample)
             rows.append((probe.name, sample.iteration, sample.time, sample.value))
+        # Validate the same iteration-ordered history that will be serialized.
+        # Sort a copy so callers may provide samples in arbitrary input order.
+        ordered_history = sorted(history, key=lambda sample: sample.iteration)
+        ProbeSeries(
+            probe.name,
+            probe.point,
+            tuple(ordered_history),
+            field=probe.field,
+            unit=probe.unit,
+        ).validate_monotonic()
     rows.sort(key=lambda row: (row[0], row[1]))
 
     lines = [
