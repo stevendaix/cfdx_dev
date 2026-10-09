@@ -1,4 +1,5 @@
 """Quantitative point-probe validation contracts for GUI post-processing."""
+
 from __future__ import annotations
 
 import math
