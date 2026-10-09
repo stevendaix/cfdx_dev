@@ -6,6 +6,7 @@ execution, live monitoring, pause/resume, DAT persistence/reload, restart and
 VTU result-series inspection. The solver is a deterministic executable fixture
 so CI does not depend on an external installation.
 """
+
 from __future__ import annotations
 
 import sys
@@ -76,7 +77,8 @@ def _write_mesh(path: Path) -> None:
 
 def _write_solver(path: Path, results: Path) -> None:
     path.write_text(
-        dedent(
+        "#!/usr/bin/env python3\n"
+        + dedent(
             f"""
             import sys
             import time
@@ -110,6 +112,7 @@ def _write_solver(path: Path, results: Path) -> None:
         ),
         encoding="utf-8",
     )
+    path.chmod(path.stat().st_mode | 0o111)
 
 
 def _wait_for(path: Path, timeout: float = 5.0) -> None:
@@ -161,7 +164,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
         "field": "U",
         "value": 0.0,
     }
-    session.case.execution.solver = sys.executable
+    session.case.execution.solver = str(solver_path)
     session.case.execution.restart_option = "--restart"
     report = validate_case(session.case, catalog)
     assert report.ok, report.diagnostics
@@ -229,7 +232,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     application.open_project(case_path, with_dat=True, dat_path=reloaded_dat)
     restart_controller = application.ensure_controller()
     assert restart_controller.runner.command == (
-        sys.executable,
+        str(solver_path),
         str(case_path),
         "--restart",
         str(reloaded_dat),
