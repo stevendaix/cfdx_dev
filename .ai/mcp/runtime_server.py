@@ -902,6 +902,7 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
         result["errors"] = [f"solver exceeded timeout of {timeout:g} seconds"]
     return result
 
+
 _CASE_WRITE_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_WRITE"
 _CASE_CONFIG_MAX_BYTES = 1_048_576
 _CASE_CONFIG_KEYS = frozenset(
