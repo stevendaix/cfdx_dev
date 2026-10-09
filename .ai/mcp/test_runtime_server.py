@@ -259,6 +259,32 @@ async def exercise() -> None:
                 assert execution_data["stdout"].rstrip().endswith("O" * 100)
                 assert execution_data["stderr"].rstrip().endswith("E" * 100)
 
+                outside_case = root.parent / (root.name + "-execution-outside.cfdx.h5")
+                outside_case.write_bytes((root / "demo.cfdx.h5").read_bytes())
+                execution_escape = root / "escape-execution.cfdx.h5"
+                execution_escape.symlink_to(outside_case)
+                solver_marker = root / "solver-was-launched.marker"
+                solver.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "from pathlib import Path\n"
+                    f"Path({str(solver_marker)!r}).write_text('launched')\n",
+                    encoding="utf-8",
+                )
+                solver.chmod(0o755)
+                rejected_execution = await client.call_tool(
+                    "execution.run",
+                    {"case_path": execution_escape.name, "timeout": 10},
+                )
+                rejected_data = rejected_execution.structured_content
+                assert rejected_data["ok"] is False
+                assert rejected_data["executed"] is False
+                assert (
+                    "inside the configured runtime root" in rejected_data["errors"][0]
+                )
+                assert not solver_marker.exists()
+                execution_escape.unlink()
+                outside_case.unlink()
+
                 solver.write_text(
                     "#!/usr/bin/env python3\n"
                     "import signal, time\n"
