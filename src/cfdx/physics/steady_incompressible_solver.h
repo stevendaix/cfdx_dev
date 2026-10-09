@@ -1419,6 +1419,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         x(nv + c) = p_old(c);
     }
 
+    // PR #832 fix: zero the gauge row of the initial guess before GMRES.
+    // The gauge row is an identity row with rhs = reference_value (default 0.0).
+    // If x0(gauge) = p_old(reference_cell) is non-zero, the right-preconditioned
+    // GMRES may struggle to correct it because the preconditioner preserves
+    // the gauge component. Setting x0(gauge) = 0.0 gives the solver the correct
+    // starting point and avoids the stagnation observed in PR #830.
+    x(nv + reference_cell) = controls.pressure_reference_value;
+
     // Reject non-finite coefficients before entering GMRES. A bad local
     // coefficient must be diagnosed at assembly time rather than surfacing as
     // an opaque Krylov failure.
@@ -1912,7 +1920,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (diagnostics.coupled_matrix_summary) {
         std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner->name()
                   << " restart=" << gmres_restart
-                  << " adaptive_restart=0\\n";
+                  << " adaptive_restart=0\n";
     }
     SolverResult result;
     if (solver_plan.krylov == KrylovModel::FGMRES) {

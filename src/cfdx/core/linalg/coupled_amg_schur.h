@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/lsc_bfbt_schur.h"
 #include "cfdx/core/linalg/simplerc_schur.h"
+#include "cfdx/core/linalg/krylov_diagnostics.h"
 
 #include <algorithm>
 #include <array>
@@ -306,8 +307,19 @@ public:
     }
 
     bool apply(const Vector& r, Vector& z) const override {
-        if (!ready_ || r.size() != 4 * n_cells_ || z.size() != r.size())
+        if (!ready_ || r.size() != 4 * n_cells_ || z.size() != r.size()) {
+            if (krylov_diagnostics_enabled())
+                std::cerr << "KRYLOV_PRECOND_APPLY_FAIL stage=apply_preconditioner "
+                          << "reason=invalid_input\n";
             return false;
+        }
+
+        // Track gauge-row input value for diagnostic purposes.
+        // The gauge row is at index nv_ + reference_cell (typically 0).
+        const std::size_t gauge_row = nv_;  // reference_cell = 0
+        const double gauge_input = (gauge_row < r.size()) ? r(gauge_row) : 0.0;
+        if (krylov_diagnostics_verbose())
+            std::cerr << "KRYLOV_PRECOND_APPLY gauge_input=" << gauge_input << "\n";
 
         Vector ru(nv_), rp(n_cells_), y(nv_), schur_rhs(n_cells_);
         for (std::size_t i = 0; i < nv_; ++i) ru(i) = r(i);
@@ -335,16 +347,24 @@ public:
         };
 
         const auto solve_pressure = [&](const Vector& pressure_rhs, Vector& pressure) {
+            KrylovFailLog fail_log("pressure_amg_apply", name());
             if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
                 if (!pcd_ready_ || !pcd_schur_ ||
-                    !pcd_schur_->apply(pressure_rhs, pressure))
+                    !pcd_schur_->apply(pressure_rhs, pressure)) {
+                    fail_log.mark_failed();
                     return false;
+                }
             } else if (options_.schur_approximation == CoupledSchurApproximationModel::LSC ||
                        options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
                 if (!algebraic_ready_ || !algebraic_schur_ ||
-                    !algebraic_schur_->apply(pressure_rhs, pressure))
+                    !algebraic_schur_->apply(pressure_rhs, pressure)) {
+                    fail_log.mark_failed();
                     return false;
-            } else if (!pressure_amg_.apply(pressure_rhs, pressure)) return false;
+                }
+            } else if (!pressure_amg_.apply(pressure_rhs, pressure)) {
+                fail_log.mark_failed();
+                return false;
+            }
             if (options_.diagonal_schur_sign_flip) {
                 for (std::size_t c = 0; c < n_cells_; ++c)
                     pressure(c) = -pressure(c);
@@ -402,6 +422,10 @@ public:
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         }
         for (std::size_t c = 0; c < n_cells_; ++c) z(nv_ + c) = zp(c);
+        if (krylov_diagnostics_verbose()) {
+            const double gauge_output = (gauge_row < z.size()) ? z(gauge_row) : 0.0;
+            std::cerr << "KRYLOV_PRECOND_APPLY_DONE gauge_output=" << gauge_output << "\n";
+        }
         return z.is_valid();
     }
 
