@@ -314,7 +314,7 @@ public:
 
     bool apply(const Vector& r, Vector& z) const override {
         const auto fail_apply = [&](const char* stage) {
-            if (std::getenv("CFDX_KRYLOV_DIAGNOSTICS") != nullptr) {
+            {
                 std::cerr << "PRECONDITIONER_FAILURE type=CoupledBlockSchurAMG"
                           << " stage=" << stage << " ready=" << ready_
                           << " input_size=" << r.size() << " output_size=" << z.size()
