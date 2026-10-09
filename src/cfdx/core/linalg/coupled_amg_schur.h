@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/coupled_block_extraction.h"
@@ -407,6 +408,11 @@ public:
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         }
         for (std::size_t c = 0; c < n_cells_; ++c) z(nv_ + c) = zp(c);
+        if (reference_cell_ < n_cells_ && !gauge_apply_diagnostic_emitted_) {
+            std::cerr << "PRECOND_APPLY_GAUGE index=" << (nv_ + reference_cell_)
+                      << " value=" << z(nv_ + reference_cell_) << '\\n';
+            gauge_apply_diagnostic_emitted_ = true;
+        }
         return z.is_valid();
     }
 
@@ -741,6 +747,7 @@ private:
     std::size_t n_cells_{0}, nv_{0};
     CoupledBlockSchurOptions options_{};
     std::size_t reference_cell_{std::numeric_limits<std::size_t>::max()};
+    mutable bool gauge_apply_diagnostic_emitted_{false};
     std::vector<std::array<double,9>> velocity_inv_;
     std::vector<std::array<double,3>> velocity_inv_diag_;
     std::vector<std::size_t> row_;
