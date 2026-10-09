@@ -40,7 +40,7 @@ inline SolverResult solve_gmres(
     if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
         restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
         result.status = SolverStatus::NOT_APPLICABLE;
-        if (krylov_diagnostics) std::cerr << "KRYLOV_FAILURE solver=GMRES stage=input_validation\\n";
+        if (krylov_diagnostics) std::cerr << "KRYLOV_FAILURE solver=GMRES stage=input_validation\n";
         return result;
     }
 
