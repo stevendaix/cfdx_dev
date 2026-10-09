@@ -761,7 +761,6 @@ def _validate_convergence(path: Path, history_limit: int) -> dict[str, Any]:
         return {"ok": False, "errors": [f"invalid CFDX convergence artifact: {exc}"]}
 
 
-
 _EXECUTION_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_EXECUTE"
 _EXECUTION_SOLVER_ENV = "CFDX_RUNTIME_SOLVER"
 _EXECUTION_MAX_TIMEOUT = 24 * 60 * 60
@@ -889,7 +888,6 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
     if timed_out:
         result["errors"] = [f"solver exceeded timeout of {timeout:g} seconds"]
     return result
-
 
 
 def create_server(root: str | None = None) -> MCPServer:
@@ -1020,7 +1018,6 @@ def create_server(root: str | None = None) -> MCPServer:
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
 
-
     @server.tool(
         name="execution.run",
         title="Run CFDX with controlled permission",
@@ -1033,7 +1030,6 @@ def create_server(root: str | None = None) -> MCPServer:
             return _execute_case(case, _execution_timeout(timeout))
         except (OSError, PermissionError, TypeError, ValueError) as exc:
             return {"ok": False, "executed": False, "errors": [str(exc)]}
-
 
     return server
 
