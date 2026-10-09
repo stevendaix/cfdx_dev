@@ -11,6 +11,9 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 
@@ -33,6 +36,7 @@ inline SolverResult solve_gmres(
     GmresWorkspace* reusable_workspace = nullptr)
 {
     SolverResult result;
+    const bool krylov_diagnostics = std::getenv("CFDX_KRYLOV_DIAGNOSTICS") != nullptr;
     if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
         restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
         result.status = SolverStatus::NOT_APPLICABLE;
@@ -119,8 +123,32 @@ inline SolverResult solve_gmres(
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
+                    const double exact_residual = true_residual();
+                    const double input_norm = krylov_norm2(w.z, SolverPrecision::FP64, controls.reduction);
+                    std::size_t nonfinite_output = 0;
+                    double output_norm = 0.0;
+                    for (std::size_t k = 0; k < n; ++k) {
+                        if (!std::isfinite(w.vout(k))) ++nonfinite_output;
+                        output_norm = std::hypot(output_norm, w.vout(k));
+                    }
+                    if (krylov_diagnostics) {
+                        std::cerr << std::setprecision(17)
+                                  << "KRYLOV_FAILURE solver=GMRES stage=preconditioner_apply"
+                                  << " preconditioner=" << (preconditioner ? preconditioner->name() : "none")
+                                  << " iteration=" << iterations << " inner_j=" << j
+                                  << " n=" << n << " rhs_norm=" << b_norm
+                                  << " recursive_residual=" << beta
+                                  << " true_residual=" << exact_residual
+                                  << " true_relative_residual=" << exact_residual / rhs_scale
+                                  << " preconditioner_input_norm=" << input_norm
+                                  << " preconditioner_output_norm=" << output_norm
+                                  << " output_nonfinite_count=" << nonfinite_output
+                                  << " status=NOT_APPLICABLE\n";
+                    }
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iterations;
+                    result.residual = exact_residual;
+                    result.residual_relative = exact_residual / rhs_scale;
                     return result;
                 }
                 for (std::size_t i = 0; i < n; ++i) w.zv(static_cast<std::size_t>(j))[i] = w.vout(i);
