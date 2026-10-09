@@ -142,10 +142,6 @@ IncompressibleSolverControls controls_for(
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
-    // SIMPLEC uses the full consistent pressure-response operator; the
-    // physical qualification therefore uses the production-safe upper end of
-    // the default pressure-relaxation range. This is an algorithm parameter,
-    // not a validation relaxation or a gate change.
     c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 0.5 : 0.3;
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
@@ -157,18 +153,7 @@ IncompressibleSolverControls controls_for(
         algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
     c.coupling.coupled_max_iterations = 1000;
     c.coupling.schur_model = schur_model;
-    // The block solve must be at least two orders tighter than the nonlinear
-    // gate it feeds. solve_gmres stops on a 2-norm relative residual while the
-    // acceptance gate is an infinity-norm momentum residual scaled by the RHS
-    // magnitude, so a 1e-9 block tolerance leaves an absolute momentum residual
-    // of order 1e-8 and COUPLED cannot satisfy a 1e-8 relative gate on
-    // Poiseuille no matter how many outer iterations it is given: the state is
-    // frozen and the residual floor is set by the Krylov solve, not the
-    // nonlinearity. The block solve is a direct solve of the coupled system, so
-    // the tolerance is tightened rather than the gate relaxed.
     c.coupling.coupled_linear_tolerance = 1e-12;
-    // Use the N8-qualified production Schur path explicitly. The coupled
-    // solver must not silently select a different Schur model during N9.
     c.convergence.max_iterations = 1500;
     c.convergence.relative_tolerance = 1e-8;
     c.convergence.continuity_tolerance = 1e-8;
@@ -178,8 +163,13 @@ IncompressibleSolverControls controls_for(
     c.pressure_reference_value = 0.0;
     c.use_bounded_convection = true;
     c.convection_scheme = ConvectionScheme::UPWIND;
-    // Diagnostic only: expose the SIMPLEC nonlinear trajectory in CI without
-    // changing any convergence control or acceptance gate.
+
+    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
+        schur_model == CoupledSchurModel::PCD) {
+        c.pcd_convection_diffusion_linear_solver.preconditioner =
+            cfdx::core::PreconditionerModel::NativeAMG;
+    }
+
     if (algorithm == PressureVelocityAlgorithm::SIMPLEC) {
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 25;
