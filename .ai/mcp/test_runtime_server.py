@@ -278,7 +278,9 @@ async def exercise() -> None:
                 rejected_data = rejected_execution.structured_content
                 assert rejected_data["ok"] is False
                 assert rejected_data["executed"] is False
-                assert "inside the configured runtime root" in rejected_data["errors"][0]
+                assert (
+                    "inside the configured runtime root" in rejected_data["errors"][0]
+                )
                 assert not solver_marker.exists()
                 execution_escape.unlink()
                 outside_case.unlink()
