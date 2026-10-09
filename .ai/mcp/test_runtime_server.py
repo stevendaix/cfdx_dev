@@ -94,10 +94,10 @@ async def exercise() -> None:
 
             solver = root / "fake-solver"
             solver.write_text(
-                "#!/usr/bin/env python3\\n"
-                "print('O' * 20000)\\n"
-                "import sys\\n"
-                "print('E' * 20000, file=sys.stderr)\\n",
+                "#!/usr/bin/env python3\n"
+                "print('O' * 20000)\n"
+                "import sys\n"
+                "print('E' * 20000, file=sys.stderr)\n",
                 encoding="utf-8",
             )
             solver.chmod(0o755)
@@ -122,10 +122,10 @@ async def exercise() -> None:
                 assert execution_data["stderr"].endswith("E" * 100)
 
                 solver.write_text(
-                    "#!/usr/bin/env python3\\n"
-                    "import signal, time\\n"
-                    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\\n"
-                    "while True: time.sleep(0.1)\\n",
+                    "#!/usr/bin/env python3\n"
+                    "import signal, time\n"
+                    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                    "while True: time.sleep(0.1)\n",
                     encoding="utf-8",
                 )
                 solver.chmod(0o755)
