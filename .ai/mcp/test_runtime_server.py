@@ -11,6 +11,9 @@ import h5py
 from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
+)
 
 from cfdx.case import Case
 from cfdx.case_io import save_case, validate_case_bundle
