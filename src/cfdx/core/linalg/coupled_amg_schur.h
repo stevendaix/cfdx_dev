@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
@@ -312,8 +313,19 @@ public:
     }
 
     bool apply(const Vector& r, Vector& z) const override {
-        if (!ready_ || r.size() != 4 * n_cells_ || z.size() != r.size())
+        const auto fail_apply = [&](const char* stage) {
+            if (std::getenv("CFDX_KRYLOV_DIAGNOSTICS") != nullptr) {
+                std::cerr << "PRECONDITIONER_FAILURE type=CoupledBlockSchurAMG"
+                          << " stage=" << stage << " ready=" << ready_
+                          << " input_size=" << r.size() << " output_size=" << z.size()
+                          << " expected_size=" << (4 * n_cells_)
+                          << " n_cells=" << n_cells_ << " reference_cell=" << reference_cell_
+                          << "\\n";
+            }
             return false;
+        };
+        if (!ready_ || r.size() != 4 * n_cells_ || z.size() != r.size())
+            return fail_apply("invalid_state_or_vector_size");
 
         Vector ru(nv_), rp(n_cells_), y(nv_), schur_rhs(n_cells_);
         for (std::size_t i = 0; i < nv_; ++i) ru(i) = r(i);
@@ -344,13 +356,13 @@ public:
             if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
                 if (!pcd_ready_ || !pcd_schur_ ||
                     !pcd_schur_->apply(pressure_rhs, pressure))
-                    return false;
+                    return fail_apply("pcd_schur_apply");
             } else if (options_.schur_approximation == CoupledSchurApproximationModel::LSC ||
                        options_.schur_approximation == CoupledSchurApproximationModel::BFBT) {
                 if (!algebraic_ready_ || !algebraic_schur_ ||
                     !algebraic_schur_->apply(pressure_rhs, pressure))
-                    return false;
-            } else if (!apply_pressure_amg(pressure_rhs, pressure)) return false;
+                    return fail_apply("algebraic_schur_apply");
+            } else if (!apply_pressure_amg(pressure_rhs, pressure)) return fail_apply("pressure_amg_apply");
             if (options_.diagonal_schur_sign_flip) {
                 for (std::size_t c = 0; c < n_cells_; ++c)
                     pressure(c) = -pressure(c);
@@ -370,7 +382,7 @@ public:
             Vector pressure_rhs(n_cells_);
             for (std::size_t c = 0; c < n_cells_; ++c)
                 pressure_rhs(c) = rp(c);
-            if (!solve_pressure(pressure_rhs, zp)) return false;
+            if (!solve_pressure(pressure_rhs, zp)) return fail_apply("solve_pressure_diagonal");
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         } else if (options_.factorization == CoupledSchurFactorization::Lower) {
             apply_velocity_inverse(ru, y);
@@ -382,13 +394,13 @@ public:
                     if (col_[k] < nv_) value -= val_[k] * y(col_[k]);
                 pressure_rhs(c) = value;
             }
-            if (!solve_pressure(pressure_rhs, zp)) return false;
+            if (!solve_pressure(pressure_rhs, zp)) return fail_apply("solve_pressure_lower");
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         } else if (options_.factorization == CoupledSchurFactorization::Upper) {
             Vector pressure_rhs(n_cells_);
             for (std::size_t c = 0; c < n_cells_; ++c)
                 pressure_rhs(c) = rp(c);
-            if (!solve_pressure(pressure_rhs, zp)) return false;
+            if (!solve_pressure(pressure_rhs, zp)) return fail_apply("solve_pressure_upper");
             solve_velocity(ru, zp, y);
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         } else {
@@ -401,7 +413,7 @@ public:
                     if (col_[k] < nv_) value -= val_[k] * y(col_[k]);
                 pressure_rhs(c) = value;
             }
-            if (!solve_pressure(pressure_rhs, zp)) return false;
+            if (!solve_pressure(pressure_rhs, zp)) return fail_apply("solve_pressure_full");
             // Full block-LDU inverse: after the Schur solve, apply the
             // upper triangular correction u <- M^-1(r_u - G p).
             solve_velocity(ru, zp, y);
@@ -413,7 +425,8 @@ public:
                       << " value=" << z(nv_ + reference_cell_) << '\\n';
             gauge_apply_diagnostic_emitted_ = true;
         }
-        return z.is_valid();
+        if (!z.is_valid()) return fail_apply("nonfinite_or_invalid_output_vector");
+        return true;
     }
 
     const char* name() const override {
