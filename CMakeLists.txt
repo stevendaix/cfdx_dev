@@ -856,18 +856,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
-    # N9 physical qualification must run in CTest; compiling this target alone
-    # does not exercise the coupled Schur models or their strict residual gates.
-    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
-    set_tests_properties(test_n9_physical_matrix PROPERTIES
-        LABELS "n9;schur;qualification;validation;long;validation-total"
-        TIMEOUT 900
-        RUN_SERIAL TRUE)
-    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
-    set_tests_properties(test_n9_physical_matrix PROPERTIES
-        LABELS "n9;qualification;validation;long;validation-total"
-        TIMEOUT 1800
-        RUN_SERIAL TRUE)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
     set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
@@ -984,6 +972,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
+    # Keep the N9 physical Schur matrix in the standard CI suite. It is the
+    # regression gate for coupled physical convergence, not only a long campaign.
+    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES
+        LABELS "n9;schur;qualification;validation;long;validation-total"
+        TIMEOUT 900
+        RUN_SERIAL TRUE)
     add_cfdx_test(test_convergence_history tests/unit/test_convergence_history.cpp)
     add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
