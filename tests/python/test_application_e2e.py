@@ -6,6 +6,7 @@ execution, live monitoring, pause/resume, DAT persistence/reload, restart and
 VTU result-series inspection. The solver is a deterministic executable fixture
 so CI does not depend on an external installation.
 """
+
 from __future__ import annotations
 
 import sys
@@ -16,30 +17,49 @@ from xml.etree import ElementTree
 
 import h5py
 import pytest
-
+from cfdx.application.application import Application
 from cfdx.case_io import read_case_with_dat, save_case_with_dat
 from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 from cfdx.execution import ExecutionController
 from cfdx.mesh_model import read_mesh_catalog
 from cfdx.results_series import discover_result_series
+from cfdx.runner import SolverRunner
 from cfdx.session import CFDXSession, SimulationState
 from cfdx.validation import validate_case
-from cfdx.runner import SolverRunner
 
 
 def _write_mesh(path: Path) -> None:
     """Create the smallest real CFDX mesh/catalog accepted by the application."""
     with h5py.File(path, "w") as h5:
-        h5.create_dataset("points", data=[
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            1.0, 1.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0,
-            1.0, 0.0, 1.0,
-            1.0, 1.0, 1.0,
-            0.0, 1.0, 1.0,
-        ])
+        h5.create_dataset(
+            "points",
+            data=[
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+            ],
+        )
         # One quad face; the application catalog only needs consistent topology
         # and patch identity for this orchestration acceptance test.
         h5.create_dataset("face_vertices", data=[0, 1, 2, 3])
@@ -57,7 +77,8 @@ def _write_mesh(path: Path) -> None:
 
 def _write_solver(path: Path, results: Path) -> None:
     path.write_text(
-        dedent(
+        "#!/usr/bin/env python3\n"
+        + dedent(
             f"""
             import sys
             import time
@@ -91,6 +112,7 @@ def _write_solver(path: Path, results: Path) -> None:
         ),
         encoding="utf-8",
     )
+    path.chmod(path.stat().st_mode | 0o111)
 
 
 def _wait_for(path: Path, timeout: float = 5.0) -> None:
@@ -102,7 +124,9 @@ def _wait_for(path: Path, timeout: float = 5.0) -> None:
     raise AssertionError(f"timeout waiting for {path}")
 
 
-def _wait_for_state(session: CFDXSession, state: SimulationState, timeout: float = 5.0) -> None:
+def _wait_for_state(
+    session: CFDXSession, state: SimulationState, timeout: float = 5.0
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if session.state is state:
@@ -135,8 +159,12 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     }
     session.case.set_numerics(cfl=0.5)
     session.case.set_boundary("inlet", type="inlet", value="1.0")
-    session.case.physics["initialization"] = {"mode": "uniform", "field": "U", "value": 0.0}
-    session.case.execution.solver = sys.executable
+    session.case.physics["initialization"] = {
+        "mode": "uniform",
+        "field": "U",
+        "value": 0.0,
+    }
+    session.case.execution.solver = str(solver_path)
     session.case.execution.restart_option = "--restart"
     report = validate_case(session.case, catalog)
     assert report.ok, report.diagnostics
@@ -179,9 +207,7 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
             cell_ids=(0,),
         ),
     )
-    case_path, dat_path = save_case_with_dat(
-        session, mesh_path, source_dat
-    )
+    case_path, dat_path = save_case_with_dat(session, mesh_path, source_dat)
     assert dat_path.is_file()
 
     controller.resume()
@@ -201,15 +227,22 @@ def test_full_application_workflow_quantitative(tmp_path: Path) -> None:
     assert reloaded.fields["p"].values == [101325.0]
     assert reloaded_dat == dat_path
 
-    # 6. Restart from the persisted DAT through the real execution controller.
-    restart_session = reloaded
-    restart_runner = SolverRunner([sys.executable, str(solver_path), str(mesh_path)])
-    restart_controller = ExecutionController(restart_session, restart_runner)
-    restart_controller.restart(reloaded_dat)
+    # 6. Restart from the persisted DAT through the Application facade.
+    application = Application()
+    application.open_project(case_path, with_dat=True, dat_path=reloaded_dat)
+    restart_controller = application.ensure_controller()
+    assert restart_controller.runner.command == (
+        str(solver_path),
+        str(case_path),
+        "--restart",
+        str(reloaded_dat),
+    )
+    application.run()
+    restart_runner = restart_controller.runner
     restart_runner._thread.join(timeout=5.0)
-    assert restart_session.state is SimulationState.CONVERGED
-    assert restart_session.iteration == 4
-    assert restart_session.time == pytest.approx(0.4)
+    assert application.session.state is SimulationState.CONVERGED
+    assert application.session.iteration == 4
+    assert application.session.time == pytest.approx(0.4)
     assert restart_controller.monitor_series.samples[-1].iteration == 4
 
     # 7. Discover the complete result series and inspect authoritative metadata.
