@@ -493,10 +493,11 @@ private:
     }
 
     bool update_pressure_amg(const SparseMatrix& full_schur) {
-        if (reference_cell_ >= n_cells_) {
-            last_error_ = "pressure reference cell is required for coupled Schur AMG";
-            return false;
-        }
+        // Without an eliminated reference DOF, setup() owns the full pressure
+        // operator. Keep numeric updates on that same space; only the gauged
+        // path updates the reduced (n_cells - 1) operator.
+        if (reference_cell_ >= n_cells_)
+            return pressure_amg_.update_values(full_schur);
         if (!build_reduced_pressure_operator(full_schur)) return false;
         return pressure_amg_.update_values(pressure_operator_);
     }
