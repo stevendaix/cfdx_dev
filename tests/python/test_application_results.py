@@ -11,6 +11,7 @@ from cfdx.application import (
     build_results_state,
 )
 from cfdx.results_series import ResultFrame, ResultSeries
+from cfdx.probe_validation import ProbeSample, ProbeSeries
 
 
 def sample_series(tmp_path: Path) -> ResultSeries:
@@ -75,3 +76,21 @@ def test_display_object_round_trips_without_gui_dependencies() -> None:
 def test_display_object_rejects_unknown_renderer_kind() -> None:
     with pytest.raises(ValueError, match="unsupported display object kind"):
         DisplayObject(stable_id="display:x", kind="vtk_actor", dataset_id="dataset:0")
+
+
+def test_application_probe_csv_contract_round_trips_solver_history(tmp_path: Path) -> None:
+    application = Application(CFDXSession())
+    original = (
+        ProbeSeries(
+            "pressure",
+            (0.5, 0.5, 0.5),
+            (ProbeSample(1, 0.1, 101325.0), ProbeSample(2, 0.2, 101300.0)),
+            field="p",
+            unit="Pa",
+        ),
+    )
+    path = application.export_probe_results(tmp_path / "case.probes.csv", original)
+
+    assert path.is_file()
+    loaded = application.read_probe_results(path)
+    assert loaded == original
