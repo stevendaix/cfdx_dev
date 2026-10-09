@@ -79,8 +79,9 @@ async def exercise() -> None:
             assert disabled_execution.is_error is False
             assert disabled_execution.structured_content["ok"] is False
             assert disabled_execution.structured_content["executed"] is False
-            assert "controlled execution is disabled" in (
-                disabled_execution.structured_content["errors"][0]
+            assert (
+                "controlled execution is disabled"
+                in (disabled_execution.structured_content["errors"][0])
             )
 
             invalid_timeout = await client.call_tool(
@@ -88,8 +89,9 @@ async def exercise() -> None:
             )
             assert invalid_timeout.is_error is False
             assert invalid_timeout.structured_content["ok"] is False
-            assert "timeout must be greater than 0" in (
-                invalid_timeout.structured_content["errors"][0]
+            assert (
+                "timeout must be greater than 0"
+                in (invalid_timeout.structured_content["errors"][0])
             )
 
             solver = root / "fake-solver"
