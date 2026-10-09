@@ -20,6 +20,7 @@ class ProbeSample:
     time: float
     value: float
 
+
 @dataclass(frozen=True)
 class ProbeSeries:
     name: str
