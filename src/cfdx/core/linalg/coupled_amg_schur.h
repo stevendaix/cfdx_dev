@@ -313,14 +313,20 @@ public:
     }
 
     bool apply(const Vector& r, Vector& z) const override {
+        const bool krylov_diagnostics =
+            std::getenv("CFDX_KRYLOV_DIAGNOSTICS") != nullptr;
+        bool failure_reported = false;
         const auto fail_apply = [&](const char* stage) {
-            {
-                std::cerr << "PRECONDITIONER_FAILURE type=CoupledBlockSchurAMG"
-                          << " stage=" << stage << " ready=" << ready_
-                          << " input_size=" << r.size() << " output_size=" << z.size()
-                          << " expected_size=" << (4 * n_cells_)
-                          << " n_cells=" << n_cells_ << " reference_cell=" << reference_cell_
-                          << "\\n";
+            if (!failure_reported) {
+                failure_reported = true;
+                if (krylov_diagnostics) {
+                    std::cerr << "PRECONDITIONER_FAILURE type=CoupledBlockSchurAMG"
+                              << " stage=" << stage << " ready=" << ready_
+                              << " input_size=" << r.size() << " output_size=" << z.size()
+                              << " expected_size=" << (4 * n_cells_)
+                              << " n_cells=" << n_cells_
+                              << " reference_cell=" << reference_cell_ << "\n";
+                }
             }
             return false;
         };
@@ -420,9 +426,10 @@ public:
             for (std::size_t i = 0; i < nv_; ++i) z(i) = y(i);
         }
         for (std::size_t c = 0; c < n_cells_; ++c) z(nv_ + c) = zp(c);
-        if (reference_cell_ < n_cells_ && !gauge_apply_diagnostic_emitted_) {
+        if (krylov_diagnostics && reference_cell_ < n_cells_ &&
+            !gauge_apply_diagnostic_emitted_) {
             std::cerr << "PRECOND_APPLY_GAUGE index=" << (nv_ + reference_cell_)
-                      << " value=" << z(nv_ + reference_cell_) << '\\n';
+                      << " value=" << z(nv_ + reference_cell_) << '\n';
             gauge_apply_diagnostic_emitted_ = true;
         }
         if (!z.is_valid()) return fail_apply("nonfinite_or_invalid_output_vector");
