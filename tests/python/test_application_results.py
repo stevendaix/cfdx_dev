@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
-
 from cfdx.probe_validation import ProbeSample, ProbeSeries
 from cfdx.results_series import ResultFrame, ResultSeries
+
 from cfdx import CFDXSession
 from cfdx.application import (
     Application,
