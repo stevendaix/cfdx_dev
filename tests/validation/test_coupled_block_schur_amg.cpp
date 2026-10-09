@@ -280,5 +280,26 @@ int main(){
    EXPECT_TRUE(pc.pressure_numeric_updates()==1);
  }
 
+
+ run_case("coupled_4n_gmres_converges_with_reduced_pressure_gauge",[] {
+   constexpr std::size_t n = 16;
+   constexpr std::size_t reference_cell = 5;
+   const auto A = make_gauged_coupled(n, reference_cell);
+   Vector exact(4*n, 0.0);
+   for (std::size_t i = 0; i < 4*n; ++i)
+     exact(i) = std::sin(0.043 * static_cast<double>(i + 1));
+   exact(3*n + reference_cell) = 0.0;
+   const auto b = matvec(A, exact);
+   Vector x(4*n, 0.0);
+   CoupledBlockSchurAMGPreconditioner pc(
+       n, CoupledBlockSchurOptions{}, reference_cell);
+   EXPECT_TRUE(pc.setup(A));
+   const auto result = solve_gmres(A, b, x, 64, 400, 1e-10, &pc);
+   EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+   EXPECT_TRUE(relres(A, x, b) < 1e-9);
+   EXPECT_TRUE(std::abs(x(3*n + reference_cell)) < 1e-12);
+   EXPECT_TRUE((x - exact).norm_inf() < 1e-8);
+ });
+
  return run_all();
 }
