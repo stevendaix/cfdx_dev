@@ -131,7 +131,7 @@ inline SolverResult solve_gmres(
                         if (!std::isfinite(w.vout(k))) ++nonfinite_output;
                         output_norm = std::hypot(output_norm, w.vout(k));
                     }
-                    if (krylov_diagnostics) {
+                    {
                         std::cerr << std::setprecision(17)
                                   << "KRYLOV_FAILURE solver=GMRES stage=preconditioner_apply"
                                   << " preconditioner=" << (preconditioner ? preconditioner->name() : "none")
