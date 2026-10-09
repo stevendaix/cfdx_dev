@@ -12,6 +12,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -790,6 +791,14 @@ def _execution_timeout(value: float) -> float:
     return value
 
 
+def _read_output_tail(stream: Any, limit: int = _EXECUTION_OUTPUT_LIMIT) -> str:
+    stream.flush()
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(max(0, size - limit), os.SEEK_SET)
+    return stream.read()
+
+
 def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
     if os.environ.get(_EXECUTION_ENABLE_ENV) != "1":
         return {
@@ -811,46 +820,52 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
 
     solver = _configured_solver()
     command = [str(solver), str(case_path)]
-    kwargs: dict[str, Any] = {
-        "cwd": str(case_path.parent),
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
-        "text": True,
-    }
-    if os.name == "posix":
-        kwargs["start_new_session"] = True
-    elif os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-
-    process = subprocess.Popen(command, **kwargs)
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    with (
+        tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as stdout_file,
+        tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as stderr_file,
+    ):
+        kwargs: dict[str, Any] = {
+            "cwd": str(case_path.parent),
+            "stdout": stdout_file,
+            "stderr": stderr_file,
+            "text": True,
+        }
         if os.name == "posix":
-            os.killpg(process.pid, signal.SIGTERM)
-        else:
-            process.terminate()
-        stdout, stderr = process.communicate()
-        return {
-            "ok": False,
+            kwargs["start_new_session"] = True
+        elif os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        process = subprocess.Popen(command, **kwargs)
+        timed_out = False
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+                process.wait()
+
+        result = {
+            "ok": process.returncode == 0 and not timed_out,
             "executed": True,
-            "timed_out": True,
+            "timed_out": timed_out,
             "returncode": process.returncode,
             "command": command,
-            "stdout": stdout[-_EXECUTION_OUTPUT_LIMIT:],
-            "stderr": stderr[-_EXECUTION_OUTPUT_LIMIT:],
-            "errors": [f"solver exceeded timeout of {timeout:g} seconds"],
+            "stdout": _read_output_tail(stdout_file),
+            "stderr": _read_output_tail(stderr_file),
         }
-
-    return {
-        "ok": process.returncode == 0,
-        "executed": True,
-        "timed_out": False,
-        "returncode": process.returncode,
-        "command": command,
-        "stdout": stdout[-_EXECUTION_OUTPUT_LIMIT:],
-        "stderr": stderr[-_EXECUTION_OUTPUT_LIMIT:],
-    }
+        if timed_out:
+            result["errors"] = [f"solver exceeded timeout of {timeout:g} seconds"]
+        return result
 
 
 def create_server(root: str | None = None) -> MCPServer:
