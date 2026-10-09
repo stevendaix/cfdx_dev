@@ -507,27 +507,14 @@ private:
         const auto* row = full.row_offsets_data();
         const auto* col = full.columns_data();
         const auto* val = full.values_data();
-        constexpr double identity_tol = 1e-13;
-        for (std::size_t r = 0; r < n_cells_; ++r) {
-            for (std::size_t k = row[r]; k < row[r + 1]; ++k) {
-                const std::size_t j = col[k];
-                const double v = val[k];
-                if (r == ref) {
-                    if (j == ref) {
-                        if (!std::isfinite(v) || std::abs(v - 1.0) > identity_tol) {
-                            last_error_ = "pressure reference row is not a unit gauge row";
-                            return false;
-                        }
-                    } else if (std::abs(v) > identity_tol) {
-                        last_error_ = "pressure reference row is not isolated";
-                        return false;
-                    }
-                } else if (j == ref && std::abs(v) > identity_tol) {
-                    last_error_ = "pressure reference column is not eliminated";
-                    return false;
-                }
-            }
-        }
+
+        // The Schur approximation itself need not carry the coupled matrix's
+        // explicitly pinned gauge row: SIMPLE/SIMPLEC and the block-local
+        // approximation are assembled independently. Remove the reference
+        // pressure degree of freedom from the pressure operator itself instead
+        // of assuming its row/column have already been pinned in this matrix.
+        // The reduced principal submatrix is the gauge-free system; apply()
+        // reconstructs the omitted correction as exactly zero.
         pressure_operator_ = SparseMatrix(n_cells_ - 1, n_cells_ - 1);
         for (std::size_t r = 0; r < n_cells_; ++r) {
             if (r == ref) continue;
