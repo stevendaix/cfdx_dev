@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import asyncio
 import os
-from unittest.mock import patch
 import pathlib
 import sys
 import tempfile
+from unittest.mock import patch
 
 import h5py
 from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import runtime_server
 from runtime_server import create_server
 
 from cfdx.case import Case
@@ -196,7 +196,9 @@ async def exercise() -> None:
                 assert configured_data["case_revision"] == 1
                 assert configured_data["numerics_revision"] == 1
                 with h5py.File(valid_case_path, "r") as h5:
-                    config = h5["case/config"][()].decode("utf-8")
+                    config = h5["case/config"][()]
+                    if isinstance(config, bytes):
+                        config = config.decode("utf-8")
                     assert '"updated-case"' in config
                     assert "points" in h5
                     assert "face_vertices" in h5
