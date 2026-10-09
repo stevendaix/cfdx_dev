@@ -59,3 +59,40 @@ def test_write_probe_csv_creates_parent_directory(tmp_path):
     series = [ProbeSeries("pressure", (), (ProbeSample(1, 0.1, 1.0),))]
     assert write_probe_csv(destination, series) == destination
     assert destination.is_file()
+
+
+
+def test_write_probe_csv_rejects_decreasing_time_in_iteration_order(tmp_path):
+    series = ProbeSeries(
+        "pressure",
+        (),
+        (ProbeSample(1, 0.2, 10.0), ProbeSample(2, 0.1, 11.0)),
+    )
+    with pytest.raises(ValueError, match="non-decreasing time"):
+        write_probe_csv(tmp_path / "decreasing_time.csv", [series])
+
+
+def test_write_probe_csv_accepts_constant_time(tmp_path):
+    destination = tmp_path / "constant_time.csv"
+    series = ProbeSeries(
+        "pressure",
+        (),
+        (ProbeSample(1, 0.1, 10.0), ProbeSample(2, 0.1, 11.0)),
+    )
+    write_probe_csv(destination, [series])
+    assert [sample.time for sample in read_probe_csv(destination)[0].samples] == [
+        0.1,
+        0.1,
+    ]
+
+
+def test_write_probe_csv_allows_shared_iterations_across_probes(tmp_path):
+    destination = tmp_path / "shared_iterations.csv"
+    series = [
+        ProbeSeries("pressure", (), (ProbeSample(1, 0.1, 10.0),)),
+        ProbeSeries("velocity", (), (ProbeSample(1, 0.1, 2.0),)),
+    ]
+    write_probe_csv(destination, series)
+    restored = {probe.name: probe for probe in read_probe_csv(destination)}
+    assert restored["pressure"].samples[0].iteration == 1
+    assert restored["velocity"].samples[0].iteration == 1
