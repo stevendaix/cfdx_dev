@@ -230,6 +230,26 @@ int main(){
  });
 
  {
+   // A gauged Schur operator must keep its reduced (n-1) AMG hierarchy
+   // across numeric updates. This catches accidentally updating AMG with the
+   // full n-cell Schur matrix after setup eliminated the reference DOF.
+   constexpr std::size_t n = 8;
+   constexpr std::size_t reference_cell = 3;
+   const auto A = make_gauged_coupled(n, reference_cell);
+   const auto A2 = make_gauged_coupled(n, reference_cell, 4.25);
+   CoupledBlockSchurAMGPreconditioner pc(
+       n, CoupledBlockSchurOptions{}, reference_cell);
+   EXPECT_TRUE(pc.setup(A));
+   EXPECT_TRUE(pc.pressure_hierarchy_builds() == 1);
+   EXPECT_TRUE(pc.update_values(A2));
+   EXPECT_TRUE(pc.pressure_hierarchy_builds() == 1);
+   EXPECT_TRUE(pc.pressure_numeric_updates() == 1);
+   Vector rhs(4*n, 1.0), z(4*n, 0.0);
+   EXPECT_TRUE(pc.apply(rhs, z));
+   EXPECT_TRUE(std::abs(z(3*n + reference_cell)) < 1e-14);
+ }
+
+ {
    const auto A=make_coupled(8);
    // update_values() is numeric-only: it must not implicitly create a
    // symbolic hierarchy when setup() has not been called.
