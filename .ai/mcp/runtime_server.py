@@ -903,7 +903,6 @@ def _execute_case(case_path: Path, timeout: float) -> dict[str, Any]:
     return result
 
 
-
 _CASE_WRITE_ENABLE_ENV = "CFDX_RUNTIME_ALLOW_WRITE"
 _CASE_CONFIG_MAX_BYTES = 1_048_576
 _CASE_CONFIG_KEYS = frozenset(
@@ -1046,7 +1045,6 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
     }
 
 
-
 def create_server(root: str | None = None) -> MCPServer:
     runtime_root = _root(root)
     server = MCPServer(
@@ -1175,7 +1173,6 @@ def create_server(root: str | None = None) -> MCPServer:
             return _inspect_checkpoint(_safe_path(runtime_root, checkpoint_path))
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)]}
-
 
     @server.tool(
         name="case.configure",
