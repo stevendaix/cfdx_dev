@@ -351,10 +351,10 @@ def test_write_probe_csv_rejects_duplicate_iterations(tmp_path):
 def test_read_probe_csv_rejects_duplicate_iterations(tmp_path):
     path = tmp_path / "duplicate_iteration.csv"
     path.write_text(
-        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\\n"
-        "# columns: probe,iteration,time,value\\n"
-        "pressure,1,0.1,1.0\\n"
-        "pressure,1,0.2,1.1\\n",
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n"
+        "# columns: probe,iteration,time,value\n"
+        "pressure,1,0.1,1.0\n"
+        "pressure,1,0.2,1.1\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="strictly increasing iterations"):
