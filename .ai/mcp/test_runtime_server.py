@@ -259,9 +259,7 @@ async def exercise() -> None:
                 assert execution_data["stdout"].rstrip().endswith("O" * 100)
                 assert execution_data["stderr"].rstrip().endswith("E" * 100)
 
-                outside_case = root.parent / (
-                    root.name + "-execution-outside.cfdx.h5"
-                )
+                outside_case = root.parent / (root.name + "-execution-outside.cfdx.h5")
                 outside_case.write_bytes((root / "demo.cfdx.h5").read_bytes())
                 execution_escape = root / "escape-execution.cfdx.h5"
                 execution_escape.symlink_to(outside_case)
