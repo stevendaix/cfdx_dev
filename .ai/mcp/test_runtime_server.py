@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from unittest.mock import patch
 import pathlib
 import sys
 import tempfile
@@ -11,7 +12,35 @@ from mcp import Client
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import runtime_server
 from runtime_server import create_server
+
+from cfdx.case import Case
+from cfdx.case_io import save_case, validate_case_bundle
+from cfdx.session import CFDXSession
+
+
+
+def make_valid_case(path: pathlib.Path) -> pathlib.Path:
+    session = CFDXSession(
+        case=Case(
+            name="valid-case",
+            physics={"laminar": {"enabled": True}},
+            numerics={"scheme": "simple"},
+        )
+    )
+    save_case(session, path)
+    with h5py.File(path, "a") as h5:
+        h5.create_dataset("points", data=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        h5.create_dataset("face_vertices", data=[0, 1])
+        h5.create_dataset("face_offsets", data=[0, 2])
+        h5.create_dataset("owner", data=[0])
+        h5.create_dataset("neighbour", data=[])
+        h5.create_dataset("cell_faces", data=[0])
+        h5.create_dataset("cell_offsets", data=[0, 1])
+        h5.create_dataset("fields/values", data=[0.0])
+    assert all(validate_case_bundle(path).values())
+    return path
 
 
 def make_artifacts(root: pathlib.Path) -> None:
@@ -42,6 +71,7 @@ async def exercise() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         make_artifacts(root)
+        valid_case_path = make_valid_case(root / "valid.cfdx.h5")
         (root / "execution.json").write_text(
             """{
               "format": "CFDX-EXECUTION",
@@ -67,11 +97,14 @@ async def exercise() -> None:
                 "convergence.inspect",
                 "execution.inspect",
                 "execution.run",
+                "case.configure",
             }
             for tool in listed.tools:
                 annotations = tool.model_dump(by_alias=True).get("annotations", {})
                 assert annotations["openWorldHint"] is False
-                assert annotations["readOnlyHint"] is (tool.name != "execution.run")
+                assert annotations["readOnlyHint"] is (
+                    tool.name not in {"execution.run", "case.configure"}
+                )
 
             disabled_execution = await client.call_tool(
                 "execution.run", {"case_path": "demo.cfdx.h5"}
@@ -93,6 +126,104 @@ async def exercise() -> None:
                 "timeout must be greater than 0"
                 in (invalid_timeout.structured_content["errors"][0])
             )
+
+            old_write = os.environ.pop("CFDX_RUNTIME_ALLOW_WRITE", None)
+            try:
+                denied_write = await client.call_tool(
+                    "case.configure",
+                    {
+                        "case_path": "valid.cfdx.h5",
+                        "updates": {"numerics": {"scheme": "denied"}},
+                    },
+                )
+                assert denied_write.is_error is False
+                assert denied_write.structured_content["ok"] is False
+                assert denied_write.structured_content["written"] is False
+                assert "case configuration is disabled" in (
+                    denied_write.structured_content["errors"][0]
+                )
+                os.environ["CFDX_RUNTIME_ALLOW_WRITE"] = "1"
+
+                traversal_write = await client.call_tool(
+                    "case.configure",
+                    {
+                        "case_path": "../outside.cfdx.h5",
+                        "updates": {"name": "escape"},
+                    },
+                )
+                assert traversal_write.structured_content["ok"] is False
+
+                outside_case = root.parent / (root.name + "-outside.cfdx.h5")
+                outside_case.write_bytes(valid_case_path.read_bytes())
+                escape_link = root / "escape.cfdx.h5"
+                escape_link.symlink_to(outside_case)
+                symlink_write = await client.call_tool(
+                    "case.configure",
+                    {
+                        "case_path": "escape.cfdx.h5",
+                        "updates": {"name": "escape"},
+                    },
+                )
+                assert symlink_write.structured_content["ok"] is False
+                assert "inside the configured runtime root" in (
+                    symlink_write.structured_content["errors"][0]
+                )
+
+                invalid_write = await client.call_tool(
+                    "case.configure",
+                    {
+                        "case_path": "valid.cfdx.h5",
+                        "updates": {"numerics": ["not", "an", "object"]},
+                    },
+                )
+                assert invalid_write.structured_content["ok"] is False
+
+                configured = await client.call_tool(
+                    "case.configure",
+                    {
+                        "case_path": "valid.cfdx.h5",
+                        "updates": {
+                            "name": "updated-case",
+                            "numerics": {"scheme": "coupled"},
+                        },
+                    },
+                )
+                assert configured.is_error is False
+                configured_data = configured.structured_content
+                assert configured_data["ok"] is True
+                assert configured_data["written"] is True
+                assert configured_data["updated_sections"] == ["name", "numerics"]
+                assert configured_data["case_revision"] == 1
+                assert configured_data["numerics_revision"] == 1
+                with h5py.File(valid_case_path, "r") as h5:
+                    config = h5["case/config"][()].decode("utf-8")
+                    assert '"updated-case"' in config
+                    assert "points" in h5
+                    assert "face_vertices" in h5
+                    assert "fields/values" in h5
+                assert all(validate_case_bundle(valid_case_path).values())
+
+                before_failed_write = valid_case_path.read_bytes()
+                with patch(
+                    "runtime_server.os.replace",
+                    side_effect=OSError("injected atomic replace failure"),
+                ):
+                    failed_write = await client.call_tool(
+                        "case.configure",
+                        {
+                            "case_path": "valid.cfdx.h5",
+                            "updates": {"name": "must-not-commit"},
+                        },
+                    )
+                assert failed_write.structured_content["ok"] is False
+                assert failed_write.structured_content["written"] is False
+                assert valid_case_path.read_bytes() == before_failed_write
+                assert not list(root.glob(".valid.*.cfdx.h5"))
+            finally:
+                if old_write is None:
+                    os.environ.pop("CFDX_RUNTIME_ALLOW_WRITE", None)
+                else:
+                    os.environ["CFDX_RUNTIME_ALLOW_WRITE"] = old_write
 
             solver = root / "fake-solver"
             solver.write_text(
@@ -470,6 +601,7 @@ async def exercise() -> None:
                 ("execution.inspect", {"execution_path": "../outside/execution.json"}),
                 ("execution.inspect", {"execution_path": "/etc/execution.json"}),
                 ("execution.run", {"case_path": "../outside.cfdx.h5"}),
+                ("case.configure", {"case_path": "../outside.cfdx.h5", "updates": {"name": "bad"}}),
                 ("checkpoint.inspect", {"checkpoint_path": "/etc/passwd"}),
                 (
                     "checkpoint.field.inspect",
