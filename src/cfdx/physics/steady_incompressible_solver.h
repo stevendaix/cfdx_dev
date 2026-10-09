@@ -1438,6 +1438,29 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
+    // Optional gauge-row microscope. The Schur preconditioner may eliminate
+    // the reference pressure DOF internally, but GMRES evaluates the residual
+    // against this full coupled matrix. Report the exact gauge equation passed
+    // to GMRES so a mismatch between the full operator and reduced preconditioner
+    // can be distinguished from a failure elsewhere in the coupled system.
+    if (diagnostics.coupled_matrix_summary && !has_fixed_pressure) {
+        const std::size_t gauge_row = nv + reference_cell;
+        double gauge_diagonal = 0.0;
+        std::size_t gauge_row_nnz = 0;
+        const auto* gauge_ro = A.row_offsets_data();
+        const auto* gauge_co = A.columns_data();
+        const auto* gauge_va = A.values_data();
+        for (std::size_t k = gauge_ro[gauge_row]; k < gauge_ro[gauge_row + 1]; ++k) {
+            ++gauge_row_nnz;
+            if (gauge_co[k] == gauge_row) gauge_diagonal += gauge_va[k];
+        }
+        std::cerr << "COUPLED_GAUGE_ROW row=" << gauge_row
+                  << " reference_cell=" << reference_cell
+                  << " nnz=" << gauge_row_nnz
+                  << " diagonal=" << gauge_diagonal
+                  << " rhs=" << b(gauge_row) << '\\n';
+    }
+
     // Optional algebraic microscope. It is deliberately computed from
     // the exact post-gauge matrix passed to GMRES, so it exposes the actual
     // M/G/D/C blocks rather than reconstructed proxy operators.
@@ -1931,6 +1954,25 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         result = solve_gmres(
             A, b, x, gmres_restart, max_iterations, tolerance,
             coupled_preconditioner.get(), coupled_gmres_controls);
+    }
+
+    // Capture the true residual at the pressure gauge equation even when
+    // GMRES/FGMRES fails. This is diagnostic-only and does not alter convergence
+    // criteria, the matrix, the RHS, or the physical boundary conditions.
+    if (diagnostics.coupled_matrix_summary && !has_fixed_pressure) {
+        const std::size_t gauge_row = nv + reference_cell;
+        double ax_gauge = 0.0;
+        const auto* gauge_ro = A.row_offsets_data();
+        const auto* gauge_co = A.columns_data();
+        const auto* gauge_va = A.values_data();
+        for (std::size_t k = gauge_ro[gauge_row]; k < gauge_ro[gauge_row + 1]; ++k)
+            ax_gauge += gauge_va[k] * x(gauge_co[k]);
+        std::cerr << "COUPLED_GAUGE_RESIDUAL row=" << gauge_row
+                  << " rhs=" << b(gauge_row)
+                  << " ax=" << ax_gauge
+                  << " residual=" << (b(gauge_row) - ax_gauge)
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations << '\\n';
     }
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
