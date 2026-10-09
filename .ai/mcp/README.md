@@ -98,4 +98,8 @@ Field statistics are descriptive only: they do not establish convergence, verifi
 
 Checkpoint comparisons are descriptive only. Difference metrics do not establish convergence, verification, validation, or qualification, and comparisons never modify either checkpoint.\n\nConvergence inspection is also descriptive execution evidence. The tool validates the canonical `CFDX-CONVERGENCE` schema, rejects non-finite JSON values and malformed history records, and bounds the returned history with an explicit `history_limit` (0–10000). A valid convergence artifact is not itself a validation or qualification verdict.
 
+Controlled Runtime execution
+
+`execution.run` is the first non-read-only Runtime MCP operation. It is disabled by default. The trusted server environment must set `CFDX_RUNTIME_ALLOW_EXECUTE=1` and `CFDX_RUNTIME_SOLVER` to an approved executable. The client can provide only a root-relative canonical `.cfdx.h5` case and a bounded timeout; it cannot choose an executable or arbitrary arguments. Captured stdout/stderr are drained continuously and only their last 16,384 characters are retained. Timeout handling terminates the POSIX process group, escalating from SIGTERM to SIGKILL after five seconds. Tool annotations mark execution as non-read-only; the environment gate is the permission boundary. Execution evidence does not itself establish verification, validation, or qualification.
+
 Execution inspection is descriptive execution evidence only. The tool validates the canonical `CFDX-EXECUTION` schema, rejects non-finite JSON values and malformed fields, enforces the process-exit semantics, and never claims solver success, verification, validation, or qualification.
