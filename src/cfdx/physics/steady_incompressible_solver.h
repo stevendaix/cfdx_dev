@@ -1735,7 +1735,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::LSC
                 : CoupledSchurApproximationModel::BFBT;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options, reference_cell);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         schur->set_algebraic_schur(std::move(algebraic_schur));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1860,7 +1862,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("unsupported coupled Schur model");
         }
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options, reference_cell);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (schur_model == CoupledSchurModel::PCD)
             schur->set_pcd_schur(std::move(pcd));
         // Set the preconditioner up here for the same reason the BlockSchur
