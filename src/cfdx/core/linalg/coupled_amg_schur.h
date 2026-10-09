@@ -293,7 +293,10 @@ public:
             return true;
         }
 
-        if (!pressure_amg_.update_values(candidate.schur_)) {
+        // Keep the numeric update on the same pressure space used by
+        // setup(): when a reference pressure DOF is eliminated, AMG owns the
+        // reduced (n_cells - 1) operator, not the full Schur matrix.
+        if (!update_pressure_amg(candidate.schur_)) {
             last_error_ = pressure_amg_.last_error();
             return false;
         }
