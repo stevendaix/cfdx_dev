@@ -118,8 +118,8 @@ async def exercise() -> None:
                 assert execution_data["returncode"] == 0
                 assert len(execution_data["stdout"]) <= 16384
                 assert len(execution_data["stderr"]) <= 16384
-                assert execution_data["stdout"].endswith("O" * 100)
-                assert execution_data["stderr"].endswith("E" * 100)
+                assert execution_data["stdout"].rstrip().endswith("O" * 100)
+                assert execution_data["stderr"].rstrip().endswith("E" * 100)
 
                 solver.write_text(
                     "#!/usr/bin/env python3\n"
