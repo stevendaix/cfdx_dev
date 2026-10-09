@@ -947,6 +947,13 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
     checks = validate_case_bundle(path)
     if not all(checks.values()):
         raise ValueError("existing case bundle failed canonical integrity validation")
+    source_stat = path.stat()
+    source_signature = (
+        source_stat.st_dev,
+        source_stat.st_ino,
+        source_stat.st_size,
+        source_stat.st_mtime_ns,
+    )
     session = read_case(path)
     case = session.case
 
@@ -1002,6 +1009,9 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
             case.probes = [Probe.from_dict(item) for item in probes]
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("invalid probe configuration") from exc
+        probe_names = [probe.name for probe in case.probes]
+        if len(set(probe_names)) != len(probe_names):
+            raise ValueError("probe names must be unique")
 
     try:
         encoded_case = json.dumps(
@@ -1029,6 +1039,17 @@ def _configure_case(path: Path, updates: Any) -> dict[str, Any]:
         final_checks = validate_case_bundle(temporary_path)
         if not all(final_checks.values()):
             raise ValueError("updated case failed canonical integrity validation")
+        current_stat = path.stat()
+        current_signature = (
+            current_stat.st_dev,
+            current_stat.st_ino,
+            current_stat.st_size,
+            current_stat.st_mtime_ns,
+        )
+        if current_signature != source_signature:
+            raise ValueError(
+                "case changed during configuration; refusing to overwrite concurrent updates"
+            )
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
