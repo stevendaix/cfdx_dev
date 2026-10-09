@@ -34,7 +34,7 @@ class ProbeSeries:
         for a, b in zip(self.samples, self.samples[1:]):
             if b.iteration <= a.iteration or b.time < a.time:
                 raise ValueError(
-                    "probe samples must be monotonic: iterations must be strictly increasing "
+                    "probe samples must be monotonic: strictly increasing iterations "
                     "and non-decreasing time"
                 )
 
