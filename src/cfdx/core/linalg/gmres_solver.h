@@ -125,14 +125,15 @@ inline SolverResult solve_gmres(
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
                     const double exact_residual = true_residual();
-                    const double input_norm = krylov_norm2(w.z, SolverPrecision::FP64, controls.reduction);
-                    std::size_t nonfinite_output = 0;
-                    double output_norm = 0.0;
-                    for (std::size_t k = 0; k < n; ++k) {
-                        if (!std::isfinite(w.vout(k))) ++nonfinite_output;
-                        output_norm = std::hypot(output_norm, w.vout(k));
-                    }
-                    {
+                    if (krylov_diagnostics) {
+                        const double input_norm =
+                            krylov_norm2(w.z, SolverPrecision::FP64, controls.reduction);
+                        std::size_t nonfinite_output = 0;
+                        double output_norm = 0.0;
+                        for (std::size_t k = 0; k < n; ++k) {
+                            if (!std::isfinite(w.vout(k))) ++nonfinite_output;
+                            output_norm = std::hypot(output_norm, w.vout(k));
+                        }
                         std::cerr << std::setprecision(17)
                                   << "KRYLOV_FAILURE solver=GMRES stage=preconditioner_apply"
                                   << " preconditioner=" << (preconditioner ? preconditioner->name() : "none")
