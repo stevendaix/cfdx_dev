@@ -9,6 +9,7 @@ from typing import Any
 from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..probe import ProbeCatalog
+from ..probe_validation import ProbeSeries, read_probe_csv, write_probe_csv
 from ..project import Project
 from ..results_series import ResultSeries, discover_result_series
 from ..runner import SolverRunner
@@ -257,6 +258,16 @@ class Application:
     def validate(self, validator, mesh=None) -> ApplicationState:
         report = validator(self.session.case, mesh)
         return self.set_diagnostics(report.diagnostics)
+
+    def read_probe_results(self, path: str | Path) -> tuple[ProbeSeries, ...]:
+        """Read native solver probe history through the shared application API."""
+        return read_probe_csv(Path(path))
+
+    def export_probe_results(
+        self, path: str | Path, series: Iterable[ProbeSeries]
+    ) -> Path:
+        """Export probe history using the canonical native CSV schema."""
+        return write_probe_csv(Path(path), tuple(series))
 
     def set_results(
         self, series: ResultSeries | None, *, directory: str | Path | None = None
