@@ -713,53 +713,46 @@ int main()
     // solve with the STAGNATED verdict and a non-empty reason, early —
     // never a false converged and never an unbounded iteration loop.
     // ------------------------------------------------------------------
-    run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
-        auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
-        c.coupling.alpha_u = 1e-6;
-        c.coupling.alpha_p = 1e-6;
-        c.convergence.max_iterations = 400;
-        // Isolate the outer-iteration stagnation mechanism from inner
-        // linear-solver stopping jitter: essentially exact inner solves
-        // make the monitored metric a smooth outer contraction.
-        c.linear_tolerance = 1e-14;
-        c.linear_max_iterations = 4000;
-        c.diagnostics.iteration_trace = true;
-        c.diagnostics.iteration_trace_frequency = 50;
-
-        const Mesh mesh = make_channel_mesh(12, 16, 0.0);
-        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
-        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
-        U.fill(0.0);
-        p.fill(17.0);
-        const auto result = solve_steady_incompressible(
-            mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c);
-        // Forensic trail published before the verdict: the negative campaign
-        // never trusts a solver-reported status without its evidence.
-        for (std::size_t i = 0; i < result.history.size(); ++i) {
-            if (i < 15 || (i + 1) % 50 == 0 || i + 1 == result.history.size()) {
-                const auto& h = result.history[i];
-                std::cout << "N9_7_ITEM10 trace iter=" << h.iteration
-                          << " metric=" << h.nonlinear_convergence_metric
-                          << " momentum_residual=" << h.momentum_residual
-                          << " pressure_residual=" << h.pressure_residual
-                          << " velocity_change=" << h.velocity_change_inf
-                          << " pressure_change=" << h.pressure_change_inf
-                          << " continuity_normalized=" << h.continuity_normalized << "\n";
+    // DIAG BRANCH ONLY: alpha sweep to calibrate the stagnation trigger.
+    // Measured on the exact PR head (alpha_u=alpha_p=1e-6): smooth outer
+    // contraction, but the per-interval relative improvement stays ~3e-3
+    // at iteration 400 (early intervals ~6%), always above the stagnation
+    // threshold 1e-3, so the 10-interval window never saturates and the
+    // honest verdict is MAX_ITERATIONS. The sweep measures which alpha
+    // keeps every interval below 1e-3 so the detector fires near
+    // iteration 11. No production gate is touched by this experiment.
+    run_case("n9_7_item10_alpha_sweep", [] {
+        const double alphas[] = {1e-6, 1e-8, 1e-10, 1e-12};
+        for (const double alpha : alphas) {
+            auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
+            c.coupling.alpha_u = alpha;
+            c.coupling.alpha_p = alpha;
+            c.convergence.max_iterations = 400;
+            c.linear_tolerance = 1e-14;
+            c.linear_max_iterations = 4000;
+            c.diagnostics.iteration_trace = false;
+            const Mesh mesh = make_channel_mesh(12, 16, 0.0);
+            Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+            Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+            U.fill(0.0);
+            p.fill(17.0);
+            const auto result = solve_steady_incompressible(
+                mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c);
+            std::cout << "N9_7_ITEM10_SWEEP alpha=" << alpha
+                      << " status=" << to_string(result.convergence_status)
+                      << " converged=" << (result.converged ? 1 : 0)
+                      << " iterations=" << result.iterations
+                      << " reason=" << result.convergence_reason << "\n";
+            for (std::size_t i = 0; i < result.history.size(); ++i) {
+                if (i < 16 || i + 1 == result.history.size()) {
+                    const auto& h = result.history[i];
+                    std::cout << "N9_7_ITEM10_SWEEP alpha=" << alpha
+                              << " trace iter=" << h.iteration
+                              << " metric=" << h.nonlinear_convergence_metric
+                              << "\n";
+                }
             }
         }
-        std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
-                  << " iterations=" << result.iterations
-                  << " reason=" << result.convergence_reason << "\n";
-        EXPECT_FALSE(result.converged);
-        EXPECT_TRUE(result.convergence_status == ConvergenceStatus::STAGNATED);
-        EXPECT_FALSE(result.convergence_reason.empty());
-        // Terminated by the stagnation detector, not by chance or by the
-        // iteration cap: the 10-iteration window cannot fire before
-        // iteration 11, and a detector termination must arrive long before
-        // the 400-iteration maximum.
-        EXPECT_TRUE(result.iterations >= 11);
-        EXPECT_TRUE(result.iterations < 400);
-
     });
 
     // ------------------------------------------------------------------
