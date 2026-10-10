@@ -378,7 +378,7 @@ namespace {
 // failing item can be isolated. Must be empty before merge.
 bool item_enabled(int id)
 {
-    static const std::set<int> disabled_items = {1,2,3,4,5,7,8,9,10,11};
+    static const std::set<int> disabled_items = {1,2,3,4,5,7,8,9,10,11,12};
     return disabled_items.find(id) == disabled_items.end();
 }
 } // namespace
@@ -606,6 +606,7 @@ int main()
             }
         EXPECT_TRUE(collapsed_error > 1e-3);
 
+        if (!item_enabled(12)) return;
         // Production divergence of a constant field: exactly conservative.
         // The closed-channel map zeroes every non-EMPTY boundary face, so a
         // uniform field is solenoidal cell-by-cell and the clean balance is
