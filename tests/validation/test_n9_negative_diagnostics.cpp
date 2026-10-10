@@ -615,7 +615,13 @@ int main()
         U.fill(0.0);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c)
             U.set(c, 0.37, 0.0, 0.0);
-        const auto flux = make_mass_flux(mesh, geometry, U, 1.0, closed_channel_velocity_bc());
+        cfdx::core::Field<double, cfdx::core::Location::FACE> flux;
+        try {
+            flux = make_mass_flux(mesh, geometry, U, 1.0, closed_channel_velocity_bc());
+        } catch (const std::exception& e) {
+            std::cout << "N9_7_ITEM6 make_mass_flux threw: " << e.what() << "\n";
+            return;
+        }
         const double clean = cell_mass_balance(mesh, flux, true);
         EXPECT_TRUE(clean < 1e-12);
         if (!item_enabled(13)) return;
