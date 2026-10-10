@@ -1,6 +1,21 @@
-INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=9.49978e-05 velocity_change_inf=0.0765336 pressure_change_inf=0.648949 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=5.4205e-12 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.000758775 worst_momentum_cell=179 worst_momentum_patch=front
-INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=7.18889e-05 continuity_normalized=0.000157507 velocity_change_inf=1.7883e-06 pressure_change_inf=5.10819e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=1.24041e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0190982 worst_momentum_cell=3056 worst_momentum_patch=front
-INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=9.16593e-08 continuity_normalized=0.000157345 velocity_change_inf=6.39076e-10 pressure_change_inf=3.22591e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=1.05234e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0190975 worst_momentum_cell=2997 worst_momentum_patch=front
-INCOMPRESSIBLE_ITER iter=600 momentum_residual_relative=9.05606e-10 continuity_normalized=0.000157345 velocity_change_inf=4.49188e-12 pressure_change_inf=4.74684e-12 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=1.40724e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0190975 worst_momentum_cell=3010 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=9.37397e-05 velocity_change_inf=0.0765338 pressure_change_inf=0.648948 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=5.88275e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.000758774 worst_momentum_cell=179 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=0.000203148 continuity_normalized=0.000154659 velocity_change_inf=1.92642e-06 pressure_change_inf=7.42805e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=3.62028e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0190894 worst_momentum_cell=2997 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=4.294e-07 continuity_normalized=0.000154631 velocity_change_inf=2.94456e-09 pressure_change_inf=1.58404e-09 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=3.27824e-12 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.0190851 worst_momentum_cell=3065 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=600 momentum_residual_relative=4.31264e-09 continuity_normalized=0.000154631 velocity_change_inf=2.52981e-11 pressure_change_inf=2.12611e-11 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=5.69449e-12 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0190851 worst_momentum_cell=3054 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=800 momentum_residual_relative=1.86313e-10 continuity_normalized=0.000154631 velocity_change_inf=5.7326e-13 pressure_change_inf=5.71823e-13 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=7.17024e-12 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0190851 worst_momentum_cell=3061 worst_momentum_patch=front
+NACA_DIAG status=STAGNATED converged=0 iterations=837
+NACA_DIAG divergence_l1=0.366399
+NACA_DIAG cell=3095 |div|=0.0190851 patches=[front,back,farfield,] x=19.2949 y=-0.469105
+NACA_DIAG cell=2967 |div|=0.0190239 patches=[front,back,farfield,] x=19.2949 y=0.469156
+NACA_DIAG cell=3094 |div|=0.0119084 patches=[front,back,farfield,] x=19.2492 y=-1.40625
+NACA_DIAG cell=2968 |div|=0.0118929 patches=[front,back,farfield,] x=19.2491 y=1.40627
+NACA_DIAG cell=3093 |div|=0.00778692 patches=[front,back,farfield,] x=19.1579 y=-2.34003
+NACA_DIAG cell=2969 |div|=0.00777847 patches=[front,back,farfield,] x=19.1578 y=2.34005
+NACA_DIAG cell=3031 |div|=0.00714327 patches=[front,back,farfield,] x=-19.2638 y=-8.12742e-05
+NACA_DIAG cell=3032 |div|=0.00692378 patches=[front,back,farfield,] x=-19.2409 y=-0.938148
+NACA_DIAG cell=3030 |div|=0.0069233 patches=[front,back,farfield,] x=-19.2409 y=0.937987
+NACA_DIAG cell=3029 |div|=0.00653337 patches=[front,back,farfield,] x=-19.1724 y=1.87383
+NACA_DIAG cell=3033 |div|=0.00653231 patches=[front,back,farfield,] x=-19.1723 y=-1.87399
+NACA_DIAG cell=3028 |div|=0.00619325 patches=[front,back,farfield,] x=-19.0583 y=2.80522
 terminate called after throwing an instance of 'std::runtime_error'
   what():  NACA0012 solver did not converge
