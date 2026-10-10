@@ -170,6 +170,25 @@ IncompressibleSolverControls controls_for(
         schur_model == CoupledSchurModel::PCD) {
         c.pcd_convection_diffusion_linear_solver.preconditioner =
             cfdx::core::PreconditionerModel::NativeAMG;
+        // The PCD action applies Fp^{-1} through this nested solve at every
+        // outer FGMRES iteration (pcd_schur.h: only Fp enters the action; the
+        // nested Laplacian solve is never invoked), so the outer residual
+        // cannot descend durably below the nested solve's own relative
+        // tolerance. With the 1e-8/100 defaults the outer 1e-12 gate stalled
+        // on the Poiseuille Picard system: MAX_ITER at the full budget, on
+        // every relaxation retry. Keep the nested Fp budget below the outer
+        // gate, mirroring the LSC/BFBt path which already runs its nested
+        // pressure solves at the outer coupled tolerance and budget.
+        c.pcd_convection_diffusion_tolerance = 1e-13;
+        c.pcd_convection_diffusion_max_iterations = 1000;
+        c.pcd_convection_diffusion_linear_solver.gmres_restart = 256;
+    }
+
+    if (algorithm == PressureVelocityAlgorithm::COUPLED) {
+        // One line of linear evidence per coupled solve: preconditioner,
+        // restart, and the independently recomputed true residual on
+        // success. The campaign log must carry the coupled linear state.
+        c.diagnostics.coupled_matrix_summary = true;
     }
 
     if (algorithm == PressureVelocityAlgorithm::SIMPLEC) {
