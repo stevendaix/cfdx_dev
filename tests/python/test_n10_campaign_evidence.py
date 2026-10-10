@@ -23,7 +23,9 @@ def valid_report() -> dict[str, object]:
         "required_tests": TESTS.copy(),
         "completed_tests": len(TESTS),
         "failed_tests": [],
-        "results": [{"name": name, "status": "PASS", "returncode": 0} for name in TESTS],
+        "results": [
+            {"name": name, "status": "PASS", "returncode": 0} for name in TESTS
+        ],
         "evidence_coverage": {"status": "COMPLETE"},
         "policy": {
             "changes_numerical_tolerances": False,
