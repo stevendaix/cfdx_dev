@@ -2777,10 +2777,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double area = Sf.mag();
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+                // Dirichlet-pressure rows must use the same dAU = V*rAU face
+                // operator as the internal rows (directional_face_coefficient)
+                // and the authoritative boundary Rhie-Chow flux in
+                // make_rhie_chow_mass_flux. Omitting the owner-cell volume
+                // made this boundary response 1/V_o of the true face
+                // operator, leaving a frozen continuity floor of order
+                // div(rho*dAU*grad p) on every Dirichlet-pressure boundary
+                // cell (CI-measured 1.57345e-4 on the NACA0012 far field).
                 const double rfn =
-                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
+                    geometry.cell_volumes[o] *
+                    (pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
+                     pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
+                     pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area));
                 rows[o][o] += controls.density * rfn * area / distance;
             }
 

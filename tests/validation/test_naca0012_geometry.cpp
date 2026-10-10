@@ -119,8 +119,12 @@ static Forces run(const std::string& path,std::size_t level)
                       << " y=" << geometry.cell_centres[c].y << "\n";
         }
     }
-    if(!solve.converged)
+    if(!solve.converged) {
+        // std::cout is buffered; an uncaught exception terminates without
+        // flushing it, which silently swallowed the NACA_DIAG attribution.
+        std::cout.flush();
         throw std::runtime_error("NACA0012 solver did not converge");
+    }
 
     ScalarBoundaryConditions gx,gy;
     gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
