@@ -1,0 +1,65 @@
+name: N9.7 item10 diagnostic
+
+# Temporary diagnostic branch: run ONLY test_n9_negative_diagnostics
+# (the forensic head of feat/n9-negative-diagnostics) and commit the full
+# trace log back to this branch so the item-10 stagnation analysis can be
+# read without manual log pasting. Never merged; delete after use.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/n9-item10-b]
+
+permissions:
+  contents: write
+
+jobs:
+  n9-item10:
+    name: test_n9_negative_diagnostics trace capture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-n9
+          .venv-n9/bin/python -m pip install --upgrade pip
+          .venv-n9/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Configure (Release)
+        run: |
+          cmake -S . -B build-n9 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-n9/bin/python"
+
+      - name: Build test_n9_negative_diagnostics
+        run: cmake --build build-n9 --target test_n9_negative_diagnostics --parallel 2
+
+      - name: Run test and capture trace
+        run: |
+          set +e
+          ./build-n9/test_n9_negative_diagnostics 2>&1 | tee n9-item10-output.log
+          rc=${PIPESTATUS[0]}
+          echo "test_exit=${rc}" | tee -a n9-item10-output.log
+          exit ${rc}
+
+      - name: Commit trace log to diagnostic branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add n9-item10-output.log
+          git commit -m "diag(n9.7): capture item10 trace [skip ci]"
+          git push
