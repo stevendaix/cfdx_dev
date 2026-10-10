@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail closed unless the complete N10 campaign report matches the tested HEAD."""
 
 from __future__ import annotations
@@ -25,7 +24,9 @@ def audit(report: object, expected_revision: str) -> list[str]:
         return ["campaign report root must be a JSON object"]
 
     revision = report.get("git_revision")
-    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", revision):
+    if not isinstance(revision, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40,64}", revision
+    ):
         errors.append(f"git_revision is missing or malformed: {revision!r}")
     elif revision.lower() != expected_revision.lower():
         errors.append(
@@ -36,9 +37,15 @@ def audit(report: object, expected_revision: str) -> list[str]:
         errors.append(f"campaign status={report.get('status')!r}, expected 'PASS'")
 
     required_tests = report.get("required_tests")
-    if not isinstance(required_tests, list) or set(required_tests) != REQUIRED_TESTS:
+    if (
+        not isinstance(required_tests, list)
+        or any(not isinstance(name, str) for name in required_tests)
+        or set(required_tests) != REQUIRED_TESTS
+    ):
         errors.append("required_tests does not match the authoritative N10 test set")
-    if isinstance(required_tests, list) and len(required_tests) != len(set(required_tests)):
+    if isinstance(required_tests, list) and all(
+        isinstance(name, str) for name in required_tests
+    ) and len(required_tests) != len(set(required_tests)):
         errors.append("required_tests contains duplicate entries")
 
     completed = report.get("completed_tests")
@@ -49,10 +56,16 @@ def audit(report: object, expected_revision: str) -> list[str]:
     if not isinstance(results, list):
         errors.append("results is missing or is not a list")
     else:
-        result_names = [row.get("name") for row in results if isinstance(row, dict)]
+        result_names = [
+            row.get("name") for row in results if isinstance(row, dict)
+        ]
         if len(result_names) != len(results):
             errors.append("results contains a non-object entry")
-        if set(result_names) != REQUIRED_TESTS or len(result_names) != len(REQUIRED_TESTS):
+        if (
+            any(not isinstance(name, str) for name in result_names)
+            or set(result_names) != REQUIRED_TESTS
+            or len(result_names) != len(REQUIRED_TESTS)
+        ):
             errors.append("results do not contain each required N10 test exactly once")
         for row in results:
             if isinstance(row, dict) and (
@@ -74,7 +87,11 @@ def audit(report: object, expected_revision: str) -> list[str]:
     if not isinstance(policy, dict):
         errors.append("campaign policy is missing")
     else:
-        for key in ("changes_numerical_tolerances", "disables_validation", "silent_fallbacks"):
+        for key in (
+            "changes_numerical_tolerances",
+            "disables_validation",
+            "silent_fallbacks",
+        ):
             if policy.get(key) is not False:
                 errors.append(f"policy {key}={policy.get(key)!r}, expected false")
 
@@ -88,12 +105,18 @@ def main() -> int:
     args = parser.parse_args()
 
     if not re.fullmatch(r"[0-9a-fA-F]{40,64}", args.expected_revision):
-        print("error: --expected-revision must be a full Git commit SHA", file=sys.stderr)
+        print(
+            "error: --expected-revision must be a full Git commit SHA",
+            file=sys.stderr,
+        )
         return 2
     try:
         report = json.loads(args.report.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"error: cannot read complete N10 campaign report: {exc}", file=sys.stderr)
+        print(
+            f"error: cannot read complete N10 campaign report: {exc}",
+            file=sys.stderr,
+        )
         return 2
 
     errors = audit(report, args.expected_revision)
