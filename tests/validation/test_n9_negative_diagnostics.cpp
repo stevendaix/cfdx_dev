@@ -211,6 +211,25 @@ VelocityBoundaryConditions channel_velocity_bc(double top_u)
     return bc;
 }
 
+// Closed-channel velocity map for the discrete-conservation probe of item 6:
+// every non-EMPTY patch carries a fixed zero velocity, so a uniform interior
+// field has exactly zero boundary flux and the per-cell balance isolates the
+// internal assembly. With an open (zero-gradient) end patch the same uniform
+// field would carry a nonzero inlet/outlet face flux: a constant field is
+// only divergence-free cell-by-cell in a closed domain, so the "clean"
+// balance would measure the boundary condition, not the operator.
+VelocityBoundaryConditions closed_channel_velocity_bc()
+{
+    VelocityBoundaryConditions bc;
+    bc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["bottom"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["front"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    bc["back"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    return bc;
+}
+
 ScalarBoundaryConditions channel_pressure_bc()
 {
     ScalarBoundaryConditions bc;
@@ -570,11 +589,14 @@ int main()
         EXPECT_TRUE(collapsed_error > 1e-3);
 
         // Production divergence of a constant field: exactly conservative.
+        // The closed-channel map zeroes every non-EMPTY boundary face, so a
+        // uniform field is solenoidal cell-by-cell and the clean balance is
+        // exactly zero; only an assembly fault can make it nonzero.
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         U.fill(0.0);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c)
             U.set(c, 0.37, 0.0, 0.0);
-        const auto flux = make_mass_flux(mesh, geometry, U, 1.0, VelocityBoundaryConditions{});
+        const auto flux = make_mass_flux(mesh, geometry, U, 1.0, closed_channel_velocity_bc());
         const double clean = cell_mass_balance(mesh, flux, true);
         EXPECT_TRUE(clean < 1e-12);
         const double sign_fault = cell_mass_balance(mesh, flux, false);
