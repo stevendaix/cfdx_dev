@@ -133,7 +133,7 @@ inline TurbulenceTransportResult solve_sst_transport(
         result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
         result.iterations=iter;
-        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            rw.status==cfdx::core::SolverStatus::CONVERGED &&
            std::max(dk,dw)<=tolerance) {
             result.converged=true;
