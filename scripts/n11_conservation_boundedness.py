@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -95,6 +96,26 @@ KNOWN_SCOPE_GAPS = [
         ),
     },
 ]
+
+
+def source_git_sha(source_dir: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(source_dir), "rev-parse", "HEAD"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to determine campaign source revision: {result.stdout}")
+    sha = result.stdout.strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise RuntimeError(f"Git returned an invalid full commit SHA: {sha!r}")
+    return sha
+
+
+def expected_sha_matches(actual_sha: str, expected_sha: str | None) -> bool:
+    return not expected_sha or actual_sha == expected_sha
 
 
 def ctest(build_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -181,6 +202,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument(
+        "--expected-git-sha",
+        default=os.environ.get("GITHUB_SHA"),
+        help="Expected full source SHA; defaults to GITHUB_SHA when set",
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         default=None,
@@ -205,6 +231,43 @@ def main() -> int:
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
+    source_dir = Path(__file__).resolve().parents[1]
+    try:
+        git_sha = source_git_sha(source_dir)
+    except RuntimeError as exc:
+        report = {
+            "campaign": "N11 conservation and boundedness evidence",
+            "status": "INCOMPLETE",
+            "git_sha": None,
+            "integrity_error": str(exc),
+            "policy": {
+                "requires_exact_head_evidence": True,
+                "changes_numerical_tolerances": False,
+                "disables_validation": False,
+            },
+        }
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2), file=sys.stderr)
+        return 2
+
+    expected_sha = args.expected_git_sha
+    if not expected_sha_matches(git_sha, expected_sha):
+        report = {
+            "campaign": "N11 conservation and boundedness evidence",
+            "status": "INCOMPLETE",
+            "git_sha": git_sha,
+            "expected_git_sha": expected_sha,
+            "integrity_error": "Campaign source SHA does not match expected GitHub SHA",
+            "policy": {
+                "requires_exact_head_evidence": True,
+                "changes_numerical_tolerances": False,
+                "disables_validation": False,
+            },
+        }
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2), file=sys.stderr)
+        return 2
+
     available = discover_tests(build_dir)
     required_tests = list(REQUIRED_TESTS)
     mpi_tests = [name for name in OPTIONAL_MPI_TESTS if name in available]
@@ -214,6 +277,8 @@ def main() -> int:
         report = {
             "campaign": "N11 conservation and boundedness evidence",
             "status": "INCOMPLETE",
+            "git_sha": git_sha,
+            "expected_git_sha": expected_sha,
             "required_tests": required_tests,
             "missing_tests": missing,
             "scope_gaps": KNOWN_SCOPE_GAPS,
@@ -285,6 +350,8 @@ def main() -> int:
     report = {
         "campaign": "N11 conservation and boundedness evidence",
         "status": "PASS" if complete_execution else "FAIL",
+        "git_sha": git_sha,
+        "expected_git_sha": expected_sha,
         "required_tests": required_tests,
         "completed_tests": len(results),
         "failed_tests": failed,
@@ -307,6 +374,7 @@ def main() -> int:
             "serial_evidence_is_mpi_qualification": False,
             "mpi_evidence_required_when_mpi_test_is_available": True,
             "stops_on_first_failed_gate": True,
+            "requires_exact_head_evidence": True,
         },
     }
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
