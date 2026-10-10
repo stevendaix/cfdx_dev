@@ -739,6 +739,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_n12_pressure_continuity_mms
         PROPERTIES LABELS "n12;mms;validation")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
+    add_cfdx_test(test_polyhedral_poisson_convergence tests/validation/test_polyhedral_poisson_convergence.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
     add_cfdx_test(test_convection_blending tests/validation/test_convection_blending.cpp)
@@ -777,7 +778,16 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_polyhedral_laplacian_campaign
         test_gradient_verification
         test_polyhedral_gradient_campaign
+        test_polyhedral_poisson_convergence
         PROPERTIES LABELS "validation;qualification;n10")
+    # The Poisson solution-convergence assembly is a black-box indicator
+    # campaign (hundreds of production operator applications per level);
+    # keep it out of the DebugSanitizers pass like the other
+    # sanitizer-slow qualification tests. Release coverage stays
+    # merge-gated.
+    set_tests_properties(test_polyhedral_poisson_convergence PROPERTIES
+        LABELS "n10;qualification;validation;sanitizer-slow"
+        TIMEOUT 1800)
     add_cfdx_test(test_convection_polyhedral_campaign tests/validation/test_convection_polyhedral_campaign.cpp)
     add_cfdx_test(test_convection_solver_qualification tests/validation/test_convection_solver_qualification.cpp)
     set_tests_properties(test_convection_solver_qualification PROPERTIES LABELS "phase13;validation;qualification")
