@@ -214,6 +214,9 @@ struct CaseSetup {
     double ref_pressure = 101325.0;
 
     std::string gravity_vector;  // e.g. "0 0 -9.81"
+    // Uniform body force per unit mass (acceleration, m/s^2). Empty = not
+    // declared; a declared value must carry exactly 3 components.
+    std::vector<double> body_force;
     std::string units;           // "SI"
     std::string solver_mode;     // "steady", "unsteady"
 

@@ -406,6 +406,37 @@ int main(int argc, char** argv)
                     std::min<std::size_t>(
                         controls.convergence.max_iterations,
                         static_cast<std::size_t>(case_setup.numerics.max_iterations));
+            // Case-level uniform body force. The solver consumes it per unit
+            // mass (it multiplies by density internally), so the case declares
+            // an acceleration vector in m/s^2. An absent block leaves the
+            // solver default untouched.
+            if (!case_setup.body_force.empty()) {
+                if (case_setup.body_force.size() != 3)
+                    throw std::invalid_argument(
+                        "production solver: case body_force must have 3 components");
+                controls.body_force = cfdx::core::Vec3{
+                    case_setup.body_force[0],
+                    case_setup.body_force[1],
+                    case_setup.body_force[2]};
+            }
+            // Material properties: a single material with positive density and
+            // dynamic viscosity supplies the physical density and kinematic
+            // viscosity (nu = mu / rho). An empty or incomplete material block
+            // leaves the solver defaults untouched, and more than one declared
+            // material is rejected: the production path must not silently pick
+            // a winner.
+            if (case_setup.materials.size() == 1) {
+                const auto& material = case_setup.materials.front();
+                if (material.density > 0.0 && material.dynamic_viscosity > 0.0) {
+                    controls.density = material.density;
+                    controls.kinematic_viscosity =
+                        material.dynamic_viscosity / material.density;
+                }
+            } else if (case_setup.materials.size() > 1) {
+                throw std::invalid_argument(
+                    "production solver: case declares more than one material; "
+                    "material selection is not supported");
+            }
         } else {
             controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
             controls.convection_scheme = ConvectionScheme::UPWIND;
