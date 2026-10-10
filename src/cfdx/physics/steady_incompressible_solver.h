@@ -1914,13 +1914,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (resolved_linear_plan != nullptr)
         *resolved_linear_plan = solver_plan;
     const int gmres_restart = automatic_coupled
-        ? static_cast<int>(std::min<std::size_t>(A.n_rows(), 512))
+        ? static_cast<int>(A.n_rows() <= 1024
+                               ? A.n_rows()
+                               : std::min<std::size_t>(A.n_rows(), 512))
         : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
     // The coupled acceptance problem is small enough for a full Krylov space.
-    // Do not let the global adaptive-restart policy silently clamp 512 back
-    // to its generic [10,40] range: that was the direct cause of the observed
-    // residual plateau around 1.33e-6. Keep the restart fixed for this block
-    // solve; adaptive restart remains available to generic GMRES callers.
+    // Do not let the global adaptive-restart policy silently clamp the restart
+    // back to its generic [10,40] range: that was the direct cause of the
+    // observed residual plateau around 1.33e-6. The restart must also be the
+    // FULL space for small/medium coupled systems (<= 1024 unknowns): the
+    // 12x16 channel system has 768 unknowns, so a 512 cap truncated the
+    // Krylov space below the system dimension and manufactured a plateau
+    // near 1e-7 on the Poiseuille Picard system, converting a solvable
+    // 1e-12 gate into an artificial MAX_ITER failure. Systems above 1024
+    // unknowns keep the 512 cap. Keep the restart fixed for this block solve;
+    // adaptive restart remains available to generic GMRES callers.
     cfdx::core::KrylovControls coupled_gmres_controls;
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
