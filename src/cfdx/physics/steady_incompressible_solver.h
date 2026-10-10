@@ -2778,16 +2778,59 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (corr + 1 < pressure_correctors) {
-                // PISO's next pressure correction is driven by the current
-                // conservative face flux, not by the original predictor.
-                // The momentum matrix is intentionally frozen inside the
-                // inner PISO loop; the updated flux is the split-operator
-                // correction that carries the first pressure solve into the
-                // next one. Rebuilding HbyA here would incorrectly restart
-                // the correction sequence from the same predictor.
-                phiHbyA = mass_flux;
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+                // The SIMPLEC pressure equation balances the over-relaxed
+                // predictor flux phiHbyA + rho*(dAtU - dAU)*(p_N - p_P),
+                // not the bare interpolated predictor. The corrected flux
+                // must therefore carry the same consistent-response term,
+                // evaluated at the corrected pressure; otherwise it differs
+                // from the operator the pressure equation just balanced by
+                // exactly div(rho*(dAtU - dAU)*dp) and a continuity floor of
+                // that size survives on every case with a non-constant
+                // pressure field (e.g. the lid-driven cavity) even though
+                // the momentum residual is zero. With the term included the
+                // face operator collapses to the plain Rhie-Chow flux built
+                // with rAU: (dAtU - dAU) cancels the rAtU response, leaving
+                // the conservative flux of the reconstructed cell velocity.
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const auto nr = mesh.ownership().neighbour(f);
+                    if (nr < 0) continue;
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const std::size_t n = static_cast<std::size_t>(nr);
+                    const auto Sf = geometry.face_area_vectors[f];
+                    const double area = Sf.mag();
+                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
+                    const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                           geometry.cell_volumes[n]*rAtU[0][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                           geometry.cell_volumes[n]*rAU[0][n]);
+                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                           geometry.cell_volumes[n]*rAtU[1][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                           geometry.cell_volumes[n]*rAU[1][n]);
+                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                           geometry.cell_volumes[n]*rAtU[2][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                           geometry.cell_volumes[n]*rAU[2][n]);
+                    const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
+                    mass_flux(f) += controls.density * drn *
+                        (p(n)-p(o))/d * area;
+                }
             }
+
+            // Issa corrector form: every pressure corrector is driven by the
+            // ORIGINAL predictor flux together with the current pressure,
+            // div(phiHbyA - RC(p)); the assembly at the top of this loop
+            // already subtracts the Rhie-Chow pressure flux of the current
+            // p. Overwriting phiHbyA with the corrected flux here would
+            // subtract RC(p) twice in the next corrector's continuity source
+            // (div(phiHbyA) - 2*div(RC(p))), which displaces the fixed point
+            // and leaves a permanent continuity floor on every
+            // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
+            // The momentum matrix stays frozen inside the inner loop; the
+            // relaxed pressure update is what carries the first correction
+            // into the next one.
         }
 
         }
