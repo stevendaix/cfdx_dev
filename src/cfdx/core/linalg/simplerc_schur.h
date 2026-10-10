@@ -28,7 +28,8 @@ inline const char* to_string(SimplerSchurMode m) {
 // The exact Schur complement S = C - D Auu^{-1} G is approximated by replacing
 // Auu^{-1} with a cheap diagonal operator:
 //   SIMPLE  : Ad = diag(Auu)
-//   SIMPLEC : Ad = diag(Auu) - sum(offdiag(Auu)) (the consistent form)
+//   SIMPLEC : Ad = diag(Auu) + sum(stored offdiag(Auu)); CFDX stores
+//             neighbour coefficients with their negative matrix sign.
 // S~ = C - D Ad^{-1} G is built implicitly (one D matvec, one G matvec) so the
 // only cost per application is two sparse matvecs and one diagonal division.
 // This is the standard pressure-preconditioner approximation used by the
@@ -85,8 +86,11 @@ public:
             diagonal_[i] = diag;
             offdiag_norm_ = std::max(offdiag_norm_, row_off_norm);
 
+            // In the assembled momentum matrix, neighbour entries are signed
+            // as A_PN = -a_PN. The SIMPLEC denominator diag - sum(a_PN)
+            // is therefore diag + sum(stored A_PN), not diag - row_off_sum.
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
-                ? diag - row_off_sum
+                ? diag + row_off_sum
                 : diag;
             if (!(ad > 1e-14) || !std::isfinite(ad)) return false;
             denominator_[i] = ad;
