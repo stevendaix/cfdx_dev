@@ -182,7 +182,7 @@ public:
         if (!same_input_pattern(A))
             return fail_update("coupled CSR pattern changed; explicit setup() required");
 
-        CoupledBlockSchurAMGPreconditioner candidate(n_cells_, options_);
+        CoupledBlockSchurAMGPreconditioner candidate(n_cells_, options_, reference_cell_);
         if (!candidate.prepare_numeric_state(A)) {
             last_error_ = candidate.last_error_;
             return false;
