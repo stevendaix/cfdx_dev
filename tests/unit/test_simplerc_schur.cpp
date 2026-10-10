@@ -89,10 +89,12 @@ static double linf(const Vector& diff) {
 
 int main() {
     run_case("simplerc_signed_offdiag_contract", [&] {
-        // The production convention is signed: A_t = A_P - sum(A_PN).
-        // For the usual negative FV neighbour coefficients this is A_P + |sum|.
-        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, -1.5), 5.5, 1e-12);
-        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, 0.5), 3.5, 1e-12);
+        // The production convention is signed and matches the assembled
+        // momentum matrix: neighbour entries are stored as A_PN = -a_PN
+        // with a_PN >= 0, so the SIMPLEC consistent diagonal
+        // a_P - sum(a_PN) is diagonal + signed_offdiag_sum.
+        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, -1.5), 2.5, 1e-12);
+        EXPECT_NEAR(cfdx::physics::simplec_consistent_diagonal(4.0, 0.5), 4.5, 1e-12);
 
         // The absolute-value construction is a diagnostic anti-contract and is
         // intentionally not used by SIMPLEC.
@@ -141,9 +143,10 @@ int main() {
         Ad_inv[1][1] = inv[1];
         return dense_subtract(Cd, dense_multiply(dense_multiply(Dd, Ad_inv), Gd));
     };
-    // SIMPLE: Ad = diag(Auu) = [4,3]; SIMPLEC: Ad = diag - sum(offdiag) = [5,4].
+    // SIMPLE: Ad = diag(Auu) = [4,3]. SIMPLEC: the stored off-diagonals are
+    // signed, so Ad = diag + signed row off-diagonal sum = [4-1, 3-1] = [3,2].
     const Dense S_simple_dense = approx_dense({1.0 / 4.0, 1.0 / 3.0});
-    const Dense S_simplec_dense = approx_dense({1.0 / 5.0, 1.0 / 4.0});
+    const Dense S_simplec_dense = approx_dense({1.0 / 3.0, 1.0 / 2.0});
 
     Vector p(2, 0.0);
     p(0) = 1.3;
@@ -228,9 +231,9 @@ int main() {
 
         // The refresh must be visible in the applied operator, which is what
         // distinguishes an accepted refresh from stale cached denominators.
-        // SIMPLEC denominator = diag - signed row off-diagonal sum: row 0 becomes
-        // 4 - (-0.5) = 4.5, row 1 becomes 3 - (-1) = 4.
-        const Dense S_simplec_v2 = approx_dense({1.0 / 4.5, 1.0 / 4.0});
+        // SIMPLEC denominator = diag + signed row off-diagonal sum: row 0
+        // becomes 4 + (-0.5) = 3.5, row 1 becomes 3 + (-1) = 2.
+        const Dense S_simplec_v2 = approx_dense({1.0 / 3.5, 1.0 / 2.0});
         Vector out(2, 0.0);
         EXPECT_TRUE(s.apply(p, out));
         const Vector ref = dense_matvec(S_simplec_v2, p);
