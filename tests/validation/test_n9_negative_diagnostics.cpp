@@ -715,6 +715,13 @@ int main()
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
         c.coupling.alpha_u = 1e-6;
         c.convergence.max_iterations = 400;
+        // Isolate the outer-iteration stagnation mechanism from inner
+        // linear-solver stopping jitter: essentially exact inner solves
+        // make the monitored metric a smooth outer contraction.
+        c.linear_tolerance = 1e-14;
+        c.linear_max_iterations = 4000;
+        c.diagnostics.iteration_trace = true;
+        c.diagnostics.iteration_trace_frequency = 50;
 
         const Mesh mesh = make_channel_mesh(12, 16, 0.0);
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
@@ -723,6 +730,23 @@ int main()
         p.fill(17.0);
         const auto result = solve_steady_incompressible(
             mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c);
+        // Forensic trail published before the verdict: the negative campaign
+        // never trusts a solver-reported status without its evidence.
+        for (std::size_t i = 0; i < result.history.size(); ++i) {
+            if (i < 15 || (i + 1) % 50 == 0 || i + 1 == result.history.size()) {
+                const auto& h = result.history[i];
+                std::cout << "N9_7_ITEM10 trace iter=" << h.iteration
+                          << " metric=" << h.nonlinear_convergence_metric
+                          << " momentum_residual=" << h.momentum_residual
+                          << " pressure_residual=" << h.pressure_residual
+                          << " velocity_change=" << h.velocity_change_inf
+                          << " pressure_change=" << h.pressure_change_inf
+                          << " continuity_normalized=" << h.continuity_normalized << "\n";
+            }
+        }
+        std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
+                  << " iterations=" << result.iterations
+                  << " reason=" << result.convergence_reason << "\n";
         EXPECT_FALSE(result.converged);
         EXPECT_TRUE(result.convergence_status == ConvergenceStatus::STAGNATED);
         EXPECT_FALSE(result.convergence_reason.empty());
@@ -732,9 +756,7 @@ int main()
         // the 400-iteration maximum.
         EXPECT_TRUE(result.iterations >= 11);
         EXPECT_TRUE(result.iterations < 400);
-        std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
-                  << " iterations=" << result.iterations
-                  << " reason=" << result.convergence_reason << "\n";
+
     });
 
     // ------------------------------------------------------------------
