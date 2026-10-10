@@ -2514,9 +2514,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double diagonal = 1.0 / rAU[d][c];
                     const double denom =
                         simplec_consistent_diagonal(diagonal, signed_offdiag_sum);
-                    // Diagnostic counterpart only: using abs(A_PN) is not the
-                    // SIMPLEC contract. Retain it to make sign/convention drift
-                    // visible in exact-head validation artifacts.
+                    // Independent audit counterpart. With the expected non-positive
+                    // stored off-diagonals this equals the signed-contract
+                    // denominator; a nonzero gap flags a matrix-sign mismatch.
                     const double abs_denom =
                         diagonal - abs_offdiag_sum;
                     simplec_signed_offdiag_sum_audit[d] =
