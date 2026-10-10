@@ -699,21 +699,24 @@ int main()
     });
 
     // ------------------------------------------------------------------
-    // Item 10 — nonlinear stagnation: a pathological momentum
-    // under-relaxation (alpha_u = 1e-6) makes each nonlinear iteration move
-    // the solution by ~1e-6 of the full correction. On this linear case
-    // the outer-iteration scaling law with essentially exact inner Krylov
-    // solves contracts the residual by ~(1 - alpha_u) per iteration, so
-    // the per-iteration relative residual improvement (~1e-6) stays three
-    // orders of magnitude below the production stagnation threshold
-    // (1e-3 per iteration over the 10-iteration window). The production
-    // monitor MUST terminate the solve with the STAGNATED verdict and a
-    // non-empty reason, early — never a false converged and never an
-    // unbounded iteration loop.
+    // Item 10 — nonlinear stagnation: pathological under-relaxation of
+    // BOTH couplings (alpha_u = alpha_p = 1e-6) makes each nonlinear
+    // iteration move the solution by ~1e-6 of the full correction, so the
+    // per-iteration relative improvement of the monitored nonlinear metric
+    // (~1e-6) stays three orders of magnitude below the production
+    // stagnation threshold (1e-3 per iteration over the 10-iteration
+    // window). Contracting alpha_u alone is NOT sufficient: with the
+    // unrelaxed SIMPLEC pressure correction (alpha_p = 1) the measured
+    // per-iteration improvement is ~3e-3 to 7e-2 (CI-verified), the
+    // stagnation window never saturates and the solve terminates at the
+    // iteration cap instead. The production monitor MUST terminate the
+    // solve with the STAGNATED verdict and a non-empty reason, early —
+    // never a false converged and never an unbounded iteration loop.
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
         c.coupling.alpha_u = 1e-6;
+        c.coupling.alpha_p = 1e-6;
         c.convergence.max_iterations = 400;
         // Isolate the outer-iteration stagnation mechanism from inner
         // linear-solver stopping jitter: essentially exact inner solves
