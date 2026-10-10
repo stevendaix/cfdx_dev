@@ -27,6 +27,7 @@ REQUIRED_TESTS = (
     "test_nonorthogonal_skew_campaign",
     "test_nonorthogonal_laplacian_campaign",
     "test_polyhedral_laplacian_campaign",
+    "test_polyhedral_poisson_convergence",
 )
 
 _PREFIX = re.compile(r"^\s*Test\s+#\s*\d+\s*:\s*(\S+)")
@@ -111,6 +112,8 @@ def extract_evidence(
         "polyhedral": [],
         "near_degenerate": [],
         "invalid": [],
+        "poisson": [],
+        "poisson_order": [],
     }
     prefixes = {
         "N10_QUALITY": "quality",
@@ -118,6 +121,8 @@ def extract_evidence(
         "N10_POLYHEDRAL": "polyhedral",
         "N10_NEAR_DEGENERATE_VALID": "near_degenerate",
         "N10_INVALID": "invalid",
+        "N10_POISSON": "poisson",
+        "N10_POISSON_ORDER": "poisson_order",
     }
     for result in results:
         output = str(result["output"])
@@ -153,6 +158,17 @@ def audit_evidence(evidence: dict[str, list[dict[str, object]]]) -> dict[str, ob
         ),
         "near_degenerate": ("max_aspect", "min_volume"),
         "invalid": ("rejected_errors",),
+        "poisson": (
+            "n",
+            "cells",
+            "unknowns",
+            "iterations",
+            "l2",
+            "linf",
+            "assembly_max_rel_diff",
+            "true_relative_residual",
+        ),
+        "poisson_order": ("from_n", "to_n", "observed_order"),
     }
     missing: dict[str, list[int]] = {}
     checked = 0

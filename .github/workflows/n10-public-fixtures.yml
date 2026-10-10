@@ -64,7 +64,7 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCFDX_ENABLE_GPU=OFF \
             -DPython3_EXECUTABLE=$PWD/.venv/bin/python
-          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case test_n10_fixture_numerical_qualification test_n10_difficult_mesh_robustness test_gradient_verification test_polyhedral_gradient_campaign test_nonorthogonal_skew_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_laplacian_campaign
+          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case test_n10_fixture_numerical_qualification test_n10_difficult_mesh_robustness test_gradient_verification test_polyhedral_gradient_campaign test_nonorthogonal_skew_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_laplacian_campaign test_polyhedral_poisson_convergence
 
       - name: Qualify imported fixtures through the production C++ importer
         run: |

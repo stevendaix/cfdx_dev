@@ -15,6 +15,7 @@ REQUIRED_TESTS = {
     "test_nonorthogonal_skew_campaign",
     "test_nonorthogonal_laplacian_campaign",
     "test_polyhedral_laplacian_campaign",
+    "test_polyhedral_poisson_convergence",
 }
 
 
