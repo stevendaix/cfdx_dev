@@ -541,7 +541,59 @@ int main()
             throw std::runtime_error(std::string("COUPLED skew Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
     }
 
-    // Cross-algorithm physical-equivalence gate on each benchmark.
+    // Cross-algorithm physical-equivalence gate on each benchmark. Every
+    // pairwise delta (plus the end-of-run audit of both cavity solutions)
+    // is printed before any gate decision, so a CI failure identifies the
+    // algorithm pair, the magnitude and the argmax location directly in
+    // the log instead of an unqualified gate name. Diagnostic only: the
+    // thresholds and their enforcement are unchanged.
+    const auto equivalence_alg_name = [](std::size_t k) {
+        switch (k) {
+        case 0: return "SIMPLE";
+        case 1: return "SIMPLEC";
+        case 2: return "PISO";
+        case 3: return "PIMPLE";
+        case 4: return "FRACTIONAL_STEP";
+        default: return "COUPLED";
+        }
+    };
+    struct EquivalenceProbe { double value; std::size_t cell; std::size_t comp; };
+    const auto difference_probe = [](const Run& a, const Run& b) {
+        if (a.U.size()!=b.U.size())
+            throw std::invalid_argument("field size mismatch");
+        EquivalenceProbe d{0.0, 0, 0};
+        for (std::size_t c=0;c<a.U.size();++c)
+            for (std::size_t comp=0;comp<3;++comp) {
+                const double e=std::abs(a.U.component_data(comp)[c]-
+                                         b.U.component_data(comp)[c]);
+                if (e>d.value) { d.value=e; d.cell=c; d.comp=comp; }
+            }
+        return d;
+    };
+    const auto print_equivalence_row = [&](std::size_t k) {
+        const auto dc=difference_probe(couette[0],couette[k]);
+        const auto dp=difference_probe(poiseuille[0],poiseuille[k]);
+        const auto dv=difference_probe(cavity[0],cavity[k]);
+        const auto& h0=cavity[0].result.history.back();
+        const auto& hk=cavity[k].result.history.back();
+        char buf[1024];
+        snprintf(buf,sizeof(buf),
+            "EQUIVALENCE alg=%s couette=%.3e poiseuille=%.3e cavity=%.3e"
+            " cavity_argmax_cell=%zu comp=%zu u_simple=%.6e u_alg=%.6e"
+            " | cavity_simple iters=%zu mom=%.3e cont=%.3e recon=%.3e fmm=%.3e"
+            " | cavity_alg iters=%zu mom=%.3e cont=%.3e recon=%.3e fmm=%.3e\n",
+            equivalence_alg_name(k),dc.value,dp.value,dv.value,
+            dv.cell,dv.comp,
+            cavity[0].U.component_data(dv.comp)[dv.cell],
+            cavity[k].U.component_data(dv.comp)[dv.cell],
+            h0.iteration,h0.momentum_residual,h0.continuity_linf,
+            h0.reconstructed_velocity_continuity_linf,h0.flux_velocity_mismatch_linf,
+            hk.iteration,hk.momentum_residual,hk.continuity_linf,
+            hk.reconstructed_velocity_continuity_linf,hk.flux_velocity_mismatch_linf);
+        write(2,buf,strlen(buf));
+    };
+    for (std::size_t k=1;k<couette.size();++k)
+        print_equivalence_row(k);
     for (std::size_t k=1;k<couette.size();++k) {
         if (max_difference(couette[0],couette[k])>2e-4)
             throw std::runtime_error("Couette algorithm equivalence gate failed");
