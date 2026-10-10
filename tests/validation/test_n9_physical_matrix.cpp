@@ -142,7 +142,9 @@ IncompressibleSolverControls controls_for(
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
-    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 0.5 : 0.3;
+    // SIMPLEC's consistent pressure correction is normally unrelaxed; retaining
+    // SIMPLE's 0.3 factor here causes the physical Couette case to stagnate.
+    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 1.0 : 0.3;
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
          algorithm == PressureVelocityAlgorithm::PISO ||
