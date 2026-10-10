@@ -1336,7 +1336,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
                 // subtracted from the current continuity residual.
-                b(row) += nonorth_flux;
+                // nonorth_flux is evaluated with the raw owner->neighbour
+                // face orientation, so the neighbour-side visit must flip
+                // its sign: like the implicit pressure part, which enters
+                // every row as D*(p_self - p_other), the deferred flux
+                // must enter this cell's outward divergence with the
+                // face sign.
+                b(row) += sign * nonorth_flux;
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch < mesh.boundary().n_patches() &&
