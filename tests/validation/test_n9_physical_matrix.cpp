@@ -179,9 +179,13 @@ IncompressibleSolverControls controls_for(
         // every relaxation retry. Keep the nested Fp budget below the outer
         // gate, mirroring the LSC/BFBt path which already runs its nested
         // pressure solves at the outer coupled tolerance and budget.
-        c.pcd_convection_diffusion_tolerance = 1e-13;
+        c.pcd_convection_diffusion_tolerance = 1e-14;
         c.pcd_convection_diffusion_max_iterations = 1000;
-        c.pcd_convection_diffusion_linear_solver.gmres_restart = 256;
+        // Full pressure-block Krylov space per case (clamped to the block
+        // size: 192 on the 12x16 channel, 1024 on the 32x32 cavity) so the
+        // nested solve can actually reach the requested level on the cavity
+        // pressure block instead of stagnating against a truncated cycle.
+        c.pcd_convection_diffusion_linear_solver.gmres_restart = 1024;
     }
 
     if (algorithm == PressureVelocityAlgorithm::COUPLED) {
