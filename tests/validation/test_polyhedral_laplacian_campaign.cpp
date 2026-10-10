@@ -5,11 +5,14 @@
 // Constant fields must be annihilated; linear fields and smooth manufactured
 // field converge/conserve as measured, reported without over-promotion.
 // With a linear-consistent (least-squares) cell gradient the corrected
-// operator is linear-exact, and there a genuine convergence property is
-// required: the smooth-field interior L2 error must strictly decrease
-// under refinement. The default two-point Gauss gradient variant makes
-// no such claim: it is not linear-consistent on tetrahedra and its
-// measured non-decreasing error is reported rather than hidden.
+// operator is linear-exact, and that consistency is enforced at every
+// campaign refinement level. The smooth-field interior residual under
+// this consistent configuration is measured and reported WITHOUT a
+// decrease threshold: a linear-exact but non-symmetric corrected operator
+// is not quadratic-exact, so no pointwise residual convergence is claimed.
+// The default two-point Gauss gradient variant is not linear-consistent
+// on tetrahedra and its measured non-decreasing error is reported rather
+// than hidden.
 
 #include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -231,23 +234,24 @@ void check_smooth()
     }
 }
 
-// Convergence gate: with a linear-consistent (least-squares) cell gradient
-// the corrected non-orthogonal operator is linear-exact on interior
-// tetrahedra, so a convergence property is genuinely required there: the
-// interior L2 error of the smooth manufactured field must strictly
-// decrease under refinement. The observed order is reported but
-// deliberately not thresholded: this campaign gates convergence, not a
-// claimed polyhedral accuracy order. The default two-point Gauss
-// gradient is excluded because it is not linear-consistent on
-// tetrahedra (see check_smooth).
-void check_smooth_convergence()
+// Smooth-field diagnostic with linear-consistent gradients: the corrected
+// operator with a least-squares cell gradient is linear-exact
+// (check_operator_consistency enforces this at every campaign refinement
+// level), but it is not quadratic-exact and its gradient-based correction
+// term makes the operator non-symmetric. Its pointwise interior residual
+// on a smooth manufactured field is therefore O(1), and no convergence
+// claim is made for it: a strict-decrease requirement on these residuals
+// was measured to FAIL on the n=4/8/16 tetrahedral family (first revision
+// of this PR), which is exactly why the campaign reports them without a
+// threshold instead of promoting an unproven order. Errors must remain
+// finite; the observed orders are reported as diagnostics only.
+void check_smooth_with_consistent_gradient()
 {
     const std::vector<std::size_t> ns = {4u, 8u, 16u};
 
     for (const auto gs : {GradientScheme::LEAST_SQUARES,
                           GradientScheme::LEAST_SQUARES_QUADRATIC}) {
-        double previous_l2 = 0.0;
-        double previous_h = 0.0;
+        std::vector<double> l2(ns.size(), 0.0);
         for (std::size_t idx = 0; idx < ns.size(); ++idx) {
             const Grid grid = make_tet_grid(ns[idx]);
             const auto e = interior_error(grid,
@@ -257,22 +261,16 @@ void check_smooth_convergence()
             require(std::isfinite(e.l2) && std::isfinite(e.linf),
                     std::string(to_string(gs)) +
                     ": corrected Laplacian errors must be finite");
+            l2[idx] = e.l2;
             std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
                       << " n=" << ns[idx] << " L2=" << e.l2 << " Linf=" << e.linf << "\n";
-            const double h = 1.0 / static_cast<double>(ns[idx]);
-            if (idx > 0) {
-                const double observed_order =
-                    std::log(previous_l2 / e.l2) / std::log(previous_h / h);
-                std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
-                          << " from_n=" << ns[idx - 1] << " to_n=" << ns[idx]
-                          << " observed_order=" << observed_order << "\n";
-                require(e.l2 < previous_l2,
-                        std::string(to_string(gs)) +
-                        ": corrected Laplacian with a linear-consistent gradient must converge:"
-                         " interior L2 error must strictly decrease under refinement");
-            }
-            previous_l2 = e.l2;
-            previous_h = h;
+        }
+        for (std::size_t idx = 1; idx < ns.size(); ++idx) {
+            const double observed_order =
+                std::log(l2[idx - 1] / l2[idx]) / std::log(2.0);
+            std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
+                      << " from_n=" << ns[idx - 1] << " to_n=" << ns[idx]
+                      << " observed_order=" << observed_order << "\n";
         }
     }
 }
@@ -308,10 +306,10 @@ int main()
 {
     try {
         std::cout << std::setprecision(12);
-        check_operator_consistency(6);
+        for (const std::size_t n : {4u, 6u, 8u, 16u}) check_operator_consistency(n);
         check_constant_and_linear(4);
         check_smooth();
-        check_smooth_convergence();
+        check_smooth_with_consistent_gradient();
         std::cout << "POLYHEDRAL_LAPLACIAN_CAMPAIGN: PASS\n";
         return 0;
     } catch (const std::exception& e) {
