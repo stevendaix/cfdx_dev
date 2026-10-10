@@ -188,6 +188,10 @@ class CaseSetup(BaseModel):
 
     # Other
     gravity_vector: str = ""
+    # Uniform body force per unit mass (acceleration, m/s^2). Empty = not
+    # declared: the solver keeps its own default instead of silently
+    # substituting zero.
+    body_force: list[float] = Field(default_factory=list)
     units: str = "SI"
     solver_mode: str = "steady"
     source_metadata: dict[str, str] = Field(default_factory=dict)

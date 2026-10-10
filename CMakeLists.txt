@@ -1036,6 +1036,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             LABELS "n9;schur;integration;validation;validation-total"
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME test_n9_poiseuille_body_force_production
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
+        set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
+            LABELS "n9;qualification;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 900)
     endif()
 
     if(Python3_Interpreter_FOUND)
@@ -1071,3 +1079,4 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()
+
