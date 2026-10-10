@@ -1,0 +1,62 @@
+Running 11 test cases...
+N9_7_ITEM1 true_residual=0 null_component=0
+  PASS: n9_7_item1_singular_pressure_system
+N9_7_ITEM2 wrong_null_operator_residual=0.570088 solve_status=not_applicable
+  PASS: n9_7_item2_wrong_null_space_rejected
+N9_7_ITEM3 rhs_component_norm=2.82843 classified=incompatible_rhs
+  PASS: n9_7_item3_incompatible_rhs_classified
+N9_7_ITEM4 all pinned rejections thrown
+  PASS: n9_7_item4_invalid_coefficients_rejected
+N9_7_ITEM5 clean=3.66442e-11 sign_fault=0.15625 flipped=0.15625 flipped_face=408
+  PASS: n9_7_item5_flux_antisymmetry_violation_detected
+N9_7_ITEM6 exact_gradient_error=1.33227e-15 collapsed_gradient_error=19 divergence_clean=0 divergence_sign_fault=0.04625
+  PASS: n9_7_item6_gradient_divergence_consistency
+N9_7_ITEM7 offset_delta=0 bump_delta=0.00694444
+  PASS: n9_7_item7_rhie_chow_reconstruction_perturbed
+N9_7_ITEM8 near_zero_diagonal=1 diagonal_dynamic_range=1e+15
+  PASS: n9_7_item8_schur_conditioning_and_pathology
+CFDX nonlinear iteration 1 rejected; retry=1 alpha_u=0.35 alpha_p=0.15 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=9.126e-02, relative=2.282e-01)
+CFDX nonlinear iteration 1 rejected; retry=2 alpha_u=0.175 alpha_p=0.075 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=4.064e-02, relative=1.016e-01)
+CFDX nonlinear iteration 1 rejected; retry=3 alpha_u=0.1 alpha_p=0.05 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=1.917e-02, relative=4.793e-02)
+N9_7_ITEM9 linear failure propagated with pinned diagnostic
+  PASS: n9_7_item9_linear_failure_propagates
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=0.00178881 velocity_change_inf=1 pressure_change_inf=0.548245 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=9 pressure_relative_residual=3.63313e-15 momentum_linear_iterations=3 flux_velocity_mismatch_linf=4.91172e-05 worst_momentum_cell=182 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=50 momentum_residual_relative=0.0842433 continuity_normalized=0.000238479 velocity_change_inf=0.00699465 pressure_change_inf=0.00262969 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=4.18392e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=2.42738e-05 worst_momentum_cell=171 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=100 momentum_residual_relative=0.040651 continuity_normalized=0.00012252 velocity_change_inf=0.00308348 pressure_change_inf=0.000904493 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=3.81025e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=1.307e-05 worst_momentum_cell=161 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=150 momentum_residual_relative=0.0263533 continuity_normalized=8.52214e-05 velocity_change_inf=0.00193777 pressure_change_inf=0.000506882 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=5.0032e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=9.50482e-06 worst_momentum_cell=161 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=0.0201463 continuity_normalized=6.62206e-05 velocity_change_inf=0.00143951 pressure_change_inf=0.000339501 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=4.76532e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=8.58011e-06 worst_momentum_cell=149 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=250 momentum_residual_relative=0.0158628 continuity_normalized=5.43953e-05 velocity_change_inf=0.00112716 pressure_change_inf=0.000250363 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=4.96046e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=7.89507e-06 worst_momentum_cell=150 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=300 momentum_residual_relative=0.0133505 continuity_normalized=4.61377e-05 velocity_change_inf=0.000933701 pressure_change_inf=0.000197871 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=6.47075e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=7.33695e-06 worst_momentum_cell=138 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=350 momentum_residual_relative=0.0113557 continuity_normalized=3.9931e-05 velocity_change_inf=0.000783956 pressure_change_inf=0.000163479 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=6.26996e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=6.8526e-06 worst_momentum_cell=138 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=0.00983462 continuity_normalized=3.50336e-05 velocity_change_inf=0.000680429 pressure_change_inf=0.000139089 alpha_u=1e-06 alpha_p=1 pressure_linear_iterations=8 pressure_relative_residual=6.7398e-15 momentum_linear_iterations=2 flux_velocity_mismatch_linf=6.41562e-06 worst_momentum_cell=126 worst_momentum_patch=front
+N9_7_ITEM10 trace iter=1 metric=1 momentum_residual=0.926467 pressure_residual=3.63313e-15 velocity_change=1 pressure_change=0.548245 continuity_normalized=0.00178881
+N9_7_ITEM10 trace iter=2 metric=0.936044 momentum_residual=0.860085 pressure_residual=7.95374e-15 velocity_change=0.478327 pressure_change=0.109067 continuity_normalized=0.000727833
+N9_7_ITEM10 trace iter=3 metric=0.869408 momentum_residual=0.798941 pressure_residual=8.60782e-15 velocity_change=0.304694 pressure_change=0.0422556 continuity_normalized=0.000663229
+N9_7_ITEM10 trace iter=4 metric=0.808931 momentum_residual=0.744472 pressure_residual=8.98617e-15 velocity_change=0.218349 pressure_change=0.0506083 continuity_normalized=0.00065802
+N9_7_ITEM10 trace iter=5 metric=0.752995 momentum_residual=0.694107 pressure_residual=5.84681e-15 velocity_change=0.166964 pressure_change=0.0433624 continuity_normalized=0.00066291
+N9_7_ITEM10 trace iter=6 metric=0.701384 momentum_residual=0.647625 pressure_residual=6.78244e-15 velocity_change=0.133044 pressure_change=0.0398507 continuity_normalized=0.00067775
+N9_7_ITEM10 trace iter=7 metric=0.653783 momentum_residual=0.604721 pressure_residual=6.77555e-15 velocity_change=0.109089 pressure_change=0.0372516 continuity_normalized=0.000687414
+N9_7_ITEM10 trace iter=8 metric=0.609893 momentum_residual=0.565096 pressure_residual=6.46348e-15 velocity_change=0.091348 pressure_change=0.0367548 continuity_normalized=0.000689906
+N9_7_ITEM10 trace iter=9 metric=0.569423 momentum_residual=0.528477 pressure_residual=6.43039e-15 velocity_change=0.0777407 pressure_change=0.0400915 continuity_normalized=0.000686581
+N9_7_ITEM10 trace iter=10 metric=0.532095 momentum_residual=0.494618 pressure_residual=6.57011e-15 velocity_change=0.0670183 pressure_change=0.04255 continuity_normalized=0.000679112
+N9_7_ITEM10 trace iter=11 metric=0.497648 momentum_residual=0.463291 pressure_residual=6.87359e-15 velocity_change=0.0583866 pressure_change=0.0443008 continuity_normalized=0.000668642
+N9_7_ITEM10 trace iter=12 metric=0.46584 momentum_residual=0.43429 pressure_residual=7.33358e-15 velocity_change=0.0513164 pressure_change=0.0454546 continuity_normalized=0.000655478
+N9_7_ITEM10 trace iter=13 metric=0.436451 momentum_residual=0.407429 pressure_residual=7.36311e-15 velocity_change=0.0454415 pressure_change=0.0458731 continuity_normalized=0.000640784
+N9_7_ITEM10 trace iter=14 metric=0.409279 momentum_residual=0.382533 pressure_residual=7.54694e-15 velocity_change=0.0406972 pressure_change=0.0457345 continuity_normalized=0.000624919
+N9_7_ITEM10 trace iter=15 metric=0.384139 momentum_residual=0.359446 pressure_residual=8.07914e-15 velocity_change=0.0367317 pressure_change=0.0450336 continuity_normalized=0.000608388
+N9_7_ITEM10 trace iter=50 metric=0.0842433 momentum_residual=0.0798918 pressure_residual=4.18392e-15 velocity_change=0.00699465 pressure_change=0.00262969 continuity_normalized=0.000238479
+N9_7_ITEM10 trace iter=100 metric=0.040651 momentum_residual=0.0386287 pressure_residual=3.81025e-15 velocity_change=0.00308348 pressure_change=0.000904493 continuity_normalized=0.00012252
+N9_7_ITEM10 trace iter=150 metric=0.0263533 momentum_residual=0.0250587 pressure_residual=5.0032e-15 velocity_change=0.00193777 pressure_change=0.000506882 continuity_normalized=8.52214e-05
+N9_7_ITEM10 trace iter=200 metric=0.0201463 momentum_residual=0.0191641 pressure_residual=4.76532e-15 velocity_change=0.00143951 pressure_change=0.000339501 continuity_normalized=6.62206e-05
+N9_7_ITEM10 trace iter=250 metric=0.0158628 momentum_residual=0.0150936 pressure_residual=4.96046e-15 velocity_change=0.00112716 pressure_change=0.000250363 continuity_normalized=5.43953e-05
+N9_7_ITEM10 trace iter=300 metric=0.0133505 momentum_residual=0.0127058 pressure_residual=6.47075e-15 velocity_change=0.000933701 pressure_change=0.000197871 continuity_normalized=4.61377e-05
+N9_7_ITEM10 trace iter=350 metric=0.0113557 momentum_residual=0.0108092 pressure_residual=6.26996e-15 velocity_change=0.000783956 pressure_change=0.000163479 continuity_normalized=3.9931e-05
+N9_7_ITEM10 trace iter=400 metric=0.00983462 momentum_residual=0.00936264 pressure_residual=6.7398e-15 velocity_change=0.000680429 pressure_change=0.000139089 continuity_normalized=3.50336e-05
+N9_7_ITEM10 status=MAX_ITERATIONS iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
+  FAILED: result.convergence_status == ConvergenceStatus::STAGNATED in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_negative_diagnostics.cpp:751
+  FAIL: n9_7_item10_nonlinear_stagnation_detected - Assertion failed: result.convergence_status == ConvergenceStatus::STAGNATED
+N9_7_FINAL continuity_linf=3.66442e-11 momentum_residual=9.91865e-09 poiseuille_l2=0.00488281
+  PASS: n9_7_final_gate_reference_solution_still_accepted
+
+Results: 10 passed, 1 failed
+test_exit=1
