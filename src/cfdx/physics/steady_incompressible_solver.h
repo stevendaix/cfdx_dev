@@ -2399,12 +2399,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
+                // Report the stalled linear state in scientific notation.
+                // std::to_string truncates to six fixed decimals, so a
+                // MAX_ITER stall printed as "residual=0.000000" hid the
+                // plateau level and made the failure impossible to calibrate
+                // against the coupled linear gate or the nested PCD budget.
+                const auto coupled_linear_failure_value = [](double value) {
+                    std::ostringstream out;
+                    out << std::scientific << std::setprecision(6) << value;
+                    return out.str();
+                };
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
                     ", iterations=" + std::to_string(coupled_result.iterations) +
-                    ", residual=" + std::to_string(coupled_result.residual) +
-                    ", relative=" + std::to_string(coupled_result.residual_relative) + ")");
+                    ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
+                    ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
             }
 
             // The coupled linear system is a Picard/Newton linearization of the
