@@ -763,7 +763,15 @@ int main()
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
         c.convergence.continuity_tolerance = 1e-24;
-        c.convergence.max_iterations = 200;
+        c.convergence.max_iterations = 400;
+        // Essentially exact inner solves: with a loose inner tolerance
+        // the outer residual saturates at the inner-solve floor and the
+        // iterate bounces there instead of contracting to the machine
+        // fixed point, so the stagnation window never saturates. Exact
+        // inner solves make the outer iteration a clean contraction that
+        // reaches the bit-identical fixed point.
+        c.linear_tolerance = 1e-14;
+        c.linear_max_iterations = 4000;
         c.body_force = {1.0, 0.0, 0.0};
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 10;
@@ -799,9 +807,9 @@ int main()
         // Terminated by the stagnation detector, not by chance or by the
         // iteration cap: the 10-iteration window cannot saturate before
         // iteration 11, and the detector must fire long before the
-        // 200-iteration maximum.
+        // 400-iteration maximum.
         EXPECT_TRUE(result.iterations >= 11);
-        EXPECT_TRUE(result.iterations < 200);
+        EXPECT_TRUE(result.iterations < 400);
         // Evidence, not just the verdict: the termination happened at the
         // physical fixed point — the residual is tiny (this exact case
         // passes the final gate's unchanged physical thresholds) while
