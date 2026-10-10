@@ -206,18 +206,38 @@ def _case_setup_json() -> str:
 
     zero = [0.0, 0.0, 0.0]
     setup.boundary_conditions = [
-        BoundarySpec(patch_name="inlet", type=BCType.INLET,
-                     value_type=BCValueType.ZERO_GRADIENT),
-        BoundarySpec(patch_name="outlet", type=BCType.OUTLET,
-                     value_type=BCValueType.ZERO_GRADIENT),
-        BoundarySpec(patch_name="bottom", type=BCType.WALL,
-                     value_type=BCValueType.FIXED, velocity_vector=list(zero)),
-        BoundarySpec(patch_name="top", type=BCType.WALL,
-                     value_type=BCValueType.FIXED, velocity_vector=list(zero)),
-        BoundarySpec(patch_name="front", type=BCType.EMPTY,
-                     value_type=BCValueType.ZERO_GRADIENT),
-        BoundarySpec(patch_name="back", type=BCType.EMPTY,
-                     value_type=BCValueType.ZERO_GRADIENT),
+        BoundarySpec(
+            patch_name="inlet",
+            type=BCType.INLET,
+            value_type=BCValueType.ZERO_GRADIENT,
+        ),
+        BoundarySpec(
+            patch_name="outlet",
+            type=BCType.OUTLET,
+            value_type=BCValueType.ZERO_GRADIENT,
+        ),
+        BoundarySpec(
+            patch_name="bottom",
+            type=BCType.WALL,
+            value_type=BCValueType.FIXED,
+            velocity_vector=list(zero),
+        ),
+        BoundarySpec(
+            patch_name="top",
+            type=BCType.WALL,
+            value_type=BCValueType.FIXED,
+            velocity_vector=list(zero),
+        ),
+        BoundarySpec(
+            patch_name="front",
+            type=BCType.EMPTY,
+            value_type=BCValueType.ZERO_GRADIENT,
+        ),
+        BoundarySpec(
+            patch_name="back",
+            type=BCType.EMPTY,
+            value_type=BCValueType.ZERO_GRADIENT,
+        ),
     ]
 
     setup.initial_condition = InitialCondition(
@@ -227,14 +247,22 @@ def _case_setup_json() -> str:
     setup.numerics.max_iterations = MAX_ITERATIONS
     setup.numerics.selection = NumericalSelectionConfig(
         entries=[
-            NumericalSelection(family="gradient",
-                               configuration_key="numerics.gradient.gauss"),
-            NumericalSelection(family="convection",
-                               configuration_key="numerics.convection.upwind"),
-            NumericalSelection(family="pressure_velocity",
-                               configuration_key="pressure_velocity.simple"),
-            NumericalSelection(family="linear_solver",
-                               configuration_key="linear.fgmres"),
+            NumericalSelection(
+                family="gradient",
+                configuration_key="numerics.gradient.gauss",
+            ),
+            NumericalSelection(
+                family="convection",
+                configuration_key="numerics.convection.upwind",
+            ),
+            NumericalSelection(
+                family="pressure_velocity",
+                configuration_key="pressure_velocity.simple",
+            ),
+            NumericalSelection(
+                family="linear_solver",
+                configuration_key="linear.fgmres",
+            ),
         ],
         required_families=["gradient", "convection", "pressure_velocity"],
     )
@@ -308,10 +336,11 @@ def _write_case(path: Path) -> None:
         h5.create_dataset("cell_faces", data=cf)
         h5.create_dataset("cell_offsets", data=co)
         h5.create_dataset(
-            "patch_face_ids", data=np.asarray(patch_face_ids, dtype=np.uint64))
+            "patch_face_ids", data=np.asarray(patch_face_ids, dtype=np.uint64)
+        )
         h5.create_dataset(
-            "patch_face_offsets",
-            data=np.asarray(patch_face_offsets, dtype=np.uint64))
+            "patch_face_offsets", data=np.asarray(patch_face_offsets, dtype=np.uint64)
+        )
 
 
 def test_n9_poiseuille_body_force_production_path(tmp_path: Path) -> None:
@@ -351,11 +380,15 @@ def test_n9_poiseuille_body_force_production_path(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
             str(solver),
-            "--mesh", str(case_path),
-            "--output-dir", str(output_dir),
-            "--iterations", str(MAX_ITERATIONS),
+            "--mesh",
+            str(case_path),
+            "--output-dir",
+            str(output_dir),
+            "--iterations",
+            str(MAX_ITERATIONS),
             *[item for probe in probes for item in ("--probe", probe)],
-            "--probe-csv", str(probe_csv),
+            "--probe-csv",
+            str(probe_csv),
         ],
         capture_output=True,
         text=True,
