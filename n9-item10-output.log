@@ -20,81 +20,56 @@ CFDX nonlinear iteration 1 rejected; retry=2 alpha_u=0.175 alpha_p=0.075 reason=
 CFDX nonlinear iteration 1 rejected; retry=3 alpha_u=0.1 alpha_p=0.05 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=1.917e-02, relative=4.793e-02)
 N9_7_ITEM9 linear failure propagated with pinned diagnostic
   PASS: n9_7_item9_linear_failure_propagates
-N9_7_ITEM10_SWEEP alpha=1e-06 status=MAX_ITERATIONS converged=0 iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=1 metric=1
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=2 metric=0.931215
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=3 metric=0.869108
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=4 metric=0.812798
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=5 metric=0.761503
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=6 metric=0.714535
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=7 metric=0.671294
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=8 metric=0.631261
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=9 metric=0.593993
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=10 metric=0.559118
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=11 metric=0.526332
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=12 metric=0.495385
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=13 metric=0.466083
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=14 metric=0.438278
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=15 metric=0.411861
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=16 metric=0.386757
-N9_7_ITEM10_SWEEP alpha=1e-06 trace iter=400 metric=0.0101037
-N9_7_ITEM10_SWEEP alpha=1e-08 status=MAX_ITERATIONS converged=0 iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=1 metric=1
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=2 metric=0.931215
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=3 metric=0.869108
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=4 metric=0.812798
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=5 metric=0.761503
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=6 metric=0.714535
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=7 metric=0.671294
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=8 metric=0.631261
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=9 metric=0.593993
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=10 metric=0.559118
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=11 metric=0.526332
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=12 metric=0.495385
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=13 metric=0.466083
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=14 metric=0.438278
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=15 metric=0.411861
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=16 metric=0.386757
-N9_7_ITEM10_SWEEP alpha=1e-08 trace iter=400 metric=0.0101037
-N9_7_ITEM10_SWEEP alpha=1e-10 status=MAX_ITERATIONS converged=0 iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=1 metric=1
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=2 metric=0.931215
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=3 metric=0.869108
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=4 metric=0.812798
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=5 metric=0.761503
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=6 metric=0.714535
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=7 metric=0.671294
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=8 metric=0.631261
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=9 metric=0.593993
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=10 metric=0.559118
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=11 metric=0.526332
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=12 metric=0.495385
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=13 metric=0.466083
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=14 metric=0.438278
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=15 metric=0.411861
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=16 metric=0.386757
-N9_7_ITEM10_SWEEP alpha=1e-10 trace iter=400 metric=0.0101037
-N9_7_ITEM10_SWEEP alpha=1e-12 status=MAX_ITERATIONS converged=0 iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=1 metric=1
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=2 metric=0.931215
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=3 metric=0.869108
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=4 metric=0.812798
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=5 metric=0.761503
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=6 metric=0.714535
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=7 metric=0.671294
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=8 metric=0.631261
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=9 metric=0.593993
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=10 metric=0.559118
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=11 metric=0.526332
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=12 metric=0.495385
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=13 metric=0.466083
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=14 metric=0.438278
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=15 metric=0.411861
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=16 metric=0.386757
-N9_7_ITEM10_SWEEP alpha=1e-12 trace iter=400 metric=0.0101037
-  PASS: n9_7_item10_alpha_sweep
+N9_7_ITEM10_CANDIDATE variant=A max_iter=3000 status=MAX_ITERATIONS converged=0 iterations=3000 reason=maximum nonlinear iteration count reached without satisfying all gates
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1 metric=1
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2 metric=0.931215
+N9_7_ITEM10_CANDIDATE variant=A trace iter=3 metric=0.869108
+N9_7_ITEM10_CANDIDATE variant=A trace iter=4 metric=0.812798
+N9_7_ITEM10_CANDIDATE variant=A trace iter=5 metric=0.761503
+N9_7_ITEM10_CANDIDATE variant=A trace iter=6 metric=0.714535
+N9_7_ITEM10_CANDIDATE variant=A trace iter=7 metric=0.671294
+N9_7_ITEM10_CANDIDATE variant=A trace iter=8 metric=0.631261
+N9_7_ITEM10_CANDIDATE variant=A trace iter=9 metric=0.593993
+N9_7_ITEM10_CANDIDATE variant=A trace iter=10 metric=0.559118
+N9_7_ITEM10_CANDIDATE variant=A trace iter=11 metric=0.526332
+N9_7_ITEM10_CANDIDATE variant=A trace iter=12 metric=0.495385
+N9_7_ITEM10_CANDIDATE variant=A trace iter=100 metric=0.0425961
+N9_7_ITEM10_CANDIDATE variant=A trace iter=200 metric=0.0206728
+N9_7_ITEM10_CANDIDATE variant=A trace iter=300 metric=0.0137193
+N9_7_ITEM10_CANDIDATE variant=A trace iter=400 metric=0.0101037
+N9_7_ITEM10_CANDIDATE variant=A trace iter=500 metric=0.00793029
+N9_7_ITEM10_CANDIDATE variant=A trace iter=600 metric=0.00638009
+N9_7_ITEM10_CANDIDATE variant=A trace iter=700 metric=0.00526108
+N9_7_ITEM10_CANDIDATE variant=A trace iter=800 metric=0.00436638
+N9_7_ITEM10_CANDIDATE variant=A trace iter=900 metric=0.003655
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1000 metric=0.00308359
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1100 metric=0.00260416
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1200 metric=0.00220111
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1300 metric=0.00186174
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1400 metric=0.00157556
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1500 metric=0.00133396
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1600 metric=0.00112981
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1700 metric=0.00095719
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1800 metric=0.000811139
+N9_7_ITEM10_CANDIDATE variant=A trace iter=1900 metric=0.000687509
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2000 metric=0.000582819
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2100 metric=0.000494137
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2200 metric=0.000418997
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2300 metric=0.000355317
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2400 metric=0.000301338
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2500 metric=0.000255577
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2600 metric=0.000216778
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2700 metric=0.000183877
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2800 metric=0.000155976
+N9_7_ITEM10_CANDIDATE variant=A trace iter=2900 metric=0.000132313
+N9_7_ITEM10_CANDIDATE variant=A trace iter=3000 metric=0.000112243
+CFDX nonlinear iteration 2 rejected; retry=1 alpha_u=0.35 alpha_p=0.5 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1, residual=0.000134, relative=0.112276)
+CFDX nonlinear iteration 24 rejected; retry=1 alpha_u=0.35 alpha_p=0.5 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1, residual=0.000004, relative=0.105532)
+CFDX nonlinear iteration 24 rejected; retry=2 alpha_u=0.175 alpha_p=0.25 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1, residual=0.000027, relative=0.221382)
+CFDX nonlinear iteration 24 rejected; retry=3 alpha_u=0.1 alpha_p=0.125 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1, residual=0.000035, relative=0.184809)
+  FAIL: n9_7_item10_trigger_candidates - solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=1, residual=0.000038, relative=0.175563)
 N9_7_FINAL continuity_linf=3.66442e-11 momentum_residual=9.91865e-09 poiseuille_l2=0.00488281
   PASS: n9_7_final_gate_reference_solution_still_accepted
 
-Results: 11 passed, 0 failed
-test_exit=0
+Results: 10 passed, 1 failed
+test_exit=1
