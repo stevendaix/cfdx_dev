@@ -2184,8 +2184,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           const Vector& field,
                           const Field<double, Location::CELL>& gradp,
                           std::size_t component,
-                          const std::vector<double>& rAU,
-                          const std::vector<double>& rAtU) {
+                          const std::vector<double>& rAU) {
         std::vector<double> hbya(mesh.n_cells(), 0.0);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double h = eq.rhs(c) + gradp.component_data(component)[c] * geometry.cell_volumes[c];
@@ -2196,12 +2195,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (col != c)
                     h -= eq.matrix.values_data()[k] * field(col);
             }
-            // SIMPLEC follows the established consistent formulation:
-            // HbyA = rAU*H - (rAU-rAtU)*grad(p).
+            // HbyA is always the plain momentum-inverse combination
+            // rAU*H, for SIMPLEC included. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only: the over-relaxation terms added to
+            // phiHbyA and to the corrected flux are sized so that
+            // (dAtU - dAU) cancels the rAtU response of the pressure
+            // operator, which collapses the SIMPLEC fixed point back
+            // onto the plain Rhie-Chow state built with rAU. Folding
+            // (rAtU - rAU)*grad(p) into the cell HbyA instead leaves
+            // the converged state on a displaced continuity operator
+            // carrying the spurious source
+            // div(rho*(dAtU - dAU)*snGrad(p)*|Sf|) of O(Laplacian(p))
+            // scale: invisible on Couette (constant p) and Poiseuille
+            // (linear p) but far outside the algorithm-equivalence
+            // gate on the lid-driven cavity.
             hbya[c] = rAU[c] * h;
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
-                hbya[c] -= (rAU[c] - rAtU[c]) *
-                           gradp.component_data(component)[c] * geometry.cell_volumes[c];
             if (!std::isfinite(hbya[c]))
                 throw std::runtime_error("solve_steady_incompressible: non-finite HbyA");
         }
@@ -2644,9 +2653,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
-        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
-        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
+        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);
+        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1]);
+        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2]);
         auto HbyA = make_hbya_field(hbya);
 
         if (freeze_state) {
@@ -2864,16 +2873,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             auto corrected_grad_p =
                 gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
-            // Rebuild the corrected velocity from the same HbyA/rAtU
-            // operator used by the pressure equation. This is the momentum
-            // correction; no least-squares flux fitting is permitted.
+            // Rebuild the corrected velocity from the same rAU operator
+            // that built the cell HbyA, so the converged velocity
+            // satisfies the momentum equation. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only. This is the momentum correction; no
+            // least-squares flux fitting is permitted.
             for (std::size_t c = 0; c < nc; ++c) {
                 U.component_data(0)[c] =
-                    HbyA.component_data(0)[c] - rAtU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(0)[c] - rAU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
                 U.component_data(1)[c] =
-                    HbyA.component_data(1)[c] - rAtU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(1)[c] - rAU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
                 U.component_data(2)[c] =
-                    HbyA.component_data(2)[c] - rAtU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(2)[c] - rAU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
             }
 
             // The conservative face flux is rebuilt from the same
