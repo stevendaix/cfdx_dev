@@ -107,7 +107,9 @@ def source_git_sha(source_dir: Path) -> str:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Unable to determine campaign source revision: {result.stdout}")
+        raise RuntimeError(
+            f"Unable to determine campaign source revision: {result.stdout}"
+        )
     sha = result.stdout.strip()
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise RuntimeError(f"Git returned an invalid full commit SHA: {sha!r}")
