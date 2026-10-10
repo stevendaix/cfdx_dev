@@ -1022,6 +1022,39 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     return result;
 }
 
+// Best-effort contract for the nested pressure solves invoked inside a
+// coupled Schur approximation action (PCD Fp/Kp, LSC/BFBt H). These
+// callbacks are preconditioner applications, not standalone solves: the
+// Schur action itself is only an approximation of the true Schur inverse
+// (pcd_schur.h, lsc_bfbt_schur.h), and the outer coupled FGMRES owns the
+// final accuracy through its independently recomputed true-residual gate.
+// Requiring strict CONVERGED turns a single benign inner shortfall into a
+// total outer NOT_APPLICABLE abort: on the N9 Couette campaign one Fp apply
+// that could not reach the last digit of its relative tolerance killed the
+// whole coupled solve after 168 successful applies, because by then the
+// outer residual had shrunk enough for the nested rhs direction to hit its
+// own rounding floor. A nested run that exhausted its iteration budget but
+// produced a finite best iterate (the Krylov drivers restore the iterate
+// with the best verified true residual) remains a valid preconditioner
+// action. Only a genuinely unusable result fails the action: divergence,
+// breakdown, an inapplicable inner setup, or a non-finite iterate.
+inline bool nested_schur_pressure_solve_usable(
+    const cfdx::core::SolverResult& result,
+    const cfdx::core::Vector& x,
+    std::size_t expected_size)
+{
+    if (result.status == cfdx::core::SolverStatus::CONVERGED)
+        return true;
+    if (result.status != cfdx::core::SolverStatus::MAX_ITER_REACHED)
+        return false;
+    if (x.size() != expected_size || !x.is_valid())
+        return false;
+    for (std::size_t i = 0; i < x.size(); ++i)
+        if (!std::isfinite(x(i)))
+            return false;
+    return true;
+}
+
 inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1725,7 +1758,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 pressure_operator, rhs, x, restart,
                 max_iterations, tolerance,
                 pressure_preconditioner.get());
-            return result.status == cfdx::core::SolverStatus::CONVERGED;
+            return nested_schur_pressure_solve_usable(
+                result, x, pressure_operator.n_rows());
         };
 
         auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
@@ -1813,7 +1847,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument(
                     "unsupported PCD Laplacian Krylov model");
             }
-            return result.status == SolverStatus::CONVERGED;
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
         };
 
         const auto solve_fp = [pcd_ops, controls](
@@ -1842,7 +1877,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument(
                     "PCD convection-diffusion solve requires GMRES or FGMRES");
             }
-            return result.status == SolverStatus::CONVERGED;
+            if (result.status != SolverStatus::CONVERGED &&
+                controls.diagnostics.coupled_matrix_summary) {
+                std::cerr << "COUPLED_NESTED_PCD_BEST_EFFORT operator=Fp"
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " residual=" << result.residual
+                          << " relative=" << result.residual_relative
+                          << "\n";
+            }
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
         };
 
         auto pcd = std::make_unique<PcdSchurApproximation>(
