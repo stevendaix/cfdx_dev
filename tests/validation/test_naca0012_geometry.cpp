@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace cfdx::core;
@@ -69,6 +70,55 @@ static Forces run(const std::string& path,std::size_t level)
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+
+    // DIAG (temporary branch): the production solve stalls with a frozen
+    // continuity floor. Attribute the divergence of the authoritative
+    // mass flux cell-by-cell and to the boundary patches it touches.
+    {
+        std::cout << "NACA_DIAG status=" << to_string(solve.convergence_status)
+                  << " converged=" << (solve.converged ? 1 : 0)
+                  << " iterations=" << solve.iterations << "\n";
+        const auto& flux = solve.authoritative_mass_flux;
+        const auto& mcells = mesh.cells();
+        const auto* cell_faces = mcells.faces_data();
+        const auto* offsets = mcells.offsets_data();
+        const auto& own2 = mesh.ownership();
+        const auto& bnd = mesh.boundary();
+        std::vector<std::string> face_patch(mesh.n_faces(), std::string("interior"));
+        for (std::size_t p = 0; p < bnd.n_patches(); ++p) {
+            const auto& patch = bnd.patch(p);
+            for (const auto f : patch.face_ids) face_patch[f] = patch.name;
+        }
+        std::vector<std::pair<double, std::size_t>> offenders;
+        double div_l1 = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double balance = 0.0;
+            for (auto k = offsets[c]; k < offsets[c + 1]; ++k) {
+                const std::size_t f = cell_faces[k];
+                balance += (own2.owner(f) == c) ? flux(f) : -flux(f);
+            }
+            div_l1 += std::abs(balance);
+            offenders.push_back(std::make_pair(std::abs(balance), c));
+        }
+        std::sort(offenders.begin(), offenders.end(),
+                  [](const std::pair<double, std::size_t>& a,
+                     const std::pair<double, std::size_t>& b) {
+                      return a.first > b.first; });
+        std::cout << "NACA_DIAG divergence_l1=" << div_l1 << "\n";
+        for (std::size_t i = 0; i < 12 && i < offenders.size(); ++i) {
+            const std::size_t c = offenders[i].second;
+            std::string patches;
+            for (auto k = offsets[c]; k < offsets[c + 1]; ++k) {
+                const std::size_t f = cell_faces[k];
+                if (own2.neighbour(f) < 0) patches += face_patch[f] + ",";
+            }
+            std::cout << "NACA_DIAG cell=" << c
+                      << " |div|=" << offenders[i].first
+                      << " patches=[" << patches << "]"
+                      << " x=" << geometry.cell_centres[c].x
+                      << " y=" << geometry.cell_centres[c].y << "\n";
+        }
+    }
     if(!solve.converged)
         throw std::runtime_error("NACA0012 solver did not converge");
 
