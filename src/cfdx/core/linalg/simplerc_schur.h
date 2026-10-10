@@ -42,8 +42,10 @@ public:
     // keeps its previous algebra exactly.
     explicit SimplerSchurApproximation(
         SimplerSchurMode mode,
-        std::optional<NullSpaceProjector> pressure_null_space = std::nullopt)
-        : mode_(mode), pressure_null_space_(std::move(pressure_null_space)) {}
+        std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
+        double momentum_under_relaxation = 1.0)
+        : mode_(mode), pressure_null_space_(std::move(pressure_null_space)),
+          momentum_under_relaxation_(momentum_under_relaxation) {}
 
     const char* name() const noexcept override {
         return mode_ == SimplerSchurMode::SIMPLE ? "simple_schur" : "simplec_schur";
@@ -63,6 +65,24 @@ public:
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != blocks.pressure_size())
             return false;
+
+        // SIMPLEC's consistent denominator is defined on the *under-relaxed*
+        // momentum row. relax_momentum_equation() inflates the momentum
+        // diagonal to A_P/alpha before the segregated SIMPLEC pressure
+        // equation reads its denominator, and the same inflation must be
+        // available here: on an unrelaxed steady convection-diffusion row
+        // the plain row sum A_P - sum(a_PN) carries only boundary and
+        // source contributions and collapses to ~0 for interior cells,
+        // which made setup() reject the whole matrix (the N9 COUPLED
+        // simplec case aborted at Schur setup on its first channel solve
+        // for exactly that reason). alpha = 1.0 (the default) reproduces
+        // the previous algebra exactly, keeping the N8 dense references
+        // valid. Values above 1.0 are clamped: over-relaxation would shrink
+        // the denominator below the row sum and degenerate the operator.
+        if (!(momentum_under_relaxation_ > 0.0) ||
+            !std::isfinite(momentum_under_relaxation_))
+            return false;
+        const double relaxation_alpha = std::min(1.0, momentum_under_relaxation_);
 
         diagonal_.assign(n, 0.0);
         denominator_.assign(n, 0.0);
@@ -89,8 +109,14 @@ public:
             // In the assembled momentum matrix, neighbour entries are signed
             // as A_PN = -a_PN. The SIMPLEC denominator diag - sum(a_PN)
             // is therefore diag + sum(stored A_PN), not diag - row_off_sum.
+            // On the under-relaxed row that is A_P/alpha - sum(a_PN): the
+            // same denominator the segregated SIMPLEC pressure equation
+            // assembles from relax_momentum_equation() output. The
+            // relaxation inflation (1-alpha)/alpha * diag vanishes for the
+            // default alpha = 1.0.
             const double ad = (mode_ == SimplerSchurMode::SIMPLEC)
-                ? diag + row_off_sum
+                ? diag + row_off_sum +
+                  (1.0 - relaxation_alpha) / relaxation_alpha * diag
                 : diag;
             if (!(ad > 1e-14) || !std::isfinite(ad)) return false;
             denominator_[i] = ad;
@@ -216,6 +242,7 @@ private:
 
     SimplerSchurMode mode_;
     std::optional<NullSpaceProjector> pressure_null_space_;
+    double momentum_under_relaxation_ = 1.0;
     const BlockOperator* blocks_ = nullptr;
     std::vector<double> diagonal_;
     std::vector<double> denominator_;

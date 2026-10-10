@@ -1075,6 +1075,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     CoupledSchurModel schur_model,
     const cfdx::core::LinearSolverRequest& solver_request,
     const IncompressibleSolverControls& controls,
+    // Live momentum under-relaxation consumed only by the coupled SIMPLEC
+    // Schur approximation. The coupled matrix itself stays unrelaxed;
+    // Picard relaxation is applied to the field update after the solve.
+    double momentum_under_relaxation,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
@@ -1654,7 +1658,22 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             schur_model == CoupledSchurModel::SIMPLE
                 ? SimplerSchurMode::SIMPLE
                 : SimplerSchurMode::SIMPLEC;
-        auto simpler = std::make_unique<SimplerSchurApproximation>(mode);
+        // The coupled matrix is deliberately unrelaxed, but the SIMPLEC
+        // consistent denominator is defined on the under-relaxed momentum
+        // row A_P/alpha - sum(a_PN), exactly as the segregated SIMPLEC
+        // assembles it from relax_momentum_equation() output. On the
+        // unrelaxed steady row the plain row sum A_P - sum(a_PN) is
+        // numerically zero for interior cells (only boundary/source terms
+        // survive), which made SimplerSchurApproximation::setup() reject
+        // the matrix and abort the N9 campaign at the first COUPLED
+        // simplec case. Feed the live momentum under-relaxation to the
+        // SIMPLEC Schur approximation; SIMPLE keeps its plain diag(Auu)
+        // denominator unchanged.
+        auto simpler = std::make_unique<SimplerSchurApproximation>(
+            mode, std::nullopt,
+            schur_model == CoupledSchurModel::SIMPLEC
+                ? momentum_under_relaxation
+                : 1.0);
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
@@ -2450,6 +2469,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.schur_model,
                 controls.coupled_linear_solver,
                 controls,
+                retry_controller.alpha_u(effective_alpha_u),
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
