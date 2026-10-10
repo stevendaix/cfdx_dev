@@ -225,11 +225,22 @@
       "evidence": [
         "src/cfdx/core/numerics/conservation.h",
         "docs/validation/03-conservation/chapter.py",
-        "tests/unit/test_conservation_boundedness.cpp"
+        "tests/unit/test_conservation_boundedness.cpp",
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/validation/test_n11_scalar_conservation.cpp",
+        "scripts/n11_conservation_boundedness.py",
+        "PR #767: independent momentum conservation gate",
+        "PR #776: scalar conservation and boundedness",
+        "PR #780: independent energy/CHT conservation",
+        "PR #787: quantitative benchmark evidence campaign",
+        "PR #814: independent post-solve flux reconstruction and per-cell balance on active distributed Poisson MPI path"
       ],
       "gaps": [
-        "complete Couette/Poiseuille/scalar-MMS/energy/skew/MPI campaign",
-        "full independent flux reconstruction qualification"
+        "complete quantitative Couette/Poiseuille/scalar-MMS/energy/skew acceptance matrix",
+        "broad independent post-solve flux reconstruction qualification across applicable production equations",
+        "complete per-variable bounds/positivity and explicit floor/clipping telemetry",
+        "production incompressible/thermal MPI conservation is not qualified; those physics paths are not distributed under MPI",
+        "exact-current-HEAD campaign execution and retained quantitative evidence must be confirmed before package promotion"
       ]
     },
     {
