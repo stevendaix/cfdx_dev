@@ -41,7 +41,6 @@
 #include <iostream>
 #include <map>
 #include <stdexcept>
-#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -212,18 +211,20 @@ VelocityBoundaryConditions channel_velocity_bc(double top_u)
     return bc;
 }
 
-// Closed-channel velocity map for the discrete-conservation probe of item 6:
-// every non-EMPTY patch carries a fixed zero velocity, so a uniform interior
-// field has exactly zero boundary flux and the per-cell balance isolates the
-// internal assembly. With an open (zero-gradient) end patch the same uniform
-// field would carry a nonzero inlet/outlet face flux: a constant field is
-// only divergence-free cell-by-cell in a closed domain, so the "clean"
-// balance would measure the boundary condition, not the operator.
-VelocityBoundaryConditions closed_channel_velocity_bc()
+// Uniform-channel velocity map for the discrete-conservation probe of
+// item 6: inlet and outlet pin the interior value (0.37, 0, 0) so a uniform
+// field carries the same flux through the boundary x-faces as through the
+// internal ones, while the walls pin the zero value consistent with
+// U_y = U_z = 0. A uniform field is divergence-free cell-by-cell only when
+// the boundary flux carries that same uniform field; a closed map (zero
+// inlet/outlet velocity) would leave every end cell imbalanced by the
+// internal face flux 0.37*dy, and the "clean" balance would measure the
+// boundary condition, not the operator.
+VelocityBoundaryConditions uniform_channel_velocity_bc()
 {
     VelocityBoundaryConditions bc;
-    bc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
-    bc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.37,0,0}};
+    bc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.37,0,0}};
     bc["bottom"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
     bc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
     bc["front"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
@@ -373,16 +374,6 @@ const ReferenceCase& reference_case()
 } // namespace
 
 
-namespace {
-// TEMPORARY CI-bisection switch: items listed here are skipped so the
-// failing item can be isolated. Must be empty before merge.
-bool item_enabled(int id)
-{
-    static const std::set<int> disabled_items = {1,2,3,4,5,7,8,9,10,11,13,14};
-    return disabled_items.find(id) == disabled_items.end();
-}
-} // namespace
-
 int main()
 {
     // ------------------------------------------------------------------
@@ -391,7 +382,6 @@ int main()
     // carries no null-space component.
     // ------------------------------------------------------------------
     run_case("n9_7_item1_singular_pressure_system", [] {
-        if (!item_enabled(1)) return;
         const auto A = make_all_neumann_pressure_operator(8);
         const auto constant = NullSpaceProjector::constant(8);
         EXPECT_TRUE(constant.is_null_space(A));
@@ -423,7 +413,6 @@ int main()
     // projected solve instead of silently projecting onto a wrong space.
     // ------------------------------------------------------------------
     run_case("n9_7_item2_wrong_null_space_rejected", [] {
-        if (!item_enabled(2)) return;
         const auto A = make_all_neumann_pressure_operator(8);
         Vector checkerboard(8, 0.0);
         for (std::size_t i = 0; i < 8; ++i)
@@ -447,7 +436,6 @@ int main()
     // failure classifier attributes it to the rhs, not to the matrix.
     // ------------------------------------------------------------------
     run_case("n9_7_item3_incompatible_rhs_classified", [] {
-        if (!item_enabled(3)) return;
         const auto A = make_all_neumann_pressure_operator(8);
         const auto constant = NullSpaceProjector::constant(8);
         Vector b(8, 1.0);
@@ -473,7 +461,6 @@ int main()
     // rejected with pinned diagnostics, never silently repaired.
     // ------------------------------------------------------------------
     run_case("n9_7_item4_invalid_coefficients_rejected", [] {
-        if (!item_enabled(4)) return;
         auto bad_density = controls_for(PressureVelocityAlgorithm::SIMPLE);
         bad_density.density = -1.0;
         EXPECT_THROW_WITH(
@@ -524,7 +511,6 @@ int main()
     // destroys the balance and must be measurable, not invisible.
     // ------------------------------------------------------------------
     run_case("n9_7_item5_flux_antisymmetry_violation_detected", [] {
-        if (!item_enabled(5)) return;
         const auto& reference = reference_case();
         const auto& flux = reference.run.result.authoritative_mass_flux;
         const double clean = cell_mass_balance(reference.mesh, flux, true);
@@ -562,7 +548,6 @@ int main()
     // measurable inconsistency.
     // ------------------------------------------------------------------
     run_case("n9_7_item6_gradient_divergence_consistency", [] {
-        if (!item_enabled(6)) return;
         constexpr std::size_t nx = 12, ny = 16;
         const Mesh mesh = make_channel_mesh(nx, ny, 0.0);
         const auto geometry = build_fv_geometry(mesh);
@@ -606,28 +591,28 @@ int main()
             }
         EXPECT_TRUE(collapsed_error > 1e-3);
 
-        if (!item_enabled(12)) return;
+
         // Production divergence of a constant field: exactly conservative.
-        // The closed-channel map zeroes every non-EMPTY boundary face, so a
-        // uniform field is solenoidal cell-by-cell and the clean balance is
-        // exactly zero; only an assembly fault can make it nonzero.
+        // The uniform-channel map pins the interior value on inlet and
+        // outlet, so U = (0.37, 0, 0) carries the same flux through every
+        // x-normal face (internal and boundary alike) and zero through every
+        // other face: the end cells balance against their boundary face
+        // exactly as interior cells balance against each other. All x-normal
+        // fluxes are the identical double (0.37 scaled by the dyadic face
+        // area 1/16), so the antisymmetric per-cell balance cancels exactly
+        // and the clean balance is exactly zero; only an assembly fault can
+        // make it nonzero.
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         U.fill(0.0);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c)
             U.set(c, 0.37, 0.0, 0.0);
-        cfdx::core::Field<double, cfdx::core::Location::FACE> flux;
-        try {
-            flux = make_mass_flux(mesh, geometry, U, 1.0, closed_channel_velocity_bc());
-        } catch (const std::exception& e) {
-            std::cout << "N9_7_ITEM6 make_mass_flux threw: " << e.what() << "\n";
-            return;
-        }
-        if (!item_enabled(14)) return;
+        const auto flux = make_mass_flux(
+            mesh, geometry, U, 1.0, uniform_channel_velocity_bc());
         const double clean = cell_mass_balance(mesh, flux, true);
         EXPECT_TRUE(clean < 1e-12);
-        if (!item_enabled(13)) return;
         const double sign_fault = cell_mass_balance(mesh, flux, false);
         EXPECT_TRUE(sign_fault > 1e-3);
+        EXPECT_TRUE(sign_fault > 100.0 * clean);
         std::cout << "N9_7_ITEM6 exact_gradient_error=" << exact_error
                   << " collapsed_gradient_error=" << collapsed_error
                   << " divergence_clean=" << clean
@@ -640,7 +625,6 @@ int main()
     // but responds measurably to a localized pressure perturbation.
     // ------------------------------------------------------------------
     run_case("n9_7_item7_rhie_chow_reconstruction_perturbed", [] {
-        if (!item_enabled(7)) return;
         const Mesh mesh = make_channel_mesh(12, 16, 0.0);
         const auto geometry = build_fv_geometry(mesh);
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
@@ -683,7 +667,6 @@ int main()
     // momentum matrix is classified as a matrix pathology, not solved.
     // ------------------------------------------------------------------
     run_case("n9_7_item8_schur_conditioning_and_pathology", [] {
-        if (!item_enabled(8)) return;
         const auto Auu = make_sparse(2, 2, {{0,0,4.0},{0,1,-1.0},{1,0,-1.0},{1,1,3.0}});
         const auto G = make_sparse(2, 2, {{0,0,1.0},{1,1,1.0}});
         const auto D = make_sparse(2, 2, {{0,0,1.0},{1,1,1.0}});
@@ -731,7 +714,6 @@ int main()
     // are disabled explicitly so the failure is isolated.
     // ------------------------------------------------------------------
     run_case("n9_7_item9_linear_failure_propagates", [] {
-        if (!item_enabled(9)) return;
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLE);
         c.linear_max_iterations = 1;
         c.momentum_linear_solver.krylov = KrylovModel::GMRES;
@@ -766,7 +748,6 @@ int main()
     // never a false converged and never an unbounded iteration loop.
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
-        if (!item_enabled(10)) return;
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
         c.coupling.alpha_u = 1e-6;
         c.coupling.alpha_p = 1e-6;
@@ -821,7 +802,6 @@ int main()
     // unchanged physical gates.
     // ------------------------------------------------------------------
     run_case("n9_7_final_gate_reference_solution_still_accepted", [] {
-        if (!item_enabled(11)) return;
         const auto& reference = reference_case();
         EXPECT_TRUE(reference.run.result.converged);
         EXPECT_FALSE(reference.run.result.history.empty());
