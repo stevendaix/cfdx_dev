@@ -1,0 +1,83 @@
+name: NACA0012 3-level diagnostic v6
+
+# Same qualification as naca-diagnostic.yml, on a fresh branch created from the
+# post Dirichlet-pressure-fix head. Pushes to diag/naca-3level stopped
+# re-triggering that workflow (it stayed active with a matching branch filter,
+# but no run was created for the fix pushes); adding a new workflow file in a
+# push reliably triggers it (same pattern as naca-algos-diagnostic.yml).
+# Never merged; delete after the post-fix Cd evidence is captured.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-3level-v6]
+
+permissions:
+  contents: write
+
+jobs:
+  naca-3level:
+    name: NACA0012 Re=1000 alpha=0 three-level qualification (post-fix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run NACA0012 three-level qualification
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-3level-output.log
+
+      - name: Upload qualification output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-3level-output
+          path: naca-3level-output.log
+          if-no-files-found: warn
+
+      - name: Commit run log to diagnostic branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-3level-output.log
+          git commit -m "diag(naca0012): capture 3-level run log [skip ci]"
+          git push
