@@ -60,17 +60,57 @@ struct TurbulenceTransportControls {
     TurbulenceCorrectionControls corrections{};
 };
 
-inline void enforce_turbulence_bounds(
+struct TurbulenceBoundDiagnostics {
+    std::size_t first_floor_activations = 0;
+    std::size_t second_floor_activations = 0;
+    std::size_t first_nonfinite = 0;
+    std::size_t second_nonfinite = 0;
+    double first_total_correction = 0.0;
+    double second_total_correction = 0.0;
+    double first_max_correction = 0.0;
+    double second_max_correction = 0.0;
+
+    std::size_t nonfinite_values() const noexcept {
+        return first_nonfinite + second_nonfinite;
+    }
+};
+
+// Preserve non-finite values so invalid states remain visible to acceptance.
+inline TurbulenceBoundDiagnostics enforce_turbulence_bounds(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
     cfdx::core::Field<double,cfdx::core::Location::CELL>& second,
     const TurbulenceTransportControls& c)
 {
-    if (k.size()!=second.size()) throw std::invalid_argument("turbulence field size mismatch");
+    if (k.size()!=second.size())
+        throw std::invalid_argument("turbulence field size mismatch");
+    TurbulenceBoundDiagnostics out;
+    const double second_floor =
+        (c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA)
+            ? c.omega_min
+            : (c.model==TurbulenceModel::SPALART_ALLMARAS ? 0.0 : c.epsilon_min);
     for (std::size_t i=0;i<k.size();++i) {
-        k(i)=std::max(k(i),c.k_min);
-        second(i)=std::max(second(i),
-            (c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA) ? c.omega_min : (c.model==TurbulenceModel::SPALART_ALLMARAS ? 0.0 : c.epsilon_min));
+        const double ki = k(i);
+        if (!std::isfinite(ki)) {
+            ++out.first_nonfinite;
+        } else if (ki < c.k_min) {
+            const double correction = c.k_min - ki;
+            k(i) = c.k_min;
+            ++out.first_floor_activations;
+            out.first_total_correction += correction;
+            out.first_max_correction = std::max(out.first_max_correction, correction);
+        }
+        const double si = second(i);
+        if (!std::isfinite(si)) {
+            ++out.second_nonfinite;
+        } else if (si < second_floor) {
+            const double correction = second_floor - si;
+            second(i) = second_floor;
+            ++out.second_floor_activations;
+            out.second_total_correction += correction;
+            out.second_max_correction = std::max(out.second_max_correction, correction);
+        }
     }
+    return out;
 }
 
 inline double turbulence_nu_t(
