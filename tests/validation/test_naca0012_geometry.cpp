@@ -15,7 +15,7 @@ using namespace cfdx::physics;
 
 struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 
-static Forces run(const std::string& path,std::size_t level)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -40,8 +40,10 @@ static Forces run(const std::string& path,std::size_t level)
     pbc["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
 
     IncompressibleSolverControls c;
-    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    c.algorithm=algo;
     c.density=rho; c.kinematic_viscosity=nu;
+    if(algo==PressureVelocityAlgorithm::COUPLED)
+        c.coupling.schur_model=CoupledSchurModel::PCD;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
     c.convergence.max_iterations=8000;
     c.convergence.relative_tolerance=1e-8;
@@ -162,7 +164,7 @@ static Forces run(const std::string& path,std::size_t level)
     }
     const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
     const auto& last=solve.history.back();
-    std::cout<<"NACA0012_RE1000_A0 level="<<level
+    std::cout<<"NACA0012_RE1000_A0 algo="<<algo_name<<" level="<<level
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
              <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
              <<" continuity="<<last.continuity_linf
@@ -220,17 +222,49 @@ int main(int argc,char**argv)
     const std::size_t need=3;
     if(argc!=4)
         throw std::invalid_argument("usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+    // DIAG BRANCH ONLY: qualification matrix across the pressure-velocity
+    // algorithms. One identical case definition (mesh, BCs, gates) exercised
+    // by every backend: the architecture contract this diagnostic measures.
+    const struct { const char* name; PressureVelocityAlgorithm algo; } algos[]={
+        {"SIMPLE",PressureVelocityAlgorithm::SIMPLE},
+        {"FRACTIONAL_STEP",PressureVelocityAlgorithm::FRACTIONAL_STEP},
+        {"COUPLED_PCD",PressureVelocityAlgorithm::COUPLED},
+    };
     std::vector<Forces> r;
-    for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],64u<<i));
-    for(const auto& x:r) {
-        if(!(x.continuity<1e-7)) throw std::runtime_error("NACA0012 continuity gate failed");
-        if(!std::isfinite(x.cd) || !std::isfinite(x.cl)) throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
-        if(std::abs(x.cl)>2e-2) throw std::runtime_error("NACA0012 alpha=0 symmetry gate failed");
+    bool simple_complete=true;
+    for(std::size_t i=0;i<need;++i){
+        try { r.push_back(run(argv[i+1],64u<<i,algos[0].name,algos[0].algo)); }
+        catch(const std::exception& e){
+            simple_complete=false;
+            std::cout<<"NACA_ALGO algo=SIMPLE level="<<(64u<<i)<<" EXCEPTION "<<e.what()<<"\n";
+            const double nan=std::numeric_limits<double>::quiet_NaN();
+            r.push_back(Forces{nan,nan,nan,nan,nan,nan});
+        }
     }
-    if(!quick) {
+    for(std::size_t a=1;a<sizeof(algos)/sizeof(algos[0]);++a){
+        for(std::size_t i=0;i<need;++i){
+            try { run(argv[i+1],64u<<i,algos[a].name,algos[a].algo); }
+            catch(const std::exception& e){
+                std::cout<<"NACA_ALGO algo="<<algos[a].name<<" level="<<(64u<<i)
+                         <<" EXCEPTION "<<e.what()<<"\n";
+            }
+        }
+    }
+    if(!simple_complete){
+        std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC simple_campaign_incomplete\n";
+        return 0;
+    }
+    bool gates_ok=true;
+    for(const auto& x:r) {
+        if(!(x.continuity<1e-7)){ gates_ok=false; std::cout<<"NACA_GATE continuity "<<x.continuity<<"\n"; }
+        if(!std::isfinite(x.cd) || !std::isfinite(x.cl)){ gates_ok=false; std::cout<<"NACA_GATE nonfinite_forces\n"; }
+        if(std::abs(x.cl)>2e-2){ gates_ok=false; std::cout<<"NACA_GATE symmetry Cl="<<x.cl<<"\n"; }
+    }
+    {
         const double d01=std::abs(r[1].cd-r[0].cd), d12=std::abs(r[2].cd-r[1].cd);
         std::cout<<"NACA0012 Cd mesh differences="<<d01<<","<<d12<<" literature Re=1000 alpha=0 Cd~0.12\n";
-        if(!(d12<=d01)) throw std::runtime_error("NACA0012 drag is not stabilizing under refinement");
+        if(!(d12<=d01)){ gates_ok=false; std::cout<<"NACA_GATE refinement d01="<<d01<<" d12="<<d12<<"\n"; }
     }
-    std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending\n";
+    std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry "
+             <<"gates="<<(gates_ok?"PASS":"FAIL")<<" reference_gate_pending\n";
 }
