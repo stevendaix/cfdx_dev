@@ -4,6 +4,12 @@
 // N3 gap: the Laplacian operators on an unstructured tetrahedral grid.
 // Constant fields must be annihilated; linear fields and smooth manufactured
 // field converge/conserve as measured, reported without over-promotion.
+// With a linear-consistent (least-squares) cell gradient the corrected
+// operator is linear-exact, and there a genuine convergence property is
+// required: the smooth-field interior L2 error must strictly decrease
+// under refinement. The default two-point Gauss gradient variant makes
+// no such claim: it is not linear-consistent on tetrahedra and its
+// measured non-decreasing error is reported rather than hidden.
 
 #include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -225,6 +231,52 @@ void check_smooth()
     }
 }
 
+// Convergence gate: with a linear-consistent (least-squares) cell gradient
+// the corrected non-orthogonal operator is linear-exact on interior
+// tetrahedra, so a convergence property is genuinely required there: the
+// interior L2 error of the smooth manufactured field must strictly
+// decrease under refinement. The observed order is reported but
+// deliberately not thresholded: this campaign gates convergence, not a
+// claimed polyhedral accuracy order. The default two-point Gauss
+// gradient is excluded because it is not linear-consistent on
+// tetrahedra (see check_smooth).
+void check_smooth_convergence()
+{
+    const std::vector<std::size_t> ns = {4u, 8u, 16u};
+
+    for (const auto gs : {GradientScheme::LEAST_SQUARES,
+                          GradientScheme::LEAST_SQUARES_QUADRATIC}) {
+        double previous_l2 = 0.0;
+        double previous_h = 0.0;
+        for (std::size_t idx = 0; idx < ns.size(); ++idx) {
+            const Grid grid = make_tet_grid(ns[idx]);
+            const auto e = interior_error(grid,
+                laplacian_of(grid, sample(grid, smooth_value),
+                             LaplacianScheme::CORRECTED, gs),
+                sample(grid, smooth_laplacian));
+            require(std::isfinite(e.l2) && std::isfinite(e.linf),
+                    std::string(to_string(gs)) +
+                    ": corrected Laplacian errors must be finite");
+            std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
+                      << " n=" << ns[idx] << " L2=" << e.l2 << " Linf=" << e.linf << "\n";
+            const double h = 1.0 / static_cast<double>(ns[idx]);
+            if (idx > 0) {
+                const double observed_order =
+                    std::log(previous_l2 / e.l2) / std::log(previous_h / h);
+                std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
+                          << " from_n=" << ns[idx - 1] << " to_n=" << ns[idx]
+                          << " observed_order=" << observed_order << "\n";
+                require(e.l2 < previous_l2,
+                        std::string(to_string(gs)) +
+                        ": corrected Laplacian with a linear-consistent gradient must converge:"
+                         " interior L2 error must strictly decrease under refinement");
+            }
+            previous_l2 = e.l2;
+            previous_h = h;
+        }
+    }
+}
+
 // Operator consistency: with a linear-consistent cell gradient (least
 // squares / quadratic least squares) the corrected non-orthogonal operator
 // annihilates a linear field on interior tetrahedra. The two-point Gauss
@@ -259,6 +311,7 @@ int main()
         check_operator_consistency(6);
         check_constant_and_linear(4);
         check_smooth();
+        check_smooth_convergence();
         std::cout << "POLYHEDRAL_LAPLACIAN_CAMPAIGN: PASS\n";
         return 0;
     } catch (const std::exception& e) {
