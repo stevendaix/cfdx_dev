@@ -1,0 +1,620 @@
+#include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/core/numerics/case_numerics_config.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <unistd.h>
+#include <vector>
+
+using namespace cfdx::core;
+using namespace cfdx::physics;
+
+namespace {
+
+Mesh make_channel_mesh(std::size_t nx, std::size_t ny, double skew)
+{
+    Mesh mesh;
+    const std::size_t plane = (nx + 1) * (ny + 1);
+    mesh.points().resize(2 * plane);
+    const auto id = [nx](std::size_t i, std::size_t j, std::size_t k) {
+        return (j * (nx + 1) + i) * 2 + k;
+    };
+
+    for (std::size_t j = 0; j <= ny; ++j) {
+        const double y = static_cast<double>(j) / static_cast<double>(ny);
+        const double sx = skew * y * (1.0 - y);
+        for (std::size_t i = 0; i <= nx; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(nx) + sx;
+            mesh.points().set(id(i,j,0), x, y, 0.0);
+            mesh.points().set(id(i,j,1), x, y, 1.0);
+        }
+    }
+
+    std::map<std::vector<std::size_t>, std::size_t> face_map;
+    std::vector<std::vector<std::size_t>> cell_faces(nx * ny);
+
+    auto add_face = [&](std::initializer_list<std::size_t> vertices,
+                        std::size_t cell) {
+        std::vector<std::size_t> key(vertices);
+        std::sort(key.begin(), key.end());
+        const auto it = face_map.find(key);
+        if (it != face_map.end()) {
+            mesh.ownership().set_neighbour(it->second, static_cast<int>(cell));
+            return it->second;
+        }
+        const std::size_t f = mesh.faces().n_faces();
+        mesh.faces().push_face(vertices);
+        mesh.ownership().resize(mesh.faces().n_faces());
+        mesh.ownership().set_owner(f, cell);
+        mesh.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+        face_map.emplace(std::move(key), f);
+        return f;
+    };
+
+    for (std::size_t j = 0; j < ny; ++j) {
+        for (std::size_t i = 0; i < nx; ++i) {
+            const std::size_t c = j * nx + i;
+            const auto a=id(i,j,0), b=id(i+1,j,0), c0=id(i+1,j+1,0), d=id(i,j+1,0);
+            const auto e=id(i,j,1), f=id(i+1,j,1), g=id(i+1,j+1,1), h=id(i,j+1,1);
+            cell_faces[c] = {
+                add_face({a,d,c0,b},c), add_face({e,f,g,h},c),
+                add_face({a,b,f,e},c), add_face({d,h,g,c0},c),
+                add_face({a,e,h,d},c), add_face({b,c0,g,f},c)};
+        }
+    }
+    for (const auto& faces : cell_faces) mesh.cells().push_cell(faces);
+
+    Patch inlet{"inlet", PatchType::INLET, {}};
+    Patch outlet{"outlet", PatchType::OUTLET, {}};
+    Patch bottom{"bottom", PatchType::WALL, {}};
+    Patch top{"top", PatchType::WALL, {}};
+    Patch front{"front", PatchType::EMPTY, {}};
+    Patch back{"back", PatchType::EMPTY, {}};
+
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        if (mesh.ownership().neighbour(f) >= 0) continue;
+        const auto& v = mesh.faces().vertices();
+        const auto begin = v.begin() + static_cast<std::ptrdiff_t>(mesh.faces().face_offset(f));
+        const auto end = begin + static_cast<std::ptrdiff_t>(mesh.faces().face_size(f));
+        double x=0.0,y=0.0,z=0.0;
+        for (auto it=begin; it!=end; ++it) {
+            x += mesh.points().x(*it); y += mesh.points().y(*it); z += mesh.points().z(*it);
+        }
+        const double n = static_cast<double>(mesh.faces().face_size(f));
+        x/=n; y/=n; z/=n;
+        constexpr double eps=1e-12;
+        // The patch assignment is geometric in the unskewed logical coordinates.
+        if (std::abs(y) < eps) bottom.face_ids.push_back(f);
+        else if (std::abs(y-1.0) < eps) top.face_ids.push_back(f);
+        else if (std::abs(z) < eps) front.face_ids.push_back(f);
+        else if (std::abs(z-1.0) < eps) back.face_ids.push_back(f);
+        else {
+            // x is only used here to separate the two end patches. The
+            // logical end faces are exactly the first/last i columns.
+            bool at_left=true, at_right=true;
+            for (auto it=begin; it!=end; ++it) {
+                const double xx=mesh.points().x(*it);
+                const double yy=mesh.points().y(*it);
+                const double logical = xx - skew*yy*(1.0-yy);
+                at_left = at_left && std::abs(logical) < eps;
+                at_right = at_right && std::abs(logical-1.0) < eps;
+            }
+            if (at_left) inlet.face_ids.push_back(f);
+            else if (at_right) outlet.face_ids.push_back(f);
+            else throw std::runtime_error("unclassified channel boundary face");
+        }
+    }
+
+    mesh.boundary().add_patch(inlet);
+    mesh.boundary().add_patch(outlet);
+    mesh.boundary().add_patch(bottom);
+    mesh.boundary().add_patch(top);
+    mesh.boundary().add_patch(front);
+    mesh.boundary().add_patch(back);
+    return mesh;
+}
+
+Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
+{
+    return make_channel_mesh(nx, ny, 0.0);
+}
+
+struct Run {
+    Field<double, Location::CELL> U;
+    Field<double, Location::CELL> p;
+    IncompressibleSolveResult result;
+};
+
+IncompressibleSolverControls controls_for(
+    PressureVelocityAlgorithm algorithm,
+    CoupledSchurModel schur_model = CoupledSchurModel::PCD,
+    double viscosity = 0.1,
+    bool transient_projection = false)
+{
+    IncompressibleSolverControls c;
+    c.algorithm = algorithm;
+    c.density = 1.0;
+    c.kinematic_viscosity = viscosity;
+    c.coupling.alpha_u = 0.7;
+    // SIMPLEC's consistent pressure correction is normally unrelaxed; retaining
+    // SIMPLE's 0.3 factor here causes the physical Couette case to stagnate.
+    c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 1.0 : 0.3;
+    c.coupling.n_pressure_correctors =
+        (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
+         algorithm == PressureVelocityAlgorithm::PISO ||
+         algorithm == PressureVelocityAlgorithm::PIMPLE) ? 2 : 1;
+    c.coupling.n_outer_correctors =
+        algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
+    c.coupling.n_fractional_steps =
+        algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
+    c.coupling.coupled_max_iterations = 1000;
+    c.coupling.schur_model = schur_model;
+    c.coupling.coupled_linear_tolerance = 1e-12;
+    c.convergence.max_iterations = 1500;
+    c.convergence.relative_tolerance = 1e-8;
+    c.convergence.continuity_tolerance = 1e-8;
+    c.linear_max_iterations = 1000;
+    c.linear_tolerance = 1e-9;
+    c.pressure_reference_cell = 0;
+    c.pressure_reference_value = 0.0;
+    c.use_bounded_convection = true;
+    c.convection_scheme = ConvectionScheme::UPWIND;
+
+    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
+        schur_model == CoupledSchurModel::PCD) {
+        c.pcd_convection_diffusion_linear_solver.preconditioner =
+            cfdx::core::PreconditionerModel::NativeAMG;
+        // The PCD action applies Fp^{-1} through this nested solve at every
+        // outer FGMRES iteration (pcd_schur.h: only Fp enters the action; the
+        // nested Laplacian solve is never invoked), so the outer residual
+        // cannot descend durably below the nested solve's own relative
+        // tolerance. With the 1e-8/100 defaults the outer 1e-12 gate stalled
+        // on the Poiseuille Picard system: MAX_ITER at the full budget, on
+        // every relaxation retry. Keep the nested Fp budget below the outer
+        // gate, mirroring the LSC/BFBt path which already runs its nested
+        // pressure solves at the outer coupled tolerance and budget.
+        c.pcd_convection_diffusion_tolerance = 1e-14;
+        c.pcd_convection_diffusion_max_iterations = 1000;
+        // Full pressure-block Krylov space per case (clamped to the block
+        // size: 192 on the 12x16 channel, 1024 on the 32x32 cavity) so the
+        // nested solve can actually reach the requested level on the cavity
+        // pressure block instead of stagnating against a truncated cycle.
+        c.pcd_convection_diffusion_linear_solver.gmres_restart = 1024;
+    }
+
+    if (algorithm == PressureVelocityAlgorithm::COUPLED) {
+        // One line of linear evidence per coupled solve: preconditioner,
+        // restart, and the independently recomputed true residual on
+        // success. The campaign log must carry the coupled linear state.
+        c.diagnostics.coupled_matrix_summary = true;
+    }
+
+    if (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
+        algorithm == PressureVelocityAlgorithm::COUPLED) {
+        // Diagnostic only: the campaign log must carry the per-iteration
+        // momentum/continuity trend of every coupled case. No gate or
+        // tolerance is affected.
+        c.diagnostics.iteration_trace = true;
+        c.diagnostics.iteration_trace_frequency = 25;
+    }
+    (void)transient_projection;
+    return c;
+}
+
+VelocityBoundaryConditions channel_velocity_bc(double top_u)
+{
+    VelocityBoundaryConditions bc;
+    bc["inlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    bc["outlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    bc["bottom"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+    bc["top"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{top_u,0,0}};
+    bc["front"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    bc["back"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
+    return bc;
+}
+
+ScalarBoundaryConditions channel_pressure_bc()
+{
+    ScalarBoundaryConditions bc;
+    for (const char* n : {"inlet","outlet","bottom","top","front","back"})
+        bc[n] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+    return bc;
+}
+
+Run solve_case(
+    Mesh mesh,
+    PressureVelocityAlgorithm algorithm,
+    const VelocityBoundaryConditions& ubc,
+    const ScalarBoundaryConditions& pbc,
+    double body_force_x,
+    double viscosity = 0.1)
+{
+    Field<double, Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    Field<double, Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+    U.fill(0.0);
+    p.fill(17.0);
+
+    auto c = controls_for(algorithm, CoupledSchurModel::PCD, viscosity);
+    c.body_force = {body_force_x,0.0,0.0};
+    const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    return {std::move(U),std::move(p),std::move(result)};
+}
+
+Run solve_coupled_case(
+    Mesh mesh,
+    CoupledSchurModel schur_model,
+    const VelocityBoundaryConditions& ubc,
+    const ScalarBoundaryConditions& pbc,
+    double body_force_x,
+    double viscosity = 0.1)
+{
+    Field<double, Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+    Field<double, Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+    U.fill(0.0);
+    p.fill(17.0);
+
+    // Resolve the Schur request through the canonical numerical-method registry.
+    // The physical matrix must not inject a CoupledSchurModel that bypasses
+    // the case-selection contract established by N8/#813.
+    cfdx::core::CaseNumericsConfig selection;
+    selection.entries = {
+        {cfdx::core::NumericalMethodFamily::PressureVelocity, "pressure_velocity.coupled"},
+        {cfdx::core::NumericalMethodFamily::Schur,
+         std::string("schur.") + cfdx::physics::to_string(schur_model)},
+        {cfdx::core::NumericalMethodFamily::Convection, "numerics.convection.upwind"},
+        {cfdx::core::NumericalMethodFamily::Gradient, "numerics.gradient.gauss"},
+        {cfdx::core::NumericalMethodFamily::LinearSolver, "linear.fgmres"},
+    };
+    selection.required_families = {
+        cfdx::core::NumericalMethodFamily::PressureVelocity,
+        cfdx::core::NumericalMethodFamily::Schur,
+        cfdx::core::NumericalMethodFamily::Convection,
+        cfdx::core::NumericalMethodFamily::Gradient,
+        cfdx::core::NumericalMethodFamily::LinearSolver,
+    };
+    const auto report =
+        cfdx::core::resolve_case_numerics("n9_physical_matrix", selection);
+    if (!report.valid())
+        throw std::runtime_error("N9 physical matrix numerical selection invalid");
+    CoupledSchurModel resolved_schur = CoupledSchurModel::BlockLocal;
+    if (!parse_coupled_schur_model(
+            report.resolved.at(1).configuration_key.substr(6), resolved_schur) ||
+        resolved_schur != schur_model) {
+        throw std::runtime_error("N9 physical matrix Schur selection mismatch");
+    }
+    auto c = controls_for(PressureVelocityAlgorithm::COUPLED, resolved_schur, viscosity);
+    c.body_force = {body_force_x,0.0,0.0};
+    const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    return {std::move(U),std::move(p),std::move(result)};
+}
+
+void require_physical_convergence(
+    const Run& r,
+    const char* name,
+    PressureVelocityAlgorithm algorithm)
+{
+    const char* algorithm_name = [&]() {
+        switch (algorithm) {
+        case PressureVelocityAlgorithm::SIMPLE: return "SIMPLE";
+        case PressureVelocityAlgorithm::SIMPLEC: return "SIMPLEC";
+        case PressureVelocityAlgorithm::PISO: return "PISO";
+        case PressureVelocityAlgorithm::PIMPLE: return "PIMPLE";
+        case PressureVelocityAlgorithm::FRACTIONAL_STEP: return "FRACTIONAL_STEP";
+        case PressureVelocityAlgorithm::COUPLED: return "COUPLED";
+        }
+        return "UNKNOWN";
+    }();
+    if (!r.result.converged || r.result.history.empty()) {
+        std::string detail = std::string(name) + " did not converge [algorithm=" +
+            algorithm_name + "]";
+        if (!r.result.convergence_reason.empty())
+            detail += " reason=" + r.result.convergence_reason;
+        if (!r.result.history.empty()) {
+            const auto& h = r.result.history.back();
+            detail += " iter=" + std::to_string(h.iteration) +
+                " momentum_rel=" + std::to_string(h.momentum_residual) +
+                " continuity_linf=" + std::to_string(h.continuity_linf) +
+                " pressure_rel=" + std::to_string(h.pressure_residual) +
+                " velocity_change=" + std::to_string(h.velocity_change_inf) +
+                " pressure_change=" + std::to_string(h.pressure_change_inf);
+        }
+        throw std::runtime_error(detail);
+    }
+    const auto& h=r.result.history.back();
+    if (!std::isfinite(h.continuity_linf) ||
+        !std::isfinite(h.momentum_residual) ||
+        h.continuity_linf > 1e-7 ||
+        h.momentum_residual > 1e-7)
+        throw std::runtime_error(
+            std::string(name)+" physical residual gate failed [algorithm="+
+            algorithm_name+"]");
+}
+
+double couette_l2(const Run& r, std::size_t nx, std::size_t ny)
+{
+    double e2=0.0;
+    for (std::size_t c=0;c<r.U.size();++c) {
+        const std::size_t i=c%nx, j=c/nx;
+        (void)i;
+        const double y=(static_cast<double>(j)+0.5)/static_cast<double>(ny);
+        const double e=r.U.component_data(0)[c]-y;
+        e2 += e*e;
+    }
+    return std::sqrt(e2/static_cast<double>(r.U.size()));
+}
+
+double poiseuille_l2(const Run& r, std::size_t nx, std::size_t ny, double G, double nu)
+{
+    double e2=0.0;
+    for (std::size_t c=0;c<r.U.size();++c) {
+        const std::size_t j=c/nx;
+        const double y=(static_cast<double>(j)+0.5)/static_cast<double>(ny);
+        const double exact=G*y*(1.0-y)/(2.0*nu);
+        const double e=r.U.component_data(0)[c]-exact;
+        e2 += e*e;
+    }
+    return std::sqrt(e2/static_cast<double>(r.U.size()));
+}
+
+double cavity_profile_linf(const Run& r, std::size_t nx, std::size_t ny)
+{
+    // Ghia et al. Re=100 centreline reference values. These points are
+    // deliberately sparse here because the dedicated Ghia campaign retains
+    // the complete 17-point profiles; N9 uses them as an independent physical
+    // cross-algorithm gate.
+    constexpr double y[] = {0.0625, 0.1719, 0.5000, 0.8516, 0.9609};
+    constexpr double u_ref[] = {-0.04192, -0.10150, -0.20581, 0.23151, 0.73722};
+    constexpr double x[] = {0.0625, 0.2266, 0.5000, 0.9063, 0.9688};
+    constexpr double v_ref[] = {0.09233, 0.17507, 0.05454, -0.16914, -0.05906};
+    double max_error = 0.0;
+    const auto sample = [&](double qx, double qy, std::size_t component) {
+        const double fx = qx*static_cast<double>(nx)-0.5;
+        const double fy = qy*static_cast<double>(ny)-0.5;
+        const auto clamp_index = [](double q, std::size_t n) {
+            return std::clamp(static_cast<long>(std::floor(q)), 0L,
+                              static_cast<long>(n)-2L);
+        };
+        const long ix0=clamp_index(fx,nx), iy0=clamp_index(fy,ny);
+        const double tx=std::clamp(fx-static_cast<double>(ix0),0.0,1.0);
+        const double ty=std::clamp(fy-static_cast<double>(iy0),0.0,1.0);
+        const std::size_t i=static_cast<std::size_t>(ix0), j=static_cast<std::size_t>(iy0);
+        const auto at=[&](std::size_t ii,std::size_t jj) { return r.U.component_data(component)[jj*nx+ii]; };
+        return (1.0-ty)*((1.0-tx)*at(i,j)+tx*at(i+1,j))
+             + ty*((1.0-tx)*at(i,j+1)+tx*at(i+1,j+1));
+    };
+    for (std::size_t i=0;i<5;++i) {
+        max_error=std::max(max_error,std::abs(sample(0.5,y[i],0)-u_ref[i]));
+        max_error=std::max(max_error,std::abs(sample(x[i],0.5,1)-v_ref[i]));
+    }
+    return max_error;
+}
+
+double max_difference(const Run& a, const Run& b)
+{
+    if (a.U.size()!=b.U.size()) throw std::invalid_argument("field size mismatch");
+    double e=0.0;
+    for (std::size_t c=0;c<a.U.size();++c)
+        for (std::size_t d=0;d<3;++d)
+            e=std::max(e,std::abs(a.U.component_data(d)[c]-b.U.component_data(d)[c]));
+    return e;
+}
+
+std::array<PressureVelocityAlgorithm,6> algorithms()
+{
+    return {PressureVelocityAlgorithm::SIMPLE,PressureVelocityAlgorithm::SIMPLEC,
+            PressureVelocityAlgorithm::PISO,PressureVelocityAlgorithm::PIMPLE,
+            PressureVelocityAlgorithm::FRACTIONAL_STEP,PressureVelocityAlgorithm::COUPLED};
+}
+
+std::array<CoupledSchurModel,5> qualified_schur_models()
+{
+    // Production Schur models qualified by N8. BlockLocal is the exact/oracle
+    // model and not a production model in this N9 integration matrix.
+    return {CoupledSchurModel::PCD, CoupledSchurModel::LSC,
+            CoupledSchurModel::BFBT, CoupledSchurModel::SIMPLE, CoupledSchurModel::SIMPLEC};
+}
+
+const char* schur_model_name(CoupledSchurModel model)
+{
+    return to_string(model);
+}
+
+
+} // namespace
+
+int main()
+{
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    const auto algs=algorithms();
+    const auto schur_models=qualified_schur_models();
+
+    // Common physical matrix: Couette, pressure-driven Poiseuille and lid-driven
+    // Run this matrix against the active numerical-method base so production fixes
+    // are exercised by the same strict physical gates before the validation PR merges.
+    // cavity. The same meshes, BCs, viscosity and convergence contract are used
+    // for all six pressure-velocity paths.
+    std::vector<Run> couette;
+    std::vector<Run> poiseuille;
+    std::vector<Run> cavity;
+    couette.reserve(algs.size());
+    poiseuille.reserve(algs.size());
+    cavity.reserve(algs.size());
+
+    const auto u_channel=channel_velocity_bc(1.0);
+    const auto p_channel=channel_pressure_bc();
+
+    for (std::size_t k=0;k<algs.size();++k) {
+        // Skip COUPLED in the first loop - it's tested in the Schur model loop below
+        if (algs[k] == PressureVelocityAlgorithm::COUPLED) continue;
+        char buf[128];
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Couette\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
+        couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0));
+        require_physical_convergence(couette[k],"Couette",algs[k]);
+        if (couette_l2(couette[k],12,16)>2e-3)
+            throw std::runtime_error("Couette analytic L2 gate failed");
+
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Poiseuille\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
+        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
+        require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
+        if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
+            throw std::runtime_error("Poiseuille analytic L2 gate failed");
+
+        snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Cavity\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
+        write(2, buf, strlen(buf));
+        auto cavity_bc=channel_velocity_bc(0.0);
+        cavity_bc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        cavity_bc["outlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        cavity_bc["bottom"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
+        cavity.push_back(solve_case(make_cavity_mesh(32,32),algs[k],cavity_bc,p_channel,0.0,0.01));
+        require_physical_convergence(cavity[k],"Ghia Re=100 cavity",algs[k]);
+        if (cavity_profile_linf(cavity[k],32,32)>0.20)
+            throw std::runtime_error("Ghia Re=100 centreline oracle gate failed");
+    }
+
+    // Exercise every production Schur model already qualified by N8 through
+    // the N9 physical matrix. Requested and resolved identities are checked
+    // explicitly so no silent model substitution can satisfy this campaign.
+    for (const auto schur_model : schur_models) {
+        std::string msg = "STARTING COUPLED " + std::string(schur_model_name(schur_model)) + "\n";
+        write(2, msg.data(), msg.size());
+        const auto check_model = [&](const Run& r, const char* case_name) {
+            if (!r.result.coupled_schur_model_resolved ||
+                r.result.requested_coupled_schur_model != schur_model ||
+                r.result.resolved_coupled_schur_model != schur_model) {
+                throw std::runtime_error(
+                    std::string("COUPLED Schur model mismatch on ") + case_name +
+                    ": " + schur_model_name(schur_model));
+            }
+        };
+
+        std::string msg2 = std::string("COUPLED ") + schur_model_name(schur_model) + " Couette\n";
+        write(2, msg2.data(), msg2.size());
+        const auto coupled_couette = solve_coupled_case(
+            make_channel_mesh(12,16,0.0), schur_model,
+            u_channel, p_channel, 0.0);
+        require_physical_convergence(coupled_couette, "COUPLED Couette", PressureVelocityAlgorithm::COUPLED);
+        check_model(coupled_couette, "Couette");
+        if (couette_l2(coupled_couette,12,16)>2e-3)
+            throw std::runtime_error(std::string("COUPLED Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
+
+        std::string msg3 = std::string("COUPLED ") + schur_model_name(schur_model) + " Poiseuille\n";
+        write(2, msg3.data(), msg3.size());
+        const auto coupled_poiseuille = solve_coupled_case(
+            make_channel_mesh(12,16,0.0), schur_model,
+            channel_velocity_bc(0.0), p_channel, 1.0);
+        require_physical_convergence(coupled_poiseuille, "COUPLED Poiseuille", PressureVelocityAlgorithm::COUPLED);
+        check_model(coupled_poiseuille, "Poiseuille");
+        if (poiseuille_l2(coupled_poiseuille,12,16,1.0,0.1)>5e-3)
+            throw std::runtime_error(std::string("COUPLED Poiseuille analytic L2 gate failed: ") + schur_model_name(schur_model));
+
+        auto coupled_cavity_bc=channel_velocity_bc(0.0);
+        coupled_cavity_bc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        coupled_cavity_bc["outlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        coupled_cavity_bc["bottom"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        coupled_cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
+        const auto coupled_cavity = solve_coupled_case(
+            make_cavity_mesh(32,32), schur_model,
+            coupled_cavity_bc, p_channel, 0.0, 0.01);
+        require_physical_convergence(coupled_cavity, "COUPLED Ghia Re=100 cavity", PressureVelocityAlgorithm::COUPLED);
+        check_model(coupled_cavity, "Ghia Re=100 cavity");
+        if (cavity_profile_linf(coupled_cavity,32,32)>0.20)
+            throw std::runtime_error(std::string("COUPLED Ghia Re=100 centreline oracle gate failed: ") + schur_model_name(schur_model));
+
+        const auto coupled_skew = solve_coupled_case(
+            make_channel_mesh(12,16,0.25), schur_model,
+            u_channel, p_channel, 0.0);
+        require_physical_convergence(coupled_skew, "COUPLED skew Couette", PressureVelocityAlgorithm::COUPLED);
+        check_model(coupled_skew, "skew Couette");
+        if (couette_l2(coupled_skew,12,16)>2e-2)
+            throw std::runtime_error(std::string("COUPLED skew Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
+    }
+
+    // Cross-algorithm physical-equivalence gate on each benchmark. Every
+    // pairwise delta (plus the end-of-run audit of both cavity solutions)
+    // is printed before any gate decision, so a CI failure identifies the
+    // algorithm pair, the magnitude and the argmax location directly in
+    // the log instead of an unqualified gate name. Diagnostic only: the
+    // thresholds and their enforcement are unchanged.
+    const auto equivalence_alg_name = [](std::size_t k) {
+        switch (k) {
+        case 0: return "SIMPLE";
+        case 1: return "SIMPLEC";
+        case 2: return "PISO";
+        case 3: return "PIMPLE";
+        case 4: return "FRACTIONAL_STEP";
+        default: return "COUPLED";
+        }
+    };
+    struct EquivalenceProbe { double value; std::size_t cell; std::size_t comp; };
+    const auto difference_probe = [](const Run& a, const Run& b) {
+        if (a.U.size()!=b.U.size())
+            throw std::invalid_argument("field size mismatch");
+        EquivalenceProbe d{0.0, 0, 0};
+        for (std::size_t c=0;c<a.U.size();++c)
+            for (std::size_t comp=0;comp<3;++comp) {
+                const double e=std::abs(a.U.component_data(comp)[c]-
+                                         b.U.component_data(comp)[c]);
+                if (e>d.value) { d.value=e; d.cell=c; d.comp=comp; }
+            }
+        return d;
+    };
+    const auto print_equivalence_row = [&](std::size_t k) {
+        const auto dc=difference_probe(couette[0],couette[k]);
+        const auto dp=difference_probe(poiseuille[0],poiseuille[k]);
+        const auto dv=difference_probe(cavity[0],cavity[k]);
+        const auto& h0=cavity[0].result.history.back();
+        const auto& hk=cavity[k].result.history.back();
+        char buf[1024];
+        snprintf(buf,sizeof(buf),
+            "EQUIVALENCE alg=%s couette=%.3e poiseuille=%.3e cavity=%.3e"
+            " cavity_argmax_cell=%zu comp=%zu u_simple=%.6e u_alg=%.6e"
+            " | cavity_simple iters=%zu mom=%.3e cont=%.3e recon=%.3e fmm=%.3e"
+            " | cavity_alg iters=%zu mom=%.3e cont=%.3e recon=%.3e fmm=%.3e\n",
+            equivalence_alg_name(k),dc.value,dp.value,dv.value,
+            dv.cell,dv.comp,
+            cavity[0].U.component_data(dv.comp)[dv.cell],
+            cavity[k].U.component_data(dv.comp)[dv.cell],
+            h0.iteration,h0.momentum_residual,h0.continuity_linf,
+            h0.reconstructed_velocity_continuity_linf,h0.flux_velocity_mismatch_linf,
+            hk.iteration,hk.momentum_residual,hk.continuity_linf,
+            hk.reconstructed_velocity_continuity_linf,hk.flux_velocity_mismatch_linf);
+        write(2,buf,strlen(buf));
+    };
+    for (std::size_t k=1;k<couette.size();++k)
+        print_equivalence_row(k);
+    for (std::size_t k=1;k<couette.size();++k) {
+        if (max_difference(couette[0],couette[k])>2e-4)
+            throw std::runtime_error("Couette algorithm equivalence gate failed");
+        if (max_difference(poiseuille[0],poiseuille[k])>2e-4)
+            throw std::runtime_error("Poiseuille algorithm equivalence gate failed");
+        if (max_difference(cavity[0],cavity[k])>2e-2)
+            throw std::runtime_error("cavity algorithm equivalence gate failed");
+    }
+
+    // Controlled skew/non-orthogonal campaign. The physical solution remains
+    // affine Couette, so the analytic gate is independent of algorithm while
+    // the mesh exercises non-orthogonal/skew face geometry.
+    for (std::size_t k=0;k<algs.size();++k) {
+        const auto skew=solve_case(make_channel_mesh(12,16,0.25),algs[k],
+                                   u_channel,p_channel,0.0);
+        require_physical_convergence(skew,"skew Couette",algs[k]);
+        if (couette_l2(skew,12,16)>2e-2)
+            throw std::runtime_error("skew Couette analytic L2 gate failed");
+        if (max_difference(couette[0],skew)>3e-2)
+            throw std::runtime_error("skew Couette physical-equivalence gate failed");
+    }
+
+    return 0;
+}

@@ -1022,6 +1022,39 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     return result;
 }
 
+// Best-effort contract for the nested pressure solves invoked inside a
+// coupled Schur approximation action (PCD Fp/Kp, LSC/BFBt H). These
+// callbacks are preconditioner applications, not standalone solves: the
+// Schur action itself is only an approximation of the true Schur inverse
+// (pcd_schur.h, lsc_bfbt_schur.h), and the outer coupled FGMRES owns the
+// final accuracy through its independently recomputed true-residual gate.
+// Requiring strict CONVERGED turns a single benign inner shortfall into a
+// total outer NOT_APPLICABLE abort: on the N9 Couette campaign one Fp apply
+// that could not reach the last digit of its relative tolerance killed the
+// whole coupled solve after 168 successful applies, because by then the
+// outer residual had shrunk enough for the nested rhs direction to hit its
+// own rounding floor. A nested run that exhausted its iteration budget but
+// produced a finite best iterate (the Krylov drivers restore the iterate
+// with the best verified true residual) remains a valid preconditioner
+// action. Only a genuinely unusable result fails the action: divergence,
+// breakdown, an inapplicable inner setup, or a non-finite iterate.
+inline bool nested_schur_pressure_solve_usable(
+    const cfdx::core::SolverResult& result,
+    const cfdx::core::Vector& x,
+    std::size_t expected_size)
+{
+    if (result.status == cfdx::core::SolverStatus::CONVERGED)
+        return true;
+    if (result.status != cfdx::core::SolverStatus::MAX_ITER_REACHED)
+        return false;
+    if (x.size() != expected_size || !x.is_valid())
+        return false;
+    for (std::size_t i = 0; i < x.size(); ++i)
+        if (!std::isfinite(x(i)))
+            return false;
+    return true;
+}
+
 inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1042,6 +1075,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     CoupledSchurModel schur_model,
     const cfdx::core::LinearSolverRequest& solver_request,
     const IncompressibleSolverControls& controls,
+    // Live momentum under-relaxation consumed only by the coupled SIMPLEC
+    // Schur approximation. The coupled matrix itself stays unrelaxed;
+    // Picard relaxation is applied to the field update after the solve.
+    double momentum_under_relaxation,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
@@ -1621,7 +1658,22 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             schur_model == CoupledSchurModel::SIMPLE
                 ? SimplerSchurMode::SIMPLE
                 : SimplerSchurMode::SIMPLEC;
-        auto simpler = std::make_unique<SimplerSchurApproximation>(mode);
+        // The coupled matrix is deliberately unrelaxed, but the SIMPLEC
+        // consistent denominator is defined on the under-relaxed momentum
+        // row A_P/alpha - sum(a_PN), exactly as the segregated SIMPLEC
+        // assembles it from relax_momentum_equation() output. On the
+        // unrelaxed steady row the plain row sum A_P - sum(a_PN) is
+        // numerically zero for interior cells (only boundary/source terms
+        // survive), which made SimplerSchurApproximation::setup() reject
+        // the matrix and abort the N9 campaign at the first COUPLED
+        // simplec case. Feed the live momentum under-relaxation to the
+        // SIMPLEC Schur approximation; SIMPLE keeps its plain diag(Auu)
+        // denominator unchanged.
+        auto simpler = std::make_unique<SimplerSchurApproximation>(
+            mode, std::nullopt,
+            schur_model == CoupledSchurModel::SIMPLEC
+                ? momentum_under_relaxation
+                : 1.0);
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
@@ -1630,7 +1682,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::SIMPLE
                 : CoupledSchurApproximationModel::SIMPLEC;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         schur->set_simpler_schur(std::move(simpler));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1723,7 +1777,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 pressure_operator, rhs, x, restart,
                 max_iterations, tolerance,
                 pressure_preconditioner.get());
-            return result.status == cfdx::core::SolverStatus::CONVERGED;
+            return nested_schur_pressure_solve_usable(
+                result, x, pressure_operator.n_rows());
         };
 
         auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
@@ -1741,7 +1796,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? CoupledSchurApproximationModel::LSC
                 : CoupledSchurApproximationModel::BFBT;
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         schur->set_algebraic_schur(std::move(algebraic_schur));
         if (!schur->setup(A)) {
             throw std::runtime_error(
@@ -1809,7 +1866,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument(
                     "unsupported PCD Laplacian Krylov model");
             }
-            return result.status == SolverStatus::CONVERGED;
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
         };
 
         const auto solve_fp = [pcd_ops, controls](
@@ -1838,7 +1896,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument(
                     "PCD convection-diffusion solve requires GMRES or FGMRES");
             }
-            return result.status == SolverStatus::CONVERGED;
+            if (result.status != SolverStatus::CONVERGED &&
+                controls.diagnostics.coupled_matrix_summary) {
+                std::cerr << "COUPLED_NESTED_PCD_BEST_EFFORT operator=Fp"
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " residual=" << result.residual
+                          << " relative=" << result.residual_relative
+                          << "\n";
+            }
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
         };
 
         auto pcd = std::make_unique<PcdSchurApproximation>(
@@ -1866,7 +1934,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 throw std::invalid_argument("unsupported coupled Schur model");
         }
 
-        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc, options);
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (schur_model == CoupledSchurModel::PCD)
             schur->set_pcd_schur(std::move(pcd));
         // Set the preconditioner up here for the same reason the BlockSchur
@@ -1884,7 +1954,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
-        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(nc);
+        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, CoupledBlockSchurOptions{}, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(
                 std::string("N8 coupled BlockSchur AMG setup failed: ") +
@@ -1906,13 +1978,30 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (resolved_linear_plan != nullptr)
         *resolved_linear_plan = solver_plan;
     const int gmres_restart = automatic_coupled
-        ? static_cast<int>(std::min<std::size_t>(A.n_rows(), 512))
+        ? static_cast<int>(A.n_rows() <= 4096
+                               ? std::min<std::size_t>(A.n_rows(),
+                                                       std::max<std::size_t>(1024, max_iterations))
+                               : std::min<std::size_t>(A.n_rows(), 512))
         : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
     // The coupled acceptance problem is small enough for a full Krylov space.
-    // Do not let the global adaptive-restart policy silently clamp 512 back
-    // to its generic [10,40] range: that was the direct cause of the observed
-    // residual plateau around 1.33e-6. Keep the restart fixed for this block
-    // solve; adaptive restart remains available to generic GMRES callers.
+    // Do not let the global adaptive-restart policy silently clamp the restart
+    // back to its generic [10,40] range: that was the direct cause of the
+    // observed residual plateau around 1.33e-6. The restart must also be the
+    // FULL space for small/medium coupled systems (<= 1024 unknowns): the
+    // 12x16 channel system has 768 unknowns, so a 512 cap truncated the
+    // Krylov space below the system dimension and manufactured a plateau
+    // near 1e-7 on the Poiseuille Picard system, converting a solvable
+    // 1e-12 gate into an artificial MAX_ITER failure. Medium coupled systems
+    // (1024 < n <= 4096) get a restart of max(1024, max_iterations), capped
+    // by the system dimension: the 16x32 cavity Picard system has 4096
+    // unknowns, and a 512 cap truncated the Krylov space mid-budget
+    // (1000 iterations = 512 + 488), stalling the true relative residual at
+    // 3.66e-12 against the 1e-12 gate with three identical relaxation
+    // retries. A 1024 restart is never truncated within the iteration
+    // budget, so convergence is decided by the budget, not by a restart
+    // boundary. Systems above 4096 unknowns keep the 512 cap for memory.
+    // Keep the restart fixed for this block solve; adaptive restart remains
+    // available to generic GMRES callers.
     cfdx::core::KrylovControls coupled_gmres_controls;
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
@@ -2095,8 +2184,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           const Vector& field,
                           const Field<double, Location::CELL>& gradp,
                           std::size_t component,
-                          const std::vector<double>& rAU,
-                          const std::vector<double>& rAtU) {
+                          const std::vector<double>& rAU) {
         std::vector<double> hbya(mesh.n_cells(), 0.0);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double h = eq.rhs(c) + gradp.component_data(component)[c] * geometry.cell_volumes[c];
@@ -2107,12 +2195,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (col != c)
                     h -= eq.matrix.values_data()[k] * field(col);
             }
-            // SIMPLEC follows the established consistent formulation:
-            // HbyA = rAU*H - (rAU-rAtU)*grad(p).
+            // HbyA is always the plain momentum-inverse combination
+            // rAU*H, for SIMPLEC included. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only: the over-relaxation terms added to
+            // phiHbyA and to the corrected flux are sized so that
+            // (dAtU - dAU) cancels the rAtU response of the pressure
+            // operator, which collapses the SIMPLEC fixed point back
+            // onto the plain Rhie-Chow state built with rAU. Folding
+            // (rAtU - rAU)*grad(p) into the cell HbyA instead leaves
+            // the converged state on a displaced continuity operator
+            // carrying the spurious source
+            // div(rho*(dAtU - dAU)*snGrad(p)*|Sf|) of O(Laplacian(p))
+            // scale: invisible on Couette (constant p) and Poiseuille
+            // (linear p) but far outside the algorithm-equivalence
+            // gate on the lid-driven cavity.
             hbya[c] = rAU[c] * h;
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
-                hbya[c] -= (rAU[c] - rAtU[c]) *
-                           gradp.component_data(component)[c] * geometry.cell_volumes[c];
             if (!std::isfinite(hbya[c]))
                 throw std::runtime_error("solve_steady_incompressible: non-finite HbyA");
         }
@@ -2380,15 +2478,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupling.schur_model,
                 controls.coupled_linear_solver,
                 controls,
+                retry_controller.alpha_u(effective_alpha_u),
                 U, p, &result.coupled_linear_plan);
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
+                // Report the stalled linear state in scientific notation.
+                // std::to_string truncates to six fixed decimals, so a
+                // MAX_ITER stall printed as "residual=0.000000" hid the
+                // plateau level and made the failure impossible to calibrate
+                // against the coupled linear gate or the nested PCD budget.
+                const auto coupled_linear_failure_value = [](double value) {
+                    std::ostringstream out;
+                    out << std::scientific << std::setprecision(6) << value;
+                    return out.str();
+                };
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
                     ", iterations=" + std::to_string(coupled_result.iterations) +
-                    ", residual=" + std::to_string(coupled_result.residual) +
-                    ", relative=" + std::to_string(coupled_result.residual_relative) + ")");
+                    ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
+                    ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
             }
 
             // The coupled linear system is a Picard/Newton linearization of the
@@ -2422,9 +2531,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     !(ez.diagonal[c] > 0.0) || !std::isfinite(ez.diagonal[c]))
                     throw std::runtime_error(
                         "solve_steady_incompressible: invalid coupled momentum diagonal after solve");
-                coupled_rAU[0][c] = geometry.cell_volumes[c] / ex.diagonal[c];
-                coupled_rAU[1][c] = geometry.cell_volumes[c] / ey.diagonal[c];
-                coupled_rAU[2][c] = geometry.cell_volumes[c] / ez.diagonal[c];
+                // make_rhie_chow_mass_flux() and rhie_chow_pressure_flux_internal()
+                // take the INVERSE momentum diagonal rAU = 1/A_P and apply the
+                // cell volume internally (cx = 0.5*(V*rAU) = dAU). Passing V/A_P
+                // here double-counted the volume and shrank the Rhie-Chow
+                // pressure correction of the authoritative coupled flux by a
+                // factor V, silently removing the checkerboard suppression.
+                // On the constant/linear-pressure channel cases the correction
+                // vanishes and the defect was invisible (Couette/Poiseuille
+                // passed); on the lid-driven cavity the assembled continuity
+                // rows and the authoritative flux disagreed by div(interp(U)),
+                // a permanent continuity floor (~8.5e-3 against the 1e-7 gate)
+                // that no iteration budget or linear tolerance could remove:
+                // the velocity froze at the Picard fixed point and the
+                // stagnation detector terminated the case.
+                coupled_rAU[0][c] = 1.0 / ex.diagonal[c];
+                coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
+                coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, coupled_rAU,
@@ -2506,9 +2629,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double diagonal = 1.0 / rAU[d][c];
                     const double denom =
                         simplec_consistent_diagonal(diagonal, signed_offdiag_sum);
-                    // Diagnostic counterpart only: using abs(A_PN) is not the
-                    // SIMPLEC contract. Retain it to make sign/convention drift
-                    // visible in exact-head validation artifacts.
+                    // Independent audit counterpart. With the expected non-positive
+                    // stored off-diagonals this equals the signed-contract
+                    // denominator; a nonzero gap flags a matrix-sign mismatch.
                     const double abs_denom =
                         diagonal - abs_offdiag_sum;
                     simplec_signed_offdiag_sum_audit[d] =
@@ -2530,9 +2653,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
-        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0], rAtU[0]);
-        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1], rAtU[1]);
-        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2], rAtU[2]);
+        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);
+        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1]);
+        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2]);
         auto HbyA = make_hbya_field(hbya);
 
         if (freeze_state) {
@@ -2750,16 +2873,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             auto corrected_grad_p =
                 gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
 
-            // Rebuild the corrected velocity from the same HbyA/rAtU
-            // operator used by the pressure equation. This is the momentum
-            // correction; no least-squares flux fitting is permitted.
+            // Rebuild the corrected velocity from the same rAU operator
+            // that built the cell HbyA, so the converged velocity
+            // satisfies the momentum equation. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only. This is the momentum correction; no
+            // least-squares flux fitting is permitted.
             for (std::size_t c = 0; c < nc; ++c) {
                 U.component_data(0)[c] =
-                    HbyA.component_data(0)[c] - rAtU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(0)[c] - rAU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
                 U.component_data(1)[c] =
-                    HbyA.component_data(1)[c] - rAtU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(1)[c] - rAU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
                 U.component_data(2)[c] =
-                    HbyA.component_data(2)[c] - rAtU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
+                    HbyA.component_data(2)[c] - rAU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
             }
 
             // The conservative face flux is rebuilt from the same
@@ -2770,16 +2896,59 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (corr + 1 < pressure_correctors) {
-                // PISO's next pressure correction is driven by the current
-                // conservative face flux, not by the original predictor.
-                // The momentum matrix is intentionally frozen inside the
-                // inner PISO loop; the updated flux is the split-operator
-                // correction that carries the first pressure solve into the
-                // next one. Rebuilding HbyA here would incorrectly restart
-                // the correction sequence from the same predictor.
-                phiHbyA = mass_flux;
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+                // The SIMPLEC pressure equation balances the over-relaxed
+                // predictor flux phiHbyA + rho*(dAtU - dAU)*(p_N - p_P),
+                // not the bare interpolated predictor. The corrected flux
+                // must therefore carry the same consistent-response term,
+                // evaluated at the corrected pressure; otherwise it differs
+                // from the operator the pressure equation just balanced by
+                // exactly div(rho*(dAtU - dAU)*dp) and a continuity floor of
+                // that size survives on every case with a non-constant
+                // pressure field (e.g. the lid-driven cavity) even though
+                // the momentum residual is zero. With the term included the
+                // face operator collapses to the plain Rhie-Chow flux built
+                // with rAU: (dAtU - dAU) cancels the rAtU response, leaving
+                // the conservative flux of the reconstructed cell velocity.
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const auto nr = mesh.ownership().neighbour(f);
+                    if (nr < 0) continue;
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const std::size_t n = static_cast<std::size_t>(nr);
+                    const auto Sf = geometry.face_area_vectors[f];
+                    const double area = Sf.mag();
+                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
+                    const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                           geometry.cell_volumes[n]*rAtU[0][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                           geometry.cell_volumes[n]*rAU[0][n]);
+                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                           geometry.cell_volumes[n]*rAtU[1][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                           geometry.cell_volumes[n]*rAU[1][n]);
+                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                           geometry.cell_volumes[n]*rAtU[2][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                           geometry.cell_volumes[n]*rAU[2][n]);
+                    const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
+                    mass_flux(f) += controls.density * drn *
+                        (p(n)-p(o))/d * area;
+                }
             }
+
+            // Issa corrector form: every pressure corrector is driven by the
+            // ORIGINAL predictor flux together with the current pressure,
+            // div(phiHbyA - RC(p)); the assembly at the top of this loop
+            // already subtracts the Rhie-Chow pressure flux of the current
+            // p. Overwriting phiHbyA with the corrected flux here would
+            // subtract RC(p) twice in the next corrector's continuity source
+            // (div(phiHbyA) - 2*div(RC(p))), which displaces the fixed point
+            // and leaves a permanent continuity floor on every
+            // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
+            // The momentum matrix stays frozen inside the inner loop; the
+            // relaxed pressure update is what carries the first correction
+            // into the next one.
         }
 
         }
