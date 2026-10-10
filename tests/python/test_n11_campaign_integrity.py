@@ -1,14 +1,16 @@
-#!/usr/bin/env python3
 """Regression tests for N11 exact-HEAD campaign evidence integrity."""
 
-import sys
+import importlib.util
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-
-from n11_conservation_boundedness import expected_sha_matches
+SCRIPT = ROOT / "scripts" / "n11_conservation_boundedness.py"
+SPEC = importlib.util.spec_from_file_location("n11_conservation_boundedness", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+CAMPAIGN = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(CAMPAIGN)
+expected_sha_matches = CAMPAIGN.expected_sha_matches
 
 
 class N11CampaignIntegrityTests(unittest.TestCase):
