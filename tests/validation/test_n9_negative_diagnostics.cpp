@@ -382,8 +382,7 @@ int main()
         EXPECT_TRUE(true_residual(A, b, x) < 1e-9);
         EXPECT_TRUE(constant.component_norm(x) < 1e-12);
         std::cout << "N9_7_ITEM1 true_residual=" << true_residual(A, b, x)
-                  << " null_component=" << constant.component_norm(x) << "
-";
+                  << " null_component=" << constant.component_norm(x) << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -406,8 +405,7 @@ int main()
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
         std::cout << "N9_7_ITEM2 wrong_null_operator_residual="
                   << wrong.operator_residual(A)
-                  << " solve_status=" << to_string(result.status) << "
-";
+                  << " solve_status=" << to_string(result.status) << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -433,8 +431,7 @@ int main()
                   << constant.component_norm(b)
                   << " classified="
                   << to_string(classify_solver_failure(
-                        result, diagnostics, /*rhs_compatible=*/false)) << "
-";
+                        result, diagnostics, /*rhs_compatible=*/false)) << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -483,8 +480,7 @@ int main()
             make_rhie_chow_mass_flux(mesh, geometry, U, p, rAU, 1.0, {}),
             std::invalid_argument,
             "inverse momentum diagonal must be finite and positive");
-        std::cout << "N9_7_ITEM4 all pinned rejections thrown
-";
+        std::cout << "N9_7_ITEM4 all pinned rejections thrown\n";
     });
 
     // ------------------------------------------------------------------
@@ -518,8 +514,7 @@ int main()
         std::cout << "N9_7_ITEM5 clean=" << clean
                   << " sign_fault=" << sign_fault
                   << " flipped=" << flipped
-                  << " flipped_face=" << worst_face << "
-";
+                  << " flipped_face=" << worst_face << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -587,8 +582,7 @@ int main()
         std::cout << "N9_7_ITEM6 exact_gradient_error=" << exact_error
                   << " collapsed_gradient_error=" << collapsed_error
                   << " divergence_clean=" << clean
-                  << " divergence_sign_fault=" << sign_fault << "
-";
+                  << " divergence_sign_fault=" << sign_fault << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -629,8 +623,7 @@ int main()
             bump_delta = std::max(bump_delta, std::abs(phi0(f) - phi2(f)));
         EXPECT_TRUE(bump_delta > 1e-3);
         std::cout << "N9_7_ITEM7 offset_delta=" << offset_delta
-                  << " bump_delta=" << bump_delta << "
-";
+                  << " bump_delta=" << bump_delta << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -677,8 +670,7 @@ int main()
         std::cout << "N9_7_ITEM8 near_zero_diagonal="
                   << diagnostics.near_zero_diagonal
                   << " diagonal_dynamic_range="
-                  << diagnostics.diagonal_dynamic_range << "
-";
+                  << diagnostics.diagonal_dynamic_range << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -703,8 +695,7 @@ int main()
             solve_steady_incompressible(
                 mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c),
             std::runtime_error, "momentum solve did not converge");
-        std::cout << "N9_7_ITEM9 linear failure propagated with pinned diagnostic
-";
+        std::cout << "N9_7_ITEM9 linear failure propagated with pinned diagnostic\n";
     });
 
     // ------------------------------------------------------------------
@@ -743,8 +734,7 @@ int main()
         EXPECT_TRUE(result.iterations < 400);
         std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
                   << " iterations=" << result.iterations
-                  << " reason=" << result.convergence_reason << "
-";
+                  << " reason=" << result.convergence_reason << "\n";
     });
 
     // ------------------------------------------------------------------
@@ -763,8 +753,7 @@ int main()
         EXPECT_TRUE(l2 <= 5e-3);
         std::cout << "N9_7_FINAL continuity_linf=" << h.continuity_linf
                   << " momentum_residual=" << h.momentum_residual
-                  << " poiseuille_l2=" << l2 << "
-";
+                  << " poiseuille_l2=" << l2 << "\n";
     });
 
     return run_all();
