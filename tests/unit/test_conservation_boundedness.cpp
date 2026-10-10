@@ -198,5 +198,62 @@ int main()
         EXPECT_TRUE(r.worst_violation > 0.0);
     });
 
+
+    run_case("independent_face_assembly_accepts_internal_antisymmetry_and_boundary_zero", [] {
+        const Mesh m = make_two_cell_chain();
+        std::vector<double> owner(m.n_faces(), 0.0);
+        std::vector<double> neighbour(m.n_faces(), 0.0);
+        owner[1] = 2.5;
+        neighbour[1] = -2.5;
+
+        const auto d = audit_face_assembly(m, owner, neighbour);
+        EXPECT_TRUE(d.finite());
+        EXPECT_TRUE(d.antisymmetric());
+        EXPECT_TRUE(d.internal_faces == 1);
+        EXPECT_TRUE(d.boundary_faces == m.n_faces() - 1);
+        EXPECT_TRUE(d.mismatched_faces == 0);
+        EXPECT_NEAR(d.max_abs_mismatch, 0.0, 1e-15);
+    });
+
+    run_case("independent_face_assembly_reports_internal_sign_mismatch_and_face_id", [] {
+        const Mesh m = make_two_cell_chain();
+        std::vector<double> owner(m.n_faces(), 0.0);
+        std::vector<double> neighbour(m.n_faces(), 0.0);
+        owner[1] = 2.5;
+        neighbour[1] = -2.4;
+
+        const auto d = audit_face_assembly(m, owner, neighbour);
+        EXPECT_TRUE(!d.antisymmetric());
+        EXPECT_TRUE(d.mismatched_faces == 1);
+        EXPECT_TRUE(d.worst_face == 1);
+        EXPECT_NEAR(d.max_abs_mismatch, 0.1, 1e-14);
+    });
+
+    run_case("independent_face_assembly_rejects_nonzero_boundary_neighbour_contribution", [] {
+        const Mesh m = make_unit_cube();
+        std::vector<double> owner(m.n_faces(), 0.0);
+        std::vector<double> neighbour(m.n_faces(), 0.0);
+        owner[3] = 4.0;
+        neighbour[3] = 1e-6;
+
+        const auto d = audit_face_assembly(m, owner, neighbour);
+        EXPECT_TRUE(!d.antisymmetric());
+        EXPECT_TRUE(d.mismatched_faces == 1);
+        EXPECT_TRUE(d.worst_face == 3);
+        EXPECT_NEAR(d.max_abs_mismatch, 1e-6, 1e-15);
+    });
+
+    run_case("independent_face_assembly_marks_nonfinite_contributions", [] {
+        const Mesh m = make_unit_cube();
+        std::vector<double> owner(m.n_faces(), 0.0);
+        std::vector<double> neighbour(m.n_faces(), 0.0);
+        owner[2] = std::numeric_limits<double>::quiet_NaN();
+
+        const auto d = audit_face_assembly(m, owner, neighbour);
+        EXPECT_TRUE(!d.finite());
+        EXPECT_TRUE(!d.antisymmetric());
+        EXPECT_TRUE(d.nonfinite_faces == 1);
+    });
+
     return run_all();
 }
