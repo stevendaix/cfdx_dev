@@ -17,7 +17,30 @@ struct TurbulenceTransportResult {
     std::size_t iterations=0;
     double k_residual=0.0;
     double second_residual=0.0;
+    // Counts are floor-activation events over all nonlinear iterations.
+    std::size_t k_floor_events=0;
+    std::size_t second_floor_events=0;
+    std::size_t nonfinite_bound_events=0;
+    double k_total_floor_correction=0.0;
+    double second_total_floor_correction=0.0;
+    double k_max_floor_correction=0.0;
+    double second_max_floor_correction=0.0;
 };
+
+inline void record_turbulence_bounds(
+    TurbulenceTransportResult& result,
+    const TurbulenceBoundDiagnostics& bounds)
+{
+    result.k_floor_events += bounds.first_floor_activations;
+    result.second_floor_events += bounds.second_floor_activations;
+    result.nonfinite_bound_events += bounds.nonfinite_values();
+    result.k_total_floor_correction += bounds.first_total_correction;
+    result.second_total_floor_correction += bounds.second_total_correction;
+    result.k_max_floor_correction = std::max(
+        result.k_max_floor_correction, bounds.first_max_correction);
+    result.second_max_floor_correction = std::max(
+        result.second_max_floor_correction, bounds.second_max_correction);
+}
 
 inline void compute_kepsilon_production_field(
     const cfdx::core::Mesh& mesh,
@@ -116,7 +139,7 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             k(i)=k_solution(i);
             epsilon(i)=epsilon_solution(i);
         }
-        enforce_turbulence_bounds(k,epsilon,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
 
         result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqe,epsilon_solution);
@@ -186,7 +209,7 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
         const auto rk=solve_scalar_equation(eqk,ks,sc);
         const auto re=solve_scalar_equation(eqe,es,sc);
         for(std::size_t i=0;i<n;++i){k(i)=ks(i);epsilon(i)=es(i);}
-        enforce_turbulence_bounds(k,epsilon,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
         double dk=0.0,de=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-oldk(i)));de=std::max(de,std::abs(epsilon(i)-olde(i)));}
         result.k_residual=scalar_equation_residual_inf(eqk,ks);
@@ -326,7 +349,7 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
         const auto rk=solve_scalar_equation(eqk,ks,sc);
         const auto re=solve_scalar_equation(eqe,es,sc);
         for (std::size_t i=0; i<n; ++i) { k(i)=ks(i); epsilon(i)=es(i); }
-        enforce_turbulence_bounds(k,epsilon,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,epsilon,controls));
 
         double dk=0.0, de=0.0;
         for (std::size_t i=0; i<n; ++i) {
@@ -421,7 +444,7 @@ inline TurbulenceTransportResult solve_komega_transport(
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);ws(i)=omega(i);}
         const auto rk=solve_scalar_equation(eqk,ks,sc), rw=solve_scalar_equation(eqw,ws,sc);
         for(std::size_t i=0;i<n;++i){k(i)=ks(i);omega(i)=ws(i);}
-        enforce_turbulence_bounds(k,omega,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
         double dk=0,dw=0; for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
         result.k_residual=scalar_equation_residual_inf(eqk,ks); result.second_residual=scalar_equation_residual_inf(eqw,ws); result.iterations=iter;
         if(rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
