@@ -2502,9 +2502,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     !(ez.diagonal[c] > 0.0) || !std::isfinite(ez.diagonal[c]))
                     throw std::runtime_error(
                         "solve_steady_incompressible: invalid coupled momentum diagonal after solve");
-                coupled_rAU[0][c] = geometry.cell_volumes[c] / ex.diagonal[c];
-                coupled_rAU[1][c] = geometry.cell_volumes[c] / ey.diagonal[c];
-                coupled_rAU[2][c] = geometry.cell_volumes[c] / ez.diagonal[c];
+                // make_rhie_chow_mass_flux() and rhie_chow_pressure_flux_internal()
+                // take the INVERSE momentum diagonal rAU = 1/A_P and apply the
+                // cell volume internally (cx = 0.5*(V*rAU) = dAU). Passing V/A_P
+                // here double-counted the volume and shrank the Rhie-Chow
+                // pressure correction of the authoritative coupled flux by a
+                // factor V, silently removing the checkerboard suppression.
+                // On the constant/linear-pressure channel cases the correction
+                // vanishes and the defect was invisible (Couette/Poiseuille
+                // passed); on the lid-driven cavity the assembled continuity
+                // rows and the authoritative flux disagreed by div(interp(U)),
+                // a permanent continuity floor (~8.5e-3 against the 1e-7 gate)
+                // that no iteration budget or linear tolerance could remove:
+                // the velocity froze at the Picard fixed point and the
+                // stagnation detector terminated the case.
+                coupled_rAU[0][c] = 1.0 / ex.diagonal[c];
+                coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
+                coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, coupled_rAU,

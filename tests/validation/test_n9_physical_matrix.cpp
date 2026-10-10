@@ -195,7 +195,11 @@ IncompressibleSolverControls controls_for(
         c.diagnostics.coupled_matrix_summary = true;
     }
 
-    if (algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+    if (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
+        algorithm == PressureVelocityAlgorithm::COUPLED) {
+        // Diagnostic only: the campaign log must carry the per-iteration
+        // momentum/continuity trend of every coupled case. No gate or
+        // tolerance is affected.
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 25;
     }
