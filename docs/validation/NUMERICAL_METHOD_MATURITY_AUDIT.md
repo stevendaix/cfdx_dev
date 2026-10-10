@@ -235,7 +235,7 @@ The previous N8 entries stating that SIMPLE/SIMPLEC/LSC/BFBT were test-only are 
 
 ## N11 re-audit — 2026-10-10
 
-Baseline: `master` at `ca32d9c26106a041f8d5cf7639502d84a8f47b6a` (merge #837). PRs #767, #776, #780, #787 and #814 are merged. The N11 package remains **PARTIAL**; implementation and selected executable evidence are not equivalent to package-level qualification.
+Baseline: `master` at `e0026f4ae3934929290ef727d152415567fd284c` (merge #837). PRs #767, #776, #780, #787 and #814 are merged. The N11 package remains **PARTIAL**; implementation and selected executable evidence are not equivalent to package-level qualification.
 
 - **Conservation evidence present:** momentum gate (#767), scalar conservation/boundedness (#776), energy/CHT conservation (#780), quantitative campaign evidence (#787), and independent post-solve flux reconstruction plus per-cell balance on the active distributed Poisson path (#814).
 - **MPI boundary:** #814 does not qualify production incompressible/thermal MPI; those production physics paths are not distributed under MPI.
