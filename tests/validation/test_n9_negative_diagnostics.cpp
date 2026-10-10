@@ -713,21 +713,26 @@ int main()
     // solve with the STAGNATED verdict and a non-empty reason, early —
     // never a false converged and never an unbounded iteration loop.
     // ------------------------------------------------------------------
-    // DIAG BRANCH ONLY: alpha sweep to calibrate the stagnation trigger.
-    // Measured on the exact PR head (alpha_u=alpha_p=1e-6): smooth outer
-    // contraction, but the per-interval relative improvement stays ~3e-3
-    // at iteration 400 (early intervals ~6%), always above the stagnation
-    // threshold 1e-3, so the 10-interval window never saturates and the
-    // honest verdict is MAX_ITERATIONS. The sweep measures which alpha
-    // keeps every interval below 1e-3 so the detector fires near
-    // iteration 11. No production gate is touched by this experiment.
-    run_case("n9_7_item10_alpha_sweep", [] {
-        const double alphas[] = {1e-6, 1e-8, 1e-10, 1e-12};
-        for (const double alpha : alphas) {
+    // DIAG BRANCH ONLY: the alpha sweep (previous commit) measured that the
+    // SIMPLEC outer trajectory is bitwise IDENTICAL for alpha_u=alpha_p in
+    // {1e-6, 1e-8, 1e-10, 1e-12}: the coupling alphas do not change the
+    // outer contraction in this configuration, and the per-interval
+    // relative improvement (~0.85/k) never drops below the stagnation
+    // threshold 1e-3 within 400 iterations. Two candidate triggers are
+    // measured here; the winner is ported to the PR:
+    //   A) same solve, max_iterations=3000 - the algebraic decay should
+    //      cross 1e-3 near iteration 850 (extrapolated from the measured
+    //      tail 0.0101037 at iteration 400);
+    //   B) plausible misconfiguration: single-iteration inner solves with
+    //      loose tolerance - the outer loop makes no measurable progress
+    //      and must be reported STAGNATED, not MAX_ITERATIONS.
+    // The production stagnation window (10 intervals, 1e-3) is untouched.
+    run_case("n9_7_item10_trigger_candidates", [] {
+        {
             auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
-            c.coupling.alpha_u = alpha;
-            c.coupling.alpha_p = alpha;
-            c.convergence.max_iterations = 400;
+            c.coupling.alpha_u = 1e-6;
+            c.coupling.alpha_p = 1e-6;
+            c.convergence.max_iterations = 3000;
             c.linear_tolerance = 1e-14;
             c.linear_max_iterations = 4000;
             c.diagnostics.iteration_trace = false;
@@ -738,19 +743,45 @@ int main()
             p.fill(17.0);
             const auto result = solve_steady_incompressible(
                 mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c);
-            std::cout << "N9_7_ITEM10_SWEEP alpha=" << alpha
+            std::cout << "N9_7_ITEM10_CANDIDATE variant=A max_iter=3000"
                       << " status=" << to_string(result.convergence_status)
                       << " converged=" << (result.converged ? 1 : 0)
                       << " iterations=" << result.iterations
                       << " reason=" << result.convergence_reason << "\n";
             for (std::size_t i = 0; i < result.history.size(); ++i) {
-                if (i < 16 || i + 1 == result.history.size()) {
-                    const auto& h = result.history[i];
-                    std::cout << "N9_7_ITEM10_SWEEP alpha=" << alpha
-                              << " trace iter=" << h.iteration
+                const auto& h = result.history[i];
+                if (i < 12 || (i + 1) % 100 == 0 || i + 1 == result.history.size())
+                    std::cout << "N9_7_ITEM10_CANDIDATE variant=A trace iter="
+                              << h.iteration
                               << " metric=" << h.nonlinear_convergence_metric
                               << "\n";
-                }
+            }
+        }
+        {
+            auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
+            c.convergence.max_iterations = 400;
+            c.linear_tolerance = 1e-1;
+            c.linear_max_iterations = 1;
+            c.diagnostics.iteration_trace = false;
+            const Mesh mesh = make_channel_mesh(12, 16, 0.0);
+            Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+            Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+            U.fill(0.0);
+            p.fill(17.0);
+            const auto result = solve_steady_incompressible(
+                mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c);
+            std::cout << "N9_7_ITEM10_CANDIDATE variant=B loose_inner"
+                      << " status=" << to_string(result.convergence_status)
+                      << " converged=" << (result.converged ? 1 : 0)
+                      << " iterations=" << result.iterations
+                      << " reason=" << result.convergence_reason << "\n";
+            for (std::size_t i = 0; i < result.history.size(); ++i) {
+                const auto& h = result.history[i];
+                if (i < 30 || i + 1 == result.history.size())
+                    std::cout << "N9_7_ITEM10_CANDIDATE variant=B trace iter="
+                              << h.iteration
+                              << " metric=" << h.nonlinear_convergence_metric
+                              << "\n";
             }
         }
     });
