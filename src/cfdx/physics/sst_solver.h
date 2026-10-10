@@ -123,7 +123,7 @@ inline TurbulenceTransportResult solve_sst_transport(
             k(i) = k_solution(i);
             omega(i) = omega_solution(i);
         }
-        enforce_turbulence_bounds(k,omega,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
 
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i) {
