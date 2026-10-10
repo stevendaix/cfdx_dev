@@ -60,6 +60,8 @@ The tetrahedral fixture verifies:
 
 It does not promote N10 to a universal polyhedral accuracy qualification. Smooth-field order on the complete quality ladder remains a subsequent V&V item.
 
+The polyhedral Laplacian campaign enforces operator consistency at every campaign refinement level (n = 4/6/8/16): with a linear-consistent least-squares cell gradient, the corrected non-orthogonal operator must be linear-exact on interior tetrahedra at each level. For the smooth manufactured field under this consistent configuration, the interior residuals and observed orders are measured and reported without threshold: the corrected operator is not quadratic-exact and its gradient-based correction makes it non-symmetric, so its pointwise interior residual is O(1) and no convergence or accuracy order is claimed for it. A strict-decrease gate on these residuals was tried and measured to fail on the tested family; the campaign keeps the honest diagnostic instead. The default two-point Gauss gradient keeps its documented no-order status, and its measured non-decreasing error remains documented rather than hidden.
+
 ## Invalid geometry
 
 A deliberately collapsed face is passed to the same production mesh validator. The expected result is rejection with an explicit error. No repair or fallback is permitted.
