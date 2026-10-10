@@ -228,12 +228,7 @@
         "tests/unit/test_conservation_boundedness.cpp",
         "tests/validation/test_phase9_acceptance.cpp",
         "tests/validation/test_n11_scalar_conservation.cpp",
-        "scripts/n11_conservation_boundedness.py",
-        "PR #767: independent momentum conservation gate",
-        "PR #776: scalar conservation and boundedness",
-        "PR #780: independent energy/CHT conservation",
-        "PR #787: quantitative benchmark evidence campaign",
-        "PR #814: independent post-solve flux reconstruction and per-cell balance on active distributed Poisson MPI path"
+        "scripts/n11_conservation_boundedness.py"
       ],
       "gaps": [
         "complete quantitative Couette/Poiseuille/scalar-MMS/energy/skew acceptance matrix",
@@ -241,6 +236,13 @@
         "complete per-variable bounds/positivity and explicit floor/clipping telemetry",
         "production incompressible/thermal MPI conservation is not qualified; those physics paths are not distributed under MPI",
         "exact-current-HEAD campaign execution and retained quantitative evidence must be confirmed before package promotion"
+      ],
+      "merged_prs": [
+        767,
+        776,
+        780,
+        787,
+        814
       ]
     },
     {
