@@ -435,6 +435,12 @@ if(CFDX_BUILD_TESTS)
         set_tests_properties(test_n11_conservation_boundedness PROPERTIES
             LABELS "n11;qualification;validation;long"
             RUN_SERIAL TRUE)
+
+        add_test(NAME test_n11_campaign_integrity
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_n11_campaign_integrity.py)
+        set_tests_properties(test_n11_campaign_integrity PROPERTIES
+            LABELS "n11;unit;validation")
     endif()
 
     # Unit tests - Core
