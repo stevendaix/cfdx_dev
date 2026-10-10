@@ -173,9 +173,8 @@ IncompressibleSolverControls controls_for(
     c.density = 1.0;
     c.kinematic_viscosity = viscosity;
     c.coupling.alpha_u = 0.7;
-    // SIMPLEC's consistent pressure correction is normally unrelaxed; retaining
-    // SIMPLE's 0.3 factor here causes the physical Couette case to stagnate
-    // (the documented trigger exercised by item 10 below).
+    // SIMPLEC's consistent pressure correction is normally unrelaxed; SIMPLE
+    // retains the 0.3 pressure under-relaxation.
     c.coupling.alpha_p = algorithm == PressureVelocityAlgorithm::SIMPLEC ? 1.0 : 0.3;
     c.coupling.n_pressure_correctors =
         (algorithm == PressureVelocityAlgorithm::SIMPLEC ||
@@ -383,7 +382,8 @@ int main()
         EXPECT_TRUE(true_residual(A, b, x) < 1e-9);
         EXPECT_TRUE(constant.component_norm(x) < 1e-12);
         std::cout << "N9_7_ITEM1 true_residual=" << true_residual(A, b, x)
-                  << " null_component=" << constant.component_norm(x) << "\n";
+                  << " null_component=" << constant.component_norm(x) << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -406,7 +406,8 @@ int main()
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
         std::cout << "N9_7_ITEM2 wrong_null_operator_residual="
                   << wrong.operator_residual(A)
-                  << " solve_status=" << to_string(result.status) << "\n";
+                  << " solve_status=" << to_string(result.status) << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -432,7 +433,8 @@ int main()
                   << constant.component_norm(b)
                   << " classified="
                   << to_string(classify_solver_failure(
-                        result, diagnostics, /*rhs_compatible=*/false)) << "\n";
+                        result, diagnostics, /*rhs_compatible=*/false)) << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -481,7 +483,8 @@ int main()
             make_rhie_chow_mass_flux(mesh, geometry, U, p, rAU, 1.0, {}),
             std::invalid_argument,
             "inverse momentum diagonal must be finite and positive");
-        std::cout << "N9_7_ITEM4 all pinned rejections thrown\n";
+        std::cout << "N9_7_ITEM4 all pinned rejections thrown
+";
     });
 
     // ------------------------------------------------------------------
@@ -515,7 +518,8 @@ int main()
         std::cout << "N9_7_ITEM5 clean=" << clean
                   << " sign_fault=" << sign_fault
                   << " flipped=" << flipped
-                  << " flipped_face=" << worst_face << "\n";
+                  << " flipped_face=" << worst_face << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -583,7 +587,8 @@ int main()
         std::cout << "N9_7_ITEM6 exact_gradient_error=" << exact_error
                   << " collapsed_gradient_error=" << collapsed_error
                   << " divergence_clean=" << clean
-                  << " divergence_sign_fault=" << sign_fault << "\n";
+                  << " divergence_sign_fault=" << sign_fault << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -624,7 +629,8 @@ int main()
             bump_delta = std::max(bump_delta, std::abs(phi0(f) - phi2(f)));
         EXPECT_TRUE(bump_delta > 1e-3);
         std::cout << "N9_7_ITEM7 offset_delta=" << offset_delta
-                  << " bump_delta=" << bump_delta << "\n";
+                  << " bump_delta=" << bump_delta << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -671,7 +677,8 @@ int main()
         std::cout << "N9_7_ITEM8 near_zero_diagonal="
                   << diagnostics.near_zero_diagonal
                   << " diagonal_dynamic_range="
-                  << diagnostics.diagonal_dynamic_range << "\n";
+                  << diagnostics.diagonal_dynamic_range << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -696,18 +703,26 @@ int main()
             solve_steady_incompressible(
                 mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c),
             std::runtime_error, "momentum solve did not converge");
-        std::cout << "N9_7_ITEM9 linear failure propagated with pinned diagnostic\n";
+        std::cout << "N9_7_ITEM9 linear failure propagated with pinned diagnostic
+";
     });
 
     // ------------------------------------------------------------------
-    // Item 10 — nonlinear stagnation: the documented SIMPLEC trigger
-    // (retaining SIMPLE's under-relaxed pressure correction) must terminate
-    // the solve with the STAGNATED verdict and a non-empty reason, never a
-    // false converged or an unbounded iteration loop.
+    // Item 10 — nonlinear stagnation: a pathological momentum
+    // under-relaxation (alpha_u = 1e-6) makes each nonlinear iteration move
+    // the solution by ~1e-6 of the full correction. On this linear case
+    // the outer-iteration scaling law with essentially exact inner Krylov
+    // solves contracts the residual by ~(1 - alpha_u) per iteration, so
+    // the per-iteration relative residual improvement (~1e-6) stays three
+    // orders of magnitude below the production stagnation threshold
+    // (1e-3 per iteration over the 10-iteration window). The production
+    // monitor MUST terminate the solve with the STAGNATED verdict and a
+    // non-empty reason, early — never a false converged and never an
+    // unbounded iteration loop.
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLEC);
-        c.coupling.alpha_p = 0.3;
+        c.coupling.alpha_u = 1e-6;
         c.convergence.max_iterations = 400;
 
         const Mesh mesh = make_channel_mesh(12, 16, 0.0);
@@ -720,8 +735,16 @@ int main()
         EXPECT_FALSE(result.converged);
         EXPECT_TRUE(result.convergence_status == ConvergenceStatus::STAGNATED);
         EXPECT_FALSE(result.convergence_reason.empty());
+        // Terminated by the stagnation detector, not by chance or by the
+        // iteration cap: the 10-iteration window cannot fire before
+        // iteration 11, and a detector termination must arrive long before
+        // the 400-iteration maximum.
+        EXPECT_TRUE(result.iterations >= 11);
+        EXPECT_TRUE(result.iterations < 400);
         std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
-                  << " reason=" << result.convergence_reason << "\n";
+                  << " iterations=" << result.iterations
+                  << " reason=" << result.convergence_reason << "
+";
     });
 
     // ------------------------------------------------------------------
@@ -740,7 +763,8 @@ int main()
         EXPECT_TRUE(l2 <= 5e-3);
         std::cout << "N9_7_FINAL continuity_linf=" << h.continuity_linf
                   << " momentum_residual=" << h.momentum_residual
-                  << " poiseuille_l2=" << l2 << "\n";
+                  << " poiseuille_l2=" << l2 << "
+";
     });
 
     return run_all();
