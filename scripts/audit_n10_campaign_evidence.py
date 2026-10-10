@@ -43,9 +43,11 @@ def audit(report: object, expected_revision: str) -> list[str]:
         or set(required_tests) != REQUIRED_TESTS
     ):
         errors.append("required_tests does not match the authoritative N10 test set")
-    if isinstance(required_tests, list) and all(
-        isinstance(name, str) for name in required_tests
-    ) and len(required_tests) != len(set(required_tests)):
+    if (
+        isinstance(required_tests, list)
+        and all(isinstance(name, str) for name in required_tests)
+        and len(required_tests) != len(set(required_tests))
+    ):
         errors.append("required_tests contains duplicate entries")
 
     completed = report.get("completed_tests")
@@ -56,9 +58,7 @@ def audit(report: object, expected_revision: str) -> list[str]:
     if not isinstance(results, list):
         errors.append("results is missing or is not a list")
     else:
-        result_names = [
-            row.get("name") for row in results if isinstance(row, dict)
-        ]
+        result_names = [row.get("name") for row in results if isinstance(row, dict)]
         if len(result_names) != len(results):
             errors.append("results contains a non-object entry")
         if (
