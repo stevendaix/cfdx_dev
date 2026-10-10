@@ -134,7 +134,9 @@ class NumericalScheme(BaseModel):
     # scheme can never be silently replaced by a default.
     unmapped_settings: list[str] = Field(default_factory=list)
     # Canonical N1 registry selections. Adapters populate this explicitly.
-    selection: NumericalSelectionConfig = Field(default_factory=NumericalSelectionConfig)
+    selection: NumericalSelectionConfig = Field(
+        default_factory=NumericalSelectionConfig
+    )
 
 
 class MeshMetadata(BaseModel):

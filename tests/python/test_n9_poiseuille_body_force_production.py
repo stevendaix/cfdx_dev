@@ -126,14 +126,16 @@ def _build_channel() -> dict:
             c0, d = pid(i + 1, j + 1, 0), pid(i, j + 1, 0)
             e, f = pid(i, j, 1), pid(i + 1, j, 1)
             g, h = pid(i + 1, j + 1, 1), pid(i, j + 1, 1)
-            cell_faces.append([
-                add_face((a, d, c0, b), cell),
-                add_face((e, f, g, h), cell),
-                add_face((a, b, f, e), cell),
-                add_face((d, h, g, c0), cell),
-                add_face((a, e, h, d), cell),
-                add_face((b, c0, g, f), cell),
-            ])
+            cell_faces.append(
+                [
+                    add_face((a, d, c0, b), cell),
+                    add_face((e, f, g, h), cell),
+                    add_face((a, b, f, e), cell),
+                    add_face((d, h, g, c0), cell),
+                    add_face((a, e, h, d), cell),
+                    add_face((b, c0, g, f), cell),
+                ]
+            )
 
     # Patch assignment is geometric, exactly like the matrix mesh builder.
     patch_ids: dict[str, list[int]] = {name: [] for name in _PATCH_ORDER}
@@ -296,17 +298,19 @@ def _write_case(path: Path) -> None:
         patch_face_offsets.append(len(patch_face_ids))
         patch_meta.append(f"{name}:{ids[0]}:{len(ids)}:{_PATCH_TYPE[name]}")
 
-    topology_hash, geometry_hash, mesh_hash = _integrity_hashes({
-        "points": mesh["points"],
-        "face_vertices": fv,
-        "face_offsets": fo,
-        "owner": own,
-        "neighbour": nei,
-        "cell_faces": cf,
-        "cell_offsets": co,
-        "n_faces": mesh["n_faces"],
-        "n_cells": mesh["n_cells"],
-    })
+    topology_hash, geometry_hash, mesh_hash = _integrity_hashes(
+        {
+            "points": mesh["points"],
+            "face_vertices": fv,
+            "face_offsets": fo,
+            "owner": own,
+            "neighbour": nei,
+            "cell_faces": cf,
+            "cell_offsets": co,
+            "n_faces": mesh["n_faces"],
+            "n_cells": mesh["n_cells"],
+        }
+    )
 
     with h5py.File(path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
@@ -407,7 +411,7 @@ def test_n9_poiseuille_body_force_production_path(tmp_path: Path) -> None:
         for row in csv.reader(stream):
             if not row or row[0].startswith("#"):
                 continue
-            name, iteration, _time, value = row
+            name, _iteration, _time, value = row
             final[name] = float(value)  # rows are iteration-ordered per probe
 
     assert len(final) == n_cells_y, diagnostics[-12000:]
