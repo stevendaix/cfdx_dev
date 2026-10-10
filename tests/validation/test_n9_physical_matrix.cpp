@@ -423,7 +423,7 @@ int main()
     const auto u_channel=channel_velocity_bc(1.0);
     const auto p_channel=channel_pressure_bc();
 
-    for (std::size_t k=0;k<couette.size();++k) {
+    for (std::size_t k=0;k<algs.size();++k) {
         // Skip COUPLED in the first loop - it's tested in the Schur model loop below
         if (algs[k] == PressureVelocityAlgorithm::COUPLED) continue;
         char buf[128];
