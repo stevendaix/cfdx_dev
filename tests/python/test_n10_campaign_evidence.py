@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regression tests for the fail-closed N10 campaign evidence gate."""
 
 from __future__ import annotations
@@ -24,10 +23,7 @@ def valid_report() -> dict[str, object]:
         "required_tests": TESTS.copy(),
         "completed_tests": len(TESTS),
         "failed_tests": [],
-        "results": [
-            {"name": name, "status": "PASS", "returncode": 0}
-            for name in TESTS
-        ],
+        "results": [{"name": name, "status": "PASS", "returncode": 0} for name in TESTS],
         "evidence_coverage": {"status": "COMPLETE"},
         "policy": {
             "changes_numerical_tolerances": False,
