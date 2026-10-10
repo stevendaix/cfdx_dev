@@ -2773,24 +2773,38 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const double distance =
                     (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
+                if (!(distance > 0.0))
+                    throw std::runtime_error(
+                        "pressure equation: degenerate Dirichlet distance");
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
-                const auto& pressure_coeff =
-                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                // Dirichlet-pressure rows must use the same dAU = V*rAU face
-                // operator as the internal rows (directional_face_coefficient)
-                // and the authoritative boundary Rhie-Chow flux in
-                // make_rhie_chow_mass_flux. Omitting the owner-cell volume
-                // made this boundary response 1/V_o of the true face
-                // operator, leaving a frozen continuity floor of order
-                // div(rho*dAU*grad p) on every Dirichlet-pressure boundary
-                // cell (CI-measured 1.57345e-4 on the NACA0012 far field).
+                const Vec3 dvec =
+                    geometry.face_centres[f]-geometry.cell_centres[o];
+                const Vec3 e_dir{dvec.x/distance, dvec.y/distance,
+                                 dvec.z/distance};
+                // The authoritative boundary Rhie-Chow flux at a prescribed
+                // pressure face (make_rhie_chow_mass_flux) is
+                //   m = rho*Hb.Sf - rho*V_o*rAU_e*(p_b - p_o)*(Sf.e)/d
+                // with e the unit cell-centre-to-face-centre direction and
+                // rAU_e the inverse momentum diagonal projected on e. The
+                // pressure-correction row must balance that same flux: the
+                // explicit boundary pressure correction at the current
+                // pressure enters the continuity rhs, and its p'-sensitivity
+                // enters the diagonal with the identical operator. Balancing
+                // only rho*Hb.Sf left the boundary correction standing as a
+                // frozen fixed-point divergence concentrated on the
+                // Dirichlet-pressure cells (CI-measured: continuity floor
+                // frozen at 1.54631e-4 on the NACA0012 far field,
+                // |div|max identical to flux_velocity_mismatch_linf, top
+                // offenders all farfield ring cells).
                 const double rfn =
-                    geometry.cell_volumes[o] *
-                    (pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                     pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                     pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area));
-                rows[o][o] += controls.density * rfn * area / distance;
+                    rAU[0][o]*e_dir.x*e_dir.x +
+                    rAU[1][o]*e_dir.y*e_dir.y +
+                    rAU[2][o]*e_dir.z*e_dir.z;
+                b(o) += controls.density * geometry.cell_volumes[o] * rfn *
+                    (it->second.value - p(o)) * Sf.dot(e_dir) / distance;
+                rows[o][o] += controls.density *
+                    geometry.cell_volumes[o] * rfn *
+                    Sf.dot(e_dir) / distance;
             }
 
             Vector p_corr(nc, 0.0);
