@@ -1959,8 +1959,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     if (resolved_linear_plan != nullptr)
         *resolved_linear_plan = solver_plan;
     const int gmres_restart = automatic_coupled
-        ? static_cast<int>(A.n_rows() <= 1024
-                               ? A.n_rows()
+        ? static_cast<int>(A.n_rows() <= 4096
+                               ? std::min<std::size_t>(A.n_rows(),
+                                                       std::max<std::size_t>(1024, max_iterations))
                                : std::min<std::size_t>(A.n_rows(), 512))
         : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
     // The coupled acceptance problem is small enough for a full Krylov space.
@@ -1971,9 +1972,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // 12x16 channel system has 768 unknowns, so a 512 cap truncated the
     // Krylov space below the system dimension and manufactured a plateau
     // near 1e-7 on the Poiseuille Picard system, converting a solvable
-    // 1e-12 gate into an artificial MAX_ITER failure. Systems above 1024
-    // unknowns keep the 512 cap. Keep the restart fixed for this block solve;
-    // adaptive restart remains available to generic GMRES callers.
+    // 1e-12 gate into an artificial MAX_ITER failure. Medium coupled systems
+    // (1024 < n <= 4096) get a restart of max(1024, max_iterations), capped
+    // by the system dimension: the 16x32 cavity Picard system has 4096
+    // unknowns, and a 512 cap truncated the Krylov space mid-budget
+    // (1000 iterations = 512 + 488), stalling the true relative residual at
+    // 3.66e-12 against the 1e-12 gate with three identical relaxation
+    // retries. A 1024 restart is never truncated within the iteration
+    // budget, so convergence is decided by the budget, not by a restart
+    // boundary. Systems above 4096 unknowns keep the 512 cap for memory.
+    // Keep the restart fixed for this block solve; adaptive restart remains
+    // available to generic GMRES callers.
     cfdx::core::KrylovControls coupled_gmres_controls;
     coupled_gmres_controls.restart_min = gmres_restart;
     coupled_gmres_controls.restart_max = gmres_restart;
