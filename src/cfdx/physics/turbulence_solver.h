@@ -150,7 +150,7 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
             dk=std::max(dk,std::abs(k(i)-oldk(i)));
             de=std::max(de,std::abs(epsilon(i)-olde(i)));
         }
-        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
            std::max(dk,de)<=tolerance) {
             result.converged=true;
@@ -215,7 +215,7 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
         result.k_residual=scalar_equation_residual_inf(eqk,ks);
         result.second_residual=scalar_equation_residual_inf(eqe,es);
         result.iterations=iter;
-        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            re.status==cfdx::core::SolverStatus::CONVERGED &&
            std::max(dk,de)<=tolerance){result.converged=true;break;}
     }
@@ -359,7 +359,7 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
         result.k_residual=scalar_equation_residual_inf(eqk,ks);
         result.second_residual=scalar_equation_residual_inf(eqe,es);
         result.iterations=iter;
-        if (rk.status==cfdx::core::SolverStatus::CONVERGED &&
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
             re.status==cfdx::core::SolverStatus::CONVERGED &&
             std::max(dk,de)<=tolerance) {
             result.converged=true;
@@ -447,7 +447,7 @@ inline TurbulenceTransportResult solve_komega_transport(
         record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
         double dk=0,dw=0; for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
         result.k_residual=scalar_equation_residual_inf(eqk,ks); result.second_residual=scalar_equation_residual_inf(eqw,ws); result.iterations=iter;
-        if(rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED&&rw.status==cfdx::core::SolverStatus::CONVERGED&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
     return result;
 }
