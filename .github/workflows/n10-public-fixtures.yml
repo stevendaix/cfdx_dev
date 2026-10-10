@@ -23,6 +23,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test the exact-HEAD campaign evidence gate
+        run: python3 tests/python/test_n10_campaign_evidence.py
+
       - name: Acquire pinned public fixtures
         run: |
           set -euo pipefail
@@ -103,6 +106,14 @@ jobs:
             --build-dir build \
             --fixture-manifest tests/fixtures/mesh_sources.yaml \
             --report build/n10-fixtures/n10_qualification.json
+
+      - name: Audit complete N10 campaign on the exact tested HEAD
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_n10_campaign_evidence.py \
+            --report build/n10-fixtures/n10_qualification.json \
+            --expected-revision "$GITHUB_SHA"
 
       - name: Audit the complete fixture evidence chain
         run: |
