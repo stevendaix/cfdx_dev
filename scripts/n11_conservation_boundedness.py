@@ -114,6 +114,10 @@ def source_git_sha(source_dir: Path) -> str:
     return sha
 
 
+def expected_sha_matches(actual_sha: str, expected_sha: str | None) -> bool:
+    return not expected_sha or actual_sha == expected_sha
+
+
 def ctest(build_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["ctest", *args],
@@ -242,12 +246,12 @@ def main() -> int:
                 "disables_validation": False,
             },
         }
-        report_path.write_text(json.dumps(report, indent=2) + "\\n", encoding="utf-8")
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2), file=sys.stderr)
         return 2
 
     expected_sha = args.expected_git_sha
-    if expected_sha and expected_sha != git_sha:
+    if not expected_sha_matches(git_sha, expected_sha):
         report = {
             "campaign": "N11 conservation and boundedness evidence",
             "status": "INCOMPLETE",
@@ -260,7 +264,7 @@ def main() -> int:
                 "disables_validation": False,
             },
         }
-        report_path.write_text(json.dumps(report, indent=2) + "\\n", encoding="utf-8")
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2), file=sys.stderr)
         return 2
 
