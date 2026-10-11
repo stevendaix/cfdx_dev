@@ -151,10 +151,16 @@ static Forces run(const std::string& path,std::size_t level)
         const double txx=2.0*rho*nu*gux.component_data(0)[o];
         const double tyy=2.0*rho*nu*guy.component_data(1)[o];
         const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
-        const double tx=-(pp*n.x+txx*n.x+txy*n.y)*Sf.mag();
-        const double ty=-(pp*n.y+txy*n.x+tyy*n.y)*Sf.mag();
+        // Surface force on the airfoil: F = integral over airfoil faces of
+        // (p*n - tau*n) dA, where n is the face normal pointing out of the
+        // fluid domain (into the body): face area vectors are outward
+        // normals of the owner (fluid) cell. The viscous contribution is
+        // -tau*n; the pressure contribution must be +p*n (it was negated,
+        // which produced a non-physical negative pressure drag).
+        const double tx=(pp*n.x-(txx*n.x+txy*n.y))*Sf.mag();
+        const double ty=(pp*n.y-(txy*n.x+tyy*n.y))*Sf.mag();
         Fx+=tx; Fy+=ty;
-        Fxp+=-pp*n.x*Sf.mag(); Fyp+=-pp*n.y*Sf.mag();
+        Fxp+=pp*n.x*Sf.mag(); Fyp+=pp*n.y*Sf.mag();
         Fxv+=-(txx*n.x+txy*n.y)*Sf.mag();
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
