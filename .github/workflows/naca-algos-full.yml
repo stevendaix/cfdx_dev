@@ -1,5 +1,6 @@
 name: NACA0012 full model matrix
 
+# YAML fixed: the matrix model list must be inline with "model:".
 # Full pressure-velocity algorithm qualification matrix for the NACA0012
 # Re=1000 alpha=0 case: every segregated algorithm and, for the coupled
 # backend, every Schur complement model, each on the three mesh levels.
@@ -22,8 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: 
-['SIMPLE', 'SIMPLEC', 'PISO', 'PIMPLE', 'FRACTIONAL_STEP', 'COUPLED_BLOCKLOCAL', 'COUPLED_PCD', 'COUPLED_LSC', 'COUPLED_BFBT', 'COUPLED_SIMPLE', 'COUPLED_SIMPLEC']
+        model: ['SIMPLE', 'SIMPLEC', 'PISO', 'PIMPLE', 'FRACTIONAL_STEP', 'COUPLED_BLOCKLOCAL', 'COUPLED_PCD', 'COUPLED_LSC', 'COUPLED_BFBT', 'COUPLED_SIMPLE', 'COUPLED_SIMPLEC']
     steps:
       - uses: actions/checkout@v4
 
