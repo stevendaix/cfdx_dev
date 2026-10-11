@@ -32,7 +32,15 @@ jobs:
       - name: Extract compact summary
         run: |
           set -euo pipefail
-          test -f naca-coupled-fix4-output.log
+          # DIAG (fix4 follow-up): the first summary run raced the aggregate
+          # job (it started before the combined log was committed) and failed
+          # on the hard test -f. Be benign when the input log is absent: the
+          # aggregate commit will re-trigger this workflow via the paths
+          # filter and the extraction will then run for real.
+          if [ ! -f naca-coupled-fix4-output.log ]; then
+            echo "SUMMARY_INPUT_LOG_MISSING: combined log not committed yet; benign exit"
+            exit 0
+          fi
           : > naca-coupled-fix4-summary.log
           for v in coupled-baseline-probe coupled-undamped-probe simple-anchor-control operator-equivalence-unit; do
             sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix4-output.log > /tmp/variant.log
@@ -56,6 +64,10 @@ jobs:
 
       - name: Commit compact summary
         run: |
+          if [ ! -f naca-coupled-fix4-summary.log ]; then
+            echo "SUMMARY_SKIPPED: no summary produced (input log absent)"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add naca-coupled-fix4-summary.log
@@ -68,3 +80,4 @@ jobs:
           git push
           git show HEAD:naca-coupled-fix4-summary.log > /dev/null
           echo "SUMMARY_OK: committed on $(git rev-parse HEAD)"
+
