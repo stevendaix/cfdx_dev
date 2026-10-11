@@ -1,0 +1,141 @@
+name: NACA0012 algorithm variants matrix
+
+# DIAG (temporary branch, never merged): separation experiment for the
+# backends that failed the full matrix (SIMPLEC everywhere, COUPLED for every
+# Schur model, FRACTIONAL_STEP/PISO/PIMPLE at n256). The baseline matrix ran
+# every algorithm with the SIMPLE relaxation pair alpha_u=0.6/alpha_p=0.25.
+# These variants exercise the canonical configurations of each failing
+# family plus a fine iteration trace, to separate a genuine solver defect
+# from algorithm/relaxation dynamics:
+#   - simplec-baseline   : repro anchor (0.6/0.25, expected STAGNATED)
+#   - simplec-ap1        : SIMPLEC with alpha_p=1 (consistent form)
+#   - simplec-canonical  : SIMPLEC undamped (1.0/1.0)
+#   - coupled-baseline   : repro anchor (0.6/0.25, expected STAGNATED@54)
+#   - coupled-undamped   : undamped Picard (1.0/1.0)
+#   - coupled-pcd-undamped: PCD linear floor attribution without damping
+#   - fs-3level-trace    : FRACTIONAL_STEP 3 levels, trace every iteration
+#   - simple-anchor      : SIMPLE reference Cd on n64 in the same log
+# A new workflow filename guarantees the push triggers it.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-algos-variants]
+
+permissions:
+  contents: write
+
+jobs:
+  variant:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: simple-anchor,        model: SIMPLE,              au: "0.6", ap: "0.25", levels: "1", trace: "5",   cdiag: "0" }
+          - { name: simplec-baseline,     model: SIMPLEC,             au: "0.6", ap: "0.25", levels: "1", trace: "5",   cdiag: "0" }
+          - { name: simplec-ap1,          model: SIMPLEC,             au: "0.6", ap: "1.0",  levels: "1", trace: "5",   cdiag: "0" }
+          - { name: simplec-canonical,    model: SIMPLEC,             au: "1.0", ap: "1.0",  levels: "1", trace: "5",   cdiag: "0" }
+          - { name: coupled-baseline,     model: COUPLED_BLOCKLOCAL,  au: "0.6", ap: "0.25", levels: "1", trace: "5",   cdiag: "1" }
+          - { name: coupled-undamped,     model: COUPLED_BLOCKLOCAL,  au: "1.0", ap: "1.0",  levels: "1", trace: "5",   cdiag: "1" }
+          - { name: coupled-pcd-undamped, model: COUPLED_PCD,         au: "1.0", ap: "1.0",  levels: "1", trace: "5",   cdiag: "1" }
+          - { name: fs-3level-trace,      model: FRACTIONAL_STEP,     au: "0.6", ap: "0.25", levels: "3", trace: "1",   cdiag: "0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run variant ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            --model ${{ matrix.model }} \
+            --alphau ${{ matrix.au }} \
+            --alphap ${{ matrix.ap }} \
+            --levels ${{ matrix.levels }} \
+            --trace ${{ matrix.trace }} \
+            --coupleddiag ${{ matrix.cdiag }} \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-variant-${{ matrix.name }}.log
+
+      - name: Upload variant log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-variant-logs-${{ matrix.name }}
+          path: naca-variant-${{ matrix.name }}.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate and commit combined log
+    needs: [variant]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all variant logs
+        uses: actions/download-artifact@v4
+        with:
+          path: variant-logs
+          pattern: naca-variant-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-algos-variants-output.log
+          for v in simple-anchor simplec-baseline simplec-ap1 simplec-canonical coupled-baseline coupled-undamped coupled-pcd-undamped fs-3level-trace; do
+            if [ -f "variant-logs/naca-variant-$v.log" ]; then
+              echo "NACA_VARIANT_BEGIN $v" >> naca-algos-variants-output.log
+              cat "variant-logs/naca-variant-$v.log" >> naca-algos-variants-output.log
+              echo "NACA_VARIANT_END $v" >> naca-algos-variants-output.log
+            else
+              echo "NACA_VARIANT_MISSING variant=$v" >> naca-algos-variants-output.log
+            fi
+          done
+
+      - name: Commit combined log to diagnostic branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-algos-variants-output.log
+          git commit -m "diag(naca0012): capture algorithm variants matrix log [skip ci]"
+          git pull --rebase --autostash || true
+          git push

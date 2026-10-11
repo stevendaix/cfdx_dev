@@ -3,6 +3,7 @@
 #include "qualification_boundary_helpers.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -15,7 +16,12 @@ using namespace cfdx::physics;
 
 struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal)
+// DIAG (variants branch): the relaxation factors, trace frequency, coupled
+// matrix diagnostics and the number of mesh levels are runtime parameters so
+// the CI variant matrix can separate a genuine solver defect from
+// algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
+// have canonical configurations the baseline matrix never exercised).
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -48,13 +54,14 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     c.convergence.max_iterations=8000;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
-    c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
+    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.use_bounded_convection=true;
     c.convection_scheme=ConvectionScheme::UPWIND;
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;
-    c.diagnostics.iteration_trace_frequency=200;
+    c.diagnostics.iteration_trace_frequency=trace_freq;
+    c.diagnostics.coupled_matrix_summary=coupled_diag;
 
     const auto geometry=build_fv_geometry(mesh);
     for(std::size_t i=0;i<mesh.n_cells();++i)
@@ -105,7 +112,8 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
         std::sort(offenders.begin(), offenders.end(),
                   [](const std::pair<double, std::size_t>& a,
                      const std::pair<double, std::size_t>& b) {
-                      return a.first > b.first; });
+                      return a.first > b.first;
+                  });
         std::cout << "NACA_DIAG divergence_l1=" << div_l1 << "\n";
         for (std::size_t i = 0; i < 12 && i < offenders.size(); ++i) {
             const std::size_t c = offenders[i].second;
@@ -174,7 +182,8 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
              <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
              <<" continuity="<<last.continuity_linf
-             <<" iterations="<<solve.iterations<<"\n";
+             <<" iterations="<<solve.iterations
+             <<" alpha_u="<<alpha_u<<" alpha_p="<<alpha_p<<"\n";
     return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
 }
 
@@ -217,35 +226,63 @@ static void run_quick_contract(const std::string& path)
 
 int main(int argc,char**argv)
 {
-    const bool quick=argc>=2 && std::string(argv[1])=="--quick";
+    // DIAG (variants branch): optional flags --alphau, --alphap, --levels,
+    // --trace, --coupleddiag before/around the existing positional arguments.
+    double var_alpha_u=0.6, var_alpha_p=0.25;
+    std::size_t var_levels=3, var_trace=200;
+    bool var_coupled_diag=false;
+    std::vector<std::string> positional;
+    for(int i=1;i<argc;++i){
+        const std::string a=argv[i];
+        if(a=="--alphau" && i+1<argc){ var_alpha_u=std::atof(argv[++i]); continue; }
+        if(a=="--alphap" && i+1<argc){ var_alpha_p=std::atof(argv[++i]); continue; }
+        if(a=="--levels" && i+1<argc){ var_levels=static_cast<std::size_t>(std::atoi(argv[++i])); continue; }
+        if(a=="--trace" && i+1<argc){ var_trace=static_cast<std::size_t>(std::atoi(argv[++i])); continue; }
+        if(a=="--coupleddiag" && i+1<argc){ var_coupled_diag=(std::atoi(argv[++i])!=0); continue; }
+        positional.push_back(a);
+    }
+    if(var_levels==0 || var_levels>3)
+        throw std::invalid_argument("--levels must be between 1 and 3");
+    if(!(var_alpha_u>0.0 && var_alpha_u<=1.0) || !(var_alpha_p>0.0 && var_alpha_p<=1.0))
+        throw std::invalid_argument("--alphau/--alphap must be in (0,1]");
+    if(var_trace==0) var_trace=1;
+    std::cout<<std::setprecision(2)
+             <<"NACA_CONFIG alpha_u="<<var_alpha_u
+             <<" alpha_p="<<var_alpha_p
+             <<" levels="<<var_levels
+             <<" trace="<<var_trace
+             <<" coupleddiag="<<(var_coupled_diag?1:0)<<"\n";
+
+    const bool quick=!positional.empty() && positional[0]=="--quick";
     if(quick) {
-        if(argc!=3)
+        if(positional.size()!=2)
             throw std::invalid_argument("usage: test_naca0012_qualification --quick mesh_n64.h5");
-        run_quick_contract(argv[2]);
+        run_quick_contract(positional[1]);
         return 0;
     }
 
     // Optional single-model mode used by the CI strategy matrix: one job per
-    // model, each running the three refinement levels for that model.
+    // model, each running the requested refinement levels for that model.
     const char* model_filter=nullptr;
-    int mesh_arg=1;
-    if(argc>=2 && std::string(argv[1])=="--model") {
-        if(argc!=6)
-            throw std::invalid_argument("usage: test_naca0012_qualification --model NAME mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
-        model_filter=argv[2];
-        mesh_arg=3;
-    } else if(argc!=4) {
-        throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+    std::size_t first_mesh=0;
+    if(!positional.empty() && positional[0]=="--model") {
+        if(positional.size()<2)
+            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
+        model_filter=positional[1].c_str();
+        first_mesh=2;
     }
-    const std::size_t need=3;
-    const char* meshes[3]={argv[mesh_arg],argv[mesh_arg+1],argv[mesh_arg+2]};
+    const std::size_t available=positional.size()-first_mesh;
+    if(available<var_levels)
+        throw std::invalid_argument("insufficient mesh paths for the requested --levels");
+    const char* meshes[3]={"mesh_n64.h5","mesh_n128.h5","mesh_n256.h5"};
+    for(std::size_t i=0;i<available && i<3;++i)
+        meshes[i]=positional[first_mesh+i].c_str();
 
     // DIAG BRANCH ONLY: full qualification matrix across the pressure-velocity
     // algorithms and, for the coupled backend, every Schur complement model.
     // One identical case definition (mesh, BCs, gates) exercised by every
     // backend: the architecture contract this diagnostic measures.
-    struct Config { const char* name; PressureVelocityAlgorithm algo; CoupledSchurModel schur; };
-    const Config configs[]={
+    struct Config { const char* name; PressureVelocityAlgorithm algo; CoupledSchurModel schur; } const configs[]={
         {"SIMPLE",PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel::BlockLocal},
         {"SIMPLEC",PressureVelocityAlgorithm::SIMPLEC,CoupledSchurModel::BlockLocal},
         {"PISO",PressureVelocityAlgorithm::PISO,CoupledSchurModel::BlockLocal},
@@ -263,9 +300,10 @@ int main(int argc,char**argv)
     for(const auto& cfg:configs){
         if(model_filter && std::string(model_filter)!=cfg.name) continue;
         const bool is_reference=(std::string(cfg.name)=="SIMPLE");
-        for(std::size_t i=0;i<need;++i){
+        for(std::size_t i=0;i<var_levels;++i){
             try {
-                const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur);
+                const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){
@@ -284,7 +322,7 @@ int main(int argc,char**argv)
         std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC single_model="<<model_filter<<" done\n";
         return 0;
     }
-    if(!reference_complete || r.size()!=need){
+    if(!reference_complete || r.size()!=3){
         std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC simple_campaign_incomplete\n";
         return 0;
     }
