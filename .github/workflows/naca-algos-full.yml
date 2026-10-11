@@ -1,0 +1,115 @@
+name: NACA0012 full model matrix
+
+# Full pressure-velocity algorithm qualification matrix for the NACA0012
+# Re=1000 alpha=0 case: every segregated algorithm and, for the coupled
+# backend, every Schur complement model, each on the three mesh levels.
+# One job per model (parallel), then one aggregation job commits the
+# combined log. Never merged; delete after the evidence is captured.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-algos-full]
+
+permissions:
+  contents: write
+
+jobs:
+  model:
+    name: ${{ matrix.model }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        model: 
+['SIMPLE', 'SIMPLEC', 'PISO', 'PIMPLE', 'FRACTIONAL_STEP', 'COUPLED_BLOCKLOCAL', 'COUPLED_PCD', 'COUPLED_LSC', 'COUPLED_BFBT', 'COUPLED_SIMPLE', 'COUPLED_SIMPLEC']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run three-level qualification for ${{ matrix.model }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification --model ${{ matrix.model }} \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-model-${{ matrix.model }}.log
+
+      - name: Upload model log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-model-logs-${{ matrix.model }}
+          path: naca-model-${{ matrix.model }}.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate and commit combined log
+    needs: [model]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all model logs
+        uses: actions/download-artifact@v4
+        with:
+          path: model-logs
+          pattern: naca-model-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-algos-full-output.log
+          for m in SIMPLE SIMPLEC PISO PIMPLE FRACTIONAL_STEP COUPLED_BLOCKLOCAL COUPLED_PCD COUPLED_LSC COUPLED_BFBT COUPLED_SIMPLE COUPLED_SIMPLEC; do
+            if [ -f "model-logs/naca-model-$m.log" ]; then
+              cat "model-logs/naca-model-$m.log" >> naca-algos-full-output.log
+            else
+              echo "NACA_MODEL_MISSING model=$m" >> naca-algos-full-output.log
+            fi
+          done
+
+      - name: Commit combined log to diagnostic branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-algos-full-output.log
+          git commit -m "diag(naca0012): capture full model matrix log [skip ci]"
+          git pull --rebase --autostash || true
+          git push

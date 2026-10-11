@@ -15,7 +15,7 @@ using namespace cfdx::physics;
 
 struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -43,7 +43,7 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     c.algorithm=algo;
     c.density=rho; c.kinematic_viscosity=nu;
     if(algo==PressureVelocityAlgorithm::COUPLED)
-        c.coupling.schur_model=CoupledSchurModel::PCD;
+        c.coupling.schur_model=schur;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
     c.convergence.max_iterations=8000;
     c.convergence.relative_tolerance=1e-8;
@@ -153,10 +153,16 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
         const double txx=2.0*rho*nu*gux.component_data(0)[o];
         const double tyy=2.0*rho*nu*guy.component_data(1)[o];
         const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
-        const double tx=-(pp*n.x+txx*n.x+txy*n.y)*Sf.mag();
-        const double ty=-(pp*n.y+txy*n.x+tyy*n.y)*Sf.mag();
+        // Surface force on the airfoil: F = integral over airfoil faces of
+        // (p*n - tau*n) dA, where n is the face normal pointing out of the
+        // fluid domain (into the body): face area vectors are outward
+        // normals of the owner (fluid) cell. The viscous contribution is
+        // -tau*n; the pressure contribution must be +p*n (it was negated,
+        // which produced a non-physical negative pressure drag).
+        const double tx=(pp*n.x-(txx*n.x+txy*n.y))*Sf.mag();
+        const double ty=(pp*n.y-(txy*n.x+tyy*n.y))*Sf.mag();
         Fx+=tx; Fy+=ty;
-        Fxp+=-pp*n.x*Sf.mag(); Fyp+=-pp*n.y*Sf.mag();
+        Fxp+=pp*n.x*Sf.mag(); Fyp+=pp*n.y*Sf.mag();
         Fxv+=-(txx*n.x+txy*n.y)*Sf.mag();
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
@@ -206,7 +212,7 @@ static void run_quick_contract(const std::string& path)
     std::cout<<"NACA0012_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
              <<" airfoil_faces="<<mesh.boundary().patch(airfoil_id).size()
              <<" farfield_faces="<<mesh.boundary().patch(farfield_id).size()
-             <<" solver_campaign_pending\\n";
+             <<" solver_campaign_pending\n";
 }
 
 int main(int argc,char**argv)
@@ -219,38 +225,66 @@ int main(int argc,char**argv)
         return 0;
     }
 
+    // Optional single-model mode used by the CI strategy matrix: one job per
+    // model, each running the three refinement levels for that model.
+    const char* model_filter=nullptr;
+    int mesh_arg=1;
+    if(argc>=2 && std::string(argv[1])=="--model") {
+        if(argc!=6)
+            throw std::invalid_argument("usage: test_naca0012_qualification --model NAME mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+        model_filter=argv[2];
+        mesh_arg=3;
+    } else if(argc!=4) {
+        throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+    }
     const std::size_t need=3;
-    if(argc!=4)
-        throw std::invalid_argument("usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
-    // DIAG BRANCH ONLY: qualification matrix across the pressure-velocity
-    // algorithms. One identical case definition (mesh, BCs, gates) exercised
-    // by every backend: the architecture contract this diagnostic measures.
-    const struct { const char* name; PressureVelocityAlgorithm algo; } algos[]={
-        {"SIMPLE",PressureVelocityAlgorithm::SIMPLE},
-        {"FRACTIONAL_STEP",PressureVelocityAlgorithm::FRACTIONAL_STEP},
-        {"COUPLED_PCD",PressureVelocityAlgorithm::COUPLED},
+    const char* meshes[3]={argv[mesh_arg],argv[mesh_arg+1],argv[mesh_arg+2]};
+
+    // DIAG BRANCH ONLY: full qualification matrix across the pressure-velocity
+    // algorithms and, for the coupled backend, every Schur complement model.
+    // One identical case definition (mesh, BCs, gates) exercised by every
+    // backend: the architecture contract this diagnostic measures.
+    struct Config { const char* name; PressureVelocityAlgorithm algo; CoupledSchurModel schur; };
+    const Config configs[]={
+        {"SIMPLE",PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel::BlockLocal},
+        {"SIMPLEC",PressureVelocityAlgorithm::SIMPLEC,CoupledSchurModel::BlockLocal},
+        {"PISO",PressureVelocityAlgorithm::PISO,CoupledSchurModel::BlockLocal},
+        {"PIMPLE",PressureVelocityAlgorithm::PIMPLE,CoupledSchurModel::BlockLocal},
+        {"FRACTIONAL_STEP",PressureVelocityAlgorithm::FRACTIONAL_STEP,CoupledSchurModel::BlockLocal},
+        {"COUPLED_BLOCKLOCAL",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::BlockLocal},
+        {"COUPLED_PCD",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::PCD},
+        {"COUPLED_LSC",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::LSC},
+        {"COUPLED_BFBT",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::BFBT},
+        {"COUPLED_SIMPLE",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::SIMPLE},
+        {"COUPLED_SIMPLEC",PressureVelocityAlgorithm::COUPLED,CoupledSchurModel::SIMPLEC},
     };
     std::vector<Forces> r;
-    bool simple_complete=true;
-    for(std::size_t i=0;i<need;++i){
-        try { r.push_back(run(argv[i+1],64u<<i,algos[0].name,algos[0].algo)); }
-        catch(const std::exception& e){
-            simple_complete=false;
-            std::cout<<"NACA_ALGO algo=SIMPLE level="<<(64u<<i)<<" EXCEPTION "<<e.what()<<"\n";
-            const double nan=std::numeric_limits<double>::quiet_NaN();
-            r.push_back(Forces{nan,nan,nan,nan,nan,nan});
-        }
-    }
-    for(std::size_t a=1;a<sizeof(algos)/sizeof(algos[0]);++a){
+    bool reference_complete=true;
+    for(const auto& cfg:configs){
+        if(model_filter && std::string(model_filter)!=cfg.name) continue;
+        const bool is_reference=(std::string(cfg.name)=="SIMPLE");
         for(std::size_t i=0;i<need;++i){
-            try { run(argv[i+1],64u<<i,algos[a].name,algos[a].algo); }
+            try {
+                const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur);
+                if(is_reference) r.push_back(f);
+            }
             catch(const std::exception& e){
-                std::cout<<"NACA_ALGO algo="<<algos[a].name<<" level="<<(64u<<i)
+                std::cout.flush();
+                std::cout<<"NACA_ALGO algo="<<cfg.name<<" level="<<(64u<<i)
                          <<" EXCEPTION "<<e.what()<<"\n";
+                if(is_reference){
+                    reference_complete=false;
+                    const double nan=std::numeric_limits<double>::quiet_NaN();
+                    r.push_back(Forces{nan,nan,nan,nan,nan,nan});
+                }
             }
         }
     }
-    if(!simple_complete){
+    if(model_filter){
+        std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC single_model="<<model_filter<<" done\n";
+        return 0;
+    }
+    if(!reference_complete || r.size()!=need){
         std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC simple_campaign_incomplete\n";
         return 0;
     }
