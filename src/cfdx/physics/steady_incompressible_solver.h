@@ -1427,7 +1427,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (owner) {
                     // Operator identity on the REAL mesh (audit, coupled
                     // fix2): the assembled pressure operator per face is
-                    //   coupled_flux = D*(p_P - p_N) + nonorth_flux
+                    //   coupled_flux = D*(p_P - p_N) - nonorth_flux
                     // evaluated on p_old, owner-oriented. The authoritative
                     // correction is
                     //   auth = rhie_chow_pressure_flux_internal(...)
@@ -1436,7 +1436,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     // requires coupled_flux == -auth; the residual below
                     // must be at floating-point round-off level.
                     const double coupled_flux =
-                        D * (p_old(c) - p_old(ncell)) + nonorth_flux;
+                        D * (p_old(c) - p_old(ncell)) - nonorth_flux;
                     const double auth_flux = rhie_chow_pressure_flux_internal(
                         mesh, geometry, f, p_old, grad_p_old, coupled_rc_rAU, rho);
                     const double scale =
