@@ -71,6 +71,63 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     cfdx::validation::exercise_new_velocity_bc_contract(
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
+    // Force-audit infrastructure (diag): the airfoil surface integration is
+    // factored into a callable so the per-iteration Cd trace and the final
+    // integration share one implementation. n points out of the fluid domain
+    // (into the body); the force on the airfoil is F = integral (p*n - tau*n) dA.
+    ScalarBoundaryConditions gx,gy;
+    gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
+    gx["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    gx["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    gx["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    gy["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    gy["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    gy["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    gy["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    const double q=0.5*rho*Uinf*Uinf;
+    const std::size_t cd_trace_frequency=(level<=64u)?16u:((level<=128u)?32u:64u);
+    auto airfoil_forces=[&](const Field<double,Location::CELL>& Uc,
+                            const Field<double,Location::CELL>& pc)
+    {
+        Field<double,Location::CELL> lx(mesh.n_cells(),"lx","m/s",1), ly(mesh.n_cells(),"ly","m/s",1);
+        for(std::size_t i=0;i<mesh.n_cells();++i){lx(i)=Uc.component_data(0)[i];ly(i)=Uc.component_data(1)[i];}
+        const auto lgx=gauss_gradient_with_boundary(lx,mesh,geometry,gx);
+        const auto lgy=gauss_gradient_with_boundary(ly,mesh,geometry,gy);
+        const auto& fpatch=mesh.boundary().patch(mesh.boundary().find("airfoil"));
+        double fx=0,fy=0,mz=0,fxp=0,fyp=0,fxv=0,fyv=0;
+        for(const auto f:fpatch.face_ids){
+            const std::size_t o=mesh.ownership().owner(f);
+            const auto Sf=geometry.face_area_vectors[f];
+            const auto n=Sf.normalized();
+            const double pp=pc(o);
+            const double txx=2.0*rho*nu*lgx.component_data(0)[o];
+            const double tyy=2.0*rho*nu*lgy.component_data(1)[o];
+            const double txy=rho*nu*(lgx.component_data(1)[o]+lgy.component_data(0)[o]);
+            const double tx=(pp*n.x-(txx*n.x+txy*n.y))*Sf.mag();
+            const double ty=(pp*n.y-(txy*n.x+tyy*n.y))*Sf.mag();
+            fx+=tx; fy+=ty;
+            fxp+=pp*n.x*Sf.mag(); fyp+=pp*n.y*Sf.mag();
+            fxv+=-(txx*n.x+txy*n.y)*Sf.mag(); fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
+            const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
+            mz+=r.x*ty-r.y*tx;
+        }
+        (void)fyp; (void)fyv;
+        return Forces{fx/q,fy/q,mz/q,fxp/q,fxv/q,0.0};
+    };
+    c.iteration_output_callback=[&](std::size_t it,double,
+                                    const Mesh&,
+                                    const Field<double,Location::CELL>& Uc,
+                                    const Field<double,Location::CELL>& pc)->bool
+    {
+        if(it==1 || it%cd_trace_frequency==0){
+            const auto tf=airfoil_forces(Uc,pc);
+            std::cout<<"NACA_CD_TRACE level="<<level<<" iter="<<it
+                     <<" Cd="<<tf.cd<<" Cl="<<tf.cl
+                     <<" Cd_pressure="<<tf.cdp<<" Cd_viscous="<<tf.cdv<<"\n";
+        }
+        return true;
+    };
+
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
 
     // DIAG (temporary branch): the production solve stalls with a frozen
@@ -128,54 +185,89 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
         throw std::runtime_error("NACA0012 solver did not converge");
     }
 
-    ScalarBoundaryConditions gx,gy;
-    gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
-    gx["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
-    gx["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
-    gx["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
-    gy["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
-    gy["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
-    gy["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
-    gy["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    // Executed-criteria audit (diag): dump the exact gate thresholds and the
+    // last history entries so convergence is verifiable from the log alone.
+    std::cout<<"NACA_GATE_DEF level="<<level
+             <<" relative_tolerance="<<c.convergence.relative_tolerance
+             <<" continuity_tolerance="<<c.convergence.continuity_tolerance
+             <<" max_iterations="<<c.convergence.max_iterations<<"\n";
+    {
+        const std::size_t hn=solve.history.size();
+        const std::size_t first=(hn>=5)?(hn-5):0;
+        for(std::size_t i=first;i<hn;++i){
+            const auto& h=solve.history[i];
+            std::cout<<"NACA_FINAL_HISTORY level="<<level<<" iter="<<h.iteration
+                     <<" momentum_residual="<<h.momentum_residual
+                     <<" momentum_equation_residual_relative="<<h.momentum_equation_residual_relative
+                     <<" pressure_residual="<<h.pressure_residual
+                     <<" continuity_linf="<<h.continuity_linf
+                     <<" continuity_normalized="<<h.continuity_normalized
+                     <<" velocity_change_inf="<<h.velocity_change_inf
+                     <<" pressure_change_inf="<<h.pressure_change_inf<<"\n";
+        }
+    }
     Field<double,Location::CELL> ux(mesh.n_cells(),"ux","m/s",1), uy(mesh.n_cells(),"uy","m/s",1);
     for(std::size_t i=0;i<mesh.n_cells();++i){ux(i)=U.component_data(0)[i];uy(i)=U.component_data(1)[i];}
     const auto gux=gauss_gradient_with_boundary(ux,mesh,geometry,gx);
     const auto guy=gauss_gradient_with_boundary(uy,mesh,geometry,gy);
-
-    const auto& patch=mesh.boundary().patch(mesh.boundary().find("airfoil"));
-    double Fx=0,Fy=0,Mz=0,Fxp=0,Fyp=0,Fxv=0,Fyv=0;
-    const double q=0.5*rho*Uinf*Uinf;
-    for(const auto f:patch.face_ids){
-        const std::size_t o=mesh.ownership().owner(f);
-        const auto Sf=geometry.face_area_vectors[f];
-        const auto n=Sf.normalized();
-        const double pp=p(o);
-        const double txx=2.0*rho*nu*gux.component_data(0)[o];
-        const double tyy=2.0*rho*nu*guy.component_data(1)[o];
-        const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
-        // Surface force on the airfoil: F = integral over airfoil faces of
-        // (p*n - tau*n) dA, where n is the face normal pointing out of the
-        // fluid domain (into the body): face area vectors are outward
-        // normals of the owner (fluid) cell. The viscous contribution is
-        // -tau*n; the pressure contribution must be +p*n (it was negated,
-        // which produced a non-physical negative pressure drag).
-        const double tx=(pp*n.x-(txx*n.x+txy*n.y))*Sf.mag();
-        const double ty=(pp*n.y-(txy*n.x+tyy*n.y))*Sf.mag();
-        Fx+=tx; Fy+=ty;
-        Fxp+=pp*n.x*Sf.mag(); Fyp+=pp*n.y*Sf.mag();
-        Fxv+=-(txx*n.x+txy*n.y)*Sf.mag();
-        Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
-        const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
-        Mz+=r.x*ty-r.y*tx;
+    {
+        // Independent momentum-budget estimate of the airfoil force, computed
+        // only from the outer boundaries (no airfoil integration): steady
+        // balance over the fluid domain gives, with n out of the fluid domain,
+        // F_body = integral over non-airfoil boundary faces of
+        // (-p*n + tau*n - rho*u*(u.n)) dA.
+        double bfx=0,bfy=0;
+        const auto& bnd=mesh.boundary();
+        const std::size_t airfoil_id=bnd.find("airfoil");
+        for(std::size_t pi=0;pi<bnd.n_patches();++pi){
+            if(pi==airfoil_id) continue;
+            for(const auto f:bnd.patch(pi).face_ids){
+                const std::size_t o=mesh.ownership().owner(f);
+                const auto Sf=geometry.face_area_vectors[f];
+                const auto n=Sf.normalized();
+                const double pp=p(o);
+                const double un=U.component_data(0)[o]*n.x+U.component_data(1)[o]*n.y;
+                const double txx=2.0*rho*nu*gux.component_data(0)[o];
+                const double tyy=2.0*rho*nu*guy.component_data(1)[o];
+                const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
+                bfx+=(-pp*n.x+(txx*n.x+txy*n.y)-rho*un*U.component_data(0)[o])*Sf.mag();
+                bfy+=(-pp*n.y+(txy*n.x+tyy*n.y)-rho*un*U.component_data(1)[o])*Sf.mag();
+            }
+        }
+        std::cout<<"NACA_FORCE_AUDIT level="<<level
+                 <<" budget_Cd="<<(bfx/q)<<" budget_Cl="<<(bfy/q)<<"\n";
     }
-    const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
+    {
+        // Convention samples: four airfoil face normals spread over the
+        // surface. On the upper surface the fluid-domain outward normal
+        // points into the body (ny<0); on the lower surface ny>0.
+        const auto& fpatch=mesh.boundary().patch(mesh.boundary().find("airfoil"));
+        std::vector<std::size_t> fids(fpatch.face_ids.begin(),fpatch.face_ids.end());
+        const std::size_t nf=fids.size();
+        if(nf>0){
+            const std::size_t picks[4]={0,nf/4,nf/2,nf-1};
+            for(const auto pick:picks){
+                const auto f=fids[pick];
+                const auto Sf=geometry.face_area_vectors[f];
+                const auto n=Sf.normalized();
+                std::cout<<"NACA_NORMAL_SAMPLE level="<<level
+                         <<" x="<<geometry.face_centres[f].x
+                         <<" y="<<geometry.face_centres[f].y
+                         <<" nx="<<n.x<<" ny="<<n.y<<"\n";
+            }
+        }
+    }
+
+    // Final integration: same implementation as the per-iteration trace.
+    const auto ff=airfoil_forces(U,p);
+    const double cd=ff.cd, cl=ff.cl, cm=ff.cm;
     const auto& last=solve.history.back();
     std::cout<<"NACA0012_RE1000_A0 algo="<<algo_name<<" level="<<level
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
-             <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
+             <<" Cd_pressure="<<ff.cdp<<" Cd_viscous="<<ff.cdv
              <<" continuity="<<last.continuity_linf
              <<" iterations="<<solve.iterations<<"\n";
-    return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
+    return {cd,cl,cm,ff.cdp,ff.cdv,last.continuity_linf};
 }
 
 static void run_quick_contract(const std::string& path)
