@@ -1226,9 +1226,39 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // (divergence_l1 ~ 0.012 on NACA0012 n64, top offenders on the farfield
     // Dirichlet ring, while the coupled linear solve converges to ~9e-10).
     // The counters below audit the legacy operator delta and the faces where
-    // the signed orthogonal area is non-positive.
+    // the signed orthogonal area is non-positive. The audit policy (coupled
+    // fix2) is explicit:
+    //   * a non-positive signed orthogonal area Sa = Sf.e is an inverted face
+    //     for the 2-point pressure operator: it makes D non-positive and
+    //     destroys the pressure-block structure. It is REJECTED with the face
+    //     id and the full face geometry instead of being assembled silently.
+    //   * coupled_rc_nonpositive_sa_faces counts UNIQUE physical faces
+    //     (internal faces are counted on the owner-side visit only;
+    //     boundary faces are visited once by construction). With the
+    //     rejection above it can only ever be observed as 0; it is kept so a
+    //     future relaxation of the policy stays measurable.
+    //   * coupled_rc_flux_identity_linf compares, per face, the ASSEMBLED
+    //     coupled pressure operator (implicit 2-point D + deferred
+    //     non-orthogonal remainder, evaluated on p_old) against the
+    //     AUTHORITATIVE rhie_chow_pressure_flux_internal() / boundary
+    //     correction computed from the same p_old, the same Gauss gradient
+    //     and the same inverse momentum diagonals. This is the operator
+    //     identity the fixed point needs, not merely a legacy delta.
     double coupled_rc_operator_delta_max = 0.0;
     std::size_t coupled_rc_nonpositive_sa_faces = 0;
+    double coupled_rc_flux_identity_linf = 0.0;
+    // Inverse momentum diagonals for the authoritative flux comparison.
+    // rhie_chow_pressure_flux_internal() applies the cell volume itself,
+    // so these are plain 1/A_P, exactly like the segregated rAU state.
+    std::array<std::vector<double>, 3> coupled_rc_rAU{
+        std::vector<double>(nc, 0.0),
+        std::vector<double>(nc, 0.0),
+        std::vector<double>(nc, 0.0)};
+    for (std::size_t cc = 0; cc < nc; ++cc) {
+        coupled_rc_rAU[0][cc] = 1.0 / ex.diagonal[cc];
+        coupled_rc_rAU[1][cc] = 1.0 / ey.diagonal[cc];
+        coupled_rc_rAU[2][cc] = 1.0 / ez.diagonal[cc];
+    }
     for (std::size_t c = 0; c < nc; ++c) {
         const std::size_t row = nv + c;
         const Offset off = mesh.cells().offsets_data()[c];
@@ -1350,8 +1380,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     coupled_rc_operator_delta_max,
                     std::abs(D - legacy_D) /
                         std::max(std::abs(D), std::numeric_limits<double>::min()));
-                if (orthogonal_area <= 0.0)
-                    ++coupled_rc_nonpositive_sa_faces;
+                if (orthogonal_area <= 0.0) {
+                    if (owner)
+                        ++coupled_rc_nonpositive_sa_faces;
+                    if (diagnostics.coupled_matrix_summary) {
+                        std::cerr << "COUPLED_FACE_DEBUG face=" << f
+                                  << " cells=" << c << "/" << ncell
+                                  << " area=" << area
+                                  << " orthogonal_area=" << orthogonal_area
+                                  << " distance=" << d
+                                  << " rfn=" << rfn
+                                  << " D=" << D << "\n";
+                    }
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: non-positive signed orthogonal area on face " +
+                        std::to_string(f) + " cells " + std::to_string(c) + "/" +
+                        std::to_string(ncell) +
+                        " (area=" + std::to_string(area) +
+                        ", orthogonal_area=" + std::to_string(orthogonal_area) +
+                        ", distance=" + std::to_string(d) +
+                        "): inverted face for the 2-point pressure operator");
+                }
                 // phi_p = D (p_P - p_N). Only this orthogonal derivative is
                 // implicit in the coupled matrix. The non-orthogonal remainder
                 // is a deferred correction evaluated from p_old below, exactly
@@ -1375,6 +1424,28 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // non-orthogonal flux is the exact remainder of the
                 // authoritative Rhie-Chow pressure operator.
                 const double nonorth_flux = rho * rfn * gp.dot(Snon);
+                if (owner) {
+                    // Operator identity on the REAL mesh (audit, coupled
+                    // fix2): the assembled pressure operator per face is
+                    //   coupled_flux = D*(p_P - p_N) + nonorth_flux
+                    // evaluated on p_old, owner-oriented. The authoritative
+                    // correction is
+                    //   auth = rhie_chow_pressure_flux_internal(...)
+                    // computed from the same p_old, the same boundary Gauss
+                    // gradient and the same 1/A_P diagonals. The identity
+                    // requires coupled_flux == -auth; the residual below
+                    // must be at floating-point round-off level.
+                    const double coupled_flux =
+                        D * (p_old(c) - p_old(ncell)) + nonorth_flux;
+                    const double auth_flux = rhie_chow_pressure_flux_internal(
+                        mesh, geometry, f, p_old, grad_p_old, coupled_rc_rAU, rho);
+                    const double scale =
+                        std::abs(coupled_flux) + std::abs(auth_flux);
+                    if (scale > 0.0)
+                        coupled_rc_flux_identity_linf = std::max(
+                            coupled_rc_flux_identity_linf,
+                            std::abs(coupled_flux + auth_flux) / scale);
+                }
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
@@ -1467,8 +1538,42 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         coupled_rc_operator_delta_max,
                         std::abs(D - legacy_D) /
                             std::max(std::abs(D), std::numeric_limits<double>::min()));
-                    if (orthogonal_area <= 0.0)
+                    if (orthogonal_area <= 0.0) {
                         ++coupled_rc_nonpositive_sa_faces;
+                        if (diagnostics.coupled_matrix_summary) {
+                            std::cerr << "COUPLED_FACE_DEBUG face=" << f
+                                      << " cell=" << c
+                                      << " area=" << area
+                                      << " orthogonal_area=" << orthogonal_area
+                                      << " distance=" << d
+                                      << " rfn=" << rfn
+                                      << " D=" << D << "\n";
+                        }
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: non-positive signed orthogonal area on boundary face " +
+                            std::to_string(f) + " cell " + std::to_string(c) +
+                            " (area=" + std::to_string(area) +
+                            ", orthogonal_area=" + std::to_string(orthogonal_area) +
+                            ", distance=" + std::to_string(d) +
+                            "): inverted face for the 2-point pressure operator");
+                    }
+                    // Operator identity on the boundary Dirichlet face
+                    // (audit, coupled fix2): the assembled pressure operator
+                    // is D*(p_P - p_bc) evaluated on p_old; the authoritative
+                    // correction is rho*rfn*(p_bc - p_P)*Sa/d. The identity
+                    // requires D*(p_old(c) - p_bc) == -correction, and the
+                    // residual below must be at round-off level.
+                    {
+                        const double coupled_flux = D * (p_old(c) - pbc->value);
+                        const double auth_flux =
+                            rho * rfn * (pbc->value - p_old(c)) * orthogonal_area / d;
+                        const double scale =
+                            std::abs(coupled_flux) + std::abs(auth_flux);
+                        if (scale > 0.0)
+                            coupled_rc_flux_identity_linf = std::max(
+                                coupled_rc_flux_identity_linf,
+                                std::abs(coupled_flux + auth_flux) / scale);
+                    }
                     A.push_back(row, nv + c, D);
                     coupled_pressure_schur_diagonal[c] += D;
                     b(row) += D * pbc->value;
@@ -1647,6 +1752,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " rhie_chow_schur_vs_algebraic_diag_delta=" << schur_mismatch_max
                   << " rc_operator_delta_max=" << coupled_rc_operator_delta_max
                   << " rc_nonpositive_sa_faces=" << coupled_rc_nonpositive_sa_faces
+                  << " rc_flux_identity_linf=" << coupled_rc_flux_identity_linf
                   << " gauge_row=" << (nv + reference_cell)
                   << "\n";
     }
