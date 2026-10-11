@@ -158,7 +158,7 @@ jobs:
       # TEMPORARY (remove before merge): the maintenance tooling cannot read
       # job logs, so publish the failing N9 test output as a PR comment.
       - name: Report failing N9 test output to the PR
-        if: failure() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.ctest.outcome == 'failure'
         run: |
           {
             echo "### CI diagnostics: test_n9_negative_diagnostics (automated, temporary)"
