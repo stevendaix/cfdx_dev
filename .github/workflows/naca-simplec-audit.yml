@@ -1,0 +1,237 @@
+name: NACA0012 SIMPLEC consistent-diagonal audit (simplec-audit)
+
+# DIAG (temporary branch, never merged): step 3 of the #663 diagnostic plan —
+# the targeted SIMPLEC denominator audit. The SIMPLE-vs-SIMPLEC n64 delta
+# (Cd_pressure delta ~3e-3, trailing-edge mass imbalance cells 6-7 x=1
+# |div|~2e-08 for SIMPLEC only) cannot be attributed to the consistent
+# diagonal until the algebraic invariants of D_C are measured on the actual
+# NACA0012 SIMPLEC run instead of inferred:
+#   * sign invariant: CFDX stores A_PN = -a_PN <= 0; any positive off-diagonal
+#     momentum coefficient violates the convention D_C = A_P + sum(A_PN)
+#     relies on. The audit counts the offending entries per component and
+#     FAILS on a single one. The historical gap proxy conflated floor
+#     activation with sign violation (the reference SIMPLEC run showed
+#     gap=0.17 with 9117 floored cells at the first iterations): flooring
+#     creates a gap with zero positive entries, so the audit never infers
+#     signs from the gap.
+#   * boundedness invariant: D_C >= kappa*A_P with the documented solver
+#     constant kappa = 0.1 (simplec_denominator_floor_kappa); floored cells
+#     bind exactly at the floor, so pinning kappa in the harness also makes
+#     any silent floor change fail the gate.
+#   * mass-flux coherence: the audit reports the final corrected-flux
+#     continuity, the reconstructed-velocity continuity and the
+#     flux/velocity mismatch so the SIMPLEC velocity-correction vs mass-flux
+#     comparison reads from one line.
+# Solver instrumentation is PURE observation (three history fields + a print;
+# no equation, no tolerance, no gate touched).
+#
+# Matrix (n64 only — the SIMPLE/SIMPLEC discrepancy is measured on n64):
+#   * simplec-audit-n64 (0.6/0.25): must CONVERGE (known SIMPLEC@599) AND
+#     pass both audit invariants.
+#   * simplec-audit-undamped (1.0/1.0): alpha_u=1 is the configuration where
+#     the relaxation-inflated diagonal no longer hides the degeneration of
+#     the signed contract, i.e. the floor's raison d'etre. Convergence is an
+#     OPEN measurement: a red convergence gate here is an expected-by-design
+#     behavioural anchor (STAGNATED != CONVERGED), while the audit invariant
+#     gate still runs first and its verdict is the step-3 result.
+# The audit invariant gate runs BEFORE the convergence gate so a
+# non-converged probe still gets its invariant verdict enforced.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-simplec-audit]
+    # DIAG (simplec-audit): ignore pushes that only touch diagnostic
+    # bookkeeping. This workflow does NOT ignore its own YAML: the campaign
+    # is started by pushing this file itself.
+    paths-ignore:
+      - 'naca-simplec-audit-output.log'
+      - 'naca-simplec-audit-summary.log'
+      - '.github/workflows/naca-simplec-audit-summary.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  variant:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: simplec-audit-n64,       model: SIMPLEC, au: "0.6", ap: "0.25", levels: "1", trace: "1", sa: "1" }
+          - { name: simplec-audit-undamped,  model: SIMPLEC, au: "1.0", ap: "1.0", levels: "1", trace: "1", sa: "1" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run variant ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            --model ${{ matrix.model }} \
+            --alphau ${{ matrix.au }} \
+            --alphap ${{ matrix.ap }} \
+            --levels ${{ matrix.levels }} \
+            --trace ${{ matrix.trace }} \
+            --simplecaudit ${{ matrix.sa }} \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-variant-${{ matrix.name }}.log
+
+      - name: Enforce SIMPLEC audit invariant gates
+        if: success()
+        env:
+          VARIANT_LOG: naca-variant-${{ matrix.name }}.log
+        run: |
+          set -euo pipefail
+          awk '
+            /NACA_SIMPLEC_AUDIT_INVARIANT PASS/ { pass++ }
+            /NACA_SIMPLEC_AUDIT_INVARIANT FAIL/ {
+              bad=1
+              print "SIMPLEC_AUDIT_GATE_FAIL: " $0 > "/dev/stderr"
+            }
+            END {
+              if (pass != 1) {
+                printf "SIMPLEC_AUDIT_GATE_FAIL: expected exactly 1 NACA_SIMPLEC_AUDIT_INVARIANT PASS verdict, found %d\n", pass+0 > "/dev/stderr"
+                bad=1
+              }
+              exit bad
+            }
+          ' "$VARIANT_LOG"
+
+      - name: Enforce convergence gates
+        if: success()
+        env:
+          EXPECTED_LEVELS: ${{ matrix.levels }}
+          VARIANT_LOG: naca-variant-${{ matrix.name }}.log
+        run: |
+          set -euo pipefail
+          awk -v expected="$EXPECTED_LEVELS" '
+            /NACA_DIAG status=/ {
+              count++
+              if ($0 !~ /NACA_DIAG status=CONVERGED converged=1/) {
+                print "NUMERICAL_GATE_FAIL: " $0 > "/dev/stderr"
+                bad=1
+              }
+            }
+            END {
+              if (count != expected) {
+                printf "NUMERICAL_GATE_FAIL: expected %d level verdicts, found %d\n", expected, count > "/dev/stderr"
+                bad=1
+              }
+              exit bad
+            }
+          ' "$VARIANT_LOG"
+
+      - name: Upload variant log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-variant-logs-${{ matrix.name }}
+          path: naca-variant-${{ matrix.name }}.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate, extract compact summary and commit both logs
+    needs: [variant]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all variant logs
+        uses: actions/download-artifact@v4
+        with:
+          path: variant-logs
+          pattern: naca-variant-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-simplec-audit-output.log
+          for v in simplec-audit-n64 simplec-audit-undamped; do
+            if [ -f "variant-logs/naca-variant-$v.log" ]; then
+              echo "NACA_VARIANT_BEGIN $v" >> naca-simplec-audit-output.log
+              cat "variant-logs/naca-variant-$v.log" >> naca-simplec-audit-output.log
+              echo "NACA_VARIANT_END $v" >> naca-simplec-audit-output.log
+            else
+              echo "NACA_VARIANT_MISSING variant=$v" >> naca-simplec-audit-output.log
+            fi
+          done
+          echo "AGGREGATE_SECTIONS=$(grep -c 'NACA_VARIANT_BEGIN' naca-simplec-audit-output.log)/2" >> naca-simplec-audit-output.log
+
+      - name: Extract compact summary (inline, no second workflow race)
+        run: |
+          set -euo pipefail
+          : > naca-simplec-audit-summary.log
+          for v in simplec-audit-n64 simplec-audit-undamped; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-simplec-audit-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA0012_RE1000_A0|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/NACA_SIMPLEC_AUDIT|NACA_SIMPLEC_AUDIT_INVARIANT/' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 6 >> naca-simplec-audit-summary.log
+              awk '/NACA_DIAG cell=|NACA_DIAG divergence_l1=/' /tmp/variant.log | head -n 16 >> naca-simplec-audit-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-simplec-audit-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-simplec-audit-output.log >> naca-simplec-audit-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-simplec-audit-summary.log)" >> naca-simplec-audit-summary.log
+          head -c 600000 naca-simplec-audit-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-simplec-audit-summary.log
+          test -s naca-simplec-audit-summary.log
+
+      - name: Commit combined and summary logs to diagnostic branch (fail loudly)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-simplec-audit-output.log naca-simplec-audit-summary.log
+          if git diff --cached --quiet; then
+            echo "AGGREGATE_ERROR: nothing staged to commit" >&2
+            exit 1
+          fi
+          git commit -m "diag(naca0012): capture SIMPLEC audit logs [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-simplec-audit-output.log > /dev/null
+          git show HEAD:naca-simplec-audit-summary.log > /dev/null
+          echo "AGGREGATE_OK: logs committed on $(git rev-parse HEAD)"

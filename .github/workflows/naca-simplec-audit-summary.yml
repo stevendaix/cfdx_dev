@@ -1,0 +1,80 @@
+name: NACA0012 SIMPLEC audit compact summary extraction
+
+# DIAG (temporary branch, never merged): extracts a compact, decision-ready
+# summary from the combined log committed by the simplec-audit aggregate job.
+# The aggregate ALREADY extracts the compact summary inline and commits it in
+# the same commit as the combined log, so this workflow is a benign fallback
+# (e.g. for manual re-runs or if the inline extraction ever drifts): when the
+# input is present it re-derives the identical summary and exits with
+# SUMMARY_UNCHANGED; when the input is absent it exits benignly.
+# Content: per-variant verdicts, config and per-level forces, the audit
+# verdict lines (NACA_SIMPLEC_AUDIT / NACA_SIMPLEC_AUDIT_INVARIANT), the full
+# gate observability and the per-cell divergence attribution. It adds no
+# numerical content and touches no gate.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-simplec-audit]
+    paths:
+      - '.github/workflows/naca-simplec-audit-summary.yml'
+      - 'naca-simplec-audit-output.log'
+
+permissions:
+  contents: write
+
+jobs:
+  summary:
+    name: Extract compact summary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract compact summary
+        run: |
+          set -euo pipefail
+          # DIAG (simplec-audit): benign fallback — exit benignly when the
+          # input is absent instead of failing red like the fix4 version did
+          # when it raced the aggregate commit.
+          if [ ! -f naca-simplec-audit-output.log ]; then
+            echo "SUMMARY_INPUT_LOG_MISSING: combined log not committed yet; benign exit"
+            exit 0
+          fi
+          : > naca-simplec-audit-summary.log
+          for v in simplec-audit-n64 simplec-audit-undamped; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-simplec-audit-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA0012_RE1000_A0|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/NACA_SIMPLEC_AUDIT|NACA_SIMPLEC_AUDIT_INVARIANT/' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-simplec-audit-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 6 >> naca-simplec-audit-summary.log
+              awk '/NACA_DIAG cell=|NACA_DIAG divergence_l1=/' /tmp/variant.log | head -n 16 >> naca-simplec-audit-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-simplec-audit-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-simplec-audit-output.log >> naca-simplec-audit-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-simplec-audit-summary.log)" >> naca-simplec-audit-summary.log
+          head -c 600000 naca-simplec-audit-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-simplec-audit-summary.log
+          test -s naca-simplec-audit-summary.log
+
+      - name: Commit compact summary
+        run: |
+          if [ ! -f naca-simplec-audit-summary.log ]; then
+            echo "SUMMARY_SKIPPED: no summary produced (input log absent)"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-simplec-audit-summary.log
+          if git diff --cached --quiet; then
+            echo "SUMMARY_UNCHANGED: nothing to commit"
+            exit 0
+          fi
+          git commit -m "diag(naca0012): extract compact SIMPLEC audit summary log [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-simplec-audit-summary.log > /dev/null
+          echo "SUMMARY_OK: committed on $(git rev-parse HEAD)"

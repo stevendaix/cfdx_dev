@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -21,7 +23,7 @@ struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 // the CI variant matrix can separate a genuine solver defect from
 // algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
 // have canonical configurations the baseline matrix never exercised).
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0,bool simplec_audit=false)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -148,6 +150,80 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
                       << " y=" << geometry.cell_centres[c].y << "\n";
         }
     }
+    // DIAG (simplec-audit): enforce the algebraic invariants of the SIMPLEC
+    // consistent diagonal D_C = A_P + sum(A_PN) over the RETAINED
+    // convergence history, so the audit is a hard gate, not a print-only
+    // observation.
+    //   * sign invariant: CFDX stores A_PN = -a_PN <= 0; any positive
+    //     off-diagonal momentum coefficient violates the convention the
+    //     consistent diagonal relies on. The floored gap is NOT a sign
+    //     violation (flooring creates a gap with zero positive entries:
+    //     the reference SIMPLEC run showed gap=0.17 with 9117 floored cells
+    //     and, once the explicit count exists, zero positive entries), so
+    //     the audit counts entries and never infers signs from the gap.
+    //   * boundedness invariant: D_C >= kappa*A_P with kappa = 0.1, the
+    //     documented solver constant simplec_denominator_floor_kappa.
+    //     Floored cells bind exactly at the floor, so pinning kappa here
+    //     also makes any silent floor change fail this gate.
+    // The audit deliberately runs BEFORE the convergence guard so a
+    // non-converged SIMPLEC probe still reports its denominator health.
+    if(simplec_audit){
+        constexpr double audit_kappa=0.1;
+        std::size_t positive_entries=0, floored_max=0, floored_last=0;
+        double ratio_min=std::numeric_limits<double>::infinity();
+        std::size_t ratio_min_iter=0;
+        double gap_max=0.0;
+        for(const auto& hst:solve.history){
+            for(std::size_t d=0;d<3;++d){
+                positive_entries+=hst.simplec_positive_offdiag_entries[d];
+                if(std::isfinite(hst.simplec_denominator_ratio_min[d]) &&
+                   hst.simplec_denominator_ratio_min[d]<ratio_min){
+                    ratio_min=hst.simplec_denominator_ratio_min[d];
+                    ratio_min_iter=hst.iteration;
+                }
+                if(hst.simplec_denominator_gap_linf[d]>gap_max)
+                    gap_max=hst.simplec_denominator_gap_linf[d];
+            }
+            if(hst.simplec_denominator_floored_cells>floored_max)
+                floored_max=hst.simplec_denominator_floored_cells;
+            floored_last=hst.simplec_denominator_floored_cells;
+        }
+        const auto& audit_last=solve.history.back();
+        std::ostringstream audit_line;
+        audit_line<<std::scientific<<std::setprecision(6)
+                  <<"NACA_SIMPLEC_AUDIT iterations="<<solve.history.size()
+                  <<" ratio_min="<<ratio_min
+                  <<" ratio_min_iter="<<ratio_min_iter
+                  <<" floored_cells_max="<<floored_max
+                  <<" floored_cells_last="<<floored_last
+                  <<" positive_offdiag_entries="<<positive_entries
+                  <<" gap_linf_max="<<gap_max
+                  <<" corrected_flux_continuity_linf="
+                  <<audit_last.corrected_flux_continuity_linf
+                  <<" reconstructed_velocity_continuity_linf="
+                  <<audit_last.reconstructed_velocity_continuity_linf
+                  <<" flux_velocity_mismatch_linf="
+                  <<audit_last.flux_velocity_mismatch_linf<<"\n";
+        std::cout<<audit_line.str();
+        std::cout.flush();
+        if(positive_entries>0){
+            std::cout<<"NACA_SIMPLEC_AUDIT_INVARIANT FAIL reason=positive_offdiag"
+                     <<" count="<<positive_entries<<"\n";
+            std::cout.flush();
+            throw std::runtime_error(
+                "SIMPLEC audit: sign invariant violated "
+                "(positive off-diagonal momentum coefficients)");
+        }
+        if(!(ratio_min>=audit_kappa*(1.0-1e-12))){
+            std::cout<<"NACA_SIMPLEC_AUDIT_INVARIANT FAIL reason=denominator_below_floor"
+                     <<" ratio_min="<<ratio_min<<"\n";
+            std::cout.flush();
+            throw std::runtime_error(
+                "SIMPLEC audit: boundedness invariant violated (D_C/A_P < kappa=0.1)");
+        }
+        std::cout<<"NACA_SIMPLEC_AUDIT_INVARIANT PASS sign_and_boundedness kappa="
+                 <<audit_kappa<<"\n";
+    }
     if(!solve.converged) {
         // std::cout is buffered; an uncaught exception terminates without
         // flushing it, which silently swallowed the NACA_DIAG attribution.
@@ -255,6 +331,7 @@ int main(int argc,char**argv)
     bool var_opprobe=false;
     bool var_debugcell=false;
     double var_coupled_tol=0.0;
+    bool var_simplec_audit=false;
     std::vector<std::string> positional;
     for(int i=1;i<argc;++i){
         const std::string a=argv[i];
@@ -268,6 +345,7 @@ int main(int argc,char**argv)
         if(a=="--opprobe" && i+1<argc){ var_opprobe=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--debugcell" && i+1<argc){ var_debugcell=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--coupledtol" && i+1<argc){ var_coupled_tol=std::atof(argv[++i]); continue; }
+        if(a=="--simplecaudit" && i+1<argc){ var_simplec_audit=(std::atoi(argv[++i])!=0); continue; }
         positional.push_back(a);
     }
     if(var_levels==0 || var_levels>3)
@@ -294,7 +372,8 @@ int main(int argc,char**argv)
              <<" opprobe="<<(var_opprobe?1:0)
              <<" sweeps="<<var_sweeps
              <<" debugcell="<<(var_debugcell?1:0)
-             <<" coupledtol="<<var_coupled_tol<<"\n";
+             <<" coupledtol="<<var_coupled_tol
+             <<" simplecaudit="<<(var_simplec_audit?1:0)<<"\n";
 
     const bool quick=!positional.empty() && positional[0]=="--quick";
     if(quick) {
@@ -310,10 +389,14 @@ int main(int argc,char**argv)
     std::size_t first_mesh=0;
     if(!positional.empty() && positional[0]=="--model") {
         if(positional.size()<2)
-            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] [--opprobe B] [--debugcell B] [--coupledtol X] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
+            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] [--opprobe B] [--debugcell B] [--coupledtol X] [--simplecaudit B] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
         model_filter=positional[1].c_str();
         first_mesh=2;
     }
+    // The consistent-diagonal audit only exists on the segregated SIMPLEC
+    // path; refusing it elsewhere keeps the audit verdict meaningful.
+    if(var_simplec_audit && (!model_filter || std::string(model_filter)!="SIMPLEC"))
+        throw std::invalid_argument("--simplecaudit requires --model SIMPLEC (the consistent-diagonal audit only exists on the segregated SIMPLEC path)");
     const std::size_t available=positional.size()-first_mesh;
     if(available<var_levels)
         throw std::invalid_argument("insufficient mesh paths for the requested --levels");
@@ -346,7 +429,7 @@ int main(int argc,char**argv)
         for(std::size_t i=0;i<var_levels;++i){
             try {
                 const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
-                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol);
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol,var_simplec_audit);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){

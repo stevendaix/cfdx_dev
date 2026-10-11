@@ -286,6 +286,22 @@ struct IncompressibleIteration {
     std::array<double, 3> simplec_denominator_abs_linf{0.0, 0.0, 0.0};
     std::array<double, 3> simplec_denominator_gap_linf{0.0, 0.0, 0.0};
     std::array<std::size_t, 3> simplec_denominator_worst_cell{0, 0, 0};
+    // DIAG (simplec-audit): boundedness and sign audit of the consistent
+    // diagonal D_C = A_P + sum(A_PN) (kappa=0.1 floor). ratio_min is the
+    // smallest D_C/A_P seen this iteration (floored cells bind exactly at
+    // kappa); floored_cells counts cells whose signed contract degenerated
+    // to the floor; positive_offdiag_entries counts stored off-diagonal
+    // coefficients > 0. The CFDX convention stores A_PN = -a_PN <= 0, so any
+    // positive entry violates the algebraic sign invariant the audit must
+    // fail on. Note the floored gap is NOT a sign violation: flooring can
+    // create a nonzero gap with zero positive off-diagonals, which is why
+    // the audit counts entries and never infers signs from the gap alone.
+    std::array<double, 3> simplec_denominator_ratio_min{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::size_t simplec_denominator_floored_cells = 0;
+    std::array<std::size_t, 3> simplec_positive_offdiag_entries{0, 0, 0};
 
     // Component-wise and location-aware diagnostics for independently
     // reassembled momentum equations. These are diagnostic signals only;
@@ -2871,6 +2887,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
         std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
         std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
+        // DIAG (simplec-audit): per-iteration accumulators for the min
+        // D_C/A_P ratio, the floored-cell count (promoted to the history
+        // entry so validation can audit it) and the positive-off-diagonal
+        // entry count backing the sign invariant.
+        std::array<double, 3> simplec_denominator_ratio_min_audit{
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity()};
+        std::array<std::size_t, 3> simplec_positive_offdiag_audit{0, 0, 0};
         // SIMPLEC consistent-diagonal floor (diag/naca-simplec-fix1): the
         // signed contract A_P + sum(A_PN) degenerates to zero on
         // diffusion-dominated convection-free rows where A_P == sum(a_PN),
@@ -3139,6 +3164,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             const double value = eqs[d]->matrix.values_data()[k];
                             signed_offdiag_sum += value;
                             abs_offdiag_sum += std::abs(value);
+                            if (value > 0.0)
+                                ++simplec_positive_offdiag_audit[d];
                         }
                     }
                     const double diagonal = 1.0 / rAU[d][c];
@@ -3150,6 +3177,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             denominator_floored);
                     if (denominator_floored)
                         ++simplec_denominator_floored_cells;
+                    // DIAG (simplec-audit): track the smallest D_C/A_P of
+                    // this iteration. Floored cells bind exactly at kappa, so
+                    // the history entry exposes both the floor activation and
+                    // any (impossible by construction) sub-floor excursion.
+                    const double denominator_ratio = denom / diagonal;
+                    if (denominator_ratio < simplec_denominator_ratio_min_audit[d])
+                        simplec_denominator_ratio_min_audit[d] = denominator_ratio;
                     // Independent audit counterpart. With the expected non-positive
                     // stored off-diagonals this equals the signed-contract
                     // denominator; a nonzero gap flags a matrix-sign mismatch.
@@ -3774,6 +3808,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.simplec_denominator_abs_linf = simplec_denominator_abs_audit;
         h.simplec_denominator_gap_linf = simplec_denominator_gap_audit;
         h.simplec_denominator_worst_cell = simplec_denominator_worst_cell_audit;
+        h.simplec_denominator_ratio_min = simplec_denominator_ratio_min_audit;
+        h.simplec_denominator_floored_cells = simplec_denominator_floored_cells;
+        h.simplec_positive_offdiag_entries = simplec_positive_offdiag_audit;
         h.momentum_linear_iterations =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED
                 ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations});
@@ -3912,6 +3949,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << h.simplec_denominator_gap_linf[2]
                       << " simplec_denominator_floored="
                       << simplec_denominator_floored_cells
+                      << " simplec_denominator_ratio_min="
+                      << h.simplec_denominator_ratio_min[0] << "/"
+                      << h.simplec_denominator_ratio_min[1] << "/"
+                      << h.simplec_denominator_ratio_min[2]
+                      << " simplec_positive_offdiag="
+                      << h.simplec_positive_offdiag_entries[0] << "/"
+                      << h.simplec_positive_offdiag_entries[1] << "/"
+                      << h.simplec_positive_offdiag_entries[2]
                       << "\n";
         }
         // Reject severe adaptive overshoots before they reach the convergence
