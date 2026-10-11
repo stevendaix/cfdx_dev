@@ -739,30 +739,32 @@ int main()
     // Item 10 — nonlinear stagnation: the solve is warm-started from the
     // converged reference fields (the exact state the final gate accepts)
     // under unreachable convergence gates, with a pathologically weak
-    // pressure relaxation alpha_p = 0.01 while every other control keeps
-    // its production value (alpha_u = 0.7, inner linear 1e-9 / 1000).
-    // CI evidence from the production-relaxation run (alpha_p = 0.3): the
-    // monitored nonlinear metric decays geometrically along the SIMPLE
-    // slow pressure-correction mode at exactly 0.99122 per iteration —
-    // 0.88% relative improvement per iteration, 8.8x above the 1e-3
-    // stagnation threshold — so the stagnation window never saturates
-    // and the honest verdict at the 400-iteration cap is MAX_ITERATIONS.
-    // The mode propagates through the pressure correction path (p +=
-    // alpha_p * p_corr and the corrected velocity is rebuilt from the
-    // same alpha_p-relaxed pressure), so the per-iteration improvement
-    // scales with alpha_p: at 0.01 the contraction is ~3e-4 per
-    // iteration, below the threshold, and the production stagnation
-    // detector (10-iteration window) MUST terminate the solve with the
-    // STAGNATED verdict around iteration 11 — never a false converged
-    // under gates that no residual can satisfy, and never the iteration
-    // cap. Earlier candidate triggers that died on CI evidence are not
+    // momentum relaxation alpha_u = 0.02 and pressure relaxation
+    // alpha_p = 0.01, while the inner linear settings keep their
+    // production values (1e-9 / 1000). CI evidence from the two
+    // warm-started runs at alpha_u = 0.7: the monitored nonlinear metric
+    // decays geometrically along the SIMPLE slow mode at 0.99122 per
+    // iteration with alpha_p = 0.3 and at 0.99208 with alpha_p = 0.01 —
+    // the mode is essentially alpha_p-INDEPENDENT; it propagates through
+    // the momentum predictor, whose response is exactly linear in
+    // alpha_u (implicit under-relaxation identity A (u* - u) =
+    // alpha_u r), plus a weak alpha_p-scaled pressure contribution
+    // (~8.6e-4 of the 8.78e-3 per-iteration contraction at alpha_p =
+    // 0.3). At (alpha_u, alpha_p) = (0.02, 0.01) the measured scaling
+    // puts the per-iteration improvement at ~2.5e-4, below the 1e-3
+    // stagnation threshold, and the production stagnation detector
+    // (10-iteration window) MUST terminate the solve with the STAGNATED
+    // verdict around iteration 11 — never a false converged under gates
+    // that no residual can satisfy, and never the iteration cap.
+    // Earlier candidate triggers that died on CI evidence are not
     // asserted: pathological under-relaxation on the SIMPLEC consistent
     // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
     // per iteration), a 1e-14 inner linear tolerance (unattainable for
     // the SIMPLE pressure-correction solve, classified as a linear
     // failure at nonlinear iteration 1, aborts once the retry controller
-    // exhausts its retries), and a warm start with fully production
-    // relaxation (the 0.99122 slow mode above).
+    // exhausts its retries), a warm start with fully production
+    // relaxation, and an alpha_p-only reduction (still 0.79% per
+    // iteration at alpha_p = 0.01).
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
         // Warm start: the converged reference solution, the exact state
@@ -773,14 +775,15 @@ int main()
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLE);
         // Unreachable gates: the monitor normalizes the metric by this
         // solve's first sample, so a 1e-24 gate can never be satisfied
-        // and CONVERGED can never fire. The pathological knob is the
-        // pressure relaxation only: alpha_p = 0.01 (the CI-measured slow
-        // mode contraction of 0.99122 per iteration at the production
-        // alpha_p = 0.3 scales linearly with alpha_p, so the
-        // per-iteration improvement drops to ~3e-4, below the 1e-3
-        // stagnation threshold). Momentum relaxation (alpha_u = 0.7)
-        // and the inner linear settings (1e-9 / 1000) keep their
-        // production values.
+        // and CONVERGED can never fire. The pathological knobs are the
+        // relaxation factors only: alpha_u = 0.02, alpha_p = 0.01 (the
+        // CI-measured slow mode contraction of 0.99122/0.99208 per
+        // iteration at alpha_u = 0.7 is driven by the momentum
+        // predictor, exactly linear in alpha_u, so the per-iteration
+        // improvement drops to ~2.5e-4, below the 1e-3 stagnation
+        // threshold). The inner linear settings (1e-9 / 1000) keep
+        // their production values.
+        c.coupling.alpha_u = 0.02;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
