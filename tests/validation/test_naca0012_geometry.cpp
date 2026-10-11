@@ -21,7 +21,7 @@ struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 // the CI variant matrix can separate a genuine solver defect from
 // algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
 // have canonical configurations the baseline matrix never exercised).
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -64,6 +64,7 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     c.diagnostics.coupled_matrix_summary=coupled_diag;
     c.diagnostics.stagnation_window=stagwindow;
     c.diagnostics.coupled_nonorth_sweeps=sweeps;
+    c.diagnostics.coupled_operator_probe=opprobe;
 
     const auto geometry=build_fv_geometry(mesh);
     for(std::size_t i=0;i<mesh.n_cells();++i)
@@ -235,6 +236,7 @@ int main(int argc,char**argv)
     bool var_coupled_diag=false;
     long var_stagwindow=0;
     std::size_t var_sweeps=0;
+    bool var_opprobe=false;
     std::vector<std::string> positional;
     for(int i=1;i<argc;++i){
         const std::string a=argv[i];
@@ -245,6 +247,7 @@ int main(int argc,char**argv)
         if(a=="--coupleddiag" && i+1<argc){ var_coupled_diag=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--stagwindow" && i+1<argc){ var_stagwindow=std::atol(argv[++i]); continue; }
         if(a=="--sweeps" && i+1<argc){ var_sweeps=static_cast<std::size_t>(std::atoi(argv[++i])); continue; }
+        if(a=="--opprobe" && i+1<argc){ var_opprobe=(std::atoi(argv[++i])!=0); continue; }
         positional.push_back(a);
     }
     if(var_levels==0 || var_levels>3)
@@ -263,6 +266,7 @@ int main(int argc,char**argv)
              <<" trace="<<var_trace
              <<" coupleddiag="<<(var_coupled_diag?1:0)
              <<" stagwindow="<<var_stagwindow
+             <<" opprobe="<<(var_opprobe?1:0)
              <<" sweeps="<<var_sweeps<<"\n";
 
     const bool quick=!positional.empty() && positional[0]=="--quick";
@@ -279,7 +283,7 @@ int main(int argc,char**argv)
     std::size_t first_mesh=0;
     if(!positional.empty() && positional[0]=="--model") {
         if(positional.size()<2)
-            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
+            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] [--opprobe B] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
         model_filter=positional[1].c_str();
         first_mesh=2;
     }
@@ -315,7 +319,7 @@ int main(int argc,char**argv)
         for(std::size_t i=0;i<var_levels;++i){
             try {
                 const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
-                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps);
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){

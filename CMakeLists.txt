@@ -877,6 +877,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
         RUN_SERIAL TRUE)
+    # DIAG (coupled fix4): unit gate for the operator identity the coupled
+    # momentum rows rely on (assembled block pressure operator vs the
+    # independent Gauss gradient, tolerance tied to round-off, never
+    # calibrated). Registered from the diagnostic branch; no fixture needed.
+    add_cfdx_test(test_coupled_pressure_operator_equivalence tests/validation/test_coupled_pressure_operator_equivalence.cpp)
+    set_tests_properties(test_coupled_pressure_operator_equivalence PROPERTIES
+        LABELS "n9;qualification;validation;coupled-ns"
+        TIMEOUT 300)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
         add_executable(test_n13_mpi_equivalence tests/validation/test_n13_mpi_equivalence.cpp)

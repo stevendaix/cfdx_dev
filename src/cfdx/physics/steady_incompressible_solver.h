@@ -69,6 +69,37 @@ struct IncompressibleProbeSample {
     double value = 0.0;
 };
 
+// DIAG (coupled fix4): operator-level probe for the pressure-gradient rows
+// of the coupled momentum-continuity block system. For every momentum row it
+// compares the pressure force the coupled system ACTUALLY ASSEMBLED
+// (A(row, col >= nv) * p plus the Dirichlet boundary displacements recorded
+// during assembly) with the INDEPENDENT transport-layer operator
+// gauss_gradient_with_boundary(p) * V evaluated on the SAME pressure field,
+// and it reports the true block residual max|Ax-b| both on the raw linear
+// solution (pre) and on the Picard-relaxed accepted state (post). Pure
+// observation: filling this struct changes no equation, no tolerance and no
+// convergence decision.
+struct CoupledPressureOperatorDiagnostics {
+    bool valid = false;
+    // Pre-relaxation: raw linear solution of the coupled block system.
+    double dg_max = 0.0;            // max |assembled pressure force - gauss force|
+    double dg_rel_max = 0.0;        // worst scale-aware relative mismatch
+    double force_scale = 0.0;       // max |assembled pressure force| over rows
+    std::size_t dg_worst_row = 0;   // momentum row (0..3*nc-1) of dg_max
+    std::size_t dg_worst_cell = 0;
+    std::size_t dg_worst_component = 0;
+    double block_residual_inf = 0.0; // max |(Ax-b)(row)| over ALL rows
+    // Post-relaxation: Picard-accepted state U_old + a_u (x-U_old),
+    // p_old + a_p (x_p - p_old), evaluated with the SAME assembled matrix.
+    double dg_max_post = 0.0;
+    double dg_rel_max_post = 0.0;
+    double force_scale_post = 0.0;
+    std::size_t dg_worst_row_post = 0;
+    std::size_t dg_worst_cell_post = 0;
+    std::size_t dg_worst_component_post = 0;
+    double block_residual_inf_post = 0.0;
+};
+
 struct DiagnosticsControls {
     bool coupled_matrix_summary = false;
     bool freeze_state_probe = false;
@@ -91,6 +122,14 @@ struct DiagnosticsControls {
     //     exactly as before.
     long stagnation_window = 0;
     std::size_t coupled_nonorth_sweeps = 0;
+    // DIAG (coupled fix4): opt-in operator-level probe for the coupled
+    // momentum pressure rows. When enabled, each coupled solve additionally
+    // compares the assembled pressure-gradient operator of the block system
+    // with the independent transport-layer Gauss gradient on the solved
+    // pressure, and reports the true block residual before and after Picard
+    // relaxation. Pure observation; the default false leaves the solver
+    // bit-for-bit unchanged.
+    bool coupled_operator_probe = false;
 };
 
 struct IncompressibleTransientControls {
@@ -1108,7 +1147,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     double momentum_under_relaxation,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
-    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
+    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr,
+    // DIAG (coupled fix4): optional operator-level probe (see
+    // CoupledPressureOperatorDiagnostics). Null by default: the production
+    // solve is unchanged. The alphas are the LIVE Picard relaxation factors
+    // used by the driver update, so the post-relaxation probe evaluates the
+    // exact state the nonlinear iteration will accept.
+    CoupledPressureOperatorDiagnostics* operator_probe = nullptr,
+    double probe_alpha_u = 1.0,
+    double probe_alpha_p = 1.0)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -1161,6 +1208,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Move the current explicit pressure term from b back into the linear
     // system. The FV Gauss gradient is linear in the pressure field, so its
     // coefficients can be assembled face-by-face.
+    // DIAG (coupled fix4): pressure_dirichlet_move records the Dirichlet
+    // boundary pressure displacements subtracted from b during assembly.
+    // The operator probe adds them back to the assembled implicit pressure
+    // force so the comparison with the independent Gauss gradient covers
+    // Dirichlet boundary faces as well, not only interior faces.
+    std::vector<double> pressure_dirichlet_move(3 * nc, 0.0);
     for (std::size_t c = 0; c < nc; ++c) {
         const Offset off = mesh.cells().offsets_data()[c];
         const Offset count = mesh.cells().offsets_data()[c + 1] - off;
@@ -1225,6 +1278,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     b(c) -= Sf.x * bc->value;
                     b(nc + c) -= Sf.y * bc->value;
                     b(2*nc + c) -= Sf.z * bc->value;
+                    pressure_dirichlet_move[c] += Sf.x * bc->value;
+                    pressure_dirichlet_move[nc + c] += Sf.y * bc->value;
+                    pressure_dirichlet_move[2*nc + c] += Sf.z * bc->value;
                 } else {
                     // The transport-layer Gauss gradient treats zero-gradient
                     // pressure as owner-cell extrapolation. Retain that exact
@@ -2310,6 +2366,110 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << "\n";
     }
 
+    // DIAG (coupled fix4): opt-in operator-level probe. For every momentum
+    // row it compares the pressure force the coupled system ACTUALLY
+    // ASSEMBLED (A(row, col >= nv)*p + accumulated Dirichlet boundary
+    // displacements) with the INDEPENDENT transport-layer operator
+    // gauss_gradient_with_boundary(p)*V on the same pressure field, and it
+    // reports the true block residual max|Ax-b| on the raw linear solution
+    // and on the Picard-relaxed accepted state. The Gauss gradient is
+    // recomputed here by the authoritative path, never re-derived from the
+    // assembly locals, so a mismatch localizes an operator inconsistency
+    // instead of re-stating the assembled one. Null by default: the
+    // production solve is bit-for-bit unchanged.
+    if (operator_probe != nullptr) {
+        *operator_probe = CoupledPressureOperatorDiagnostics{};
+        operator_probe->valid = true;
+        const double probe_au = probe_alpha_u > 0.0 ? probe_alpha_u : 1.0;
+        const double probe_ap = probe_alpha_p > 0.0 ? probe_alpha_p : 1.0;
+        Vector x_relaxed(n, 0.0);
+        for (std::size_t comp = 0; comp < 3; ++comp)
+            for (std::size_t c = 0; c < nc; ++c) {
+                const double previous = U_old.component_data(comp)[c];
+                x_relaxed(comp * nc + c) =
+                    previous + probe_au * (x(comp * nc + c) - previous);
+            }
+        for (std::size_t c = 0; c < nc; ++c)
+            x_relaxed(nv + c) = p_old(c) + probe_ap * (x(nv + c) - p_old(c));
+
+        struct ProbeMetrics {
+            double dg_max = 0.0;
+            double dg_rel_max = 0.0;
+            double force_scale = 0.0;
+            std::size_t dg_worst_row = 0;
+            double block_residual_inf = 0.0;
+        };
+        const auto probe_state = [&](const Vector& state, ProbeMetrics& m) {
+            Field<double, Location::CELL> p_state(
+                nc, "probe_p_state", "Pa", 1);
+            for (std::size_t c = 0; c < nc; ++c) p_state(c) = state(nv + c);
+            const auto grad_state =
+                gauss_gradient_with_boundary(p_state, mesh, geometry, pressure_bcs);
+            std::vector<double> assembled_force(nv, 0.0);
+            std::vector<double> gauss_force(nv, 0.0);
+            for (std::size_t row = 0; row < n; ++row) {
+                double ax = 0.0;
+                double force = 0.0;
+                for (std::size_t k = A.row_offsets_data()[row];
+                     k < A.row_offsets_data()[row + 1]; ++k) {
+                    const std::size_t col = A.columns_data()[k];
+                    ax += A.values_data()[k] * state(col);
+                    if (row < nv && col >= nv)
+                        force += A.values_data()[k] * state(col);
+                }
+                const double row_residual = std::abs(ax - b(row));
+                if (row_residual > m.block_residual_inf)
+                    m.block_residual_inf = row_residual;
+                if (row >= nv)
+                    continue;
+                force += pressure_dirichlet_move[row];
+                assembled_force[row] = force;
+                const std::size_t comp = row / nc;
+                const std::size_t cell = row % nc;
+                gauss_force[row] =
+                    grad_state.component_data(comp)[cell] *
+                    geometry.cell_volumes[cell];
+                m.force_scale = std::max(m.force_scale, std::abs(force));
+                const double dg = std::abs(force - gauss_force[row]);
+                if (dg > m.dg_max) {
+                    m.dg_max = dg;
+                    m.dg_worst_row = row;
+                }
+            }
+            // Relative mismatch, scale-aware: rows whose pressure force is at
+            // round-off level are skipped so the metric reports operator
+            // inconsistency, not 0/0 noise.
+            for (std::size_t row = 0; row < nv; ++row) {
+                const double row_scale = std::max(
+                    std::abs(assembled_force[row]), std::abs(gauss_force[row]));
+                if (row_scale <= 1.0e-8 * std::max(m.force_scale, 1.0e-300))
+                    continue;
+                m.dg_rel_max = std::max(
+                    m.dg_rel_max,
+                    std::abs(assembled_force[row] - gauss_force[row]) /
+                        row_scale);
+            }
+        };
+        ProbeMetrics pre;
+        probe_state(x, pre);
+        operator_probe->dg_max = pre.dg_max;
+        operator_probe->dg_rel_max = pre.dg_rel_max;
+        operator_probe->force_scale = pre.force_scale;
+        operator_probe->dg_worst_row = pre.dg_worst_row;
+        operator_probe->dg_worst_cell = pre.dg_worst_row % nc;
+        operator_probe->dg_worst_component = pre.dg_worst_row / nc;
+        operator_probe->block_residual_inf = pre.block_residual_inf;
+        ProbeMetrics post;
+        probe_state(x_relaxed, post);
+        operator_probe->dg_max_post = post.dg_max;
+        operator_probe->dg_rel_max_post = post.dg_rel_max;
+        operator_probe->force_scale_post = post.force_scale;
+        operator_probe->dg_worst_row_post = post.dg_worst_row;
+        operator_probe->dg_worst_cell_post = post.dg_worst_row % nc;
+        operator_probe->dg_worst_component_post = post.dg_worst_row / nc;
+        operator_probe->block_residual_inf_post = post.block_residual_inf;
+    }
+
     for (std::size_t c = 0; c < nc; ++c) {
         U.component_data(0)[c] = x(c);
         U.component_data(1)[c] = x(nc + c);
@@ -2721,6 +2881,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         constexpr double simplec_denominator_floor_kappa = 0.1;
         std::size_t simplec_denominator_floored_cells = 0;
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
+            // DIAG (coupled fix4): opt-in operator-level probe comparing the
+            // assembled coupled pressure-gradient operator with the
+            // independent Gauss gradient on the same solved state, plus the
+            // true block residual before/after Picard relaxation. See
+            // CoupledPressureOperatorDiagnostics. Pure observation; the
+            // default false leaves the iteration unchanged.
+            CoupledPressureOperatorDiagnostics coupled_operator_probe_diag;
+            const bool coupled_operator_probe_enabled =
+                controls.diagnostics.coupled_operator_probe;
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
                 velocity_bcs, pressure_bcs, controls.density,
@@ -2734,7 +2903,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.coupled_linear_solver,
                 controls,
                 retry_controller.alpha_u(effective_alpha_u),
-                U, p, &result.coupled_linear_plan);
+                U, p, &result.coupled_linear_plan,
+                coupled_operator_probe_enabled ? &coupled_operator_probe_diag : nullptr,
+                retry_controller.alpha_u(effective_alpha_u),
+                retry_controller.alpha_p(effective_alpha_p));
             result.coupled_linear_plan_resolved = true;
             if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
                 // Report the stalled linear state in scientific notation.
@@ -2753,6 +2925,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ", iterations=" + std::to_string(coupled_result.iterations) +
                     ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
                     ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
+            }
+
+            // DIAG (coupled fix4): per-iteration operator probe report. The
+            // probe reflects the FIRST coupled solve of the iteration; any
+            // non-orthogonal sweep re-solve afterwards is not re-probed
+            // (fix4 campaigns run without sweeps). Scientific notation via a
+            // local stream so the persistent cerr formatting is untouched.
+            if (coupled_operator_probe_enabled && coupled_operator_probe_diag.valid) {
+                std::ostringstream operator_probe_line;
+                operator_probe_line
+                    << "COUPLED_OPERATOR_PROBE iter=" << iter
+                    << std::scientific << std::setprecision(6)
+                    << " dg_max=" << coupled_operator_probe_diag.dg_max
+                    << " dg_rel_max=" << coupled_operator_probe_diag.dg_rel_max
+                    << " force_scale=" << coupled_operator_probe_diag.force_scale
+                    << " dg_worst_row=" << coupled_operator_probe_diag.dg_worst_row
+                    << " dg_worst_cell=" << coupled_operator_probe_diag.dg_worst_cell
+                    << " dg_worst_component=" << coupled_operator_probe_diag.dg_worst_component
+                    << " block_residual_inf=" << coupled_operator_probe_diag.block_residual_inf
+                    << " dg_max_post=" << coupled_operator_probe_diag.dg_max_post
+                    << " dg_rel_max_post=" << coupled_operator_probe_diag.dg_rel_max_post
+                    << " force_scale_post=" << coupled_operator_probe_diag.force_scale_post
+                    << " dg_worst_cell_post=" << coupled_operator_probe_diag.dg_worst_cell_post
+                    << " block_residual_inf_post=" << coupled_operator_probe_diag.block_residual_inf_post
+                    << " alpha_u_probe=" << retry_controller.alpha_u(effective_alpha_u)
+                    << " alpha_p_probe=" << retry_controller.alpha_p(effective_alpha_p)
+                    << "\n";
+                std::cerr << operator_probe_line.str();
             }
 
             // DIAG (coupled fix3): optional deferred non-orthogonal refresh
@@ -3459,6 +3659,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (mesh.ownership().neighbour(face) < 0) {
                         const std::size_t patch = geometry.face_patch[face];
                         if (patch < mesh.boundary().n_patches()) {
+                            // DIAG (coupled fix4): skip EMPTY patches (the 2D
+                            // front/back voids) exactly like
+                            // cell_has_boundary_face above. They are
+                            // diagnostic voids, not physical boundaries;
+                            // reporting them attributed the worst residual to
+                            // 'front'/'back' even when the responsible
+                            // boundary was the airfoil or the farfield.
+                            if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                                continue;
                             diagnostic.patch = mesh.boundary().patch(patch).name;
                             break;
                         }
@@ -3610,6 +3819,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_residual_no_pressure = worst_diag->no_pressure;
         h.momentum_pressure_contribution = worst_diag->pressure_contribution;
         h.momentum_residual_patch = worst_diag->patch;
+        // DIAG (coupled fix4): dominant component of the worst residual so
+        // the trace disambiguates x/y/z without guessing from the patch.
+        std::size_t worst_momentum_component = 0;
+        if (worst_diag == &ry_diag) worst_momentum_component = 1;
+        if (worst_diag == &rz_diag) worst_momentum_component = 2;
 
         // Optional forensic microscope for one cell. This is deliberately
         // disabled unless CFDX_DEBUG_CELL is set, so production/CI output is
@@ -3636,39 +3850,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.pressure_change_inf});
         h.nonlinear_convergence_metric = nonlinear_metric;
 
-        if (controls.diagnostics.iteration_trace &&
-            (iter == 1 ||
-             iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
-            // Diagnostic-only trace: expose the authoritative nonlinear history
-            // before the convergence gate. No criterion or tolerance is changed.
-            std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
-                      << " momentum_residual_relative=" << h.momentum_equation_residual_relative
-                      << " continuity_normalized=" << h.continuity_normalized
-                      << " velocity_change_inf=" << h.velocity_change_inf
-                      << " pressure_change_inf=" << h.pressure_change_inf
-                      << " alpha_u=" << h.effective_alpha_u
-                      << " alpha_p=" << h.effective_alpha_p
-                      << " pressure_linear_iterations=" << pressure_iterations
-                      << " pressure_relative_residual=" << pressure_residual
-                      << " momentum_linear_iterations="
-                      << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
-                              ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
-                      << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
-                      << " worst_momentum_cell=" << h.momentum_residual_cell
-                      << " worst_momentum_patch=" << h.momentum_residual_patch
-                      << " simplec_denominator_gap_linf="
-                      << h.simplec_denominator_gap_linf[0] << "/"
-                      << h.simplec_denominator_gap_linf[1] << "/"
-                      << h.simplec_denominator_gap_linf[2]
-                      << " simplec_denominator_floored="
-                      << simplec_denominator_floored_cells
-                      << "\n";
-        }
         // Acceptance stays per-criterion. The monitor divides its synthetic
         // maximum by the maximum seen at the first iteration, so a metric whose
         // absolute scale sits far below that first maximum would be exempted
         // from the gate. nonlinear_metric is therefore a diagnostic summary and
         // never a replacement for the individual physical criteria.
+        // DIAG (coupled fix4): the five per-criterion gates are evaluated
+        // BEFORE the iteration trace so the trace can report which gate
+        // fails. The trace previously printed only
+        // momentum_equation_residual_relative (normalized by the iteration-1
+        // reference), which cannot distinguish a plateau of the absolute
+        // residual from a reference-scale effect; the gate identity was not
+        // observable at all.
         const bool momentum_residual_gate =
             h.momentum_residual <= controls.convergence.relative_tolerance;
         const bool momentum_equation_residual_gate =
@@ -3683,6 +3876,44 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             momentum_residual_gate && momentum_equation_residual_gate &&
             pressure_residual_gate && velocity_change_gate && pressure_change_gate;
 
+        if (controls.diagnostics.iteration_trace &&
+            (iter == 1 ||
+             iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
+            // Diagnostic-only trace: expose the authoritative nonlinear history
+            // before the convergence gate. No criterion or tolerance is changed.
+            std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
+                      << " momentum_residual_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual=" << h.momentum_residual
+                      << " momentum_equation_residual=" << h.momentum_equation_residual
+                      << " momentum_reference=" << std::max(result.reference_momentum_residual, tiny)
+                      << " momentum_rhs_scale=" << momentum_rhs_scale
+                      << " continuity_normalized=" << h.continuity_normalized
+                      << " velocity_change_inf=" << h.velocity_change_inf
+                      << " pressure_change_inf=" << h.pressure_change_inf
+                      << " alpha_u=" << h.effective_alpha_u
+                      << " alpha_p=" << h.effective_alpha_p
+                      << " pressure_linear_iterations=" << pressure_iterations
+                      << " pressure_relative_residual=" << pressure_residual
+                      << " momentum_linear_iterations="
+                      << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
+                              ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
+                      << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
+                      << " worst_momentum_cell=" << h.momentum_residual_cell
+                      << " worst_momentum_patch=" << h.momentum_residual_patch
+                      << " worst_momentum_component=" << worst_momentum_component
+                      << " gates=mom:" << (momentum_residual_gate ? 'P' : 'F')
+                      << ",momrel:" << (momentum_equation_residual_gate ? 'P' : 'F')
+                      << ",pres:" << (pressure_residual_gate ? 'P' : 'F')
+                      << ",dU:" << (velocity_change_gate ? 'P' : 'F')
+                      << ",dp:" << (pressure_change_gate ? 'P' : 'F')
+                      << " simplec_denominator_gap_linf="
+                      << h.simplec_denominator_gap_linf[0] << "/"
+                      << h.simplec_denominator_gap_linf[1] << "/"
+                      << h.simplec_denominator_gap_linf[2]
+                      << " simplec_denominator_floored="
+                      << simplec_denominator_floored_cells
+                      << "\n";
+        }
         // Reject severe adaptive overshoots before they reach the convergence
         // monitor. A retry is the same nonlinear iteration, so convergence
         // history must only observe the accepted state.
@@ -4257,4 +4488,3 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
-

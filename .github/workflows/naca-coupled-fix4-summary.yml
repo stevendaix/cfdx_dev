@@ -1,0 +1,70 @@
+name: NACA0012 COUPLED fix4 compact summary extraction
+
+# DIAG (temporary branch, never merged): extracts a compact, decision-ready
+# summary from the combined log committed by the fix4 aggregate job: per-
+# variant verdicts and config, the full new gate observability
+# (momentum_residual / momentum_equation_residual / momentum_residual_relative
+# / momentum_reference / momentum_rhs_scale / gates=...), downsampled
+# COUPLED_OPERATOR_PROBE lines (operator identity + block residual pre/post
+# relaxation), the final COUPLED_MATRIX_SUMMARY, the final coupled linear
+# residual, and all retry/exception lines. It adds no numerical content and
+# touches no gate.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-coupled-fix4]
+    paths:
+      - '.github/workflows/naca-coupled-fix4-summary.yml'
+      - 'naca-coupled-fix4-output.log'
+
+permissions:
+  contents: write
+
+jobs:
+  summary:
+    name: Extract compact summary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract compact summary
+        run: |
+          set -euo pipefail
+          test -f naca-coupled-fix4-output.log
+          : > naca-coupled-fix4-summary.log
+          for v in coupled-baseline-probe coupled-undamped-probe simple-anchor-control operator-equivalence-unit; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix4-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-coupled-fix4-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix4-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix4-summary.log
+              awk '/COUPLED_MATRIX_SUMMARY/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4-summary.log
+              awk '/COUPLED_LINEAR_TRUE_RESIDUAL/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-coupled-fix4-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-coupled-fix4-output.log >> naca-coupled-fix4-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-coupled-fix4-summary.log)" >> naca-coupled-fix4-summary.log
+          head -c 600000 naca-coupled-fix4-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-coupled-fix4-summary.log
+          test -s naca-coupled-fix4-summary.log
+
+      - name: Commit compact summary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-coupled-fix4-summary.log
+          if git diff --cached --quiet; then
+            echo "SUMMARY_UNCHANGED: nothing to commit"
+            exit 0
+          fi
+          git commit -m "diag(naca0012): extract compact fix4 summary log [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-coupled-fix4-summary.log > /dev/null
+          echo "SUMMARY_OK: committed on $(git rev-parse HEAD)"
