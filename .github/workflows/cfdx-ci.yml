@@ -165,7 +165,8 @@ jobs:
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo "Build: ${{ matrix.build_type }}"
             echo '```'
-            awk '/Testing: test_n9_negative_diagnostics/{f=1} f{print} f && /<end of output>/{exit}' build/Testing/Temporary/LastTest.log | head -n 400
+            ctest --test-dir build -N --rerun-failed 2>&1 | tail -n 40
+            ctest --test-dir build --rerun-failed --output-on-failure 2>&1 | tail -n 500
             echo '```'
           } > /tmp/n9_report.md
           gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/n9_report.md --repo "${{ github.repository }}"
