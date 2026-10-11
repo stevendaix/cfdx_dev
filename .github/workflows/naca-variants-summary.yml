@@ -1,0 +1,56 @@
+name: NACA0012 variants summary extraction
+
+# DIAG (temporary branch, never merged): naca-algos-variants-output.log exceeds
+# 1 MB and cannot be decoded through the repository API. Extract the compact
+# attribution subset (config, status, result and exception lines, coarse
+# iteration traces, coupled linear diagnostics, offender cells) and commit it
+# as a small readable summary log next to the full log.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-algos-variants]
+
+permissions:
+  contents: write
+
+jobs:
+  summary:
+    name: Extract compact summary log
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract compact summary from the variants log
+        run: |
+          LOG=naca-algos-variants-output.log
+          OUT=naca-algos-variants-summary.log
+          test -f "$LOG"
+          {
+            echo "NACA_SUMMARY source=$LOG bytes=$(wc -c < "$LOG") lines=$(wc -l < "$LOG")"
+            echo "--- variant sections ---"
+            grep -E 'NACA_VARIANT_(BEGIN|END|MISSING)' "$LOG"
+            echo "--- configs / status / results / exceptions ---"
+            grep -E 'NACA_CONFIG|NACA_DIAG status|NACA_DIAG divergence_l1|NACA0012_RE1000_A0|NACA_ALGO algo=' "$LOG"
+            echo "--- coarse iteration traces (iter<=100 or every 50th) ---"
+            awk '/INCOMPRESSIBLE_ITER/ { if (match($0, /iter=[0-9]+/)) { n = substr($0, RSTART + 5, RLENGTH - 5) + 0; if (n <= 100 || n % 50 == 0) print } }' "$LOG"
+            echo "--- coupled linear diagnostics ---"
+            grep -E 'COUPLED_PRECONDITIONER|COUPLED_NESTED_PCD_BEST_EFFORT|COUPLED_LINEAR_TRUE_RESIDUAL|COUPLED_MATRIX_SUMMARY|COUPLED_FACE_DEBUG|N8 coupled' "$LOG" | head -500
+            echo "--- nonlinear retry rejections ---"
+            grep -E 'CFDX nonlinear iteration [0-9]+ rejected' "$LOG" | head -100
+            echo "--- offender cells (top divergence) ---"
+            grep -E 'NACA_DIAG cell=' "$LOG" | head -200
+          } > "$OUT"
+          wc -c "$OUT"
+          wc -l "$OUT"
+
+      - name: Commit summary log
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-algos-variants-summary.log
+          git commit -m "diag(naca0012): extract compact variants summary log [skip ci]"
+          git pull --rebase --autostash || true
+          git push
