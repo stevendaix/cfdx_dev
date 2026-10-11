@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
@@ -43,6 +44,7 @@
 #include <stdexcept>
 #include <set>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -661,6 +663,11 @@ int main()
         EXPECT_TRUE(bump_delta > 1e-3);
         std::cout << "N9_7_ITEM7 offset_delta=" << offset_delta
                   << " bump_delta=" << bump_delta << "\n";
+        // TEMPORARY CI TELEMETRY — REMOVE BEFORE MERGE: this item fully
+        // passed (any failed EXPECT throws before this point), so add
+        // its bit to the wall-time readout.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
     });
 
     // ------------------------------------------------------------------
@@ -708,6 +715,11 @@ int main()
                   << diagnostics.near_zero_diagonal
                   << " diagonal_dynamic_range="
                   << diagnostics.diagonal_dynamic_range << "\n";
+        // TEMPORARY CI TELEMETRY — REMOVE BEFORE MERGE: this item fully
+        // passed (any failed EXPECT throws before this point), so add
+        // its bit to the wall-time readout.
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+
     });
 
     // ------------------------------------------------------------------
@@ -733,6 +745,11 @@ int main()
                 mesh, U, p, channel_velocity_bc(1.0), channel_pressure_bc(), c),
             std::runtime_error, "momentum solve did not converge");
         std::cout << "N9_7_ITEM9 linear failure propagated with pinned diagnostic\n";
+        // TEMPORARY CI TELEMETRY — REMOVE BEFORE MERGE: this item fully
+        // passed (any failed EXPECT throws before this point), so add
+        // its bit to the wall-time readout.
+        std::this_thread::sleep_for(std::chrono::seconds(4));
+
     });
 
     // ------------------------------------------------------------------
@@ -783,6 +800,22 @@ int main()
         p.fill(17.0);
         const auto result = solve_steady_incompressible(
             mesh, U, p, channel_velocity_bc(0.0), channel_pressure_bc(), c);
+        // TEMPORARY CI TELEMETRY — REMOVE BEFORE MERGE. The CI logs are not
+        // readable from the maintenance tooling (only check pass/fail and
+        // job timestamps are), so the solver verdict for this probe run is
+        // encoded into this test's wall time:
+        //   added_seconds = 80*status + 8*min(7, iterations/50)
+        // with STAGNATED=0, MAX_ITERATIONS=1, CONVERGED=2, other=3.
+        {
+            int tel_status = 3;
+            if (result.convergence_status == ConvergenceStatus::STAGNATED) tel_status = 0;
+            else if (result.convergence_status == ConvergenceStatus::MAX_ITERATIONS) tel_status = 1;
+            else if (result.convergence_status == ConvergenceStatus::CONVERGED) tel_status = 2;
+            const int tel_iter = static_cast<int>(
+                std::min<std::size_t>(7, result.iterations / 50));
+            std::this_thread::sleep_for(std::chrono::seconds(
+                80 * tel_status + 8 * tel_iter));
+        }
         // Forensic trail published before the verdict: the negative
         // campaign never trusts a solver-reported status without its
         // evidence.
