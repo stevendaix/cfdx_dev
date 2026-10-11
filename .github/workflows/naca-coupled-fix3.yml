@@ -34,6 +34,15 @@ on:
   workflow_dispatch:
   push:
     branches: [diag/naca-coupled-fix3]
+    # DIAG (fix3): ignore pushes that only touch diagnostic bookkeeping
+    # (committed logs, summaries, or this workflow file itself). Code
+    # pushes (src/tests/scripts/cmake) still trigger the full matrix.
+    # No gate, tolerance or matrix entry is affected by this filter.
+    paths-ignore:
+      - 'naca-coupled-fix3-output.log'
+      - 'naca-coupled-fix3-summary.log'
+      - '.github/workflows/naca-coupled-fix3.yml'
+      - '.github/workflows/naca-coupled-fix3-summary.yml'
 
 permissions:
   contents: write

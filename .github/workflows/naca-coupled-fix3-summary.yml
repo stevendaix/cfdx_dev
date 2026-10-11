@@ -1,0 +1,68 @@
+name: NACA0012 COUPLED fix3 compact summary extraction
+
+# DIAG (temporary branch, never merged): the committed fix3 combined log
+# exceeds 1 MB and cannot be decoded through the repository API (same
+# situation as the earlier variants log, see commit aa0316). This job
+# extracts a compact, decision-ready summary from the combined log
+# committed by the aggregate job: per-variant verdicts and config,
+# downsampled residual trajectories, the final COUPLED_MATRIX_SUMMARY
+# instrumentation (rc_min_sa_over_area, rc_nonorth_dominance_max), the
+# final coupled linear residual, and all retry/exception lines. It adds
+# no numerical content and touches no gate.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-coupled-fix3]
+    paths:
+      - '.github/workflows/naca-coupled-fix3-summary.yml'
+      - 'naca-coupled-fix3-output.log'
+
+permissions:
+  contents: write
+
+jobs:
+  summary:
+    name: Extract compact summary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract compact summary
+        run: |
+          set -euo pipefail
+          test -f naca-coupled-fix3-output.log
+          : > naca-coupled-fix3-summary.log
+          for v in coupled-baseline-crawl coupled-undamped-crawl coupled-baseline-sweeps2 coupled-baseline-default simple-anchor-control; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix3-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-coupled-fix3-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%25==1) print}' /tmp/variant.log >> naca-coupled-fix3-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix3-summary.log
+              awk '/COUPLED_MATRIX_SUMMARY/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix3-summary.log
+              awk '/COUPLED_LINEAR_TRUE_RESIDUAL/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix3-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-coupled-fix3-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-coupled-fix3-output.log >> naca-coupled-fix3-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-coupled-fix3-summary.log)" >> naca-coupled-fix3-summary.log
+          head -c 600000 naca-coupled-fix3-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-coupled-fix3-summary.log
+          test -s naca-coupled-fix3-summary.log
+
+      - name: Commit compact summary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-coupled-fix3-summary.log
+          if git diff --cached --quiet; then
+            echo "SUMMARY_UNCHANGED: nothing to commit"
+            exit 0
+          fi
+          git commit -m "diag(naca0012): extract compact fix3 summary log [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-coupled-fix3-summary.log > /dev/null
+          echo "SUMMARY_OK: committed on $(git rev-parse HEAD)"
