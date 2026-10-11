@@ -738,43 +738,50 @@ int main()
     // ------------------------------------------------------------------
     // Item 10 — nonlinear stagnation: the solve is warm-started from the
     // converged reference fields (the exact state the final gate accepts)
-    // under unreachable convergence gates, so the iterate starts at its
-    // own fixed point: the predictor/corrector updates contract to the
-    // floating-point noise floor within a few iterations, the iterate
-    // becomes bit-identical from one nonlinear iteration to the next,
-    // the monitored nonlinear metric stops improving (exactly zero
-    // relative improvement per iteration), and the production stagnation
-    // detector (10-iteration window, 1e-3 relative improvement) MUST
-    // terminate the solve with the STAGNATED verdict — never a false
-    // converged under gates that no residual can satisfy, and never the
-    // iteration cap. Two earlier candidate triggers died on CI evidence
-    // and are not asserted: pathological under-relaxation (alpha_u =
-    // alpha_p = 1e-6) kept improving the monitored metric by 3e-3 to
-    // 7e-2 per iteration on the SIMPLEC consistent correction and
-    // honestly ended at the iteration cap with MAX_ITERATIONS, and
-    // tightening the inner linear tolerance to 1e-14 is not achievable
-    // for the SIMPLE pressure-correction solve (it stalls at its
-    // floating-point plateau, is classified as a linear failure at
-    // nonlinear iteration 1 and aborts the solve once the retry
-    // controller exhausts its retries).
+    // under unreachable convergence gates, with a pathologically weak
+    // pressure relaxation alpha_p = 0.01 while every other control keeps
+    // its production value (alpha_u = 0.7, inner linear 1e-9 / 1000).
+    // CI evidence from the production-relaxation run (alpha_p = 0.3): the
+    // monitored nonlinear metric decays geometrically along the SIMPLE
+    // slow pressure-correction mode at exactly 0.99122 per iteration —
+    // 0.88% relative improvement per iteration, 8.8x above the 1e-3
+    // stagnation threshold — so the stagnation window never saturates
+    // and the honest verdict at the 400-iteration cap is MAX_ITERATIONS.
+    // The mode propagates through the pressure correction path (p +=
+    // alpha_p * p_corr and the corrected velocity is rebuilt from the
+    // same alpha_p-relaxed pressure), so the per-iteration improvement
+    // scales with alpha_p: at 0.01 the contraction is ~3e-4 per
+    // iteration, below the threshold, and the production stagnation
+    // detector (10-iteration window) MUST terminate the solve with the
+    // STAGNATED verdict around iteration 11 — never a false converged
+    // under gates that no residual can satisfy, and never the iteration
+    // cap. Earlier candidate triggers that died on CI evidence are not
+    // asserted: pathological under-relaxation on the SIMPLEC consistent
+    // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
+    // per iteration), a 1e-14 inner linear tolerance (unattainable for
+    // the SIMPLE pressure-correction solve, classified as a linear
+    // failure at nonlinear iteration 1, aborts once the retry controller
+    // exhausts its retries), and a warm start with fully production
+    // relaxation (the 0.99122 slow mode above).
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
         // Warm start: the converged reference solution, the exact state
         // the final gate below accepts on its unchanged physical
-        // thresholds. Restarting the production solver on its own
-        // converged state under unreachable gates is the honest
-        // stagnation scenario (the classic "restart tighter to check"
-        // workflow): the iteration has nothing left to improve.
+        // thresholds, so the iteration starts from a physically
+        // converged state and every residual stays at that level.
         const auto& reference = reference_case();
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLE);
-        // Unreachable gates: the warm-started metric sits at the
-        // reference solution's residual level, and the monitor
-        // normalizes by this solve's first sample, so a 1e-24 gate can
-        // never be satisfied and CONVERGED can never fire. Everything
-        // else is the unchanged reference configuration (verified
-        // convergent by the final gate below): production relaxation
-        // (alpha_u = 0.7, alpha_p = 0.3) and production inner linear
-        // settings (1e-9 / 1000).
+        // Unreachable gates: the monitor normalizes the metric by this
+        // solve's first sample, so a 1e-24 gate can never be satisfied
+        // and CONVERGED can never fire. The pathological knob is the
+        // pressure relaxation only: alpha_p = 0.01 (the CI-measured slow
+        // mode contraction of 0.99122 per iteration at the production
+        // alpha_p = 0.3 scales linearly with alpha_p, so the
+        // per-iteration improvement drops to ~3e-4, below the 1e-3
+        // stagnation threshold). Momentum relaxation (alpha_u = 0.7)
+        // and the inner linear settings (1e-9 / 1000) keep their
+        // production values.
+        c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
         c.convergence.continuity_tolerance = 1e-24;
@@ -815,12 +822,14 @@ int main()
         // 400-iteration maximum.
         EXPECT_TRUE(result.iterations >= 11);
         EXPECT_TRUE(result.iterations < 400);
-        // Evidence, not just the verdict: the termination happened at the
-        // physical fixed point — the residual is tiny (this exact case
-        // passes the final gate's unchanged physical thresholds) while
-        // the solve remains formally unconverged under the unreachable
-        // gates.
-        EXPECT_TRUE(result.history.back().nonlinear_convergence_metric < 1e-6);
+        // Evidence, not just the verdict: the monitored metric is
+        // normalized by this solve's first sample, so a warm-started
+        // solve sits at ~1 by construction; the physical evidence gate
+        // instead pins the absolute momentum residual to the final
+        // gate's own acceptance bound (1e-7). The STAGNATED verdict is
+        // delivered while the fields still hold the converged
+        // reference solution's residual level, not mid-divergence.
+        EXPECT_TRUE(result.history.back().momentum_residual <= 1e-7);
     });
 
     // ------------------------------------------------------------------
