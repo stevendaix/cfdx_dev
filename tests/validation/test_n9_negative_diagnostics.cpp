@@ -736,51 +736,56 @@ int main()
     });
 
     // ------------------------------------------------------------------
-    // Item 10 — nonlinear stagnation: the case is driven to its machine
-    // fixed point with unreachable convergence gates, so the iterate
+    // Item 10 — nonlinear stagnation: the solve is warm-started from the
+    // converged reference fields (the exact state the final gate accepts)
+    // under unreachable convergence gates, so the iterate starts at its
+    // own fixed point: the predictor/corrector updates contract to the
+    // floating-point noise floor within a few iterations, the iterate
     // becomes bit-identical from one nonlinear iteration to the next,
     // the monitored nonlinear metric stops improving (exactly zero
     // relative improvement per iteration), and the production stagnation
     // detector (10-iteration window, 1e-3 relative improvement) MUST
     // terminate the solve with the STAGNATED verdict — never a false
-    // converged and never the iteration cap. Premise corrected against
-    // CI evidence: pathological under-relaxation (alpha_u = alpha_p =
-    // 1e-6) does NOT stagnate the monitored metric — the max over the
-    // momentum/pressure residuals and the velocity/pressure changes keeps
-    // improving above the 1e-3 threshold on the SIMPLEC consistent
-    // correction, and the solve ends at the iteration cap with the
-    // conservative MAX_ITERATIONS verdict — so that configuration is not
-    // a stagnation trigger of the production solver and is not asserted
-    // as one.
+    // converged under gates that no residual can satisfy, and never the
+    // iteration cap. Two earlier candidate triggers died on CI evidence
+    // and are not asserted: pathological under-relaxation (alpha_u =
+    // alpha_p = 1e-6) kept improving the monitored metric by 3e-3 to
+    // 7e-2 per iteration on the SIMPLEC consistent correction and
+    // honestly ended at the iteration cap with MAX_ITERATIONS, and
+    // tightening the inner linear tolerance to 1e-14 is not achievable
+    // for the SIMPLE pressure-correction solve (it stalls at its
+    // floating-point plateau, is classified as a linear failure at
+    // nonlinear iteration 1 and aborts the solve once the retry
+    // controller exhausts its retries).
     // ------------------------------------------------------------------
     run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
+        // Warm start: the converged reference solution, the exact state
+        // the final gate below accepts on its unchanged physical
+        // thresholds. Restarting the production solver on its own
+        // converged state under unreachable gates is the honest
+        // stagnation scenario (the classic "restart tighter to check"
+        // workflow): the iteration has nothing left to improve.
+        const auto& reference = reference_case();
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLE);
-        // Unreachable gates: the reference Poiseuille case converges to
-        // ~1e-13 residuals, so a 1e-24 gate can never be satisfied and
-        // CONVERGED can never fire. The case itself is the unchanged
-        // reference configuration (verified convergent by the final gate
-        // below).
+        // Unreachable gates: the warm-started metric sits at the
+        // reference solution's residual level, and the monitor
+        // normalizes by this solve's first sample, so a 1e-24 gate can
+        // never be satisfied and CONVERGED can never fire. Everything
+        // else is the unchanged reference configuration (verified
+        // convergent by the final gate below): production relaxation
+        // (alpha_u = 0.7, alpha_p = 0.3) and production inner linear
+        // settings (1e-9 / 1000).
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
         c.convergence.continuity_tolerance = 1e-24;
         c.convergence.max_iterations = 400;
-        // Essentially exact inner solves: with a loose inner tolerance
-        // the outer residual saturates at the inner-solve floor and the
-        // iterate bounces there instead of contracting to the machine
-        // fixed point, so the stagnation window never saturates. Exact
-        // inner solves make the outer iteration a clean contraction that
-        // reaches the bit-identical fixed point.
-        c.linear_tolerance = 1e-14;
-        c.linear_max_iterations = 4000;
         c.body_force = {1.0, 0.0, 0.0};
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 10;
 
         const Mesh mesh = make_channel_mesh(12, 16, 0.0);
-        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
-        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
-        U.fill(0.0);
-        p.fill(17.0);
+        Field<double, Location::CELL> U = reference.run.U;
+        Field<double, Location::CELL> p = reference.run.p;
         const auto result = solve_steady_incompressible(
             mesh, U, p, channel_velocity_bc(0.0), channel_pressure_bc(), c);
         // Forensic trail published before the verdict: the negative
