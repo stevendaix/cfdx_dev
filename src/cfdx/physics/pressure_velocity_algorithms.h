@@ -241,6 +241,42 @@ inline double simplec_consistent_diagonal(
     return denominator;
 }
 
+// Bounded consistent diagonal for the segregated SIMPLEC path. The signed
+// contract A_P + sum(A_PN) degenerates towards zero on diffusion-dominated
+// convection-free rows, where A_P == sum(a_PN) exactly; that is why
+// unrelaxed SIMPLEC (alpha_u = 1) hit the non-positive denominator while
+// any alpha_u < 1 merely borrowed the relaxation-inflated diagonal
+// A_P/alpha_u to stay positive. The bounded form returns the signed
+// contract wherever it is well defined and floors it at kappa*A_P where
+// it degenerates, so rAtU <= rAU/kappa stays finite and the over-relaxed
+// face response cannot explode in the fine cells. The SAME rAtU is then
+// used by the pressure matrix, the internal Rhie-Chow faces and the
+// prescribed-pressure boundary rows, so the fixed-point consistency of
+// the coupling is preserved. floored reports whether the floor bound,
+// so callers can audit where the contract degenerates instead of losing
+// the location inside an exception.
+inline double simplec_consistent_diagonal_bounded(
+    double diagonal,
+    double signed_offdiag_sum,
+    double kappa,
+    bool& floored)
+{
+    if (!std::isfinite(diagonal) || !std::isfinite(signed_offdiag_sum) ||
+        !(diagonal > 0.0) || !(kappa > 0.0) || !(kappa < 1.0))
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal_bounded: invalid coefficients");
+    const double denominator = diagonal + signed_offdiag_sum;
+    if (!std::isfinite(denominator))
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal_bounded: non-finite denominator");
+    if (denominator >= kappa * diagonal) {
+        floored = false;
+        return denominator;
+    }
+    floored = true;
+    return kappa * diagonal;
+}
+
 // Absolute-value form is equivalent only when all stored off-diagonals
 // are non-positive. Kept as an independent diagnostic, not as the contract.
 inline double simplec_abs_sum_diagnostic_denominator(

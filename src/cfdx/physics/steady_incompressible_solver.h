@@ -2471,6 +2471,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
         std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
         std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
+        // SIMPLEC consistent-diagonal floor (diag/naca-simplec-fix1): the
+        // signed contract A_P + sum(A_PN) degenerates to zero on
+        // diffusion-dominated convection-free rows where A_P == sum(a_PN),
+        // which is why alpha_u < 1 merely borrows the relaxation-inflated
+        // diagonal to stay positive while alpha_u = 1 threw. The bounded
+        // denominator floors at kappa*A_P so rAtU <= rAU/kappa stays finite;
+        // the counter audits how many cells bind per iteration.
+        constexpr double simplec_denominator_floor_kappa = 0.1;
+        std::size_t simplec_denominator_floored_cells = 0;
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -2633,8 +2642,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         }
                     }
                     const double diagonal = 1.0 / rAU[d][c];
+                    bool denominator_floored = false;
                     const double denom =
-                        simplec_consistent_diagonal(diagonal, signed_offdiag_sum);
+                        simplec_consistent_diagonal_bounded(
+                            diagonal, signed_offdiag_sum,
+                            simplec_denominator_floor_kappa,
+                            denominator_floored);
+                    if (denominator_floored)
+                        ++simplec_denominator_floored_cells;
                     // Independent audit counterpart. With the expected non-positive
                     // stored off-diagonals this equals the signed-contract
                     // denominator; a nonzero gap flags a matrix-sign mismatch.
@@ -2796,10 +2811,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // frozen at 1.54631e-4 on the NACA0012 far field,
                 // |div|max identical to flux_velocity_mismatch_linf, top
                 // offenders all farfield ring cells).
+                // The prescribed-pressure row must balance the SAME
+                // boundary operator the authoritative flux is rebuilt with.
+                // For SIMPLEC, make_rhie_chow_mass_flux below is called with
+                // the consistent rAtU, so the Dirichlet operator here must
+                // use rAtU as well. With plain rAU the fixed-point audit
+                // carried, per farfield Dirichlet face,
+                //   rho*V*(rAU_e - rAtU_e)*(p_b - p_o)*(Sf.e)/d
+                // a frozen continuity floor concentrated on the
+                // prescribed-pressure ring (CI-measured, SIMPLEC 0.6/0.25
+                // n64: continuity_normalized frozen at 4.33475e-05 over
+                // 8000 iterations with momentum_residual at 8e-12 and
+                // machine-zero state changes, while SIMPLE on the same
+                // mesh converges to 1.3e-10 because rAtU == rAU there).
+                // The floor is a boundary-operator mismatch, not a
+                // relaxation effect; gates are unchanged.
+                const auto& boundary_pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double rfn =
-                    rAU[0][o]*e_dir.x*e_dir.x +
-                    rAU[1][o]*e_dir.y*e_dir.y +
-                    rAU[2][o]*e_dir.z*e_dir.z;
+                    boundary_pressure_coeff[0][o]*e_dir.x*e_dir.x +
+                    boundary_pressure_coeff[1][o]*e_dir.y*e_dir.y +
+                    boundary_pressure_coeff[2][o]*e_dir.z*e_dir.z;
                 b(o) += controls.density * geometry.cell_volumes[o] * rfn *
                     (it->second.value - p(o)) * Sf.dot(e_dir) / distance;
                 rows[o][o] += controls.density *
@@ -2880,13 +2912,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
-            if (rp.status != cfdx::core::SolverStatus::CONVERGED)
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                // std::to_string truncates to six fixed decimals: the CI run
+                // SIMPLEC alpha_p=1 failed reporting "residual=0.000000",
+                // hiding the real plateau level and making the failure
+                // impossible to calibrate. Report scientific notation.
+                const auto pressure_linear_failure_value = [](double value) {
+                    std::ostringstream out;
+                    out << std::scientific << std::setprecision(6) << value;
+                    return out.str();
+                };
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: pressure-correction solve did not converge "
                     "(status=" + std::to_string(static_cast<int>(rp.status)) +
                     ", iterations=" + std::to_string(rp.iterations) +
-                    ", residual=" + std::to_string(rp.residual) +
-                    ", relative=" + std::to_string(rp.residual_relative) + ")");
+                    ", residual=" + pressure_linear_failure_value(rp.residual) +
+                    ", relative=" + pressure_linear_failure_value(rp.residual_relative) + ")");
+            }
 
             // Relax the physical pressure exactly once. The reference is a
             // gauge: enforce it by a uniform shift, never by overwriting one
@@ -3314,6 +3356,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
                       << " worst_momentum_cell=" << h.momentum_residual_cell
                       << " worst_momentum_patch=" << h.momentum_residual_patch
+                      << " simplec_denominator_gap_linf="
+                      << h.simplec_denominator_gap_linf[0] << "/"
+                      << h.simplec_denominator_gap_linf[1] << "/"
+                      << h.simplec_denominator_gap_linf[2]
+                      << " simplec_denominator_floored="
+                      << simplec_denominator_floored_cells
                       << "\n";
         }
         // Acceptance stays per-criterion. The monitor divides its synthetic
