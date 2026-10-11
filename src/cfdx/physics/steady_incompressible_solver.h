@@ -1216,6 +1216,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // exact diagonal of the same momentum-weighted (Rhie-Chow) face-flux
     // derivative and is passed explicitly to the coupled preconditioner.
     std::vector<double> coupled_pressure_schur_diagonal(nc, 0.0);
+    // DIAG (coupled fix1): the coupled continuity rows must impose the exact
+    // discrete operator of the authoritative Rhie-Chow mass flux
+    // (make_rhie_chow_mass_flux / rhie_chow_pressure_flux_internal):
+    // a pressure response weighted by the CELL-CENTRES axis e with the SIGNED
+    // orthogonal area Sa = Sf.e, not the legacy face-normal weighting with
+    // |Sf|. On skewed faces the two differ, and the coupled fixed point then
+    // violates the authoritative flux continuity by a permanent floor
+    // (divergence_l1 ~ 0.012 on NACA0012 n64, top offenders on the farfield
+    // Dirichlet ring, while the coupled linear solve converges to ~9e-10).
+    // The counters below audit the legacy operator delta and the faces where
+    // the signed orthogonal area is non-positive.
+    double coupled_rc_operator_delta_max = 0.0;
+    std::size_t coupled_rc_nonpositive_sa_faces = 0;
     for (std::size_t c = 0; c < nc; ++c) {
         const std::size_t row = nv + c;
         const Offset off = mesh.cells().offsets_data()[c];
@@ -1252,11 +1265,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
                 const Vec3 rawSf = geometry.face_area_vectors[f];
                 const double area = rawSf.mag();
-                const double d = (geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c]).mag();
-                const double nx = rawSf.x / area;
-                const double ny = rawSf.y / area;
-                const double nz = rawSf.z / area;
+                // Owner->neighbour axis, exactly like
+                // rhie_chow_pressure_flux_internal(): the neighbour-side visit
+                // must not flip e, because the signed orthogonal area Sa and
+                // the implicit D(p_self - p_other) coefficient are defined
+                // against the owner-oriented face vector.
+                const Vec3 dvec = owner
+                    ? (geometry.cell_centres[ncell] - geometry.cell_centres[c])
+                    : (geometry.cell_centres[c] - geometry.cell_centres[ncell]);
+                const double d = dvec.mag();
+                if (!(d > 0.0) || !(area > 0.0) ||
+                    !std::isfinite(d) || !std::isfinite(area))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: degenerate face geometry on face " +
+                        std::to_string(f));
+                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                 const double aox = ex.diagonal[c], anx = ex.diagonal[ncell];
                 const double aoy = ey.diagonal[c], any = ey.diagonal[ncell];
                 const double aoz = ez.diagonal[c], anz = ez.diagonal[ncell];
@@ -1271,7 +1294,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         std::to_string(f) + " cells " + std::to_string(c) + "/" +
                         std::to_string(ncell));
                 // The coupled Schur complement uses the same dAU = V/A_P
-                // pressure response as the segregated Rhie-Chow operator.
+                // pressure response as the segregated Rhie-Chow operator:
+                // component-wise dAU interpolation projected on the
+                // cell-centres axis e, exactly like
+                // rhie_chow_pressure_flux_internal().
                 const double rAUx_f = 0.5 * (
                     geometry.cell_volumes[c] / aox +
                     geometry.cell_volumes[ncell] / anx);
@@ -1281,19 +1307,31 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double rAUz_f = 0.5 * (
                     geometry.cell_volumes[c] / aoz +
                     geometry.cell_volumes[ncell] / anz);
-                const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
+                const double rfn = rAUx_f*e.x*e.x + rAUy_f*e.y*e.y + rAUz_f*e.z*e.z;
                 if (!(rfn > 0.0) || !std::isfinite(rfn))
                     throw std::runtime_error(
                         "solve_coupled_momentum_continuity: invalid face rAU on face " +
                         std::to_string(f));
-                const double D = rho * rfn * area / d;
-                if (!(d > 0.0) || !(area > 0.0) ||
-                    !std::isfinite(d) || !std::isfinite(area) ||
-                    !(D > 0.0) || !std::isfinite(D)) {
+                // Legacy operator audit: the old assembly weighted rAU by the
+                // face normal and multiplied by |Sf|; the authoritative
+                // operator uses the centres axis e and the SIGNED orthogonal
+                // area Sa = Sf.e of the 2-point pressure difference. On
+                // skewed faces these differ, which pinned the coupled
+                // continuity floor.
+                const double nx = rawSf.x / area;
+                const double ny = rawSf.y / area;
+                const double nz = rawSf.z / area;
+                const double legacy_rfn =
+                    rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
+                const double legacy_D = rho * legacy_rfn * area / d;
+                const double orthogonal_area = rawSf.dot(e);
+                const double D = rho * rfn * orthogonal_area / d;
+                if (!std::isfinite(D)) {
                     if (diagnostics.coupled_matrix_summary) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
                                   << " cells=" << c << "/" << ncell
                                   << " area=" << area
+                                  << " orthogonal_area=" << orthogonal_area
                                   << " distance=" << d
                                   << " a=(" << aox << "," << anx
                                   << ";" << aoy << "," << any
@@ -1308,6 +1346,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         std::to_string(f) + " cells " + std::to_string(c) + "/" +
                         std::to_string(ncell));
                 }
+                coupled_rc_operator_delta_max = std::max(
+                    coupled_rc_operator_delta_max,
+                    std::abs(D - legacy_D) /
+                        std::max(std::abs(D), std::numeric_limits<double>::min()));
+                if (orthogonal_area <= 0.0)
+                    ++coupled_rc_nonpositive_sa_faces;
                 // phi_p = D (p_P - p_N). Only this orthogonal derivative is
                 // implicit in the coupled matrix. The non-orthogonal remainder
                 // is a deferred correction evaluated from p_old below, exactly
@@ -1316,10 +1360,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(row, nv + ncell, -D);
                 coupled_pressure_schur_diagonal[c] += D;
 
-                const Vec3 dvec = geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c];
-                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                const double orthogonal_area = rawSf.dot(e);
                 const Vec3 Snon{
                     rawSf.x - orthogonal_area*e.x,
                     rawSf.y - orthogonal_area*e.y,
@@ -1331,6 +1371,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
+                // rfn now carries the centres-axis weighting, so the deferred
+                // non-orthogonal flux is the exact remainder of the
+                // authoritative Rhie-Chow pressure operator.
                 const double nonorth_flux = rho * rfn * gp.dot(Snon);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
@@ -1377,11 +1420,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 if (pbc && pbc->type == ScalarBoundaryType::FIXED_VALUE) {
                     const Vec3 rawSf = geometry.face_area_vectors[f];
                     const double area = rawSf.mag();
-                    const double d = (geometry.face_centres[f] -
-                                      geometry.cell_centres[c]).mag();
-                    const double nx = rawSf.x / area;
-                    const double ny = rawSf.y / area;
-                    const double nz = rawSf.z / area;
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[c];
+                    const double d = dvec.mag();
+                    if (!(d > 0.0) || !(area > 0.0) ||
+                        !std::isfinite(d) || !std::isfinite(area))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: degenerate boundary face geometry on face " +
+                            std::to_string(f) + " cell " + std::to_string(c));
+                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double a_x = ex.diagonal[c];
                     const double a_y = ey.diagonal[c];
                     const double a_z = ez.diagonal[c];
@@ -1393,16 +1440,35 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double rAUx = geometry.cell_volumes[c] / a_x;
                     const double rAUy = geometry.cell_volumes[c] / a_y;
                     const double rAUz = geometry.cell_volumes[c] / a_z;
-                    const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
+                    const double rfn = rAUx*e.x*e.x + rAUy*e.y*e.y + rAUz*e.z*e.z;
                     if (!(rfn > 0.0) || !std::isfinite(rfn))
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary face rAU on face " +
                             std::to_string(f));
-                    const double D = rho * rfn * area / d;
-                    if (!(D > 0.0) || !std::isfinite(D))
+                    // Exactly the authoritative boundary correction of
+                    // make_rhie_chow_mass_flux(): centres-axis weighting e
+                    // and the SIGNED orthogonal area Sa = Sf.e. The legacy
+                    // face-normal + |Sf| coefficient differed on skewed
+                    // farfield faces and pinned the coupled continuity
+                    // floor.
+                    const double nx = rawSf.x / area;
+                    const double ny = rawSf.y / area;
+                    const double nz = rawSf.z / area;
+                    const double legacy_rfn =
+                        rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
+                    const double legacy_D = rho * legacy_rfn * area / d;
+                    const double orthogonal_area = rawSf.dot(e);
+                    const double D = rho * rfn * orthogonal_area / d;
+                    if (!std::isfinite(D))
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
                             std::to_string(f));
+                    coupled_rc_operator_delta_max = std::max(
+                        coupled_rc_operator_delta_max,
+                        std::abs(D - legacy_D) /
+                            std::max(std::abs(D), std::numeric_limits<double>::min()));
+                    if (orthogonal_area <= 0.0)
+                        ++coupled_rc_nonpositive_sa_faces;
                     A.push_back(row, nv + c, D);
                     coupled_pressure_schur_diagonal[c] += D;
                     b(row) += D * pbc->value;
@@ -1579,6 +1645,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " schur_diag_absmax=" << schur_diag_max
                   << " schur_near_zero=" << schur_near_zero
                   << " rhie_chow_schur_vs_algebraic_diag_delta=" << schur_mismatch_max
+                  << " rc_operator_delta_max=" << coupled_rc_operator_delta_max
+                  << " rc_nonpositive_sa_faces=" << coupled_rc_nonpositive_sa_faces
                   << " gauge_row=" << (nv + reference_cell)
                   << "\n";
     }

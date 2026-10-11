@@ -1,0 +1,144 @@
+name: NACA0012 COUPLED Rhie-Chow operator-consistency fix
+
+# DIAG (temporary branch, never merged): first COUPLED repair round, driven
+# by the variants-matrix verdicts (naca-algos-variants-output.log):
+#   COUPLED stagnates with a permanent continuity floor (divergence_l1
+#   ~ 0.012) regardless of relaxation, while the coupled linear solve
+#   converges (~9e-10) and the matrix summary is healthy. Root cause: the
+#   coupled continuity rows assembled a pressure response weighted by the
+#   FACE NORMAL and |Sf|, while the authoritative Rhie-Chow mass flux
+#   (make_rhie_chow_mass_flux / rhie_chow_pressure_flux_internal) uses the
+#   CELL-CENTRES axis e and the SIGNED orthogonal area Sa = Sf.e. On skewed
+#   faces the operators differ, so the coupled fixed point satisfied its
+#   own continuity rows but violated the authoritative flux continuity
+#   (the audit), leaving the floor. Fix: the continuity rows now assemble
+#   the exact authoritative operator (implicit 2-point D, deferred
+#   non-orthogonal remainder, boundary Dirichlet D), with a legacy-delta
+#   audit printed in COUPLED_MATRIX_SUMMARY (rc_operator_delta_max,
+#   rc_nonpositive_sa_faces). Gates unchanged.
+# Matrix: COUPLED_BLOCKLOCAL baseline/undamped/3-level, COUPLED_LSC and
+# COUPLED_PCD probes (does the operator fix change the Schur-model
+# verdicts?), plus SIMPLE and SIMPLEC controls (both must keep converging
+# on n64 after the operator change).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-coupled-fix1]
+
+permissions:
+  contents: write
+
+jobs:
+  variant:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: coupled-baseline-fix,  model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "5", cd: "1" }
+          - { name: coupled-undamped-fix,  model: COUPLED_BLOCKLOCAL, au: "1.0", ap: "1.0",  levels: "1", trace: "5", cd: "1" }
+          - { name: coupled-3level,        model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "3", trace: "5", cd: "1" }
+          - { name: coupled-lsc-fix,       model: COUPLED_LSC,        au: "0.6", ap: "0.25", levels: "1", trace: "5", cd: "1" }
+          - { name: coupled-pcd-fix,       model: COUPLED_PCD,        au: "1.0", ap: "1.0",  levels: "1", trace: "5", cd: "1" }
+          - { name: simple-anchor-control, model: SIMPLE,             au: "0.6", ap: "0.25", levels: "1", trace: "5", cd: "0" }
+          - { name: simplec-control,       model: SIMPLEC,            au: "0.6", ap: "0.25", levels: "1", trace: "5", cd: "0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run variant ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            --model ${{ matrix.model }} \
+            --alphau ${{ matrix.au }} \
+            --alphap ${{ matrix.ap }} \
+            --levels ${{ matrix.levels }} \
+            --trace ${{ matrix.trace }} \
+            --coupleddiag ${{ matrix.cd }} \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-variant-${{ matrix.name }}.log
+
+      - name: Upload variant log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-variant-logs-${{ matrix.name }}
+          path: naca-variant-${{ matrix.name }}.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate and commit combined log
+    needs: [variant]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all variant logs
+        uses: actions/download-artifact@v4
+        with:
+          path: variant-logs
+          pattern: naca-variant-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-coupled-fix1-output.log
+          for v in coupled-baseline-fix coupled-undamped-fix coupled-3level coupled-lsc-fix coupled-pcd-fix simple-anchor-control simplec-control; do
+            if [ -f "variant-logs/naca-variant-$v.log" ]; then
+              echo "NACA_VARIANT_BEGIN $v" >> naca-coupled-fix1-output.log
+              cat "variant-logs/naca-variant-$v.log" >> naca-coupled-fix1-output.log
+              echo "NACA_VARIANT_END $v" >> naca-coupled-fix1-output.log
+            else
+              echo "NACA_VARIANT_MISSING variant=$v" >> naca-coupled-fix1-output.log
+            fi
+          done
+
+      - name: Commit combined log to diagnostic branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-coupled-fix1-output.log
+          git commit -m "diag(naca0012): capture COUPLED fix1 matrix log [skip ci]"
+          git pull --rebase --autostash || true
+          git push
