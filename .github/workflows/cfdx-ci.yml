@@ -17,12 +17,6 @@ jobs:
   build-test:
     name: Build and test (${{ matrix.build_type }})
     runs-on: ubuntu-24.04
-    # TEMPORARY (remove before merge): allow the failure-report step to
-    # comment the failing N9 test output on the PR — CI logs are not
-    # readable from the maintenance tooling.
-    permissions:
-      contents: read
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -154,24 +148,6 @@ jobs:
             echo "=== CTest diagnostics ==="
             tail -n 500 build/Testing/Temporary/LastTest.log
           fi
-
-      # TEMPORARY (remove before merge): the maintenance tooling cannot read
-      # job logs, so publish the failing N9 test output as a PR comment.
-      - name: Report failing N9 test output to the PR
-        if: always() && github.event_name == 'pull_request' && steps.ctest.outcome == 'failure'
-        run: |
-          {
-            echo "### CI diagnostics: test_n9_negative_diagnostics (automated, temporary)"
-            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "Build: ${{ matrix.build_type }}"
-            echo '```'
-            ctest --test-dir build -N --rerun-failed 2>&1 | tail -n 40
-            ctest --test-dir build --rerun-failed --output-on-failure 2>&1 | tail -n 500
-            echo '```'
-          } > /tmp/n9_report.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/n9_report.md --repo "${{ github.repository }}"
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Upload diagnostics
         if: always()
