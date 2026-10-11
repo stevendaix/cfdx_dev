@@ -1,0 +1,282 @@
+name: NACA0012 COUPLED linear-floor falsification campaign (fix4b)
+
+# DIAG (temporary branch, never merged): fifth COUPLED round. It tests the
+# fix4 P1 verdict instead of touching any equation, gate or threshold.
+#
+# fix4 established, with full gate observability and an operator probe:
+#   * The pressure-gradient operator assembled in the coupled momentum rows
+#     is IDENTICAL to the independent Gauss gradient at round-off level
+#     (dg_max ~1e-17, dg_rel_max ~4e-11) both on the frozen plateau state
+#     and in the dedicated skewed-mesh unit gate — the operator-inconsistency
+#     hypothesis is REFUTED.
+#   * The plateau is NOT absolute: at the frozen point the rhs-normalized
+#     momentum residual passes (2.46e-10), the absolute residual is
+#     2.40e-10, continuity (1.9e-13), dU (4.7e-12) and dp (3.2e-11) pass;
+#     ONLY the iteration-1-relative metric fails (1.12e-7 > 1e-8) because
+#     the iteration-1 reference is small (2.15e-3; reference/rhs_scale=453)
+#     — the freestream initial guess is already close to the solution.
+#   * The audit residual (2.39938e-10) matches the true block residual
+#     before relaxation (2.39884e-10) and the GMRES true relative residual
+#     (9.94e-11): the floor IS the coupled linear solver tolerance
+#     (default coupled_linear_tolerance=1e-10).
+#
+# FALSIFIABLE PREDICTION: tightening the EXISTING control
+# coupled_linear_tolerance to 1e-12 (more linear work per outer iteration;
+# NOT a gate, threshold or equation change) must drop the floor to
+# ~2.4e-12, make the relative metric ~1.1e-9 and let all 5 gates PASS:
+#   * coupled-baseline-tol12 (0.6/0.25): predicted CONVERGED ~74 it.
+#   * coupled-undamped-tol12 (1.0/1.0): predicted CONVERGED ~21 it.
+# If the prediction fails, the linear-floor attribution is falsified and the
+# search moves to the remaining candidates (BC/convection asymmetry).
+#
+# Other variants (fail the strict guard BY DESIGN, documented behavioural
+# anchor: STAGNATED / MAX_ITER is not CONVERGED):
+#   * coupled-baseline-probe: fix4 anchor replication (default tolerance)
+#     — must reproduce STAGNATED@74 with gates=mom:P,momrel:F.
+#   * coupled-baseline-long: stagnation detector disabled (--stagwindow
+#     100000) so the run reaches the 8000-iteration limit EXACTLY, the only
+#     non-converged state where the existing per-face microscope
+#     (--debugcell 1 -> controls.diagnostics.debug_cell_auto) fires. The
+#     microscope decomposes the worst-residual cell at the floor.
+#     Confirmatory expectation: absolute momentum residual stable at the
+#     ~2.4e-10 floor over 8000 iterations, only momrel failing.
+#   * simple-anchor-control: SIMPLE must stay CONVERGED (regression anchor).
+#
+# The harness only gains --coupledtol (input-validated to (0,1e-10]: it can
+# only TIGHTEN the linear solve) and --debugcell (existing controls flag).
+# The solver, the gates and every threshold are untouched.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-coupled-fix4b]
+    # DIAG (fix4b): ignore pushes that only touch diagnostic bookkeeping
+    # (committed logs, summaries, or the workflow files themselves). Code
+    # pushes (src/tests/scripts/cmake) still trigger the full matrix. No
+    # gate, tolerance or matrix entry is affected by this filter.
+    paths-ignore:
+      - 'naca-coupled-fix4b-output.log'
+      - 'naca-coupled-fix4b-summary.log'
+      - '.github/workflows/naca-coupled-fix4b.yml'
+      - '.github/workflows/naca-coupled-fix4b-summary.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  variant:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: coupled-baseline-probe, model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "0",     stag: "0",      dc: "0" }
+          - { name: coupled-baseline-tol12, model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0",      dc: "0" }
+          - { name: coupled-undamped-tol12, model: COUPLED_BLOCKLOCAL, au: "1.0", ap: "1.0",  levels: "1", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0",      dc: "0" }
+          - { name: coupled-baseline-long,  model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "0",     stag: "100000", dc: "1" }
+          - { name: simple-anchor-control,  model: SIMPLE,             au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "0", op: "0", tol: "0",     stag: "0",      dc: "0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run variant ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            --model ${{ matrix.model }} \
+            --alphau ${{ matrix.au }} \
+            --alphap ${{ matrix.ap }} \
+            --levels ${{ matrix.levels }} \
+            --trace ${{ matrix.trace }} \
+            --coupleddiag ${{ matrix.cd }} \
+            --opprobe ${{ matrix.op }} \
+            --coupledtol ${{ matrix.tol }} \
+            --stagwindow ${{ matrix.stag }} \
+            --debugcell ${{ matrix.dc }} \
+            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
+            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            2>&1 | tee naca-variant-${{ matrix.name }}.log
+
+      - name: Enforce convergence gates
+        if: success()
+        env:
+          EXPECTED_LEVELS: ${{ matrix.levels }}
+          VARIANT_LOG: naca-variant-${{ matrix.name }}.log
+        run: |
+          set -euo pipefail
+          awk -v expected="$EXPECTED_LEVELS" '
+            /NACA_DIAG status=/ {
+              count++
+              if ($0 !~ /NACA_DIAG status=CONVERGED converged=1/) {
+                print "NUMERICAL_GATE_FAIL: " $0 > "/dev/stderr"
+                bad=1
+              }
+            }
+            END {
+              if (count != expected) {
+                printf "NUMERICAL_GATE_FAIL: expected %d level verdicts, found %d\n", expected, count > "/dev/stderr"
+                bad=1
+              }
+              exit bad
+            }
+          ' "$VARIANT_LOG"
+
+      - name: Upload variant log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-variant-logs-${{ matrix.name }}
+          path: naca-variant-${{ matrix.name }}.log
+          if-no-files-found: warn
+
+  operator-equivalence:
+    name: coupled pressure-operator equivalence unit gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Configure (Release)
+        run: |
+          cmake -S . -B build-op -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build and run test_coupled_pressure_operator_equivalence
+        run: |
+          set -o pipefail
+          cmake --build build-op --target test_coupled_pressure_operator_equivalence --parallel 2
+          ./build-op/test_coupled_pressure_operator_equivalence 2>&1 | tee operator-equivalence.log
+
+      - name: Upload unit gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-variant-logs-operator-equivalence-unit
+          path: operator-equivalence.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate, extract compact summary and commit both logs
+    needs: [variant, operator-equivalence]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all variant logs
+        uses: actions/download-artifact@v4
+        with:
+          path: variant-logs
+          pattern: naca-variant-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-coupled-fix4b-output.log
+          for v in coupled-baseline-probe coupled-baseline-tol12 coupled-undamped-tol12 coupled-baseline-long simple-anchor-control; do
+            if [ -f "variant-logs/naca-variant-$v.log" ]; then
+              echo "NACA_VARIANT_BEGIN $v" >> naca-coupled-fix4b-output.log
+              cat "variant-logs/naca-variant-$v.log" >> naca-coupled-fix4b-output.log
+              echo "NACA_VARIANT_END $v" >> naca-coupled-fix4b-output.log
+            else
+              echo "NACA_VARIANT_MISSING variant=$v" >> naca-coupled-fix4b-output.log
+            fi
+          done
+          if [ -f "variant-logs/operator-equivalence.log" ]; then
+            echo "NACA_VARIANT_BEGIN operator-equivalence-unit" >> naca-coupled-fix4b-output.log
+            cat "variant-logs/operator-equivalence.log" >> naca-coupled-fix4b-output.log
+            echo "NACA_VARIANT_END operator-equivalence-unit" >> naca-coupled-fix4b-output.log
+          else
+            echo "NACA_VARIANT_MISSING variant=operator-equivalence-unit" >> naca-coupled-fix4b-output.log
+          fi
+          echo "AGGREGATE_SECTIONS=$(grep -c 'NACA_VARIANT_BEGIN' naca-coupled-fix4b-output.log)/6" >> naca-coupled-fix4b-output.log
+
+      - name: Extract compact summary (inline, no second workflow race)
+        run: |
+          set -euo pipefail
+          : > naca-coupled-fix4b-summary.log
+          for v in coupled-baseline-probe coupled-baseline-tol12 coupled-undamped-tol12 coupled-baseline-long simple-anchor-control operator-equivalence-unit; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix4b-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-coupled-fix4b-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4b-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix4b-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4b-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix4b-summary.log
+              awk '/=== CFDX MOMENTUM MICROSCOPE/{flag=1} flag' /tmp/variant.log >> naca-coupled-fix4b-summary.log
+              awk '/COUPLED_MATRIX_SUMMARY/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4b-summary.log
+              awk '/COUPLED_LINEAR_TRUE_RESIDUAL/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4b-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-coupled-fix4b-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-coupled-fix4b-output.log >> naca-coupled-fix4b-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-coupled-fix4b-summary.log)" >> naca-coupled-fix4b-summary.log
+          head -c 600000 naca-coupled-fix4b-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-coupled-fix4b-summary.log
+          test -s naca-coupled-fix4b-summary.log
+
+      - name: Commit combined and summary logs to diagnostic branch (fail loudly)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-coupled-fix4b-output.log naca-coupled-fix4b-summary.log
+          if git diff --cached --quiet; then
+            echo "AGGREGATE_ERROR: nothing staged to commit" >&2
+            exit 1
+          fi
+          git commit -m "diag(naca0012): capture COUPLED fix4b matrix logs [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-coupled-fix4b-output.log > /dev/null
+          git show HEAD:naca-coupled-fix4b-summary.log > /dev/null
+          echo "AGGREGATE_OK: logs committed on $(git rev-parse HEAD)"

@@ -21,7 +21,7 @@ struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 // the CI variant matrix can separate a genuine solver defect from
 // algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
 // have canonical configurations the baseline matrix never exercised).
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -51,6 +51,16 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     if(algo==PressureVelocityAlgorithm::COUPLED)
         c.coupling.schur_model=schur;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
+    // DIAG (fix4b): the fix4 P1 verdict attributes the COUPLED plateau to the
+    // linear-solver floor (default coupled_linear_tolerance=1e-10, true
+    // GMRES relative residual 9.94e-11) seen through the iteration-1-relative
+    // momentum metric. --coupledtol X (X>0) tightens the EXISTING control
+    // c.coupling.coupled_linear_tolerance: more linear work per outer
+    // iteration, never a qualification-gate relaxation. X=0 keeps the solver
+    // default. Input validation below refuses any value looser than the
+    // default so this flag can only INCREASE precision.
+    if(coupled_tol>0.0)
+        c.coupling.coupled_linear_tolerance=coupled_tol;
     c.convergence.max_iterations=8000;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
@@ -65,6 +75,12 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     c.diagnostics.stagnation_window=stagwindow;
     c.diagnostics.coupled_nonorth_sweeps=sweeps;
     c.diagnostics.coupled_operator_probe=opprobe;
+    // DIAG (fix4b): --debugcell 1 arms the existing solver-side microscope
+    // (per-face decomposition of the worst-residual cell, emitted at
+    // convergence or at the iteration limit). The env-var name mentioned in
+    // the solver comment is NOT wired anywhere in the codebase, so the only
+    // faithful trigger is this existing controls flag. No solver change.
+    c.diagnostics.debug_cell_auto=debug_cell_auto;
 
     const auto geometry=build_fv_geometry(mesh);
     for(std::size_t i=0;i<mesh.n_cells();++i)
@@ -237,6 +253,8 @@ int main(int argc,char**argv)
     long var_stagwindow=0;
     std::size_t var_sweeps=0;
     bool var_opprobe=false;
+    bool var_debugcell=false;
+    double var_coupled_tol=0.0;
     std::vector<std::string> positional;
     for(int i=1;i<argc;++i){
         const std::string a=argv[i];
@@ -248,6 +266,8 @@ int main(int argc,char**argv)
         if(a=="--stagwindow" && i+1<argc){ var_stagwindow=std::atol(argv[++i]); continue; }
         if(a=="--sweeps" && i+1<argc){ var_sweeps=static_cast<std::size_t>(std::atoi(argv[++i])); continue; }
         if(a=="--opprobe" && i+1<argc){ var_opprobe=(std::atoi(argv[++i])!=0); continue; }
+        if(a=="--debugcell" && i+1<argc){ var_debugcell=(std::atoi(argv[++i])!=0); continue; }
+        if(a=="--coupledtol" && i+1<argc){ var_coupled_tol=std::atof(argv[++i]); continue; }
         positional.push_back(a);
     }
     if(var_levels==0 || var_levels>3)
@@ -259,6 +279,11 @@ int main(int argc,char**argv)
         throw std::invalid_argument("--stagwindow must be in [0,100000] (0 = default detector)");
     if(var_sweeps>10)
         throw std::invalid_argument("--sweeps must be in [0,10]");
+    // Can only TIGHTEN the coupled linear solve relative to the solver
+    // default (1e-10); anything looser is rejected so the flag can never be
+    // used to relax numerical precision. 0 = keep the solver default.
+    if(!(var_coupled_tol>=0.0) || (var_coupled_tol>0.0 && var_coupled_tol>1e-10))
+        throw std::invalid_argument("--coupledtol must be in (0,1e-10] (tighter than or equal to the solver default) or 0 = solver default");
     std::cout<<std::setprecision(2)
              <<"NACA_CONFIG alpha_u="<<var_alpha_u
              <<" alpha_p="<<var_alpha_p
@@ -267,7 +292,9 @@ int main(int argc,char**argv)
              <<" coupleddiag="<<(var_coupled_diag?1:0)
              <<" stagwindow="<<var_stagwindow
              <<" opprobe="<<(var_opprobe?1:0)
-             <<" sweeps="<<var_sweeps<<"\n";
+             <<" sweeps="<<var_sweeps
+             <<" debugcell="<<(var_debugcell?1:0)
+             <<" coupledtol="<<var_coupled_tol<<"\n";
 
     const bool quick=!positional.empty() && positional[0]=="--quick";
     if(quick) {
@@ -283,7 +310,7 @@ int main(int argc,char**argv)
     std::size_t first_mesh=0;
     if(!positional.empty() && positional[0]=="--model") {
         if(positional.size()<2)
-            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] [--opprobe B] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
+            throw std::invalid_argument("usage: test_naca0012_qualification [--model NAME] [--alphau X] [--alphap Y] [--levels K] [--trace N] [--coupleddiag B] [--stagwindow N] [--sweeps N] [--opprobe B] [--debugcell B] [--coupledtol X] mesh_n64.h5 [mesh_n128.h5] [mesh_n256.h5]");
         model_filter=positional[1].c_str();
         first_mesh=2;
     }
@@ -319,7 +346,7 @@ int main(int argc,char**argv)
         for(std::size_t i=0;i<var_levels;++i){
             try {
                 const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
-                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe);
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){
