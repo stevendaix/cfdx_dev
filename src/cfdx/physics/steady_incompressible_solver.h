@@ -77,6 +77,20 @@ struct DiagnosticsControls {
     // Bounded progress trace for long validation solves. Disabled by default.
     bool iteration_trace = false;
     std::size_t iteration_trace_frequency = 50;
+    // DIAG (coupled fix3): opt-in diagnostic overrides for the crawl-vs-
+    // plateau discrimination on the NACA0012 COUPLED fixed point.
+    //   * stagnation_window: 0 keeps the conservative default detector
+    //     (window 10, 0.1% relative improvement). A positive value replaces
+    //     ONLY the window length, never a tolerance: a slowly crawling fixed
+    //     point can then run to max_iterations instead of being cut at 10
+    //     iterations, which is what distinguishes a crawl from a plateau.
+    //   * coupled_nonorth_sweeps: extra in-iteration re-solves of the coupled
+    //     system refreshing ONLY the deferred non-orthogonal pressure flux
+    //     (and its matching undo gradient) at the latest pressure. Convection
+    //     lag and Picard relaxation are untouched. 0 leaves the iteration
+    //     exactly as before.
+    long stagnation_window = 0;
+    std::size_t coupled_nonorth_sweeps = 0;
 };
 
 struct IncompressibleTransientControls {
@@ -406,6 +420,19 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument("pressure reference cell out of range");
     if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0))
         throw std::invalid_argument("invalid linear solver controls");
+    // DIAG (coupled fix3): explicit validation of the diagnostic overrides.
+    // They must never silently widen a qualification gate: the stagnation
+    // window only lengthens the detector and the sweeps only refresh the
+    // deferred non-orthogonal term inside the coupled fixed point.
+    if (c.diagnostics.stagnation_window < 0 || c.diagnostics.stagnation_window > 100000)
+        throw std::invalid_argument(
+            "diagnostics.stagnation_window must be in [0,100000] (0 = default detector)");
+    if (c.diagnostics.coupled_nonorth_sweeps > 10)
+        throw std::invalid_argument(
+            "diagnostics.coupled_nonorth_sweeps must be in [0,10]");
+    if (c.diagnostics.coupled_nonorth_sweeps > 0 && c.transient.enabled)
+        throw std::invalid_argument(
+            "diagnostics.coupled_nonorth_sweeps requires a steady solve");
 }
 
 inline void apply_pressure_gauge_policy(
@@ -1247,6 +1274,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     double coupled_rc_operator_delta_max = 0.0;
     std::size_t coupled_rc_nonpositive_sa_faces = 0;
     double coupled_rc_flux_identity_linf = 0.0;
+    // DIAG (coupled fix3): geometric and deferred-weight trackers for the
+    // crawl-vs-plateau discrimination. On skewed farfield faces the signed
+    // orthogonal area Sa = Sf.e can be a small fraction of |Sf|; the pressure
+    // flux is then carried mostly by the DEFERRED non-orthogonal remainder
+    // evaluated at p_old. If that term dominates, the coupled Picard update
+    // of those modes degenerates into a lagged sweep (a crawl with contraction
+    // set by the relaxation, or a plateau if inconsistent).
+    double coupled_rc_min_sa_over_area = 2.0;
+    std::size_t coupled_rc_min_sa_face = 0;
+    double coupled_rc_nonorth_dominance_max = -1.0;
+    std::size_t coupled_rc_nonorth_dominance_face = 0;
     // Inverse momentum diagonals for the authoritative flux comparison.
     // rhie_chow_pressure_flux_internal() applies the cell volume itself,
     // so these are plain 1/A_P, exactly like the segregated rAU state.
@@ -1435,6 +1473,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     // gradient and the same 1/A_P diagonals. The identity
                     // requires coupled_flux == -auth; the residual below
                     // must be at floating-point round-off level.
+                    const double ortho_flux_magnitude =
+                        std::abs(D * (p_old(c) - p_old(ncell)));
+                    const double nonorth_flux_magnitude = std::abs(nonorth_flux);
+                    const double sa_over_area = orthogonal_area / area;
+                    if (sa_over_area < coupled_rc_min_sa_over_area) {
+                        coupled_rc_min_sa_over_area = sa_over_area;
+                        coupled_rc_min_sa_face = f;
+                    }
+                    const double nonorth_dominance = nonorth_flux_magnitude /
+                        (ortho_flux_magnitude + nonorth_flux_magnitude +
+                         std::numeric_limits<double>::min());
+                    if (nonorth_dominance > coupled_rc_nonorth_dominance_max) {
+                        coupled_rc_nonorth_dominance_max = nonorth_dominance;
+                        coupled_rc_nonorth_dominance_face = f;
+                    }
                     const double coupled_flux =
                         D * (p_old(c) - p_old(ncell)) - nonorth_flux;
                     const double auth_flux = rhie_chow_pressure_flux_internal(
@@ -1753,6 +1806,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " rc_operator_delta_max=" << coupled_rc_operator_delta_max
                   << " rc_nonpositive_sa_faces=" << coupled_rc_nonpositive_sa_faces
                   << " rc_flux_identity_linf=" << coupled_rc_flux_identity_linf
+                  << " rc_min_sa_over_area=" << coupled_rc_min_sa_over_area
+                  << " rc_min_sa_face=" << coupled_rc_min_sa_face
+                  << " rc_nonorth_dominance_max=" << coupled_rc_nonorth_dominance_max
+                  << " rc_nonorth_dominance_face=" << coupled_rc_nonorth_dominance_face
                   << " gauge_row=" << (nv + reference_cell)
                   << "\n";
     }
@@ -2297,6 +2354,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // after repeated growth and never by relaxing a tolerance.
     monitor_controls.stagnation_window = 10;
     monitor_controls.stagnation_relative_improvement = 1e-3;
+    // DIAG (coupled fix3): opt-in window override for the crawl-vs-plateau
+    // discrimination. The default detector terminates a slowly crawling
+    // fixed point at 10 iterations; a declared window lets the crawl run
+    // to max_iterations. The relative-improvement threshold and every
+    // residual/conservation gate stay untouched.
+    if (controls.diagnostics.stagnation_window > 0)
+        monitor_controls.stagnation_window =
+            static_cast<decltype(monitor_controls.stagnation_window)>(
+                controls.diagnostics.stagnation_window);
     monitor_controls.divergence_window = 3;
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
@@ -2687,6 +2753,66 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ", iterations=" + std::to_string(coupled_result.iterations) +
                     ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
                     ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
+            }
+
+            // DIAG (coupled fix3): optional deferred non-orthogonal refresh
+            // sweeps. The coupled matrix carries the orthogonal 2-point
+            // pressure operator implicitly; the non-orthogonal remainder is a
+            // DEFERRED correction evaluated at p_old. On skewed faces that
+            // term can dominate, and the fixed point then crawls at the pace
+            // of the deferred lag. Each sweep re-solves the coupled system
+            // with ONLY that deferred term (and its matching explicit-source
+            // undo gradient) refreshed at the latest solved pressure; the
+            // convection lag (mass_flux) and the momentum diagonals are
+            // deliberately unchanged. The field update below then applies the
+            // same Picard relaxation exactly once, against the same
+            // U_old/p_old snapshot as without sweeps.
+            if (controls.diagnostics.coupled_nonorth_sweeps > 0) {
+                for (std::size_t sweep = 0;
+                     sweep < controls.diagnostics.coupled_nonorth_sweeps; ++sweep) {
+                    // Snapshot: the next solve reads p_prev for the deferred
+                    // terms and writes a fresh p; aliasing the two fields
+                    // would corrupt the solve.
+                    const auto p_prev = p;
+                    const auto grad_p_sweep =
+                        gauss_gradient_with_boundary(p_prev, mesh, geometry, pressure_bcs);
+                    auto ex_s = assemble_momentum_component(
+                        mesh, geometry, mass_flux, grad_p_sweep, body_x, mu_eff, ubc_x, 0,
+                        controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
+                    auto ey_s = assemble_momentum_component(
+                        mesh, geometry, mass_flux, grad_p_sweep, body_y, mu_eff, ubc_y, 1,
+                        controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
+                    auto ez_s = assemble_momentum_component(
+                        mesh, geometry, mass_flux, grad_p_sweep, body_z, mu_eff, ubc_z, 2,
+                        controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
+                    const auto sweep_result = solve_coupled_momentum_continuity(
+                        mesh, geometry, ex_s, ey_s, ez_s, U_old, p_prev,
+                        velocity_bcs, pressure_bcs, controls.density,
+                        controls.kinematic_viscosity,
+                        controls.pressure_reference_cell,
+                        controls.pressure_reference_value,
+                        controls.coupling.coupled_max_iterations,
+                        controls.coupling.coupled_linear_tolerance,
+                        controls.diagnostics,
+                        controls.coupling.schur_model,
+                        controls.coupled_linear_solver,
+                        controls,
+                        retry_controller.alpha_u(effective_alpha_u),
+                        U, p);
+                    if (sweep_result.status != cfdx::core::SolverStatus::CONVERGED) {
+                        std::ostringstream sweep_message;
+                        sweep_message
+                            << "solve_steady_incompressible: coupled non-orthogonal sweep "
+                            << (sweep + 1) << "/" << controls.diagnostics.coupled_nonorth_sweeps
+                            << " did not converge (status="
+                            << static_cast<int>(sweep_result.status)
+                            << ", iterations=" << sweep_result.iterations
+                            << ", residual=" << std::scientific << std::setprecision(6)
+                            << sweep_result.residual
+                            << ", relative=" << sweep_result.residual_relative << ")";
+                        throw NonlinearRetryableFailure(sweep_message.str());
+                    }
+                }
             }
 
             // The coupled linear system is a Picard/Newton linearization of the
@@ -4131,3 +4257,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+
