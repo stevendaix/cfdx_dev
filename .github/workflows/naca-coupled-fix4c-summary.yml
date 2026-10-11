@@ -1,0 +1,85 @@
+name: NACA0012 COUPLED fix4c compact summary extraction
+
+# DIAG (temporary branch, never merged): extracts a compact, decision-ready
+# summary from the combined log committed by the fix4c aggregate job. The
+# fix4c aggregate ALREADY extracts the compact summary inline and commits it
+# in the same commit as the combined log, so this workflow is a benign
+# fallback (e.g. for manual re-runs or if the inline extraction ever drifts):
+# when the input is present it re-derives the identical summary and exits
+# with SUMMARY_UNCHANGED; when the input is absent it exits benignly.
+# Content: per-variant verdicts, config and per-level forces
+# (NACA0012_RE1000_A0), the full gate observability, the per-cell divergence
+# attribution (NACA_DIAG cell=/divergence_l1) for the SIMPLE/SIMPLEC
+# comparison, downsampled COUPLED_OPERATOR_PROBE lines, the final
+# COUPLED_MATRIX_SUMMARY, the final coupled linear residual, and all
+# retry/exception lines. It adds no numerical content and touches no gate.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-coupled-fix4c]
+    paths:
+      - '.github/workflows/naca-coupled-fix4c-summary.yml'
+      - 'naca-coupled-fix4c-output.log'
+
+permissions:
+  contents: write
+
+jobs:
+  summary:
+    name: Extract compact summary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract compact summary
+        run: |
+          set -euo pipefail
+          # DIAG (fix4c): benign fallback — exit benignly when the input is
+          # absent instead of failing red like the fix4 version did when it
+          # raced the aggregate commit.
+          if [ ! -f naca-coupled-fix4c-output.log ]; then
+            echo "SUMMARY_INPUT_LOG_MISSING: combined log not committed yet; benign exit"
+            exit 0
+          fi
+          : > naca-coupled-fix4c-summary.log
+          for v in coupled-3level-tol12 simple-n64-reference simplec-n64-reference operator-equivalence-unit; do
+            sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix4c-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_ALGO|NACA0012_RE1000_A0|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-coupled-fix4c-summary.log
+              awk '/INCOMPRESSIBLE_ITER/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4c-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 6 >> naca-coupled-fix4c-summary.log
+              awk '/NACA_DIAG cell=|NACA_DIAG divergence_l1=/' /tmp/variant.log | head -n 16 >> naca-coupled-fix4c-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/{n++; if (n%10==1) print}' /tmp/variant.log >> naca-coupled-fix4c-summary.log
+              awk '/COUPLED_OPERATOR_PROBE/' /tmp/variant.log | tail -n 3 >> naca-coupled-fix4c-summary.log
+              awk '/COUPLED_MATRIX_SUMMARY/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4c-summary.log
+              awk '/COUPLED_LINEAR_TRUE_RESIDUAL/' /tmp/variant.log | tail -n 1 >> naca-coupled-fix4c-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-coupled-fix4c-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-coupled-fix4c-output.log >> naca-coupled-fix4c-summary.log
+          echo "SUMMARY_BYTES_ORIGINAL=$(wc -c < naca-coupled-fix4c-summary.log)" >> naca-coupled-fix4c-summary.log
+          head -c 600000 naca-coupled-fix4c-summary.log > /tmp/capped.log
+          mv /tmp/capped.log naca-coupled-fix4c-summary.log
+          test -s naca-coupled-fix4c-summary.log
+
+      - name: Commit compact summary
+        run: |
+          if [ ! -f naca-coupled-fix4c-summary.log ]; then
+            echo "SUMMARY_SKIPPED: no summary produced (input log absent)"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-coupled-fix4c-summary.log
+          if git diff --cached --quiet; then
+            echo "SUMMARY_UNCHANGED: nothing to commit"
+            exit 0
+          fi
+          git commit -m "diag(naca0012): extract compact fix4c summary log [skip ci]"
+          git pull --rebase --autostash
+          git push
+          git show HEAD:naca-coupled-fix4c-summary.log > /dev/null
+          echo "SUMMARY_OK: committed on $(git rev-parse HEAD)"
