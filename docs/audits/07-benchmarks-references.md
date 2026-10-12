@@ -4,7 +4,7 @@
 - Scope : oracles quantitatifs utilisés par toutes les autres fiches : solutions analytiques (Couette, Poiseuille), benchmark publié (Ghia Re=100), MMS, et estimation d'incertitude de discrétisation (GCI).
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #34, #461, #601, #639 ; PRs #851 (négatifs), #852 (Poisson polyédrique)
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : les données Ghia tabulées doivent être gélées dans `docs/validation/reference_codes/’ avec leur provenance.
 
 ## 1. Références sources

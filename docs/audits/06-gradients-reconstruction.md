@@ -4,7 +4,7 @@
 - Scope : opérateurs de gradient aux centres (Green–Gauss, LSQ linéaire, LSQ quadratique) pour la reconstruction, les termes sources, la diffusion non orthogonale et le post-traitement. Couvre les maillages polyédriques/tétraédriques (N2) et le calcul aux faces.
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #461 (N2), #639 (N10) ; PRs #511 (en attente d'évaluation), #845, #852
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : reconstruction quadratique tétraédrique en cours de qualification (PR #511) — pas de promotion sans campagne exact-HEAD.
 
 ## 1. Références sources

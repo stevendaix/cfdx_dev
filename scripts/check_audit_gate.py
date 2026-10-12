@@ -27,6 +27,11 @@ import re
 import sys
 from pathlib import Path
 
+# Some fiche headers use a typographic non-breaking space (U+00A0) before
+# the colon (evidence header and ISBN lines). Normalise it to a plain
+# space before every structural check so both spellings are accepted.
+NBSP = chr(0xA0)
+
 # Structural invariant shared by every fiche: sections numbered 1..7.
 REQUIRED_NUMBERED_SECTIONS = tuple(f"## {i}." for i in range(1, 8))
 
@@ -49,18 +54,33 @@ NON_METHOD_FICHES = {
     "08-codes-de-reference.md",
 }
 
-REF_PATTERN = re.compile(r"(10.d{4,9}/S+|ISBN[s:]*[0-9-– ]{9,17})", re.IGNORECASE)
-NUMERIC_PREFIXES = ("src/cfdx/core/numerics/", "src/cfdx/core/linalg/", "src/cfdx/physics/")
+# Reference detection (DOI prefix or ISBN). Every character class avoids
+# backslash escapes ([.] for the dot, [0-9] for digits, etc.) so the
+# pattern cannot be damaged again by transport layers that strip raw
+# escape characters; matching behaviour is identical to the escaped form.
+REF_PATTERN = re.compile(
+    r"(10[.][0-9]{4,9}/[0-9A-Za-z._()/-]+|ISBN[s: ]*[-0-9][0-9 -]{8,16})",
+    re.IGNORECASE,
+)
+NUMERIC_PREFIXES = (
+    "src/cfdx/core/numerics/",
+    "src/cfdx/core/linalg/",
+    "src/cfdx/physics/",
+)
 
 
 def validate_fiches(root: Path) -> list[str]:
     errors: list[str] = []
     audit_dir = root / "docs" / "audits"
-    fiches = sorted(p for p in audit_dir.glob("*.md") if not p.name.startswith("README") and not p.name.startswith("_"))
+    fiches = sorted(
+        p
+        for p in audit_dir.glob("*.md")
+        if not p.name.startswith("README") and not p.name.startswith("_")
+    )
     if not fiches:
         return ["docs/audits contains no fiche methode"]
     for fiche in fiches:
-        text = fiche.read_text(encoding="utf-8")
+        text = fiche.read_text(encoding="utf-8").replace(NBSP, " ")
         for section in REQUIRED_NUMBERED_SECTIONS:
             if section not in text:
                 errors.append(f"{fiche.name}: missing numbered section '{section}'")
@@ -71,15 +91,21 @@ def validate_fiches(root: Path) -> list[str]:
         if not any(variant in text for variant in SECTION7_VARIANTS):
             errors.append(f"{fiche.name}: missing section 7 'Statut d'implémentation'")
         if not REF_PATTERN.search(text):
-            errors.append(f"{fiche.name}: no DOI or ISBN reference found (Rule of Gold 1)")
-        if "Statut :" not in text and "Statut:" not in text:
+            errors.append(
+                f"{fiche.name}: no DOI or ISBN reference found (Rule of Gold 1)"
+            )
+        if "Statut :" not in text and "Statut:" not in text:
             errors.append(f"{fiche.name}: missing evidence header 'Statut'")
     return errors
 
 
 def check_audit_gate(root: Path, changed: list[str], body: str) -> list[str]:
     errors: list[str] = []
-    numeric = [c for c in changed if c.startswith(NUMERIC_PREFIXES) and c.endswith((".h", ".cpp", ".cu", ".hpp"))]
+    numeric = [
+        c
+        for c in changed
+        if c.startswith(NUMERIC_PREFIXES) and c.endswith((".h", ".cpp", ".cu", ".hpp"))
+    ]
     if not numeric:
         return errors
     audit_files = [c for c in changed if c.startswith("docs/audits/")]
@@ -99,7 +125,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="CFDX audit gate")
     parser.add_argument("--root", default=".", help="repository root")
     parser.add_argument("--validate-fiches", action="store_true")
-    parser.add_argument("--changed-files", help="file containing one changed path per line")
+    parser.add_argument(
+        "--changed-files", help="file containing one changed path per line"
+    )
     parser.add_argument("--pr-body", help="file containing the PR description")
     args = parser.parse_args()
 
@@ -110,7 +138,8 @@ def main() -> int:
         errors.extend(validate_fiches(root))
 
     if args.changed_files:
-        changed = [line.strip() for line in Path(args.changed_files).read_text(encoding="utf-8").splitlines() if line.strip()]
+        raw_changed = Path(args.changed_files).read_text(encoding="utf-8")
+        changed = [line.strip() for line in raw_changed.splitlines() if line.strip()]
         body = Path(args.pr_body).read_text(encoding="utf-8") if args.pr_body else ""
         errors.extend(check_audit_gate(root, changed, body))
 

@@ -4,7 +4,7 @@
 - Scope : interpolation convective aux faces pour tous les scalaires et la QDM. Non couvert : flux de masse (fiche 03/04) et limiteurs d'ordre élevé WENO (fiche séparée N16).
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #461, #663 (audit schémas convection), #34 ; PR #853 (opérateurs PCD indépendants du schéma)
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : audit code ↔ fiche (section 7) à exécuter en Phase 1.
 
 ## 1. Références sources
