@@ -68,6 +68,11 @@ struct WallDistanceResult {
     // query the wall normal (directional mesh wave, Poisson cut-face audit);
     // zero means every queried normal was a genuine geometric normal.
     std::size_t nearest_normal_fallbacks{0};
+    // F-W2 (N11 backlog, #480): number of pseudo-time updates in the explicit
+    // transport steppers (Hamilton-Jacobi, hybrid Poisson+HJ) whose candidate
+    // distance was negative and was clamped to zero. The clamp itself is
+    // unchanged; this counter only makes it attributable in the result.
+    std::size_t positivity_clamp_activations{0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -920,7 +925,8 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                                                      std::size_t max_iter,double epsilon=0.25,
                                                      double relaxation=0.25,
                                                      std::size_t* used_iter=nullptr,
-                                                     double* residual_out=nullptr) {
+                                                     double* residual_out=nullptr,
+                                                     std::size_t* clamp_activations=nullptr) {
     // Modified Hamilton-Jacobi equation:
     //   |grad d| = 1 + Gamma(d) laplacian(d), Gamma(d)=epsilon*d.
     // Solve it by pseudo-time relaxation with an upwind/Godunov gradient
@@ -935,6 +941,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
 
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps;
+    std::size_t clamps=0;
     double final_residual=std::numeric_limits<double>::infinity();
     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
                       +1.0/(g.spacing.y*g.spacing.y)
@@ -958,7 +965,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
-            const double nd=std::max(0.0,d[id]-dt*residual);
+            const double candidate=d[id]-dt*residual;
+            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
+            const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
@@ -976,6 +985,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
+    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -1681,6 +1691,7 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
+    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -1689,7 +1700,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     double epsilon=0.25,double relaxation=0.9,
     std::size_t* used_iter=nullptr,double* residual_out=nullptr,
     double poisson_weight=1.0,
-    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr) {
+    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr,
+    std::size_t* clamp_activations=nullptr) {
     // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
     // (effectively a wall normal); H-J then propagates distance with that
     // direction, optionally blended with the evolving Eikonal direction.
@@ -1743,6 +1755,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     const double alpha=std::clamp(poisson_weight,0.0,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
+    std::size_t clamps=0;
 
     auto velocity=[&](std::size_t id,double& ux,double& uy,double& uz) {
         const double px=grad_comp(phi,id,0),py=grad_comp(phi,id,1),pz=grad_comp(phi,id,2);
@@ -1823,7 +1836,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                                                 std::numeric_limits<double>::infinity();
             const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
-            const double nd=std::max(0.0,d[id]-dt*residual);
+            const double candidate=d[id]-dt*residual;
+            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
+            const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
         }
         for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
@@ -2009,7 +2024,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::HAMILTON_JACOBI: {
-            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
+            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf,
+                &r.positivity_clamp_activations);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
@@ -2029,7 +2045,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL: {
             std::size_t poisson_iter=0; double poisson_residual=0.0;
             r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,
-                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual);
+                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual,
+                &r.positivity_clamp_activations);
             r.auxiliary_iterations=poisson_iter;
             r.auxiliary_residual_inf=poisson_residual;
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
@@ -2082,3 +2099,4 @@ inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid
 }
 
 } // namespace cfdx::physics
+
