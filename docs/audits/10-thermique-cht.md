@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : équation d'énergie en température pour fluide et solide, couplage conjugué fluide-solide (CHT) multi-régions, approximation de Boussinesq pour la flottabilité. Non couvert : rayonnement (fiche 11), changement de phase, milieux poreux.
-- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 11) ; docs/validation/THERMOPHYSICAL_MODELS.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -40,7 +40,7 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 ## 5. Pièges connus
 - **B2** : $\rho c_p$ dans la convection d'énergie — pas $\rho$ seul.
 - Bilan d'énergie d'interface : l'énergie qui quitte le fluide doit entrer dans le solide à la tolérance machine — sinon le couplage fuit.
-- Boussinesq : seulement pour $\Delta T$ petits ; hors validité, utiliser le flottabilité pleine (variable $\rho$) et documenter le choix.
+- Boussinesq : seulement pour $\Delta T$ petits ; hors validité, utiliser la flottabilité pleine (variable $\rho$) et documenter le choix.
 - $c_p$ variable : la formulation température peut perdre la conservativité — la formulation enthalpie est l'alternative documentée.
 - Moyenne harmonique obligatoire pour $k$ à l'interface (l'arithmétique sur-lisse les discontinuités et casse le flux exact).
 - Régime permanent tout-Neumann : null-space de T — point de référence explicite.

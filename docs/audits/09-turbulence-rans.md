@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : modèles RANS à viscosité tourbillonnaire (k-epsilon standard, k-omega, SST de Menter), modèle à une équation de Spalart-Allmaras, lois de paroi (couche logarithmique), distance de paroi. Non couvert : LES/hybrides, RSM, transition, correction de compressibilité (à documenter séparément si activée).
-- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code Phase 10 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code Phase 10 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json (cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012) + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 10) ; docs/validation/TURBULENCE_QUALIFICATION_MATRIX.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -72,7 +72,7 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 - Fichiers source concernés : src/cfdx/physics/turbulence.h, turbulence_models.h, turbulence_solver.h, turbulence_transport.h, sst_solver.h, spalart_allmaras.h, wall_functions.h, wall_distance.h, wall_distance_turbulence.h.
 - Tests exécutables : tests/validation/test_channel_qualification.cpp, tests/validation/test_phase10_turbulence_hardening.cpp et les autres tests test_phase10_* ; cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012 (docs/validation/TUR-*_QUALIFICATION_CASE.md).
 - Écarts connus code <-> fiche : à auditer ligne à ligne lors de la Phase 3 — cette fiche est le contrat de l'audit.
-- Gaps et prochaines actions : qualification MPI des modèles RABS absente ; campagnes TUR-* + GCI à exécuter sur un HEAD exact ; promotion BLOCKED derrière le verrouillage Phase 1 (règle du Plan Directeur).
+- Gaps et prochaines actions : qualification MPI des modèles RANS absente ; campagnes TUR-* + GCI à exécuter sur un HEAD exact ; promotion BLOCKED derrière le verrouillage Phase 1 (règle du Plan Directeur).
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).

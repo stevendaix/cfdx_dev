@@ -2,23 +2,24 @@
 
 **En-tête d'évidence**
 - Scope : modèles de rayonnement gris couplés à l'énergie : Rosseland (diffusion), P1 (approximation différentielle), surfaces-to-surfaces (S2S par facteurs de forme), méthode des ordonnées discrètes (DOM). Non couvert : gaz non gris (WSGG), rayonnement particulaire (MC), semi-transparents.
-- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code Phase 12 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code Phase 12 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 12) ; docs/validation/THERMAL_RADIATION_REGRESSION_MATRIX.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
 - Limitations connues : bilans radiatifs non exécutés depuis l'environnement d'audit ; statut déclaratif jusqu'à campagne sur HEAD exact.
 
 ## 1. Références sources
-- M. F. Modest, *Radiative Heat Transfer*, 3e éd., Academic Press, 2013 — ISBN : 978-0-12-386944-9. (référence de référence pour tous les modèles ci-dessous)
+- M. F. Modest, *Radiative Heat Transfer*, 3e éd., Academic Press, 2013 — ISBN : 978-0-12-386944-9. (référence canonique pour tous les modèles ci-dessous)
 - W. A. Fiveland, « Discrete Ordinates Solutions of the Radiative Transport Equation for Enclosures with Participating Media », *ASME J. Heat Transfer* 106(4):699-706, 1984. (DOM ; DOI non confirmé — citation bibliographique complète)
 - S. Rosseland, « Theoretical Astrophysics: Atomic Theory and the Analysis of Line Atmospheres », Oxford University Press, 1936. (approximation de Rosseland ; pas de DOI — ouvrage historique)
-- R. Siegel, J. R. Howell, *Thermal Radiation Heat Transfer* (référence complémentaire, à éditer avec ISBN à la première utilisation).
+- R. Siegel, J. R. Howell, *Thermal Radiation Heat Transfer* (référence complémentaire, à citer avec ISBN à la première utilisation).
 
 ## 2. Formulation continue
 Équation de transport radiatif (RTE), milieu gris, absorbant-émettant, non diffusant :
 $$\frac{dI(\mathbf{r},\mathbf{s})}{ds}=\kappa I_b(T)-\kappa I(\mathbf{r},\mathbf{s})$$
 Quantités dérivées : irradiation $G=\int_{4\pi}I\,d\Omega$, flux radiatif net :
-$$q_r=\int_{4\pi}I\,\mathbf{s}\,d\Omega=(1-\pi\text{ selon convention})\;\text{— la convention } G, \; \mathbf{q}_r \text{ doit être gelée par implémentation (leçon B13)}$$
+$$\mathbf{q}_r=\int_{4\pi}I\,\mathbf{s}\,d\Omega$$
+La convention entre grandeurs intensives ($I_b=\sigma T^4/\pi$) et intégrales ($G$, $\mathbf{q}_r$) doit être gelée par implémentation et cohérente de la source aux frontières (leçon B13 : le facteur $\pi$ est le piège classique).
 
 **Rosseland** (milieu optiquement épais, $\tau\gg 1$) : le rayonnement devient un terme de diffusion effectif :
 $$\mathbf{q}_r=-k_R\nabla T,\qquad k_R=\frac{16\sigma n^2 T^3}{3\beta_R}$$
@@ -45,7 +46,7 @@ $$\frac{\partial S_r}{\partial T}=\kappa\left(\frac{\partial G}{\partial T}-16\s
 le terme $-16\kappa\sigma T^3$ entre au coefficient diagonal $a_P$ (stabilise), $\partial G/\partial T$ selon le modèle (0 pour S2S, implicite pour P1/Rosseland).
 
 ## 4. Traitement des frontières
-- Surfaces grises diffuses : condition Robin radiative sur $G$ (P1,Marshak) ou contribution directe au système S2S ; émissivités $\varepsilon_i$ déclarées par patch.
+- Surfaces grises diffuses : condition Robin radiative sur $G$ (P1, Marshak) ou contribution directe au système S2S ; émissivités $\varepsilon_i$ déclarées par patch.
 - Frontières noires ($\varepsilon=1$) : $J=E_b$ ; réfléchissantes ($\varepsilon=0$) : symétrie radiative.
 - Ouvertures (vers l'extérieur à $T_\infty$) : flux net $\sigma(T_w^4-T_\infty^4)$ linéarisé de la même façon (B3).
 - **Gauge** : le rayonnement S2S n'a pas de null-space (bilan fermé), P1 a le null-space du Laplacien si toutes les frontières sont adiabatiques radiativement — point de référence à la P1 (fiche 04) si le cas se présente.
