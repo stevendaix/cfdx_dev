@@ -17,12 +17,26 @@ using namespace cfdx::physics;
 
 struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 
+// DIAG (scheme-sensitivity branch): name mapping for the --scheme flag.
+static const char* scheme_to_string(ConvectionScheme s){
+    switch(s){
+        case ConvectionScheme::UPWIND: return "UPWIND";
+        case ConvectionScheme::SECOND_ORDER_UPWIND: return "SECOND_ORDER_UPWIND";
+        case ConvectionScheme::TVD: return "TVD";
+        case ConvectionScheme::CENTRAL: return "CENTRAL";
+        case ConvectionScheme::BLENDED: return "BLENDED";
+        case ConvectionScheme::QUICK: return "QUICK";
+        case ConvectionScheme::QUICK_BOUNDED: return "QUICK_BOUNDED";
+    }
+    return "UNKNOWN";
+}
+
 // DIAG (variants branch): the relaxation factors, trace frequency, coupled
 // matrix diagnostics and the number of mesh levels are runtime parameters so
 // the CI variant matrix can separate a genuine solver defect from
 // algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
 // have canonical configurations the baseline matrix never exercised).
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0,double conv_tol=0.0)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0,double conv_tol=0.0,ConvectionScheme scheme=ConvectionScheme::UPWIND)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -78,7 +92,12 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     }
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.use_bounded_convection=true;
-    c.convection_scheme=ConvectionScheme::UPWIND;
+    // DIAG (scheme-sensitivity branch): --scheme NAME selects the existing
+    // production ConvectionScheme. Higher-order schemes are deferred
+    // corrections riding the conservative upwind matrix; the coupled block
+    // path inherits the scheme through the pre-assembled ex/ey/ez momentum
+    // equations. MEASUREMENT knob for the campaign on this branch only.
+    c.convection_scheme=scheme;
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;
@@ -221,7 +240,7 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     // DIAG (iteration-utility branch): one compact line per run for the
     // cost/precision campaign: stopping tolerance vs iterations, wall time
     // and the quantities of interest at that stopping point.
-    std::cout<<"ITER_UTILITY algo="<<algo_name<<" convtol="<<conv_tol
+    std::cout<<"ITER_UTILITY algo="<<algo_name<<" scheme="<<scheme_to_string(scheme)<<" convtol="<<conv_tol
              <<" iterations="<<solve.iterations
              <<" seconds="<<solve_seconds
              <<" Cd="<<cd<<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
@@ -279,6 +298,7 @@ int main(int argc,char**argv)
     bool var_debugcell=false;
     double var_coupled_tol=0.0;
     double var_conv_tol=0.0;
+    ConvectionScheme var_scheme=ConvectionScheme::UPWIND;
     std::vector<std::string> positional;
     for(int i=1;i<argc;++i){
         const std::string a=argv[i];
@@ -293,6 +313,18 @@ int main(int argc,char**argv)
         if(a=="--debugcell" && i+1<argc){ var_debugcell=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--coupledtol" && i+1<argc){ var_coupled_tol=std::atof(argv[++i]); continue; }
         if(a=="--convtol" && i+1<argc){ var_conv_tol=std::atof(argv[++i]); continue; }
+        if(a=="--scheme" && i+1<argc){
+            const std::string s=argv[++i];
+            if(s=="UPWIND") var_scheme=ConvectionScheme::UPWIND;
+            else if(s=="SECOND_ORDER_UPWIND") var_scheme=ConvectionScheme::SECOND_ORDER_UPWIND;
+            else if(s=="TVD") var_scheme=ConvectionScheme::TVD;
+            else if(s=="CENTRAL") var_scheme=ConvectionScheme::CENTRAL;
+            else if(s=="BLENDED") var_scheme=ConvectionScheme::BLENDED;
+            else if(s=="QUICK") var_scheme=ConvectionScheme::QUICK;
+            else if(s=="QUICK_BOUNDED") var_scheme=ConvectionScheme::QUICK_BOUNDED;
+            else throw std::invalid_argument("--scheme must be one of UPWIND, SECOND_ORDER_UPWIND, TVD, CENTRAL, BLENDED, QUICK, QUICK_BOUNDED");
+            continue;
+        }
         positional.push_back(a);
     }
     if(var_levels==0 || var_levels>3)
@@ -323,7 +355,8 @@ int main(int argc,char**argv)
              <<" opprobe="<<(var_opprobe?1:0)
              <<" sweeps="<<var_sweeps
              <<" debugcell="<<(var_debugcell?1:0)
-             <<" coupledtol="<<var_coupled_tol<<" convtol="<<var_conv_tol<<"\n";
+             <<" coupledtol="<<var_coupled_tol<<" convtol="<<var_conv_tol
+             <<" scheme="<<scheme_to_string(var_scheme)<<"\n";
 
     const bool quick=!positional.empty() && positional[0]=="--quick";
     if(quick) {
@@ -375,7 +408,7 @@ int main(int argc,char**argv)
         for(std::size_t i=0;i<var_levels;++i){
             try {
                 const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
-                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol,var_conv_tol);
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol,var_conv_tol,var_scheme);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){
