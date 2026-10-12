@@ -1,17 +1,17 @@
-// M0.7-T01 — Gauss gradient
+// M0.7-T01 â Gauss gradient
 //
-// Spécification CFDX v0.7 §28 :
-//   Première implémentation : Gauss linear.
+// SpÃ©cification CFDX v0.7 Â§28 :
+//   PremiÃ¨re implÃ©mentation : Gauss linear.
 //
-// Pour un champ scalaire φ (Field<double, CELL>) :
-//   ∇φ_c = (1/V_c) Σ_f φ_f Sf_f
+// Pour un champ scalaire Ï (Field<double, CELL>) :
+//   âÏ_c = (1/V_c) Î£_f Ï_f Sf_f
 //
-//   - φ_f est interpolé géométriquement à partir des cellules owner/neighbour.
-//     φ_f = (1-w) * φ_owner + w * φ_neighbour
-//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondération géométrique)
-//   - Pour les faces de frontière, on utilise φ_f = φ_owner (zero-gradient).
+//   - Ï_f est interpolÃ© gÃ©omÃ©triquement Ã  partir des cellules owner/neighbour.
+//     Ï_f = (1-w) * Ï_owner + w * Ï_neighbour
+//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondÃ©ration gÃ©omÃ©trique)
+//   - Pour les faces de frontiÃ¨re, on utilise Ï_f = Ï_owner (zero-gradient).
 //
-// Le résultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
+// Le rÃ©sultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
 // 3D par cellule). Le stockage est SoA (x, y, z contigus).
 
 #pragma once
@@ -37,9 +37,9 @@
 namespace cfdx {
 namespace core {
 
-// Calcule le poids d'interpolation géométrique pour une face.
+// Calcule le poids d'interpolation gÃ©omÃ©trique pour une face.
 // w = |Cf - C_owner| / |C_neighbour - C_owner|
-// Pour face frontière : w = 0 (zero gradient)
+// Pour face frontiÃ¨re : w = 0 (zero gradient)
 inline double geometric_interpolation_weight(
     const Vec3& face_centre,
     const Vec3& owner_centre,
@@ -57,7 +57,7 @@ inline double geometric_interpolation_weight(
     return std::min(1.0, std::max(0.0, dist_owner / dist_total));
 }
 
-// Calcule le gradient d'un champ scalaire cellulaire par la méthode Gauss.
+// Calcule le gradient d'un champ scalaire cellulaire par la mÃ©thode Gauss.
 //
 inline Field<double, Location::CELL> compute_gradient_gauss(
     const Field<double, Location::CELL>& cell_field,
@@ -524,19 +524,116 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
     return fit;
 }
 
-// Gradient slice (components 0-2) of the quadratic least-squares fit.
+// Quadratic-basis least-squares gradient with a scaled polynomial fit.
+// A linear fit is first-order on general tetrahedral stencils because curvature
+// remains in the truncation error. A quadratic local reconstruction removes
+// that term. Coordinates are scaled by a representative stencil length before
+// forming the normal equations, avoiding the h/h^2 conditioning problem of the
+// raw polynomial basis. Three face-neighbour rings provide redundancy on
+// directional tetrahedral stencils.
 inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
 {
-    const auto fit = compute_quadratic_fit_least_squares(cell_field, mesh);
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_least_squares_quadratic: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_least_squares_quadratic: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        auto& ring = ring1[c];
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) { if (nraw >= 0) nb = static_cast<std::size_t>(nraw); }
+            else { nb = owner; }
+            if (nb < n_cells && nb != c) ring.push_back(nb);
+        }
+        std::sort(ring.begin(), ring.end());
+        ring.erase(std::unique(ring.begin(), ring.end()), ring.end());
+    }
+
     Field<double, Location::CELL> grad(
-        cell_field.size(), cell_field.name() + "_grad_lsq",
-        cell_field.metadata().unit + "/m", 3);
-    for (std::size_t c = 0; c < grad.size(); ++c) {
-        grad(c, 0) = fit(c, 0);
-        grad(c, 1) = fit(c, 1);
-        grad(c, 2) = fit(c, 2);
+        n_cells, cell_field.name() + "_grad_lsq_quadratic", cell_field.metadata().unit + "/m", 3);
+    std::vector<unsigned char> seen(n_cells, 0);
+    std::vector<std::size_t> touched;
+    touched.reserve(128);
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const Vec3 P = geometry.cell_centres[c];
+        const double phi_c = values[c];
+        std::vector<std::size_t> frontier = ring1[c];
+        std::vector<std::size_t> stencil;
+        touched.clear();
+        auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1; touched.push_back(nb); stencil.push_back(nb);
+        };
+        for (const std::size_t nb : frontier) add(nb);
+        for (int depth = 0; depth < 2; ++depth) {
+            std::vector<std::size_t> next;
+            for (const std::size_t nb : frontier)
+                for (const std::size_t nb2 : ring1[nb]) {
+                    if (nb2 != c && !seen[nb2]) { add(nb2); next.push_back(nb2); }
+                }
+            frontier.swap(next);
+            if (frontier.empty()) break;
+        }
+
+        double h = 0.0;
+        for (const std::size_t nb : stencil) h += (geometry.cell_centres[nb] - P).mag();
+        h /= static_cast<double>(stencil.size());
+        if (!(h > 0.0) || !std::isfinite(h))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: invalid stencil scale");
+
+        double A[9][9] = {};
+        double b[9] = {};
+        for (const std::size_t nb : stencil) {
+            const Vec3 q = (geometry.cell_centres[nb] - P) * (1.0 / h);
+            const double r2 = q.mag2();
+            if (!(r2 > 0.0) || !std::isfinite(r2)) continue;
+            const double w = 1.0 / r2;
+            const double basis[9] = {q.x,q.y,q.z,q.x*q.x,q.y*q.y,q.z*q.z,q.x*q.y,q.x*q.z,q.y*q.z};
+            const double dv = values[nb] - phi_c;
+            for (int i = 0; i < 9; ++i) {
+                b[i] += w*basis[i]*dv;
+                for (int j = 0; j < 9; ++j) A[i][j] += w*basis[i]*basis[j];
+            }
+        }
+
+        double M[9][10] = {};
+        double scale = 0.0;
+        for (int i = 0; i < 9; ++i) {
+            for (int j = 0; j < 9; ++j) { M[i][j]=A[i][j]; scale=std::max(scale,std::abs(A[i][j])); }
+            M[i][9]=b[i];
+        }
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
+        const double tol=4096.0*std::numeric_limits<double>::epsilon()*scale;
+        for (int col=0; col<9; ++col) {
+            int pivot=col; double best=std::abs(M[col][col]);
+            for (int row=col+1; row<9; ++row) if (std::abs(M[row][col])>best) { best=std::abs(M[row][col]); pivot=row; }
+            if (!(best>tol)) throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
+            if (pivot!=col) for (int j=col;j<10;++j) std::swap(M[col][j],M[pivot][j]);
+            for (int row=col+1;row<9;++row) { const double factor=M[row][col]/M[col][col]; for(int j=col;j<10;++j) M[row][j]-=factor*M[col][j]; }
+        }
+        double x[9]={};
+        for (int i=8;i>=0;--i) { double rhs=M[i][9]; for(int j=i+1;j<9;++j) rhs-=M[i][j]*x[j]; x[i]=rhs/M[i][i]; }
+        const Vec3 g{x[0]/h,x[1]/h,x[2]/h};
+        if (!std::isfinite(g.x)||!std::isfinite(g.y)||!std::isfinite(g.z))
+            throw std::runtime_error("compute_gradient_least_squares_quadratic: non-finite gradient");
+        grad(c,0)=g.x; grad(c,1)=g.y; grad(c,2)=g.z;
+        for (const std::size_t nb:touched) seen[nb]=0;
     }
     return grad;
 }
@@ -947,3 +1044,4 @@ inline Field<double, Location::CELL> cell_gradient(
 
 }  // namespace core
 }  // namespace cfdx
+
