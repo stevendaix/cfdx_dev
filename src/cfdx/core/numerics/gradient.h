@@ -1,17 +1,17 @@
-// M0.7-T01 — Gauss gradient
+// M0.7-T01 â Gauss gradient
 //
-// Spécification CFDX v0.7 §28 :
-//   Première implémentation : Gauss linear.
+// SpÃ©cification CFDX v0.7 Â§28 :
+//   PremiÃ¨re implÃ©mentation : Gauss linear.
 //
-// Pour un champ scalaire φ (Field<double, CELL>) :
-//   ∇φ_c = (1/V_c) Σ_f φ_f Sf_f
+// Pour un champ scalaire Ï (Field<double, CELL>) :
+//   âÏ_c = (1/V_c) Î£_f Ï_f Sf_f
 //
-//   - φ_f est interpolé géométriquement à partir des cellules owner/neighbour.
-//     φ_f = (1-w) * φ_owner + w * φ_neighbour
-//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondération géométrique)
-//   - Pour les faces de frontière, on utilise φ_f = φ_owner (zero-gradient).
+//   - Ï_f est interpolÃ© gÃ©omÃ©triquement Ã  partir des cellules owner/neighbour.
+//     Ï_f = (1-w) * Ï_owner + w * Ï_neighbour
+//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondÃ©ration gÃ©omÃ©trique)
+//   - Pour les faces de frontiÃ¨re, on utilise Ï_f = Ï_owner (zero-gradient).
 //
-// Le résultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
+// Le rÃ©sultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
 // 3D par cellule). Le stockage est SoA (x, y, z contigus).
 
 #pragma once
@@ -31,14 +31,15 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <string>
 #include <algorithm>
 
 namespace cfdx {
 namespace core {
 
-// Calcule le poids d'interpolation géométrique pour une face.
+// Calcule le poids d'interpolation gÃ©omÃ©trique pour une face.
 // w = |Cf - C_owner| / |C_neighbour - C_owner|
-// Pour face frontière : w = 0 (zero gradient)
+// Pour face frontiÃ¨re : w = 0 (zero gradient)
 inline double geometric_interpolation_weight(
     const Vec3& face_centre,
     const Vec3& owner_centre,
@@ -56,7 +57,7 @@ inline double geometric_interpolation_weight(
     return std::min(1.0, std::max(0.0, dist_owner / dist_total));
 }
 
-// Calcule le gradient d'un champ scalaire cellulaire par la méthode Gauss.
+// Calcule le gradient d'un champ scalaire cellulaire par la mÃ©thode Gauss.
 //
 inline Field<double, Location::CELL> compute_gradient_gauss(
     const Field<double, Location::CELL>& cell_field,
@@ -136,7 +137,8 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 
 inline Field<double, Location::CELL> compute_gradient_least_squares(
     const Field<double, Location::CELL>& cell_field,
-    const Mesh& mesh)
+    const Mesh& mesh,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -169,6 +171,12 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
                 if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
             } else {
                 nb = owner;
+            }
+            if (owner == c && nraw < 0) {
+                if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
+                    throw std::runtime_error("compute_gradient_least_squares: boundary face in rejected stencil at cell "
+                                             + std::to_string(c));
+                continue;
             }
             if (nb >= n_cells || nb == c)
                 continue;
@@ -314,11 +322,11 @@ inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
 // Extended-stencil least-squares gradient (two rings of face neighbours).
 //
 // The base least-squares gradient uses only the face-neighbour cells (4 for a
-// tetrahedron), which is linear-exact but leaves a first-order curvature error
-// on smooth fields (measured ~0.4 order on the Kuhn tetrahedral grid). Fit the
-// SAME linear basis over two rings of neighbours: the richer, more balanced
-// stencil cancels the even (curvature) contributions in the normal equations,
-// restoring near-second-order smooth-field behaviour on unstructured meshes.
+// tetrahedron). The extended stencil improves robustness and removes the
+// rank-deficiency observed for the weighted one-ring stencil on the Kuhn
+// tetrahedral family. It remains a linear-basis fit: on the tested tetrahedral
+// families its smooth-field order is approximately one. The quadratic-basis
+// least-squares fit is the second-order control.
 inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
@@ -380,6 +388,140 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_extended(
         grad(c, 2) = g.z;
     }
     return grad;
+}
+
+// Quadratic-basis least-squares gradient (gradient + Hessian fit).
+//
+// A linear least-squares fit is linear-exact but carries a first-order
+// curvature error on smooth unstructured meshes (even with extended
+// stencils). Fit instead the second-order expansion
+//   phi_N ~ phi_P + g.d + m3 dx^2 + m4 dy^2 + m5 dz^2 + m6 dx dy
+//                          + m7 dx dz + m8 dy dz
+// over two rings of neighbours (>= 9 independent points). The gradient is the
+// first three components of the 9-vector. This restores ~second order on
+// smooth fields at the cost of one 9x9 solve per cell.
+inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_quadratic_fit_least_squares: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_quadratic_fit_least_squares: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        auto& ring = ring1[c];
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) { if (nraw >= 0) nb = static_cast<std::size_t>(nraw); }
+            else { nb = owner; }
+            if (nb < n_cells && nb != c) ring.push_back(nb);
+        }
+    }
+
+    Field<double, Location::CELL> fit(
+        n_cells, cell_field.name() + "_lsq_fit", cell_field.metadata().unit + "/m", 9);
+    std::vector<char> seen(n_cells, 0);
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const Vec3 P = geometry.cell_centres[c];
+        const double phi_c = values[c];
+
+        double a[9][9] = {};
+        double b[9] = {};
+        int npts = 0;
+        const auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1;
+            const Vec3 d = geometry.cell_centres[nb] - P;
+            const double r2 = d.mag2();
+            if (!(r2 > 0.0) || !std::isfinite(r2)) return;
+            const double w = 1.0 / r2;
+            const double basis[9] = {d.x, d.y, d.z,
+                                     d.x*d.x, d.y*d.y, d.z*d.z,
+                                     d.x*d.y, d.x*d.z, d.y*d.z};
+            const double dv = values[nb] - phi_c;
+            for (int i = 0; i < 9; ++i) {
+                b[i] += w * basis[i] * dv;
+                for (int j = 0; j < 9; ++j)
+                    a[i][j] += w * basis[i] * basis[j];
+            }
+            ++npts;
+        };
+        for (const std::size_t nb : ring1[c]) add(nb);
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) add(nb2);
+        for (const std::size_t nb : ring1[c]) seen[nb] = 0;
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) seen[nb2] = 0;
+
+        Vec3 g{0.0, 0.0, 0.0};
+        double x[9] = {};
+        bool have_quad = false;
+        if (npts >= 9) {
+            // Solve the 9x9 normal equations with partial pivoting.
+            double m[9][10] = {};
+            for (int i = 0; i < 9; ++i) {
+                for (int j = 0; j < 9; ++j) m[i][j] = a[i][j];
+                m[i][9] = b[i];
+            }
+            double scale = 0.0;
+            for (int i = 0; i < 9; ++i)
+                scale = std::max(scale, std::abs(m[i][i]));
+            const double rank_tol = 128.0 * std::numeric_limits<double>::epsilon() * scale;
+            bool pivoted[9] = {};
+            for (int col = 0; col < 9; ++col) {
+                int pivot = col;
+                double pivot_abs = std::abs(m[col][col]);
+                for (int row = col + 1; row < 9; ++row) {
+                    const double cnd = std::abs(m[row][col]);
+                    if (cnd > pivot_abs) { pivot_abs = cnd; pivot = row; }
+                }
+                if (!(pivot_abs > rank_tol)) continue;
+                if (pivot != col)
+                    for (int j = col; j < 10; ++j) std::swap(m[col][j], m[pivot][j]);
+                pivoted[col] = true;
+                for (int row = col + 1; row < 9; ++row) {
+                    const double factor = m[row][col] / m[col][col];
+                    if (factor == 0.0) continue;
+                    for (int j = col; j < 10; ++j) m[row][j] -= factor * m[col][j];
+                }
+            }
+            for (int i = 8; i >= 0; --i) {
+                if (!pivoted[i]) continue;
+                double rhs = m[i][9];
+                for (int j = i + 1; j < 9; ++j) rhs -= m[i][j] * x[j];
+                if (std::abs(m[i][i]) > rank_tol) x[i] = rhs / m[i][i];
+            }
+            g = {x[0], x[1], x[2]};
+            have_quad = true;
+        } else {
+            g = least_squares_gradient(P, phi_c,
+                std::vector<Vec3>{}, std::vector<double>{});
+        }
+        if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z))
+            throw std::runtime_error("compute_quadratic_fit_least_squares: non-finite gradient");
+        fit(c, 0) = g.x;
+        fit(c, 1) = g.y;
+        fit(c, 2) = g.z;
+        if (have_quad) {
+            for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+        } else {
+            for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+        }
+    }
+    return fit;
 }
 
 // Quadratic-basis least-squares gradient with a scaled polynomial fit.
@@ -666,6 +808,186 @@ inline Field<double, Location::CELL> compute_gradient_gauss_point(
     return compute_gradient_gauss_point(cell_field, mesh, geometry);
 }
 
+
+// Explicit weighted least-squares field gradient. The weighting policy is part
+// of the method contract; no hidden change to the legacy least-squares path.
+inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
+    double condition_limit = std::numeric_limits<double>::infinity(),
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_weighted_least_squares: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_weighted_least_squares: field must be scalar (dim=1)");
+
+    const auto geometry = make_geometry_cache(mesh);
+    const auto* faces = mesh.cells().faces_data();
+    const auto* offsets = mesh.cells().offsets_data();
+    const auto& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_wls", cell_field.metadata().unit + "/m", 3);
+
+    for (std::size_t c=0; c<n_cells; ++c) {
+        std::vector<Vec3> centres;
+        std::vector<double> vals;
+        for (Offset k=offsets[c]; k<offsets[c+1]; ++k) {
+            const std::size_t f=faces[k];
+            const std::size_t owner=own.owner(f);
+            const std::int64_t raw=own.neighbour(f);
+            std::size_t nb=n_cells;
+            if (owner==c) {
+                if (raw>=0) nb=static_cast<std::size_t>(raw);
+            } else {
+                nb=owner;
+            }
+            if (owner == c && raw < 0) {
+                if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
+                    throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
+                                             + std::to_string(c));
+
+                // ZERO_GRADIENT_GHOST is a real policy even when no explicit
+                // boundary-condition vector is supplied. In that case the
+                // boundary sample is a mirrored zero-gradient ghost carrying
+                // the owner value. An explicit condition overrides that
+                // default on a face-by-face basis.
+                // No explicit BC vector means the documented default policy:
+                // a zero-gradient ghost carrying the owner value. Do not rely
+                // on the enum's default constructor value here because that
+                // would silently turn the implicit policy into another BC type.
+                BoundaryGradientCondition bc{
+                    BoundaryGradientConditionType::ZERO_GRADIENT, 0.0};
+                if (boundary_conditions && f < boundary_conditions->size())
+                    bc = (*boundary_conditions)[f];
+
+                const Vec3 n = geometry.face_normals[f];
+                const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
+                const double dn = dface.dot(n);
+                if (!(dn > 0.0) || !std::isfinite(dn))
+                    throw std::runtime_error(
+                        "compute_gradient_weighted_least_squares: invalid boundary distance at face "
+                        + std::to_string(f));
+
+                if (bc.type == BoundaryGradientConditionType::DIRICHLET) {
+                    // Reflect through the face-centre so the midpoint of the
+                    // owner/ghost pair is exactly the Dirichlet location.
+                    centres.push_back(geometry.face_centres[f] * 2.0
+                                     - geometry.cell_centres[c]);
+                    vals.push_back(2.0 * bc.value - values[c]);
+                } else {
+                    // For zero-gradient/Neumann data, reflect through the
+                    // face plane along its normal. The displacement is
+                    // 2*dn*n, so the supplied normal derivative is an exact
+                    // linear-field value at the ghost location.
+                    centres.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    if (bc.type == BoundaryGradientConditionType::ZERO_GRADIENT)
+                        vals.push_back(values[c]);
+                    else
+                        vals.push_back(values[c] + 2.0 * dn * bc.value);
+                }
+                continue;
+            }
+            if (nb<n_cells && nb!=c) {
+                centres.push_back(geometry.cell_centres[nb]);
+                vals.push_back(values[nb]);
+            }
+        }
+        StencilQuality q;
+        const Vec3 g=weighted_least_squares_gradient(
+            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        if (!q.full_rank)
+            throw std::runtime_error("compute_gradient_weighted_least_squares: rank-deficient stencil at cell "
+                                     + std::to_string(c));
+        if (std::isfinite(condition_limit) && !q.well_conditioned(condition_limit))
+            throw std::runtime_error("compute_gradient_weighted_least_squares: ill-conditioned stencil at cell "
+                                     + std::to_string(c));
+        grad(c,0)=g.x; grad(c,1)=g.y; grad(c,2)=g.z;
+    }
+    return grad;
+}
+
+
+inline Field<double, Location::CELL> compute_gradient_weighted_least_squares_extended(
+    const Field<double, Location::CELL>& cell_field,
+    const Mesh& mesh,
+    GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
+    double condition_limit = std::numeric_limits<double>::infinity())
+{
+    const std::size_t n_cells = mesh.n_cells();
+    if (cell_field.size() != n_cells)
+        throw std::runtime_error("compute_gradient_weighted_least_squares_extended: field size != n_cells");
+    if (cell_field.dimension() != 1)
+        throw std::runtime_error("compute_gradient_weighted_least_squares_extended: field must be scalar (dim=1)");
+
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    const FaceOwnership& own = mesh.ownership();
+    const double* values = cell_field.component_data(0);
+    const GeometryCache geometry = make_geometry_cache(mesh);
+
+    std::vector<std::vector<std::size_t>> ring1(n_cells);
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+            const std::size_t f = cell_faces[k];
+            const std::size_t owner = own.owner(f);
+            const std::int64_t nraw = own.neighbour(f);
+            std::size_t nb = n_cells;
+            if (owner == c) {
+                if (nraw >= 0) nb = static_cast<std::size_t>(nraw);
+            } else {
+                nb = owner;
+            }
+            if (nb < n_cells && nb != c)
+                ring1[c].push_back(nb);
+        }
+    }
+
+    Field<double, Location::CELL> grad(
+        n_cells, cell_field.name() + "_grad_wls2", cell_field.metadata().unit + "/m", 3);
+    std::vector<unsigned char> seen(n_cells, 0);
+    std::vector<Vec3> centres;
+    std::vector<double> vals;
+
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        centres.clear();
+        vals.clear();
+        auto add = [&](std::size_t nb) {
+            if (nb == c || seen[nb]) return;
+            seen[nb] = 1;
+            centres.push_back(geometry.cell_centres[nb]);
+            vals.push_back(values[nb]);
+        };
+        for (const auto nb : ring1[c]) add(nb);
+        for (const auto nb : ring1[c])
+            for (const auto nb2 : ring1[nb]) add(nb2);
+
+        StencilQuality q;
+        const Vec3 g = weighted_least_squares_gradient(
+            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        if (!q.full_rank)
+            throw std::runtime_error(
+                "compute_gradient_weighted_least_squares_extended: rank-deficient stencil at cell "
+                + std::to_string(c));
+        if (std::isfinite(condition_limit) && !q.well_conditioned(condition_limit))
+            throw std::runtime_error(
+                "compute_gradient_weighted_least_squares_extended: ill-conditioned stencil at cell "
+                + std::to_string(c));
+        grad(c, 0) = g.x;
+        grad(c, 1) = g.y;
+        grad(c, 2) = g.z;
+        for (const auto nb : ring1[c]) seen[nb] = 0;
+        for (const auto nb : ring1[c])
+            for (const auto nb2 : ring1[nb]) seen[nb2] = 0;
+    }
+    return grad;
+}
+
 // Shared cell-gradient selection used by derived operators (e.g. the
 // non-orthogonal correction of compute_laplacian). GAUSS_TWO_POINT is the
 // affine-optimal default (second order on affine meshes); the alternatives are
@@ -675,6 +997,7 @@ enum class GradientScheme : std::uint8_t {
     GAUSS_TWO_POINT = 0,
     GAUSS_POINT,
     LEAST_SQUARES,
+    WEIGHTED_LEAST_SQUARES,
     LEAST_SQUARES_QUADRATIC
 };
 
@@ -683,6 +1006,7 @@ inline const char* to_string(GradientScheme s) {
         case GradientScheme::GAUSS_TWO_POINT:      return "gauss_two_point";
         case GradientScheme::GAUSS_POINT:          return "gauss_point";
         case GradientScheme::LEAST_SQUARES:        return "least_squares";
+        case GradientScheme::WEIGHTED_LEAST_SQUARES: return "weighted_least_squares";
         case GradientScheme::LEAST_SQUARES_QUADRATIC: return "least_squares_quadratic";
         default:                                   return "unknown";
     }
@@ -692,6 +1016,7 @@ inline GradientScheme gradient_scheme_from_string(const std::string& s) {
     if (s == "gauss_two_point")          return GradientScheme::GAUSS_TWO_POINT;
     if (s == "gauss_point")              return GradientScheme::GAUSS_POINT;
     if (s == "least_squares")            return GradientScheme::LEAST_SQUARES;
+    if (s == "weighted_least_squares")   return GradientScheme::WEIGHTED_LEAST_SQUARES;
     if (s == "least_squares_quadratic")  return GradientScheme::LEAST_SQUARES_QUADRATIC;
     throw std::runtime_error("gradient_scheme_from_string: unknown scheme '" + s + "'");
 }
@@ -709,6 +1034,8 @@ inline Field<double, Location::CELL> cell_gradient(
             return compute_gradient_gauss_point(cell_field, mesh, geometry);
         case GradientScheme::LEAST_SQUARES:
             return compute_gradient_least_squares(cell_field, mesh);
+        case GradientScheme::WEIGHTED_LEAST_SQUARES:
+            return compute_gradient_weighted_least_squares(cell_field, mesh);
         case GradientScheme::LEAST_SQUARES_QUADRATIC:
             return compute_gradient_least_squares_quadratic(cell_field, mesh);
     }
@@ -717,3 +1044,4 @@ inline Field<double, Location::CELL> cell_gradient(
 
 }  // namespace core
 }  // namespace cfdx
+
