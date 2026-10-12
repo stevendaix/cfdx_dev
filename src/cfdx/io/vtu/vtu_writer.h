@@ -82,6 +82,15 @@ private:
                            const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                            const std::vector<std::size_t>& vtk_original_cell_indices);
 
+    // Face fields carry no VTK section a reader can consume on an unstructured
+    // grid, so they are area-weighted onto the cells that own them and emitted
+    // as cell data. That is what the header has always promised; before this
+    // the parameter was accepted and discarded, so no face quantity could ever
+    // reach the file.
+    std::map<std::string, cfdx::core::ScalarCellField> interpolate_face_fields(
+        const cfdx::core::Mesh& mesh,
+        const std::map<std::string, cfdx::core::ScalarFaceField>& fields_face) const;
+
     void write_point_fields(std::ofstream& os,
                             const cfdx::core::Mesh& mesh,
                             const std::map<std::string, cfdx::core::ScalarPointField>& fields);

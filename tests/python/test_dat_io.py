@@ -65,6 +65,108 @@ def test_read_dat_accepts_current_v1_format(tmp_path: Path) -> None:
     assert set(restart.fields) == {"U", "p"}
 
 
+def test_read_dat_accepts_native_v3_checkpoint_with_identity(tmp_path: Path) -> None:
+    """A checkpoint in the layout the native C++ writer now emits."""
+    path = tmp_path / "state.dat"
+    path.write_text(
+        "CFDX-DAT 3\n"
+        "cells 1\n"
+        "iteration 17\n"
+        "time 2.5\n"
+        "identity 8 6 1 12345678901234567890\n"
+        "field U 3\n"
+        "0.25 -0.15 0.05\n"
+        "field p 1\n"
+        "37.5\n"
+        "optional_fields\n"
+        "field T 1\n"
+        "350.0\n",
+        encoding="utf-8",
+    )
+
+    restart = read_dat_restart(path)
+
+    assert restart.version == 3
+    assert restart.iteration == 17
+    assert restart.time == pytest.approx(2.5)
+    assert restart.mesh_identity == (8, 6, 1, 12345678901234567890)
+    assert set(restart.fields) == {"U", "p", "T"}
+    assert restart.fields["U"].values == [0.25, -0.15, 0.05]
+    assert restart.fields["p"].values == [37.5]
+    assert restart.fields["T"].values == [350.0]
+
+
+def test_read_dat_accepts_v3_checkpoint_without_optional_fields(tmp_path: Path) -> None:
+    path = tmp_path / "state.dat"
+    path.write_text(
+        "CFDX-DAT 3\n"
+        "cells 1\n"
+        "iteration 1\n"
+        "time 0\n"
+        "identity 8 6 1 42\n"
+        "field U 3\n"
+        "1 2 3\n"
+        "field p 1\n"
+        "4\n"
+        "optional_fields\n",
+        encoding="utf-8",
+    )
+
+    restart = read_dat_restart(path)
+
+    assert restart.mesh_identity == (8, 6, 1, 42)
+    assert set(restart.fields) == {"U", "p"}
+
+
+def test_read_dat_accepts_v2_optional_fields_marker(tmp_path: Path) -> None:
+    """The native v2 writer emitted this marker; the reader skipped past it."""
+    path = tmp_path / "state.dat"
+    path.write_text(
+        "CFDX-DAT 2\n"
+        "cells 1\n"
+        "iteration 3\n"
+        "time 0.5\n"
+        "field U 3\n"
+        "1 2 3\n"
+        "field p 1\n"
+        "4\n"
+        "optional_fields\n"
+        "field k 1\n"
+        "0.25\n",
+        encoding="utf-8",
+    )
+
+    restart = read_dat_restart(path)
+
+    assert set(restart.fields) == {"U", "p", "k"}
+    assert restart.fields["k"].values == [0.25]
+    assert restart.mesh_identity is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Identity cell count disagreeing with the declared cell count.
+        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 7 42\n"
+        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        # Missing identity section on a version that requires one.
+        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\n"
+        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        # Non-integer identity component.
+        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1 notanumber\n"
+        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        # Truncated identity.
+        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1\n"
+        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+    ],
+)
+def test_read_dat_rejects_invalid_v3_identity(tmp_path: Path, payload: str) -> None:
+    path = tmp_path / "invalid.dat"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_dat_restart(path)
+
+
 @pytest.mark.parametrize(
     "payload",
     [

@@ -71,3 +71,46 @@ def test_case_bundle_rejects_missing_field_data(tmp_path: Path) -> None:
     save_case(make_session(), path)
     with pytest.raises(ValueError, match="fields"):
         validate_case_bundle(path)
+
+
+def bundle_with_parasite(tmp_path: Path, populate) -> Path:
+    """Write a valid bundle and then inject runtime state into the case artifact."""
+    path = tmp_path / "leaky.cfdx.h5"
+    with h5py.File(path, "w") as h5:
+        write_native_mesh(h5)
+    save_case(make_session(), path)
+    with h5py.File(path, "a") as h5:
+        populate(h5)
+    return path
+
+
+@pytest.mark.parametrize(
+    "populate",
+    [
+        pytest.param(lambda h5: h5.create_group("runtime/checkpoint"), id="checkpoint"),
+        pytest.param(lambda h5: h5.create_group("runtime/restart"), id="restart"),
+        pytest.param(lambda h5: h5.create_dataset("runtime/foo", data=[1.0]), id="arbitrary-runtime-group"),
+        pytest.param(lambda h5: h5.create_dataset("iteration", data=[7]), id="top-level-iteration"),
+        pytest.param(lambda h5: h5.create_dataset("time", data=[0.5]), id="top-level-time"),
+        pytest.param(lambda h5: h5.create_dataset("solution/u", data=[1.0]), id="top-level-solution"),
+    ],
+)
+def test_runtime_state_parasites_are_reported_as_not_separated(tmp_path: Path, populate) -> None:
+    """Absent checkpoint/restart groups alone never proved runtime separation.
+
+    Each parasite is runtime state that leaked into the case artifact under a
+    name other than the two historical ones, so it must flip the flag.
+    """
+    path = bundle_with_parasite(tmp_path, populate)
+    assert validate_case_bundle(path)["runtime_separated"] is False
+
+
+def test_case_layout_members_are_not_mistaken_for_runtime_state(tmp_path: Path) -> None:
+    """The check must not fire on the mesh and field layout it has to allow."""
+    path = tmp_path / "bundle.cfdx.h5"
+    with h5py.File(path, "w") as h5:
+        write_native_mesh(h5)
+        h5.create_dataset("patch_face_ids", data=[0, 1], dtype="u8")
+        h5.create_group("fields/scalar")
+    save_case(make_session(), path)
+    assert validate_case_bundle(path)["runtime_separated"] is True

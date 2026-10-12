@@ -1,0 +1,8 @@
+{
+  "id": "n15-poisson-baseline",
+  "description": "Reference contract for a reproducible Poisson performance run.",
+  "mesh": {"cells": 100000, "dimensions": 3},
+  "numerics": {"equation": "Poisson", "linear_solver": "FGMRES", "preconditioner": "AMG", "tolerance": 1e-10, "precision": "FP64"},
+  "parallel": {"ranks": 1},
+  "performance_policy": {"require_git_sha": true, "require_hardware": true, "require_compiler": true, "require_build_type": true, "require_mesh": true, "require_numerics": true, "require_true_residual": true}
+}

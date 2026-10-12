@@ -22,7 +22,7 @@ int main() {
         EXPECT_NEAR(result, expected, 1e-12);
     });
 
-    run_case("implicit_euler_placeholder", [&]() {
+    run_case("implicit_euler_decay", [&]() {
         double phi_n = 1.0;
         double dt = 0.1;
         double result = implicit_euler_step(phi_n, dt, reaction);

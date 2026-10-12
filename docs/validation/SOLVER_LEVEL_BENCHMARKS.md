@@ -4,16 +4,18 @@ This document separates executable solver comparisons from component-level refer
 
 ## Executable solver comparisons
 
-| Case | CFDX path | Reference | Current CI role |
-|---|---|---|---|
-| Couette | finite-volume scalar diffusion | exact linear profile | PASS |
-| Plane Poiseuille | finite-volume scalar diffusion/source | exact quadratic profile | diagnostic CI gate: invariants on all levels; coarse accuracy diagnostic; N=32/64 accuracy gates; L2/Q refinement order; independent wall-flux QoI |
-| 1-D conduction | finite-volume scalar diffusion | exact linear profile | PASS within numerical tolerance |
-| Ghia cavity Re=100/400 | steady incompressible SIMPLE | Ghia et al. centreline tables | active solver benchmark; tolerance is mesh-dependent |
-| two-region CHT | coupled energy solver/interface matching | resistance/flux continuity | PASS |
-| radiation-energy equilibrium | DOM + energy coupling | uniform blackbody equilibrium | PASS |
+The cases below are executable campaign targets. Current status is **not maintained in this Markdown file**. Status belongs to the machine-readable qualification registry and retained execution evidence.
 
-The Couette/Poiseuille cases are solver-level verification of the finite-volume transport path used by momentum diffusion. They are not a complete pressure-velocity Navier-Stokes validation.
+| Case | CFDX path | Reference | Campaign role |
+|---|---|---|---|
+| Couette | finite-volume scalar diffusion / momentum path | exact linear profile | solver-level verification |
+| Plane Poiseuille | finite-volume scalar diffusion/source | exact quadratic profile | solver-level verification and refinement |
+| 1-D conduction | finite-volume scalar diffusion | exact linear profile | component/solver verification |
+| Ghia cavity | steady incompressible SIMPLE path | Ghia centreline data | active solver benchmark |
+| two-region CHT | coupled energy/interface path | resistance/flux continuity | multiphysics verification |
+| radiation-energy equilibrium | DOM + energy coupling | blackbody equilibrium | multiphysics verification |
+
+A passing component or solver regression is not automatically a qualification decision. Quantitative status is derived from executable evidence and the machine-readable qualification registry.
 
 ## Reference datasets and planned full CFD cases
 

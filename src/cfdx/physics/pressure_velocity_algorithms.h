@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace cfdx::physics {
 
@@ -23,6 +24,30 @@ enum class PressureVelocityAlgorithm {
     COUPLED
 };
 
+enum class CoupledSchurModel { BlockLocal, PCD, LSC, BFBT, SIMPLE, SIMPLEC };
+
+inline const char* to_string(CoupledSchurModel model) noexcept {
+    switch (model) {
+        case CoupledSchurModel::BlockLocal: return "block_local";
+        case CoupledSchurModel::PCD: return "pcd";
+        case CoupledSchurModel::LSC: return "lsc";
+        case CoupledSchurModel::BFBT: return "bfbt";
+        case CoupledSchurModel::SIMPLE: return "simple";
+        case CoupledSchurModel::SIMPLEC: return "simplec";
+    }
+    return "unknown";
+}
+
+inline bool parse_coupled_schur_model(const std::string& name, CoupledSchurModel& out) {
+    if (name == "block_local") { out = CoupledSchurModel::BlockLocal; return true; }
+    if (name == "pcd") { out = CoupledSchurModel::PCD; return true; }
+    if (name == "lsc") { out = CoupledSchurModel::LSC; return true; }
+    if (name == "bfbt") { out = CoupledSchurModel::BFBT; return true; }
+    if (name == "simple") { out = CoupledSchurModel::SIMPLE; return true; }
+    if (name == "simplec") { out = CoupledSchurModel::SIMPLEC; return true; }
+    return false;
+}
+
 struct CouplingControls {
     double alpha_u = 0.7;
     double alpha_p = 0.3;
@@ -33,7 +58,19 @@ struct CouplingControls {
     // Rhie-Chow pressure block makes the collocated formulation nonsingular
     // after pressure gauge fixing.
     std::size_t coupled_max_iterations = 2000;
-    double coupled_linear_tolerance = 1e-10;
+    // Default tightened from 1e-10. At 1e-10 the coupled FGMRES true
+    // relative residual floors at ~9.94e-11 with an absolute momentum
+    // residual floor of ~2.4e-10 (stable within 0.02% over 8000 outer
+    // iterations on the NACA0012 n64 case, diag/naca-coupled-fix4b),
+    // which leaves the iteration-1-relative momentum metric ~11x above
+    // the 1e-8 gate: the previous default could never pass the
+    // convergence gates. At 1e-12 the same case converges with all
+    // gates green (n64 and n128 both in 67 outer iterations,
+    // diag/naca-coupled-fix4c). See issue #663.
+    double coupled_linear_tolerance = 1e-12;
+    // Explicit pressure-Schur approximation for the coupled production path.
+    // Unsupported models must be rejected; there is no implicit fallback.
+    CoupledSchurModel schur_model = CoupledSchurModel::PCD;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
@@ -46,12 +83,184 @@ inline void validate_coupling_controls(const CouplingControls& c)
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
 }
 
+struct AdaptiveRelaxationControls {
+    bool enabled = false;
+    double min_alpha_u = 0.2;
+    double max_alpha_u = 0.9;
+    double min_alpha_p = 0.1;
+    double max_alpha_p = 0.5;
+    double improvement_threshold = 0.05;
+    double degradation_threshold = 0.10;
+    // Small additive increases make the controller conservative near a stable
+    // fixed point; degradation remains twice as fast so overshoot is recovered
+    // more quickly than it is introduced.
+    double increase_step = 0.005;
+    double decrease_step = 0.02;
+    // A severe residual jump immediately following an accepted relaxation
+    // increase is treated as an overshoot event rather than waiting for the
+    // normal multi-window hysteresis. Residual jumps without a causal alpha
+    // increase are not classified as adaptive overshoots.
+    double severe_degradation_ratio = 2.0;
+    // Number of adaptation windows during which increases are frozen after a
+    // severe-degradation rollback.
+    std::size_t recovery_cooldown_windows = 2;
+    // Adapt against a short history window rather than consecutive noisy
+    // iterations. This prevents the controller from reacting to the
+    // pressure/velocity coupling oscillation of SIMPLE itself.
+    std::size_t adaptation_window = 4;
+    // Number of consecutive window decisions required before changing a
+    // relaxation factor. This is deliberately explicit: the controller is
+    // hysteretic and must not react to a single SIMPLE oscillation.
+    std::size_t required_trend_windows = 2;
+};
+
+inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationControls& c)
+{
+    if (c.min_alpha_u <= 0.0 || c.max_alpha_u < c.min_alpha_u || c.max_alpha_u > 1.0 ||
+        c.min_alpha_p <= 0.0 || c.max_alpha_p < c.min_alpha_p || c.max_alpha_p > 1.0 ||
+        c.improvement_threshold < 0.0 || c.degradation_threshold < c.improvement_threshold ||
+        !(c.increase_step > 0.0) || !(c.decrease_step > 0.0) ||
+        c.increase_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.decrease_step > (c.max_alpha_u - c.min_alpha_u) ||
+        c.increase_step > (c.max_alpha_p - c.min_alpha_p) ||
+        c.decrease_step > (c.max_alpha_p - c.min_alpha_p) ||
+        !(c.severe_degradation_ratio > 1.0 + c.degradation_threshold) ||
+        c.recovery_cooldown_windows == 0 ||
+        c.adaptation_window == 0 || c.required_trend_windows == 0)
+        throw std::invalid_argument("invalid adaptive relaxation controls");
+}
+
+inline double adapt_relaxation_factor(
+    double alpha,
+    double previous_residual,
+    double residual,
+    double min_alpha,
+    double max_alpha,
+    const AdaptiveRelaxationControls& controls)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(alpha) || !std::isfinite(previous_residual) ||
+        !std::isfinite(residual) || previous_residual < 0.0 || residual < 0.0)
+        throw std::invalid_argument("invalid adaptive relaxation state");
+    const double safe_alpha = std::clamp(alpha, min_alpha, max_alpha);
+    if (!controls.enabled || previous_residual == 0.0)
+        return safe_alpha;
+    const double ratio = residual / previous_residual;
+    if (ratio <= 1.0 - controls.improvement_threshold)
+        return std::min(max_alpha, safe_alpha + controls.increase_step);
+    if (ratio >= 1.0 + controls.degradation_threshold)
+        return std::max(min_alpha, safe_alpha - controls.decrease_step);
+    // Hysteresis band: retain the current relaxation and filter small residual noise.
+    return safe_alpha;
+}
+
+inline double adapt_relaxation_factor_windowed(
+    double alpha,
+    double reference_metric,
+    double current_metric,
+    double min_alpha,
+    double max_alpha,
+    const AdaptiveRelaxationControls& controls,
+    std::size_t& improvement_streak,
+    std::size_t& degradation_streak)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(alpha) || !std::isfinite(reference_metric) ||
+        !std::isfinite(current_metric) || reference_metric <= 0.0 ||
+        current_metric < 0.0)
+        throw std::invalid_argument("invalid windowed adaptive relaxation state");
+
+    const double safe_alpha = std::clamp(alpha, min_alpha, max_alpha);
+    if (!controls.enabled)
+        return safe_alpha;
+
+    const double ratio = current_metric / reference_metric;
+    if (ratio <= 1.0 - controls.improvement_threshold) {
+        ++improvement_streak;
+        degradation_streak = 0;
+    } else if (ratio >= 1.0 + controls.degradation_threshold) {
+        ++degradation_streak;
+        improvement_streak = 0;
+    } else {
+        improvement_streak = 0;
+        degradation_streak = 0;
+    }
+
+    if (improvement_streak >= controls.required_trend_windows) {
+        improvement_streak = 0;
+        return std::min(max_alpha, safe_alpha + controls.increase_step);
+    }
+    if (degradation_streak >= controls.required_trend_windows) {
+        degradation_streak = 0;
+        return std::max(min_alpha, safe_alpha - controls.decrease_step);
+    }
+    return safe_alpha;
+}
+
+inline bool adaptive_relaxation_severe_degradation(
+    double previous_metric,
+    double current_metric,
+    double previous_alpha,
+    double current_alpha,
+    const AdaptiveRelaxationControls& controls)
+{
+    validate_adaptive_relaxation_controls(controls);
+    if (!std::isfinite(previous_metric) || !std::isfinite(current_metric) ||
+        !std::isfinite(previous_alpha) || !std::isfinite(current_alpha) ||
+        previous_metric <= 0.0 || current_metric < 0.0 ||
+        previous_alpha <= 0.0 || current_alpha <= 0.0)
+        throw std::invalid_argument("invalid adaptive relaxation guard state");
+
+    // A residual jump is only an adaptive-relaxation overshoot when the
+    // responsible relaxation factor actually increased between two accepted
+    // nonlinear states. This prevents ordinary SIMPLE oscillations from
+    // repeatedly consuming the bounded retry budget.
+    if (!(current_alpha > previous_alpha))
+        return false;
+    return current_metric / previous_metric >= controls.severe_degradation_ratio;
+}
+
 inline double relaxed_value(double old_value, double computed_value, double alpha)
 {
     if (!std::isfinite(alpha) || !std::isfinite(old_value) || !std::isfinite(computed_value) ||
         alpha <= 0.0 || alpha > 1.0)
         throw std::invalid_argument("relaxed_value: alpha must be in (0,1]");
     return old_value + alpha * (computed_value - old_value);
+}
+
+// SIMPLEC uses the signed entries stored in the assembled momentum matrix.
+// CFDX stores neighbour entries as A_PN = -a_PN with a_PN >= 0, so the
+// consistent diagonal A_P - sum(a_PN) is A_P + sum(A_PN). Keeping this
+// sign conversion explicit prevents the segregated and algebraic Schur paths
+// from drifting away from the assembled matrix convention.
+inline double simplec_consistent_diagonal(
+    double diagonal,
+    double signed_offdiag_sum)
+{
+    if (!std::isfinite(diagonal) || !std::isfinite(signed_offdiag_sum) ||
+        diagonal <= 0.0)
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal: invalid momentum coefficients");
+    // Matrix off-diagonals are signed (normally non-positive): convert
+    // them back to the positive neighbour-coefficient convention of SIMPLEC.
+    const double denominator = diagonal + signed_offdiag_sum;
+    if (!(denominator > 0.0) || !std::isfinite(denominator))
+        throw std::invalid_argument(
+            "simplec_consistent_diagonal: non-positive/non-finite denominator");
+    return denominator;
+}
+
+// Absolute-value form is equivalent only when all stored off-diagonals
+// are non-positive. Kept as an independent diagnostic, not as the contract.
+inline double simplec_abs_sum_diagnostic_denominator(
+    double diagonal,
+    double abs_offdiag_sum)
+{
+    if (!std::isfinite(diagonal) || !std::isfinite(abs_offdiag_sum) ||
+        diagonal <= 0.0 || abs_offdiag_sum < 0.0)
+        throw std::invalid_argument(
+            "simplec_abs_sum_diagnostic_denominator: invalid coefficients");
+    return diagonal - abs_offdiag_sum;
 }
 
 // Discrete coefficient convention used throughout the pressure-velocity path:

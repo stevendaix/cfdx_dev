@@ -1,0 +1,141 @@
+name: N10 Public Fixture Verification
+
+on:
+  pull_request:
+    types: [opened, labeled, synchronize, reopened]
+  push:
+    branches: [master, main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: n10-public-fixtures-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-fixtures:
+    name: Acquire and verify public N10 fixtures
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test the exact-HEAD campaign evidence gate
+        run: python3 tests/python/test_n10_campaign_evidence.py
+
+      - name: Acquire pinned public fixtures
+        run: |
+          set -euo pipefail
+          python3 scripts/acquire_mesh_fixtures.py \
+            --fixture meshio-su2-square \
+            --fixture meshio-gmsh-insulated-2-2 \
+            --fixture meshio-vtk-unstructured \
+            --fixture openfoam-airfoil2d
+
+      - name: Independently verify acquired public fixtures
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_n10_mesh_fixtures.py \
+            --fixture meshio-su2-square \
+            --fixture meshio-gmsh-insulated-2-2 \
+            --fixture meshio-vtk-unstructured \
+            --fixture openfoam-airfoil2d \
+            --report build/n10-fixtures/n10_public_fixture_verification.json
+
+      - name: Install build and mesh-import dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pydantic PyYAML
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build production mesh importer qualification target
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_GPU=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv/bin/python
+          cmake --build build --parallel 4 --target cfdx_convert cfdx_production_solver test_n10_external_fixture_import test_n10_fixture_production_case test_n10_fixture_numerical_qualification test_n10_difficult_mesh_robustness test_gradient_verification test_polyhedral_gradient_campaign test_nonorthogonal_skew_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_laplacian_campaign test_polyhedral_poisson_convergence
+
+      - name: Qualify imported fixtures through the production C++ importer
+        run: |
+          set -euo pipefail
+          ./build/test_n10_external_fixture_import \
+            build/n10-fixtures \
+            build/n10-fixtures/n10_production_fixture_qualification.json
+
+      - name: Build the N10 numerical applicability matrix
+        run: |
+          set -euo pipefail
+          .venv/bin/python scripts/n10_fixture_applicability.py \
+            --qualification build/n10-fixtures/n10_production_fixture_qualification.json \
+            --report build/n10-fixtures/n10_fixture_applicability.json
+
+      - name: Run N10 fixture numerical qualification
+        run: |
+          set -euo pipefail
+          ./build/test_n10_fixture_numerical_qualification \
+            build/n10-fixtures/meshio-vtk-unstructured \
+            build/n10-fixtures/n10_fixture_numerical_qualification.json
+
+      - name: Exercise verified fixture through production solver
+        env:
+          CFDX_N10_FIXTURE_ROOT: ${{ github.workspace }}/build/n10-fixtures
+          CFDX_PRODUCTION_SOLVER: ${{ github.workspace }}/build/cfdx_production_solver
+          CFDX_N10_PRODUCTION_CASE_BUILDER: ${{ github.workspace }}/build/test_n10_fixture_production_case
+          CFDX_N10_SOLVER_EVIDENCE: ${{ github.workspace }}/build/n10-fixtures/n10_production_solver_smoke.json
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          set -euo pipefail
+          python3 tests/python/test_n10_fixture_production_solver.py
+
+      - name: Run the complete N10 difficult-mesh qualification campaign
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+        run: |
+          set -euo pipefail
+          .venv/bin/python scripts/n10_qualification.py \
+            --build-dir build \
+            --fixture-manifest tests/fixtures/mesh_sources.yaml \
+            --report build/n10-fixtures/n10_qualification.json
+
+      - name: Audit complete N10 campaign on the exact tested HEAD
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_n10_campaign_evidence.py \
+            --report build/n10-fixtures/n10_qualification.json \
+            --expected-revision "$GITHUB_SHA"
+
+      - name: Audit the complete fixture evidence chain
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_n10_fixture_evidence.py \
+            --verification build/n10-fixtures/n10_public_fixture_verification.json \
+            --qualification build/n10-fixtures/n10_production_fixture_qualification.json \
+            --solver-evidence build/n10-fixtures/n10_production_solver_smoke.json \
+            --numerical-evidence build/n10-fixtures/n10_fixture_numerical_qualification.json \
+            --applicability build/n10-fixtures/n10_fixture_applicability.json \
+            --report build/n10-fixtures/n10_fixture_evidence_gate.json
+
+      - name: Publish verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: n10-public-fixture-verification
+          retention-days: 90
+          path: |
+            build/n10-fixtures/n10_public_fixture_verification.json
+            build/n10-fixtures/n10_production_fixture_qualification.json
+            build/n10-fixtures/n10_fixture_applicability.json
+            build/n10-fixtures/n10_fixture_numerical_qualification.json
+            build/n10-fixtures/n10_production_solver_smoke.json
+            build/n10-fixtures/n10_fixture_evidence_gate.json
+            build/n10-fixtures/n10_qualification.json

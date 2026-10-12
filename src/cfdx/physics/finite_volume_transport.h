@@ -44,7 +44,11 @@ enum class ConvectionScheme {
     UPWIND,
     SECOND_ORDER_UPWIND,
     // Monotone TVD reconstruction using a minmod limiter on the MUSCL slope.
-    TVD
+    TVD,
+    CENTRAL,
+    BLENDED,
+    QUICK,
+    QUICK_BOUNDED
 };
 
 struct ScalarBoundaryFaceValues {
@@ -257,12 +261,31 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
-    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-        convection_scheme == ConvectionScheme::TVD) {
+    cfdx::core::Field<double, cfdx::core::Location::FACE> reconstructed_face;
+    const bool needs_field_reconstruction =
+        convection_scheme != ConvectionScheme::UPWIND;
+    if (needs_field_reconstruction) {
         if (convected_field == nullptr || convected_field->size() != nc || convected_field->dimension() != 1)
             throw std::invalid_argument(
-                "assemble_scalar_equation: higher-order convection requires a scalar convected field");
+                "assemble_scalar_equation: selected convection scheme requires a scalar convected field");
+    }
+    if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+        convection_scheme == ConvectionScheme::TVD) {
         reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+    }
+    if (convection_scheme == ConvectionScheme::CENTRAL ||
+        convection_scheme == ConvectionScheme::BLENDED ||
+        convection_scheme == ConvectionScheme::QUICK ||
+        convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
+        const auto geometry_cache = cfdx::core::make_geometry_cache(mesh);
+        const auto core_scheme =
+            convection_scheme == ConvectionScheme::CENTRAL ? cfdx::core::InterpScheme::LINEAR :
+            convection_scheme == ConvectionScheme::BLENDED ? cfdx::core::InterpScheme::BLENDED :
+            convection_scheme == ConvectionScheme::QUICK ? cfdx::core::InterpScheme::QUICK :
+            cfdx::core::InterpScheme::QUICK_BOUNDED;
+        reconstructed_face = cfdx::core::interpolate_cell_to_face(
+            *convected_field, mesh, geometry_cache, core_scheme, &face_flux,
+            cfdx::core::LimiterType::NONE, nullptr, 0.75);
     }
 
     const auto& own = mesh.ownership();
@@ -314,33 +337,47 @@ inline ScalarEquation assemble_scalar_equation(
             div_phi[n] -= F;
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-                convection_scheme == ConvectionScheme::TVD) {
+                convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::CENTRAL ||
+                convection_scheme == ConvectionScheme::BLENDED ||
+                convection_scheme == ConvectionScheme::QUICK ||
+                convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t upwind = F >= 0.0 ? o : n;
                 const std::size_t downwind = F >= 0.0 ? n : o;
                 const double phi_up = (*convected_field)(upwind);
-                const auto& C_up = geometry.cell_centres[upwind];
-                const auto& Cf = geometry.face_centres[f];
-                const double* gx = reconstructed_gradient.component_data(0);
-                const double* gy = reconstructed_gradient.component_data(1);
-                const double* gz = reconstructed_gradient.component_data(2);
-                const double high_increment =
-                    gx[upwind] * (Cf.x - C_up.x) +
-                    gy[upwind] * (Cf.y - C_up.y) +
-                    gz[upwind] * (Cf.z - C_up.z);
-                double phi_high = phi_up + high_increment;
                 const double phi_other = (*convected_field)(downwind);
+                double phi_high = phi_up;
 
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND) {
+                    const auto& C_up = geometry.cell_centres[upwind];
+                    const auto& Cf = geometry.face_centres[f];
+                    const double* gx = reconstructed_gradient.component_data(0);
+                    const double* gy = reconstructed_gradient.component_data(1);
+                    const double* gz = reconstructed_gradient.component_data(2);
+                    const double high_increment =
+                        gx[upwind] * (Cf.x - C_up.x) +
+                        gy[upwind] * (Cf.y - C_up.y) +
+                        gz[upwind] * (Cf.z - C_up.z);
+                    phi_high = phi_up + high_increment;
                     // Keep the historical bounded SOU reconstruction.
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
-                } else {
+                } else if (convection_scheme == ConvectionScheme::TVD) {
                     // Darwish-Moukalled successive-slope ratio for an
                     // unstructured cell-centred face. The gradient must be
                     // projected over the full upwind-to-downwind centre
                     // distance, not the half-distance from the upwind centre
                     // to the face. For an exact linear field this gives r=1,
                     // so MINMOD retains the centred linear face value.
+                    const auto& C_up = geometry.cell_centres[upwind];
+                    const auto& Cf = geometry.face_centres[f];
+                    const double* gx = reconstructed_gradient.component_data(0);
+                    const double* gy = reconstructed_gradient.component_data(1);
+                    const double* gz = reconstructed_gradient.component_data(2);
+                    const double high_increment =
+                        gx[upwind] * (Cf.x - C_up.x) +
+                        gy[upwind] * (Cf.y - C_up.y) +
+                        gz[upwind] * (Cf.z - C_up.z);
                     const double delta_down = phi_other - phi_up;
                     const auto& C_down = geometry.cell_centres[downwind];
                     const double delta_upwind_to_down =
@@ -355,6 +392,13 @@ inline ScalarEquation assemble_scalar_equation(
                     phi_high = phi_up + limiter * high_increment;
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
+                } else {
+                    // Central, blended and quadratic schemes are explicit
+                    // deferred corrections around the conservative upwind
+                    // matrix. The face value itself is produced by the core
+                    // reconstruction library, so assembly and post-solve
+                    // flux reconstruction share exactly the same scheme.
+                    phi_high = reconstructed_face(f);
                 }
 
                 const double correction = F * (phi_high - phi_up);
@@ -529,9 +573,24 @@ reconstruct_scalar_transport_flux(
 
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     Field<double, Location::CELL> grad;
+    Field<double, Location::FACE> reconstructed_face;
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD)
         grad = compute_gradient_gauss(field, mesh);
+    if (convection_scheme == ConvectionScheme::CENTRAL ||
+        convection_scheme == ConvectionScheme::BLENDED ||
+        convection_scheme == ConvectionScheme::QUICK ||
+        convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
+        const auto geometry_cache = cfdx::core::make_geometry_cache(mesh);
+        const auto core_scheme =
+            convection_scheme == ConvectionScheme::CENTRAL ? cfdx::core::InterpScheme::LINEAR :
+            convection_scheme == ConvectionScheme::BLENDED ? cfdx::core::InterpScheme::BLENDED :
+            convection_scheme == ConvectionScheme::QUICK ? cfdx::core::InterpScheme::QUICK :
+            cfdx::core::InterpScheme::QUICK_BOUNDED;
+        reconstructed_face = cfdx::core::interpolate_cell_to_face(
+            field, mesh, geometry_cache, core_scheme, &face_flux,
+            cfdx::core::LimiterType::NONE, nullptr, 0.75);
+    }
 
     const auto& own = mesh.ownership();
     for (std::size_t f = 0; f < nf; ++f) {
@@ -560,7 +619,11 @@ reconstruct_scalar_transport_flux(
             const double up = F >= 0.0 ? field(o) : field(n);
             psi_face = up;
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-                convection_scheme == ConvectionScheme::TVD) {
+                convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::CENTRAL ||
+                convection_scheme == ConvectionScheme::BLENDED ||
+                convection_scheme == ConvectionScheme::QUICK ||
+                convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
                 const double gx=grad.component_data(0)[u];
@@ -577,9 +640,14 @@ reconstruct_scalar_transport_flux(
                     const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
                     high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
                 }
-                psi_face=bounded_convection
-                    ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
-                    : high;
+                if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
+                    convection_scheme == ConvectionScheme::TVD) {
+                    psi_face=bounded_convection
+                        ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
+                        : high;
+                } else {
+                    psi_face = reconstructed_face(f);
+                }
             }
             result(f)=F*psi_face - gamma*area/d*(field(n)-field(o));
         } else {

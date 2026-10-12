@@ -7,6 +7,7 @@
 #include "common/test_harness.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -27,6 +28,37 @@ SparseMatrix make_poisson(std::size_t n, double scale = 1.0) {
         A.push_back(i, i, 2.0 * scale);
         if (i > 0) A.push_back(i, i - 1, -scale);
         if (i + 1 < n) A.push_back(i, i + 1, -scale);
+    }
+    A.finalize();
+    return A;
+}
+
+SparseMatrix make_anisotropic_diffusion_2d(std::size_t nx, std::size_t ny,
+                                          double ax, double ay) {
+    const std::size_t n = nx * ny;
+    SparseMatrix A(n, n);
+    for (std::size_t y = 0; y < ny; ++y) {
+        for (std::size_t x = 0; x < nx; ++x) {
+            const std::size_t i = y * nx + x;
+            double diagonal = 1.0; // positive reaction removes the null space
+            if (x > 0) {
+                A.push_back(i, i - 1, -ax);
+                diagonal += ax;
+            }
+            if (x + 1 < nx) {
+                A.push_back(i, i + 1, -ax);
+                diagonal += ax;
+            }
+            if (y > 0) {
+                A.push_back(i, i - nx, -ay);
+                diagonal += ay;
+            }
+            if (y + 1 < ny) {
+                A.push_back(i, i + nx, -ay);
+                diagonal += ay;
+            }
+            A.push_back(i, i, diagonal);
+        }
     }
     A.finalize();
     return A;
@@ -503,6 +535,70 @@ int main() {
 
         const bool sa_ok = qualify_multilevel_hierarchy(sa, "SA");
         qualification_ok = qualification_ok && sa_ok;
+    }
+
+
+    // N8 anisotropy/strong-scaling sweep. The existing unit regression proves
+    // the 1:1000 endpoint; this campaign makes the robustness envelope
+    // explicit by sweeping the directional coefficient ratio and qualifying
+    // both interpolation families against the same contraction and true-
+    // residual gates. No performance winner or arbitrary operator-error
+    // threshold is introduced.
+    {
+        const std::array<double, 4> anisotropy_ratios{{1.0, 10.0, 100.0, 1000.0}};
+        constexpr std::size_t nx = 32;
+        constexpr std::size_t ny = 32;
+        constexpr double true_residual_tolerance = 1e-9;
+
+        for (const double ratio : anisotropy_ratios) {
+            const auto A = make_anisotropic_diffusion_2d(nx, ny, 1.0, ratio);
+            const auto b = make_rhs(A.n_rows());
+
+            for (const auto policy : {AMGInterpolationPolicy::DirectCF,
+                                       AMGInterpolationPolicy::SmoothedAggregation}) {
+                const char* label = policy == AMGInterpolationPolicy::DirectCF
+                    ? "DirectCF" : "SA";
+                TestSparseOperator op(A);
+                MatrixFreeVcyclePreconditioner amg(
+                    op, 0.7, 6, 6, 0.25, 25, policy);
+                EXPECT_TRUE(amg.setup(A));
+                EXPECT_TRUE(amg.hierarchy_level_sizes().size() >= 2);
+
+                const double vcycle_energy = amg.sine_mode_vcycle_energy_ratio(0, 1);
+                Vector correction;
+                EXPECT_TRUE(amg.apply(b, correction));
+                const double vcycle_true_residual =
+                    relative_true_residual(A, correction, b);
+
+                Vector solution(A.n_rows(), 0.0);
+                const auto cg = solve_cg(
+                    A, b, solution, amg, 5000, true_residual_tolerance);
+                const double cg_true_residual =
+                    relative_true_residual(A, solution, b);
+
+                std::cout << "amg_anisotropy_sweep"
+                          << " policy=" << label
+                          << " ratio=" << ratio
+                          << " n=" << A.n_rows()
+                          << " levels=" << amg.hierarchy_level_sizes().size()
+                          << " vcycle_energy_ratio=" << vcycle_energy
+                          << " vcycle_true_residual=" << vcycle_true_residual
+                          << " cg_status=" << static_cast<int>(cg.status)
+                          << " cg_iterations=" << cg.iterations
+                          << " cg_true_residual=" << cg_true_residual
+                          << '\n';
+
+                // A V-cycle must be a genuine contraction on the manufactured
+                // low-frequency mode. The independent CG solve must then reach
+                // the fixed true-residual target without relying on the
+                // recursive Krylov residual as its acceptance metric.
+                EXPECT_TRUE(std::isfinite(vcycle_energy) && vcycle_energy < 1.0);
+                EXPECT_TRUE(std::isfinite(vcycle_true_residual));
+                EXPECT_TRUE(cg.status == SolverStatus::CONVERGED);
+                EXPECT_TRUE(std::isfinite(cg_true_residual) &&
+                            cg_true_residual < true_residual_tolerance);
+            }
+        }
     }
 
     auto print_cg_diagnostics = [](const char* label, const SolverResult& result) {

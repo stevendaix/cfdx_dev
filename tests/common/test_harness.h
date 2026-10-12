@@ -6,9 +6,22 @@
 #include <iostream>
 #include <cmath>
 #include <functional>
+#include <cstdint>
+#include <filesystem>
 
 namespace cfdx {
 namespace testing {
+
+// Returns a unique, pre-removed path under the system temp directory so that
+// concurrent test binaries (or repeated runs) never collide on a fixed name.
+inline std::filesystem::path unique_temp_path(const char* suffix = ".csv")
+{
+    static std::uint64_t counter = 0;
+    auto path = std::filesystem::temp_directory_path() /
+        ("cfdx_test_" + std::to_string(counter++) + suffix);
+    std::filesystem::remove(path);
+    return path;
+}
 
 struct TestCase {
     std::string name;
@@ -55,6 +68,33 @@ void run_case(const std::string& name, std::function<void()> func) {
             expr; \
         } catch (const exception_type&) { \
             threw = true; \
+        } catch (...) { \
+            std::cerr << "  FAILED: wrong exception type thrown in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            throw std::runtime_error("Wrong exception type"); \
+        } \
+        if (!threw) { \
+            std::cerr << "  FAILED: expected exception " #exception_type " not thrown in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            throw std::runtime_error("Expected exception not thrown"); \
+        } \
+    } while (0)
+
+// Pins the diagnostic as well as the exception type. A bare EXPECT_THROW
+// accepts any failure of the right type, so it cannot distinguish a deliberate
+// rejection from an unrelated parse error on the same code path.
+#define EXPECT_THROW_WITH(expr, exception_type, substring) \
+    do { \
+        bool threw = false; \
+        try { \
+            expr; \
+        } catch (const exception_type& exc) { \
+            threw = true; \
+            const std::string message = exc.what(); \
+            if (message.find(substring) == std::string::npos) { \
+                std::cerr << "  FAILED: expected message containing \"" << substring \
+                          << "\" but got \"" << message << "\" in " << __FUNCTION__ \
+                          << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+                throw std::runtime_error("Unexpected diagnostic"); \
+            } \
         } catch (...) { \
             std::cerr << "  FAILED: wrong exception type thrown in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
             throw std::runtime_error("Wrong exception type"); \

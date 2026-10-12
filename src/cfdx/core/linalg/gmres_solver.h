@@ -7,6 +7,7 @@
 #include "solver_workspace.h"
 #include "krylov_controls.h"
 #include "mixed_precision.h"
+#include "krylov_diagnostics.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -57,6 +58,16 @@ inline SolverResult solve_gmres(
     // for nondimensionalized or otherwise small-scale operators.
     const double rhs_scale = std::max(b_norm, 1e-300);
     const double tol = tolerance * b_norm;
+
+    // Diagnostic: track the gauge-row value of the initial solution vector.
+    // The gauge row is conventionally the last pressure unknown (index n-1),
+    // which is pinned to a reference value by the pressure gauge.
+    if (krylov_diagnostics_enabled()) {
+        const std::size_t gauge_row = n > 0 ? n - 1 : 0;
+        const double init_gauge = (gauge_row < x.size()) ? x(gauge_row) : 0.0;
+        std::cerr << "GMRES_INIT_GAUGE row=" << gauge_row
+                  << " value=" << init_gauge << "\n";
+    }
 
     GmresWorkspace local_workspace;
     GmresWorkspace& w = reusable_workspace ? *reusable_workspace : local_workspace;
@@ -119,6 +130,9 @@ inline SolverResult solve_gmres(
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
+                    if (krylov_diagnostics_enabled())
+                        std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
+                                  << iterations << "\n";
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iterations;
                     return result;
@@ -331,6 +345,87 @@ inline SolverResult solve_gmres(
     return result;
 }
 
+
+/*
+ * Flexible GMRES uses the same right-preconditioned Arnoldi recurrence as the
+ * implementation above, but exposes the method explicitly so callers can
+ * select a solver whose preconditioner may change between Krylov iterations.
+ *
+ * The implementation stores the preconditioned vector z_j independently for
+ * every Arnoldi basis vector; therefore no assumption of a stationary
+ * preconditioner is made. This is the essential FGMRES contract.
+ */
+inline SolverResult solve_fgmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    return solve_gmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner,
+        controls, reusable_workspace);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
+            mixed_precision_matvec(A, in, out, SolverPrecision::FP32);
+            return;
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_fgmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_fgmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+
 inline SolverResult solve_gmres(
     const SparseMatrix& A,
     const Vector& b,
@@ -340,7 +435,8 @@ inline SolverResult solve_gmres(
     double tolerance,
     Preconditioner* preconditioner,
     KrylovControls controls,
-    PrecisionPolicy precision = {}) {
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
     op.apply = [&A, precision](const Vector& in, Vector& out) {
@@ -356,7 +452,7 @@ inline SolverResult solve_gmres(
             out(i) = sum;
         }
     };
-    if (preconditioner && !preconditioner->setup(A)) {
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
         SolverResult result;
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
@@ -372,11 +468,12 @@ inline SolverResult solve_gmres(
     std::size_t max_iter = 1000,
     double tolerance = 1e-12,
     Preconditioner* preconditioner = nullptr,
-    PrecisionPolicy precision = {})
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
 {
     return solve_gmres(
         A, b, x, restart, max_iter, tolerance, preconditioner,
-        KrylovControls{}, precision);
+        KrylovControls{}, precision, setup_preconditioner);
 }
 
 } // namespace cfdx::core

@@ -1,0 +1,66 @@
+name: N13 CUDA equivalence
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Configured GitHub GPU runner label/name"
+        required: true
+        type: string
+      require_parallel_hdf5:
+        description: "Also require the production 2-rank -> 3-rank HDF5 restart"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  n13-cuda:
+    name: N13 CUDA equivalence
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify NVIDIA GPU
+        run: |
+          nvidia-smi
+          nvcc --version
+
+      - name: Install CPU/MPI/HDF5 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libopenmpi-dev openmpi-bin libhdf5-dev
+
+      - name: Configure CUDA build
+        run: |
+          cmake -S . -B build-n13-cuda -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_GPU=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=ON \
+            -DCFDX_ENABLE_PARALLEL_HDF5=OFF
+
+      - name: Build N13
+        run: cmake --build build-n13-cuda --parallel 4
+
+      - name: Run N13 CUDA and CPU equivalence campaign
+        run: |
+          python3 scripts/run_n13_equivalence.py \
+            --build-dir build-n13-cuda \
+            --json build-n13-cuda/n13-equivalence.json \
+            --require-cuda \
+            ${{ inputs.require_parallel_hdf5 && '--require-parallel-hdf5' || '' }}
+
+      - name: Upload N13 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n13-cuda-equivalence-${{ github.sha }}
+          path: build-n13-cuda/n13-equivalence.json
+          if-no-files-found: error
+          retention-days: 30

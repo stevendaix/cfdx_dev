@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -100,7 +101,10 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
     return mesh;
 }
 
-CavityResult solve_cavity(const CavityCase& test)
+CavityResult solve_cavity(
+    const CavityCase& test,
+    PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
+    PreconditionerModel preconditioner = PreconditionerModel::Auto)
 {
     Mesh mesh=make_cavity_mesh(test.nx,test.ny);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -120,7 +124,7 @@ CavityResult solve_cavity(const CavityCase& test)
         pbc[name]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
 
     IncompressibleSolverControls controls;
-    controls.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    controls.algorithm=algorithm;
     controls.density=1.0;
     controls.kinematic_viscosity=1.0/test.reynolds;
     controls.linear_max_iterations=10000;
@@ -132,6 +136,12 @@ CavityResult solve_cavity(const CavityCase& test)
     // the pressure reference away from a corner where several wall BCs meet.
     controls.pressure_reference_cell=(test.ny/2)*test.nx+(test.nx/2);
     controls.pressure_reference_value=0.0;
+    controls.coupling.alpha_u=0.7;
+    controls.coupling.alpha_p=0.3;
+    controls.coupling.coupled_max_iterations=5000;
+    controls.coupling.coupled_linear_tolerance=1e-10;
+    controls.coupled_linear_solver.krylov=KrylovModel::FGMRES;
+    controls.coupled_linear_solver.preconditioner=preconditioner;
     controls.use_bounded_convection=true;
     controls.convection_scheme=ConvectionScheme::UPWIND;
     controls.coupling.alpha_u=0.7;
@@ -148,20 +158,29 @@ CavityResult solve_cavity(const CavityCase& test)
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,controls);
     if(!solve.converged)
         throw std::runtime_error("Ghia cavity did not converge for Re="+std::to_string(test.reynolds));
-    const auto& pressure_context=solve.pressure_linear_context;
-    if(pressure_context.full_setups!=1 ||
-       pressure_context.solves!=solve.iterations ||
-       pressure_context.full_setups+
-               pressure_context.numeric_updates+
-               pressure_context.unchanged_reuses!=
-           pressure_context.solves)
-        throw std::runtime_error(
-            "Ghia pressure solver did not reuse its preconditioner lifecycle");
-    std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
-             <<pressure_context.full_setups
-             <<" numeric_updates="<<pressure_context.numeric_updates
-             <<" unchanged_reuses="<<pressure_context.unchanged_reuses
-             <<" solves="<<pressure_context.solves<<"\n";
+    if (algorithm == PressureVelocityAlgorithm::SIMPLE) {
+        const auto& pressure_context=solve.pressure_linear_context;
+        if(pressure_context.full_setups!=1 ||
+           pressure_context.solves!=solve.iterations ||
+           pressure_context.full_setups+
+                   pressure_context.numeric_updates+
+                   pressure_context.unchanged_reuses!=
+               pressure_context.solves)
+            throw std::runtime_error(
+                "Ghia pressure solver did not reuse its preconditioner lifecycle");
+        std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
+                 <<pressure_context.full_setups
+                 <<" numeric_updates="<<pressure_context.numeric_updates
+                 <<" unchanged_reuses="<<pressure_context.unchanged_reuses
+                 <<" solves="<<pressure_context.solves<<"\n";
+    }
+    std::cout<<"N8_GHIA_MODEL algorithm="
+             <<(algorithm == PressureVelocityAlgorithm::COUPLED ? "COUPLED" : "SIMPLE")
+             <<" preconditioner="<<to_string(preconditioner)
+             <<" iterations="<<solve.iterations
+             <<" true_momentum_residual="<<solve.history.back().momentum_equation_residual
+             <<" continuity="<<solve.history.back().continuity_linf
+             <<"\n";
     return {std::move(U),solve,build_fv_geometry(mesh)};
 }
 
@@ -237,9 +256,12 @@ struct CaseMetrics { Comparison u; Comparison v; };
 struct Profile { std::vector<double> u; std::vector<double> v; };
 struct ValidationResult { CavityResult solution; CaseMetrics metrics; };
 
-ValidationResult run_case(const CavityCase& test)
+ValidationResult run_case(
+    const CavityCase& test,
+    PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
+    PreconditionerModel preconditioner = PreconditionerModel::Auto)
 {
-    auto result=solve_cavity(test);
+    auto result=solve_cavity(test, algorithm, preconditioner);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
@@ -310,9 +332,74 @@ int main(int argc, char** argv)
 {
     try {
         const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
-        if (argc > 1 && !quick)
-            throw std::invalid_argument("usage: test_ghia_cavity [--quick]");
+        const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
+        const bool pcd_preflight = argc == 2 && std::string(argv[1]) == "--pcd-preflight";
+        const bool pcd = argc == 2 && std::string(argv[1]) == "--pcd";
+        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd]");
 
+        // Merge-gated observed-order smoke check. Three resolutions are the
+        // minimum for a Richardson-style order from successive differences, so
+        // this runs 16/32/64 rather than 32/64/128: the 128x128 solve alone
+        // dominates the full campaign. This is a regression tripwire on
+        // monotonic convergence and positive order, not a substitute for the
+        // full campaign, which stays behind CFDX_ENABLE_LONG_VALIDATION.
+        if (gate) {
+            const auto r16 = run_case({100.0,16,16,2500});
+            const auto r32 = run_case({100.0,32,32,2500});
+            const auto r64 = run_case({100.0,64,64,5000});
+
+            const auto profile16 = sample_profile(r16.solution, 16, 16);
+            const auto profile32 = sample_profile(r32.solution, 32, 32);
+            const auto profile64 = sample_profile(r64.solution, 64, 64);
+
+            const double u_rms_16_32 = rms_difference(profile16.u, profile32.u);
+            const double u_rms_32_64 = rms_difference(profile32.u, profile64.u);
+            const double v_rms_16_32 = rms_difference(profile16.v, profile32.v);
+            const double v_rms_32_64 = rms_difference(profile32.v, profile64.v);
+            const double u_max_16_32 = max_difference(profile16.u, profile32.u);
+            const double u_max_32_64 = max_difference(profile32.u, profile64.u);
+
+            const double p_u_rms = observed_order(u_rms_16_32, u_rms_32_64);
+            const double p_v_rms = observed_order(v_rms_16_32, v_rms_32_64);
+            const double p_u_max = observed_order(u_max_16_32, u_max_32_64);
+            std::cout << "GHIA_ORDER_GATE Re=100 grid=16/32/64"
+                      << " observed_order U_RMS=" << p_u_rms
+                      << " V_RMS=" << p_v_rms
+                      << " U_max=" << p_u_max
+                      << " dU_RMS(16,32)=" << u_rms_16_32
+                      << " dU_RMS(32,64)=" << u_rms_32_64
+                      << " dV_RMS(16,32)=" << v_rms_16_32
+                      << " dV_RMS(32,64)=" << v_rms_32_64 << "\n";
+            if (!(u_rms_32_64 < u_rms_16_32) ||
+                !(v_rms_32_64 < v_rms_16_32) ||
+                !(u_max_32_64 < u_max_16_32) ||
+                !(p_u_rms > 0.50) || !(p_v_rms > 0.50) || !(p_u_max > 0.50))
+                throw std::runtime_error("Ghia merge-gated observed order is insufficient");
+            std::cout << "GHIA_ORDER_GATE: PASS\n";
+            return 0;
+        }
+
+        if (pcd_preflight || pcd) {
+            const auto start = std::chrono::steady_clock::now();
+            const CavityCase test = pcd_preflight
+                ? CavityCase{100.0,16,16,1000}
+                : CavityCase{100.0,32,32,5000};
+            const auto result = run_case(
+                test,
+                PressureVelocityAlgorithm::COUPLED,
+                PreconditionerModel::PCD);
+            (void)result;
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start).count();
+            std::cout << "N8_PCD_STAGE stage="
+                      << (pcd_preflight ? "preflight-16x16" : "qualification-32x32")
+                      << " elapsed_s=" << elapsed << "\\n";
+            std::cout << (pcd_preflight
+                ? "GHIA_CAVITY_N8_PCD_PREFLIGHT: PASS\\n"
+                : "GHIA_CAVITY_N8_PCD: PASS\\n");
+            return 0;
+        }
         const auto r32 = run_case({100.0,32,32,2500});
         if (quick) {
             std::cout << "GHIA_CAVITY_QUICK: PASS\n";

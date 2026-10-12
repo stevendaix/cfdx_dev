@@ -11,7 +11,6 @@ Corresponds to the C++ headers:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -100,6 +99,20 @@ class InitialCondition(BaseModel):
     scalar_fields: dict[str, float] = Field(default_factory=dict)
 
 
+class NumericalSelection(BaseModel):
+    """One explicit CFDX numerical registry selection."""
+
+    family: str
+    configuration_key: str
+
+
+class NumericalSelectionConfig(BaseModel):
+    """Canonical case-level numerical selection block."""
+
+    entries: list[NumericalSelection] = Field(default_factory=list)
+    required_families: list[str] = Field(default_factory=list)
+
+
 class NumericalScheme(BaseModel):
     momentum_scheme: str = "first_order"
     pressure_scheme: str = "standard"
@@ -109,10 +122,21 @@ class NumericalScheme(BaseModel):
     under_relaxation_momentum: float = 0.7
     under_relaxation_pressure: float = 0.3
     coupled_solver: str = "SIMPLE"
+    coupled_schur: str = ""
     preconditioner: str = ""
+    linear_solver: str = ""
     residual_target: str = "1e-5"
     max_iterations: int = 500
     raw_settings: dict[str, str] = Field(default_factory=dict)
+    # Source numerics settings an adapter could not map onto a canonical N1
+    # registry key, as "<family>: <source value>". Reported as a blocking
+    # conversion gap by validate_numerical_selection so an unmappable source
+    # scheme can never be silently replaced by a default.
+    unmapped_settings: list[str] = Field(default_factory=list)
+    # Canonical N1 registry selections. Adapters populate this explicitly.
+    selection: NumericalSelectionConfig = Field(
+        default_factory=NumericalSelectionConfig
+    )
 
 
 class MeshMetadata(BaseModel):
@@ -166,17 +190,21 @@ class CaseSetup(BaseModel):
 
     # Other
     gravity_vector: str = ""
+    # Uniform body force per unit mass (acceleration, m/s^2). Empty = not
+    # declared: the solver keeps its own default instead of silently
+    # substituting zero.
+    body_force: list[float] = Field(default_factory=list)
     units: str = "SI"
     solver_mode: str = "steady"
     source_metadata: dict[str, str] = Field(default_factory=dict)
 
-    def find_boundary(self, name: str) -> Optional[BoundarySpec]:
+    def find_boundary(self, name: str) -> BoundarySpec | None:
         for bc in self.boundary_conditions:
             if bc.patch_name == name:
                 return bc
         return None
 
-    def find_material(self, name: str) -> Optional[MaterialSpec]:
+    def find_material(self, name: str) -> MaterialSpec | None:
         for m in self.materials:
             if m.name == name:
                 return m

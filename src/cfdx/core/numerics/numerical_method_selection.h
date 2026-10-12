@@ -113,4 +113,62 @@ inline std::vector<std::string> configuration_keys_for_family(
     return keys;
 }
 
+// One explicit selection request of a case numerics configuration.
+struct CaseNumericsEntry {
+    NumericalMethodFamily family = NumericalMethodFamily::Convection;
+    std::string configuration_key;
+};
+
+// Result of resolving a whole case numerics configuration. Every request is
+// either resolved (with auditable fields) or recorded as an error — there is
+// no silent fallback and no throw on a malformed case: the report is what the
+// case-loading and validation pipeline consumes.
+struct CaseNumericsReport {
+    std::string case_name;
+    std::vector<NumericalSchemeSelection> resolved;
+    std::vector<std::string> errors;
+    // Report lines in the same order as the input entries. This is retained
+    // separately from resolved/errors so diagnostics do not lose input order.
+    std::vector<std::string> ordered_lines;
+
+    bool valid() const { return !resolved.empty() && errors.empty(); }
+};
+
+inline CaseNumericsReport resolve_case_numerics(
+    const std::string& case_name,
+    const std::vector<CaseNumericsEntry>& config)
+{
+    CaseNumericsReport report;
+    report.case_name = case_name;
+    for (const auto& entry : config) {
+        try {
+            const auto selection =
+                make_scheme_selection(entry.family, entry.configuration_key);
+            report.resolved.push_back(selection);
+            report.ordered_lines.push_back(format_scheme_selection(selection));
+        } catch (const std::invalid_argument& e) {
+            report.errors.push_back(e.what());
+            report.ordered_lines.push_back(std::string("error: ") + e.what());
+        }
+    }
+    return report;
+}
+
+// Deterministic plain-text validation report: one error line per rejected
+// entry and one resolved-scheme line per accepted entry, in input order.
+inline std::string format_numerics_report(const CaseNumericsReport& report)
+{
+    std::string out = "case=" + report.case_name + "\n";
+    if (!report.ordered_lines.empty()) {
+        for (const auto& line : report.ordered_lines)
+            out += line + "\n";
+    } else {
+        for (const auto& e : report.errors)
+            out += std::string("error: ") + e + "\n";
+        for (const auto& s : report.resolved)
+            out += format_scheme_selection(s) + "\n";
+    }
+    return out;
+}
+
 } // namespace cfdx::core

@@ -242,5 +242,32 @@ int main() {
         EXPECT_TRUE(delta > 1e-6);
     });
 
+    run_case("exact_schur_declares_the_inverse_action_and_behaves_as_it", [&] {
+        ExactSchurApproximation exact(auu_solve);
+        EXPECT_TRUE(exact.setup(blocks));
+
+        // The exact oracle runs CG on S p = rhs_p, so it is the inverse action.
+        // This is the opposite of SIMPLE/SIMPLEC, which apply the operator itself.
+        EXPECT_TRUE(exact.action() == SchurAction::InverseOperator);
+        EXPECT_TRUE(provides_action(exact, SchurAction::InverseOperator));
+        EXPECT_TRUE(!provides_action(exact, SchurAction::Operator));
+
+        Vector rhs_p(2, 0.0);
+        rhs_p(0) = 1.0;
+        rhs_p(1) = 2.0;
+
+        Vector p_inv(2, 0.0);
+        EXPECT_TRUE(exact.apply(rhs_p, p_inv));
+        const Vector inverse_ref = dense_matvec(S_dense_inv, rhs_p);
+        EXPECT_NEAR(p_inv(0), inverse_ref(0), 1e-9);
+        EXPECT_NEAR(p_inv(1), inverse_ref(1), 1e-9);
+
+        // The operator action on the same right-hand side must differ, otherwise
+        // the assertions above could not distinguish the two actions.
+        const Vector operator_ref = dense_matvec(S_dense, rhs_p);
+        EXPECT_TRUE(std::abs(operator_ref(0) - inverse_ref(0)) > 1e-6 ||
+                    std::abs(operator_ref(1) - inverse_ref(1)) > 1e-6);
+    });
+
     return run_all();
 }

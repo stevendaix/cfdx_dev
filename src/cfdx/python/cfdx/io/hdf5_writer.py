@@ -235,6 +235,17 @@ def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
     }
 
 
+
+def _numerical_selection_report(setup) -> str:
+    """Render the canonical N1 selection deterministically for audit artifacts."""
+    lines = ["case=" + (setup.source.case_name or "")]
+    selection = setup.numerics.selection
+    for entry in selection.entries:
+        lines.append("scheme[{}]={}".format(entry.family, entry.configuration_key))
+    if not selection.entries:
+        lines.append("error: no explicit numerical selections")
+    return "\n".join(lines) + "\n"
+
 def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
     """Write a full ConversionResult to a ``case.cfdx.h5`` file.
 
@@ -273,6 +284,7 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         if result.setup is not None:
             setup_json = result.setup.model_dump(mode="json")
             f.attrs["case_setup_json"] = json.dumps(setup_json, default=str)
+            f.attrs["numerical_selection_report"] = _numerical_selection_report(result.setup)
 
         gap_json = _gap_report_to_json(result.gap_report)
         f.attrs["gap_report_json"] = gap_json

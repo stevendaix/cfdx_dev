@@ -8,6 +8,7 @@
 #pragma once
 
 #include "io_interface.h"
+#include "cfdx/core/numerics/case_numerics_config.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -190,9 +191,20 @@ struct CaseSetup {
 
     // Initial conditions
     InitialCondition initial_condition;
+    // True when the case file actually carried an initial_condition block.
+    // Distinguishes "declared as zero" from "not declared", which must not be
+    // treated as an implicit uniform initialization.
+    bool has_initial_condition = false;
 
     // Numerical schemes
     NumericalScheme numerics;
+
+    // Canonical N1 selection path. When present, the HDF5 case loader resolves
+    // these keys against the registry and rejects missing/ambiguous selections
+    // before the solver can start. Legacy case files may omit this block.
+    cfdx::core::CaseNumericsConfig numerical_config;
+    cfdx::core::CaseNumericsReport numerical_report;
+    bool has_explicit_numerics = false;
 
     // Reference values
     double ref_length = 1.0;
@@ -202,6 +214,9 @@ struct CaseSetup {
     double ref_pressure = 101325.0;
 
     std::string gravity_vector;  // e.g. "0 0 -9.81"
+    // Uniform body force per unit mass (acceleration, m/s^2). Empty = not
+    // declared; a declared value must carry exactly 3 components.
+    std::vector<double> body_force;
     std::string units;           // "SI"
     std::string solver_mode;     // "steady", "unsteady"
 

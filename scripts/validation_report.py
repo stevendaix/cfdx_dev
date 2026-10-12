@@ -287,7 +287,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"CFDX geometry, boundary conditions and coupled solver are executed.",
     ]
     for ident, (rc, _) in logs.items():
-        lines.append(f"\texttt{{{latex_escape(ident)}}}: return code {rc}.")
+        lines.append(rf"\texttt{{{latex_escape(ident)}}}: return code {rc}.")
 
     lines += [
         r"\section{Numerical model verification}",
@@ -315,7 +315,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
     ]
     for c in cases:
         lines.append(latex_table_row([
-            f"\\texttt{{{c.ident}}}",
+            f"\\texttt{{{latex_escape(c.ident)}}}",
             latex_escape(c.name),
             latex_escape(c.status),
             latex_escape(c.comparison),

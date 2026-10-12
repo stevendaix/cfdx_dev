@@ -1,35 +1,20 @@
 # CFDX Engineering Qualification Campaign
 
+> **V&V governance:** `docs/validation/CFDX_VV_GOVERNANCE.md` is the authoritative document for V&V terminology, evidence classes, promotion gates, traceability, and no-false-positive rules. This campaign defines the case-level qualification programme under that governance.
+
 Issue #118 is the authoritative qualification programme for CFDX. It is deliberately different from a collection of unit tests or capability checks.
 
 The campaign answers one engineering question:
 
 > Can CFDX execute a reproducible CFD case, conserve the governing quantities, converge the numerical solution, reproduce an independent reference quantity, demonstrate mesh behaviour, and keep that evidence under regression control?
 
-## 1. Qualification matrix
+## 1. Qualification registry
 
-The machine-readable source of truth is `CFDX_QUALIFICATION_REGISTRY.json`. The following matrix is the human-facing programme.
+The machine-readable source of truth is `CFDX_QUALIFICATION_REGISTRY.json`. Human-facing status must not be duplicated in this document: the registry is the only authoritative case-status table.
 
-| ID | Domain | Case | Current state | Primary QoI |
-|---|---|---|---|---|
-| LAM-COUETTE | Laminaire | Couette | PASS | velocity profile, mean velocity |
-| LAM-POISEUILLE | Laminaire | Poiseuille | PASS | velocity profile, flow rate |
-| INC-GHIA | Incompressible | Ghia cavity | DIAGNOSTIC | centreline velocity, vortices |
-| VER-MMS | Conservation | MMS | READY | L2/Linf field error, conservation |
-| FORCE-VMFL036 | Force | Sphere Re=100 | READY / #441 | pressure/viscous/total drag, Cd |
-| EXT-NACA0012 | External flow | NACA0012 | PLANNED | CL, CD, Cm, Cp |
-| INT-CHANNEL | Internal flow | Channel | READY | profile, pressure gradient, friction |
-| SEP-BFS | Separation | Backward-facing step | PLANNED | reattachment length, Cp, wall shear |
-| TUR-FLATPLATE | Turbulence | Flat plate | PLANNED | Cf, thicknesses, profiles |
-| TUR-CHANNEL | Turbulence | Channel | PLANNED | mean velocity, Cf, Reynolds stresses |
-| TUR-NACA0012 | Turbulence | NACA0012 | PLANNED | CL, CD, Cm, Cp |
-| TH-CONV | Thermal | Conduction/convection | READY | T, heat rate, Nu |
-| CHT-INTERFACE | CHT | Solid/fluid interface | READY | interface T and heat flux |
-| RAD-P1 | Radiation | P1 | READY | wall heat flux, radiative source |
-| RAD-DOM | Radiation | DOM | READY | wall heat flux, radiative source |
-| RAD-S2S | Radiation | S2S | READY | view factors, net heat rate |
+The registry distinguishes PLANNED, READY, RUNNING, DIAGNOSTIC, PASS and BLOCKED. In particular, **READY is not PASS**, and a historical report or green CI job is not sufficient to promote a case.
 
-**Important:** READY means that a case can be implemented/executed; it is not a numerical PASS. DIAGNOSTIC means that an executable exists but the evidence is not yet sufficient for qualification.
+The executable benchmark campaigns under `docs/validation/14-benchmarks/*/chapter.py` contain the scientific case definitions and reproducible data-reduction logic. Their retained execution artifacts provide the evidence used for promotion.
 
 ## 2. Required evidence for every case
 
@@ -126,6 +111,8 @@ Every promoted case must have a calculation sheet containing, without exceptions
 
 ## 3. Qualification gates
 
+These gates are the case-level application of V0–V7 in the V&V governance document. A case may have additional domain-specific gates, but it must not weaken the common gates.
+
 A case is **PASS** only when all gates below are satisfied:
 
 ### Gate A — Reference integrity
@@ -143,8 +130,8 @@ The relevant global balances close within the case-specific acceptance contract.
 ### Gate E — Quantitative agreement
 The CFDX QoI is compared against the independent reference using a declared error metric.
 
-### Gate F — Grid verification
-Where applicable, at least three systematically refined meshes are used to distinguish discretization error from model/reference error.
+### Gate F — Grid/time verification
+Where a formal refinement claim is made, use a documented systematic refinement sequence. Three or more levels are preferred for an observed-order/GCI study; fewer levels may be used only when the mathematical or computational scope is explicitly documented. Spatial and temporal refinement must be separated where both contribute.
 
 ### Gate G — Regression
 The complete case can be rerun in CI and produces machine-readable diagnostics and retained evidence.
@@ -153,6 +140,8 @@ The complete case can be rerun in CI and produces machine-readable diagnostics a
 The calculation sheet records the exact configuration, result, error, observed order, runtime and regression status.
 
 ## 4. Verification versus validation
+
+The terms are governed by `CFDX_VV_GOVERNANCE.md`; this section applies them specifically to qualification cases.
 
 The campaign explicitly separates:
 

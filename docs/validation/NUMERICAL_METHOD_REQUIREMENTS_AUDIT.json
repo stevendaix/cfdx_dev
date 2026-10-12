@@ -6,19 +6,24 @@
     {
       "package_id": "N1",
       "requirement": "common spatial scheme abstraction",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_contract.h",
-        "src/cfdx/core/numerics/numerical_method_registry.h"
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/numerics/spatial_scheme_contract.h",
+        "tests/unit/test_spatial_scheme_contract.cpp"
       ]
     },
     {
       "package_id": "N1",
       "requirement": "explicit reconstruction/interpolation/flux contracts",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_contract.h",
-        "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
+        "src/cfdx/core/numerics/spatial_scheme_contract.h",
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/core/numerics/flux.h",
+        "docs/development/NUMERICAL_METHOD_CONTRACTS.md",
+        "tests/unit/test_spatial_scheme_contract.cpp"
       ]
     },
     {
@@ -28,16 +33,20 @@
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/core/numerics/numerical_method_selection.h",
+        "tests/unit/test_case_numerics_report.cpp",
         "tests/validation/test_numerical_model_verification.cpp"
       ]
     },
     {
       "package_id": "N1",
       "requirement": "boundedness and conservation contracts",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/numerical_method_contract.h",
-        "src/cfdx/core/numerics/conservation.h"
+        "src/cfdx/core/numerics/conservation.h",
+        "src/cfdx/core/numerics/spatial_scheme_contract.h",
+        "tests/unit/test_conservation_boundedness.cpp",
+        "tests/unit/test_spatial_scheme_contract.cpp"
       ]
     },
     {
@@ -77,27 +86,39 @@
     {
       "package_id": "N2",
       "requirement": "weighted least-squares qualification",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/core/fvm/least_squares_gradient.h"
+        "src/cfdx/core/fvm/least_squares_gradient.h",
+        "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/gradient_stencil.h",
+        "tests/unit/test_gradient.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
     },
     {
       "package_id": "N2",
       "requirement": "rank/conditioning detection",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/core/fvm/least_squares_gradient.h"
+        "src/cfdx/core/fvm/least_squares_gradient.h",
+        "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/gradient_stencil.h",
+        "tests/unit/test_gradient.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
     },
     {
       "package_id": "N2",
       "requirement": "boundary-neighbour reconstruction policy",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "src/cfdx/core/fvm/least_squares_gradient.h",
         "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/gradient_stencil.h",
         "src/cfdx/core/numerics/interpolation.h",
-        "tests/validation/test_gradient_verification.cpp"
+        "tests/unit/test_gradient.cpp",
+        "tests/validation/test_gradient_verification.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
     },
     {
@@ -110,26 +131,20 @@
     },
     {
       "package_id": "N2",
-      "requirement": "gradient limiting infrastructure",
-      "status": "partial",
-      "evidence": [
-        "src/cfdx/core/numerics/interpolation.h"
-      ]
-    },
-    {
-      "package_id": "N2",
       "requirement": "complete skew/non-orthogonal/high-aspect-ratio/polyhedral V&V",
       "status": "partial",
       "evidence": [
-        "tests/validation/test_gradient_verification.cpp",
+        "src/cfdx/core/fvm/least_squares_gradient.h",
+        "src/cfdx/core/numerics/gradient.h",
         "tests/unit/test_gradient.cpp",
+        "tests/validation/test_gradient_verification.cpp",
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ]
     },
     {
       "package_id": "N2",
       "requirement": "polyhedral gradient scheme accuracy",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
@@ -139,7 +154,7 @@
     {
       "package_id": "N3",
       "requirement": "orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -147,7 +162,7 @@
     {
       "package_id": "N3",
       "requirement": "corrected non-orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h"
@@ -156,7 +171,7 @@
     {
       "package_id": "N3",
       "requirement": "limited non-orthogonal diffusion",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h"
       ]
@@ -164,7 +179,7 @@
     {
       "package_id": "N3",
       "requirement": "over-relaxed diffusion formulation",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
@@ -174,7 +189,7 @@
     {
       "package_id": "N3",
       "requirement": "skewness correction contract",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
@@ -184,10 +199,12 @@
     {
       "package_id": "N3",
       "requirement": "quantitative high-non-orthogonality campaign",
-      "status": "implemented",
+      "status": "qualified",
       "evidence": [
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "src/cfdx/core/numerics/diffusion_diagnostics.h",
+        "tests/unit/test_diffusion_diagnostics.cpp"
       ]
     },
     {
@@ -210,18 +227,23 @@
     {
       "package_id": "N4",
       "requirement": "central convection",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
         "src/cfdx/core/numerics/convection.h",
-        "src/cfdx/core/numerics/numerical_method_registry.h",
-        "tests/validation/test_convection_scheme_verification.cpp"
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_scheme_verification.cpp",
+        "tests/validation/test_convection_3d_verification.cpp"
       ]
     },
     {
       "package_id": "N4",
       "requirement": "bounded central/blending",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "tests/validation/test_convection_blending.cpp"
+      ]
     },
     {
       "package_id": "N4",
@@ -276,13 +298,16 @@
     {
       "package_id": "N4",
       "requirement": "multidimensional limiter policy",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "tests/validation/test_convection_3d_verification.cpp"
+      ]
     },
     {
       "package_id": "N4",
       "requirement": "gradient-based limiter policy",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/interpolation.h"
       ]
@@ -299,17 +324,22 @@
     {
       "package_id": "N4",
       "requirement": "QUICK or equivalent quadratic scheme",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/interpolation.h",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_convection_3d_verification.cpp"
+      ]
     },
     {
       "package_id": "N4",
       "requirement": "scheme-level boundedness/conservation/order V&V",
       "status": "partial",
       "evidence": [
-        "tests/validation/test_benchmark_matrix.cpp",
         "tests/validation/test_convection_scheme_verification.cpp",
-        "tests/validation/test_discretization_verification.cpp"
+        "tests/validation/test_convection_3d_verification.cpp",
+        "tests/validation/test_convection_blending.cpp",
+        "tests/validation/test_convection_polyhedral_campaign.cpp"
       ]
     },
     {
@@ -317,7 +347,8 @@
       "requirement": "explicit Euler",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -325,7 +356,8 @@
       "requirement": "implicit Euler",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -333,7 +365,8 @@
       "requirement": "Crank-Nicolson",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
@@ -341,72 +374,103 @@
       "requirement": "BDF2",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "BDF2 history lifecycle",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "src/cfdx/core/numerics/temporal.h",
         "src/cfdx/physics/temporal.h",
-        "tests/unit/test_temporal.cpp"
+        "tests/unit/test_temporal.cpp",
+        "tests/unit/test_temporal_history.cpp",
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "restart history semantics",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_restart_mapping.cpp"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/unit/test_restart_mapping.cpp",
+        "tests/unit/test_temporal_history.cpp",
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "variable-time-step consistency",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "src/cfdx/physics/temporal.h"
+        "src/cfdx/core/numerics/temporal.h",
+        "src/cfdx/physics/temporal.h",
+        "tests/unit/test_temporal_history.cpp",
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "measured temporal order matrix",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "tests/validation/test_discretization_verification.cpp"
+        "src/cfdx/core/numerics/temporal.h",
+        "tests/validation/test_discretization_verification.cpp",
+        "tests/validation/test_temporal_order_matrix.cpp",
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ]
     },
     {
       "package_id": "N5",
       "requirement": "RK2/RK3",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/physics/low_storage_time_integration.h",
+        "tests/validation/test_temporal_order_matrix.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp"
+      ]
     },
     {
       "package_id": "N6",
       "requirement": "adaptive CFL controller",
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/adaptive_cfl.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_adaptive_cfl.cpp",
+        "tests/unit/test_timestep_control.cpp"
       ]
     },
     {
       "package_id": "N6",
       "requirement": "pseudo-transient CFL",
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/adaptive_cfl.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_adaptive_cfl.cpp"
       ]
     },
     {
       "package_id": "N6",
       "requirement": "robust anisotropic/skew characteristic length",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     },
     {
@@ -420,15 +484,21 @@
     {
       "package_id": "N6",
       "requirement": "rollback on nonlinear failure",
-      "status": "missing",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
     },
     {
       "package_id": "N6",
       "requirement": "auditable timestep/CFL reason logging",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
       ]
     },
     {
@@ -436,8 +506,13 @@
       "requirement": "unified convergence monitor",
       "status": "implemented",
       "evidence": [
+        "src/cfdx/cfdx/core/utils/convergence_monitor.h",
         "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/cfdx/core/utils/convergence_monitor.h"
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
     },
     {
@@ -445,32 +520,55 @@
       "requirement": "physical residual normalization",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
       "requirement": "continuity/mass imbalance gate",
       "status": "partial",
       "evidence": [
+        "docs/validation/03-conservation/chapter.py",
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
-      ]
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
       "requirement": "QoI convergence gate",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
       "requirement": "stagnation/divergence detection",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
     },
     {
@@ -478,22 +576,52 @@
       "requirement": "adaptive under-relaxation qualification",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h"
-      ]
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
       "requirement": "continuation/homotopy qualification",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
+      ],
+      "scope": "nonlinear convergence only; this test makes no spatial accuracy claim; single Re=100 lid-driven cavity corridor at 32x32x2. Spatial observed-order evidence is merge-gated by test_ghia_cavity_order (16/32/64, order U_RMS=2.05, V_RMS=1.16, U_max=2.74) and produced more expensively by the full test_ghia_cavity campaign (32/64/128 plus Re=400 and Re=1000, order U_RMS=0.96, V_RMS=1.03) on a weekly schedule. Neither establishes the spatial accuracy of the continuation or adaptive paths, nor a general order on other schemes, meshes or geometries"
     },
     {
       "package_id": "N7",
       "requirement": "deterministic convergence report",
       "status": "partial",
       "evidence": [
-        "docs/validation/VALIDATION_REPORT.md"
+        "docs/validation/VALIDATION_REPORT.md",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ]
+    },
+    {
+      "package_id": "N7",
+      "requirement": "declared initialization strategy",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_initialization.cpp",
+        "tests/validation/test_steady_incompressible_solver.cpp",
+        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+      ],
+      "note": "provided/uniform/restart are declared and validated; unknown mode names are rejected. Automatic selection remains partial: no strategy is inferred from filesystem, mesh-quality or prior-divergence probing, because the initial state fixes the reference residual of the convergence report."
     },
     {
       "package_id": "N8",
@@ -522,54 +650,88 @@
     {
       "package_id": "N8",
       "requirement": "exact algebraic Schur oracle",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md"
+        "src/cfdx/core/linalg/exact_schur.h",
+        "tests/unit/test_n9_schur_oracle.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp"
       ]
     },
     {
       "package_id": "N8",
       "requirement": "SIMPLEC algebraic Schur",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/exact_schur.h",
+        "src/cfdx/core/linalg/simplerc_schur.h",
+        "tests/unit/test_simplerc_schur.cpp"
+      ]
     },
     {
       "package_id": "N8",
-      "requirement": "LSC/BFBt/PCD Schur approximations",
-      "status": "missing",
-      "evidence": []
+      "requirement": "LSC/BFBt Schur approximations",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "src/cfdx/core/linalg/schur_approximation.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur_null_space.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp",
+        "tests/unit/test_schur_quantitative_qualification.cpp"
+      ]
+    },
+    {
+      "package_id": "N8",
+      "requirement": "PCD Schur approximation",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/pcd_schur.h",
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "docs/validation/PCD_SCHUR_QUALIFICATION.md",
+        "tests/unit/test_pcd_schur.cpp"
+      ],
+      "note": "Implementation and production integration exist (#635); the non-zero-convection Fp/Kp separation is exercised by the representative Schur envelope (#704), and the nested-gauge defect measured on the PCD harness was corrected by #856 (commit 6e94bcd3). The registry maturity for preconditioner.pcd remains Planned (naming honesty); the production selection path is the persisted Schur family (schur.pcd)."
     },
     {
       "package_id": "N8",
       "requirement": "pressure null-space policy",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "tests/validation/test_phase9_acceptance.cpp"
-      ]
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/unit/test_n8_pinned_pressure_gauge.cpp"
+      ],
+      "note": "Pinned reference-cell gauge semantics verified across Exact, SIMPLE, SIMPLEC, LSC, BFBT and PCD (#791); the constant mean-zero projector is demonstrably not applied blindly to the pinned RHS; the nested-operator coupled gauge correction is merged via #856 (commit 6e94bcd3)."
     },
     {
       "package_id": "N8",
       "requirement": "AMG anisotropy/scaling benchmark",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
+        "tests/validation/test_n8_amg_anisotropy_scaling.cpp",
         "docs/validation/M1_M4_VERIFICATION_PLAN.md"
-      ]
+      ],
+      "note": "Explicit anisotropy sweep over directional coefficient ratios 1/10/100/1000 for Direct-CF and Smoothed Aggregation (#678): hierarchy construction, one-V-cycle energy contraction, independently recomputed true residual and full-CG convergence. Serial evidence only; no MPI/GPU scaling claim."
     },
     {
       "package_id": "N9",
       "requirement": "SIMPLE",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_registry.h"
-      ]
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/linalg/simplerc_schur.h"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
     },
     {
       "package_id": "N9",
       "requirement": "SIMPLEC",
       "status": "implemented",
       "evidence": [
-        "src/cfdx/core/numerics/numerical_method_registry.h"
-      ]
+        "src/cfdx/core/numerics/numerical_method_registry.h",
+        "src/cfdx/core/linalg/simplerc_schur.h",
+        "tests/unit/test_simplerc_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
     },
     {
       "package_id": "N9",
@@ -622,25 +784,28 @@
     {
       "package_id": "N10",
       "requirement": "mesh quality ladder",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "src/cfdx/core/geometry/mesh_validator.h"
       ]
     },
     {
       "package_id": "N10",
       "requirement": "orthogonal/skew/non-orthogonal controlled cases",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp"
       ]
     },
     {
       "package_id": "N10",
       "requirement": "high aspect ratio",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "src/cfdx/core/geometry/mesh_validator.h"
       ]
     },
     {
@@ -648,15 +813,26 @@
       "requirement": "polyhedral numerical validation",
       "status": "partial",
       "evidence": [
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp",
         "docs/validation/M1_M4_VERIFICATION_PLAN.md"
       ]
     },
     {
       "package_id": "N10",
-      "requirement": "invalid/degenerate rejection",
-      "status": "implemented",
+      "requirement": "solver robustness versus mesh quality",
+      "status": "verified",
       "evidence": [
-        "src/cfdx/core/geometry/mesh_validator.h"
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp"
+      ]
+    },
+    {
+      "package_id": "N10",
+      "requirement": "invalid/degenerate rejection",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h",
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp"
       ]
     },
     {
@@ -665,7 +841,7 @@
       "status": "implemented",
       "evidence": [
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py"
       ]
     },
     {
@@ -705,7 +881,7 @@
       "requirement": "complete benchmark campaign",
       "status": "partial",
       "evidence": [
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py"
       ]
     },
     {
@@ -761,50 +937,58 @@
     {
       "package_id": "N13",
       "requirement": "MPI deterministic tests",
-      "status": "verified",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_mpi_deterministic.cpp"
+        "tests/unit/test_mpi_deterministic.cpp",
+        "tests/validation/test_n13_mpi_equivalence.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "MPI numerical equivalence campaign",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_mpi_deterministic.cpp",
-        "tests/unit/test_mpi_partition.cpp"
+        "tests/validation/test_n13_mpi_equivalence.cpp",
+        "tests/unit/test_mpi_partition.cpp",
+        "tests/validation/test_phase8_mpi_poisson.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "assembled/matrix-free equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_matrix_free_fv_operator.cpp"
+        "tests/unit/test_matrix_free_fv_operator.cpp",
+        "tests/unit/test_backend_equivalence.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "CPU/CUDA numerical equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "tests/validation/test_n13_cuda_equivalence.cpp",
         "src/cfdx/runtime/gpu/gpu_execution.h"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "restart equivalence",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_restart_mapping.cpp"
+        "tests/validation/test_n13_restart_equivalence.cpp",
+        "tests/unit/test_restart_mapping.cpp",
+        "tests/unit/test_temporal_history.cpp"
       ]
     },
     {
       "package_id": "N13",
       "requirement": "N-to-M MPI restart",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "tests/unit/test_phase5_restart_reader.cpp"
+        "tests/unit/test_phase5_restart_writer.cpp",
+        "tests/unit/test_phase5_restart_reader.cpp",
+        "tests/validation/test_n13_restart_equivalence.cpp"
       ]
     },
     {
@@ -818,60 +1002,106 @@
     {
       "package_id": "N14",
       "requirement": "method-level formulation comparison",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json",
+        "docs/validation/reference_codes/N14_REFERENCE_CODE_MATRIX.md",
+        "docs/validation/reference_codes/openfoam.md",
+        "docs/validation/reference_codes/su2.md",
+        "docs/validation/reference_codes/fluent.md",
+        "docs/validation/reference_codes/cfx.md",
+        "docs/validation/reference_codes/starccm.md"
       ]
     },
     {
       "package_id": "N14",
       "requirement": "same/similar/different classification",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "machine-readable comparison schema",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json"
+      ]
+    },
+    {
+      "package_id": "N14",
+      "requirement": "benchmark cross-reference",
+      "status": "implemented",
+      "evidence": [
+        "docs/validation/reference_codes/N14_BENCHMARK_CROSS_REFERENCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "reproducible solver benchmark schema",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE_SCHEMA.json",
+        "benchmarks/n15/poisson_baseline.json",
+        "tests/python/test_n15_benchmark.py"
       ]
     },
     {
       "package_id": "N15",
       "requirement": "MPI strong scaling",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "MPI weak scaling",
-      "status": "missing",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "GPU speedup benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "AMG setup/solve breakdown",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE_SCHEMA.json",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "matrix-free vs assembled benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N15",
       "requirement": "mixed-precision benchmark",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "scripts/n15_benchmark.py",
+        "docs/validation/N15_PERFORMANCE.md"
+      ]
     },
     {
       "package_id": "N16",
@@ -946,6 +1176,139 @@
       "evidence": [
         "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md"
       ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "global/local convective CFL diagnostics",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "incompressible convective CFL",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "stagnant/degenerate characteristic scale handling",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_timestep_control.cpp"
+      ]
+    },
+    {
+      "package_id": "N6",
+      "requirement": "local pseudo-time policy with safe handling of stagnant cells",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/physics/local_time_stepping.h",
+        "tests/unit/test_local_time_stepping.cpp",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md"
+      ]
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Exact Schur oracle",
+      "status": "verified",
+      "evidence": [
+        "src/cfdx/core/linalg/exact_schur.h",
+        "tests/unit/test_n9_schur_oracle.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Block Schur reference",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "tests/validation/test_n8_schur_production_benchmark.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "PCD Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/pcd_schur.h",
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "docs/validation/PCD_SCHUR_QUALIFICATION.md"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "LSC Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "BFBt Schur",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/lsc_bfbt_schur.h",
+        "tests/unit/test_lsc_bfbt_schur.cpp"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "MGR Schur path",
+      "status": "implemented",
+      "evidence": [
+        "src/cfdx/core/linalg/coupled_amg_schur.h",
+        "src/cfdx/core/linalg/linear_solver_models.h"
+      ],
+      "note": "Presence/implementation is recorded separately from validation/qualification; the N9.6 matrix remains the qualification contract."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "SIMPLER",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Yosida",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Cahouet–Chabard",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Augmented-Lagrangian Schur",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N9",
+      "requirement": "Inexact Uzawa",
+      "status": "planned",
+      "evidence": [],
+      "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
     }
   ]
 }

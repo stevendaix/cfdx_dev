@@ -15,16 +15,20 @@
     {
       "id": "N1",
       "name": "Numerical-method architecture and contracts",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "docs/development/NUMERICAL_METHOD_CONTRACTS.md",
         "src/cfdx/core/numerics/numerical_method_contract.h",
         "src/cfdx/core/numerics/numerical_method_registry.h",
         "src/cfdx/core/numerics/numerical_method_selection.h",
-        "docs/development/NUMERICAL_METHOD_CONTRACTS.md"
+        "src/cfdx/core/numerics/spatial_scheme_contract.h",
+        "tests/unit/test_case_numerics_report.cpp",
+        "tests/unit/test_spatial_scheme_contract.cpp",
+        "src/cfdx/python/cfdx/io/numerical_selection.py",
+        "src/cfdx/python/cfdx/io/converter.py"
       ],
       "gaps": [
-        "case/report traceability: emitting the resolved scheme into every case load and validation report",
-        "complete conservation/boundedness contract integration"
+        "operational confirmation of the exact current HEAD in the dedicated N1 CI gate"
       ]
     },
     {
@@ -34,32 +38,37 @@
       "evidence": [
         "src/cfdx/core/fvm/least_squares_gradient.h",
         "src/cfdx/core/numerics/gradient.h",
+        "src/cfdx/core/numerics/gradient_stencil.h",
         "src/cfdx/core/numerics/interpolation.h",
+        "tests/unit/test_gradient.cpp",
         "tests/validation/test_gradient_verification.cpp",
         "tests/validation/test_polyhedral_gradient_campaign.cpp"
       ],
       "gaps": [
-        "least-squares weight-variant qualification",
-        "gradient limiter integration",
-        "boundary reconstruction matrix",
-        "polyhedral gradient scheme accuracy: quadratic least-squares (gradient.least_squares_quadratic) is the most accurate (nested L2 ~0.02 at n=16) and linear-exact but only ~0.8-1.2 order on tets; clean second order remains research-grade",
-        "vertex-based Green-Gauss on non-affine/polyhedral meshes"
+        "independent face reconstruction remains incomplete as a package-level requirement",
+        "complete controlled polyhedral/skew/non-orthogonal acceptance matrix remains incomplete",
+        "two-point cell Green-Gauss is deliberately domain-restricted; it is not linear-consistent on general tetrahedral/polyhedral meshes",
+        "vertex-based Green-Gauss remains a secondary method with a narrower verified applicability domain",
+        "gradient limiters are qualified under N4 convection/reconstruction and are not an N2 package gate"
       ]
     },
     {
       "id": "N3",
       "name": "Diffusion and non-orthogonal correction",
-      "status": "partial",
+      "status": "qualified",
       "evidence": [
+        "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
+        "src/cfdx/core/numerics/diffusion_diagnostics.h",
+        "src/cfdx/core/geometry/geometry_cache.h",
         "tests/unit/test_laplacian.cpp",
+        "tests/unit/test_diffusion_diagnostics.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "tests/validation/test_polyhedral_laplacian_campaign.cpp"
+        "docs/validation/N3_DIFFUSION_QUALIFICATION.md"
       ],
       "gaps": [
-        "non-affine / extremely non-orthogonal meshes",
-        "polyhedral diffusion accuracy: smooth-field Laplacians stay O(1)/non-convergent on tetrahedra even with linear-consistent (LS-family) gradients \u2014 a discretisation gap, not a gradient swap; the corrected operator IS linear-exact on tets with LS-family gradients (measured Linf ~5e-13)"
+        "general polyhedral higher-order diffusion is intentionally outside the N3 acceptance contract and remains a research item for N10/N16; the measured O(1) tetrahedral behaviour is documented rather than hidden"
       ]
     },
     {
@@ -68,15 +77,18 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/convection.h",
-        "src/cfdx/core/numerics/convection_assembly.h",
         "src/cfdx/core/numerics/interpolation.h",
-        "tests/validation/test_convection_scheme_verification.cpp"
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_convection_scheme_verification.cpp",
+        "tests/validation/test_convection_3d_verification.cpp",
+        "tests/validation/test_convection_blending.cpp",
+        "tests/validation/test_convection_polyhedral_campaign.cpp",
+        "tests/validation/test_convection_solver_qualification.cpp"
       ],
       "gaps": [
-        "complete central/blended family",
-        "QUICK-equivalent quadratic scheme",
-        "multidimensional limiter policy",
-        "production transport wiring + multidimensional scheme-level V&V"
+        "general-mesh V&V (skew/non-orthogonal/tetrahedral/polyhedral)",
+        "steep-gradient/discontinuity matrix",
+        "final measured scheme-level qualification gates"
       ]
     },
     {
@@ -87,14 +99,16 @@
         "src/cfdx/core/numerics/temporal.h",
         "src/cfdx/physics/temporal.h",
         "tests/unit/test_temporal.cpp",
-        "tests/validation/test_discretization_verification.cpp"
+        "tests/unit/test_temporal_history.cpp",
+        "tests/validation/test_discretization_verification.cpp",
+        "tests/validation/test_temporal_order_matrix.cpp",
+        "tests/validation/test_transient_mms.cpp",
+        "tests/validation/test_transient_mms_3d_stiff.cpp",
+        "tests/validation/test_transient_mms_closure.cpp"
       ],
       "gaps": [
-        "explicit history lifecycle",
-        "restart-history evidence",
-        "variable-step consistency",
-        "RK2/RK3 decision/implementation",
-        "measured temporal order matrix"
+        "production `advance_time` still uses an implicit Picard iteration and is therefore limited to `dt = O(h)` on spatially fine operators; this is a production implicit-solver robustness limitation, not a missing temporal-order verification",
+        "broader production transient qualification beyond the current closure corridor"
       ]
     },
     {
@@ -102,14 +116,20 @@
       "name": "Time-step, CFL and pseudo-time",
       "status": "partial",
       "evidence": [
+        "docs/validation/N6_DUAL_TIME_PHYSICAL_LIFECYCLE.md",
+        "docs/validation/N6_TIMESTEP_CFL_CONTRACT.md",
+        "src/cfdx/physics/adaptive_cfl.h",
         "src/cfdx/physics/advanced_convergence.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/dual_time_field_integrator.h",
+        "src/cfdx/physics/dual_time_physical_lifecycle.h",
+        "src/cfdx/physics/local_time_stepping.h",
+        "src/cfdx/physics/solver_control.h",
+        "src/cfdx/physics/timestep_control.h",
+        "tests/unit/test_dual_time_physical_lifecycle.cpp",
+        "tests/unit/test_timestep_control.cpp"
       ],
       "gaps": [
-        "complete CFL characteristic-length contract",
-        "stagnant-cell handling evidence",
-        "rollback",
-        "auditable controller reason logging"
+        "broader production time-step/CFL qualification beyond the currently verified controller and dual-time lifecycle corridor"
       ]
     },
     {
@@ -117,15 +137,20 @@
       "name": "Nonlinear solver and convergence",
       "status": "partial",
       "evidence": [
-        "src/cfdx/physics/advanced_convergence.h",
         "src/cfdx/cfdx/core/utils/convergence_monitor.h",
-        "src/cfdx/physics/solver_control.h"
+        "src/cfdx/physics/advanced_convergence.h",
+        "src/cfdx/physics/continuation.h",
+        "src/cfdx/physics/solver_control.h",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_continuation.cpp",
+        "tests/unit/test_convergence_monitor.cpp",
+        "tests/validation/test_n7_convergence_qualification.cpp"
       ],
       "gaps": [
-        "unified QoI/conservation gates",
-        "adaptive URF qualification",
-        "continuation qualification",
-        "deterministic final convergence report"
+        "automatic initialization strategies remain intentionally unqualified; provided/uniform/restart are the declared validated modes",
+        "continuation failure/recovery remains unit-qualified but is not yet part of the canonical Re=100 qualification corridor",
+        "qualification breadth beyond the Re=100 lid-driven cavity, including broader geometries/meshes and parameter corridors",
+        "spatial observed-order evidence is merge-gated only as a 16/32/64 trend tripwire (tests/validation/test_ghia_cavity.cpp --gate, order U_RMS=2.05, V_RMS=1.16); the full 32/64/128 plus Re=400/Re=1000 campaign runs weekly on schedule and establishes neither the spatial accuracy of the continuation or adaptive paths nor a general order on other schemes, meshes or geometries"
       ]
     },
     {
@@ -133,15 +158,22 @@
       "name": "Linear solver and preconditioner ecosystem",
       "status": "partial",
       "evidence": [
-        "docs/development/HYPRE_PETSC_CFDX_AUDIT.md",
-        "docs/validation/M1_M4_VERIFICATION_PLAN.md"
+        "scripts/n8_physical_qualification.py",
+        "tests/python/test_n8_qualification_evidence.py",
+        "tests/validation/test_n8_schur_production_benchmark.cpp",
+        "tests/unit/test_exact_schur.cpp",
+        "tests/unit/test_simplerc_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur.cpp",
+        "tests/unit/test_lsc_bfbt_schur_null_space.cpp",
+        "tests/unit/test_schur_approximation_comparison.cpp"
       ],
       "gaps": [
-        "exact Schur oracle",
-        "SIMPLEC/LSC/BFBt/PCD algebraic approximations",
-        "null-space policy matrix",
-        "scaling and memory campaign",
-        "attainable-accuracy floor recorded per benchmark point (see #481)"
+        "the SchurApproximation abstraction is now production-reachable through PCD (steady_incompressible_solver.h constructs PcdSchurApproximation and includes coupled_amg_schur.h -> pcd_schur.h -> schur_approximation.h), so the earlier claim is superseded. The exact oracle, SIMPLE/SIMPLEC and LSC/BFBt approximations remain test-only, and no case-file or solver-options setting selects them, so the approximations qualified against the oracle cannot be run by a production case. A production case selects PCD, or the separate CoupledBlockSchur/MGR preconditioners",
+        "the PCD Schur approximation is implemented, production-wired and unit-tested against an independently assembled oracle (src/cfdx/core/linalg/pcd_schur.h, #635), and it passes the pressure-velocity matrix with the same gates as BlockSchur and MGR. What is open is its operator ordering: -Fp^{-1} and -Kp^{-1} are untested on a non-zero-convection case, and numerical_method_registry.h correctly still records preconditioner.pcd as Planned",
+        "only a constant (mean-zero) pressure null-space policy exists in the Schur layer; pinned pressure is handled in production by a separate gauge-elimination mechanism that the Schur layer does not use",
+        "measured matrix characteristics (anisotropy, coefficient range, numerical symmetry and saddle-point structure) are not yet fed to the dispatcher from assembled matrices",
+        "anisotropic and strongly scaled AMG campaign is incomplete",
+        "Schur acceptance envelope is not yet established on representative CFD matrices"
       ]
     },
     {
@@ -165,14 +197,26 @@
       "name": "Difficult-mesh robustness",
       "status": "partial",
       "evidence": [
+        "src/cfdx/core/geometry/mesh_validator.h",
+        "tests/validation/test_n10_difficult_mesh_robustness.cpp",
+        "tests/validation/test_gradient_verification.cpp",
+        "tests/validation/test_polyhedral_gradient_campaign.cpp",
+        "tests/validation/test_nonorthogonal_skew_campaign.cpp",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "tests/validation/test_polyhedral_laplacian_campaign.cpp",
+        "tests/validation/test_polyhedral_poisson_convergence.cpp",
         "docs/validation/PHASE3_6_SKEW_CAMPAIGN.md",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md"
+        "docs/validation/03-conservation/chapter.py",
+        "tests/fixtures/mesh_sources.yaml",
+        ".github/workflows/n10-public-fixtures.yml",
+        "scripts/audit_n10_fixture_evidence.py"
       ],
       "gaps": [
-        "controlled quality ladder",
-        "polyhedral quantitative accuracy",
-        "solver robustness versus quality",
-        "integration with #423 fixture manifest"
+        "the four pinned #423 public fixtures are now independently acquired/verified and exercised through the production importer with explicit 2D/3D topology and geometry/quality contracts",
+        "the authoritative acceptance matrix is now reconciled across independent verification, production qualification and fixture-specific applicability evidence; duplicate fixture identifiers are rejected",
+        "numerical solver-support evidence is currently qualified only as execution/convergence smoke for meshio-vtk-unstructured; SU2/Gmsh/OpenFOAM solver applicability remains explicitly unclaimed",
+        "the complete N10 difficult-mesh subset still requires retained quantitative evidence from the exact CI HEAD before package-level promotion",
+        "physical validation and broad fixture-specific accuracy claims remain unclaimed"
       ]
     },
     {
@@ -181,12 +225,25 @@
       "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/conservation.h",
-        "docs/validation/CONSERVATION_BOUNDEDNESS.md",
-        "tests/unit/test_conservation_boundedness.cpp"
+        "docs/validation/03-conservation/chapter.py",
+        "tests/unit/test_conservation_boundedness.cpp",
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/validation/test_n11_scalar_conservation.cpp",
+        "scripts/n11_conservation_boundedness.py"
       ],
       "gaps": [
-        "complete Couette/Poiseuille/scalar-MMS/energy/skew/MPI campaign",
-        "full independent flux reconstruction qualification"
+        "complete quantitative Couette/Poiseuille/scalar-MMS/energy/skew acceptance matrix",
+        "broad independent post-solve flux reconstruction qualification across applicable production equations",
+        "complete per-variable bounds/positivity and explicit floor/clipping telemetry",
+        "production incompressible/thermal MPI conservation is not qualified; those physics paths are not distributed under MPI",
+        "exact-current-HEAD campaign execution and retained quantitative evidence must be confirmed before package promotion"
+      ],
+      "merged_prs": [
+        767,
+        776,
+        780,
+        787,
+        814
       ]
     },
     {
@@ -225,22 +282,28 @@
     {
       "id": "N14",
       "name": "Reference-code comparison",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/validation/FLUENT_VMFL_MATRIX.md",
-        "docs/development/TURBULENCE_MODEL_SELECTION_AUDIT.md",
-        "src/cfdx/io/cfdx_io/mapping_rules.cpp"
+        "docs/validation/N14_REFERENCE_CODE_MATRIX.json",
+        "docs/validation/reference_codes/N14_REFERENCE_CODE_MATRIX.md",
+        "docs/validation/reference_codes/openfoam.md",
+        "docs/validation/reference_codes/su2.md",
+        "docs/validation/reference_codes/fluent.md",
+        "docs/validation/reference_codes/cfx.md",
+        "docs/validation/reference_codes/starccm.md",
+        "docs/validation/reference_codes/N14_BENCHMARK_CROSS_REFERENCE.md",
+        "docs/validation/FLUENT_VMFL_MATRIX.md"
       ],
       "gaps": [
-        "method-level formulation matrix",
-        "evidence per method",
-        "same/similar/different classification"
+        "equation-level equivalence is intentionally not claimed for proprietary/reference methods unless public evidence establishes it",
+        "quantitative cross-code benchmark execution remains incomplete and belongs to the relevant N12/N13/validation campaigns",
+        "CFDX qualification status remains independent of reference-code feature presence"
       ]
     },
     {
       "id": "N15",
       "name": "Performance and scalability",
-      "status": "missing",
+      "status": "partial",
       "evidence": [
         "docs/validation/PERFORMANCE_AND_PHYSICS_WAVE.md"
       ],
@@ -254,12 +317,14 @@
     {
       "id": "N16",
       "name": "Advanced numerical methods",
-      "status": "planned",
+      "status": "partial",
       "evidence": [
-        "docs/validation/NUMERICAL_METHOD_CAPABILITY_MATRIX.json"
+        "docs/validation/NUMERICAL_METHOD_MATURITY_AUDIT.md"
       ],
       "gaps": [
-        "intentionally deferred until core FVM maturity"
+        "WENO5-Z remains an isolated verified kernel, not a production convection scheme",
+        "multidimensional/polyhedral higher-order reconstruction",
+        "production integration and end-to-end V&V"
       ]
     },
     {

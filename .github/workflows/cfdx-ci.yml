@@ -1,0 +1,192 @@
+name: CFDX CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cfdx-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, DebugSanitizers]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ matrix.build_type }}-
+
+      - name: Configure compiler cache
+        run: |
+          ccache --zero-stats
+          ccache --max-size=1G
+
+      - name: Restore Python package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cfdx-pip-${{ runner.os }}-${{ hashFiles('tests/python/**', 'scripts/**') }}
+          restore-keys: |
+            cfdx-pip-${{ runner.os }}-
+
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_UNITY_BUILD=${{ matrix.build_type == 'DebugSanitizers' && 'ON' || 'OFF' }}
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 2>&1 | tee build.log
+
+      - name: Run fast CTest
+        id: ctest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          if [[ "${{ matrix.build_type }}" == "DebugSanitizers" ]]; then
+            # DebugSanitizers retains the full unit/regression suite, but excludes
+            # individually tagged sanitizer-slow qualification cases. These are
+            # expensive numerical workloads whose Release coverage remains
+            # merge-gating here and whose full validation is also exercised by
+            # cfdx-validation.yml. The sanitizer-slow label is intentionally
+            # narrow and is based on measured sanitizer runtime, not on test
+            # importance.
+            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6
+          else
+            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+          fi
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      # The whole tests/python tree runs here, not a hand-picked subset:
+      # contracts such as ResultFrame.complete and the case/DAT separation were
+      # previously changed with no CI coverage at all, because only three of the
+      # fifty-three modules were ever executed. continue-on-error is removed as
+      # well: the "Final CI gate" step already failed the job on
+      # steps.python.outcome, but the step itself reported success, which hid
+      # which run had broken.
+      #
+      # Nothing is excluded. test_application_e2e.py was held back until #644
+      # was fixed, because read_case_with_dat() discarded the DAT it read and a
+      # reloaded session came back at iteration 0; #647 restores iteration and
+      # time, so the module now runs here too.
+      - name: Run N12 MMS quick gate
+        id: n12_quick
+        if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
+        continue-on-error: true
+        run: |
+          python scripts/n12_mms_quick.py \
+            --build-dir build \
+            --output-dir build/n12-mms-quick \
+            --timeout 600
+
+      - name: Run Python regression
+        id: python
+        if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
+        run: |
+          python -m pytest -q tests/python
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+
+      - name: Compiler cache diagnostics
+        if: always()
+        run: |
+          ccache --show-stats || true
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "build=${{ steps.build.outcome }}"
+          echo "ctest=${{ steps.ctest.outcome }}"
+          echo "python=${{ steps.python.outcome }}"
+          echo "n12_quick=${{ steps.n12_quick.outcome }}"
+          if [[ -f build.log ]]; then
+            echo "=== Build diagnostics ==="
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
+          fi
+          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
+            echo "=== CTest diagnostics ==="
+            tail -n 500 build/Testing/Temporary/LastTest.log
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-ci-${{ matrix.build_type }}-diagnostics
+          path: |
+            build/Testing/
+            build/**/*.log
+            build/compile_commands.json
+            build/n12-mms-quick/
+            build.log
+          if-no-files-found: ignore
+
+      - name: Final CI gate
+        if: always()
+        run: |
+          build_outcome='${{ steps.build.outcome }}'
+          ctest_outcome='${{ steps.ctest.outcome }}'
+          python_outcome='${{ steps.python.outcome }}'
+          n12_quick_outcome='${{ steps.n12_quick.outcome }}'
+
+          echo "Final CI gate: build=$build_outcome ctest=$ctest_outcome python=$python_outcome n12_quick=$n12_quick_outcome"
+
+          if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+
+          # Python regression is Release-only. A skipped Python step in
+          # DebugSanitizers is therefore a valid state, not a failure.
+          if [[ "${{ matrix.build_type }}" == "Release" && "$python_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+
+          if [[ "${{ matrix.build_type }}" == "Release" && "$n12_quick_outcome" != "success" ]]; then
+            echo "CFDX CI FINAL DECISION: FAIL"
+            exit 1
+          fi
+
+          echo "CFDX CI FINAL DECISION: PASS"

@@ -1,5 +1,7 @@
 # CFDX validation report generation
 
+> V&V governance for this reporting pipeline is defined in `docs/validation/CFDX_VV_GOVERNANCE.md`. This document describes report generation and CI evidence handling; it does not redefine verification, validation, or qualification semantics.
+
 The validation campaign produces a reproducible PDF from the executable CFDX results.
 
 ## Design
@@ -35,6 +37,8 @@ The output directory contains:
 
 The report intentionally distinguishes:
 
+- **V&V evidence layer**: code verification, solution verification, validation and qualification are separate states; see the governance document for the authoritative definitions.
+
 - **reference oracle**: analytical/reference calculation only;
 - **solver result**: CFDX actually solved the physical configuration;
 - **PASS/FAIL**: quantitative solver-level assessment;
@@ -67,4 +71,4 @@ The artifact contains:
 
 A workflow run is intentionally diagnostic as well as gating: missing validation executables and non-zero solver exits remain visible in the report, while the workflow uploads the evidence before enforcing the validation gate.
 
-Use the `validation-total` label on a PR when a complete campaign is needed to investigate or validate a solver change. The campaign should not be interpreted as a solver PASS merely because the reference oracle succeeds.
+Use the `validation-total` label on a PR when a complete campaign is needed to investigate or validate a solver change. The campaign should not be interpreted as a solver PASS merely because the reference oracle succeeds. A report PASS is meaningful only within the declared case scope and applicable V0–V7 gates.

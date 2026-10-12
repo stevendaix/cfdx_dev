@@ -71,6 +71,10 @@ struct TimeIntegrationContext {
 
     bool has_prev = false;  // true after first step
 
+    // Previous time-step size used by BDF2 for variable-step integration.
+    // 0 means "not yet set": the constant-step formula (equal to ω = 1) applies.
+    double dt_prev = 0.0;
+
     TimeIntegrationContext() = default;
 
     TimeIntegrationContext(std::size_t n, std::size_t dim, const std::string& name)
@@ -91,6 +95,21 @@ struct TimeIntegrationContext {
         has_prev = true;
     }
 };
+
+// Variable-step BDF2 coefficients. With ω = dt / dt_prev:
+//   φ^{n+1} = ( a0 φ^n - a1 φ^{n-1} + b dt f^{n+1} ) / (1 + 2ω)
+//   a0 = (1+ω)^2,  a1 = ω^2,  b = (1+ω)
+// For ω = 1 this reduces to the constant-step form (4/3, 1/3, 2/3).
+inline void bdf2_coefficients(double dt_prev, double dt,
+                              double& a0, double& a1, double& denom, double& b)
+{
+    const double dp = (dt_prev > 0.0) ? dt_prev : dt;   // unset history -> uniform
+    const double w = dt / dp;
+    a0 = (1.0 + w) * (1.0 + w);
+    a1 = w * w;
+    denom = 1.0 + 2.0 * w;
+    b = (1.0 + w) * dt;
+}
 
 // Advance field in time by one step
 // Returns the new field φ^{n+1}
@@ -158,8 +177,10 @@ inline Field<double, Location::CELL> advance_time(
                             0.5 * dt * (rhs_old[cell] + rhs_data[cell]);
                     } else {
                         const double* prev = ctx->phi_prev.component_data(d);
-                        candidate = (4.0 * phi_data[cell] - prev[cell] +
-                            2.0 * dt * rhs_data[cell]) / 3.0;
+                        double a0 = 0.0, a1 = 0.0, denom = 0.0, b = 0.0;
+                        bdf2_coefficients(ctx->dt_prev, dt, a0, a1, denom, b);
+                        candidate = (a0 * phi_data[cell] - a1 * prev[cell] +
+                             b * rhs_data[cell]) / denom;
                     }
                     max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
                     new_data[cell] = candidate;
@@ -244,6 +265,7 @@ inline Field<double, Location::CELL> advance_time(
     }
 
     if (ctx) {
+        ctx->dt_prev = dt;
         ctx->shift(phi_new);
     }
     return phi_new;

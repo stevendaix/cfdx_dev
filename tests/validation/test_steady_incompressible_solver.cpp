@@ -1,6 +1,10 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/pressure_velocity_system.h"
+#include "cfdx/io/probe/probe_csv.h"
 #include "cfdx/io/restart/dat_restart.h"
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include "common/test_harness.h"
 #include <limits>
 
@@ -37,8 +41,109 @@ static Mesh make_unit_cube()
     return m;
 }
 
+
+static Mesh make_two_cell_channel()
+{
+    Mesh m;
+    m.points().resize(12);
+    const double p[12][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1},
+        {2,0,0},{2,1,0},{2,0,1},{2,1,1}
+    };
+    for (std::size_t i=0; i<12; ++i)
+        m.points().set(i,p[i][0],p[i][1],p[i][2]);
+
+    m.faces().push_face({0,3,7,4});       // x = 0
+    m.faces().push_face({1,2,6,5});       // x = 1, internal
+    m.faces().push_face({8,9,11,10});     // x = 2
+    m.faces().push_face({0,1,5,4});       // y = 0, left
+    m.faces().push_face({3,7,6,2});       // y = 1, left
+    m.faces().push_face({0,3,2,1});       // z = 0, left
+    m.faces().push_face({4,5,6,7});       // z = 1, left
+    m.faces().push_face({1,8,10,5});      // y = 0, right
+    m.faces().push_face({2,6,11,9});      // y = 1, right
+    m.faces().push_face({1,2,9,8});       // z = 0, right
+    m.faces().push_face({5,10,11,6});     // z = 1, right
+
+    m.ownership().resize(11);
+    for (std::size_t f = 0; f < 11; ++f) {
+        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        m.ownership().set_owner(f, owner);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.ownership().set_owner(1, 0);
+    m.ownership().set_neighbour(1, 1);
+
+    m.cells().push_cell({0,1,3,4,5,6});
+    m.cells().push_cell({1,2,7,8,9,10});
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {0,2,3,4,5,6,7,8,9,10};
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 int main()
 {
+    run_case("n9_2_rhie_chow_pressure_sensitivity_and_flux_reference", [] {
+        const Mesh m = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(m);
+
+        Field<double,Location::CELL> U(2,"U","m/s",3);
+        Field<double,Location::CELL> p0(2,"p","Pa",1);
+        Field<double,Location::CELL> p1(2,"p","Pa",1);
+        U.fill(0.0);
+        U.set(0,2.0,0.0,0.0);
+        U.set(1,2.0,0.0,0.0);
+        p0.fill(0.0);
+        p1.fill(0.0);
+        p1(1) = 2.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        const std::array<std::vector<double>,3> rAU{
+            std::vector<double>{1.0,1.0},
+            std::vector<double>{1.0,1.0},
+            std::vector<double>{1.0,1.0}};
+
+        const auto phi_cell = make_mass_flux(
+            m, geometry, U, 1.0, ubc);
+        const auto phi0 = make_rhie_chow_mass_flux(
+            m, geometry, U, p0, rAU, 1.0, ubc, pbc);
+        const auto phi1 = make_rhie_chow_mass_flux(
+            m, geometry, U, p1, rAU, 1.0, ubc, pbc);
+
+        EXPECT_NEAR(phi_cell(1), 2.0, 1e-12);
+        EXPECT_NEAR(phi0(1), 2.0, 1e-12);
+        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
+        EXPECT_TRUE(std::abs(phi0(1)) > std::abs(phi1(1)));
+        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
+        EXPECT_NEAR(phi1(0), 0.0, 1e-14);
+        EXPECT_NEAR(phi1(2), 0.0, 1e-14);
+
+        // The authoritative flux is antisymmetric across the internal face:
+        // owner cell sees phi, neighbour cell sees -phi.
+        double corrected_div0 = phi1(1);
+        double corrected_div1 = -phi1(1);
+        EXPECT_NEAR(corrected_div0 + corrected_div1, 0.0, 1e-14);
+        EXPECT_NEAR(std::abs(corrected_div0), 0.0, 1e-12);
+
+        const auto contract = PressureVelocitySystemContract{
+            6, 2,
+            PressureGaugePolicy::REFERENCE_CELL,
+            ContinuityFluxPolicy::RHIE_CHOW,
+            PressureStabilizationPolicy::RHIE_CHOW,
+            true, true, true};
+        contract.validate();
+    });
+
+
     run_case("native_solver_consumes_dat_restart", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> seed_u(1,"U","m/s",3);
@@ -76,12 +181,18 @@ int main()
         Field<double,Location::CELL> expected_p = loaded_p;
         (void)solve_steady_incompressible(m, expected_u, expected_p, ubc, pbc, controls);
 
+        // Declare the checkpoint as the initialization strategy rather than
+        // relying on the positional restart argument alone.
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+
         Field<double,Location::CELL> restart_u(1,"U","m/s",3);
         Field<double,Location::CELL> restart_p(1,"p","Pa",1);
         restart_u.fill(0.0);
         restart_p.fill(0.0);
         (void)solve_steady_incompressible(
-            m, restart_u, restart_p, ubc, pbc, controls, dat.string());
+            m, restart_u, restart_p, ubc, pbc, restart_controls);
 
         EXPECT_NEAR(restart_u(0,0), expected_u(0,0), 1e-14);
         EXPECT_NEAR(restart_u(0,1), expected_u(0,1), 1e-14);
@@ -117,8 +228,12 @@ int main()
         (void)solve_steady_incompressible(
             m,expected_u,expected_p,ubc,pbc,controls);
 
+        IncompressibleSolverControls restart_controls = controls;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+        cfdx::io::DatRestartFields restart_fields{&T,&k,&omega};
         (void)solve_steady_incompressible(
-            m,U,p,ubc,pbc,controls,dat.string(),{&T,&k,&omega});
+            m,U,p,ubc,pbc,restart_controls,"",restart_fields);
 
         EXPECT_NEAR(U(0,0),expected_u(0,0),1e-14);
         EXPECT_NEAR(U(0,1),expected_u(0,1),1e-14);
@@ -192,6 +307,71 @@ int main()
             EXPECT_NEAR(sample.time, 0.0, 1e-14);
             EXPECT_NEAR(sample.value, 0.0, 1e-14);
         }
+    });
+
+    // Closes the "compare CSV against analytical/reference values" item for the
+    // probe CSV export stream: a zero-velocity, zero-gradient-pressure field on a
+    // unit cube with fixed-zero walls admits the uniform zero field as its
+    // analytical steady solution. The probes are exported to CSV and the values
+    // read back from disk are asserted against that analytical reference.
+    run_case("native_point_probe_csv_matches_analytical_reference", []() {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 2;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        controls.probes = {
+            {"pressure_reference", {0.5, 0.5, 0.5}, IncompressibleProbeField::PRESSURE},
+            {"velocity_reference", {0.5, 0.5, 0.5}, IncompressibleProbeField::U_MAGNITUDE},
+        };
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(!result.probe_samples.empty());
+
+        const std::string csv_path = unique_temp_path(".csv").string();
+        cfdx::io::write_probe_csv(csv_path, result.probe_samples, controls.probes);
+
+        std::ifstream in(csv_path);
+        EXPECT_TRUE(in.is_open());
+        std::string line;
+        EXPECT_TRUE(std::getline(in, line) && line == "# cfdx-probe-csv v1");
+        EXPECT_TRUE(std::getline(in, line) && line == "# columns: probe,iteration,time,value");
+        // The export now carries self-describing probe metadata (# probe lines),
+        // ordered by probe name, matching the application-layer writer.
+        EXPECT_TRUE(std::getline(in, line) && line.rfind("# probe ", 0) == 0);
+        EXPECT_TRUE(line.find("pressure_reference") != std::string::npos);
+        EXPECT_TRUE(line.find("field=p") != std::string::npos);
+        EXPECT_TRUE(line.find("unit=Pa") != std::string::npos);
+        std::size_t data_rows = 0;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            if (line[0] == '#')
+                continue; // skip remaining # probe metadata lines
+            const std::size_t last_comma = line.find_last_of(',');
+            EXPECT_TRUE(last_comma != std::string::npos);
+            std::istringstream value_stream(line.substr(last_comma + 1));
+            double value = 0.0;
+            value_stream >> value;
+            EXPECT_TRUE(std::isfinite(value));
+            // Analytical reference: the analytical solution is the uniform zero
+            // field, so every exported sample must reproduce it.
+            EXPECT_NEAR(value, 0.0, 1e-12);
+            ++data_rows;
+        }
+        EXPECT_TRUE(data_rows == result.probe_samples.size());
+        std::filesystem::remove(csv_path);
     });
 
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
@@ -417,6 +597,131 @@ int main()
         EXPECT_NEAR(loaded_k(0),0.12,1e-14);
         EXPECT_NEAR(loaded_second(0),4.5,1e-14);
         std::filesystem::remove(dat);
+    });
+
+    run_case("nonlinear_retry_controls_are_validated_by_the_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 2;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        // The solver owns the nonlinear retry policy, so an invalid policy must
+        // be rejected at the solver boundary and not only inside the controller.
+        bool rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 0;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+
+        rejected = false;
+        try {
+            c.nonlinear_retry.max_retries = 3;
+            c.nonlinear_retry.relaxation_shrink = 1.5;
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("nonlinear_state_rollback_restores_fields_exactly", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+
+        NonlinearStateRollback transaction(U, p);
+        transaction.begin();
+        U.component_data(0)[0] = 3.5;
+        U.component_data(1)[0] = -1.25;
+        p(0) = 42.0;
+        transaction.reject();
+
+        EXPECT_TRUE(U.component_data(0)[0] == 0.0);
+        EXPECT_TRUE(U.component_data(1)[0] == 0.0);
+        EXPECT_TRUE(p(0) == 0.0);
+        EXPECT_TRUE(!transaction.active());
+    });
+
+    run_case("convergence_qoi_gate_is_enforced_by_the_solver", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 40;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+        c.body_force = cfdx::core::Vec3{0.0,0.0,-1.0};
+        // Gate a probe against a target the solve cannot reach. The residual
+        // and continuity criteria are satisfiable on this mesh, so if the QoI
+        // gate did not participate in the acceptance decision the solve would
+        // report convergence and this case would fail.
+        c.probes.push_back(IncompressiblePointProbe{
+            "centre_p", cfdx::core::Vec3{0.5,0.5,0.5},
+            IncompressibleProbeField::PRESSURE});
+        c.qoi_gates.push_back(cfdx::core::QoIGate{
+            "centre_p", 1e-6, 1e-9, 1.0e6, true});
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        EXPECT_TRUE(!result.converged);
+    });
+
+    run_case("convergence_qoi_gate_must_name_a_configured_probe", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
+        Field<double,Location::CELL> p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.convergence.max_iterations = 2;
+        c.convergence.relative_tolerance = 1e-8;
+        c.convergence.continuity_tolerance = 1e-8;
+        c.linear_tolerance = 1e-10;
+        c.pressure_reference_cell = 0;
+        c.pressure_reference_value = 0.0;
+
+        // A gate naming nothing would be silently unsatisfiable forever, so it
+        // must be rejected instead of degrading the solve to never-converged.
+        c.qoi_gates.push_back(cfdx::core::QoIGate{
+            "absent_probe", 1e-12, 1e-14, 0.0, false});
+        bool rejected = false;
+        try {
+            solve_steady_incompressible(m, U, p, ubc, pbc, c);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
     });
 
     return run_all();

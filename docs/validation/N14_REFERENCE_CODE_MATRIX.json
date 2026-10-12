@@ -1,0 +1,249 @@
+{
+  "schema_version": "1.0",
+  "issue": 461,
+  "package": "N14",
+  "title": "Reference-code comparison matrix",
+  "status": "implemented",
+  "status_semantics": {
+    "implementation": "CFDX code path exists",
+    "verification": "executable numerical verification exists",
+    "validation": "quantitative physical/reference evidence exists",
+    "qualification": "all applicable gates for the capability are satisfied"
+  },
+  "comparison_categories": [
+    "same_mathematical_method",
+    "similar_method",
+    "different_method_same_purpose",
+    "unavailable_in_cfdx"
+  ],
+  "reference_codes": [
+    {"id":"openfoam","name":"OpenFOAM","evidence_classes":["official_documentation","official_source"]},
+    {"id":"su2","name":"SU2","evidence_classes":["official_documentation","official_source","publication"]},
+    {"id":"fluent","name":"Ansys Fluent","evidence_classes":["official_documentation"]},
+    {"id":"cfx","name":"Ansys CFX","evidence_classes":["official_documentation"]},
+    {"id":"starccm","name":"Siemens Simcenter STAR-CCM+","evidence_classes":["official_documentation","publication"]}
+  ],
+  "comparison_fields": [
+    "cfdx_method",
+    "reference_method",
+    "mathematical_formulation",
+    "mesh_assumptions",
+    "implementation_status",
+    "verification_status",
+    "validation_status",
+    "qualification_status",
+    "comparison_category",
+    "known_differences",
+    "benchmark_evidence",
+    "source_evidence",
+    "parity_claim"
+  ],
+  "parity_claim_policy": "false unless equation-level equivalence, applicability domain, boundary treatment and independent evidence all establish equivalence",
+  "records": [
+    {
+      "id":"gradient.least_squares",
+      "family":"gradient",
+      "cfdx_method":"weighted/least-squares cell-centred reconstruction with explicit stencil rank/conditioning diagnostics",
+      "mesh_assumptions":["cell-centred FVM","neighbour/boundary reconstruction policy","conditioning checked"],
+      "implementation_status":"verified",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"least-squares gradient families","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"weighted least-squares gradients at grid nodes","category":"similar_method","source_evidence":["publication","official_documentation"]},
+        "fluent":{"method":"least-squares cell-based gradient","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"control-volume gradients at integration points","category":"different_method_same_purpose","source_evidence":["official_documentation"]},
+        "starccm":{"method":"finite-volume gradient/reconstruction; exact public weighting not established","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX solves a weighted local reconstruction problem of the form (M^T W M) a = M^T W b, with explicit rank/conditioning checks. Reference weights/stencils are not assumed identical.",
+      "mesh_assumptions":"Applicability depends on stencil quality, boundary reconstruction and conditioning; arbitrary-polyhedral qualification is reported separately.",
+      "known_differences":["stencil definition","weighting definition","boundary treatment","storage location/node-vs-cell formulation"],
+      "benchmark_evidence":["tests/validation/test_gradient_verification.cpp","tests/validation/test_polyhedral_gradient_campaign.cpp"],
+      "parity_claim":false
+    },
+    {
+      "id":"gradient.green_gauss",
+      "family":"gradient",
+      "cfdx_method":"point/cell Green-Gauss variants with explicit applicability domains",
+      "mesh_assumptions":["closed polyhedral control volumes","geometry consistency required"],
+      "implementation_status":"verified",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"Gauss/polynomial gradient families","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"Green-Gauss gradients","category":"similar_method","source_evidence":["publication"]},
+        "fluent":{"method":"Green-Gauss Cell Based and Node Based","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"Gauss-divergence-theorem control-volume gradient at integration points","category":"similar_method","source_evidence":["official_documentation"]},
+        "starccm":{"method":"finite-volume face/volume reconstruction","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX uses a discrete divergence-theorem/face-sum family; exact interpolation and point locations are method-specific.",
+      "mesh_assumptions":"The two-point cell-centred path is domain-restricted; point-linear reconstruction is the general polyhedral path.",
+      "known_differences":["face interpolation","point versus cell storage","boundary treatment"],
+      "benchmark_evidence":["tests/validation/test_gradient_verification.cpp"],
+      "parity_claim":false
+    },
+    {
+      "id":"diffusion.nonorthogonal",
+      "family":"diffusion",
+      "cfdx_method":"orthogonal contribution plus explicit non-orthogonal correction with documented limiting policy",
+      "mesh_assumptions":["face geometry and owner/neighbour geometry","controlled non-orthogonality"],
+      "implementation_status":"qualified",
+      "verification_status":"verified",
+      "validation_status":"validated",
+      "qualification_status":"qualified",
+      "references":{
+        "openfoam":{"method":"orthogonal/corrected/limited-corrected snGrad families","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"FV viscous reconstruction with Green-Gauss/WLS gradients","category":"similar_method","source_evidence":["publication"]},
+        "fluent":{"method":"finite-volume diffusion with selectable gradient reconstruction","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"integration-point diffusion derivatives","category":"different_method_same_purpose","source_evidence":["official_documentation"]},
+        "starccm":{"method":"finite-volume diffusive flux evaluation","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"For a face f, CFDX forms a normal diffusive contribution plus a controlled tangential/non-orthogonal correction; the correction coefficient and limiter are part of the CFDX contract.",
+      "known_differences":["correction decomposition","gradient/reconstruction source","limiting policy"],
+      "benchmark_evidence":["tests/validation/test_nonorthogonal_laplacian_campaign.cpp","tests/validation/test_nonorthogonal_skew_campaign.cpp","docs/validation/N3_DIFFUSION_QUALIFICATION.md"],
+      "parity_claim":false
+    },
+    {
+      "id":"convection.upwind",
+      "family":"convection",
+      "cfdx_method":"first-order upwind face state",
+      "mesh_assumptions":["conservative face flux","upwind direction defined by face mass flux"],
+      "implementation_status":"implemented",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"upwind","category":"same_mathematical_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"upwind-biased finite-volume flux family","category":"similar_method","source_evidence":["publication"]},
+        "fluent":{"method":"first-order upwind","category":"same_mathematical_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"Upwind advection","category":"same_mathematical_method","source_evidence":["official_documentation"]},
+        "starccm":{"method":"first-order upwind","category":"same_mathematical_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"phi_f = phi_upwind, followed by conservative face-flux assembly.",
+      "known_differences":["compressible flux/state treatment differs across codes","gradient-independent first-order state is the common contract"],
+      "benchmark_evidence":["tests/validation/test_convection_scheme_verification.cpp"],
+      "parity_claim":false
+    },
+    {
+      "id":"convection.muscl_tvd",
+      "family":"convection",
+      "cfdx_method":"MUSCL-style gradient reconstruction with TVD limiter selection",
+      "mesh_assumptions":["reconstruction gradient available","limiter-specific boundedness contract"],
+      "implementation_status":"implemented",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"limited/high-resolution reconstruction families","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"second-order/limited reconstruction","category":"similar_method","source_evidence":["official_documentation","publication"]},
+        "fluent":{"method":"MUSCL/limiter options where applicable","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"High Resolution bounded advection","category":"similar_method","source_evidence":["official_documentation"]},
+        "starccm":{"method":"hybrid MUSCL 3rd-order/CD and bounded higher-order options","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX reconstructs phi_f from an upwind state and a limited gradient correction; the limiter acts on a reconstruction ratio/gradient contract.",
+      "known_differences":["limiter equation","stencil","gradient source","multidimensional limiting","boundedness enforcement"],
+      "benchmark_evidence":["tests/validation/test_convection_scheme_verification.cpp","tests/validation/test_convection_3d_verification.cpp"],
+      "parity_claim":false
+    },
+    {
+      "id":"temporal.bdf2",
+      "family":"temporal",
+      "cfdx_method":"BDF2 with constant- and variable-step coefficients and explicit history/restart lifecycle",
+      "mesh_assumptions":["time-history available","restart state carries sufficient history"],
+      "implementation_status":"implemented",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"backward/time-discretisation families","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"implicit Euler/RK baseline in cited material","category":"different_method_same_purpose","source_evidence":["publication"]},
+        "fluent":{"method":"second-order implicit transient family","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"Second Order Backward Euler","category":"same_mathematical_method","source_evidence":["official_documentation"]},
+        "starccm":{"method":"second-order implicit time discretisation","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"For constant step, BDF2 uses (3 phi^{n+1}-4 phi^n+phi^{n-1})/(2 dt); CFDX additionally supports variable-step coefficients through the history context.",
+      "known_differences":["variable-step support","startup/restart semantics","bounded transient variants"],
+      "benchmark_evidence":["tests/validation/test_temporal_order_matrix.cpp","tests/unit/test_temporal_history.cpp"],
+      "parity_claim":false
+    },
+    {
+      "id":"pressure_velocity.simplec",
+      "family":"pressure_velocity",
+      "cfdx_method":"segregated SIMPLEC pressure correction plus CFDX-specific coefficient convention",
+      "mesh_assumptions":["collocated FVM","pressure-velocity consistency","pressure gauge policy"],
+      "implementation_status":"implemented",
+      "verification_status":"partial",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"SIMPLE/SIMPLEC family","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"coupled/implicit pressure-velocity treatment","category":"different_method_same_purpose","source_evidence":["publication"]},
+        "fluent":{"method":"SIMPLEC","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"coupled pressure/velocity solution strategy","category":"different_method_same_purpose","source_evidence":["official_documentation"]},
+        "starccm":{"method":"SIMPLEC","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX uses its documented rAU=1/A_P convention and associated pressure-correction coefficients; equivalence requires matching these coefficients and pressure-flux correction, not just the algorithm name.",
+      "known_differences":["coefficient convention","Rhie-Chow/flux correction","pressure gauge/null space","under-relaxation"],
+      "benchmark_evidence":["tests/validation/test_phase9_acceptance.cpp","docs/development/HYPRE_PETSC_CFDX_AUDIT.md"],
+      "parity_claim":false
+    },
+    {
+      "id":"linear.amg",
+      "family":"preconditioner",
+      "cfdx_method":"native AMG/Smoothed Aggregation AMG",
+      "mesh_assumptions":["sparse matrix","hierarchy/coarsening quality","coefficient scaling"],
+      "implementation_status":"implemented",
+      "verification_status":"verified",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"algebraic/geometric multigrid options","category":"similar_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"multigrid acceleration","category":"similar_method","source_evidence":["publication"]},
+        "fluent":{"method":"algebraic multigrid","category":"similar_method","source_evidence":["official_documentation"]},
+        "cfx":{"method":"algebraic multigrid","category":"similar_method","source_evidence":["official_documentation"]},
+        "starccm":{"method":"algebraic multigrid","category":"similar_method","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX hierarchy, prolongation/restriction and smoother are implementation-specific; comparison is therefore family-level until an exact hierarchy contract is documented.",
+      "known_differences":["coarsening","interpolation","smoother","cycle","block handling","parallel hierarchy"],
+      "benchmark_evidence":["docs/development/HYPRE_PETSC_CFDX_AUDIT.md"],
+      "parity_claim":false
+    },
+    {
+      "id":"pressure_velocity.pimple",
+      "family":"pressure_velocity",
+      "cfdx_method":"PIMPLE pressure-velocity iteration family",
+      "mesh_assumptions":["transient/iterative pressure correction","relaxation and correction controls"],
+      "implementation_status":"implemented",
+      "verification_status":"partial",
+      "validation_status":"partial",
+      "qualification_status":"partial",
+      "references":{
+        "openfoam":{"method":"PIMPLE","category":"same_mathematical_method","source_evidence":["official_documentation"]},
+        "su2":{"method":"different pressure/velocity coupling architecture","category":"different_method_same_purpose","source_evidence":["publication"]},
+        "fluent":{"method":"PISO/SIMPLE/coupled families","category":"different_method_same_purpose","source_evidence":["official_documentation"]},
+        "cfx":{"method":"iterative pressure/velocity solution control","category":"different_method_same_purpose","source_evidence":["official_documentation"]},
+        "starccm":{"method":"SIMPLE/PISO/SIMPLEC families","category":"different_method_same_purpose","source_evidence":["official_documentation"]}
+      },
+      "mathematical_formulation":"CFDX follows the PIMPLE family of outer/inner pressure-velocity corrections; exact loop ordering and relaxation remain CFDX-specific.",
+      "known_differences":["loop ordering","nonlinear controls","pressure correction","under-relaxation"],
+      "benchmark_evidence":["tests/validation/test_phase9_acceptance.cpp"],
+      "parity_claim":false
+    }
+  ],
+  "unavailable_reference_capabilities": [
+    {"reference":"su2","capability":"CFDX-equivalent Roe/HLLC/AUSM compressible flux catalogue","category":"unavailable_in_cfdx"},
+    {"reference":"fluent","capability":"full Fluent compressible/density-based flux catalogue","category":"unavailable_in_cfdx"},
+    {"reference":"cfx","capability":"CFX-specific High Resolution advection algorithm as an identical CFDX option","category":"unavailable_in_cfdx"},
+    {"reference":"starccm","capability":"STAR-CCM+-specific HRIC/mHRIC interface-capturing formulation as a CFDX production scheme","category":"unavailable_in_cfdx"}
+  ],
+  "source_dossiers": {
+    "openfoam":"docs/validation/reference_codes/openfoam.md",
+    "su2":"docs/validation/reference_codes/su2.md",
+    "fluent":"docs/validation/reference_codes/fluent.md",
+    "cfx":"docs/validation/reference_codes/cfx.md",
+    "starccm":"docs/validation/reference_codes/starccm.md"
+  },
+  "benchmark_cross_reference":"docs/validation/reference_codes/N14_BENCHMARK_CROSS_REFERENCE.md"
+}

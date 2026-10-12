@@ -430,6 +430,17 @@ int main(int argc, char** argv)
             d.exception("level/N=" + std::to_string(n), e);
             results.push_back(Result{});
         }
+        const auto& r = results.back();
+        std::cout << "POISEUILLE_RESULT N=" << r.n
+                  << " L2=" << r.l2
+                  << " Linf=" << r.linf
+                  << " relL2=" << r.rel_l2
+                  << " relLinf=" << r.rel_linf
+                  << " Q=" << r.q
+                  << " conservation=" << r.conservation
+                  << " residual_inf=" << r.residual_inf
+                  << " maxU=" << r.max_u
+                  << " converged=" << (r.converged ? "true" : "false") << "\n";
         std::cout << '\n';
     }
 

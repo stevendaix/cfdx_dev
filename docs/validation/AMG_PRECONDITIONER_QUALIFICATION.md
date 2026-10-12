@@ -141,15 +141,15 @@ native interpolation families — **Direct-CF (Ruge–Stüben)** and
 **Smoothed Aggregation** — the qualification executable must inspect every
 constructed transfer level.
 
-For every level (l) with prolongation (P_l) and coarse operator
-(A_{l+1}), the campaign checks:
+For every level \(l\) with prolongation \(P_l\) and coarse operator
+\(A_{l+1}\), the campaign checks:
 
 1. **Real multilevel hierarchy:** more than two levels are constructed on the
    production qualification problem; no single-level/direct-coarse shortcut is
    accepted for this gate.
 2. **Galerkin identity:** the stored coarse matrix satisfies
-   (A_{l+1}=P_l^T A_l P_l) to a numerical reconstruction tolerance.
-3. **Constant preservation:** every prolongation row satisfies (P_l 1=1)
+   \(A_{l+1}=P_l^T A_l P_l\) to a numerical reconstruction tolerance.
+3. **Constant preservation:** every prolongation row satisfies \(P_l 1=1\)
    to machine-level tolerance for the elliptic null/near-nullspace contract.
 4. **Coarse-space coverage:** every coarse column has at least one fine
    representative; zero-column transfers fail.
@@ -163,15 +163,15 @@ For every level (l) with prolongation (P_l) and coarse operator
    Euclidean residual ratio remains diagnostic only; it is not an acceptance gate.
 8. **Full V-cycle energy:** the A-energy error ratio must be strictly below one,
    using
-   [
-   ho_E =
-   sqrt{\frac{e^T A e}{e_0^T A e_0}} < 1.
-   ]
+   \[
+   \rho_E =
+   \sqrt{\frac{e^T A e}{e_0^T A e_0}} < 1.
+   \]
    Euclidean residual reduction is retained as diagnostic evidence and is not
    used as a substitute for this energy criterion.
 
 The same gates are applied independently to Direct-CF and Smoothed Aggregation
-on the same (N=4096) 1-D Dirichlet Poisson hierarchy. Existing anisotropic
+on the same \(N=4096\) 1-D Dirichlet Poisson hierarchy. Existing anisotropic
 and FVM-diffusion tests remain complementary robustness gates.
 
 The Ruge–Stüben implementation also explicitly uses the complete strong
@@ -199,3 +199,81 @@ no fallback is introduced.
 The qualification executable evaluates Direct-CF and Smoothed Aggregation independently, so a failure in one interpolation family cannot short-circuit the qualification of the other. The smoother gate uses a representative high-frequency manufactured mode rather than the lowest-frequency mode. The two-grid acceptance metric is the same A-energy error norm used by the V-cycle criterion; Euclidean residual ratios are retained for diagnosis only because residual and error-energy norms are not equivalent.
 
 **Gershgorin tolerance:** Direct-CF maintains strict M-matrix structure (diagonal dominance) from fine to coarse and is qualified with a tight floating-point round-off envelope (`±100·ε`). Smoothed Aggregation with Jacobi smoothing (Vaněk, Mandel, Brezina 2001) does not preserve M-matrix structure: coarse operators may have positive off-diagonals even when the fine operator is strictly diagonally dominant. A small negative Gershgorin bound (up to `-0.15`) at irregular aggregate boundaries is expected algebraic behavior documented in the SA literature and does not indicate loss of symmetry, positive-definiteness, or V-cycle instability—only loss of strict diagonal dominance. SA qualification therefore uses a relaxed tolerance of `0.15` while Direct-CF retains the strict round-off gate.
+
+
+## N8.4 — reproducible Schur production-path benchmark
+
+The executable `test_n8_schur_production_benchmark` provides the next N8
+evidence layer after the exact-Schur, numeric-update and serial null-space
+contracts.
+
+For a controlled assembled 4N coupled matrix family it records, per problem
+size:
+
+- number of cells and unknowns;
+- input and Schur NNZ;
+- estimated CSR storage for the matrix and Schur matrix;
+- factorization and velocity-block approximation;
+- Krylov solver and convergence status;
+- reported and independently recomputed true residual;
+- Krylov iteration count;
+- setup and solve wall time;
+- pressure coarse-space size;
+- AMG hierarchy build and numeric-update counts.
+
+The storage quantity is an explicit CSR byte estimate, not process RSS. Timing
+is diagnostic and is not a CI performance threshold.
+
+The benchmark is intentionally an **algebraic production-path benchmark**.
+It does not claim Couette, Poiseuille or Ghia physical qualification. Those
+cases remain a separate production-physics campaign and must use their own
+independent QoI, conservation and convergence evidence.
+
+The lifecycle portion also verifies that a value-refresh update reuses the
+existing symbolic pressure hierarchy. Graph-change rejection remains owned by
+the existing lifecycle regression.
+
+No tolerance is relaxed, no validation case is disabled, and no performance
+winner is selected by the CI gate.
+
+
+## N8.5 — Matrix-characteristic solver selection
+
+CFDX now exposes an explicit matrix-characteristic policy through
+`MatrixCharacteristics` and `select_linear_solver(problem, characteristics, request)`.
+
+The policy consumes only characteristics that are explicitly supplied by the
+assembly/diagnostic layer:
+
+- square/non-square structure;
+- equation count;
+- numerical symmetry;
+- diagonal dominance;
+- coefficient scaling;
+- saddle-point classification;
+- anisotropy metadata.
+
+No property is inferred from matrix size alone. The existing size-only API remains
+as a backward-compatible conservative wrapper and supplies only the properties
+that are structurally implied by the selected problem class.
+
+The current qualified decision rules are deliberately conservative:
+
+- verified symmetric + diagonally-dominant pressure/diffusion systems →
+  CG, with Jacobi for tiny systems and native AMG for larger systems;
+- elliptic systems without a verified SPD signature → GMRES with Jacobi/ILU0;
+- momentum/scalar systems → BiCGStab + Jacobi/ILU0, switching to FGMRES when
+  explicit strong coefficient scaling is reported;
+- explicitly classified coupled saddle-point systems → FGMRES + coupled block Schur;
+- anisotropy is surfaced in the selection reason but does not claim anisotropic
+  AMG qualification.
+
+This layer is a deterministic recommendation policy, not a convergence guarantee.
+Production promotion still requires independent true-residual, difficult-matrix,
+performance and scaling evidence. In particular, anisotropy and strong-scaling
+campaigns remain open N8 qualification work.
+
+The design follows the standard numerical distinction between SPD systems,
+general/nonsymmetric systems and saddle-point systems; PETSc documents the same
+constraint that CG requires an SPD matrix and SPD preconditioner, while GMRES is
+intended for nonsymmetric systems. 

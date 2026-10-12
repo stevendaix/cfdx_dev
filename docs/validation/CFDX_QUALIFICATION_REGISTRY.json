@@ -346,6 +346,26 @@
       "observed_order": "Surface discretization sensitivity",
       "runtime": "Per surface mesh",
       "regression_status": "Existing S2S regression; quantitative benchmark required"
+    },
+    {
+      "id": "N9-S8-NACA0012",
+      "domain": "Numerical methods / External laminar flow",
+      "case": "NACA0012 NASA/TMR C-grid, Re=1000, alpha=0",
+      "status": "READY",
+      "reference": "NASA TMR NACA0012 public C-grid family; laminar NACA0012 literature retained as scientific provenance. No physical PASS oracle frozen yet.",
+      "parameters": "Chord=1; Uinf=1; rho=1; Re=1000; nu=1e-3; alpha=0 deg; incompressible; laminar; steady first population",
+      "mesh": "NASA/TMR C-grid: 225x65, 449x129, 897x257; imported offline to CFDX-HDF5 with provenance metadata",
+      "boundary_conditions": "No-slip airfoil; uniform freestream; explicit wake-cut and farfield boundaries; one-layer 3-D extrusion for current CFDX representation",
+      "numerical_schemes": "N9 pressure-velocity family matrix; same spatial mesh and physics for all methods",
+      "solver_settings": "Frozen per N9 method; no algorithm-specific tolerance relaxation",
+      "convergence_criteria": "Nonlinear residuals, true residuals, continuity and QoI stabilization",
+      "conservation_criteria": "Independent mass/continuity balance and force-balance diagnostics",
+      "qoi": "Cd, Cl, Cm, pressure/viscous drag components, Cp(x/c)",
+      "reference_value": "Mesh/refinement and symmetry are hard verification gates; independent physical oracle remains pending",
+      "error": "Mesh-to-mesh differences and, once frozen, literature/reference QoI error",
+      "observed_order": "Computed only where mathematically meaningful from the declared refinement series",
+      "runtime": "Retain wall time, iterations and hardware/parallelism for each N9 method",
+      "regression_status": "Contract test in validation/Total Validation; physical qualification pending actual CFDX execution on imported TMR meshes"
     }
   ]
 }

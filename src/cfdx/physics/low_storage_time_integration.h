@@ -53,6 +53,11 @@ inline void low_storage_rk3_step(
     }
 }
 
+// Explicit RK2 (midpoint rule). Two stages with a half-step predictor:
+//   k1 = f(u0);  u_star = u0 + dt/2 k1;  k2 = f(u_star);  u1 = u0 + dt k2
+// The b-vector is (0, 1); the ORDER-CONDITION b.c = 1/2 holds, so the method
+// is genuinely second order. (A previous version applied dt/2 to BOTH stages,
+// which violates b.c = 1/2 and is only first order — fixed, see #461 N5.)
 template<class RHS>
 inline void low_storage_rk2_step(
     cfdx::core::Field<double,cfdx::core::Location::CELL>& u,
@@ -60,11 +65,12 @@ inline void low_storage_rk2_step(
     if (!(dt > 0.0) || !std::isfinite(dt))
         throw std::invalid_argument("invalid dt");
     const std::size_t n = u.size();
+    cfdx::core::Field<double,cfdx::core::Location::CELL> u0 = u;
     cfdx::core::Field<double,cfdx::core::Location::CELL> k(n, "rhs");
     rhs(u, k);
-    for (std::size_t i = 0; i < n; ++i) u(i) += 0.5 * dt * k(i);
+    for (std::size_t i = 0; i < n; ++i) u(i) = u0(i) + 0.5 * dt * k(i);
     rhs(u, k);
-    for (std::size_t i = 0; i < n; ++i) u(i) += 0.5 * dt * k(i);
+    for (std::size_t i = 0; i < n; ++i) u(i) = u0(i) + dt * k(i);
 }
 
 } // namespace cfdx::physics

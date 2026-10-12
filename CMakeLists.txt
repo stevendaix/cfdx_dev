@@ -164,7 +164,11 @@ set(CFDX_PHYSICS_SOURCES
     src/cfdx/physics/temporal.h
     src/cfdx/physics/low_storage_time_integration.h
     src/cfdx/physics/adaptive_cfl.h
+    src/cfdx/physics/timestep_control.h
+    src/cfdx/physics/dual_time_physical_lifecycle.h
+    src/cfdx/physics/dual_time_navier_stokes.h
     src/cfdx/physics/advanced_convergence.h
+    src/cfdx/physics/continuation.h
     src/cfdx/physics/forces.h
     src/cfdx/physics/local_time_stepping.h
     src/cfdx/physics/low_mach.h
@@ -237,6 +241,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/boundary/flow_boundary_conditions.h
     src/cfdx/core/numerics/interpolation.h
     src/cfdx/core/numerics/gradient.h
+    src/cfdx/core/numerics/gradient_stencil.h
     src/cfdx/core/numerics/divergence.h
     src/cfdx/core/numerics/laplacian.h
     src/cfdx/core/numerics/flux.h
@@ -244,6 +249,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/numerics/source_term.h
     src/cfdx/core/numerics/temporal.h
     src/cfdx/core/numerics/convection.h
+    src/cfdx/core/numerics/backend_equivalence.h
     src/cfdx/physics/incompressible.h
     src/cfdx/physics/pressure_velocity.h
     src/cfdx/physics/pressure_velocity_algorithms.h
@@ -257,6 +263,11 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/finite_volume_transport.h
     src/cfdx/physics/boundary_constraint_fvm.h
     src/cfdx/physics/steady_incompressible_solver.h
+    src/cfdx/physics/dual_time_driver.h
+    src/cfdx/physics/dual_time_adaptive.h
+    src/cfdx/physics/dual_time_field_driver.h
+    src/cfdx/physics/dual_time_field_integrator.h
+    src/cfdx/physics/dual_time_navier_stokes.h
     src/cfdx/physics/turbulence_transport.h
     src/cfdx/physics/turbulence_solver.h
     src/cfdx/physics/sst_solver.h
@@ -398,6 +409,40 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # N8 physical/production qualification reuses the existing validation
+    # executables and records a machine-readable campaign report. It is
+    # intentionally a separate CTest entry so the individual physical or
+    # algebraic tests remain independently visible in CI.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n8_physical_qualification
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/n8_physical_qualification.py
+                         --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n8_physical_qualification PROPERTIES
+            LABELS "n8;qualification;validation;sanitizer-slow"
+            RUN_SERIAL TRUE)
+    endif()
+
+    # N11 conservation/boundedness qualification reuses the existing
+    # executable evidence and writes a machine-readable campaign report.
+    # It is intentionally separate from the individual tests so their
+    # independent evidence remains visible in CI.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n11_conservation_boundedness
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/n11_conservation_boundedness.py
+                         --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n11_conservation_boundedness PROPERTIES
+            LABELS "n11;qualification;validation;long"
+            RUN_SERIAL TRUE)
+
+        add_test(NAME test_n11_campaign_integrity
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_n11_campaign_integrity.py)
+        set_tests_properties(test_n11_campaign_integrity PROPERTIES
+            LABELS "n11;unit;validation")
+    endif()
+
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
@@ -414,14 +459,17 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_boundary_validator tests/unit/test_boundary_validator.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
+    add_cfdx_test(test_pressure_velocity_system tests/unit/test_pressure_velocity_system.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
     add_cfdx_test(test_flux tests/unit/test_flux.cpp)
+    add_cfdx_test(test_spatial_scheme_contract tests/unit/test_spatial_scheme_contract.cpp)
     add_cfdx_test(test_conservation_boundedness tests/unit/test_conservation_boundedness.cpp)
     add_cfdx_test(test_transport_conservation tests/unit/test_transport_conservation.cpp)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_probe_csv tests/unit/test_probe_csv.cpp)
 
     # Unit tests - Linear Algebra
     add_cfdx_test(test_sparse_matrix tests/unit/test_sparse_matrix.cpp)
@@ -429,20 +477,33 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
+    add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
+    add_cfdx_test(test_fgmres_solver tests/unit/test_fgmres_solver.cpp)
     add_cfdx_test(test_krylov_preconditioning tests/unit/test_krylov_preconditioning.cpp)
+    add_cfdx_test(test_krylov_diagnostics tests/unit/test_krylov_diagnostics.cpp)
     add_cfdx_test(test_stationary_solvers tests/unit/test_stationary_solvers.cpp)
     add_cfdx_test(test_performance_foundations tests/unit/test_performance_foundations.cpp)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
+    add_cfdx_test(test_matrix_characteristics tests/unit/test_matrix_characteristics.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
     add_cfdx_test(test_matrix_free_fv_operator tests/unit/test_matrix_free_fv_operator.cpp)
+    add_cfdx_test(test_n11_scaling_equivalence tests/validation/test_n11_scaling_equivalence.cpp)
+    add_cfdx_test(test_n11_production_scaling tests/validation/test_n11_production_scaling.cpp)
+    add_cfdx_test(test_n11_unit_invariance_robustness tests/validation/test_n11_unit_invariance_robustness.cpp)
+    set_tests_properties(test_n11_unit_invariance_robustness PROPERTIES LABELS "n11;qualification;validation")
+    add_cfdx_test(test_backend_equivalence tests/unit/test_backend_equivalence.cpp)
+    add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+    target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
+    add_cfdx_test(test_n13_restart_equivalence tests/validation/test_n13_restart_equivalence.cpp)
 
     # Unit tests - Numerical
     add_cfdx_test(test_laplacian tests/unit/test_laplacian.cpp)
+    add_cfdx_test(test_diffusion_diagnostics tests/unit/test_diffusion_diagnostics.cpp)
     add_cfdx_test(test_phase123_regression tests/unit/test_phase123_regression.cpp)
 add_cfdx_test(test_phase12_radiation_vv tests/validation/test_phase12_radiation_vv.cpp)
 set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;validation")
@@ -455,18 +516,55 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_cell_geometry tests/numerical/test_cell_geometry.cpp)
     add_cfdx_test(test_mesh_quality tests/numerical/test_mesh_quality.cpp)
     add_cfdx_test(test_geometry_invariants tests/unit/test_geometry_invariants.cpp)
+    add_cfdx_test(test_dat_restart_identity tests/unit/test_dat_restart_identity.cpp)
     add_cfdx_test(test_mesh_family_volumes tests/numerical/test_mesh_family_volumes.cpp)
     add_cfdx_test(test_source_term tests/numerical/test_source_term.cpp)
     add_cfdx_test(test_temporal_physics tests/unit/test_temporal.cpp)
+    add_cfdx_test(test_dual_time_stepping tests/unit/test_dual_time_stepping.cpp)
+    add_cfdx_test(test_dual_time_adaptive tests/unit/test_dual_time_adaptive.cpp)
+    add_cfdx_test(test_dual_time_field_driver tests/unit/test_dual_time_field_driver.cpp)
+    add_cfdx_test(test_dual_time_field_integrator tests/unit/test_dual_time_field_integrator.cpp)
+    add_cfdx_test(test_dual_time_physical_lifecycle tests/unit/test_dual_time_physical_lifecycle.cpp)
+    add_cfdx_test(test_dual_time_navier_stokes tests/unit/test_dual_time_navier_stokes.cpp)
+    add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
+    add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
     add_cfdx_test(test_newton_field tests/unit/test_newton_field.cpp)
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
+    add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
+    add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
+    add_cfdx_test(test_convergence_monitor tests/unit/test_convergence_monitor.cpp)
+    add_cfdx_test(test_initialization tests/unit/test_initialization.cpp)
+    add_executable(test_n7_convergence_qualification tests/validation/test_n7_convergence_qualification.cpp)
+    target_link_libraries(test_n7_convergence_qualification PRIVATE cfdx_core)
+    target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n7_convergence_qualification COMMAND test_n7_convergence_qualification)
+    set_tests_properties(test_n7_convergence_qualification PROPERTIES
+        LABELS "n7;qualification;validation;sanitizer-slow")
+    add_executable(test_n7_adaptive_relaxation_re400
+        tests/validation/test_n7_adaptive_relaxation_re400.cpp)
+    target_link_libraries(test_n7_adaptive_relaxation_re400 PRIVATE cfdx_core)
+    target_include_directories(test_n7_adaptive_relaxation_re400 PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n7_adaptive_relaxation_re400
+             COMMAND test_n7_adaptive_relaxation_re400)
+    set_tests_properties(test_n7_adaptive_relaxation_re400 PROPERTIES
+        LABELS "n7;qualification;validation;sanitizer-slow"
+        TIMEOUT 1800)
+    add_cfdx_test(test_n7_causal_overshoot_regression tests/unit/test_n7_causal_overshoot_regression.cpp)
+    set_tests_properties(test_n7_causal_overshoot_regression PROPERTIES
+        LABELS "n7;regression;unit")
+    add_executable(test_n11_scalar_conservation tests/validation/test_n11_scalar_conservation.cpp)
+    target_link_libraries(test_n11_scalar_conservation PRIVATE cfdx_core)
+    target_include_directories(test_n11_scalar_conservation PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_n11_scalar_conservation COMMAND test_n11_scalar_conservation)
+    set_tests_properties(test_n11_scalar_conservation PROPERTIES
+        LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
@@ -477,6 +575,31 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_test(NAME test_ghia_cavity_quick COMMAND test_ghia_cavity --quick)
     set_tests_properties(test_ghia_cavity_quick PROPERTIES
         LABELS "phase13;validation")
+    # Production PCD is an explicit N8 qualification test. It must never be
+    # pulled into the quick smoke path because its coupled Krylov/preconditioner
+    # cost is materially different from the SIMPLE Ghia regression.
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        # Run a bounded low-resolution preflight first. The dependency prevents
+        # the physical PCD qualification from starting when the nested solver
+        # already exhibits runaway behaviour on the smaller case.
+        add_test(NAME test_ghia_cavity_n8_pcd_preflight COMMAND test_ghia_cavity --pcd-preflight)
+        set_tests_properties(test_ghia_cavity_n8_pcd_preflight PROPERTIES
+            LABELS "n8;qualification;validation;long;preflight"
+            TIMEOUT 120)
+        add_test(NAME test_ghia_cavity_n8_pcd COMMAND test_ghia_cavity --pcd)
+        set_tests_properties(test_ghia_cavity_n8_pcd PROPERTIES
+            LABELS "n8;qualification;validation;long"
+            TIMEOUT 720
+            DEPENDS test_ghia_cavity_n8_pcd_preflight)
+    endif()
+    # Merge-gated observed-order tripwire. Three resolutions at 16/32/64 give a
+    # Richardson-style order in about 90s, so observed-order evidence now gates
+    # every merge instead of running only in the skipped long-validation
+    # workflow. The 32/64/128 campaign stays behind CFDX_ENABLE_LONG_VALIDATION.
+    add_test(NAME test_ghia_cavity_order COMMAND test_ghia_cavity --gate)
+    set_tests_properties(test_ghia_cavity_order PROPERTIES
+        LABELS "phase13;validation;campaign"
+        TIMEOUT 900)
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_ghia_cavity COMMAND test_ghia_cavity)
         set_tests_properties(test_ghia_cavity PROPERTIES
@@ -485,6 +608,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_executable(test_phase9_acceptance tests/validation/test_phase9_acceptance.cpp)
     target_link_libraries(test_phase9_acceptance PRIVATE cfdx_core)
     target_include_directories(test_phase9_acceptance PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    # Full N8 pressure-velocity matrix: deliberately not the --quick smoke test.
+    # This exercises SIMPLE, SIMPLEC, PISO, PIMPLE, fractional-step and COUPLED.
+    add_test(NAME test_n8_pressure_velocity_matrix COMMAND test_phase9_acceptance)
+    set_tests_properties(test_n8_pressure_velocity_matrix PROPERTIES
+        LABELS "n8;qualification;validation;sanitizer-slow"
+        RUN_SERIAL TRUE)
     add_test(NAME test_couette_quick COMMAND test_phase9_acceptance --quick)
     # Phase 9 diagnostics must be deterministic under CTest. The validation
     # workflow may set these variables at the shell level, but CTest test
@@ -562,7 +691,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)
     target_include_directories(test_channel_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
-    set_tests_properties(test_channel_quick PROPERTIES LABELS "qualification;validation")
+    set_tests_properties(test_channel_quick PROPERTIES LABELS "qualification;validation;sanitizer-slow")
     if(Python3_Interpreter_FOUND)
         set_tests_properties(test_channel_quick PROPERTIES DEPENDS test_generate_2d_validation_meshes)
     endif()
@@ -596,10 +725,77 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     endif()
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)
+    add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)
+    add_cfdx_test(test_transient_mms_closure tests/validation/test_transient_mms_closure.cpp)
+    add_cfdx_test(test_transient_mms_3d_stiff tests/validation/test_transient_mms_3d_stiff.cpp)
+    add_cfdx_test(test_n12_momentum_mms tests/validation/test_n12_momentum_mms.cpp)
+    add_cfdx_test(test_n12_pressure_continuity_mms tests/validation/test_n12_pressure_continuity_mms.cpp)
+    add_cfdx_test(test_n12_coupled_pressure_velocity_mms tests/validation/test_n12_coupled_pressure_velocity_mms.cpp)
+    set_tests_properties(
+        test_mms_scalar_diffusion
+        test_transient_mms
+        test_transient_mms_closure
+        test_transient_mms_3d_stiff
+        test_n12_momentum_mms
+        test_n12_pressure_continuity_mms
+        PROPERTIES LABELS "n12;mms;validation")
+    set_tests_properties(
+        test_n12_coupled_pressure_velocity_mms
+        PROPERTIES LABELS "n12;mms;validation;long;validation-total")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
+    add_cfdx_test(test_polyhedral_poisson_convergence tests/validation/test_polyhedral_poisson_convergence.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
+    add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
+    add_cfdx_test(test_convection_blending tests/validation/test_convection_blending.cpp)
+    add_cfdx_test(test_n16_weno5z tests/validation/test_n16_weno5z.cpp)
+    set_tests_properties(test_n16_weno5z PROPERTIES LABELS "n16;validation;experimental")
+    add_cfdx_test(test_temporal_order_matrix tests/validation/test_temporal_order_matrix.cpp)
     add_cfdx_test(test_gradient_verification tests/validation/test_gradient_verification.cpp)
     add_cfdx_test(test_polyhedral_gradient_campaign tests/validation/test_polyhedral_gradient_campaign.cpp)
+    add_cfdx_test(test_n10_difficult_mesh_robustness tests/validation/test_n10_difficult_mesh_robustness.cpp)
+    add_executable(test_n10_external_fixture_import tests/validation/test_n10_external_fixture_import.cpp)
+    target_link_libraries(test_n10_external_fixture_import PRIVATE cfdx_core)
+    target_include_directories(test_n10_external_fixture_import PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_executable(test_n10_fixture_numerical_qualification tests/validation/test_n10_fixture_numerical_qualification.cpp)
+    target_link_libraries(test_n10_fixture_numerical_qualification PRIVATE cfdx_core)
+    target_include_directories(test_n10_fixture_numerical_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_executable(test_n10_fixture_production_case tests/validation/test_n10_fixture_production_case.cpp)
+    target_link_libraries(test_n10_fixture_production_case PRIVATE cfdx_core)
+    target_include_directories(test_n10_fixture_production_case PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n10_qualification
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/n10_qualification.py
+                    --build-dir ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_n10_qualification PROPERTIES
+            LABELS "n10;qualification;validation"
+            RUN_SERIAL TRUE)
+        add_test(NAME test_n10_mesh_fixture_manifest
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_mesh_fixture_manifest.py)
+        set_tests_properties(test_n10_mesh_fixture_manifest PROPERTIES
+            LABELS "n10;mesh;provenance;validation"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
+    set_tests_properties(
+        test_n10_difficult_mesh_robustness
+        test_nonorthogonal_skew_campaign
+        test_nonorthogonal_laplacian_campaign
+        test_polyhedral_laplacian_campaign
+        test_gradient_verification
+        test_polyhedral_gradient_campaign
+        test_polyhedral_poisson_convergence
+        PROPERTIES LABELS "validation;qualification;n10")
+    # The Poisson solution-convergence assembly is a black-box indicator
+    # campaign (hundreds of production operator applications per level);
+    # keep it out of the DebugSanitizers pass like the other
+    # sanitizer-slow qualification tests. Release coverage stays
+    # merge-gated.
+    set_tests_properties(test_polyhedral_poisson_convergence PROPERTIES
+        LABELS "n10;qualification;validation;sanitizer-slow"
+        TIMEOUT 1800)
+    add_cfdx_test(test_convection_polyhedral_campaign tests/validation/test_convection_polyhedral_campaign.cpp)
+    add_cfdx_test(test_convection_solver_qualification tests/validation/test_convection_solver_qualification.cpp)
+    set_tests_properties(test_convection_solver_qualification PROPERTIES LABELS "phase13;validation;qualification")
+    set_tests_properties(test_convection_polyhedral_campaign PROPERTIES LABELS "phase13;validation;qualification")
     add_cfdx_test(test_fluent_vmfl_reference tests/validation/test_fluent_vmfl_reference.cpp)
     add_cfdx_test(test_benchmark_matrix tests/validation/test_benchmark_matrix.cpp)
     add_cfdx_test(test_level_b_reference_benchmarks tests/validation/test_level_b_reference_benchmarks.cpp)
@@ -626,6 +822,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_radiation_vv
         test_s2s_radiation_vv
         PROPERTIES LABELS "qualification;validation")
+    set_tests_properties(test_couette_quick test_ghia_cavity_quick
+        PROPERTIES LABELS "qualification;validation;sanitizer-slow")
 
     add_test(NAME test_turbulence_qualification_matrix
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_turbulence_qualification_matrix.py
@@ -646,6 +844,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
+    add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
+    set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
+    set_tests_properties(test_backend_equivalence test_n13_restart_equivalence
+        PROPERTIES LABELS "phase13;validation;n13")
     set_tests_properties(test_mms_scalar_diffusion
         test_m1_m4_validation test_m2_m4_solver_validation test_cht_validation
         test_thermal_vv test_radiation_vv test_s2s_radiation_vv test_thermal_radiation_model_matrix
@@ -658,16 +860,50 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
     add_cfdx_test(test_exact_schur tests/unit/test_exact_schur.cpp)
+    add_cfdx_test(test_n9_schur_oracle tests/unit/test_n9_schur_oracle.cpp)
+    add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
+    add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
+    add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_coupled_schur_selection tests/unit/test_coupled_schur_selection.cpp)
+    add_cfdx_test(test_lsc_bfbt_schur_null_space tests/unit/test_lsc_bfbt_schur_null_space.cpp)
+    add_cfdx_test(test_schur_approximation_comparison tests/unit/test_schur_approximation_comparison.cpp)
+    add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
     add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
+    add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
+    add_cfdx_test(test_n8_schur_representative_cfd tests/validation/test_n8_schur_representative_cfd.cpp)
+    add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
+    add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
+    add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
+    add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 1800)
+    set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 300
+        RUN_SERIAL TRUE)
+    add_cfdx_test(test_n9_s9_rhie_chow_consistency tests/validation/test_n9_s9_rhie_chow_consistency.cpp)
+    set_tests_properties(test_n9_s9_rhie_chow_consistency PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 300
+        RUN_SERIAL TRUE)
+    add_cfdx_test(test_n9_negative_diagnostics tests/validation/test_n9_negative_diagnostics.cpp)
+    set_tests_properties(test_n9_negative_diagnostics PROPERTIES
+        LABELS "n9;qualification;validation;validation-total"
+        TIMEOUT 600
+        RUN_SERIAL TRUE)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+        add_executable(test_n13_mpi_equivalence tests/validation/test_n13_mpi_equivalence.cpp)
         add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
         add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
         add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
         add_executable(test_phase8_mpi_poisson tests/validation/test_phase8_mpi_poisson.cpp)
+        add_executable(test_n8_mpi_boundary tests/validation/test_n8_mpi_boundary.cpp)
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_executable(cfdx_mpi_poisson_restart apps/mpi_poisson_restart/main.cpp)
             target_link_libraries(cfdx_mpi_poisson_restart PRIVATE cfdx_core MPI::MPI_CXX)
@@ -683,10 +919,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         endif()
         target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n13_mpi_equivalence PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_mpi_krylov_reduction PRIVATE cfdx_core MPI::MPI_CXX)
         target_link_libraries(test_phase8_mpi_poisson PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n8_mpi_boundary PRIVATE cfdx_core MPI::MPI_CXX)
         target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_n13_mpi_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(test_mpi_krylov_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
@@ -696,6 +935,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_mpi_deterministic
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n13_mpi_equivalence
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n13_mpi_equivalence> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n13_mpi_equivalence PROPERTIES
+            LABELS "phase13;validation;n13"
+            ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
         add_test(NAME test_mpi_partition
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
@@ -708,6 +953,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_phase8_mpi_poisson
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n8_mpi_boundary
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n8_mpi_boundary> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n8_mpi_boundary PROPERTIES
+            LABELS "n8;qualification;validation;mpi")
         set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
             add_test(NAME test_phase5_distributed
@@ -742,11 +992,18 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
             # external-library teardown allocations from the leak check.
-            set_tests_properties(test_mpi_deterministic test_mpi_partition test_mpi_fused_reduction
-                test_mpi_krylov_reduction test_phase8_mpi_poisson PROPERTIES
+            # N13 has the same external OpenMPI/hwloc teardown behavior as the
+            # other MPI sanitizer tests. Its numerical equivalence and reduction
+            # assertions remain active; only LeakSanitizer's process-global
+            # external-library teardown check is disabled for these MPI tests.
+            set_tests_properties(test_n13_mpi_equivalence test_mpi_deterministic
+                test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction
+                test_phase8_mpi_poisson test_n8_mpi_boundary PROPERTIES
                 ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
         endif()
     endif()
+    add_cfdx_test(test_convergence_history tests/unit/test_convergence_history.cpp)
+    add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
@@ -789,6 +1046,32 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_n9_s8_naca0012_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
+        set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
+            LABELS "n9;qualification;validation;total-validation"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
+    if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
+        add_test(NAME test_n9_coupled_schur_case_selection
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)
+        set_tests_properties(test_n9_coupled_schur_case_selection PROPERTIES
+            LABELS "n9;schur;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME test_n9_poiseuille_body_force_production
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
+        set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
+            LABELS "n9;qualification;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 900)
+    endif()
+
+    if(Python3_Interpreter_FOUND)
         add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
         set_tests_properties(test_missing_qualification_case_contracts PROPERTIES LABELS "qualification;validation")
     endif()
@@ -799,7 +1082,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
             set_tests_properties(test_production_solver_e2e PROPERTIES
-                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/python")
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
+            add_test(NAME test_production_solver_numerics_e2e
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_numerics_e2e.py)
+            set_tests_properties(test_production_solver_numerics_e2e PROPERTIES
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
         endif()
         add_test(NAME test_meshio_bridge
                  COMMAND ${Python3_EXECUTABLE}
@@ -816,3 +1104,4 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()
+

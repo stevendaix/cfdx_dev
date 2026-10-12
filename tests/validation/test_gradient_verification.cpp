@@ -243,7 +243,10 @@ void require(bool condition, const std::string& message)
 
 // The three gradient schemes exercised by the campaign: cell-based
 // Green-Gauss, vertex-based (secondary) Green-Gauss and least-squares.
-enum class GradScheme { GaussCell, GaussVertex, GaussPoint, LeastSquares };
+enum class GradScheme {
+    GaussCell, GaussVertex, GaussPoint, LeastSquares,
+    LeastSquaresWeighted, LeastSquaresWeightedInvR
+};
 
 std::string scheme_name(GradScheme s)
 {
@@ -252,6 +255,8 @@ std::string scheme_name(GradScheme s)
         case GradScheme::GaussVertex: return "green_gauss_vertex";
         case GradScheme::GaussPoint:  return "green_gauss_point";
         case GradScheme::LeastSquares: return "least_squares";
+        case GradScheme::LeastSquaresWeighted: return "weighted_least_squares_1_over_r2";
+        case GradScheme::LeastSquaresWeightedInvR: return "weighted_least_squares_1_over_r";
     }
     return "unknown";
 }
@@ -269,6 +274,12 @@ Field<double, Location::CELL> compute_scheme(const Grid& grid,
             return compute_gradient_gauss_point(phi, grid.mesh, grid.geometry);
         case GradScheme::LeastSquares:
             return compute_gradient_least_squares(phi, grid.mesh);
+        case GradScheme::LeastSquaresWeighted:
+            return compute_gradient_weighted_least_squares_extended(
+                phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED);
+        case GradScheme::LeastSquaresWeightedInvR:
+            return compute_gradient_weighted_least_squares_extended(
+                phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE);
     }
     return Field<double, Location::CELL>();
 }
@@ -303,7 +314,9 @@ void check_exactness(const std::string& family, double shear, double stretch)
     const Grid grid = make_affine_cube(6, shear, stretch);
 
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares,
+                                    GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
         const std::string name = scheme_name(scheme);
 
         const auto constant_field = sample_field(grid, kConstant);
@@ -325,7 +338,9 @@ void check_exactness(const std::string& family, double shear, double stretch)
 void check_order(const std::string& family, double shear, double stretch, const FieldCase& field)
 {
     for (const GradScheme scheme : {GradScheme::GaussCell, GradScheme::GaussVertex,
-                                    GradScheme::GaussPoint, GradScheme::LeastSquares}) {
+                                    GradScheme::GaussPoint, GradScheme::LeastSquares,
+                                    GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
         const std::string name = scheme_name(scheme);
         const auto errors = refinement_errors(shear, stretch, field, scheme);
         for (std::size_t i = 0; i < errors.size(); ++i) {
@@ -342,15 +357,13 @@ void check_order(const std::string& family, double shear, double stretch, const 
     }
 }
 
-// Green-Gauss and least-squares are both exact for a quadratic field on an
-// affine (uniform-lattice) mesh. For Green-Gauss the second-order
-// face-interpolation offsets cancel between opposite faces. For least-squares
-// the |Delta|^2 term in Delta(phi) is even in Delta and cancels over a
-// centrally-symmetric +/- stencil, so the normal equations return the exact
-// gradient. This is a stronger property than first-order exactness and is part
-// of the reconstruction contract. The vertex-based Green-Gauss scheme is not
-// quadratic-exact in general, so it is reported here and its reduction/order
-// behaviour is covered by check_order.
+// Quadratic-field verification is split by reconstruction family. The
+// cell-based Green-Gauss operator is quadratic-exact on this affine mesh, and
+// the unweighted one-ring least-squares operator is exact on the symmetric
+// Cartesian stencil. Vertex Green-Gauss and weighted/extended least-squares
+// variants are reported quantitatively here but are not assumed to be
+// quadratic-exact: their actual smooth-field convergence is established by
+// the refinement campaign in check_order().
 void check_quadratic(const std::string& family, double shear, double stretch)
 {
     const Grid grid = make_affine_cube(8, shear, stretch);
@@ -370,11 +383,22 @@ void check_quadratic(const std::string& family, double shear, double stretch)
             std::isfinite(vg_err.linf),
             family + ": vertex Green-Gauss quadratic error must be finite");
 
-    const auto ls = compute_gradient_least_squares(field, grid.mesh);
+    const auto ls = compute_scheme(grid, field, GradScheme::LeastSquares);
     const auto ls_err = gradient_error(grid, ls, kQuadratic, true);
     report(family, scheme_name(GradScheme::LeastSquares), kQuadratic, ls_err);
     require(ls_err.linf <= 1e-9,
-            family + ": least-squares must be quadratic-exact on an affine mesh");
+            family + "/least_squares: least-squares must be quadratic-exact on the symmetric affine stencil");
+
+    for (const GradScheme scheme : {GradScheme::LeastSquaresWeighted,
+                                    GradScheme::LeastSquaresWeightedInvR}) {
+        const auto wls = compute_scheme(grid, field, scheme);
+        const auto wls_err = gradient_error(grid, wls, kQuadratic, true);
+        report(family, scheme_name(scheme), kQuadratic, wls_err);
+        require(std::isfinite(wls_err.l1) && std::isfinite(wls_err.l2) &&
+                std::isfinite(wls_err.linf),
+                family + "/" + scheme_name(scheme) +
+                ": weighted least-squares quadratic error must be finite");
+    }
 }
 
 // Boundary-neighbour policy: the cell-based Green-Gauss operator treats a
@@ -411,6 +435,80 @@ void check_boundary_policy(const std::string& family, double shear, double stret
               << " scheme=green_gauss boundary_cell_err=" << err << "\n";
 }
 
+
+void check_wls_boundary_reconstruction(const std::string& family, double shear, double stretch)
+{
+    const Grid grid = make_affine_cube(6, shear, stretch);
+    const auto phi = sample_field(grid, kLinear);
+    const auto& own = grid.mesh.ownership();
+
+    std::vector<BoundaryGradientCondition> dirichlet(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> neumann(grid.mesh.n_faces());
+    std::vector<BoundaryGradientCondition> mixed(grid.mesh.n_faces());
+
+    std::size_t n_boundary = 0;
+    for (std::size_t f = 0; f < grid.mesh.n_faces(); ++f) {
+        if (own.neighbour(f) >= 0) continue;
+        ++n_boundary;
+        const Vec3 n = grid.geometry.face_normals[f];
+        const double boundary_value = linear_value(grid.geometry.face_centres[f]);
+        const double normal_gradient = linear_gradient(grid.geometry.face_centres[f]).dot(n);
+
+        dirichlet[f] = {BoundaryGradientConditionType::DIRICHLET, boundary_value};
+        neumann[f] = {BoundaryGradientConditionType::NEUMANN, normal_gradient};
+
+        // Mixed matrix: Dirichlet on the two directions with the largest
+        // normal component in the affine physical frame, Neumann on the
+        // remaining boundary family. This also exercises corners where
+        // multiple boundary conditions meet.
+        const double ax = std::abs(n.x);
+        const double ay = std::abs(n.y);
+        const double az = std::abs(n.z);
+        if (az >= ax && az >= ay)
+            mixed[f] = {BoundaryGradientConditionType::NEUMANN, normal_gradient};
+        else
+            mixed[f] = {BoundaryGradientConditionType::DIRICHLET, boundary_value};
+    }
+    require(n_boundary > 0, family + ": boundary campaign requires boundary faces");
+
+    for (const auto* entry : {&dirichlet, &neumann, &mixed}) {
+        const auto grad = compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, entry);
+        const auto err = gradient_error(grid, grad, kLinear, false);
+        report(family, "weighted_least_squares_boundary", kLinear, err);
+        require(std::isfinite(err.l1) && std::isfinite(err.l2) && std::isfinite(err.linf),
+                family + ": boundary WLS errors must be finite");
+        require(err.linf <= 1e-9,
+                family + ": linear field must remain exact with explicit boundary reconstruction");
+    }
+
+    // Constant + zero-gradient ghosts: every cell, including corners, must
+    // remain exactly constant.
+    const auto constant = sample_field(grid, kConstant);
+    std::vector<BoundaryGradientCondition> zero(grid.mesh.n_faces());
+    const auto zg = compute_gradient_weighted_least_squares(
+        constant, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+        std::numeric_limits<double>::infinity(),
+        BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &zero);
+    const auto ze = gradient_error(grid, zg, kConstant, false);
+    report(family, "weighted_least_squares_zero_gradient", kConstant, ze);
+    require(ze.linf <= 1e-12,
+            family + ": zero-gradient boundary reconstruction must preserve constants");
+
+    bool rejected = false;
+    try {
+        (void)compute_gradient_weighted_least_squares(
+            phi, grid.mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    require(rejected, family + ": REJECT_BOUNDARY_STENCIL must reject boundary stencils");
+}
+
 } // namespace
 
 int main()
@@ -425,6 +523,10 @@ int main()
         check_boundary_policy("orthogonal", 0.0, 1.0);
         check_boundary_policy("sheared", 0.5, 1.0);
         check_boundary_policy("stretched", 0.0, 4.0);
+
+        check_wls_boundary_reconstruction("orthogonal", 0.0, 1.0);
+        check_wls_boundary_reconstruction("sheared", 0.5, 1.0);
+        check_wls_boundary_reconstruction("stretched", 0.0, 4.0);
 
         check_quadratic("orthogonal", 0.0, 1.0);
         check_quadratic("sheared", 0.5, 1.0);

@@ -30,7 +30,7 @@
 namespace cfdx {
 namespace io {
 
-static hid_t create_file_access_plist()
+static hid_t reader_create_file_access_plist()
 {
     hid_t plist = H5Pcreate(H5P_FILE_ACCESS);
     if (plist < 0) return -1;
@@ -49,7 +49,7 @@ static hid_t create_file_access_plist()
     return plist;
 }
 
-static bool read_dataset_double(hid_t loc_id, const char* name,
+static bool reader_read_dataset_double(hid_t loc_id, const char* name,
                                 std::vector<double>& out,
                                 int expected_rank = -1) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
@@ -79,7 +79,7 @@ static bool read_dataset_double(hid_t loc_id, const char* name,
     return status >= 0;
 }
 
-static bool read_dataset_u64(hid_t loc_id, const char* name,
+static bool reader_read_dataset_u64(hid_t loc_id, const char* name,
                              std::vector<std::uint64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
@@ -107,7 +107,7 @@ static bool read_dataset_u64(hid_t loc_id, const char* name,
     return status >= 0;
 }
 
-static bool read_dataset_i64(hid_t loc_id, const char* name,
+static bool reader_read_dataset_i64(hid_t loc_id, const char* name,
                              std::vector<std::int64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
@@ -135,7 +135,7 @@ static bool read_dataset_i64(hid_t loc_id, const char* name,
     return status >= 0;
 }
 
-static std::uint64_t fnv1a_update(std::uint64_t hash, const void* data, std::size_t size)
+static std::uint64_t reader_fnv1a_update(std::uint64_t hash, const void* data, std::size_t size)
 {
     const auto* bytes = static_cast<const std::uint8_t*>(data);
     for (std::size_t i = 0; i < size; ++i) {
@@ -146,20 +146,20 @@ static std::uint64_t fnv1a_update(std::uint64_t hash, const void* data, std::siz
 }
 
 template<class T>
-static std::uint64_t fnv1a_update_vector(std::uint64_t hash, const std::vector<T>& values)
+static std::uint64_t reader_fnv1a_update_vector(std::uint64_t hash, const std::vector<T>& values)
 {
     if (values.empty()) return hash;
-    return fnv1a_update(hash, values.data(), values.size() * sizeof(T));
+    return reader_fnv1a_update(hash, values.data(), values.size() * sizeof(T));
 }
 
-static std::string hash_hex(std::uint64_t hash)
+static std::string reader_hash_hex(std::uint64_t hash)
 {
     std::ostringstream os;
     os << std::hex << std::setw(16) << std::setfill('0') << hash;
     return os.str();
 }
 
-static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
+static bool reader_read_attr_str(hid_t loc_id, const char* name, std::string& out) {
     // Optional metadata must not emit an HDF5 diagnostic when absent.
     // H5Aopen() reports an error through HDF5's automatic error stack even
     // though a missing optional attribute is a normal compatibility case.
@@ -206,7 +206,7 @@ static bool read_attr_str(hid_t loc_id, const char* name, std::string& out) {
     return status >= 0;
 }
 
-static std::vector<std::string> parse_patch_metadata(const std::string& patches_str) {
+static std::vector<std::string> reader_parse_patch_metadata(const std::string& patches_str) {
     std::vector<std::string> result;
     if (patches_str.empty()) return result;
     size_t start = 0;
@@ -220,7 +220,7 @@ static std::vector<std::string> parse_patch_metadata(const std::string& patches_
 }
 
 bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = reader_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
@@ -234,11 +234,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     };
 
     std::string format_version, schema_version, topology_hash, geometry_hash, mesh_hash;
-    const bool has_format = read_attr_str(file, "format_version", format_version);
-    const bool has_schema = read_attr_str(file, "schema_version", schema_version);
-    const bool has_topology = read_attr_str(file, "topology_hash", topology_hash);
-    const bool has_geometry = read_attr_str(file, "geometry_hash", geometry_hash);
-    const bool has_mesh = read_attr_str(file, "mesh_hash", mesh_hash);
+    const bool has_format = reader_read_attr_str(file, "format_version", format_version);
+    const bool has_schema = reader_read_attr_str(file, "schema_version", schema_version);
+    const bool has_topology = reader_read_attr_str(file, "topology_hash", topology_hash);
+    const bool has_geometry = reader_read_attr_str(file, "geometry_hash", geometry_hash);
+    const bool has_mesh = reader_read_attr_str(file, "mesh_hash", mesh_hash);
     const bool has_integrity_metadata = has_format || has_schema || has_topology || has_geometry || has_mesh;
     // Schema-v1 files written before geometry_hash was introduced remain readable.
     // New files carry geometry_hash and are validated when present.
@@ -260,13 +260,13 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     std::vector<std::int64_t> neighbour;
 
     // A CFDX mesh is valid only if all core topology datasets are present.
-    if (!read_dataset_double(file, "points", pts, 2) ||
-        !read_dataset_u64(file, "face_vertices", fv) ||
-        !read_dataset_u64(file, "face_offsets", fo) ||
-        !read_dataset_u64(file, "owner", owner) ||
-        !read_dataset_i64(file, "neighbour", neighbour) ||
-        !read_dataset_u64(file, "cell_faces", cf) ||
-        !read_dataset_u64(file, "cell_offsets", co)) {
+    if (!reader_read_dataset_double(file, "points", pts, 2) ||
+        !reader_read_dataset_u64(file, "face_vertices", fv) ||
+        !reader_read_dataset_u64(file, "face_offsets", fo) ||
+        !reader_read_dataset_u64(file, "owner", owner) ||
+        !reader_read_dataset_i64(file, "neighbour", neighbour) ||
+        !reader_read_dataset_u64(file, "cell_faces", cf) ||
+        !reader_read_dataset_u64(file, "cell_offsets", co)) {
         return fail("missing required topology dataset");
     }
 
@@ -284,13 +284,13 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     const std::size_t n_cells = co.size() - 1;
     if (has_integrity_metadata) {
         std::uint64_t topology = 1469598103934665603ULL;
-        topology = fnv1a_update_vector(topology, fv);
-        if (n_faces > 0) topology = fnv1a_update_vector(topology, fo);
-        topology = fnv1a_update_vector(topology, owner);
-        topology = fnv1a_update_vector(topology, neighbour);
-        topology = fnv1a_update_vector(topology, cf);
-        if (n_cells > 0) topology = fnv1a_update_vector(topology, co);
-        if (topology_hash != hash_hex(topology))
+        topology = reader_fnv1a_update_vector(topology, fv);
+        if (n_faces > 0) topology = reader_fnv1a_update_vector(topology, fo);
+        topology = reader_fnv1a_update_vector(topology, owner);
+        topology = reader_fnv1a_update_vector(topology, neighbour);
+        topology = reader_fnv1a_update_vector(topology, cf);
+        if (n_cells > 0) topology = reader_fnv1a_update_vector(topology, co);
+        if (topology_hash != reader_hash_hex(topology))
             return fail("topology integrity hash mismatch");
 
         std::vector<double> xs, ys, zs;
@@ -301,17 +301,17 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
             zs.push_back(pts[i * 3 + 2]);
         }
         std::uint64_t geometry = 1469598103934665603ULL;
-        geometry = fnv1a_update_vector(geometry, xs);
-        geometry = fnv1a_update_vector(geometry, ys);
-        geometry = fnv1a_update_vector(geometry, zs);
-        if (has_geometry && geometry_hash != hash_hex(geometry))
+        geometry = reader_fnv1a_update_vector(geometry, xs);
+        geometry = reader_fnv1a_update_vector(geometry, ys);
+        geometry = reader_fnv1a_update_vector(geometry, zs);
+        if (has_geometry && geometry_hash != reader_hash_hex(geometry))
             return fail("geometry integrity hash mismatch");
 
         std::uint64_t mesh = topology;
-        mesh = fnv1a_update_vector(mesh, xs);
-        mesh = fnv1a_update_vector(mesh, ys);
-        mesh = fnv1a_update_vector(mesh, zs);
-        if (mesh_hash != hash_hex(mesh))
+        mesh = reader_fnv1a_update_vector(mesh, xs);
+        mesh = reader_fnv1a_update_vector(mesh, ys);
+        mesh = reader_fnv1a_update_vector(mesh, zs);
+        if (mesh_hash != reader_hash_hex(mesh))
             return fail("mesh integrity hash mismatch");
     }
     // Validate CSR offsets before converting uint64_t to size_t.
@@ -372,11 +372,11 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
     // Boundary patches are optional for an otherwise valid topological mesh,
     // but when present their metadata and CSR representation must agree.
     std::string patches_str;
-    if (read_attr_str(file, "boundary_patches", patches_str)) {
-        const auto patch_entries = parse_patch_metadata(patches_str);
+    if (reader_read_attr_str(file, "boundary_patches", patches_str)) {
+        const auto patch_entries = reader_parse_patch_metadata(patches_str);
         std::vector<std::uint64_t> patch_face_ids, patch_face_offsets;
-        if (!read_dataset_u64(file, "patch_face_ids", patch_face_ids) ||
-            !read_dataset_u64(file, "patch_face_offsets", patch_face_offsets) ||
+        if (!reader_read_dataset_u64(file, "patch_face_ids", patch_face_ids) ||
+            !reader_read_dataset_u64(file, "patch_face_offsets", patch_face_offsets) ||
             patch_face_offsets.empty() ||
             patch_face_offsets.front() != 0 ||
             patch_face_offsets.back() != patch_face_ids.size() ||
@@ -457,7 +457,7 @@ bool read_mesh_hdf5(const std::string& filename, cfdx::core::Mesh& mesh) {
 
 bool read_field_hdf5(const std::string& filename,
                       cfdx::core::Field<double, cfdx::core::Location::CELL>& field) {
-    hid_t fapl = create_file_access_plist();
+    hid_t fapl = reader_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
@@ -467,14 +467,14 @@ bool read_field_hdf5(const std::string& filename,
     if (grp < 0) { H5Fclose(file); return false; }
 
     std::vector<double> flat_values;
-    if (!read_dataset_double(grp, "values", flat_values)) {
+    if (!reader_read_dataset_double(grp, "values", flat_values)) {
         H5Gclose(grp); H5Fclose(file); return false;
     }
 
     std::string name, unit, dim_str;
-    read_attr_str(grp, "name", name);
-    read_attr_str(grp, "unit", unit);
-    read_attr_str(grp, "dimension", dim_str);
+    reader_read_attr_str(grp, "name", name);
+    reader_read_attr_str(grp, "unit", unit);
+    reader_read_attr_str(grp, "dimension", dim_str);
 
     std::size_t dim = 0;
     try {

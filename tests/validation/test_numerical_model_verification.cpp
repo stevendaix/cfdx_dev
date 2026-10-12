@@ -295,6 +295,7 @@ int main() {
             ok(has_id("convection.second_order_upwind"), "SOU convection registry entry");
             ok(has_id("preconditioner.native_amg"), "native AMG registry entry");
             ok(has_id("preconditioner.coupled_block_schur"), "coupled Schur registry entry");
+            ok(has_id("preconditioner.pcd"), "PCD Schur registry entry");
             ok(has_id("time_step.adaptive_cfl"), "adaptive CFL registry entry");
         }
         // Issue #461 (N1): explicit scheme selection is auditable and total.

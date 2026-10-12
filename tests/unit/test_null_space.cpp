@@ -2,6 +2,7 @@
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "common/test_harness.h"
 
 #include <cmath>
@@ -122,6 +123,69 @@ int main() {
         EXPECT_TRUE(!null_space.is_compatible(rhs));
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
         EXPECT_NEAR(solution.norm2(), 0.0, 0.0);
+    });
+
+    run_case("matrix_diagnostics_and_explicit_scaling", [] {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 1.0e-8);
+        A.push_back(0, 1, -2.0e-8);
+        A.push_back(1, 0, -1.0e3);
+        A.push_back(1, 1, 2.0e3);
+        A.push_back(2, 2, 3.0);
+        A.finalize();
+
+        const auto diagnostics = diagnose_matrix(A, 1e-10);
+        EXPECT_TRUE(diagnostics.finite);
+        EXPECT_TRUE(diagnostics.empty_rows == 0);
+        EXPECT_TRUE(diagnostics.empty_columns == 0);
+        EXPECT_TRUE(diagnostics.missing_diagonal == 0);
+        EXPECT_TRUE(diagnostics.isolated_dofs == 1);
+        EXPECT_TRUE(diagnostics.connected_components == 2);
+        EXPECT_TRUE(diagnostics.diagonal_dynamic_range > 1e11);
+
+        const auto pathologies = classify_matrix_pathologies(diagnostics);
+        EXPECT_TRUE(pathologies.size() >= 1);
+        EXPECT_TRUE(std::string(to_string(pathologies.back())) != "none");
+
+        const auto scaled = scale_matrix(A, MatrixScaling::RowColumn);
+        EXPECT_TRUE(scaled.applied);
+        EXPECT_TRUE(scaled.row_scale[0] > 1.0e7);
+        EXPECT_TRUE(scaled.row_scale[1] < 1.0e-3);
+        // Column 0 also carries the O(1e3) entry A(1,0), so its maximum sets
+        // the scale to exactly 1e-3 rather than the tiny A(0,0) magnitude.
+        EXPECT_NEAR(scaled.column_scale[0], 1.0e-3, 1.0e-15);
+        EXPECT_TRUE(std::isfinite(scaled.matrix(0, 1)));
+    });
+
+    run_case("failure_classification_is_diagnostic_only", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(0, 1, -1.0);
+        A.push_back(1, 0, -1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        auto diagnostics = diagnose_matrix(A);
+        SolverResult max_iter;
+        max_iter.status = SolverStatus::MAX_ITER_REACHED;
+        max_iter.residual = 1.0;
+        max_iter.residual_relative = 1.0;
+        max_iter.min_true_residual = 1.0;
+        max_iter.max_true_residual = 1.01;
+
+        EXPECT_TRUE(classify_solver_failure(max_iter, diagnostics, true, 0.95) ==
+                    SolverFailureClass::Stagnation);
+        EXPECT_TRUE(classify_solver_failure(max_iter, diagnostics, false) ==
+                    SolverFailureClass::IncompatibleRhs);
+
+        SolverResult diverged;
+        diverged.status = SolverStatus::DIVERGED;
+        diverged.residual = 10.0;
+        diverged.residual_relative = 10.0;
+        EXPECT_TRUE(classify_solver_failure(diverged, diagnostics) ==
+                    SolverFailureClass::Divergence);
+        EXPECT_TRUE(std::string(to_string(SolverFailureClass::MatrixPathology)) ==
+                    "matrix_pathology");
     });
 
     run_case("dispatcher_exposes_constant_pressure_null_space", [] {

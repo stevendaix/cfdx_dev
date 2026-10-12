@@ -9,7 +9,9 @@ def test_pyvista_renderer_loads_vtu(tmp_path) -> None:
 
     from cfdx.renderer_pyvista import PyVistaRenderer
 
-    mesh = pv.Sphere()
+    # .vtu holds unstructured grids; pv.Sphere() is PolyData, which PyVista
+    # refuses to write under that extension.
+    mesh = pv.UnstructuredGrid(pv.Sphere().delaunay_2d())
     path = tmp_path / "sphere.vtu"
     mesh.save(path)
     renderer = PyVistaRenderer()

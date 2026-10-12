@@ -75,9 +75,14 @@ def test_controller_pause_resume(tmp_path: Path) -> None:
 
 def test_controller_restart_uses_configured_option(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
+    # The configured option must be the one passed through -- not the
+    # --restart default -- and it must carry the actual DAT artifact. The
+    # runner forwards an absolute path, so compare by identity rather than by
+    # literal argv text.
     script.write_text(
-        "import sys\n"
-        "assert sys.argv[1:] == ['--from-dat', 'checkpoint.dat']\n"
+        "import os, sys\n"
+        "assert sys.argv[1] == '--from-dat', sys.argv\n"
+        "assert os.path.samefile(sys.argv[2], 'checkpoint.dat'), sys.argv\n"
         "print('Iteration 12 Time = 3.5')\n",
         encoding="utf-8",
     )
@@ -98,8 +103,8 @@ def test_controller_restart_uses_configured_option(tmp_path: Path) -> None:
 def test_controller_builds_monitor_series_from_solver_metrics(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
     script.write_text(
-        "print('Iteration 1 Time = 0.1 CFL: 0.5 residual p = 1.0e-2', flush=True)\\n"
-        "print('Iteration 2 Time = 0.2 CFL: 0.3 residual p = 2.0e-3', flush=True)\\n",
+        "print('Iteration 1 Time = 0.1 CFL: 0.5 residual p = 1.0e-2', flush=True)\n"
+        "print('Iteration 2 Time = 0.2 CFL: 0.3 residual p = 2.0e-3', flush=True)\n",
         encoding="utf-8",
     )
     session = CFDXSession()

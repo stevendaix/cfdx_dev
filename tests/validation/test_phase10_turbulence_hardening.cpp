@@ -235,5 +235,28 @@ int main() {
         EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
     });
 
+
+    run_case("M2_turbulence_floor_enforcement_reports_clipping_and_nonfinite_values", [] {
+        Field<double,Location::CELL> k(3,"k","m2/s2",1);
+        Field<double,Location::CELL> epsilon(3,"epsilon","m2/s3",1);
+        k(0)=-0.5; k(1)=0.2; k(2)=std::numeric_limits<double>::quiet_NaN();
+        epsilon(0)=0.1; epsilon(1)=-2.0; epsilon(2)=0.05;
+        TurbulenceTransportControls controls;
+        controls.model=TurbulenceModel::KEPSILON;
+
+        const auto d=enforce_turbulence_bounds(k,epsilon,controls);
+        EXPECT_TRUE(d.first_floor_activations==1);
+        EXPECT_TRUE(d.second_floor_activations==1);
+        EXPECT_TRUE(d.first_nonfinite==1);
+        EXPECT_TRUE(d.second_nonfinite==0);
+        EXPECT_NEAR(k(0),controls.k_min,0.0);
+        EXPECT_NEAR(epsilon(1),controls.epsilon_min,0.0);
+        EXPECT_TRUE(std::isnan(k(2)));
+        EXPECT_NEAR(d.first_total_correction,0.5+controls.k_min,1e-14);
+        EXPECT_NEAR(d.second_total_correction,2.0+controls.epsilon_min,1e-14);
+        EXPECT_NEAR(d.first_max_correction,d.first_total_correction,1e-14);
+        EXPECT_NEAR(d.second_max_correction,d.second_total_correction,1e-14);
+    });
+
     return run_all();
 }

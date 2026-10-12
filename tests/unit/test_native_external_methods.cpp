@@ -448,5 +448,64 @@ int main() {
         EXPECT_TRUE(!schur.apply(rhs, correction));
     });
 
+    run_case("matrix_characteristics_drive_elliptic_selection", [] {
+        MatrixCharacteristics characteristics;
+        characteristics.equations = 128;
+        characteristics.average_nnz_per_row = 5.0;
+        characteristics.numerically_symmetric = true;
+        characteristics.diagonally_dominant = true;
+
+        const auto plan = select_linear_solver(
+            LinearProblemKind::PressurePoisson, characteristics);
+        EXPECT_TRUE(plan.krylov == KrylovModel::CG);
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::NativeAMG);
+        EXPECT_TRUE(plan.reason.find("symmetric diagonally-dominant") != std::string::npos);
+    });
+
+    run_case("matrix_characteristics_avoid_cg_without_spd_evidence", [] {
+        MatrixCharacteristics characteristics;
+        characteristics.equations = 128;
+        characteristics.numerically_symmetric = false;
+        characteristics.diagonally_dominant = false;
+
+        const auto plan = select_linear_solver(
+            LinearProblemKind::Diffusion, characteristics);
+        EXPECT_TRUE(plan.krylov == KrylovModel::GMRES);
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::ILU0);
+    });
+
+    run_case("matrix_characteristics_select_flexible_transport_policy_when_scaled", [] {
+        MatrixCharacteristics characteristics;
+        characteristics.equations = 128;
+        characteristics.strongly_scaled = true;
+        const auto plan = select_linear_solver(
+            LinearProblemKind::Momentum, characteristics);
+        EXPECT_TRUE(plan.krylov == KrylovModel::FGMRES);
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::ILU0);
+        EXPECT_TRUE(plan.reason.find("coefficient scaling") != std::string::npos);
+    });
+
+    run_case("matrix_characteristics_require_explicit_saddle_point_classification", [] {
+        MatrixCharacteristics characteristics;
+        characteristics.equations = 128;
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::CoupledPressureVelocity, characteristics),
+            std::invalid_argument);
+        characteristics.saddle_point = true;
+        const auto plan = select_linear_solver(
+            LinearProblemKind::CoupledPressureVelocity, characteristics);
+        EXPECT_TRUE(plan.krylov == KrylovModel::FGMRES);
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::CoupledBlockSchur);
+    });
+
+    run_case("matrix_characteristics_reject_nonsquare_automatic_selection", [] {
+        MatrixCharacteristics characteristics;
+        characteristics.equations = 128;
+        characteristics.square = false;
+        EXPECT_THROW(select_linear_solver(
+            LinearProblemKind::General, characteristics),
+            std::invalid_argument);
+    });
+
     return run_all();
 }

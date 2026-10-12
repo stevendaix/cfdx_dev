@@ -6,10 +6,10 @@ This directory is the Level-A verification layer for M1-M4. These tests use clos
 
 | Module | Case | Reference | Quantities |
 |---|---|---|---|
-| M1 | Couette | (u=Uy/H) | L2/Linf velocity |
-| M1 | Plane Poiseuille | (u=G y(H-y)/(2\mu)) | L2/Linf velocity, observed order |
-| M3 | 1-D conduction | (T=T_0+(T_1-T_0)y/H) | L2/Linf temperature |
-| M3 | CHT resistance series | (q=\Delta T/\sum L_i/k_i) | heat flux, interface temperature |
+| M1 | Couette | \(u=Uy/H\) | L2/Linf velocity |
+| M1 | Plane Poiseuille | \(u=G y(H-y)/(2\mu)\) | L2/Linf velocity, observed order |
+| M3 | 1-D conduction | \(T=T_0+(T_1-T_0)y/H\) | L2/Linf temperature |
+| M3 | CHT resistance series | \(q=\Delta T/\sum L_i/k_i\) | heat flux, interface temperature |
 | M4 | black/gray two-surface exchange | Stefan-Boltzmann + radiosity resistance | net exchange |
 
 ## Convergence policy
@@ -24,11 +24,11 @@ Meshes:
 
 Observed order:
 
-[
+\[
 p = \frac{\log(E_h/E_{h/2})}{\log 2}.
-]
+\]
 
-The acceptance threshold is (p \ge 1.90) for every refinement step, with an expected second-order scheme.
+The acceptance threshold is \(p \ge 1.90\) for every refinement step, with an expected second-order scheme.
 
 Couette and 1-D conduction are linear exact solutions for the orthogonal diffusion operator, so their acceptance criterion is an absolute error threshold rather than an artificial convergence-order requirement.
 

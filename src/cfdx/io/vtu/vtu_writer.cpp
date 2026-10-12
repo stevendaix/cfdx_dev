@@ -1,6 +1,7 @@
 // M0.9-T05 — Lightweight VTU Writer (implementation)
 
 #include "vtu_writer.h"
+#include "cfdx/core/geometry/geometry_cache.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -43,7 +44,13 @@ bool VtuWriter::write(const std::string& filename,
 
     write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
     write_cells(os, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, mesh);
-    write_cell_fields(os, mesh, fields_cell, vtk_cells, vtk_original_cell_indices);
+
+    // Face fields are interpolated onto cells first, so that both sources reach
+    // the same CellData section.
+    auto cell_fields = fields_cell;
+    for (const auto& [name, field] : interpolate_face_fields(mesh, fields_face))
+        cell_fields.emplace(name, field);
+    write_cell_fields(os, mesh, cell_fields, vtk_cells, vtk_original_cell_indices);
     write_point_fields(os, mesh, fields_point);
 
     os << "  </Piece>\n";
@@ -220,6 +227,68 @@ void VtuWriter::write_cells(std::ofstream& os,
     }
 
     os << "   </Cells>\n";
+}
+
+std::map<std::string, cfdx::core::ScalarCellField> VtuWriter::interpolate_face_fields(
+    const cfdx::core::Mesh& mesh,
+    const std::map<std::string, cfdx::core::ScalarFaceField>& fields_face) const
+{
+    std::map<std::string, cfdx::core::ScalarCellField> interpolated;
+    if (fields_face.empty()) return interpolated;
+
+    const std::size_t n_cells = mesh.n_cells();
+    const std::size_t n_faces = mesh.n_faces();
+    if (!mesh.cells().is_consistent() || mesh.cells().n_cells() != n_cells)
+        throw std::runtime_error(
+            "VTU export: cell connectivity is inconsistent, cannot place face fields");
+
+    // Face areas come from the same geometry the solver uses, so the weights
+    // agree with the discretisation rather than being an independent estimate.
+    cfdx::core::GeometryCache geometry;
+    cfdx::core::compute_geometry_cache(mesh, geometry);
+    if (geometry.face_areas.size() != n_faces)
+        throw std::runtime_error("VTU export: face geometry size does not match the mesh");
+
+    const auto& offsets = mesh.cells().offsets();
+    const auto& faces = mesh.cells().faces();
+    for (const auto& [name, field] : fields_face) {
+        if (field.size() != n_faces)
+            throw std::runtime_error(
+                "VTU export: face field '" + name + "' has " +
+                std::to_string(field.size()) + " entries but the mesh has " +
+                std::to_string(n_faces) + " faces");
+
+        cfdx::core::ScalarCellField cell_field(n_cells, name, "1", 1);
+        for (std::size_t c = 0; c < n_cells; ++c) {
+            double weighted_sum = 0.0;
+            double weight_total = 0.0;
+            const std::size_t begin = offsets[c];
+            const std::size_t end = offsets[c + 1];
+            for (std::size_t k = begin; k < end; ++k) {
+                const cfdx::core::FaceIndex f = faces[k];
+                if (f >= n_faces)
+                    throw std::runtime_error(
+                        "VTU export: cell references a face outside the mesh");
+                const double value = field(f);
+                if (!std::isfinite(value))
+                    throw std::runtime_error(
+                        "VTU export: face field '" + name + "' contains a non-finite value");
+                const double weight = geometry.face_areas[f];
+                if (!(weight > 0.0))
+                    throw std::runtime_error(
+                        "VTU export: face field '" + name + "' cannot be weighted by a "
+                        "degenerate face area");
+                weighted_sum += weight * value;
+                weight_total += weight;
+            }
+            if (!(weight_total > 0.0))
+                throw std::runtime_error(
+                    "VTU export: cell has no positive-area face to interpolate '" + name + "'");
+            cell_field(c) = weighted_sum / weight_total;
+        }
+        interpolated.emplace(name, cell_field);
+    }
+    return interpolated;
 }
 
 void VtuWriter::write_cell_fields(std::ofstream& os,

@@ -1,0 +1,198 @@
+# %% [markdown]
+# 16 — Data Model and File Formats
+#
+# ## 16.1 Three semantic products
+#
+# CFDX distinguishes authoritative setup, restart state and visualization:
+# $
+# \boxed{\text{case.cfdx.h5}=\text{setup}},\qquad
+# \boxed{\text{case.dat.h5}=\text{state/checkpoint}},
+# \qquad
+# \boxed{\text{case}_{t}.vtu=\text{visualization}}.
+# $
+# A visualization file must not silently become the authoritative case definition.
+#
+# ## 16.2 Topology representation
+#
+# The v1 HDF5 case schema contains root topology datasets:
+# $
+# points,\quad face\_vertices,\quad face\_offsets,\quad owner,\quad
+# neighbour,\quad cell\_faces,\quad cell\_offsets.
+# $
+# The face/cell arrays form CSR-like ragged representations:
+# $
+# face\_vertices[face\_offsets_f:face\_offsets_{f+1}]
+# $
+# lists the vertices of face $f$, while
+# $
+# cell\_faces[cell\_offsets_c:cell\_offsets_{c+1}]
+# $
+# lists the faces attached to cell $c$.
+#
+# ## 16.3 Topology invariants
+#
+# For every face:
+# $
+# 0\le owner_f<N_{cell},
+# $
+# and for internal faces
+# $
+# 0\le neighbour_f<N_{cell},\qquad owner_f\ne neighbour_f.
+# $
+# Boundary faces use the documented sentinel/optional boundary-patch representation. Offset arrays must be monotone and terminate at the corresponding flattened-array length.
+#
+# ## 16.4 Fields
+#
+# Cell scalar and vector fields are stored under
+# $
+# /fields/scalar/<name>,\qquad
+# /fields/vector/<name>.
+# $
+# A field contract must specify location, component count, units, association to a mesh and semantic name.
+#
+# ## 16.5 Metadata and compatibility
+#
+# Root attributes encode the implemented schema/version and case metadata. Readers must distinguish unsupported schema versions from absent optional data. Compatibility must never be implemented by silently dropping physics/numerics data.
+#
+# ## 16.6 Checkpoint state
+#
+# A restart state is not merely the latest field snapshot. If the selected temporal scheme requires history:
+# $
+# U^n,\ U^{n-1},\ldots
+# $
+# and if adaptive controllers require state, their controller variables are part of restart completeness.
+#
+# ## 16.7 Restart invariant
+#
+# Let $R$ be a restart read and $W$ a checkpoint write. For supported data:
+# $
+# R(W(x))\equiv x
+# $
+# up to explicitly documented floating-point/serialization differences.
+#
+# More strongly, a restarted calculation should reproduce the same next-step discrete state under deterministic execution:
+# $
+# \mathcal S(R(W(x)))\approx\mathcal S(x).
+# $
+#
+# ## 16.8 VTU
+#
+# VTU is a presentation/output format. Cell/point topology and fields must map unambiguously from CFDX's internal representation. Derived visualisation quantities should be marked as derived rather than mistaken for authoritative solver state.
+#
+# ## 16.9 Provenance
+#
+# A result should be traceable to
+# $
+# (case\ revision,\ mesh\ revision,\ physics,\ numerics,\ solver,\ software\ revision).
+# $
+# This is essential for V&V reproducibility.
+#
+# ## 16.10 Implementation traceability
+#
+# HDF5 implementation is under [src/cfdx/io/hdf5](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/hdf5/); case schema under [src/cfdx/io/cfdx_io](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/cfdx_io/); VTU output under [src/cfdx/io/vtu](https://github.com/stevendaix/cfdx_dev/tree/master/src/cfdx/io/vtu/). Exact dataset definitions must remain synchronized with the reader/writer and schema tests.
+#
+# ## 16.11 Verification
+#
+# Required checks: schema version handling, dimensions/dtypes, offset consistency, topology round-trip, field round-trip, checkpoint round-trip, restart continuation and VTU field/topology integrity.
+#
+# ## 16.12 Executable round-trip abstraction
+# %%
+import numpy as np
+x=np.arange(12,dtype=float).reshape(3,4)
+serialized=x.copy()
+restored=serialized.copy()
+assert np.array_equal(restored,x)
+
+
+# %% [markdown]
+# ## 16.13 Second-pass schema and restart contracts
+#
+# The semantic separation is necessary but not sufficient for reproducibility. A checkpoint must also bind its state to the case, mesh, physics and numerical-method revisions that produced it.
+#
+# A useful provenance tuple is
+# [
+# P=(r_{case},r_{mesh},r_{physics},r_{numerics},r_{solver},r_{software}).
+# ]
+# A restart reader should reject incompatible combinations rather than silently interpreting state under a different numerical contract.
+#
+# Schema evolution must distinguish:
+#
+# - compatible extension;
+# - required migration;
+# - unsupported future schema;
+# - corrupted/incomplete data.
+#
+# Optional datasets may be absent only when the semantic contract explicitly allows them. Dropping unknown physics/numerics data during a read is not a safe compatibility mechanism.
+#
+# For a deterministic restart,
+# [
+# U^{n+1}_{restart}approx U^{n+1}_{continuous}
+# ]
+# under the same executable revision and numerical configuration, up to explicitly documented floating-point/reduction differences.
+#
+# The repository audit still has open requirements around complete case/geometry hashes and full environment metadata. These belong to the evidence/reproducibility workstream and must not be represented as closed merely because HDF5 round-trip tests pass.
+#
+# %%
+# ## 16.14 Implemented DAT/HDF5 binding contract
+#
+# The Python application path implements the rejection rule of section 16.13 for the paired
+# [`\texttt{case.dat.h5}`]{.math} checkpoint. Saving a case together with a numerical checkpoint
+# writes, in the same HDF5 file handle as the field data:
+#
+# - `\texttt{checkpoint\_schema\_version}`: the checkpoint binding schema version, currently 1;
+# - `\texttt{case\_revision}`, `\texttt{mesh\_revision}`, `\texttt{physics\_revision}`,
+#   `\texttt{numerics\_revision}`: the integer provenance tuple of the session that produced the
+#   checkpoint.
+#
+# The identity gate is evaluated *before* the checkpoint is parsed, so an incompatible artifact is
+# rejected without its numerical state ever entering the session. Reading rejects, with a deterministic
+# [`\texttt{ValueError}`]{.math}:
+#
+# - a missing or unrecognised binding schema, including a checkpoint produced before the contract
+#   existed;
+# - a checkpoint missing any of the four revision attributes;
+# - a revision attribute that is not an integer;
+# - any revision that differs from the case being loaded.
+#
+# The binding covers the Python application layer. The native C++ path binds a different identity,
+# described in section 16.15, because it is handed a mesh rather than a case object. Neither layer
+# alone satisfies the full case/mesh/physics/numerics tuple of section 16.13, and neither may be
+# reported as if it did.
+#
+# %%
+# ## 16.15 Native mesh-identity contract
+#
+# The native text DAT binds the checkpoint to the geometry it was written from, as DAT version 3:
+#
+# ```
+# CFDX-DAT 3
+# cells <n_cells>
+# iteration <n>
+# time <t>
+# identity <n_points> <n_faces> <n_cells> <geometry_checksum>
+# field U 3
+# ...
+# optional_fields
+# ```
+#
+# The checksum is FNV-1a over the point coordinates. It is therefore independent of assembly order
+# and of MPI decomposition. `[-0.0]` is normalised to `[0.0]` before hashing, because the two are the
+# same point and must not yield two identities for one mesh. A non-finite coordinate is rejected
+# when the identity is computed rather than silently hashed into it.
+#
+# The contract is deliberately strict:
+#
+# - the identity is compared **before** any field value is read, so an incompatible artifact never
+#   has its numerical state loaded;
+# - a DAT version below 3 carries no identity and is **rejected**, not accepted on the strength of
+#   its cell count. A cell count is exactly the check that cannot distinguish two meshes: validating
+#   by cell count alone let a checkpoint written on one mesh load its field values into any other
+#   mesh of the same cell count without raising an error. That is a silent wrong-state restart, not
+#   a reported failure.
+#
+# What this identity does *not* cover: it describes geometry, not cell ordering. Two meshes of
+# identical geometry with permuted cells are not distinguished here. That is a separate problem and
+# belongs to the persistent cell-ID remapping of the distributed checkpoint path. Full
+# case/mesh/physics/numerics revision binding for the native path additionally requires
+# `read_case_cfdx_h5()` to expose the revision attributes `save_case()` already writes into
+# `\texttt{.cfdx.h5}`; that is the stage after this one and is not claimed here.

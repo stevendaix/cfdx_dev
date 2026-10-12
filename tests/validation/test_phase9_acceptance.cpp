@@ -139,7 +139,11 @@ RunResult run_couette_channel(
     bool bounded,
     std::size_t nx = 8,
     std::size_t ny = 16,
-    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto)
+    KrylovModel coupled_requested_krylov = KrylovModel::Auto,
+    PreconditionerModel coupled_preconditioner = PreconditionerModel::Auto,
+    KrylovModel pressure_requested_krylov = KrylovModel::Auto,
+    PreconditionerModel pressure_requested_preconditioner = PreconditionerModel::Auto,
+    CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal)
 {
     Mesh mesh = make_channel_mesh(nx, ny);
     const auto topo = mesh.topo_validate();
@@ -179,14 +183,20 @@ RunResult run_couette_channel(
     c.coupling.n_fractional_steps =
         algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP ? 2 : 1;
     c.coupling.coupled_max_iterations = 2000;
-    c.coupling.coupled_linear_tolerance = 1e-10;
+    // The invariance gate is 1e-8 on the normalized face flux. The nonlinear
+    // convergence contract must therefore be materially tighter than that gate;
+    // otherwise two algorithms can legitimately stop at different points on
+    // the same discrete fixed point while still satisfying their individual
+    // residual gates. This is a stricter qualification condition, not a relaxed
+    // acceptance threshold.
+    c.coupling.coupled_linear_tolerance = 1e-12;
     c.coupling.n_outer_correctors =
         algorithm == PressureVelocityAlgorithm::PIMPLE ? 2 : 1;
     c.convergence.max_iterations = 3000;
-    c.convergence.relative_tolerance = 1e-8;
-    c.convergence.continuity_tolerance = 1e-8;
+    c.convergence.relative_tolerance = 1e-10;
+    c.convergence.continuity_tolerance = 1e-10;
     c.linear_max_iterations = 2000;
-    c.linear_tolerance = 1e-10;
+    c.linear_tolerance = 1e-12;
     c.density = 1.0;
     c.kinematic_viscosity = 0.1;
     c.body_force = {0.0, 0.0, 0.0};
@@ -197,11 +207,14 @@ RunResult run_couette_channel(
     c.diagnostics.coupled_matrix_summary = true;
     c.diagnostics.freeze_state_probe = true;
     c.diagnostics.debug_cell = 33;
-    if (algorithm == PressureVelocityAlgorithm::COUPLED &&
-        coupled_preconditioner != PreconditionerModel::Auto) {
-        c.coupled_linear_solver.krylov = KrylovModel::FGMRES;
-        c.coupled_linear_solver.preconditioner = coupled_preconditioner;
-    }
+    c.coupled_linear_solver.krylov = coupled_requested_krylov;
+    c.coupled_linear_solver.preconditioner = coupled_preconditioner;
+    c.coupling.schur_model = schur_model;
+    // The pressure sub-problem request is a separate request. It is applied from
+    // the parameters the caller announces before the run, so the announced
+    // request cannot drift from the configured one.
+    c.pressure_linear_solver.krylov = pressure_requested_krylov;
+    c.pressure_linear_solver.preconditioner = pressure_requested_preconditioner;
 
     const auto diagnostic_geometry = build_fv_geometry(mesh);
     c.iteration_output_callback =
@@ -347,7 +360,14 @@ int main(int argc, char** argv)
             PressureVelocityAlgorithm algorithm;
             ConvectionScheme scheme;
             bool bounded;
+            // Both sub-problem requests are declared by the campaign case,
+            // applied to the controls from that declaration and announced from
+            // it, so an announced request cannot drift from the configured one.
+            KrylovModel coupled_krylov = KrylovModel::Auto;
             PreconditionerModel coupled_preconditioner;
+            KrylovModel pressure_krylov = KrylovModel::Auto;
+            PreconditionerModel pressure_preconditioner = PreconditionerModel::Auto;
+            CoupledSchurModel schur_model = CoupledSchurModel::BlockLocal;
         };
 
         // The smoke set spans segregated, multi-corrector and monolithic
@@ -355,22 +375,52 @@ int main(int argc, char** argv)
         // Physical gates remain identical in both modes.
         std::vector<Case> algorithm_cases = {
             {"SIMPLE/upwind/bounded", PressureVelocityAlgorithm::SIMPLE,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"PISO/upwind/bounded", PressureVelocityAlgorithm::PISO,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+             ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             {"COUPLED/BlockSchur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::CoupledBlockSchur},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::CoupledBlockSchur},
             {"COUPLED/MGR/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
-             ConvectionScheme::UPWIND, true, PreconditionerModel::MGR},
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::MGR},
+            // PCD is the pressure-convection-diffusion Schur approximation. It is
+            // selected from the same resolved plan as the other coupled Schur
+            // methods, so it carries the identical physical gate set below.
+            {"COUPLED/PCD/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+             ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+             PreconditionerModel::PCD, KrylovModel::Auto,
+             PreconditionerModel::Auto, CoupledSchurModel::PCD},
         };
         if (!quick) {
             algorithm_cases.insert(algorithm_cases.end(), {
+                {"COUPLED/SIMPLE-Schur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::SIMPLE},
+                {"COUPLED/SIMPLEC-Schur/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::SIMPLEC},
+                {"COUPLED/LSC/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::LSC},
+                {"COUPLED/BFBT/upwind/bounded", PressureVelocityAlgorithm::COUPLED,
+                 ConvectionScheme::UPWIND, true, KrylovModel::FGMRES,
+                 PreconditionerModel::CoupledBlockSchur, KrylovModel::Auto,
+                 PreconditionerModel::Auto, CoupledSchurModel::BFBT},
                 {"SIMPLEC/upwind/bounded", PressureVelocityAlgorithm::SIMPLEC,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"PIMPLE/upwind/bounded", PressureVelocityAlgorithm::PIMPLE,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
                 {"FRACTIONAL_STEP/upwind/bounded", PressureVelocityAlgorithm::FRACTIONAL_STEP,
-                 ConvectionScheme::UPWIND, true, PreconditionerModel::Auto},
+                 ConvectionScheme::UPWIND, true, KrylovModel::Auto,
+             PreconditionerModel::Auto},
             });
         }
 
@@ -441,7 +491,17 @@ int main(int argc, char** argv)
         for (const auto& test : algorithm_cases) {
             std::cout << "MODEL_CONFIG algorithm=" << test.name
                       << " nx=8 ny=16 bounded=" << (test.bounded ? "true" : "false")
-                      << " preconditioner=" << static_cast<int>(test.coupled_preconditioner)
+                      << " coupled_requested_krylov="
+                      << to_string(test.coupled_krylov)
+                      << " preconditioner="
+                      << to_string(test.coupled_preconditioner)
+                      << " preconditioner_id="
+                      << static_cast<int>(test.coupled_preconditioner)
+                      << " pressure_requested_krylov="
+                      << to_string(test.pressure_krylov)
+                      << " pressure_requested_preconditioner="
+                      << to_string(test.pressure_preconditioner)
+                      << " schur_model=" << to_string(test.schur_model)
                       << " alpha_u=0.7 alpha_p=0.3"
                       << " pressure_correctors="
                       << (test.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -453,9 +513,53 @@ int main(int argc, char** argv)
             try {
                 auto result = run_couette_channel(
                     test.algorithm, test.scheme, test.bounded, 8, 16,
-                    test.coupled_preconditioner);
+                    test.coupled_krylov, test.coupled_preconditioner,
+                    test.pressure_krylov, test.pressure_preconditioner,
+                    test.schur_model);
 
                 print_history(test.name, result);
+
+                // The dispatcher resolves a requested method into another one
+                // when the request is automatic. Announce what actually ran so
+                // a report can compare request and resolution instead of
+                // trusting the request alone.
+                const auto& solve_result = result.solve;
+                // An unresolved sub-problem reports "none" rather than the
+                // default-constructed plan, so the record cannot be misread as
+                // a resolved GMRES/Jacobi choice.
+                const auto resolved_name = [](bool resolved, auto name) {
+                    return resolved ? std::string(name) : std::string("none");
+                };
+                // Resolution only. The requests were announced before the run
+                // in MODEL_CONFIG; repeating them here would let the record
+                // agree with itself instead of with the announced request.
+                std::cout << "MODEL_PLAN algorithm=" << test.name
+                          << " coupled_resolved="
+                          << (solve_result.coupled_linear_plan_resolved ? "true" : "false")
+                          << " coupled_krylov="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.krylov))
+                          << " coupled_preconditioner="
+                          << resolved_name(solve_result.coupled_linear_plan_resolved,
+                                           to_string(solve_result.coupled_linear_plan.preconditioner))
+                          << " pressure_resolved="
+                          << (solve_result.pressure_linear_plan_resolved ? "true" : "false")
+                          << " pressure_krylov="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.krylov))
+                          << " pressure_preconditioner="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.preconditioner))
+                          << " pressure_null_space="
+                          << resolved_name(solve_result.pressure_linear_plan_resolved,
+                                           to_string(solve_result.pressure_linear_plan.null_space))
+                          << " schur_requested="
+                          << to_string(solve_result.requested_coupled_schur_model)
+                          << " schur_resolved="
+                          << (solve_result.coupled_schur_model_resolved
+                                  ? to_string(solve_result.resolved_coupled_schur_model)
+                                  : "none")
+                          << "\n";
 
                 const auto error = profile_error(result, 8, 16);
                 double max_abs_uy = 0.0;
@@ -494,8 +598,54 @@ int main(int argc, char** argv)
                         gates.push_back("continuity_normalized");
                     if (!(h.momentum_equation_residual_relative < 1e-7))
                         gates.push_back("momentum_equation_residual_relative");
+
+                    // N11: independently reconstructed momentum balances must
+                    // close after the accepted solve. This is deliberately
+                    // separate from the assembled matrix residual: the
+                    // conservation audit rebuilds the physical face flux from
+                    // the final field and applies the generic balance contract.
+                    for (std::size_t component = 0; component < 3; ++component) {
+                        if (!std::isfinite(h.momentum_conservation_normalized[component]) ||
+                            !(h.momentum_conservation_normalized[component] < 1e-7))
+                            gates.push_back(
+                                "independent_momentum_conservation_" +
+                                std::to_string(component));
+                    }
+                    if (h.boundedness_nonfinite_velocity != 0)
+                        gates.push_back("velocity_nonfinite");
+
                     if (!(h.corrected_flux_continuity_linf < 1e-7))
                         gates.push_back("corrected_flux_continuity");
+                    if (test.algorithm == PressureVelocityAlgorithm::COUPLED) {
+                        if (h.mass_nonfinite_faces != 0)
+                            gates.push_back("coupled_mass_nonfinite_faces");
+                        if (!(h.mass_normalized_imbalance < 1e-7))
+                            gates.push_back("coupled_mass_normalized_imbalance");
+                        if (!result.solve.coupled_linear_plan_resolved)
+                            gates.push_back("coupled_linear_plan_unresolved");
+                        if (result.solve.coupled_linear_plan_resolved) {
+                            // Both Schur approximations are variable operators
+                            // inside one Krylov solve: the pressure side is an
+                            // inner solve truncated at a tolerance, so plain
+                            // GMRES would apply a nonlinear preconditioner
+                            // without augmenting the basis for it.
+                            if ((test.coupled_preconditioner ==
+                                     PreconditionerModel::CoupledBlockSchur ||
+                                 test.coupled_preconditioner ==
+                                     PreconditionerModel::PCD) &&
+                                result.solve.coupled_linear_plan.krylov !=
+                                    KrylovModel::FGMRES)
+                                gates.push_back("n8_coupled_schur_not_fgmres");
+                            if (result.solve.coupled_linear_plan.preconditioner !=
+                                test.coupled_preconditioner)
+                                gates.push_back("n8_coupled_preconditioner_mismatch");
+                        }
+                        if (!result.solve.coupled_schur_model_resolved)
+                            gates.push_back("n8_coupled_schur_unresolved");
+                        if (result.solve.coupled_schur_model_resolved &&
+                            result.solve.resolved_coupled_schur_model != test.schur_model)
+                            gates.push_back("n8_coupled_schur_model_mismatch");
+                    }
                     if (test.algorithm == PressureVelocityAlgorithm::PIMPLE &&
                         result.solve.iterations < 2)
                         gates.push_back("pimple_outer_correctors");
@@ -547,6 +697,13 @@ int main(int argc, char** argv)
                           << " continuity=" << h.continuity_linf
                           << " continuity_norm=" << h.continuity_normalized
                           << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                          << " momentum_cons_x=" << h.momentum_conservation_normalized[0]
+                          << " momentum_cons_y=" << h.momentum_conservation_normalized[1]
+                          << " momentum_cons_z=" << h.momentum_conservation_normalized[2]
+                          << " momentum_cons_worst_x=" << h.momentum_conservation_worst_cell[0]
+                          << " momentum_cons_worst_y=" << h.momentum_conservation_worst_cell[1]
+                          << " momentum_cons_worst_z=" << h.momentum_conservation_worst_cell[2]
+                          << " velocity_nonfinite=" << h.boundedness_nonfinite_velocity
                           << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
                           << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
                           << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
@@ -598,23 +755,113 @@ int main(int argc, char** argv)
             std::cout << "\n";
         }
 
-        // Algorithm invariance is evaluated only across models that actually
-        // produced a valid result. A failure in one model must not prevent the
-        // remaining models from running and exposing their diagnostics.
-        if (!results.empty()) {
-            for (std::size_t k = 1; k < results.size(); ++k) {
+        // N9.5 uses SIMPLE as the declared segregated reference. Do not
+        // silently select whichever algorithm happened to finish first: if the
+        // reference fails, the campaign is not allowed to pass on another model.
+        const auto reference_it = std::find(
+            successful_models.begin(), successful_models.end(),
+            std::string("SIMPLE/upwind/bounded"));
+        if (reference_it == successful_models.end()) {
+            failed_models.push_back("SIMPLE/upwind/bounded:reference_missing");
+        } else {
+            const std::size_t reference_index =
+                static_cast<std::size_t>(
+                    std::distance(successful_models.begin(), reference_it));
+            const auto& reference = results[reference_index];
+            if (reference.solve.authoritative_mass_flux.size() !=
+                reference.geometry.face_area_vectors.size())
+                throw std::runtime_error(
+                    "SIMPLE reference has no complete authoritative mass flux");
+
+            double reference_pressure_mean = 0.0;
+            for (std::size_t c = 0; c < reference.p.size(); ++c)
+                reference_pressure_mean += reference.p(c);
+            reference_pressure_mean /= static_cast<double>(reference.p.size());
+
+            // Compare all algorithms against the same discrete reference,
+            // including every velocity component and pressure modulo its gauge.
+            // This is stronger than comparing only Ux and avoids making the
+            // ordering of successful models part of the qualification.
+            for (std::size_t k = 0; k < results.size(); ++k) {
+                if (k == reference_index)
+                    continue;
+
+                const auto& candidate = results[k];
+                double candidate_pressure_mean = 0.0;
+                for (std::size_t c = 0; c < candidate.p.size(); ++c)
+                    candidate_pressure_mean += candidate.p(c);
+                candidate_pressure_mean /=
+                    static_cast<double>(candidate.p.size());
+
                 double max_du = 0.0;
-                for (std::size_t c = 0; c < results[k].U.size(); ++c)
-                    max_du = std::max(
-                        max_du,
-                        std::abs(results[k].U.component_data(0)[c] -
-                                 results.front().U.component_data(0)[c]));
-                std::cout << "ALGORITHM_INVARIANCE model=" << successful_models[k]
-                          << " vs=" << successful_models.front()
-                          << " max_abs_dU=" << max_du << "\n";
+                double max_dp_gauge = 0.0;
+                double max_dphi = 0.0;
+                double reference_phi_linf = 0.0;
+                double candidate_phi_linf = 0.0;
+                if (candidate.solve.authoritative_mass_flux.size() !=
+                    reference.solve.authoritative_mass_flux.size())
+                    throw std::runtime_error(
+                        successful_models[k] + ": authoritative mass-flux size mismatch");
+                for (std::size_t face = 0;
+                     face < reference.solve.authoritative_mass_flux.size(); ++face) {
+                    const double phi_ref = reference.solve.authoritative_mass_flux(face);
+                    const double phi_candidate = candidate.solve.authoritative_mass_flux(face);
+                    if (!std::isfinite(phi_ref) || !std::isfinite(phi_candidate))
+                        throw std::runtime_error(
+                            successful_models[k] + ": non-finite authoritative mass flux");
+                    max_dphi = std::max(max_dphi, std::abs(phi_candidate - phi_ref));
+                    reference_phi_linf = std::max(reference_phi_linf, std::abs(phi_ref));
+                    candidate_phi_linf = std::max(candidate_phi_linf, std::abs(phi_candidate));
+                }
+                const double flux_scale =
+                    std::max({1.0, reference_phi_linf, candidate_phi_linf});
+                const double flux_equivalence = max_dphi / flux_scale;
+                for (std::size_t c = 0; c < candidate.U.size(); ++c) {
+                    for (std::size_t component = 0; component < 3; ++component) {
+                        max_du = std::max(
+                            max_du,
+                            std::abs(candidate.U.component_data(component)[c] -
+                                     reference.U.component_data(component)[c]));
+                    }
+                    // Pressure is compared modulo its arbitrary additive gauge.
+                    max_dp_gauge = std::max(
+                        max_dp_gauge,
+                        std::abs(
+                            (candidate.p(c) -
+                             candidate_pressure_mean) -
+                            (reference.p(c) -
+                             reference_pressure_mean)));
+                }
+
+                const auto& h = candidate.solve.history.back();
+                const auto& href = reference.solve.history.back();
+                const double continuity_ratio =
+                    std::max(h.continuity_linf, href.continuity_linf) /
+                    std::max(std::min(h.continuity_linf, href.continuity_linf),
+                             std::numeric_limits<double>::min());
+
+                std::cout << "ALGORITHM_INVARIANCE model="
+                          << successful_models[k]
+                          << " vs=SIMPLE/upwind/bounded"
+                          << " max_abs_dU=" << max_du
+                          << " max_abs_dp_gauge=" << max_dp_gauge
+                          << " max_abs_dphi=" << max_dphi
+                          << " flux_equivalence=" << flux_equivalence
+                          << " continuity_ratio=" << continuity_ratio
+                          << "\n";
+
                 if (!(max_du < 1.0e-5))
                     failed_models.push_back(
-                        successful_models[k] + ":algorithm_invariance");
+                        successful_models[k] + ":algorithm_velocity_invariance");
+                if (!(max_dp_gauge < 1.0e-5))
+                    failed_models.push_back(
+                        successful_models[k] + ":algorithm_pressure_invariance");
+                // Compare the actual face flux used by continuity, not a
+                // reconstructed U-only flux. The normalized gate is strict and
+                // independent of nonlinear/linear residual reporting.
+                if (!(flux_equivalence < 1.0e-8))
+                    failed_models.push_back(
+                        successful_models[k] + ":algorithm_flux_invariance");
             }
         }
 

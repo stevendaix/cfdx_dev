@@ -383,5 +383,102 @@ int main() {
         EXPECT_NEAR(grad(1,2), 0.0, 1e-12);
     });
 
+
+    run_case("weighted_least_squares_weighting_is_explicit", []() {
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const Vec3 expected{2.0, -1.0, 0.5};
+        const std::vector<Vec3> neighbours = {
+            {1.0,0.0,0.0}, {-1.0,0.0,0.0}, {0.0,2.0,0.0},
+            {0.0,-2.0,0.0}, {0.0,0.0,1.0}, {0.0,0.0,-1.0}
+        };
+        std::vector<double> values;
+        for (const auto& p : neighbours)
+            values.push_back(3.0 + expected.x*p.x + expected.y*p.y + expected.z*p.z);
+        StencilQuality q;
+        const Vec3 g = weighted_least_squares_gradient(
+            centre, 3.0, neighbours, values,
+            GradientWeighting::INVERSE_DISTANCE_SQUARED, &q);
+        EXPECT_TRUE(q.full_rank);
+        EXPECT_TRUE(q.rank == 3);
+        EXPECT_TRUE(std::isfinite(q.condition_estimate));
+        EXPECT_NEAR(g.x, expected.x, 1e-12);
+        EXPECT_NEAR(g.y, expected.y, 1e-12);
+        EXPECT_NEAR(g.z, expected.z, 1e-12);
+    });
+
+    run_case("weighted_least_squares_rejects_non_finite_geometry", []() {
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.0, 0.0, 0.0},
+            {std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0},
+            {0.0, 1.0, 0.0},
+            {0.0, 0.0, 1.0}
+        };
+        const std::vector<double> values(neighbours.size(), 0.0);
+        StencilQuality q;
+        EXPECT_THROW(
+            weighted_least_squares_gradient(
+                centre, 0.0, neighbours, values,
+                GradientWeighting::UNIFORM, &q),
+            std::runtime_error);
+        EXPECT_TRUE(!q.finite);
+    });
+
+    run_case("weighted_least_squares_rejects_rank_deficient_stencil", []() {
+        const Vec3 centre{0.0,0.0,0.0};
+        const std::vector<Vec3> neighbours = {{1.0,0.0,0.0},{-1.0,0.0,0.0}};
+        const std::vector<double> values = {2.0,-2.0};
+        EXPECT_THROW(weighted_least_squares_gradient(
+            centre, 0.0, neighbours, values,
+            GradientWeighting::INVERSE_DISTANCE_SQUARED), std::runtime_error);
+    });
+
+    run_case("weighted_least_squares_conditioning_gate", []() {
+        const Vec3 centre{0.0,0.0,0.0};
+        const std::vector<Vec3> neighbours = {
+            {1.0,0.0,0.0}, {-1.0,0.0,0.0},
+            {0.0,1.0e-6,0.0}, {0.0,-1.0e-6,0.0},
+            {0.0,0.0,1.0}, {0.0,0.0,-1.0}
+        };
+        const std::vector<double> values(neighbours.size(), 0.0);
+        StencilQuality q;
+        (void)weighted_least_squares_gradient(
+            centre, 0.0, neighbours, values,
+            GradientWeighting::UNIFORM, &q);
+        EXPECT_TRUE(q.full_rank);
+        EXPECT_TRUE(q.condition_estimate > 1.0e6);
+    });
+
+
+    run_case("least_squares_boundary_policy_is_explicit", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "phi", "1", 1);
+        f(0) = 1.0;
+        EXPECT_THROW(
+            compute_gradient_least_squares(
+                f, m, BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL),
+            std::runtime_error);
+        const auto g = compute_gradient_least_squares(
+            f, m, BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        EXPECT_NEAR(g(0,0), 0.0, 1e-12);
+        EXPECT_NEAR(g(0,1), 0.0, 1e-12);
+        EXPECT_NEAR(g(0,2), 0.0, 1e-12);
+    });
+
+    run_case("weighted_least_squares_zero_gradient_policy_without_bc_data", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField f(1, "phi", "1", 1);
+        f(0) = 7.0;
+
+        const auto g = compute_gradient_weighted_least_squares(
+            f, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
+
+        EXPECT_NEAR(g(0, 0), 0.0, 1e-12);
+        EXPECT_NEAR(g(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(g(0, 2), 0.0, 1e-12);
+    });
+
     return run_all();
 }

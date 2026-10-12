@@ -1,7 +1,13 @@
 #include "cfdx/core/linalg/block_preconditioner.h"
+#include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/coupled_block_extraction.h"
+#include "cfdx/core/linalg/pcd_schur.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -16,6 +22,45 @@ static SparseMatrix make_block_system() {
 }
 
 int main() {
+    run_case("coupled_block_extraction_preserves_4n_layout", [] {
+        SparseMatrix A(8, 8);
+        A.push_back(0, 0, 10.0);
+        A.push_back(0, 6, 1.0);
+        A.push_back(1, 1, 11.0);
+        A.push_back(1, 7, 2.0);
+        A.push_back(2, 2, 12.0);
+        A.push_back(2, 6, 3.0);
+        A.push_back(6, 0, -4.0);
+        A.push_back(6, 6, 20.0);
+        A.push_back(7, 1, -5.0);
+        A.push_back(7, 7, 21.0);
+        A.finalize();
+
+        const auto Auu = extract_coupled_block(A, 0, 0, 6, 6);
+        const auto G = extract_coupled_block(A, 0, 1, 6, 2);
+        const auto D = extract_coupled_block(A, 1, 0, 2, 6);
+        const auto C = extract_coupled_block(A, 1, 1, 2, 2);
+
+        EXPECT_TRUE(Auu.n_rows() == 6 && Auu.n_cols() == 6);
+        EXPECT_TRUE(G.n_rows() == 6 && G.n_cols() == 2);
+        EXPECT_TRUE(D.n_rows() == 2 && D.n_cols() == 6);
+        EXPECT_TRUE(C.n_rows() == 2 && C.n_cols() == 2);
+        EXPECT_NEAR(G.values_data()[0], 1.0, 1e-12);
+        EXPECT_NEAR(G.values_data()[1], 2.0, 1e-12);
+        EXPECT_NEAR(D.values_data()[0], -4.0, 1e-12);
+        EXPECT_NEAR(D.values_data()[1], -5.0, 1e-12);
+        EXPECT_NEAR(C.values_data()[0], 20.0, 1e-12);
+        EXPECT_NEAR(C.values_data()[1], 21.0, 1e-12);
+    });
+
+    run_case("coupled_block_extraction_rejects_non_4n_square_ranges", [] {
+        SparseMatrix A(5, 5);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        const auto block = extract_coupled_block(A, 0, 0, 3, 3);
+        EXPECT_TRUE(block.n_rows() == 0 && block.n_cols() == 0);
+    });
+
     run_case("schur_complement_setup_and_apply", [] {
         const auto A = make_block_system();
         SchurComplementPreconditioner p({0,1}, {2});
@@ -120,6 +165,93 @@ int main() {
         EXPECT_NEAR(z(0), -(p0 + 0.5 * p1) / 4.0, 1e-12);
         EXPECT_NEAR(z(1), -(0.5 * p0 + p1) / 4.0, 1e-12);
         EXPECT_TRUE(std::isfinite(z.norm_inf()));
+    });
+
+    run_case("coupled_pcd_schur_setup_and_apply", [] {
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 2.0); A.push_back(0, 3, 1.0);
+        A.push_back(1, 1, 3.0); A.push_back(1, 3, 2.0);
+        A.push_back(2, 2, 4.0); A.push_back(2, 3, 3.0);
+        A.push_back(3, 0, -1.0); A.push_back(3, 1, -2.0);
+        A.push_back(3, 2, -3.0);
+        A.finalize();
+
+        SparseMatrix M(1, 1), K(1, 1), F(1, 1);
+        M.push_back(0, 0, 1.0); K.push_back(0, 0, 1.0); F.push_back(0, 0, 1.0);
+        M.finalize(); K.finalize(); F.finalize();
+
+        auto solve_identity = [](const Vector& rhs, Vector& x) {
+            x = rhs;
+            return x.is_valid();
+        };
+        auto pcd = std::make_unique<PcdSchurApproximation>(
+            M, K, F, solve_identity, solve_identity);
+
+        CoupledBlockSchurOptions options;
+        options.schur_approximation = CoupledSchurApproximationModel::PCD;
+        CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+        preconditioner.set_pcd_schur(std::move(pcd));
+        EXPECT_TRUE(preconditioner.setup(A));
+
+        Vector r(4, 0.0);
+        r(3) = 1.0;
+        Vector z(4, 0.0);
+        EXPECT_TRUE(preconditioner.apply(r, z));
+
+        EXPECT_NEAR(z(3), -1.0, 1e-12);
+        EXPECT_NEAR(z(0), 0.5, 1e-12);
+        EXPECT_NEAR(z(1), 2.0 / 3.0, 1e-12);
+        EXPECT_NEAR(z(2), 0.75, 1e-12);
+    });
+
+    run_case("coupled_simple_family_schur_setup_and_apply", [] {
+        SparseMatrix A(4, 4);
+        A.push_back(0, 0, 4.0); A.push_back(0, 3, 1.0);
+        A.push_back(1, 1, 5.0); A.push_back(1, 3, 2.0);
+        A.push_back(2, 2, 6.0); A.push_back(2, 3, 3.0);
+        A.push_back(3, 3, 1.0); // pressure gauge row
+        A.finalize();
+
+        for (const auto mode : {CoupledSchurApproximationModel::SIMPLE,
+                                CoupledSchurApproximationModel::SIMPLEC}) {
+            CoupledBlockSchurOptions options;
+            options.schur_approximation = mode;
+            CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+            preconditioner.set_simpler_schur(std::make_unique<SimplerSchurApproximation>(
+                mode == CoupledSchurApproximationModel::SIMPLE
+                    ? SimplerSchurMode::SIMPLE
+                    : SimplerSchurMode::SIMPLEC));
+            EXPECT_TRUE(preconditioner.setup(A));
+
+            Vector r(4, 0.0);
+            r(3) = 1.0;
+            Vector z(4, 0.0);
+            EXPECT_TRUE(preconditioner.apply(r, z));
+            // The pressure row is the gauge identity, so the preconditioner must
+            // preserve it rather than silently replacing the requested model.
+            EXPECT_NEAR(z(3), 1.0, 1e-12);
+            EXPECT_TRUE(std::isfinite(z.norm_inf()));
+        }
+    });
+
+    run_case("coupled_block_schur_diagnostic_names_are_model_specific", [] {
+        const std::vector<std::pair<CoupledSchurApproximationModel, std::string>> models{
+            {CoupledSchurApproximationModel::BlockLocal, "block_local"},
+            {CoupledSchurApproximationModel::PCD, "pcd"},
+            {CoupledSchurApproximationModel::LSC, "lsc"},
+            {CoupledSchurApproximationModel::BFBT, "bfbt"},
+            {CoupledSchurApproximationModel::SIMPLE, "simple"},
+            {CoupledSchurApproximationModel::SIMPLEC, "simplec"},
+        };
+
+        for (const auto& [model, token] : models) {
+            CoupledBlockSchurOptions options;
+            options.schur_approximation = model;
+            CoupledBlockSchurAMGPreconditioner preconditioner(1, options);
+            const std::string name = preconditioner.name();
+            EXPECT_TRUE(name.find("CoupledBlockSchur-AMG[" + token + "]") !=
+                        std::string::npos);
+        }
     });
 
     run_case("coupled_block_schur_accepts_pressure_gauge_row", [] {
