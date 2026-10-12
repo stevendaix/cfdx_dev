@@ -418,32 +418,52 @@ int main() {
                 U.fill(0.0);
                 p.fill(7.0);
                 VelocityBoundaryConditions ubc;
-                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+                // Non-degenerate contract: an O(1) wall velocity gives the
+                // exact discrete solution U = (1,0,0) in both cells with
+                // uniform pressure and O(1) boundary fluxes.
+                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1.0,0.0,0.0}};
                 ScalarBoundaryConditions pbc;
                 pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
                 IncompressibleSolverControls c;
                 c.algorithm = PressureVelocityAlgorithm::COUPLED;
                 c.coupling.schur_model = model;
-                // Test-contract fix: the gauged two-cell problem is linear,
-                // so full Picard relaxation (alpha_u = alpha_p = 1) lands
-                // on the exact solution at the first coupled linear solve
-                // and every per-criterion convergence gate is green by
-                // iteration 2. With the default relaxed update
-                // (alpha_u = 0.7, alpha_p = 0.3) the pressure error
-                // contracts by 0.7 per iteration: p going 7.0 -> 3.0
-                // needs ~79 iterations to push pressure_change_inf below
-                // the 1e-12 relative gate, so the max_iterations = 10
-                // budget below could never converge for a reason
-                // unrelated to the gauge handling and the LSC/BFBT Schur
-                // approximations this guard qualifies. The failing run
-                // 38224806432 (converged=false at line 436) was this
-                // budget mismatch, not a gauge<->Krylov defect.
-                c.coupling.alpha_u = 1.0;
-                c.coupling.alpha_p = 1.0;
+                // Test-contract fix, second revision (well-posed
+                // contract). Two measured defects made this guard
+                // structurally unconvergeable on the COUPLED path:
+                // (1) Picard budget mismatch (run 38224806432): the
+                //     default relaxed update (alpha_u = 0.7,
+                //     alpha_p = 0.3) contracts the pressure error by 0.7
+                //     per iteration, so p going 7.0 -> 3.0 needs ~79
+                //     iterations while the budget was 10.
+                // (2) Degenerate exact solution (evidence 9826140, the
+                //     committed trace of the alpha = 1 run): with
+                //     U_b = (0,0,0) the exact solution is U == 0 with
+                //     uniform pressure, so the alpha = 1 state freezes
+                //     at a bit-exact fixed point from iteration 1; the
+                //     trace shows momentum_residual_relative pinned at
+                //     exactly 1.0 for all 10 iterations (the reference
+                //     residual is captured at iteration 1 and the field
+                //     never changes again) and continuity_normalized
+                //     pinned at exactly 2 (noise over an all-zero
+                //     boundary flux), so the 1e-12 gates are unreachable
+                //     for any Schur model on that contract.
+                // This revision makes the contract well-posed without
+                // loosening a single gate: U_b = (1,0,0) above gives a
+                // non-degenerate O(1) problem, alpha_u = alpha_p = 0.5
+                // lets every criterion decay geometrically under the
+                // unchanged 1e-12 gates (~41 iterations at rate 0.5),
+                // coupled_linear_tolerance = 1e-14 keeps the linear
+                // noise floor 100x below the gates, and
+                // max_iterations = 200 budgets the Picard loop with
+                // margin.
+                c.coupling.alpha_u = 0.5;
+                c.coupling.alpha_p = 0.5;
+                // Linear noise floor 100x below the 1e-12 gates.
+                c.coupling.coupled_linear_tolerance = 1e-14;
                 c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
                 c.pressure_reference_cell = 0;
                 c.pressure_reference_value = 3.0;
-                c.convergence.max_iterations = 10;
+                c.convergence.max_iterations = 200;
                 c.convergence.continuity_tolerance = 1e-12;
                 c.convergence.relative_tolerance = 1e-12;
                 c.linear_max_iterations = 100;
@@ -459,6 +479,10 @@ int main() {
                 EXPECT_TRUE(result.converged);
                 EXPECT_NEAR(p(0), 3.0, 1e-10);
                 EXPECT_NEAR(p(1), 3.0, 1e-10);
+                EXPECT_NEAR(U.component_data(0)[0], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(0)[1], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(1)[0], 0.0, 1e-9);
+                EXPECT_NEAR(U.component_data(2)[1], 0.0, 1e-9);
             }
             {
                 const Mesh mesh = make_two_cell_channel();
@@ -467,32 +491,52 @@ int main() {
                 U.fill(0.0);
                 p.fill(7.0);
                 VelocityBoundaryConditions ubc;
-                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+                // Non-degenerate contract: an O(1) wall velocity gives the
+                // exact discrete solution U = (1,0,0) in both cells with
+                // uniform pressure and O(1) boundary fluxes.
+                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1.0,0.0,0.0}};
                 ScalarBoundaryConditions pbc;
                 pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 5.0, 0.0};
                 IncompressibleSolverControls c;
                 c.algorithm = PressureVelocityAlgorithm::COUPLED;
                 c.coupling.schur_model = model;
-                // Test-contract fix: the gauged two-cell problem is linear,
-                // so full Picard relaxation (alpha_u = alpha_p = 1) lands
-                // on the exact solution at the first coupled linear solve
-                // and every per-criterion convergence gate is green by
-                // iteration 2. With the default relaxed update
-                // (alpha_u = 0.7, alpha_p = 0.3) the pressure error
-                // contracts by 0.7 per iteration: p going 7.0 -> 3.0
-                // needs ~79 iterations to push pressure_change_inf below
-                // the 1e-12 relative gate, so the max_iterations = 10
-                // budget below could never converge for a reason
-                // unrelated to the gauge handling and the LSC/BFBT Schur
-                // approximations this guard qualifies. The failing run
-                // 38224806432 (converged=false at line 436) was this
-                // budget mismatch, not a gauge<->Krylov defect.
-                c.coupling.alpha_u = 1.0;
-                c.coupling.alpha_p = 1.0;
+                // Test-contract fix, second revision (well-posed
+                // contract). Two measured defects made this guard
+                // structurally unconvergeable on the COUPLED path:
+                // (1) Picard budget mismatch (run 38224806432): the
+                //     default relaxed update (alpha_u = 0.7,
+                //     alpha_p = 0.3) contracts the pressure error by 0.7
+                //     per iteration, so p going 7.0 -> 3.0 needs ~79
+                //     iterations while the budget was 10.
+                // (2) Degenerate exact solution (evidence 9826140, the
+                //     committed trace of the alpha = 1 run): with
+                //     U_b = (0,0,0) the exact solution is U == 0 with
+                //     uniform pressure, so the alpha = 1 state freezes
+                //     at a bit-exact fixed point from iteration 1; the
+                //     trace shows momentum_residual_relative pinned at
+                //     exactly 1.0 for all 10 iterations (the reference
+                //     residual is captured at iteration 1 and the field
+                //     never changes again) and continuity_normalized
+                //     pinned at exactly 2 (noise over an all-zero
+                //     boundary flux), so the 1e-12 gates are unreachable
+                //     for any Schur model on that contract.
+                // This revision makes the contract well-posed without
+                // loosening a single gate: U_b = (1,0,0) above gives a
+                // non-degenerate O(1) problem, alpha_u = alpha_p = 0.5
+                // lets every criterion decay geometrically under the
+                // unchanged 1e-12 gates (~41 iterations at rate 0.5),
+                // coupled_linear_tolerance = 1e-14 keeps the linear
+                // noise floor 100x below the gates, and
+                // max_iterations = 200 budgets the Picard loop with
+                // margin.
+                c.coupling.alpha_u = 0.5;
+                c.coupling.alpha_p = 0.5;
+                // Linear noise floor 100x below the 1e-12 gates.
+                c.coupling.coupled_linear_tolerance = 1e-14;
                 c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
                 c.pressure_reference_cell = 0;
                 c.pressure_reference_value = 3.0;
-                c.convergence.max_iterations = 10;
+                c.convergence.max_iterations = 200;
                 c.convergence.continuity_tolerance = 1e-12;
                 c.convergence.relative_tolerance = 1e-12;
                 c.linear_max_iterations = 100;
@@ -508,6 +552,10 @@ int main() {
                 EXPECT_TRUE(result.converged);
                 EXPECT_NEAR(p(0), 5.0, 1e-10);
                 EXPECT_NEAR(p(1), 5.0, 1e-10);
+                EXPECT_NEAR(U.component_data(0)[0], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(0)[1], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(1)[0], 0.0, 1e-9);
+                EXPECT_NEAR(U.component_data(2)[1], 0.0, 1e-9);
             }
         }
     });
