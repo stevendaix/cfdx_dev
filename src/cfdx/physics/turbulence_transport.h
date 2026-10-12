@@ -58,6 +58,10 @@ struct TurbulenceTransportControls {
     double sst_production_limiter = 10.0;
     double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
     TurbulenceCorrectionControls corrections{};
+    // N11 F1 (#480): route the Spalart-Allmaras negative nu-tilde policy
+    // through the transport path. CLAMP_ZERO preserves the historical
+    // behaviour exactly; REJECT is the fail-closed qualification mode.
+    NegativeNuTildePolicy negative_nu_tilde_policy = NegativeNuTildePolicy::CLAMP_ZERO;
 };
 
 struct TurbulenceBoundDiagnostics {
@@ -139,6 +143,12 @@ inline double turbulence_nu_t(
         return k/second;
     }
     case TurbulenceModel::SPALART_ALLMARAS: {
+        if(c.negative_nu_tilde_policy==NegativeNuTildePolicy::REJECT) {
+            if(!std::isfinite(second))
+                throw std::invalid_argument("Spalart-Allmaras invalid inputs");
+            if(second<0.0)
+                throw std::domain_error("Spalart-Allmaras negative nu_tilde");
+        }
         const double nt=std::max(second,0.0);
         if(!(c.molecular_viscosity>0.0))
             throw std::invalid_argument("SA eddy viscosity requires molecular viscosity");

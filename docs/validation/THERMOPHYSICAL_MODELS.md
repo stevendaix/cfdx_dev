@@ -83,7 +83,7 @@ This test is a model-layer verification gate, not a replacement for solver-level
 
 - All property evaluators reject non-finite temperatures and non-positive absolute temperature.
 - Boussinesq density has an explicit configurable validity guard on \(|\beta(T-T_0)|\), defaulting to 0.1. Disable the guard only when the caller intentionally accepts the approximation outside this range.
-- Spalart–Allmaras accepts a negative working variable by clamping it to zero by default; callers can select explicit rejection with `NegativeNuTildePolicy::REJECT`.
+- Spalart–Allmaras accepts a negative working variable by clamping it to zero by default; callers can select explicit rejection with `NegativeNuTildePolicy::REJECT`. The transport path (`turbulence_nu_t`) routes the same knob through `TurbulenceTransportControls::negative_nu_tilde_policy`: the default `CLAMP_ZERO` preserves the historical behaviour exactly, and `REJECT` throws before the clamp (non-finite input throws `invalid_argument`, negative nu-tilde throws `domain_error`).
 - DDES exposes the standard shielding-function shape \(f_d=1-\tanh((8r_d)^3)\) and a shielded length-scale helper. The helper is an algebraic building block; it is not a substitute for the complete DDES transport equations, wall treatment, or IDDES zonal formulation.
 - The turbulent Prandtl number remains a property-model abstraction. An overload accepts local \(y^+\) so a future wall-dependent Prandtl model can be introduced without changing the energy-solver interface.
 
