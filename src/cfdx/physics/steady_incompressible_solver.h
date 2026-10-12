@@ -975,66 +975,6 @@ inline cfdx::core::SparseMatrix impose_pcd_reference_row(
     return result;
 }
 
-// Coherent gauge for the nested algebraic-Schur pressure operators
-// (the LSC/BFBt stabilized operator). The coupled production system
-// imposes the pressure reference by eliminating the reference row AND
-// column and inserting a unit diagonal (see the reduced coupled
-// assembly), so the nested operator mirrors exactly that structure.
-//
-// The reference right-hand side entry is deliberately NOT zeroed and
-// the nested correction at the reference is deliberately NOT pinned to
-// zero: the outer Krylov iteration needs the gauge component of the
-// preconditioned residual to correct the coupled gauge row (see the
-// PR #832 note on the initial gauge row, and the measured
-// frozen-residual failure documented in pcd_schur.h). A fixed pressure
-// boundary already removes the constant null mode, so the caller
-// passes a sentinel (>= n) and this function is a no-op in that case.
-inline void apply_nested_schur_pressure_gauge(
-    cfdx::core::SparseMatrix& pressure_operator, std::size_t gauge_cell)
-{
-    const std::size_t n = pressure_operator.n_rows();
-    if (n == 0 || gauge_cell >= n)
-        return;
-    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
-         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
-        pressure_operator.values_data()[k] = 0.0;
-    }
-    for (std::size_t row = 0; row < n; ++row) {
-        if (row == gauge_cell)
-            continue;
-        for (std::size_t k = pressure_operator.row_offsets_data()[row];
-             k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
-            if (pressure_operator.columns_data()[k] == gauge_cell)
-                pressure_operator.values_data()[k] = 0.0;
-        }
-    }
-    bool ref_diag_set = false;
-    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
-         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
-        if (pressure_operator.columns_data()[k] == gauge_cell) {
-            pressure_operator.values_data()[k] = 1.0;
-            ref_diag_set = true;
-            break;
-        }
-    }
-    if (!ref_diag_set) {
-        cfdx::core::SparseMatrix rebuilt(n, n);
-        for (std::size_t row = 0; row < n; ++row) {
-            if (row == gauge_cell) {
-                rebuilt.push_back(row, row, 1.0);
-                continue;
-            }
-            for (std::size_t k = pressure_operator.row_offsets_data()[row];
-                 k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
-                rebuilt.push_back(row, pressure_operator.columns_data()[k],
-                                  pressure_operator.values_data()[k]);
-            }
-        }
-        rebuilt.finalize();
-        pressure_operator = std::move(rebuilt);
-    }
-}
-
 // PCD pressure-side operators. The convection_scheme parameter is accepted
 // but deliberately NOT forwarded to assemble_scalar_equation, and this is
 // not a TODO. Every ConvectionScheme except UPWIND is implemented in
@@ -1101,6 +1041,66 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
         result.convection_diffusion = convection_diffusion.matrix;
     }
     return result;
+}
+
+// Coherent gauge for the nested algebraic-Schur pressure operators
+// (the LSC/BFBt stabilized operator). The coupled production system
+// imposes the pressure reference by eliminating the reference row AND
+// column and inserting a unit diagonal (see the reduced coupled
+// assembly), so the nested operator mirrors exactly that structure.
+//
+// The reference right-hand side entry is deliberately NOT zeroed and
+// the nested correction at the reference is deliberately NOT pinned to
+// zero: the outer Krylov iteration needs the gauge component of the
+// preconditioned residual to correct the coupled gauge row (see the
+// PR #832 note on the initial gauge row, and the measured
+// frozen-residual failure documented in pcd_schur.h). A fixed pressure
+// boundary already removes the constant null mode, so the caller
+// passes a sentinel (>= n) and this function is a no-op in that case.
+inline void apply_nested_schur_pressure_gauge(
+    cfdx::core::SparseMatrix& pressure_operator, std::size_t gauge_cell)
+{
+    const std::size_t n = pressure_operator.n_rows();
+    if (n == 0 || gauge_cell >= n)
+        return;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        pressure_operator.values_data()[k] = 0.0;
+    }
+    for (std::size_t row = 0; row < n; ++row) {
+        if (row == gauge_cell)
+            continue;
+        for (std::size_t k = pressure_operator.row_offsets_data()[row];
+             k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+            if (pressure_operator.columns_data()[k] == gauge_cell)
+                pressure_operator.values_data()[k] = 0.0;
+        }
+    }
+    bool ref_diag_set = false;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        if (pressure_operator.columns_data()[k] == gauge_cell) {
+            pressure_operator.values_data()[k] = 1.0;
+            ref_diag_set = true;
+            break;
+        }
+    }
+    if (!ref_diag_set) {
+        cfdx::core::SparseMatrix rebuilt(n, n);
+        for (std::size_t row = 0; row < n; ++row) {
+            if (row == gauge_cell) {
+                rebuilt.push_back(row, row, 1.0);
+                continue;
+            }
+            for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                 k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                rebuilt.push_back(row, pressure_operator.columns_data()[k],
+                                  pressure_operator.values_data()[k]);
+            }
+        }
+        rebuilt.finalize();
+        pressure_operator = std::move(rebuilt);
+    }
 }
 
 // Best-effort contract for the nested pressure solves invoked inside a
