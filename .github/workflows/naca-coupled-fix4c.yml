@@ -11,21 +11,27 @@ name: NACA0012 COUPLED tol12 3-level qualification matrix (fix4c)
 #   * The operator-equivalence unit gate passes; the pressure-gradient
 #     operator hypothesis is refuted.
 #
-# This campaign runs the QUALIFICATION matrix the n64-only fix4b cannot
-# answer: with the tightened tolerance, does COUPLED converge on ALL THREE
-# mesh levels, and does the solution stay consistent under refinement?
-#   * coupled-3level-tol12 (0.6/0.25, tol 1e-12, n64/n128/n256): n64 is
-#     predicted CONVERGED@67; n128/n256 are OPEN — this run measures
-#     qualification, it does not presume it. If n128/n256 fail the strict
-#     guard, that is a qualification RESULT to document, not a harness bug:
-#     STAGNATED/MAX_ITER is not CONVERGED and the guard must stay red.
-#   * simple-n64-reference / simplec-n64-reference: converged n64 references
-#     for the SIMPLE-vs-SIMPLEC physical comparison (step 2) re-run with the
-#     CURRENT harness so both algorithms report the same observability
-#     (per-cell divergence attribution, Cd_pressure/Cd_viscous split).
-#     Known behaviour to reproduce: SIMPLE CONVERGED@433, SIMPLEC
-#     CONVERGED@599 with the trailing-edge mass imbalance (cells 6-7,
-#     x=1, |div|~2e-08) that SIMPLE does not show (farfield corners ~1e-10).
+# v2 (infra relaunch, NO gate/threshold/equation change): run 38180457491
+# cancelled the single sequential 3-level job at exactly its 300-min
+# timeout. Its committed log already shows n64 CONVERGED@67 and
+# n128 CONVERGED@67 (tol 1e-12); n256 was interrupted near iter 17.
+# GitHub-hosted jobs cap at 360 min, so the three mesh levels now run as
+# THREE PARALLEL single-mesh jobs (same harness, same flags per level,
+# same per-level awk guard semantics: exactly one NACA_DIAG verdict,
+# strictly CONVERGED converged=1). A per-level failure is a qualification
+# RESULT to document, not a harness bug: STAGNATED/MAX_ITER is not
+# CONVERGED and the guard must stay red.
+#   * coupled-n64-tol12 / coupled-n128-tol12: re-confirm the run
+#     38180457491 verdicts in the self-contained aggregate.
+#   * coupled-n256-tol12: the OPEN verdict, full 360-min budget.
+#   * simple-n64-reference / simplec-n64-reference: converged n64
+#     references for the SIMPLE-vs-SIMPLEC physical comparison (step 2)
+#     re-run with the CURRENT harness so both algorithms report the same
+#     observability (per-cell divergence attribution, Cd_pressure/
+#     Cd_viscous split). Known behaviour to reproduce: SIMPLE
+#     CONVERGED@433, SIMPLEC CONVERGED@599 with the trailing-edge mass
+#     imbalance (cells 6-7, x=1, |div|~2e-08) that SIMPLE does not show
+#     (farfield corners ~1e-10).
 #
 # No equation, gate, threshold or solver line is touched. The harness flags
 # are the fix4b ones (--coupledtol validated to (0,1e-10], --levels).
@@ -52,14 +58,16 @@ jobs:
   variant:
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: coupled-3level-tol12, model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "3", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0", dc: "0" }
-          - { name: simple-n64-reference,  model: SIMPLE,             au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "0", op: "0", tol: "0",     stag: "0", dc: "0" }
-          - { name: simplec-n64-reference, model: SIMPLEC,            au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "0", op: "0", tol: "0",     stag: "0", dc: "0" }
+          - { name: coupled-n64-tol12,    model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0", dc: "0", mesh: "naca0012_laminar_n64.h5" }
+          - { name: coupled-n128-tol12,   model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0", dc: "0", mesh: "naca0012_laminar_n128.h5" }
+          - { name: coupled-n256-tol12,   model: COUPLED_BLOCKLOCAL, au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "1", op: "1", tol: "1e-12", stag: "0", dc: "0", mesh: "naca0012_laminar_n256.h5" }
+          - { name: simple-n64-reference,  model: SIMPLE,             au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "0", op: "0", tol: "0",     stag: "0", dc: "0", mesh: "naca0012_laminar_n64.h5" }
+          - { name: simplec-n64-reference, model: SIMPLEC,            au: "0.6", ap: "0.25", levels: "1", trace: "1", cd: "0", op: "0", tol: "0",     stag: "0", dc: "0", mesh: "naca0012_laminar_n64.h5" }
     steps:
       - uses: actions/checkout@v4
 
@@ -110,9 +118,7 @@ jobs:
             --coupledtol ${{ matrix.tol }} \
             --stagwindow ${{ matrix.stag }} \
             --debugcell ${{ matrix.dc }} \
-            build-naca/validation_meshes/naca0012_laminar_n64.h5 \
-            build-naca/validation_meshes/naca0012_laminar_n128.h5 \
-            build-naca/validation_meshes/naca0012_laminar_n256.h5 \
+            build-naca/validation_meshes/${{ matrix.mesh }} \
             2>&1 | tee naca-variant-${{ matrix.name }}.log
 
       - name: Enforce convergence gates
@@ -204,7 +210,7 @@ jobs:
       - name: Assemble combined log
         run: |
           : > naca-coupled-fix4c-output.log
-          for v in coupled-3level-tol12 simple-n64-reference simplec-n64-reference; do
+          for v in coupled-n64-tol12 coupled-n128-tol12 coupled-n256-tol12 simple-n64-reference simplec-n64-reference; do
             if [ -f "variant-logs/naca-variant-$v.log" ]; then
               echo "NACA_VARIANT_BEGIN $v" >> naca-coupled-fix4c-output.log
               cat "variant-logs/naca-variant-$v.log" >> naca-coupled-fix4c-output.log
@@ -220,13 +226,13 @@ jobs:
           else
             echo "NACA_VARIANT_MISSING variant=operator-equivalence-unit" >> naca-coupled-fix4c-output.log
           fi
-          echo "AGGREGATE_SECTIONS=$(grep -c 'NACA_VARIANT_BEGIN' naca-coupled-fix4c-output.log)/4" >> naca-coupled-fix4c-output.log
+          echo "AGGREGATE_SECTIONS=$(grep -c 'NACA_VARIANT_BEGIN' naca-coupled-fix4c-output.log)/6" >> naca-coupled-fix4c-output.log
 
       - name: Extract compact summary (inline, no second workflow race)
         run: |
           set -euo pipefail
           : > naca-coupled-fix4c-summary.log
-          for v in coupled-3level-tol12 simple-n64-reference simplec-n64-reference operator-equivalence-unit; do
+          for v in coupled-n64-tol12 coupled-n128-tol12 coupled-n256-tol12 simple-n64-reference simplec-n64-reference operator-equivalence-unit; do
             sed -n "/^NACA_VARIANT_BEGIN $v\$/,/^NACA_VARIANT_END $v\$/p" naca-coupled-fix4c-output.log > /tmp/variant.log
             if [ -s /tmp/variant.log ]; then
               awk '/NACA_CONFIG|NACA_ALGO|NACA0012_RE1000_A0|NACA_DIAG status=|rejected|EXCEPTION/' /tmp/variant.log >> naca-coupled-fix4c-summary.log
