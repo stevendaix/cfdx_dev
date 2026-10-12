@@ -62,6 +62,12 @@ struct WallDistanceResult {
     double poisson_grad_max{0.0};
     double poisson_distance_l2_error{0.0};
     double poisson_distance_linf_error{0.0};
+    // F-W1 (N11 backlog, #480): number of nearest_normal() calls that hit a
+    // degenerate (zero-area) nearest triangle and returned the {1,0,0}
+    // fallback instead of a real surface normal. Filled by the methods that
+    // query the wall normal (directional mesh wave, Poisson cut-face audit);
+    // zero means every queried normal was a genuine geometric normal.
+    std::size_t nearest_normal_fallbacks{0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -287,6 +293,13 @@ public:
     std::size_t triangle_count() const { return surface_.triangles.size(); }
     std::size_t node_count() const { return nodes_.size(); }
 
+    // F-W1 (N11 backlog, #480): count of nearest_normal() calls whose nearest
+    // triangle has a degenerate (zero-area) normal, so the {1,0,0} fallback
+    // was returned instead of a real surface normal. The fallback value and
+    // direction are unchanged; this counter only makes the silent fallback
+    // attributable by the caller. Per BVH instance, monotonic, not reset.
+    std::size_t degenerate_normal_fallbacks() const { return degenerate_normal_fallbacks_; }
+
     WallDistanceVec3 nearest_normal(const WallDistanceVec3& p) const {
         double best2=std::numeric_limits<double>::infinity();
         std::size_t best=0;
@@ -298,7 +311,13 @@ public:
                                  ab.z*ac.x-ab.x*ac.z,
                                  ab.x*ac.y-ab.y*ac.x};
         const double nn=wd_norm(n);
-        return nn>1e-30 ? n*(1.0/nn) : WallDistanceVec3{1.0,0.0,0.0};
+        if(nn>1e-30) return n*(1.0/nn);
+        // Degenerate triangle (collinear vertices): the cross product is the
+        // zero vector and no geometric normal exists. The historical
+        // behaviour is preserved exactly (unit +x fallback); the counter
+        // above is what makes the fallback observable (F-W1).
+        ++degenerate_normal_fallbacks_;
+        return WallDistanceVec3{1.0,0.0,0.0};
     }
 
 private:
@@ -313,6 +332,9 @@ private:
     const WallSurface& surface_;
     std::vector<std::size_t> indices_;
     std::vector<Node> nodes_;
+    // F-W1: mutated through const nearest_normal() so the degenerate-normal
+    // fallback stays observable without changing the const query contract.
+    mutable std::size_t degenerate_normal_fallbacks_{0};
     static constexpr std::size_t leaf_size_=4;
 
     WallDistanceAabb triangle_box(std::size_t ti) const {
@@ -547,8 +569,15 @@ inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid
             if(du+w<d[v]) { d[v]=du+w; q.push({d[v],v}); }
         }
     }
-    return {std::move(d),std::vector<unsigned char>(g.points.size(),1),
-            directional?"directional_mesh_wave":"mesh_wave",0};
+    WallDistanceResult r;
+    r.distance=std::move(d);
+    r.valid.assign(g.points.size(),1);
+    r.method=directional?"directional_mesh_wave":"mesh_wave";
+    r.iterations=0;
+    // F-W1: attribute the degenerate-normal fallbacks of the directional
+    // metric (the plain mesh wave never queries the surface normal).
+    r.nearest_normal_fallbacks=bvh.degenerate_normal_fallbacks();
+    return r;
 }
 
 inline double poisson_wall_offset(const WallDistanceBvh& bvh,
@@ -1947,6 +1976,11 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.poisson_wall_ray_misses=wa.ray_miss_count;
             r.poisson_wall_fallbacks=wa.fallback_count;
             r.poisson_wall_bad_alignment=wa.bad_alignment_count;
+            // F-W1: degenerate-normal fallbacks observed on the audited cut
+            // faces. nearest_normal() is only reached on the ray-miss
+            // fallback path of poisson_wall_offset_diagnostic(), so this
+            // counts the audited offsets whose fallback normal was degenerate.
+            r.nearest_normal_fallbacks=pbvh.degenerate_normal_fallbacks();
             r.poisson_wall_min_alignment=wa.min_alignment;
             r.poisson_phi_min=pa.phi_min;
             r.poisson_phi_max=pa.phi_max;
