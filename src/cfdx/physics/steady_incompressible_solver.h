@@ -975,6 +975,66 @@ inline cfdx::core::SparseMatrix impose_pcd_reference_row(
     return result;
 }
 
+// Coherent gauge for the nested algebraic-Schur pressure operators
+// (the LSC/BFBt stabilized operator). The coupled production system
+// imposes the pressure reference by eliminating the reference row AND
+// column and inserting a unit diagonal (see the reduced coupled
+// assembly), so the nested operator mirrors exactly that structure.
+//
+// The reference right-hand side entry is deliberately NOT zeroed and
+// the nested correction at the reference is deliberately NOT pinned to
+// zero: the outer Krylov iteration needs the gauge component of the
+// preconditioned residual to correct the coupled gauge row (see the
+// PR #832 note on the initial gauge row, and the measured
+// frozen-residual failure documented in pcd_schur.h). A fixed pressure
+// boundary already removes the constant null mode, so the caller
+// passes a sentinel (>= n) and this function is a no-op in that case.
+inline void apply_nested_schur_pressure_gauge(
+    cfdx::core::SparseMatrix& pressure_operator, std::size_t gauge_cell)
+{
+    const std::size_t n = pressure_operator.n_rows();
+    if (n == 0 || gauge_cell >= n)
+        return;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        pressure_operator.values_data()[k] = 0.0;
+    }
+    for (std::size_t row = 0; row < n; ++row) {
+        if (row == gauge_cell)
+            continue;
+        for (std::size_t k = pressure_operator.row_offsets_data()[row];
+             k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+            if (pressure_operator.columns_data()[k] == gauge_cell)
+                pressure_operator.values_data()[k] = 0.0;
+        }
+    }
+    bool ref_diag_set = false;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        if (pressure_operator.columns_data()[k] == gauge_cell) {
+            pressure_operator.values_data()[k] = 1.0;
+            ref_diag_set = true;
+            break;
+        }
+    }
+    if (!ref_diag_set) {
+        cfdx::core::SparseMatrix rebuilt(n, n);
+        for (std::size_t row = 0; row < n; ++row) {
+            if (row == gauge_cell) {
+                rebuilt.push_back(row, row, 1.0);
+                continue;
+            }
+            for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                 k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                rebuilt.push_back(row, pressure_operator.columns_data()[k],
+                                  pressure_operator.values_data()[k]);
+            }
+        }
+        rebuilt.finalize();
+        pressure_operator = std::move(rebuilt);
+    }
+}
+
 inline PcdPressureOperators assemble_pcd_pressure_operators(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1016,9 +1076,17 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
         nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
 
-    result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
-    result.convection_diffusion =
-        impose_pcd_reference_row(convection_diffusion.matrix, reference_cell);
+    // reference_cell is a gauge sentinel (>= nc) when a fixed pressure
+    // boundary already removes the constant null mode: keep the
+    // assembled operators untouched in that case.
+    if (reference_cell < nc) {
+        result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
+        result.convection_diffusion =
+            impose_pcd_reference_row(convection_diffusion.matrix, reference_cell);
+    } else {
+        result.laplacian = diffusion.matrix;
+        result.convection_diffusion = convection_diffusion.matrix;
+    }
     return result;
 }
 
@@ -1733,35 +1801,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     : LscBfbtSchurApproximation::Mode::BFBT,
                 q_diagonal);
 
-        for (std::size_t k = pressure_operator.row_offsets_data()[reference_cell];
-             k < pressure_operator.row_offsets_data()[reference_cell + 1]; ++k) {
-            pressure_operator.values_data()[k] = 0.0;
-        }
-        bool ref_diag_set = false;
-        for (std::size_t k = pressure_operator.row_offsets_data()[reference_cell];
-             k < pressure_operator.row_offsets_data()[reference_cell + 1]; ++k) {
-            if (pressure_operator.columns_data()[k] == reference_cell) {
-                pressure_operator.values_data()[k] = 1.0;
-                ref_diag_set = true;
-                break;
-            }
-        }
-        if (!ref_diag_set) {
-            SparseMatrix rebuilt(nc, nc);
-            for (std::size_t row = 0; row < nc; ++row) {
-                if (row == reference_cell) {
-                    rebuilt.push_back(row, row, 1.0);
-                    continue;
-                }
-                for (std::size_t k = pressure_operator.row_offsets_data()[row];
-                     k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
-                    rebuilt.push_back(row, pressure_operator.columns_data()[k],
-                                     pressure_operator.values_data()[k]);
-                }
-            }
-            rebuilt.finalize();
-            pressure_operator = std::move(rebuilt);
-        }
+        // Gauge the nested LSC/BFBt pressure operator ONLY when no fixed
+        // pressure boundary already removes the constant null mode (same
+        // sentinel policy as the reduced coupled system and the outer
+        // preconditioner), and mirror that reduced system exactly:
+        // reference row AND reference column eliminated with a unit
+        // diagonal. The nested solve keeps the raw right-hand side, so
+        // the gauge component passes through to the outer Krylov
+        // iteration (pinning it freezes the coupled gauge row residual;
+        // see apply_nested_schur_pressure_gauge).
+        const std::size_t lsc_gauge_cell = has_fixed_pressure
+            ? std::numeric_limits<std::size_t>::max() : reference_cell;
+        apply_nested_schur_pressure_gauge(pressure_operator, lsc_gauge_cell);
 
         auto pressure_preconditioner =
             std::shared_ptr<cfdx::core::Preconditioner>(
@@ -1813,10 +1864,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_pcd) {
+        // Same gauge policy as the LSC/BFBt path and the outer coupled
+        // system: a fixed pressure boundary already removes the constant
+        // null mode, so the PCD reference row is imposed only when there
+        // is no fixed pressure. The sentinel leaves the assembled
+        // pressure operators untouched in that case.
+        const std::size_t pcd_gauge_cell = has_fixed_pressure
+            ? std::numeric_limits<std::size_t>::max() : reference_cell;
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
-                reference_cell, ConvectionScheme::UPWIND));
+                pcd_gauge_cell, ConvectionScheme::UPWIND));
 
         const auto prepare_pcd_solver =
             [](const cfdx::core::SparseMatrix& matrix,
@@ -1918,7 +1976,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto pcd = std::make_unique<PcdSchurApproximation>(
             pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
             std::move(solve_kp), std::move(solve_fp),
-            std::nullopt, reference_cell);
+            std::nullopt,
+            has_fixed_pressure ? std::optional<std::size_t>()
+                               : std::optional<std::size_t>(reference_cell));
 
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
