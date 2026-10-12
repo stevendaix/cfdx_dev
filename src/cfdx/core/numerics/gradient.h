@@ -1,17 +1,17 @@
-// M0.7-T01 â Gauss gradient
+// M0.7-T01 — Gauss gradient
 //
-// SpÃ©cification CFDX v0.7 Â§28 :
-//   PremiÃ¨re implÃ©mentation : Gauss linear.
+// Spécification CFDX v0.7 §28 :
+//   Première implémentation : Gauss linear.
 //
-// Pour un champ scalaire Ï (Field<double, CELL>) :
-//   âÏ_c = (1/V_c) Î£_f Ï_f Sf_f
+// Pour un champ scalaire φ (Field<double, CELL>) :
+//   ∇φ_c = (1/V_c) Σ_f φ_f Sf_f
 //
-//   - Ï_f est interpolÃ© gÃ©omÃ©triquement Ã  partir des cellules owner/neighbour.
-//     Ï_f = (1-w) * Ï_owner + w * Ï_neighbour
-//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondÃ©ration gÃ©omÃ©trique)
-//   - Pour les faces de frontiÃ¨re, on utilise Ï_f = Ï_owner (zero-gradient).
+//   - φ_f est interpolé géométriquement à partir des cellules owner/neighbour.
+//     φ_f = (1-w) * φ_owner + w * φ_neighbour
+//     w = |Cf - C_owner| / |C_neighbour - C_owner|  (pondération géométrique)
+//   - Pour les faces de frontière, on utilise φ_f = φ_owner (zero-gradient).
 //
-// Le rÃ©sultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
+// Le résultat est un Field<double, CELL> de dimension 3 (le gradient est un vecteur
 // 3D par cellule). Le stockage est SoA (x, y, z contigus).
 
 #pragma once
@@ -37,9 +37,9 @@
 namespace cfdx {
 namespace core {
 
-// Calcule le poids d'interpolation gÃ©omÃ©trique pour une face.
+// Calcule le poids d'interpolation géométrique pour une face.
 // w = |Cf - C_owner| / |C_neighbour - C_owner|
-// Pour face frontiÃ¨re : w = 0 (zero gradient)
+// Pour face frontière : w = 0 (zero gradient)
 inline double geometric_interpolation_weight(
     const Vec3& face_centre,
     const Vec3& owner_centre,
@@ -57,7 +57,7 @@ inline double geometric_interpolation_weight(
     return std::min(1.0, std::max(0.0, dist_owner / dist_total));
 }
 
-// Calcule le gradient d'un champ scalaire cellulaire par la mÃ©thode Gauss.
+// Calcule le gradient d'un champ scalaire cellulaire par la méthode Gauss.
 //
 inline Field<double, Location::CELL> compute_gradient_gauss(
     const Field<double, Location::CELL>& cell_field,
@@ -1044,4 +1044,3 @@ inline Field<double, Location::CELL> cell_gradient(
 
 }  // namespace core
 }  // namespace cfdx
-
