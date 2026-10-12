@@ -218,6 +218,19 @@ inline double turbulence_nu_t(
     throw std::invalid_argument("unknown turbulence model");
 }
 
+// N11 F2 (#480): reporting overload. Historical five-argument call sites are
+// untouched, while qualification paths gain direct access to the read-level
+// floor report without repeating the default transport arguments.
+inline double turbulence_nu_t(
+    double k, double second, double strain, double wall_distance,
+    const TurbulenceTransportControls& c,
+    TurbulenceBoundDiagnostics* bound_report)
+{
+    return turbulence_nu_t(k, second, strain, wall_distance, c,
+                           -1.0, 1.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0,
+                           bound_report);
+}
+
 inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
 {
     if(!std::isfinite(c.density) || !std::isfinite(c.molecular_viscosity) ||
