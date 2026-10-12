@@ -5,7 +5,13 @@ Modes
 -----
 1. --validate-fiches
    Structural validation of every docs/audits/*.md fiche methode:
-   required sections, evidence header, at least one DOI/ISBN reference.
+   numbered sections 1..7, evidence header, at least one DOI/ISBN reference.
+   Numerical-method fiches must additionally carry the exact math-section
+   titles (2: formulation continue, 3: discretisation Volume Fini, 4:
+   traitement des frontieres, 5: pieges connus). Non-method fiches
+   (oracles/benchmark catalogue, reference-code policy) are exempt from the
+   math-title check but keep the numbered structure, Statut header and
+   DOI/ISBN requirements.
 2. --changed-files <file-list> [--pr-body <file>]
    Rule of Gold 1: any change under src/ (numerical core) must be accompanied
    by a reference to an approved fiche in docs/audits/ (either a changed
@@ -21,17 +27,29 @@ import re
 import sys
 from pathlib import Path
 
-REQUIRED_SECTIONS = [
-    "## 1. R\u00e9f\u00e9rences sources",
-    "## 2. Formulation continue",
-    "## 3. Discr\u00e9tisation Volume Fini",
-    "## 4. Traitement des fronti\u00e8res",
-    "## 5. Pi\u00e8ges connus",
-    "## 6. Ordre de pr\u00e9cision",
-    "## 7. Statut d'impl\u00e9mentation",
-]
+# Structural invariant shared by every fiche: sections numbered 1..7.
+REQUIRED_NUMBERED_SECTIONS = tuple(f"## {i}." for i in range(1, 8))
 
-REF_PATTERN = re.compile(r"(10\.\d{4,9}/\S+|ISBN[\s:]*[0-9\-\u2013 ]{9,17})", re.IGNORECASE)
+# Exact math-contract titles required on numerical-method fiches only.
+MATH_SECTION_TITLES = (
+    "## 2. Formulation continue",
+    "## 3. Discrétisation Volume Fini",
+    "## 4. Traitement des frontières",
+    "## 5. Pièges connus",
+)
+# Section 7 title accepts both apostrophe variants (ASCII and typographic).
+SECTION7_VARIANTS = (
+    "## 7. Statut d'implémentation",
+    "## 7. Statut d’implémentation",
+)
+# Fiches that are not numerical-method contracts (oracles catalogue,
+# reference-code policy): exempt from math-title checks, not from structure.
+NON_METHOD_FICHES = {
+    "07-benchmarks-references.md",
+    "08-codes-de-reference.md",
+}
+
+REF_PATTERN = re.compile(r"(10.d{4,9}/S+|ISBN[s:]*[0-9-– ]{9,17})", re.IGNORECASE)
 NUMERIC_PREFIXES = ("src/cfdx/core/numerics/", "src/cfdx/core/linalg/", "src/cfdx/physics/")
 
 
@@ -43,12 +61,18 @@ def validate_fiches(root: Path) -> list[str]:
         return ["docs/audits contains no fiche methode"]
     for fiche in fiches:
         text = fiche.read_text(encoding="utf-8")
-        for section in REQUIRED_SECTIONS:
+        for section in REQUIRED_NUMBERED_SECTIONS:
             if section not in text:
-                errors.append(f"{fiche.name}: missing section '{section}'")
+                errors.append(f"{fiche.name}: missing numbered section '{section}'")
+        if fiche.name not in NON_METHOD_FICHES:
+            for title in MATH_SECTION_TITLES:
+                if title not in text:
+                    errors.append(f"{fiche.name}: missing math section '{title}'")
+        if not any(variant in text for variant in SECTION7_VARIANTS):
+            errors.append(f"{fiche.name}: missing section 7 'Statut d'implémentation'")
         if not REF_PATTERN.search(text):
             errors.append(f"{fiche.name}: no DOI or ISBN reference found (Rule of Gold 1)")
-        if "Statut\u00a0:" not in text and "Statut:" not in text:
+        if "Statut :" not in text and "Statut:" not in text:
             errors.append(f"{fiche.name}: missing evidence header 'Statut'")
     return errors
 
@@ -59,7 +83,7 @@ def check_audit_gate(root: Path, changed: list[str], body: str) -> list[str]:
     if not numeric:
         return errors
     audit_files = [c for c in changed if c.startswith("docs/audits/")]
-    body_refs = re.findall(r"docs/audits/[A-Za-z0-9_.\u2013-]+\.md", body)
+    body_refs = re.findall(r"docs/audits/[A-Za-z0-9_.–-]+.md", body)
     if not audit_files and not body_refs:
         errors.append(
             "Rule of Gold 1 violation: this PR modifies the numerical core ("
