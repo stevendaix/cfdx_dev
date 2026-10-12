@@ -42,9 +42,19 @@ Ce dossier **ne duplique aucun registre existant** (cf. `docs/validation/CFDX_VV
 | [06-gradients-reconstruction.md](06-gradients-reconstruction.md) | Gradients Green–Gauss / moindres carrés (N2) | ✓ rédigée — PR #511 en attente |
 | [07-benchmarks-references.md](07-benchmarks-references.md) | Oracles de validation : Ghia, Poiseuille, Couette, MMS, GCI | ✓ rédigée |
 | [08-codes-de-reference.md](08-codes-de-reference.md) | SU2, OpenFOAM, Fluent, Basilisk — comparaisons croisisées | ✓ rédigée |
+| [09-turbulence-rans.md](09-turbulence-rans.md) | Turbulence RANS : k-ε, k-ω, SST, SA + lois de paroi | DRAFT — à approuver (Phase 3, audit du code Phase 10) |
+| [10-thermique-cht.md](10-thermique-cht.md) | Énergie ρ·cp, CHT multi-régions, Boussinesq | DRAFT — à approuver (Phase 3, audit du code Phase 11) |
+| [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | DRAFT — à approuver (Phase 3, audit du code Phase 12) |
+| [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | DRAFT — à approuver (Phases 6–7, N13) |
 
-Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, turbulence, rayonnement) seront créées **avant** toute implémentation correspondante (Phases 3–4 de la roadmap).
+Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont désormais rédigées : leur approbation conditionne toute promotion multiphysique (statuts BLOCKED du registre de qualification).
 
 ## Règle d'exception
 
 Aucune. Une fiche incomplète bloque la PR. Une fiche peut être marquée « PARTIAL » uniquement sur les sections « Statut CFDX », jamais sur les sections mathématiques (1–6).
+## Note d'infrastructure CI (2026-10-12)
+
+Pendant la qualification N9, un défaut **préexistant sur master** a été identifié et documenté (issue #858, correctif PR #857) : les workflows `cfdx-numerical.yml` (contenu dupliqué , YAML invalide) et `cfdx-validation.yml` (scalaire non quoté dans `application-e2e`) sont incapables de démarrer depuis les fusions du 5 octobre. Conséquence directe : chaque push produit deux « startup failures » et la « CFDX total validation » (schedule + label `validation-total`) est silencieusement inopérante. La chaîne d'évidence de la campagne N9 n'est **pas** affectée : elle repose sur `n9-campaign.yml` et `n9-physical-validation.yml`, workflows valides et indépendants. Aucune tolérance , aucun test, aucune politique n'est modifiée par le correctif #857.
+
+
+**Suivi (2026-10-12 : 17 h 00Z).** Depuis la rédaction de cette note : `#854` (constitution technique) a été fusionnée dans `master` (squash `c1a5b6e`, 16 h29Z) ; la preuve de guérison de `cfdx-numerical.yml` est acquise — le workflow a exécuté le correctif `#857` de bout en bout (run `#1826`, 7 min 45 s) ; et un conflit add/add sur `.github/workflows/precommit.yml` (step « Ruff diagnostics » ajouté indépendamment des deux côtés de la pile) a été résolu côté base (commit `4fe52f3a`, sur-ensemble fonctionnel couvrant aussi `scripts/n9_physical_campaign.py`), ce qui rétablit la fusionabilité de la PR empilée `#855` sans modifier le HEAD à qualifier.
