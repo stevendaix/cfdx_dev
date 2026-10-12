@@ -1,7 +1,7 @@
 Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
 Test project /home/runner/work/cfdx_dev/cfdx_dev/build
       Start  96: test_steady_incompressible_solver
- 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.01 sec
+ 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.00 sec
       Start 158: test_exact_schur
  2/19 Test #158: test_exact_schur ..........................   Passed    0.00 sec
       Start 159: test_n9_schur_oracle
@@ -25,7 +25,7 @@ Test project /home/runner/work/cfdx_dev/cfdx_dev/build
       Start 171: test_n8_schur_production_benchmark
 12/19 Test #171: test_n8_schur_production_benchmark ........   Passed    0.00 sec
       Start 172: test_n8_schur_representative_cfd
-13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.01 sec
+13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.00 sec
       Start 173: test_n8_schur_complete_krylov
 14/19 Test #173: test_n8_schur_complete_krylov .............   Passed    0.01 sec
       Start 175: test_n9_common_schur_qualification
@@ -54,23 +54,23 @@ Results: 3 passed, 1 failed
       Start 176: test_n9_s10_pressure_reference_policies
 16/19 Test #176: test_n9_s10_pressure_reference_policies ...   Passed    0.00 sec
       Start 177: test_n9_physical_matrix
-17/19 Test #177: test_n9_physical_matrix ...................   Passed  1360.84 sec
+17/19 Test #177: test_n9_physical_matrix ...................   Passed  917.14 sec
       Start 178: test_n9_s9_rhie_chow_consistency
 18/19 Test #178: test_n9_s9_rhie_chow_consistency ..........   Passed    0.00 sec
       Start 179: test_n9_negative_diagnostics
-19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.43 sec
+19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    0.90 sec
 
 95% tests passed, 1 tests failed out of 19
 
 Label Time Summary:
-long                = 1360.84 sec*proc (3 tests)
-n9                  = 1362.27 sec*proc (4 tests)
-phase13             =   0.01 sec*proc (1 test)
-qualification       = 1362.27 sec*proc (4 tests)
-validation          = 1362.28 sec*proc (5 tests)
-validation-total    = 1362.27 sec*proc (4 tests)
+long                = 917.14 sec*proc (3 tests)
+n9                  = 918.04 sec*proc (4 tests)
+phase13             =   0.00 sec*proc (1 test)
+qualification       = 918.04 sec*proc (4 tests)
+validation          = 918.05 sec*proc (5 tests)
+validation-total    = 918.04 sec*proc (4 tests)
 
-Total Test time (real) = 1362.51 sec
+Total Test time (real) = 918.13 sec
 
 The following tests FAILED:
 	175 - test_n9_common_schur_qualification (Failed)
