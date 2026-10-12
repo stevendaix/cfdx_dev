@@ -1,7 +1,7 @@
 Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
 Test project /home/runner/work/cfdx_dev/cfdx_dev/build
       Start  96: test_steady_incompressible_solver
- 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.00 sec
+ 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.01 sec
       Start 158: test_exact_schur
  2/19 Test #158: test_exact_schur ..........................   Passed    0.00 sec
       Start 159: test_n9_schur_oracle
@@ -25,7 +25,7 @@ Test project /home/runner/work/cfdx_dev/cfdx_dev/build
       Start 171: test_n8_schur_production_benchmark
 12/19 Test #171: test_n8_schur_production_benchmark ........   Passed    0.00 sec
       Start 172: test_n8_schur_representative_cfd
-13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.00 sec
+13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.01 sec
       Start 173: test_n8_schur_complete_krylov
 14/19 Test #173: test_n8_schur_complete_krylov .............   Passed    0.01 sec
       Start 175: test_n9_common_schur_qualification
@@ -46,7 +46,17 @@ n9_model=pcd true_residual=0.574593
 n9_model=mgr true_residual=0.620125
   PASS: n9_common_oseen_full_block_true_residual_multiplex
   PASS: n9_schur_gauge_row_column_semantics
-  FAILED: result.converged in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_common_schur_qualification.cpp:452
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=1 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=2 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=3 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=4 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=5 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=6 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=7 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=8 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=9 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+INCOMPRESSIBLE_ITER iter=10 momentum_residual_relative=1 continuity_normalized=2 velocity_change_inf=0 pressure_change_inf=0 alpha_u=1 alpha_p=1 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0 worst_momentum_cell=0 worst_momentum_patch=wall
+  FAILED: result.converged in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_common_schur_qualification.cpp:459
   FAIL: n9_schur_gauge_end_to_end_coupled_lsc_bfbt - Assertion failed: result.converged
 
 Results: 3 passed, 1 failed
@@ -54,23 +64,23 @@ Results: 3 passed, 1 failed
       Start 176: test_n9_s10_pressure_reference_policies
 16/19 Test #176: test_n9_s10_pressure_reference_policies ...   Passed    0.00 sec
       Start 177: test_n9_physical_matrix
-17/19 Test #177: test_n9_physical_matrix ...................   Passed  928.41 sec
+17/19 Test #177: test_n9_physical_matrix ...................   Passed  1348.99 sec
       Start 178: test_n9_s9_rhie_chow_consistency
 18/19 Test #178: test_n9_s9_rhie_chow_consistency ..........   Passed    0.00 sec
       Start 179: test_n9_negative_diagnostics
-19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.00 sec
+19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.44 sec
 
 95% tests passed, 1 tests failed out of 19
 
 Label Time Summary:
-long                = 928.41 sec*proc (3 tests)
-n9                  = 929.41 sec*proc (4 tests)
-phase13             =   0.00 sec*proc (1 test)
-qualification       = 929.41 sec*proc (4 tests)
-validation          = 929.41 sec*proc (5 tests)
-validation-total    = 929.41 sec*proc (4 tests)
+long                = 1349.00 sec*proc (3 tests)
+n9                  = 1350.44 sec*proc (4 tests)
+phase13             =   0.01 sec*proc (1 test)
+qualification       = 1350.44 sec*proc (4 tests)
+validation          = 1350.44 sec*proc (5 tests)
+validation-total    = 1350.44 sec*proc (4 tests)
 
-Total Test time (real) = 929.53 sec
+Total Test time (real) = 1350.71 sec
 
 The following tests FAILED:
 	175 - test_n9_common_schur_qualification (Failed)
