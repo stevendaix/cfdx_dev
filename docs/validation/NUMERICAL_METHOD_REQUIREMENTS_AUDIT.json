@@ -690,23 +690,27 @@
         "docs/validation/PCD_SCHUR_QUALIFICATION.md",
         "tests/unit/test_pcd_schur.cpp"
       ],
-      "note": "Implementation and production integration exist (#635); physical qualification remains incomplete because the -Fp^{-1} versus -Kp^{-1} operator ordering is untested on a non-zero-convection case, and preconditioner.pcd remains Planned in the registry."
+      "note": "Implementation and production integration exist (#635); the non-zero-convection Fp/Kp separation is exercised by the representative Schur envelope (#704), and the nested-gauge defect measured on the PCD harness was corrected by #856 (commit 6e94bcd3). The registry maturity for preconditioner.pcd remains Planned (naming honesty); the production selection path is the persisted Schur family (schur.pcd)."
     },
     {
       "package_id": "N8",
       "requirement": "pressure null-space policy",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
-        "tests/validation/test_phase9_acceptance.cpp"
-      ]
+        "tests/validation/test_phase9_acceptance.cpp",
+        "tests/unit/test_n8_pinned_pressure_gauge.cpp"
+      ],
+      "note": "Pinned reference-cell gauge semantics verified across Exact, SIMPLE, SIMPLEC, LSC, BFBT and PCD (#791); the constant mean-zero projector is demonstrably not applied blindly to the pinned RHS; the nested-operator coupled gauge correction is merged via #856 (commit 6e94bcd3)."
     },
     {
       "package_id": "N8",
       "requirement": "AMG anisotropy/scaling benchmark",
-      "status": "partial",
+      "status": "verified",
       "evidence": [
+        "tests/validation/test_n8_amg_anisotropy_scaling.cpp",
         "docs/validation/M1_M4_VERIFICATION_PLAN.md"
-      ]
+      ],
+      "note": "Explicit anisotropy sweep over directional coefficient ratios 1/10/100/1000 for Direct-CF and Smoothed Aggregation (#678): hierarchy construction, one-V-cycle energy contraction, independently recomputed true residual and full-CG convergence. Serial evidence only; no MPI/GPU scaling claim."
     },
     {
       "package_id": "N9",
