@@ -27,10 +27,10 @@ Légende — Implémenté / Test / Oracle / SHA : ✓ = prouvé, ~ = partiel, �
 
 | Domaine | Fiche méthode | Benchmark exigé | Statut |
 |---|---|---|---|
-| Turbulence RANS + lois de paroi | [09](docs/audits/09-turbulence-rans.md) | canal turbulent, couche limite plate (`TUR-CHANNEL’, `TUR-FLATPLATE’) | BLOCKED (Phase 1) — fiche rédigée, à approuver |
-| Thermique/CHT multi-régions | [10](docs/audits/10-thermique-cht.md) | bilans d'énergie à l'interface fluide–solide | BLOCKED (Phase 1) — fiche rédigée, à approuver |
-| Rayonnement couplé | [11](docs/audits/11-rayonnement.md) | cavité chauffée, bilans S2S/P1/Rosseland | BLOCKED (Phase 1) — fiche rédigée, à approuver |
-| GPU/OOC | [12](docs/audits/12-parallelisme-gpu-ooc.md) | équivalence CPU/MPI/GPU 1e-12, OOC au-delà de la VRAM sans fallback | BLOCKED (Phase 1) — fiche rédigée, à approuver |
+| Turbulence RANS + lois de paroi | [09](docs/audits/09-turbulence-rans.md) | canal turbulent, couche limite plate (`TUR-CHANNEL’, `TUR-FLATPLATE’) | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #PR_NUM_09_12) ; audit du code contre la fiche requis avant toute promotion |
+| Thermique/CHT multi-régions | [10](docs/audits/10-thermique-cht.md) | bilans d'énergie à l'interface fluide–solide | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #PR_NUM_09_12) ; audit du code contre la fiche requis avant toute promotion |
+| Rayonnement couplé | [11](docs/audits/11-rayonnement.md) | cavité chauffée, bilans S2S/P1/Rosseland | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #PR_NUM_09_12) ; audit du code contre la fiche requis avant toute promotion |
+| GPU/OOC | [12](docs/audits/12-parallelisme-gpu-ooc.md) | équivalence CPU/MPI/GPU 1e-12, OOC au-delà de la VRAM sans fallback | BLOCKED (Phase 1) — fiche approuvée le 2026-10-12 (PR #PR_NUM_09_12) ; audit du code contre la fiche requis avant toute promotion |
 
 ## Phase 4 — Avancé (VOF/PLIC, maillage dynamique, FSI, GUI) — BLOCKED (Phase 3)
 
