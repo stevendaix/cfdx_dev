@@ -424,6 +424,22 @@ int main() {
                 IncompressibleSolverControls c;
                 c.algorithm = PressureVelocityAlgorithm::COUPLED;
                 c.coupling.schur_model = model;
+                // Test-contract fix: the gauged two-cell problem is linear,
+                // so full Picard relaxation (alpha_u = alpha_p = 1) lands
+                // on the exact solution at the first coupled linear solve
+                // and every per-criterion convergence gate is green by
+                // iteration 2. With the default relaxed update
+                // (alpha_u = 0.7, alpha_p = 0.3) the pressure error
+                // contracts by 0.7 per iteration: p going 7.0 -> 3.0
+                // needs ~79 iterations to push pressure_change_inf below
+                // the 1e-12 relative gate, so the max_iterations = 10
+                // budget below could never converge for a reason
+                // unrelated to the gauge handling and the LSC/BFBT Schur
+                // approximations this guard qualifies. The failing run
+                // 38224806432 (converged=false at line 436) was this
+                // budget mismatch, not a gauge<->Krylov defect.
+                c.coupling.alpha_u = 1.0;
+                c.coupling.alpha_p = 1.0;
                 c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
                 c.pressure_reference_cell = 0;
                 c.pressure_reference_value = 3.0;
@@ -450,6 +466,22 @@ int main() {
                 IncompressibleSolverControls c;
                 c.algorithm = PressureVelocityAlgorithm::COUPLED;
                 c.coupling.schur_model = model;
+                // Test-contract fix: the gauged two-cell problem is linear,
+                // so full Picard relaxation (alpha_u = alpha_p = 1) lands
+                // on the exact solution at the first coupled linear solve
+                // and every per-criterion convergence gate is green by
+                // iteration 2. With the default relaxed update
+                // (alpha_u = 0.7, alpha_p = 0.3) the pressure error
+                // contracts by 0.7 per iteration: p going 7.0 -> 3.0
+                // needs ~79 iterations to push pressure_change_inf below
+                // the 1e-12 relative gate, so the max_iterations = 10
+                // budget below could never converge for a reason
+                // unrelated to the gauge handling and the LSC/BFBT Schur
+                // approximations this guard qualifies. The failing run
+                // 38224806432 (converged=false at line 436) was this
+                // budget mismatch, not a gauge<->Krylov defect.
+                c.coupling.alpha_u = 1.0;
+                c.coupling.alpha_p = 1.0;
                 c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
                 c.pressure_reference_cell = 0;
                 c.pressure_reference_value = 3.0;
