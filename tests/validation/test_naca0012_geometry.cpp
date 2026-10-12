@@ -2,6 +2,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "qualification_boundary_helpers.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -21,7 +22,7 @@ struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 // the CI variant matrix can separate a genuine solver defect from
 // algorithm/relaxation dynamics (SIMPLEC and the coupled Picard iteration
 // have canonical configurations the baseline matrix never exercised).
-static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0)
+static Forces run(const std::string& path,std::size_t level,const char* algo_name="SIMPLE",PressureVelocityAlgorithm algo=PressureVelocityAlgorithm::SIMPLE,CoupledSchurModel schur=CoupledSchurModel::BlockLocal,double alpha_u=0.6,double alpha_p=0.25,std::size_t trace_freq=200,bool coupled_diag=false,long stagwindow=0,std::size_t sweeps=0,bool opprobe=false,bool debug_cell_auto=false,double coupled_tol=0.0,double conv_tol=0.0)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -64,6 +65,17 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     c.convergence.max_iterations=8000;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
+    // DIAG (iteration-utility branch): --convtol X (X>0) sets BOTH outer
+    // stopping criteria (momentum relative and continuity) to X, tighter or
+    // looser than the harness default 1e-8, to measure the cost/precision
+    // curve of the quantities of interest (Cd and its pressure/viscous
+    // split, Cl, continuity) against the stopping criterion. MEASUREMENT
+    // knob for this diagnostic campaign only: no solver, gate or equation
+    // change, and the qualified fix4b/fix4c gates are untouched.
+    if(conv_tol>0.0){
+        c.convergence.relative_tolerance=conv_tol;
+        c.convergence.continuity_tolerance=conv_tol;
+    }
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.use_bounded_convection=true;
     c.convection_scheme=ConvectionScheme::UPWIND;
@@ -97,7 +109,10 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
     cfdx::validation::exercise_new_velocity_bc_contract(
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
+    const auto t_solve_start=std::chrono::steady_clock::now();
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    const double solve_seconds=std::chrono::duration<double>(
+        std::chrono::steady_clock::now()-t_solve_start).count();
 
     // DIAG (temporary branch): the production solve stalls with a frozen
     // continuity floor. Attribute the divergence of the authoritative
@@ -203,6 +218,14 @@ static Forces run(const std::string& path,std::size_t level,const char* algo_nam
              <<" continuity="<<last.continuity_linf
              <<" iterations="<<solve.iterations
              <<" alpha_u="<<alpha_u<<" alpha_p="<<alpha_p<<"\n";
+    // DIAG (iteration-utility branch): one compact line per run for the
+    // cost/precision campaign: stopping tolerance vs iterations, wall time
+    // and the quantities of interest at that stopping point.
+    std::cout<<"ITER_UTILITY algo="<<algo_name<<" convtol="<<conv_tol
+             <<" iterations="<<solve.iterations
+             <<" seconds="<<solve_seconds
+             <<" Cd="<<cd<<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
+             <<" Cl="<<cl<<" continuity="<<last.continuity_linf<<"\n";
     return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
 }
 
@@ -255,6 +278,7 @@ int main(int argc,char**argv)
     bool var_opprobe=false;
     bool var_debugcell=false;
     double var_coupled_tol=0.0;
+    double var_conv_tol=0.0;
     std::vector<std::string> positional;
     for(int i=1;i<argc;++i){
         const std::string a=argv[i];
@@ -268,6 +292,7 @@ int main(int argc,char**argv)
         if(a=="--opprobe" && i+1<argc){ var_opprobe=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--debugcell" && i+1<argc){ var_debugcell=(std::atoi(argv[++i])!=0); continue; }
         if(a=="--coupledtol" && i+1<argc){ var_coupled_tol=std::atof(argv[++i]); continue; }
+        if(a=="--convtol" && i+1<argc){ var_conv_tol=std::atof(argv[++i]); continue; }
         positional.push_back(a);
     }
     if(var_levels==0 || var_levels>3)
@@ -284,6 +309,10 @@ int main(int argc,char**argv)
     // used to relax numerical precision. 0 = keep the solver default.
     if(!(var_coupled_tol>=0.0) || (var_coupled_tol>0.0 && var_coupled_tol>1e-10))
         throw std::invalid_argument("--coupledtol must be in (0,1e-10] (tighter than or equal to the solver default) or 0 = solver default");
+    // DIAG (iteration-utility branch): outer stopping tolerance for the
+    // cost/precision measurement campaign; 0 keeps the harness default (1e-8).
+    if(!(var_conv_tol>=0.0) || (var_conv_tol>0.0 && (var_conv_tol<1e-12 || var_conv_tol>1e-2)))
+        throw std::invalid_argument("--convtol must be in [1e-12,1e-2] or 0 = harness default");
     std::cout<<std::setprecision(2)
              <<"NACA_CONFIG alpha_u="<<var_alpha_u
              <<" alpha_p="<<var_alpha_p
@@ -294,7 +323,7 @@ int main(int argc,char**argv)
              <<" opprobe="<<(var_opprobe?1:0)
              <<" sweeps="<<var_sweeps
              <<" debugcell="<<(var_debugcell?1:0)
-             <<" coupledtol="<<var_coupled_tol<<"\n";
+             <<" coupledtol="<<var_coupled_tol<<" convtol="<<var_conv_tol<<"\n";
 
     const bool quick=!positional.empty() && positional[0]=="--quick";
     if(quick) {
@@ -346,7 +375,7 @@ int main(int argc,char**argv)
         for(std::size_t i=0;i<var_levels;++i){
             try {
                 const Forces f=run(meshes[i],64u<<i,cfg.name,cfg.algo,cfg.schur,
-                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol);
+                                   var_alpha_u,var_alpha_p,var_trace,var_coupled_diag,var_stagwindow,var_sweeps,var_opprobe,var_debugcell,var_coupled_tol,var_conv_tol);
                 if(is_reference) r.push_back(f);
             }
             catch(const std::exception& e){
