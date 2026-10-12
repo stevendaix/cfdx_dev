@@ -448,6 +448,13 @@ int main() {
                 c.convergence.relative_tolerance = 1e-12;
                 c.linear_max_iterations = 100;
                 c.linear_tolerance = 1e-12;
+                // Forensic trace for the e2e guard (measurement only):
+                // per-iteration criterion values are committed to the CI
+                // log so a gate failure is attributed with measured
+                // numbers (Picard budget vs linear-solve noise floor vs
+                // gauge-chain defect) instead of a bare converged=false.
+                c.diagnostics.iteration_trace = true;
+                c.diagnostics.iteration_trace_frequency = 1;
                 const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
                 EXPECT_TRUE(result.converged);
                 EXPECT_NEAR(p(0), 3.0, 1e-10);
@@ -490,6 +497,13 @@ int main() {
                 c.convergence.relative_tolerance = 1e-12;
                 c.linear_max_iterations = 100;
                 c.linear_tolerance = 1e-12;
+                // Forensic trace for the e2e guard (measurement only):
+                // per-iteration criterion values are committed to the CI
+                // log so a gate failure is attributed with measured
+                // numbers (Picard budget vs linear-solve noise floor vs
+                // gauge-chain defect) instead of a bare converged=false.
+                c.diagnostics.iteration_trace = true;
+                c.diagnostics.iteration_trace_frequency = 1;
                 const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
                 EXPECT_TRUE(result.converged);
                 EXPECT_NEAR(p(0), 5.0, 1e-10);
