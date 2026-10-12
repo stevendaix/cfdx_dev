@@ -24,6 +24,14 @@ name: Schur pressure gauge fix validation
 # configure now mirrors the flags proven to build in the fix4b/fix4c
 # workflows (MPI ON + parallel HDF5 ON + openmpi dev packages): the
 # earlier "transient runner failure" hypothesis is refuted.
+#
+# v3 (gate-honesty fix, NO solver/test/threshold change): run #4 exposed
+# a false green. The ctest step piped into tee WITHOUT pipefail, so the
+# step exit code was tee's (0), steps.tests.outcome == 'success', and
+# the Final gate passed vacuously while the committed output log showed
+# 175 - test_n9_common_schur_qualification FAILED. The build step
+# already had 'set -o pipefail' for exactly this reason; the ctest step
+# now sets it too, so the gate actually fails when ctest fails.
 
 on:
   workflow_dispatch:
@@ -92,6 +100,7 @@ jobs:
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
+          set -o pipefail
           ctest --test-dir build --output-on-failure --no-tests=error \
             -R 'test_n9_common_schur_qualification|test_n9_s10_pressure_reference_policies|test_n9_s9_rhie_chow_consistency|test_n9_negative_diagnostics|test_n9_physical_matrix|test_n9_schur_oracle|test_exact_schur|test_simplerc_schur|test_lsc_bfbt_schur|test_lsc_bfbt_schur_null_space|test_pcd_schur|test_schur_approximation_comparison|test_schur_quantitative_qualification|test_coupled_schur_selection|test_coupled_block_schur_amg|test_n8_schur_production_benchmark|test_n8_schur_representative_cfd|test_n8_schur_complete_krylov|test_steady_incompressible_solver' \
             2>&1 | tee schur-gauge-fix-output.log
