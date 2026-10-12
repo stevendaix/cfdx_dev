@@ -1,0 +1,201 @@
+name: NACA0012 convection scheme sensitivity matrix
+
+# DIAG (temporary branch, never merged): convection-scheme campaign for the
+# NACA0012 Re=1000 alpha=0 qualification case. The fix4c matrix (run
+# 38213173171) QUALIFIED the case with the default UPWIND scheme (COUPLED
+# tol 1e-12, all levels CONVERGED, mesh gate |d12|<=d01 satisfied). UPWIND
+# is first order and adds numerical diffusion, so the qualified Cd is
+# expected to sit above the physical reference (Di Ilio et al. 2020,
+# arXiv:2006.10487: Cd=0.119 at Re=1000, alpha=0; CFDX n256 gives 0.13,
+# +9%). This branch measures whether the OTHER production ConvectionScheme
+# values (SECOND_ORDER_UPWIND / TVD / CENTRAL / BLENDED / QUICK /
+# QUICK_BOUNDED, all deferred corrections riding the conservative upwind
+# matrix, propagated through the segregated AND coupled momentum assembly)
+# converge on the same case and what they do to Cd/Cd_pressure/Cd_viscous:
+#   * n64 COUPLED_BLOCKLOCAL: all 7 schemes (UPWIND = qualified reference
+#     point, coupledtol stays 1e-12).
+#   * n128 COUPLED_BLOCKLOCAL: SECOND_ORDER_UPWIND / TVD / QUICK_BOUNDED
+#     subset to check scheme conclusions survive mesh refinement.
+#   * n64 SIMPLE: TVD / QUICK_BOUNDED to probe the segregated path.
+# A scheme sweep is a MEASUREMENT, not a gate change: the qualified
+# fix4b/fix4c gates and thresholds are untouched. Higher-order deferred
+# corrections with alpha_u=0.6 may oscillate or stagnate: a
+# STAGNATED/MAX_ITER variant is a documented CAMPAIGN RESULT, not a harness
+# bug (logs are still uploaded and committed; the aggregate runs
+# unconditionally). Evidence logs are committed back to this branch
+# (paths-ignore prevents re-triggering).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/naca-scheme-sensitivity]
+    paths-ignore:
+      - 'naca-scheme-output.log'
+      - 'naca-scheme-summary.log'
+
+permissions:
+  contents: write
+
+jobs:
+  variant:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: n64-coupled-upwind, model: COUPLED_BLOCKLOCAL, scheme: UPWIND, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-sou, model: COUPLED_BLOCKLOCAL, scheme: SECOND_ORDER_UPWIND, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-tvd, model: COUPLED_BLOCKLOCAL, scheme: TVD, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-central, model: COUPLED_BLOCKLOCAL, scheme: CENTRAL, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-blended, model: COUPLED_BLOCKLOCAL, scheme: BLENDED, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-quick, model: COUPLED_BLOCKLOCAL, scheme: QUICK, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-coupled-quickb, model: COUPLED_BLOCKLOCAL, scheme: QUICK_BOUNDED, cdt: "1e-12", mesh: naca0012_laminar_n64.h5 }
+          - { name: n128-coupled-sou, model: COUPLED_BLOCKLOCAL, scheme: SECOND_ORDER_UPWIND, cdt: "1e-12", mesh: naca0012_laminar_n128.h5 }
+          - { name: n128-coupled-tvd, model: COUPLED_BLOCKLOCAL, scheme: TVD, cdt: "1e-12", mesh: naca0012_laminar_n128.h5 }
+          - { name: n128-coupled-quickb, model: COUPLED_BLOCKLOCAL, scheme: QUICK_BOUNDED, cdt: "1e-12", mesh: naca0012_laminar_n128.h5 }
+          - { name: n64-simple-tvd, model: SIMPLE, scheme: TVD, cdt: "0", mesh: naca0012_laminar_n64.h5 }
+          - { name: n64-simple-quickb, model: SIMPLE, scheme: QUICK_BOUNDED, cdt: "0", mesh: naca0012_laminar_n64.h5 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv .venv-naca
+          .venv-naca/bin/python -m pip install --upgrade pip
+          .venv-naca/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh
+
+      - name: Generate NACA0012 O-grid meshes (n64/n128/n256)
+        run: |
+          mkdir -p build-naca/validation_meshes
+          .venv-naca/bin/python scripts/generate_2d_validation_meshes.py naca0012 \
+            --output-dir build-naca/validation_meshes
+
+      - name: Configure (Release, long validation ON)
+        run: |
+          cmake -S . -B build-naca -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv-naca/bin/python"
+
+      - name: Build test_naca0012_qualification
+        run: |
+          set -o pipefail
+          cmake --build build-naca --target test_naca0012_qualification --parallel 2
+
+      - name: Run variant ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build-naca/test_naca0012_qualification \
+            --model ${{ matrix.model }} \
+            --alphau 0.6 --alphap 0.25 \
+            --levels 1 --trace 10 \
+            --convtol 0 \
+            --coupledtol ${{ matrix.cdt }} \
+            --scheme ${{ matrix.scheme }} \
+            build-naca/validation_meshes/${{ matrix.mesh }} \
+            2>&1 | tee naca-scheme-${{ matrix.name }}.log
+
+      - name: Enforce convergence gates
+        if: success()
+        env:
+          VARIANT_LOG: naca-scheme-${{ matrix.name }}.log
+        run: |
+          set -euo pipefail
+          awk '
+            /NACA_DIAG status=/ {
+              count++
+              if ($0 !~ /NACA_DIAG status=CONVERGED converged=1/) {
+                print "NUMERICAL_GATE_FAIL: " $0 > "/dev/stderr"
+                bad=1
+              }
+            }
+            END {
+              if (count != 1) {
+                printf "NUMERICAL_GATE_FAIL: expected 1 level verdict, found %d\n", count > "/dev/stderr"
+                bad=1
+              }
+              exit bad
+            }
+          ' "$VARIANT_LOG"
+
+      - name: Upload variant log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naca-scheme-logs-${{ matrix.name }}
+          path: naca-scheme-${{ matrix.name }}.log
+          if-no-files-found: warn
+
+  aggregate:
+    name: Aggregate scheme matrix logs and commit evidence
+    needs: [variant]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all variant logs
+        uses: actions/download-artifact@v4
+        with:
+          path: variant-logs
+          pattern: naca-scheme-logs-*
+          merge-multiple: true
+
+      - name: Assemble combined log
+        run: |
+          : > naca-scheme-output.log
+          for v in n64-coupled-upwind n64-coupled-sou n64-coupled-tvd n64-coupled-central n64-coupled-blended n64-coupled-quick n64-coupled-quickb n128-coupled-sou n128-coupled-tvd n128-coupled-quickb n64-simple-tvd n64-simple-quickb; do
+            if [ -f "variant-logs/naca-scheme-$v.log" ]; then
+              echo "NACA_VARIANT_BEGIN $v" >> naca-scheme-output.log
+              cat "variant-logs/naca-scheme-$v.log" >> naca-scheme-output.log
+              echo "NACA_VARIANT_END $v" >> naca-scheme-output.log
+            else
+              echo "NACA_VARIANT_MISSING variant=$v" >> naca-scheme-output.log
+            fi
+          done
+          echo "AGGREGATE_SECTIONS=$(grep -c 'NACA_VARIANT_BEGIN' naca-scheme-output.log)/12" >> naca-scheme-output.log
+
+      - name: Extract compact summary
+        run: |
+          set -euo pipefail
+          : > naca-scheme-summary.log
+          for v in n64-coupled-upwind n64-coupled-sou n64-coupled-tvd n64-coupled-central n64-coupled-blended n64-coupled-quick n64-coupled-quickb n128-coupled-sou n128-coupled-tvd n128-coupled-quickb n64-simple-tvd n64-simple-quickb; do
+            sed -n "/^NACA_VARIANT_BEGIN $v$/,/^NACA_VARIANT_END $v$/p" naca-scheme-output.log > /tmp/variant.log
+            if [ -s /tmp/variant.log ]; then
+              awk '/NACA_CONFIG|NACA_DIAG status=|NACA0012_RE1000_A0|ITER_UTILITY|rejected|EXCEPTION/' /tmp/variant.log >> naca-scheme-summary.log
+              awk '/INCOMPRESSIBLE_ITER/' /tmp/variant.log | tail -n 4 >> naca-scheme-summary.log
+            else
+              echo "SUMMARY_VARIANT_MISSING $v" >> naca-scheme-summary.log
+            fi
+          done
+          awk '/NACA_VARIANT_MISSING|AGGREGATE_SECTIONS/' naca-scheme-output.log >> naca-scheme-summary.log
+          test -s naca-scheme-summary.log
+
+      - name: Commit combined and summary logs to diagnostic branch (fail loudly)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add naca-scheme-output.log naca-scheme-summary.log
+          if git diff --cached --quiet; then
+            echo "AGGREGATE_ERROR: nothing staged to commit" >&2
+            exit 1
+          fi
+          git commit -m "diag(naca0012): capture scheme-sensitivity matrix logs [skip ci]"
+          git pull --rebase --autostash
+          git push
+          echo "AGGREGATE_OK: logs committed on $(git rev-parse HEAD)"
