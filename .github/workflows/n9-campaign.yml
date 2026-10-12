@@ -1,0 +1,95 @@
+name: N9 qualification campaign
+
+# Full N9 pressure-velocity campaign driver (physical matrix + negative
+# diagnostics + Rhie-Chow consistency + pressure reference policies + Schur
+# qualification + production paths). Opt-in, same label as the heavy N9-S7
+# matrix job: it runs only for pull requests carrying the validation-total
+# label. The driver fails (exit 1) unless every declared test executed and
+# passed on the exact PR HEAD, with the evidence retained as a JSON report.
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n9-campaign-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-n9-campaign
+
+jobs:
+  n9-campaign:
+    name: N9 Qualification Campaign
+    if: contains(github.event.pull_request.labels.*.name, 'validation-total')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure N9 campaign build
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build N9 campaign test targets
+        run: |
+          cmake --build "$BUILD_DIR" \
+            --target \
+              test_n9_physical_matrix \
+              test_n9_negative_diagnostics \
+              test_n9_s9_rhie_chow_consistency \
+              test_n9_s10_pressure_reference_policies \
+              test_n9_common_schur_qualification \
+              test_poiseuille_diagnostics \
+              test_ghia_cavity \
+              test_phase9_acceptance \
+              test_steady_incompressible_solver \
+            --parallel 2
+
+      - name: Build optional MPI equivalence target
+        continue-on-error: true
+        run: |
+          cmake --build "$BUILD_DIR" \
+            --target test_n13_mpi_equivalence \
+            --parallel 2 \
+          || echo "::warning::test_n13_mpi_equivalence is not buildable in this configuration; the campaign driver will record it as absent (declared optional evidence, not a silent skip)"
+
+      - name: Run N9 qualification campaign
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/n9_physical_campaign.py \
+            --build-dir "$BUILD_DIR" \
+            --expected-git-sha "$GITHUB_SHA" \
+            2>&1 | tee "$BUILD_DIR/n9-campaign.log"
+
+      - name: Upload N9 campaign evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n9-campaign-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: |
+            ${{ env.BUILD_DIR }}/n9-campaign.log
+            ${{ env.BUILD_DIR }}/n9_physical_campaign.json
+            ${{ env.BUILD_DIR }}/Testing/
+          if-no-files-found: warn
+          retention-days: 30
