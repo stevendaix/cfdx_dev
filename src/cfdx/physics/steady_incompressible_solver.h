@@ -1029,13 +1029,25 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
         nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
 
-    // reference_cell is a gauge sentinel (>= nc) when a fixed pressure
-    // boundary already removes the constant null mode: keep the
-    // assembled operators untouched in that case.
-    if (reference_cell < nc) {
-        result.laplacian = impose_pcd_reference_row(diffusion.matrix, reference_cell);
+    // A fixed pressure boundary already removes the constant null mode of
+    // the pressure operators, so the gauge reference row is imposed only
+    // when no such boundary exists. The fixed-pressure decision is made
+    // here, from pressure_bcs, so every caller passes its true reference
+    // cell and the caller-side gauge policy cannot drift from the
+    // assembly. A gauge sentinel (>= nc) still leaves the operators
+    // untouched for direct callers that pass one.
+    bool fixed_pressure_gauge = false;
+    for (const auto& [bc_name, bc] : pressure_bcs) {
+        (void)bc_name;
+        fixed_pressure_gauge = fixed_pressure_gauge ||
+            bc.type == ScalarBoundaryType::FIXED_VALUE;
+    }
+    const std::size_t gauge_cell = fixed_pressure_gauge
+        ? std::numeric_limits<std::size_t>::max() : reference_cell;
+    if (gauge_cell < nc) {
+        result.laplacian = impose_pcd_reference_row(diffusion.matrix, gauge_cell);
         result.convection_diffusion =
-            impose_pcd_reference_row(convection_diffusion.matrix, reference_cell);
+            impose_pcd_reference_row(convection_diffusion.matrix, gauge_cell);
     } else {
         result.laplacian = diffusion.matrix;
         result.convection_diffusion = convection_diffusion.matrix;
@@ -1877,17 +1889,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_pcd) {
-        // Same gauge policy as the LSC/BFBt path and the outer coupled
-        // system: a fixed pressure boundary already removes the constant
-        // null mode, so the PCD reference row is imposed only when there
-        // is no fixed pressure. The sentinel leaves the assembled
-        // pressure operators untouched in that case.
-        const std::size_t pcd_gauge_cell = has_fixed_pressure
-            ? std::numeric_limits<std::size_t>::max() : reference_cell;
         auto pcd_ops = std::make_shared<PcdPressureOperators>(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
-                pcd_gauge_cell, ConvectionScheme::UPWIND));
+                reference_cell, ConvectionScheme::UPWIND/* exact matrix for every scheme, see assemble_pcd_pressure_operators */));
 
         const auto prepare_pcd_solver =
             [](const cfdx::core::SparseMatrix& matrix,
