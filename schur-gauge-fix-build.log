@@ -1,0 +1,52 @@
+[1/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[2/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o
+[3/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[4/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o
+[5/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[6/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[7/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[8/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[9/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[10/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[11/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[12/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[13/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[14/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:85:49: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   85 |         const std::uint32_t off = cell_offsets[c];
+      |                                   ~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:86:59: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   86 |         const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+      |                                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:91:58: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   91 |             const std::uint32_t face = cell_faces[off + k];
+      |                                        ~~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:92:61: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   92 |             const std::uint32_t fv_begin = face_offsets[face];
+      |                                            ~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:93:63: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   93 |             const std::uint32_t fv_end = face_offsets[face + 1];
+      |                                          ~~~~~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:118:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  118 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_cells(std::ofstream&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, const std::vector<unsigned int>&, const std::vector<long unsigned int>&, const cfdx::core::Mesh&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp:204:40: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+  204 |                 for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+      |                                        ^~~~~~~~
+[15/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[16/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[17/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[18/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[19/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
+FAILED: [code=1] CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o 
+/usr/bin/c++ -DCFDX_HAS_HDF5=1 -DCFDX_HAS_MPI=0 -DCFDX_PYTHON_EXECUTABLE=\"/usr/bin/python3.12\" -DCFDX_SOURCE_DIR=\"/home/runner/work/cfdx_dev/cfdx_dev\" -I/home/runner/work/cfdx_dev/cfdx_dev/src -I/usr/include/hdf5/openmpi -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o -MF CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o.d -o CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o -c /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/hdf5/hdf5_writer.cpp
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/hdf5/hdf5_writer.cpp:6:
+/usr/include/hdf5/openmpi/H5public.h:67:10: fatal error: mpi.h: No such file or directory
+   67 | #include <mpi.h>
+      |          ^~~~~~~
+compilation terminated.
+[20/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+ninja: build stopped: subcommand failed.
