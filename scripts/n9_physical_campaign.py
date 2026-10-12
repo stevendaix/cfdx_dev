@@ -234,9 +234,7 @@ def build_descriptive_coverage(
     )
     coverage: dict[str, dict[str, object]] = {}
     for marker, meta in DESCRIPTIVE_MARKERS.items():
-        observed = sum(
-            1 for line in matrix_output.splitlines() if marker in line
-        )
+        observed = sum(1 for line in matrix_output.splitlines() if marker in line)
         coverage[marker] = {
             "what": meta["what"],
             "reference": meta["reference"],

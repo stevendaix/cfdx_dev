@@ -44,6 +44,20 @@ jobs:
         env:
           CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
 
+      - name: Ruff diagnostics (annotate exact lint/format findings)
+        if: failure()
+        run: |
+          for f in scripts/check_audit_gate.py scripts/n9_physical_campaign.py; do
+            [ -f "$f" ] || continue
+            fmt=$(ruff format --diff "$f" 2>&1 | head -c 800 || true)
+            if [ -n "$fmt" ]; then
+              echo "::error title=ruff format ${f}::$(printf '%s' "$fmt" | tr '\n' '|' || true)"
+            fi
+            chk=$(ruff check "$f" 2>&1 | grep -v "All checks passed" | head -c 800 || true)
+            if [ -n "$chk" ]; then
+              echo "::error title=ruff check ${f}::$(printf '%s' "$chk" | tr '\n' '|' || true)"
+            fi
+          done
       - name: Run CFDX fast build/test guard
         run: pre-commit run cfdx-fast --all-files
         env:
