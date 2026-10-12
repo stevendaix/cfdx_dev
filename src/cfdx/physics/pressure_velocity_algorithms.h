@@ -58,7 +58,16 @@ struct CouplingControls {
     // Rhie-Chow pressure block makes the collocated formulation nonsingular
     // after pressure gauge fixing.
     std::size_t coupled_max_iterations = 2000;
-    double coupled_linear_tolerance = 1e-10;
+    // Default tightened from 1e-10. At 1e-10 the coupled FGMRES true
+    // relative residual floors at ~9.94e-11 with an absolute momentum
+    // residual floor of ~2.4e-10 (stable within 0.02% over 8000 outer
+    // iterations on the NACA0012 n64 case, diag/naca-coupled-fix4b),
+    // which leaves the iteration-1-relative momentum metric ~11x above
+    // the 1e-8 gate: the previous default could never pass the
+    // convergence gates. At 1e-12 the same case converges with all
+    // gates green (n64 and n128 both in 67 outer iterations,
+    // diag/naca-coupled-fix4c). See issue #663.
+    double coupled_linear_tolerance = 1e-12;
     // Explicit pressure-Schur approximation for the coupled production path.
     // Unsupported models must be rejected; there is no implicit fallback.
     CoupledSchurModel schur_model = CoupledSchurModel::PCD;
