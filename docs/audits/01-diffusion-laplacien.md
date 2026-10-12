@@ -4,7 +4,7 @@
 - Scope : terme de diffusion dans les équations de transport (quantité de mouvement, énergie, scalaire, variables turbulentes). Couvre l'opérateur, l'orthogonalité du maillage, les corrections de non-orthogonalité et de skewness. Non couvert : diffusion turbulente (traitée comme $\\mu + \\mu_t$ dans le même opérateur — voir la fiche turbulence à venir).
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #461 (N3), #34 ; PRs #845, #852 (campagnes polyédriques exact-HEAD)
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : fiche rédigée a posteriori pour le code existant ; l'audit code ↔ fiche (section 7) reste à exécuter en Phase 1.
 
 ## 1. Références sources

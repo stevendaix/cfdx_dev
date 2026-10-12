@@ -4,7 +4,7 @@
 - Scope : politique de comparaison croisée avec les codes tiers et positionnement produit de CFDX. S'étend `docs/validation/CFDX_VV_GOVERNANCE.md’ §7 (classification des comparaisons) — n'en duplique pas la terminologie.
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #34, #461 ; `docs/validation/N14_REFERENCE_CODE_MATRIX.json’, `FLUENT_VMFL_MATRIX.md’, `SU2_NACA0012_READER.md’
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : aucune comparaison croisée n'est un oracle d'acceptation en soi ; c'est un élément de preuve.
 
 ## 1. Références sources

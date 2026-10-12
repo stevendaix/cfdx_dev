@@ -4,7 +4,7 @@
 - Scope : calcul du flux de masse aux faces pour un arrangement colocalisé (vitesse et pression aux centres de cellules). Couvre le terme de stabilisation, la sensibilité à la relaxation (Majumdar) et aux forces volumiques.
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #601 (N9, S9 — `docs/validation/N9_S9_RHIE_CHOW_CONSISTENCY.md’), #34 ; PRs #821, #851
-- Dernier commit vérifiéà: 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
+- Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
 - Limitations : audit code ↔ fiche (section 7) à exécuter en Phase 1 (N9).
 
 ## 1. Références sources
