@@ -1691,7 +1691,6 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
-    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -1876,6 +1875,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
+    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -2099,4 +2099,5 @@ inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid
 }
 
 } // namespace cfdx::physics
+
 
