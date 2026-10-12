@@ -87,7 +87,7 @@ int main() {
         require(dir_deg.valid[i] && std::isfinite(dir_deg.distance[i]) && dir_deg.distance[i]>=0.0,
                 "directional mesh wave produced an invalid distance on the degenerate surface");
 
-    std::cout<<"N11 F-W1 nearest-normal fallback reporting: PASS
-";
+    std::cout<<"N11 F-W1 nearest-normal fallback reporting: PASS\n"
+                 <<std::endl;
     return 0;
 }
