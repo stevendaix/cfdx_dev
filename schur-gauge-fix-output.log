@@ -1,0 +1,52 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+      Start  96: test_steady_incompressible_solver
+ 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.01 sec
+      Start 158: test_exact_schur
+ 2/19 Test #158: test_exact_schur ..........................   Passed    0.00 sec
+      Start 159: test_n9_schur_oracle
+ 3/19 Test #159: test_n9_schur_oracle ......................   Passed    0.00 sec
+      Start 160: test_simplerc_schur
+ 4/19 Test #160: test_simplerc_schur .......................   Passed    0.00 sec
+      Start 161: test_lsc_bfbt_schur
+ 5/19 Test #161: test_lsc_bfbt_schur .......................   Passed    0.00 sec
+      Start 162: test_pcd_schur
+ 6/19 Test #162: test_pcd_schur ............................   Passed    0.00 sec
+      Start 163: test_coupled_schur_selection
+ 7/19 Test #163: test_coupled_schur_selection ..............   Passed    0.00 sec
+      Start 164: test_lsc_bfbt_schur_null_space
+ 8/19 Test #164: test_lsc_bfbt_schur_null_space ............   Passed    0.00 sec
+      Start 165: test_schur_approximation_comparison
+ 9/19 Test #165: test_schur_approximation_comparison .......   Passed    0.00 sec
+      Start 166: test_schur_quantitative_qualification
+10/19 Test #166: test_schur_quantitative_qualification .....   Passed    0.00 sec
+      Start 170: test_coupled_block_schur_amg
+11/19 Test #170: test_coupled_block_schur_amg ..............   Passed    0.00 sec
+      Start 171: test_n8_schur_production_benchmark
+12/19 Test #171: test_n8_schur_production_benchmark ........   Passed    0.00 sec
+      Start 172: test_n8_schur_representative_cfd
+13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.01 sec
+      Start 173: test_n8_schur_complete_krylov
+14/19 Test #173: test_n8_schur_complete_krylov .............   Passed    0.01 sec
+      Start 175: test_n9_common_schur_qualification
+15/19 Test #175: test_n9_common_schur_qualification ........   Passed    0.02 sec
+      Start 176: test_n9_s10_pressure_reference_policies
+16/19 Test #176: test_n9_s10_pressure_reference_policies ...   Passed    0.00 sec
+      Start 177: test_n9_physical_matrix
+17/19 Test #177: test_n9_physical_matrix ...................   Passed  1438.37 sec
+      Start 178: test_n9_s9_rhie_chow_consistency
+18/19 Test #178: test_n9_s9_rhie_chow_consistency ..........   Passed    0.00 sec
+      Start 179: test_n9_negative_diagnostics
+19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.52 sec
+
+100% tests passed, 0 tests failed out of 19
+
+Label Time Summary:
+long                = 1438.38 sec*proc (3 tests)
+n9                  = 1439.90 sec*proc (4 tests)
+phase13             =   0.01 sec*proc (1 test)
+qualification       = 1439.90 sec*proc (4 tests)
+validation          = 1439.91 sec*proc (5 tests)
+validation-total    = 1439.90 sec*proc (4 tests)
+
+Total Test time (real) = 1440.04 sec
