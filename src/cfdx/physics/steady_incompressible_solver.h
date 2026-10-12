@@ -1035,6 +1035,19 @@ inline void apply_nested_schur_pressure_gauge(
     }
 }
 
+// PCD pressure-side operators. The convection_scheme parameter is accepted
+// but deliberately NOT forwarded to assemble_scalar_equation, and this is
+// not a TODO. Every ConvectionScheme except UPWIND is implemented in
+// assemble_scalar_equation as a DEFERRED CORRECTION: an explicit
+// right-hand-side term evaluated on the convected field, riding the SAME
+// conservative first-order upwind matrix. These operators are matrix-only
+// preconditioner ingredients, so the assembled matrix is identical for
+// every scheme and ConvectionScheme::UPWIND below is not an approximation
+// of the true pressure operator but its exact matrix for every scheme
+// setting. Forwarding a non-UPWIND scheme would also throw, because a
+// preconditioner assembly has no convected field to evaluate the deferred
+// correction against. Audit context: issue #663 (NACA0012 convection-scheme
+// sensitivity campaign).
 inline PcdPressureOperators assemble_pcd_pressure_operators(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1044,7 +1057,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     std::size_t reference_cell,
-    ConvectionScheme /*convection_scheme*/)
+    ConvectionScheme /*convection_scheme — unused by design, see comment above*/)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
