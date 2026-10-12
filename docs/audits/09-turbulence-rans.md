@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : modèles RANS à viscosité tourbillonnaire (k-epsilon standard, k-omega, SST de Menter), modèle à une équation de Spalart-Allmaras, lois de paroi (couche logarithmique), distance de paroi. Non couvert : LES/hybrides, RSM, transition, correction de compressibilité (à documenter séparément si activée).
-- Statut : APPROUVÉE (2026-10-12, PR #PR_NUM_09_12) — contrat mathématique approuvé ; le code Phase 10 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : APPROUVÉE (2026-10-12, PR #861) — contrat mathématique approuvé ; le code Phase 10 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json (cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012) + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 10) ; docs/validation/TURBULENCE_QUALIFICATION_MATRIX.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -76,4 +76,4 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
-- 2026-10-12 — approbation du contrat (PR d'approbation #PR_NUM_09_12) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
+- 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
