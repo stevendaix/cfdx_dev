@@ -1,0 +1,77 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+      Start  96: test_steady_incompressible_solver
+ 1/19 Test  #96: test_steady_incompressible_solver .........   Passed    0.01 sec
+      Start 158: test_exact_schur
+ 2/19 Test #158: test_exact_schur ..........................   Passed    0.00 sec
+      Start 159: test_n9_schur_oracle
+ 3/19 Test #159: test_n9_schur_oracle ......................   Passed    0.00 sec
+      Start 160: test_simplerc_schur
+ 4/19 Test #160: test_simplerc_schur .......................   Passed    0.00 sec
+      Start 161: test_lsc_bfbt_schur
+ 5/19 Test #161: test_lsc_bfbt_schur .......................   Passed    0.00 sec
+      Start 162: test_pcd_schur
+ 6/19 Test #162: test_pcd_schur ............................   Passed    0.00 sec
+      Start 163: test_coupled_schur_selection
+ 7/19 Test #163: test_coupled_schur_selection ..............   Passed    0.00 sec
+      Start 164: test_lsc_bfbt_schur_null_space
+ 8/19 Test #164: test_lsc_bfbt_schur_null_space ............   Passed    0.00 sec
+      Start 165: test_schur_approximation_comparison
+ 9/19 Test #165: test_schur_approximation_comparison .......   Passed    0.00 sec
+      Start 166: test_schur_quantitative_qualification
+10/19 Test #166: test_schur_quantitative_qualification .....   Passed    0.00 sec
+      Start 170: test_coupled_block_schur_amg
+11/19 Test #170: test_coupled_block_schur_amg ..............   Passed    0.00 sec
+      Start 171: test_n8_schur_production_benchmark
+12/19 Test #171: test_n8_schur_production_benchmark ........   Passed    0.00 sec
+      Start 172: test_n8_schur_representative_cfd
+13/19 Test #172: test_n8_schur_representative_cfd ..........   Passed    0.01 sec
+      Start 173: test_n8_schur_complete_krylov
+14/19 Test #173: test_n8_schur_complete_krylov .............   Passed    0.01 sec
+      Start 175: test_n9_common_schur_qualification
+15/19 Test #175: test_n9_common_schur_qualification ........***Failed    0.00 sec
+Running 4 test cases...
+n9_schur_contract cells=4 convection=1 simple_operator_error=0.081144 simplec_operator_error=0.0591972
+n9_schur_contract cells=4 convection=1 lsc_inverse_error=0.977466
+n9_schur_contract cells=4 convection=4 simple_operator_error=0.0888028 simplec_operator_error=0.103594
+n9_schur_contract cells=4 convection=4 lsc_inverse_error=0.978688
+n9_schur_contract cells=6 convection=1 simple_operator_error=0.123113 simplec_operator_error=0.0529842
+n9_schur_contract cells=6 convection=1 lsc_inverse_error=0.973855
+  PASS: n9_common_oseen_schur_contract
+n9_model=simple true_residual=0.620125
+n9_model=simplec true_residual=0.604461
+n9_model=lsc true_residual=0.570603
+n9_model=bfbt true_residual=0.567101
+n9_model=pcd true_residual=0.574593
+n9_model=mgr true_residual=0.620125
+  PASS: n9_common_oseen_full_block_true_residual_multiplex
+  PASS: n9_schur_gauge_row_column_semantics
+  FAILED: result.converged in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_common_schur_qualification.cpp:436
+  FAIL: n9_schur_gauge_end_to_end_coupled_lsc_bfbt - Assertion failed: result.converged
+
+Results: 3 passed, 1 failed
+
+      Start 176: test_n9_s10_pressure_reference_policies
+16/19 Test #176: test_n9_s10_pressure_reference_policies ...   Passed    0.00 sec
+      Start 177: test_n9_physical_matrix
+17/19 Test #177: test_n9_physical_matrix ...................   Passed  1360.84 sec
+      Start 178: test_n9_s9_rhie_chow_consistency
+18/19 Test #178: test_n9_s9_rhie_chow_consistency ..........   Passed    0.00 sec
+      Start 179: test_n9_negative_diagnostics
+19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.43 sec
+
+95% tests passed, 1 tests failed out of 19
+
+Label Time Summary:
+long                = 1360.84 sec*proc (3 tests)
+n9                  = 1362.27 sec*proc (4 tests)
+phase13             =   0.01 sec*proc (1 test)
+qualification       = 1362.27 sec*proc (4 tests)
+validation          = 1362.28 sec*proc (5 tests)
+validation-total    = 1362.27 sec*proc (4 tests)
+
+Total Test time (real) = 1362.51 sec
+
+The following tests FAILED:
+	175 - test_n9_common_schur_qualification (Failed)
+Errors while running CTest
