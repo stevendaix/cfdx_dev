@@ -47,11 +47,36 @@ inline void compute_kepsilon_production_field(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& epsilon,
     cfdx::core::Field<double,cfdx::core::Location::CELL>& production,
-    const TurbulenceTransportControls& c)
+    const TurbulenceTransportControls& c,
+    TurbulenceBoundDiagnostics* bound_report = nullptr)
 {
+    // N11 F2 (#480): report the read-level k/epsilon floors of the
+    // production assembly through the P1 diagnostics contract instead
+    // of applying them silently.
     for(std::size_t i=0;i<mesh.n_cells();++i) {
-        const double nut=c.C_mu*std::max(k(i),c.k_min)*std::max(k(i),c.k_min)/
-                         std::max(epsilon(i),c.epsilon_min);
+        const double ki=k(i), ei=epsilon(i);
+        if(bound_report) {
+            if(!std::isfinite(ki))
+                ++bound_report->first_nonfinite;
+            else if(ki<c.k_min) {
+                ++bound_report->first_floor_activations;
+                const double correction=c.k_min-ki;
+                bound_report->first_total_correction+=correction;
+                bound_report->first_max_correction=std::max(
+                    bound_report->first_max_correction,correction);
+            }
+            if(!std::isfinite(ei))
+                ++bound_report->second_nonfinite;
+            else if(ei<c.epsilon_min) {
+                ++bound_report->second_floor_activations;
+                const double correction=c.epsilon_min-ei;
+                bound_report->second_total_correction+=correction;
+                bound_report->second_max_correction=std::max(
+                    bound_report->second_max_correction,correction);
+            }
+        }
+        const double nut=c.C_mu*std::max(ki,c.k_min)*std::max(ki,c.k_min)/
+                         std::max(ei,c.epsilon_min);
         production(i)=c.density*nut*strain_rate(i)*strain_rate(i);
     }
 }
@@ -84,7 +109,12 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
     for(std::size_t iter=1;iter<=max_iterations;++iter) {
         auto oldk=k;
         auto olde=epsilon;
-        compute_kepsilon_production_field(mesh,strain_rate,k,epsilon,P,controls);
+        // N11 F2 (#480): route the production-assembly read-level floors
+        // through the existing P1 reporting channel (record_turbulence_bounds).
+        TurbulenceBoundDiagnostics production_read_bounds;
+        compute_kepsilon_production_field(mesh,strain_rate,k,epsilon,P,controls,
+                                           &production_read_bounds);
+        record_turbulence_bounds(result, production_read_bounds);
 
         cfdx::core::Field<double,cfdx::core::Location::CELL> sk(
             n,"Sk","W/m3",1);

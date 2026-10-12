@@ -121,13 +121,42 @@ inline double turbulence_nu_t(
     double k, double second, double strain, double wall_distance,
     const TurbulenceTransportControls& c, double cell_volume = -1.0, double F2 = 1.0,
     double rotation = 0.0, double third_invariant = 0.0, double ddes_r = 0.0,
-    double iddes_stress_blend = 1.0, double wale_S2 = -1.0, double wale_Sd2 = -1.0)
+    double iddes_stress_blend = 1.0, double wale_S2 = -1.0, double wale_Sd2 = -1.0,
+    TurbulenceBoundDiagnostics* bound_report = nullptr)
 {
+    // N11 F2 (#480): the read-level floors below were historically silent;
+    // they now report through the P1 TurbulenceBoundDiagnostics contract
+    // (same channel as enforce_turbulence_bounds) when the caller provides
+    // a report sink. Reporting never changes the clamped values.
+    if(bound_report) {
+        if(!std::isfinite(k))
+            ++bound_report->first_nonfinite;
+        else if(k<c.k_min) {
+            ++bound_report->first_floor_activations;
+            const double correction=c.k_min-k;
+            bound_report->first_total_correction+=correction;
+            bound_report->first_max_correction=std::max(
+                bound_report->first_max_correction,correction);
+        }
+    }
     k=std::max(k,c.k_min);
     const bool omega_based =
         c.model==TurbulenceModel::SST || c.model==TurbulenceModel::KOMEGA;
-    if(c.model!=TurbulenceModel::SPALART_ALLMARAS)
+    if(c.model!=TurbulenceModel::SPALART_ALLMARAS) {
+        if(bound_report) {
+            const double second_floor=omega_based ? c.omega_min : c.epsilon_min;
+            if(!std::isfinite(second))
+                ++bound_report->second_nonfinite;
+            else if(second<second_floor) {
+                ++bound_report->second_floor_activations;
+                const double correction=second_floor-second;
+                bound_report->second_total_correction+=correction;
+                bound_report->second_max_correction=std::max(
+                    bound_report->second_max_correction,correction);
+            }
+        }
         second=std::max(second, omega_based ? c.omega_min : c.epsilon_min);
+    }
     switch(c.model) {
     case TurbulenceModel::LAMINAR: return 0.0;
     case TurbulenceModel::KEPSILON: return c.C_mu*k*k/second;
@@ -187,6 +216,19 @@ inline double turbulence_nu_t(
         return dynamic_one_equation_eddy_viscosity(second,std::cbrt(cell_volume),0.1);
     }
     throw std::invalid_argument("unknown turbulence model");
+}
+
+// N11 F2 (#480): reporting overload. Historical five-argument call sites are
+// untouched, while qualification paths gain direct access to the read-level
+// floor report without repeating the default transport arguments.
+inline double turbulence_nu_t(
+    double k, double second, double strain, double wall_distance,
+    const TurbulenceTransportControls& c,
+    TurbulenceBoundDiagnostics* bound_report)
+{
+    return turbulence_nu_t(k, second, strain, wall_distance, c,
+                           -1.0, 1.0, 0.0, 0.0, 0.0, 1.0, -1.0, -1.0,
+                           bound_report);
 }
 
 inline void validate_turbulence_controls(const TurbulenceTransportControls& c)

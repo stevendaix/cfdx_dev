@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cassert>
+#include <cstddef>
 #include <stdexcept>
 #include <limits>
 namespace cfdx::physics {
@@ -112,10 +113,21 @@ inline double qcr_stress_factor(double strain,double rotation,
     return std::clamp(1.0 + c.qcr_coefficient*rotation/std::max(strain,1e-30),0.0,10.0);
 }
 
+// N11 F3 (#480): attribute production-limiter activations. The limiter is
+// gated by an explicit user control but its activations were previously
+// silent; the diagnostics follow the enforce_turbulence_bounds pattern
+// (activation count plus total/max reduction).
+struct TurbulenceProductionDiagnostics {
+    std::size_t production_limiter_activations = 0;
+    double production_limiter_total_reduction = 0.0;
+    double production_limiter_max_reduction = 0.0;
+};
+
 inline double corrected_turbulence_production(double production,
                                               const TurbulenceInvariants& x,
                                               const TurbulenceCorrectionControls& c,
-                                              double speed_of_sound=1.0)
+                                              double speed_of_sound=1.0,
+                                              TurbulenceProductionDiagnostics* diagnostics=nullptr)
 {
     if(!std::isfinite(production) || production<0 || !valid_turbulence_invariants(x))
         throw std::invalid_argument("invalid turbulence production");
@@ -124,7 +136,16 @@ inline double corrected_turbulence_production(double production,
     if(c.compressibility) p*=compressibility_factor(x,c,speed_of_sound);
     if(c.roughness) p*=roughness_factor(c.roughness_height,x.wall_distance,c);
     if(c.kato_launder) p+=kato_launder_production_factor(x,c);
-    if(c.production_limiter) p=std::min(p,c.production_limit);
+    if(c.production_limiter) {
+        if(p>c.production_limit && diagnostics) {
+            ++diagnostics->production_limiter_activations;
+            const double reduction=p-c.production_limit;
+            diagnostics->production_limiter_total_reduction+=reduction;
+            diagnostics->production_limiter_max_reduction=std::max(
+                diagnostics->production_limiter_max_reduction,reduction);
+        }
+        p=std::min(p,c.production_limit);
+    }
     return std::max(0.0,p);
 }
 
