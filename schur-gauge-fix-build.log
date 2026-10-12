@@ -8,8 +8,8 @@
 [8/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
 [9/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
 [10/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
-[11/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
-[12/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[11/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[12/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
 [13/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
 [14/64] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
 /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
@@ -71,16 +71,7 @@ In file included from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/h
 /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
   414 |                 schur_row_offsets_[c] + entries.size();
 [28/64] Building CXX object CMakeFiles/test_n9_schur_oracle.dir/tests/unit/test_n9_schur_oracle.cpp.o
-[29/64] Building CXX object CMakeFiles/test_simplerc_schur.dir/tests/unit/test_simplerc_schur.cpp.o
-[30/64] Building CXX object CMakeFiles/test_lsc_bfbt_schur.dir/tests/unit/test_lsc_bfbt_schur.cpp.o
-/home/runner/work/cfdx_dev/cfdx_dev/tests/unit/test_lsc_bfbt_schur.cpp:59:15: warning: ‘cfdx::core::Vector dense_matvec(const std::vector<std::vector<double> >&, const cfdx::core::Vector&)’ defined but not used [-Wunused-function]
-   59 | static Vector dense_matvec(const std::vector<std::vector<double>>& A, const Vector& x) {
-      |               ^~~~~~~~~~~~
-[31/64] Building CXX object CMakeFiles/test_pcd_schur.dir/tests/unit/test_pcd_schur.cpp.o
-[32/64] Building CXX object CMakeFiles/test_coupled_schur_selection.dir/tests/unit/test_coupled_schur_selection.cpp.o
-[33/64] Building CXX object CMakeFiles/test_lsc_bfbt_schur_null_space.dir/tests/unit/test_lsc_bfbt_schur_null_space.cpp.o
-[34/64] Building CXX object CMakeFiles/test_schur_approximation_comparison.dir/tests/unit/test_schur_approximation_comparison.cpp.o
-[35/64] Building CXX object CMakeFiles/test_steady_incompressible_solver.dir/tests/validation/test_steady_incompressible_solver.cpp.o
+[29/64] Building CXX object CMakeFiles/test_steady_incompressible_solver.dir/tests/validation/test_steady_incompressible_solver.cpp.o
 In file included from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/krylov_reductions.h:6,
                  from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/cg_solver.h:15,
                  from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/bicgstab_solver.h:4,
@@ -184,6 +175,15 @@ In file included from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/physics/stead
 /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
   122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
       |                                                                                                                                                            ~~~~~^~~
+[30/64] Building CXX object CMakeFiles/test_simplerc_schur.dir/tests/unit/test_simplerc_schur.cpp.o
+[31/64] Building CXX object CMakeFiles/test_lsc_bfbt_schur.dir/tests/unit/test_lsc_bfbt_schur.cpp.o
+/home/runner/work/cfdx_dev/cfdx_dev/tests/unit/test_lsc_bfbt_schur.cpp:59:15: warning: ‘cfdx::core::Vector dense_matvec(const std::vector<std::vector<double> >&, const cfdx::core::Vector&)’ defined but not used [-Wunused-function]
+   59 | static Vector dense_matvec(const std::vector<std::vector<double>>& A, const Vector& x) {
+      |               ^~~~~~~~~~~~
+[32/64] Building CXX object CMakeFiles/test_pcd_schur.dir/tests/unit/test_pcd_schur.cpp.o
+[33/64] Building CXX object CMakeFiles/test_coupled_schur_selection.dir/tests/unit/test_coupled_schur_selection.cpp.o
+[34/64] Building CXX object CMakeFiles/test_lsc_bfbt_schur_null_space.dir/tests/unit/test_lsc_bfbt_schur_null_space.cpp.o
+[35/64] Building CXX object CMakeFiles/test_schur_approximation_comparison.dir/tests/unit/test_schur_approximation_comparison.cpp.o
 [36/64] Building CXX object CMakeFiles/test_schur_quantitative_qualification.dir/tests/unit/test_schur_quantitative_qualification.cpp.o
 [37/64] Building CXX object CMakeFiles/test_coupled_block_schur_amg.dir/tests/validation/test_coupled_block_schur_amg.cpp.o
 In file included from /home/runner/work/cfdx_dev/cfdx_dev/src/cfdx/core/linalg/hypre_amg.h:3,

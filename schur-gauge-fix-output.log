@@ -46,7 +46,7 @@ n9_model=pcd true_residual=0.574593
 n9_model=mgr true_residual=0.620125
   PASS: n9_common_oseen_full_block_true_residual_multiplex
   PASS: n9_schur_gauge_row_column_semantics
-  FAILED: result.converged in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_common_schur_qualification.cpp:436
+  FAILED: result.converged in operator() at /home/runner/work/cfdx_dev/cfdx_dev/tests/validation/test_n9_common_schur_qualification.cpp:452
   FAIL: n9_schur_gauge_end_to_end_coupled_lsc_bfbt - Assertion failed: result.converged
 
 Results: 3 passed, 1 failed
@@ -54,23 +54,23 @@ Results: 3 passed, 1 failed
       Start 176: test_n9_s10_pressure_reference_policies
 16/19 Test #176: test_n9_s10_pressure_reference_policies ...   Passed    0.00 sec
       Start 177: test_n9_physical_matrix
-17/19 Test #177: test_n9_physical_matrix ...................   Passed  917.14 sec
+17/19 Test #177: test_n9_physical_matrix ...................   Passed  928.41 sec
       Start 178: test_n9_s9_rhie_chow_consistency
 18/19 Test #178: test_n9_s9_rhie_chow_consistency ..........   Passed    0.00 sec
       Start 179: test_n9_negative_diagnostics
-19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    0.90 sec
+19/19 Test #179: test_n9_negative_diagnostics ..............   Passed    1.00 sec
 
 95% tests passed, 1 tests failed out of 19
 
 Label Time Summary:
-long                = 917.14 sec*proc (3 tests)
-n9                  = 918.04 sec*proc (4 tests)
+long                = 928.41 sec*proc (3 tests)
+n9                  = 929.41 sec*proc (4 tests)
 phase13             =   0.00 sec*proc (1 test)
-qualification       = 918.04 sec*proc (4 tests)
-validation          = 918.05 sec*proc (5 tests)
-validation-total    = 918.04 sec*proc (4 tests)
+qualification       = 929.41 sec*proc (4 tests)
+validation          = 929.41 sec*proc (5 tests)
+validation-total    = 929.41 sec*proc (4 tests)
 
-Total Test time (real) = 918.13 sec
+Total Test time (real) = 929.53 sec
 
 The following tests FAILED:
 	175 - test_n9_common_schur_qualification (Failed)
