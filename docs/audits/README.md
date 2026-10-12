@@ -42,12 +42,12 @@ Ce dossier **ne duplique aucun registre existant** (cf. `docs/validation/CFDX_VV
 | [06-gradients-reconstruction.md](06-gradients-reconstruction.md) | Gradients Green–Gauss / moindres carrés (N2) | ✓ rédigée — PR #511 en attente |
 | [07-benchmarks-references.md](07-benchmarks-references.md) | Oracles de validation : Ghia, Poiseuille, Couette, MMS, GCI | ✓ rédigée |
 | [08-codes-de-reference.md](08-codes-de-reference.md) | SU2, OpenFOAM, Fluent, Basilisk — comparaisons croisisées | ✓ rédigée |
-| [09-turbulence-rans.md](09-turbulence-rans.md) | Turbulence RANS : k-ε, k-ω, SST, SA + lois de paroi | DRAFT — à approuver (Phase 3, audit du code Phase 10) |
-| [10-thermique-cht.md](10-thermique-cht.md) | Énergie ρ·cp, CHT multi-régions, Boussinesq | DRAFT — à approuver (Phase 3, audit du code Phase 11) |
-| [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | DRAFT — à approuver (Phase 3, audit du code Phase 12) |
-| [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | DRAFT — à approuver (Phases 6–7, N13) |
+| [09-turbulence-rans.md](09-turbulence-rans.md) | Turbulence RANS : k-ε, k-ω, SST, SA + lois de paroi | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 10) |
+| [10-thermique-cht.md](10-thermique-cht.md) | Énergie ρ·cp, CHT multi-régions, Boussinesq | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 11) |
+| [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 12) |
+| [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phases 6–7, N13) |
 
-Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont désormais rédigées : leur approbation conditionne toute promotion multiphysique (statuts BLOCKED du registre de qualification).
+Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont approuvées (2026-10-12, PR #861) : l'audit du code contre chaque fiche reste requis avant toute promotion multiphysique (statuts BLOCKED du registre de qualification).
 
 ## Règle d'exception
 
