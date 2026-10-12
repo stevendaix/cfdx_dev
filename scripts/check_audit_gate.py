@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Audit gate for CFDX (constitution technique, Rules of Gold 1 and 2).
 
 Modes
@@ -20,6 +19,7 @@ Modes
 
 Exit code 1 on any violation (CI gate). Pure stdlib, Python >= 3.9.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -116,7 +116,7 @@ def check_audit_gate(root: Path, changed: list[str], body: str) -> list[str]:
             + ", ".join(numeric[:3])
             + (" ..." if len(numeric) > 3 else "")
             + ") but references no fiche methode in docs/audits/. "
-              "Add or update a fiche, or link an approved one in the PR description."
+            "Add or update a fiche, or link an approved one in the PR description."
         )
     return errors
 
