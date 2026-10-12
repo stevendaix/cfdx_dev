@@ -52,3 +52,6 @@ Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **a
 ## Règle d'exception
 
 Aucune. Une fiche incomplète bloque la PR. Une fiche peut être marquée « PARTIAL » uniquement sur les sections « Statut CFDX », jamais sur les sections mathématiques (1–6).
+## Note d'infrastructure CI (2026-10-12)
+
+Pendant la qualification N9, un défaut **préexistant sur master** a été identifié et documenté (issue #858, correctif PR #857) : les workflows `cfdx-numerical.yml` (contenu dupliqué , YAML invalide) et `cfdx-validation.yml` (scalaire non quoté dans `application-e2e`) sont incapables de démarrer depuis les fusions du 5 octobre. Conséquence directe : chaque push produit deux « startup failures » et la « CFDX total validation » (schedule + label `validation-total`) est silencieusement inopérante. La chaîne d'évidence de la campagne N9 n'est **pas** affectée : elle repose sur `n9-campaign.yml` et `n9-physical-validation.yml`, workflows valides et indépendants. Aucune tolérance , aucun test, aucune politique n'est modifiée par le correctif #857.
