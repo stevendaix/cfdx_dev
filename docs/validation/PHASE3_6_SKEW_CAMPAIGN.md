@@ -58,8 +58,9 @@ The repository already contains executable quantitative V&V for the difficult-me
 - `test_polyhedral_gradient_campaign`: tetrahedral/polyhedral gradient accuracy, weighted least-squares and conditioning/rank-deficiency evidence;
 - `test_nonorthogonal_skew_campaign`: controlled skew sweep;
 - `test_nonorthogonal_laplacian_campaign`: non-orthogonal diffusion accuracy/regression;
-- `test_polyhedral_laplacian_campaign`: polyhedral diffusion consistency limits.
+- `test_polyhedral_laplacian_campaign`: polyhedral diffusion consistency limits;
+- `test_polyhedral_poisson_convergence`: solution-level polyhedral Poisson convergence under refinement (strict L2 decrease gate, observed orders as diagnostics only).
 
-These tests are now also labelled `n10;validation;qualification` so the N10 qualification subset reuses the same production numerical paths and does not maintain a second, redundant smooth-field campaign.
+These tests are now also labelled `n10;validation;qualification` (the Poisson solution-convergence campaign additionally carries `sanitizer-slow` so its black-box operator-indicator assembly stays out of the DebugSanitizers pass, like the other slow qualification campaigns) so the N10 qualification subset reuses the same production numerical paths and does not maintain a second, redundant smooth-field campaign.
 
 The dedicated N10 test `test_n10_difficult_mesh_robustness` is therefore restricted to the cross-cutting difficult-mesh contracts that are not already owned by N2/N3: mesh-quality diagnostics, solver robustness versus the controlled quality ladder, polyhedral geometry acceptance, near-degenerate valid geometry, and deterministic invalid-geometry rejection.

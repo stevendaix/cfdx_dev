@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/simplerc_schur.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 
 #include <algorithm>
@@ -13,10 +14,12 @@
 #include <cstddef>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <tuple>
 #include <vector>
 
 using namespace cfdx::core;
+using namespace cfdx::physics;
 using namespace cfdx::testing;
 
 namespace {
@@ -135,6 +138,51 @@ double true_residual(const SparseMatrix& A,const Vector& x,const Vector& b){
     return std::sqrt(r2/std::max(b2,1e-300));
 }
 
+// Two-cell channel (same topology as test_n9_s10_pressure_reference_policies)
+// for the end-to-end coupled gauge qualification below.
+Mesh make_two_cell_channel()
+{
+    Mesh m;
+    m.points().resize(12);
+    const double xyz[12][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1},
+        {2,0,0},{2,1,0},{2,0,1},{2,1,1}
+    };
+    for (std::size_t i = 0; i < 12; ++i)
+        m.points().set(i, xyz[i][0], xyz[i][1], xyz[i][2]);
+
+    m.faces().push_face({0,3,7,4});
+    m.faces().push_face({1,2,6,5});
+    m.faces().push_face({8,9,11,10});
+    m.faces().push_face({0,1,5,4});
+    m.faces().push_face({3,7,6,2});
+    m.faces().push_face({0,3,2,1});
+    m.faces().push_face({4,5,6,7});
+    m.faces().push_face({1,8,10,5});
+    m.faces().push_face({2,6,11,9});
+    m.faces().push_face({1,2,9,8});
+    m.faces().push_face({5,10,11,6});
+
+    m.ownership().resize(11);
+    for (std::size_t f = 0; f < 11; ++f) {
+        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        m.ownership().set_owner(f, owner);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.ownership().set_owner(1, 0);
+    m.ownership().set_neighbour(1, 1);
+    m.cells().push_cell({0,1,3,4,5,6});
+    m.cells().push_cell({1,2,7,8,9,10});
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {0,2,3,4,5,6,7,8,9,10};
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 }
 
 int main() {
@@ -186,17 +234,34 @@ int main() {
             Vector exact_Sq(cfg.n,0.0); EXPECT_TRUE(exact.apply_schur(q,exact_Sq));
             Vector simple_Sq(cfg.n,0.0),simplec_Sq(cfg.n,0.0);
             EXPECT_TRUE(simple.apply(q,simple_Sq)); EXPECT_TRUE(simplec.apply(q,simplec_Sq));
+            const double simple_operator_error = relerr(simple_Sq,exact_Sq);
+            const double simplec_operator_error = relerr(simplec_Sq,exact_Sq);
             std::cout<<"n9_schur_contract cells="<<cfg.n
                      <<" convection="<<cfg.convection
-                     <<" simple_operator_error="<<relerr(simple_Sq,exact_Sq)
-                     <<" simplec_operator_error="<<relerr(simplec_Sq,exact_Sq)<<'\n';
+                     <<" simple_operator_error="<<simple_operator_error
+                     <<" simplec_operator_error="<<simplec_operator_error<<'\n';
+            // Blocking catastrophe guard: SIMPLE/SIMPLEC are deliberate
+            // approximations, so this is NOT an accuracy gate. It fails
+            // when the action degenerates algebraically (non-finite or
+            // two orders of magnitude past the oracle on these academic
+            // matrices). Tighter regression pins come from measured
+            // campaign logs, not invented thresholds.
+            EXPECT_TRUE(std::isfinite(simple_operator_error) &&
+                        simple_operator_error < 10.0);
+            EXPECT_TRUE(std::isfinite(simplec_operator_error) &&
+                        simplec_operator_error < 10.0);
 
             Vector rhs(cfg.n); for(std::size_t i=0;i<cfg.n;++i) rhs(i)=std::cos(0.17*(i+1));
             Vector exact_inv=matvec(inverse(Soracle),rhs);
             Vector z(cfg.n,0.0);
             EXPECT_TRUE(lsc.apply(rhs,z));
+            const double lsc_inverse_error = relerr(z,exact_inv);
             std::cout<<"n9_schur_contract cells="<<cfg.n<<" convection="<<cfg.convection
-                     <<" lsc_inverse_error="<<relerr(z,exact_inv)<<'\n';
+                     <<" lsc_inverse_error="<<lsc_inverse_error<<'\n';
+            // Blocking catastrophe guard (same policy as the SIMPLE/SIMPLEC
+            // guard above).
+            EXPECT_TRUE(std::isfinite(lsc_inverse_error) &&
+                        lsc_inverse_error < 10.0);
             EXPECT_TRUE(bfbt.apply(rhs,z));
             EXPECT_TRUE(pcd.apply(rhs,z));
         }
@@ -247,7 +312,10 @@ int main() {
             Vector z(N,0.0); EXPECT_TRUE(pc.apply(b,z));
             const double rr=true_residual(K,z,b);
             std::cout<<"n9_model="<<name<<" true_residual="<<rr<<'\n';
-            EXPECT_TRUE(std::isfinite(rr));
+            // Blocking catastrophe guard on the single preconditioned
+            // apply: the value is not an accuracy criterion, but it must
+            // stay finite and bounded.
+            EXPECT_TRUE(std::isfinite(rr) && rr < 1e3);
         }
 
         std::vector<std::size_t> fine(3*n),coarse(n);
@@ -257,8 +325,239 @@ int main() {
         EXPECT_TRUE(mgr.setup(K));
         Vector z(N,0.0); EXPECT_TRUE(mgr.apply(b,z));
         const double mgr_rr=true_residual(K,z,b);
-        std::cout<<"n9_model=mgr true_residual="<<mgr_rr<<'\\n';
-        EXPECT_TRUE(std::isfinite(mgr_rr));
+        std::cout<<"n9_model=mgr true_residual="<<mgr_rr<<'\n';
+        EXPECT_TRUE(std::isfinite(mgr_rr) && mgr_rr < 1e3);
+    });
+
+    run_case("n9_schur_gauge_row_column_semantics", [] {
+        // Unit falsification of the nested-operator gauge: reference row AND
+        // column eliminated, unit diagonal, sentinel is a no-op, and the
+        // raw-rhs passthrough keeps the gauge component the outer Krylov
+        // needs (the remaining components solve the reduced system).
+        const std::size_t n = 5;
+        std::vector<std::tuple<std::size_t,std::size_t,double>> e;
+        for (std::size_t i=0;i<n;++i) {
+            e.emplace_back(i,i,4.0);
+            if(i>0) e.emplace_back(i,i-1,-1.0);
+            if(i+1<n) e.emplace_back(i,i+1,-1.0);
+        }
+        const SparseMatrix A0 = make_sparse(n,n,e);
+        const std::size_t sentinel = std::numeric_limits<std::size_t>::max();
+
+        SparseMatrix A = make_sparse(n,n,e);
+        apply_nested_schur_pressure_gauge(A, sentinel);
+        EXPECT_TRUE(A.nnz()==A0.nnz());
+        for (std::size_t k=0;k<A.nnz();++k)
+            EXPECT_NEAR(A.values_data()[k],A0.values_data()[k],1e-14);
+
+        A = make_sparse(n,n,e);
+        apply_nested_schur_pressure_gauge(A, 2);
+        bool has_unit_diag=false;
+        for (std::size_t r=0;r<n;++r)
+            for (std::size_t k=A.row_offsets_data()[r];k<A.row_offsets_data()[r+1];++k) {
+                const std::size_t c=A.columns_data()[k];
+                if (r==2) {
+                    if (c==2) { EXPECT_NEAR(A.values_data()[k],1.0,1e-14); has_unit_diag=true; }
+                    else EXPECT_NEAR(A.values_data()[k],0.0,1e-14);
+                } else if (c==2) {
+                    EXPECT_NEAR(A.values_data()[k],0.0,1e-14);
+                }
+            }
+        EXPECT_TRUE(has_unit_diag);
+
+        // Passthrough: the gauged solve returns the rhs gauge component
+        // at the reference, and the other components solve the reduced
+        // system exactly.
+        Vector rhs(n); for(std::size_t i=0;i<n;++i) rhs(i)=std::cos(0.4*(i+1));
+        const Vector x=matvec(inverse(dense(A)),rhs);
+        EXPECT_NEAR(x(2),rhs(2),1e-12);
+        Dense red(n-1,std::vector<double>(n-1,0.0));
+        for(std::size_t r=0;r<n;++r) if(r!=2)
+            for(std::size_t k=A0.row_offsets_data()[r];k<A0.row_offsets_data()[r+1];++k)
+                if(A0.columns_data()[k]!=2)
+                    red[r<2?r:r-1][A0.columns_data()[k]<2?A0.columns_data()[k]:A0.columns_data()[k]-1]
+                        +=A0.values_data()[k];
+        Vector rrhs(n-1); for(std::size_t i=0;i<n-1;++i) rrhs(i)=rhs(i<2?i:i+1);
+        const Vector xr=matvec(inverse(red),rrhs);
+        for(std::size_t i=0;i<n-1;++i)
+            EXPECT_NEAR(x(i<2?i:i+1),xr(i),1e-10);
+
+        // Fallback path: no diagonal entry in the reference row pattern;
+        // the rebuilt operator still carries the unit row and the
+        // eliminated column.
+        std::vector<std::tuple<std::size_t,std::size_t,double>> e2;
+        for(std::size_t i=0;i<n;++i) if(i!=2) e2.emplace_back(i,i,4.0);
+        e2.emplace_back(0,1,-1.0); e2.emplace_back(1,0,-1.0);
+        e2.emplace_back(1,2,-1.0); e2.emplace_back(3,2,-1.0);
+        e2.emplace_back(3,4,-1.0); e2.emplace_back(4,3,-1.0);
+        SparseMatrix B = make_sparse(n,n,e2);
+        apply_nested_schur_pressure_gauge(B, 2);
+        bool unit_row_present=false, col_entries_zeroed=false;
+        for(std::size_t k=B.row_offsets_data()[2];k<B.row_offsets_data()[2+1];++k){
+            if(B.columns_data()[k]==2){ EXPECT_NEAR(B.values_data()[k],1.0,1e-14); unit_row_present=true; }
+            else EXPECT_NEAR(B.values_data()[k],0.0,1e-14);
+        }
+        EXPECT_TRUE(unit_row_present);
+        for(std::size_t r=0;r<n;++r) if(r!=2)
+            for(std::size_t k=B.row_offsets_data()[r];k<B.row_offsets_data()[r+1];++k)
+                if(B.columns_data()[k]==2){ EXPECT_NEAR(B.values_data()[k],0.0,1e-14); col_entries_zeroed=true; }
+        EXPECT_TRUE(col_entries_zeroed);
+    });
+
+    run_case("n9_schur_gauge_end_to_end_coupled_lsc_bfbt", [] {
+        // End-to-end guard for the coupled LSC/BFBt paths: interior
+        // reference (gauge imposed, row+column coherent) and fixed
+        // pressure boundary (no gauge at all).
+        const std::vector<CoupledSchurModel> models{
+            CoupledSchurModel::LSC, CoupledSchurModel::BFBT};
+        for (const CoupledSchurModel model : models) {
+            {
+                const Mesh mesh = make_two_cell_channel();
+                Field<double, Location::CELL> U(2, "U", "m/s", 3);
+                Field<double, Location::CELL> p(2, "p", "Pa", 1);
+                U.fill(0.0);
+                p.fill(7.0);
+                VelocityBoundaryConditions ubc;
+                // Non-degenerate contract: an O(1) wall velocity gives the
+                // exact discrete solution U = (1,0,0) in both cells with
+                // uniform pressure and O(1) boundary fluxes.
+                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1.0,0.0,0.0}};
+                ScalarBoundaryConditions pbc;
+                pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                IncompressibleSolverControls c;
+                c.algorithm = PressureVelocityAlgorithm::COUPLED;
+                c.coupling.schur_model = model;
+                // Test-contract fix, second revision (well-posed
+                // contract). Two measured defects made this guard
+                // structurally unconvergeable on the COUPLED path:
+                // (1) Picard budget mismatch (run 38224806432): the
+                //     default relaxed update (alpha_u = 0.7,
+                //     alpha_p = 0.3) contracts the pressure error by 0.7
+                //     per iteration, so p going 7.0 -> 3.0 needs ~79
+                //     iterations while the budget was 10.
+                // (2) Degenerate exact solution (evidence 9826140, the
+                //     committed trace of the alpha = 1 run): with
+                //     U_b = (0,0,0) the exact solution is U == 0 with
+                //     uniform pressure, so the alpha = 1 state freezes
+                //     at a bit-exact fixed point from iteration 1; the
+                //     trace shows momentum_residual_relative pinned at
+                //     exactly 1.0 for all 10 iterations (the reference
+                //     residual is captured at iteration 1 and the field
+                //     never changes again) and continuity_normalized
+                //     pinned at exactly 2 (noise over an all-zero
+                //     boundary flux), so the 1e-12 gates are unreachable
+                //     for any Schur model on that contract.
+                // This revision makes the contract well-posed without
+                // loosening a single gate: U_b = (1,0,0) above gives a
+                // non-degenerate O(1) problem, alpha_u = alpha_p = 0.5
+                // lets every criterion decay geometrically under the
+                // unchanged 1e-12 gates (~41 iterations at rate 0.5),
+                // coupled_linear_tolerance = 1e-14 keeps the linear
+                // noise floor 100x below the gates, and
+                // max_iterations = 200 budgets the Picard loop with
+                // margin.
+                c.coupling.alpha_u = 0.5;
+                c.coupling.alpha_p = 0.5;
+                // Linear noise floor 100x below the 1e-12 gates.
+                c.coupling.coupled_linear_tolerance = 1e-14;
+                c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
+                c.pressure_reference_cell = 0;
+                c.pressure_reference_value = 3.0;
+                c.convergence.max_iterations = 200;
+                c.convergence.continuity_tolerance = 1e-12;
+                c.convergence.relative_tolerance = 1e-12;
+                c.linear_max_iterations = 100;
+                c.linear_tolerance = 1e-12;
+                // Forensic trace for the e2e guard (measurement only):
+                // per-iteration criterion values are committed to the CI
+                // log so a gate failure is attributed with measured
+                // numbers (Picard budget vs linear-solve noise floor vs
+                // gauge-chain defect) instead of a bare converged=false.
+                c.diagnostics.iteration_trace = true;
+                c.diagnostics.iteration_trace_frequency = 1;
+                const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+                EXPECT_TRUE(result.converged);
+                EXPECT_NEAR(p(0), 3.0, 1e-10);
+                EXPECT_NEAR(p(1), 3.0, 1e-10);
+                EXPECT_NEAR(U.component_data(0)[0], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(0)[1], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(1)[0], 0.0, 1e-9);
+                EXPECT_NEAR(U.component_data(2)[1], 0.0, 1e-9);
+            }
+            {
+                const Mesh mesh = make_two_cell_channel();
+                Field<double, Location::CELL> U(2, "U", "m/s", 3);
+                Field<double, Location::CELL> p(2, "p", "Pa", 1);
+                U.fill(0.0);
+                p.fill(7.0);
+                VelocityBoundaryConditions ubc;
+                // Non-degenerate contract: an O(1) wall velocity gives the
+                // exact discrete solution U = (1,0,0) in both cells with
+                // uniform pressure and O(1) boundary fluxes.
+                ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1.0,0.0,0.0}};
+                ScalarBoundaryConditions pbc;
+                pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 5.0, 0.0};
+                IncompressibleSolverControls c;
+                c.algorithm = PressureVelocityAlgorithm::COUPLED;
+                c.coupling.schur_model = model;
+                // Test-contract fix, second revision (well-posed
+                // contract). Two measured defects made this guard
+                // structurally unconvergeable on the COUPLED path:
+                // (1) Picard budget mismatch (run 38224806432): the
+                //     default relaxed update (alpha_u = 0.7,
+                //     alpha_p = 0.3) contracts the pressure error by 0.7
+                //     per iteration, so p going 7.0 -> 3.0 needs ~79
+                //     iterations while the budget was 10.
+                // (2) Degenerate exact solution (evidence 9826140, the
+                //     committed trace of the alpha = 1 run): with
+                //     U_b = (0,0,0) the exact solution is U == 0 with
+                //     uniform pressure, so the alpha = 1 state freezes
+                //     at a bit-exact fixed point from iteration 1; the
+                //     trace shows momentum_residual_relative pinned at
+                //     exactly 1.0 for all 10 iterations (the reference
+                //     residual is captured at iteration 1 and the field
+                //     never changes again) and continuity_normalized
+                //     pinned at exactly 2 (noise over an all-zero
+                //     boundary flux), so the 1e-12 gates are unreachable
+                //     for any Schur model on that contract.
+                // This revision makes the contract well-posed without
+                // loosening a single gate: U_b = (1,0,0) above gives a
+                // non-degenerate O(1) problem, alpha_u = alpha_p = 0.5
+                // lets every criterion decay geometrically under the
+                // unchanged 1e-12 gates (~41 iterations at rate 0.5),
+                // coupled_linear_tolerance = 1e-14 keeps the linear
+                // noise floor 100x below the gates, and
+                // max_iterations = 200 budgets the Picard loop with
+                // margin.
+                c.coupling.alpha_u = 0.5;
+                c.coupling.alpha_p = 0.5;
+                // Linear noise floor 100x below the 1e-12 gates.
+                c.coupling.coupled_linear_tolerance = 1e-14;
+                c.pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
+                c.pressure_reference_cell = 0;
+                c.pressure_reference_value = 3.0;
+                c.convergence.max_iterations = 200;
+                c.convergence.continuity_tolerance = 1e-12;
+                c.convergence.relative_tolerance = 1e-12;
+                c.linear_max_iterations = 100;
+                c.linear_tolerance = 1e-12;
+                // Forensic trace for the e2e guard (measurement only):
+                // per-iteration criterion values are committed to the CI
+                // log so a gate failure is attributed with measured
+                // numbers (Picard budget vs linear-solve noise floor vs
+                // gauge-chain defect) instead of a bare converged=false.
+                c.diagnostics.iteration_trace = true;
+                c.diagnostics.iteration_trace_frequency = 1;
+                const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+                EXPECT_TRUE(result.converged);
+                EXPECT_NEAR(p(0), 5.0, 1e-10);
+                EXPECT_NEAR(p(1), 5.0, 1e-10);
+                EXPECT_NEAR(U.component_data(0)[0], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(0)[1], 1.0, 1e-9);
+                EXPECT_NEAR(U.component_data(1)[0], 0.0, 1e-9);
+                EXPECT_NEAR(U.component_data(2)[1], 0.0, 1e-9);
+            }
+        }
     });
     return run_all();
 }

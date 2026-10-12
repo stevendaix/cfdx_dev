@@ -4,6 +4,15 @@
 // N3 gap: the Laplacian operators on an unstructured tetrahedral grid.
 // Constant fields must be annihilated; linear fields and smooth manufactured
 // field converge/conserve as measured, reported without over-promotion.
+// With a linear-consistent (least-squares) cell gradient the corrected
+// operator is linear-exact, and that consistency is enforced at every
+// campaign refinement level. The smooth-field interior residual under
+// this consistent configuration is measured and reported WITHOUT a
+// decrease threshold: a linear-exact but non-symmetric corrected operator
+// is not quadratic-exact, so no pointwise residual convergence is claimed.
+// The default two-point Gauss gradient variant is not linear-consistent
+// on tetrahedra and its measured non-decreasing error is reported rather
+// than hidden.
 
 #include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -225,6 +234,47 @@ void check_smooth()
     }
 }
 
+// Smooth-field diagnostic with linear-consistent gradients: the corrected
+// operator with a least-squares cell gradient is linear-exact
+// (check_operator_consistency enforces this at every campaign refinement
+// level), but it is not quadratic-exact and its gradient-based correction
+// term makes the operator non-symmetric. Its pointwise interior residual
+// on a smooth manufactured field is therefore O(1), and no convergence
+// claim is made for it: a strict-decrease requirement on these residuals
+// was measured to FAIL on the n=4/8/16 tetrahedral family (first revision
+// of this PR), which is exactly why the campaign reports them without a
+// threshold instead of promoting an unproven order. Errors must remain
+// finite; the observed orders are reported as diagnostics only.
+void check_smooth_with_consistent_gradient()
+{
+    const std::vector<std::size_t> ns = {4u, 8u, 16u};
+
+    for (const auto gs : {GradientScheme::LEAST_SQUARES,
+                          GradientScheme::LEAST_SQUARES_QUADRATIC}) {
+        std::vector<double> l2(ns.size(), 0.0);
+        for (std::size_t idx = 0; idx < ns.size(); ++idx) {
+            const Grid grid = make_tet_grid(ns[idx]);
+            const auto e = interior_error(grid,
+                laplacian_of(grid, sample(grid, smooth_value),
+                             LaplacianScheme::CORRECTED, gs),
+                sample(grid, smooth_laplacian));
+            require(std::isfinite(e.l2) && std::isfinite(e.linf),
+                    std::string(to_string(gs)) +
+                    ": corrected Laplacian errors must be finite");
+            l2[idx] = e.l2;
+            std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
+                      << " n=" << ns[idx] << " L2=" << e.l2 << " Linf=" << e.linf << "\n";
+        }
+        for (std::size_t idx = 1; idx < ns.size(); ++idx) {
+            const double observed_order =
+                std::log(l2[idx - 1] / l2[idx]) / std::log(2.0);
+            std::cout << "POLY_LAP_ORDER scheme=corrected gradient=" << to_string(gs)
+                      << " from_n=" << ns[idx - 1] << " to_n=" << ns[idx]
+                      << " observed_order=" << observed_order << "\n";
+        }
+    }
+}
+
 // Operator consistency: with a linear-consistent cell gradient (least
 // squares / quadratic least squares) the corrected non-orthogonal operator
 // annihilates a linear field on interior tetrahedra. The two-point Gauss
@@ -256,9 +306,10 @@ int main()
 {
     try {
         std::cout << std::setprecision(12);
-        check_operator_consistency(6);
+        for (const std::size_t n : {4u, 6u, 8u, 16u}) check_operator_consistency(n);
         check_constant_and_linear(4);
         check_smooth();
+        check_smooth_with_consistent_gradient();
         std::cout << "POLYHEDRAL_LAPLACIAN_CAMPAIGN: PASS\n";
         return 0;
     } catch (const std::exception& e) {

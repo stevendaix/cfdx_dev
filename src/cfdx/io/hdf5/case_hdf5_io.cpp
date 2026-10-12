@@ -495,6 +495,12 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
 
     // Misc
     obj.object["gravity_vector"] = setup.gravity_vector;
+    {
+        mini_json::array_t bf_arr;
+        for (double v : setup.body_force)
+            bf_arr.emplace_back(mini_json::value(v));
+        obj.object["body_force"] = std::move(bf_arr);
+    }
     obj.object["units"] = setup.units;
     obj.object["solver_mode"] = setup.solver_mode;
 
@@ -803,6 +809,12 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
     setup.ref_pressure = json_get_number(json, "ref_pressure", 101325.0);
 
     setup.gravity_vector = json_get_string(json, "gravity_vector");
+    const mini_json::value* bf = mini_json::find(json, "body_force");
+    if (bf && bf->is_array()) {
+        for (const auto& comp : bf->array) {
+            if (comp.is_number()) setup.body_force.push_back(comp.number);
+        }
+    }
     setup.units = json_get_string(json, "units", "SI");
     setup.solver_mode = json_get_string(json, "solver_mode", "steady");
 
@@ -1548,3 +1560,4 @@ bool write_fields_hdf5(const std::string& filename,
 
 }  // namespace io
 }  // namespace cfdx
+

@@ -58,7 +58,16 @@ struct CouplingControls {
     // Rhie-Chow pressure block makes the collocated formulation nonsingular
     // after pressure gauge fixing.
     std::size_t coupled_max_iterations = 2000;
-    double coupled_linear_tolerance = 1e-10;
+    // Default tightened from 1e-10. At 1e-10 the coupled FGMRES true
+    // relative residual floors at ~9.94e-11 with an absolute momentum
+    // residual floor of ~2.4e-10 (stable within 0.02% over 8000 outer
+    // iterations on the NACA0012 n64 case, diag/naca-coupled-fix4b),
+    // which leaves the iteration-1-relative momentum metric ~11x above
+    // the 1e-8 gate: the previous default could never pass the
+    // convergence gates. At 1e-12 the same case converges with all
+    // gates green (n64 and n128 both in 67 outer iterations,
+    // diag/naca-coupled-fix4c). See issue #663.
+    double coupled_linear_tolerance = 1e-12;
     // Explicit pressure-Schur approximation for the coupled production path.
     // Unsupported models must be rejected; there is no implicit fallback.
     CoupledSchurModel schur_model = CoupledSchurModel::PCD;
@@ -219,10 +228,11 @@ inline double relaxed_value(double old_value, double computed_value, double alph
     return old_value + alpha * (computed_value - old_value);
 }
 
-// SIMPLEC uses the signed momentum-row off-diagonal coefficients.  The
-// consistent diagonal is A_P - sum_{N != P}(A_PN).  Keeping this helper next
-// to the pressure-velocity coefficient conventions prevents the physical
-// segregated path from silently drifting from the N8 algebraic Schur contract.
+// SIMPLEC uses the signed entries stored in the assembled momentum matrix.
+// CFDX stores neighbour entries as A_PN = -a_PN with a_PN >= 0, so the
+// consistent diagonal A_P - sum(a_PN) is A_P + sum(A_PN). Keeping this
+// sign conversion explicit prevents the segregated and algebraic Schur paths
+// from drifting away from the assembled matrix convention.
 inline double simplec_consistent_diagonal(
     double diagonal,
     double signed_offdiag_sum)
@@ -231,13 +241,17 @@ inline double simplec_consistent_diagonal(
         diagonal <= 0.0)
         throw std::invalid_argument(
             "simplec_consistent_diagonal: invalid momentum coefficients");
-    const double denominator = diagonal - signed_offdiag_sum;
+    // Matrix off-diagonals are signed (normally non-positive): convert
+    // them back to the positive neighbour-coefficient convention of SIMPLEC.
+    const double denominator = diagonal + signed_offdiag_sum;
     if (!(denominator > 0.0) || !std::isfinite(denominator))
         throw std::invalid_argument(
             "simplec_consistent_diagonal: non-positive/non-finite denominator");
     return denominator;
 }
 
+// Absolute-value form is equivalent only when all stored off-diagonals
+// are non-positive. Kept as an independent diagnostic, not as the contract.
 inline double simplec_abs_sum_diagnostic_denominator(
     double diagonal,
     double abs_offdiag_sum)

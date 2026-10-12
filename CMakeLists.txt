@@ -435,6 +435,12 @@ if(CFDX_BUILD_TESTS)
         set_tests_properties(test_n11_conservation_boundedness PROPERTIES
             LABELS "n11;qualification;validation;long"
             RUN_SERIAL TRUE)
+
+        add_test(NAME test_n11_campaign_integrity
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/python/test_n11_campaign_integrity.py)
+        set_tests_properties(test_n11_campaign_integrity PROPERTIES
+            LABELS "n11;unit;validation")
     endif()
 
     # Unit tests - Core
@@ -476,6 +482,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
     add_cfdx_test(test_fgmres_solver tests/unit/test_fgmres_solver.cpp)
     add_cfdx_test(test_krylov_preconditioning tests/unit/test_krylov_preconditioning.cpp)
+    add_cfdx_test(test_krylov_diagnostics tests/unit/test_krylov_diagnostics.cpp)
     add_cfdx_test(test_stationary_solvers tests/unit/test_stationary_solvers.cpp)
     add_cfdx_test(test_performance_foundations tests/unit/test_performance_foundations.cpp)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
@@ -723,6 +730,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_transient_mms_3d_stiff tests/validation/test_transient_mms_3d_stiff.cpp)
     add_cfdx_test(test_n12_momentum_mms tests/validation/test_n12_momentum_mms.cpp)
     add_cfdx_test(test_n12_pressure_continuity_mms tests/validation/test_n12_pressure_continuity_mms.cpp)
+    add_cfdx_test(test_n12_coupled_pressure_velocity_mms tests/validation/test_n12_coupled_pressure_velocity_mms.cpp)
     set_tests_properties(
         test_mms_scalar_diffusion
         test_transient_mms
@@ -731,7 +739,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_n12_momentum_mms
         test_n12_pressure_continuity_mms
         PROPERTIES LABELS "n12;mms;validation")
+    set_tests_properties(
+        test_n12_coupled_pressure_velocity_mms
+        PROPERTIES LABELS "n12;mms;validation;long;validation-total")
     add_cfdx_test(test_polyhedral_laplacian_campaign tests/validation/test_polyhedral_laplacian_campaign.cpp)
+    add_cfdx_test(test_polyhedral_poisson_convergence tests/validation/test_polyhedral_poisson_convergence.cpp)
     add_cfdx_test(test_convection_scheme_verification tests/validation/test_convection_scheme_verification.cpp)
     add_cfdx_test(test_convection_3d_verification tests/validation/test_convection_3d_verification.cpp)
     add_cfdx_test(test_convection_blending tests/validation/test_convection_blending.cpp)
@@ -770,7 +782,16 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         test_polyhedral_laplacian_campaign
         test_gradient_verification
         test_polyhedral_gradient_campaign
+        test_polyhedral_poisson_convergence
         PROPERTIES LABELS "validation;qualification;n10")
+    # The Poisson solution-convergence assembly is a black-box indicator
+    # campaign (hundreds of production operator applications per level);
+    # keep it out of the DebugSanitizers pass like the other
+    # sanitizer-slow qualification tests. Release coverage stays
+    # merge-gated.
+    set_tests_properties(test_polyhedral_poisson_convergence PROPERTIES
+        LABELS "n10;qualification;validation;sanitizer-slow"
+        TIMEOUT 1800)
     add_cfdx_test(test_convection_polyhedral_campaign tests/validation/test_convection_polyhedral_campaign.cpp)
     add_cfdx_test(test_convection_solver_qualification tests/validation/test_convection_solver_qualification.cpp)
     set_tests_properties(test_convection_solver_qualification PROPERTIES LABELS "phase13;validation;qualification")
@@ -857,6 +878,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 1800)
     set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
@@ -865,6 +890,11 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_n9_s9_rhie_chow_consistency PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
+        RUN_SERIAL TRUE)
+    add_cfdx_test(test_n9_negative_diagnostics tests/validation/test_n9_negative_diagnostics.cpp)
+    set_tests_properties(test_n9_negative_diagnostics PROPERTIES
+        LABELS "n9;qualification;validation;validation-total"
+        TIMEOUT 600
         RUN_SERIAL TRUE)
     if(CFDX_ENABLE_MPI AND MPI_FOUND)
         add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
@@ -1031,6 +1061,14 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             LABELS "n9;schur;integration;validation;validation-total"
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME test_n9_poiseuille_body_force_production
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
+        set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
+            LABELS "n9;qualification;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 900)
     endif()
 
     if(Python3_Interpreter_FOUND)
@@ -1066,3 +1104,4 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
 
 endif()
+

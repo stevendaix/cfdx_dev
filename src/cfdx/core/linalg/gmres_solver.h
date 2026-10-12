@@ -7,6 +7,7 @@
 #include "solver_workspace.h"
 #include "krylov_controls.h"
 #include "mixed_precision.h"
+#include "krylov_diagnostics.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -57,6 +58,16 @@ inline SolverResult solve_gmres(
     // for nondimensionalized or otherwise small-scale operators.
     const double rhs_scale = std::max(b_norm, 1e-300);
     const double tol = tolerance * b_norm;
+
+    // Diagnostic: track the gauge-row value of the initial solution vector.
+    // The gauge row is conventionally the last pressure unknown (index n-1),
+    // which is pinned to a reference value by the pressure gauge.
+    if (krylov_diagnostics_enabled()) {
+        const std::size_t gauge_row = n > 0 ? n - 1 : 0;
+        const double init_gauge = (gauge_row < x.size()) ? x(gauge_row) : 0.0;
+        std::cerr << "GMRES_INIT_GAUGE row=" << gauge_row
+                  << " value=" << init_gauge << "\n";
+    }
 
     GmresWorkspace local_workspace;
     GmresWorkspace& w = reusable_workspace ? *reusable_workspace : local_workspace;
@@ -119,6 +130,9 @@ inline SolverResult solve_gmres(
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
+                    if (krylov_diagnostics_enabled())
+                        std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
+                                  << iterations << "\n";
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iterations;
                     return result;

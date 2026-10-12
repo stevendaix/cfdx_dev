@@ -1,0 +1,52 @@
+name: cfdx-audit-gate
+
+# Constitution technique (Plan Directeur de Qualification et d'Audit, 2026-10-12).
+# Gatekeeper des Regles d'Or 1 et 2 :
+#  - structure des Fiches Methode (docs/audits/)
+#  - presence d'une fiche pour toute PR touchant le noyau numerique
+# Les gates numeriques lourds (L2/GCI/conservation) restent dans
+# .github/workflows/cfdx-numerical.yml, n9-physical-validation.yml, etc. :
+# ce workflow n'introduit aucun doublon d'execution, il ajoute le controle
+# documentaire bloquant.
+
+on:
+  pull_request:
+    paths:
+      - 'src/cfdx/core/numerics/**'
+      - 'src/cfdx/core/linalg/**'
+      - 'src/cfdx/physics/**'
+      - 'docs/audits/**'
+
+permissions:
+  contents: read
+
+jobs:
+  audit-gate:
+    name: Audit gate (fiches methode + rule-of-gold-1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed files and PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr view ${{ github.event.pull_request.number }} --json body --jq .body > pr_body.txt || echo "" > pr_body.txt
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+          cat changed_files.txt
+
+      - name: Validate fiche structure (Rule of Gold 1)
+        run: python3 scripts/check_audit_gate.py --validate-fiches
+
+      - name: Enforce fiche reference for numerical-core PRs (Rule of Gold 1)
+        run: |
+          python3 scripts/check_audit_gate.py \
+            --changed-files changed_files.txt \
+            --pr-body pr_body.txt
+
+      - name: Gate summary
+        if: always()
+        run: |
+          echo "Audit gate executed on ${{ github.event.pull_request.number || 'push' }}"

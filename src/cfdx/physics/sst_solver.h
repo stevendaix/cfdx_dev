@@ -123,7 +123,7 @@ inline TurbulenceTransportResult solve_sst_transport(
             k(i) = k_solution(i);
             omega(i) = omega_solution(i);
         }
-        enforce_turbulence_bounds(k,omega,controls);
+        record_turbulence_bounds(result, enforce_turbulence_bounds(k,omega,controls));
 
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i) {
@@ -133,7 +133,7 @@ inline TurbulenceTransportResult solve_sst_transport(
         result.k_residual=scalar_equation_residual_inf(eqk,k_solution);
         result.second_residual=scalar_equation_residual_inf(eqw,omega_solution);
         result.iterations=iter;
-        if(rk.status==cfdx::core::SolverStatus::CONVERGED &&
+        if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
            rw.status==cfdx::core::SolverStatus::CONVERGED &&
            std::max(dk,dw)<=tolerance) {
             result.converged=true;

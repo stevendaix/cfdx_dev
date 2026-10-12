@@ -60,6 +60,38 @@ The tetrahedral fixture verifies:
 
 It does not promote N10 to a universal polyhedral accuracy qualification. Smooth-field order on the complete quality ladder remains a subsequent V&V item.
 
+The polyhedral Laplacian campaign enforces operator consistency at every campaign refinement level (n = 4/6/8/16): with a linear-consistent least-squares cell gradient, the corrected non-orthogonal operator must be linear-exact on interior tetrahedra at each level. For the smooth manufactured field under this consistent configuration, the interior residuals and observed orders are measured and reported without threshold: the corrected operator is not quadratic-exact and its gradient-based correction makes it non-symmetric, so its pointwise interior residual is O(1) and no convergence or accuracy order is claimed for it. A strict-decrease gate on these residuals was tried and measured to fail on the tested family; the campaign keeps the honest diagnostic instead. The default two-point Gauss gradient keeps its documented no-order status, and its measured non-decreasing error remains documented rather than hidden.
+
+## Solution-level polyhedral Poisson convergence
+
+The polyhedral Laplacian campaign above measures the operator interior
+residual without a threshold. `test_polyhedral_poisson_convergence` closes
+the solution-level criterion that those diagnostics cannot claim. On
+Kuhn-tetrahedralised grids (n = 4/8/16 interior cubes) it solves the
+manufactured Poisson problem Delta phi = -3 pi^2 phi with
+phi = sin(pi x) sin(pi y) sin(pi z) and exact Dirichlet values on the
+outer ghost shell.
+
+The interior block of the discrete operator is never re-implemented: it is
+assembled from black-box applications of the production `compute_laplacian`
+operator (corrected scheme with the least-squares gradient) on colour-coded
+indicator fields. A distance-5 cube colouring keeps same-colour interior
+cells outside the two-hop dependency support of the corrected operator. A
+deterministic pseudo-random field then gates the assembly itself: the
+assembled matrix must reproduce `compute_laplacian(psi)` on every interior
+cell to 1e-9 relative, so an incomplete dependency model or a wrong
+colouring fails closed.
+
+The system is solved with the production BiCGStab and accepted only with
+CONVERGED status and an independently recomputed true relative residual
+below 1e-8. Acceptance is a strict decrease of the volume-weighted L2
+solution error at every refinement level n = 4 -> 8 -> 16. Observed orders
+are reported as diagnostics only; no accuracy order is claimed for the
+corrected polyhedral operator. If the strict-decrease gate fails, the test
+fails: that is an honest negative result which blocks the N10 campaign,
+not a tolerance to relax.
+
+
 ## Invalid geometry
 
 A deliberately collapsed face is passed to the same production mesh validator. The expected result is rejection with an explicit error. No repair or fallback is permitted.
@@ -79,6 +111,7 @@ the `n10;validation;qualification` CTest label:
 - `test_nonorthogonal_skew_campaign`: controlled skew sweep;
 - `test_nonorthogonal_laplacian_campaign`: non-orthogonal diffusion V&V;
 - `test_polyhedral_laplacian_campaign`: polyhedral diffusion consistency.
+- `test_polyhedral_poisson_convergence`: solution-level polyhedral Poisson convergence under refinement (strict L2 decrease gate, observed orders reported as diagnostics only).
 
 These cases already provide the spatial-accuracy evidence that a second
 N10-specific smooth-field campaign would duplicate.
@@ -104,12 +137,13 @@ Closed by this PR:
 - high-aspect-ratio fixture;
 - valid near-degenerate fixture;
 - polyhedral geometry fixture;
+- solution-level polyhedral Poisson convergence gate on the Kuhn tetrahedral family;
 - solver convergence versus quality for the two-point diffusion matrix;
 - invalid/degenerate rejection;
 - owner-neighbour-aware internal quality metrics.
 
 Remaining:
 
-1. run the full smooth-field/polyhedral accuracy matrix over the N10 ladder;
+1. run the full smooth-field/polyhedral accuracy matrix over the N10 ladder; the tetrahedral solution-level Poisson criterion is now executable and merge-gated through `test_polyhedral_poisson_convergence`, while the broader ladder (skew, high-aspect-ratio and imported-fixture families) remains open;
 2. connect the campaign to the imported production fixture manifest from #423;
 3. retain quantitative evidence from the exact CI HEAD.
