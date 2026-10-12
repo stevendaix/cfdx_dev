@@ -12,9 +12,18 @@ name: Schur pressure gauge fix validation
 #
 # The build step now also captures its full output: the first two runs
 # of this workflow failed inside the build step with no retained log
-# (job log download requires admin rights on this repository), so the
-# committed build log is the only way to diagnose a compile error from
-# outside.
+# (job logs require admin rights on this repository), so the committed
+# build log is the only way to diagnose a compile error from outside.
+#
+# v2 (build-config fix, NO solver/test change): run 3's committed build
+# log shows a DETERMINISTIC failure at [19/64] in hdf5_writer.cpp:
+# /usr/include/hdf5/openmpi/H5public.h includes <mpi.h>, but this
+# workflow configured CFDX_ENABLE_MPI=OFF while the runner has the
+# openmpi-flavoured HDF5 dev package installed. FindHDF5 therefore
+# resolves the openmpi headers without any MPI include path. The
+# configure now mirrors the flags proven to build in the fix4b/fix4c
+# workflows (MPI ON + parallel HDF5 ON + openmpi dev packages): the
+# earlier "transient runner failure" hypothesis is refuted.
 
 on:
   workflow_dispatch:
@@ -46,8 +55,10 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_MPI=OFF \
-            -DCFDX_USE_HDF5_SERIAL=ON
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
 
       - name: Build affected test targets
         id: build
