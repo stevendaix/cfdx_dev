@@ -59,7 +59,10 @@ CATEGORIES = {
     "pressure_reference": ["test_n9_s10_pressure_reference_policies"],
     "schur_qualification": ["test_n9_common_schur_qualification"],
     "production_diagnostics": ["test_poiseuille_diagnostics", "test_ghia_cavity"],
-    "steady_production": ["test_phase9_acceptance", "test_steady_incompressible_solver"],
+    "steady_production": [
+        "test_phase9_acceptance",
+        "test_steady_incompressible_solver",
+    ],
     "mpi_equivalence": ["test_n13_mpi_equivalence"],
     "python_body_force": [PYTEST_TEST_NAME],
 }
