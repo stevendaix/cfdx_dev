@@ -9,6 +9,12 @@ name: Schur pressure gauge fix validation
 # semantics, end-to-end LSC/BFBt interior-reference and fixed-pressure
 # cases). Evidence is committed back to the branch; paths-ignore keeps
 # the evidence commit from re-triggering this workflow.
+#
+# The build step now also captures its full output: the first two runs
+# of this workflow failed inside the build step with no retained log
+# (job log download requires admin rights on this repository), so the
+# committed build log is the only way to diagnose a compile error from
+# outside.
 
 on:
   workflow_dispatch:
@@ -16,6 +22,7 @@ on:
     branches: [fix/schur-pressure-gauge]
     paths-ignore:
       - 'schur-gauge-fix-output.log'
+      - 'schur-gauge-fix-build.log'
 
 permissions:
   contents: write
@@ -43,7 +50,10 @@ jobs:
             -DCFDX_USE_HDF5_SERIAL=ON
 
       - name: Build affected test targets
+        id: build
+        continue-on-error: true
         run: |
+          set -o pipefail
           cmake --build build --parallel 2 --target \
             test_n9_common_schur_qualification \
             test_n9_s10_pressure_reference_policies \
@@ -63,10 +73,12 @@ jobs:
             test_n8_schur_production_benchmark \
             test_n8_schur_representative_cfd \
             test_n8_schur_complete_krylov \
-            test_steady_incompressible_solver
+            test_steady_incompressible_solver \
+            2>&1 | tee schur-gauge-fix-build.log
 
       - name: Run Schur gauge validation subset
         id: tests
+        if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           ctest --test-dir build --output-on-failure --no-tests=error \
@@ -78,15 +90,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add schur-gauge-fix-output.log
+          touch schur-gauge-fix-build.log schur-gauge-fix-output.log
+          git add schur-gauge-fix-build.log schur-gauge-fix-output.log
           if git diff --cached --quiet; then
             echo "nothing to commit"
           else
-            git commit -m "ci(schur-gauge): capture validation subset log [skip ci]"
+            git commit -m "ci(schur-gauge): capture validation subset logs [skip ci]"
             git pull --rebase --autostash
             git push
           fi
 
       - name: Final gate
         if: always()
-        run: '[[ "${{ steps.tests.outcome }}" == "success" ]] || exit 1'
+        run: |
+          [[ "${{ steps.build.outcome }}" == "success" ]] || exit 1
+          [[ "${{ steps.tests.outcome }}" == "success" ]] || exit 1
