@@ -199,12 +199,22 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     controls.kinematic_viscosity = mu / rho;
     controls.convergence.max_iterations = 200;
     controls.convergence.relative_tolerance = 1e-9;
-    controls.convergence.continuity_tolerance = 1e-11;
+    controls.convergence.continuity_tolerance = 1e-13;
     controls.linear_tolerance = 1e-11;
     controls.pressure_reference_cell = n - 1;
 
     const auto flow = solve_steady_incompressible(plug.mesh, U, p, ubc, pbc,
                                                    controls);
+    if (!flow.history.empty()) {
+        const auto& h = flow.history.back();
+        std::cout << "PLUG_FLOW_AUDIT n=" << n
+                  << " converged=" << flow.converged
+                  << " iterations=" << flow.iterations
+                  << " continuity=" << h.corrected_flux_continuity_linf
+                  << " mass_normalized=" << h.mass_normalized_imbalance
+                  << " momentum_rel=" << h.momentum_equation_residual_relative
+                  << "\\n";
+    }
     plug.converged = flow.converged;
     plug.mass_flux = flow.authoritative_mass_flux;
     for (std::size_t c = 0; c < n; ++c) {
