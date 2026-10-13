@@ -185,6 +185,15 @@ int main() {
         EXPECT_TRUE(!p.apply(r, z));
         EXPECT_TRUE(!p.last_error().empty());
 
+        // A successful lifecycle operation clears the previous diagnostic.
+        const SparseMatrix valid = make_1d_laplacian(32);
+        EXPECT_TRUE(p.setup(valid));
+        EXPECT_TRUE(p.last_error().empty());
+        EXPECT_TRUE(p.update_values(valid));
+        EXPECT_TRUE(p.last_error().empty());
+        EXPECT_TRUE(p.apply(r = Vector(32, 1.0), z = Vector(32, 0.0)));
+        EXPECT_TRUE(p.last_error().empty());
+
         // Type forwarding: the footprint is reachable from the linalg
         // namespace used by the solver-facing headers.
         cfdx::core::linalg::AMGSetupFootprint f{};
