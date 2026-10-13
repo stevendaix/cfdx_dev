@@ -13,8 +13,9 @@
 //     internal faces separating two *different* declared zones. When both
 //     sides declare a contact resistance the two values must be identical.
 //   * Every cell must map onto a declared zone id.
-//   * A conduction system with no Dirichlet boundary anywhere produces a
-//     zero-diagonal row and is rejected at assembly time.
+//   * A conduction system with no fixed-temperature boundary anywhere is
+//     singular (its constant null space leaves the temperature level
+//     unpinned) and is rejected at assembly time.
 //
 // Discretization: standard two-point finite volumes. Internal faces use the
 // exact series-resistance conductance
@@ -206,6 +207,7 @@ inline ScalarEquation assemble_thermal_conduction(
     double max_internal_distance = 0.0;
     double min_face_area = std::numeric_limits<double>::infinity();
     double max_face_area = 0.0;
+    bool has_fixed_temperature = false;
 
     const auto& own = mesh.ownership();
     for (std::size_t f = 0; f < nf; ++f) {
@@ -273,6 +275,7 @@ inline ScalarEquation assemble_thermal_conduction(
                 const double g_b = k_o * area / distance;
                 diag[o] += g_b;
                 rhs[o] += g_b * bc.value;
+                has_fixed_temperature = true;
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 if (!std::isfinite(bc.gradient))
                     throw std::invalid_argument(
@@ -283,6 +286,17 @@ inline ScalarEquation assemble_thermal_conduction(
             // ZERO_GRADIENT: adiabatic, no contribution.
         }
     }
+
+    // A purely Neumann conduction system (no fixed temperature anywhere)
+    // has a constant null space: every diagonal entry stays positive on
+    // a connected mesh, so the per-cell diagonal check below cannot
+    // detect the singular case. Reject it explicitly.
+    if (!has_fixed_temperature)
+        throw std::runtime_error(
+            "assemble_thermal_conduction: no fixed-temperature boundary "
+            "found in the system; the pure conduction operator is singular "
+            "(constant null space, temperature level unpinned). Declare at "
+            "least one fixed-temperature patch");
 
     ScalarEquation eq{
         cfdx::core::SparseMatrix(nc, nc), cfdx::core::Vector(nc, 0.0), {}, 0.0};
