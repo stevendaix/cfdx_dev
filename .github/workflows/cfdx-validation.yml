@@ -137,7 +137,7 @@ jobs:
             echo "::warning::no ctest-fast-results.xml produced; nothing to annotate"
             exit 0
           fi
-          python3 - "$RESULTS" <<'PY'
+          python3 - "$RESULTS" <<'PY' || echo "::warning::ctest JUnit annotation step failed (non-fatal)"
           import sys
           import xml.etree.ElementTree as ET
           path = sys.argv[1]
