@@ -153,17 +153,22 @@ public:
         refreshed.front().A = A;
         if (!build_diagonal(refreshed.front())) return false;
 
+        // Stage numeric-update diagnostics with the temporary hierarchy. A
+        // failed refresh must not report drops from levels that were never
+        // committed as the active hierarchy.
+        std::size_t dropped_entries = 0;
         for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
             const std::size_t coarse_n = refreshed[level + 1].A.n_rows();
             SparseMatrix coarse = galerkin_coarse(
                 refreshed[level].A, refreshed[level].prolongation, coarse_n,
-                &last_footprint_.galerkin_dropped_entries);
+                &dropped_entries);
             if (!matrix_is_valid(coarse)) return false;
             refreshed[level + 1].A = std::move(coarse);
             if (!build_diagonal(refreshed[level + 1])) return false;
         }
 
         levels_ = std::move(refreshed);
+        last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
 
@@ -197,8 +202,8 @@ public:
         // numerically zero. The counters are reset at the start of setup()
         // and are deliberately kept when a setup attempt fails, so the
         // footprint of a failed attempt stays visible for diagnostics.
-        // update_values() accumulates Galerkin drops into the current
-        // footprint. No tolerance or acceptance criterion reads them.
+        // update_values() accumulates Galerkin drops only after a numeric
+        // hierarchy refresh succeeds; failed refreshes do not commit counts. No tolerance or acceptance criterion reads them.
         return last_footprint_;
     }
 

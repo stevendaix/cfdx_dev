@@ -167,6 +167,34 @@ int main() {
         EXPECT_TRUE(amg.coarse_size() > 0);
     });
 
+    run_case("b4_numeric_update_commits_only_successful_diagnostics", [] {
+        const SparseMatrix clean = make_1d_laplacian(32);
+        const auto op = make_operator(clean);
+        MatrixFreeVcyclePreconditioner amg(
+            op, 0.7, 4, 4, 0.25, 25, AMGInterpolationPolicy::SmoothedAggregation);
+        EXPECT_TRUE(amg.setup(clean));
+        const AMGSetupFootprint before = amg.setup_footprint();
+
+        // A valid numeric refresh commits its hierarchy and keeps the
+        // diagnostic stable when no Galerkin entries are dropped.
+        EXPECT_TRUE(amg.update_values(clean));
+        expect_footprint(amg, before.singleton_aggregates,
+                         before.fallback_interpolation_rows,
+                         before.galerkin_dropped_entries);
+
+        // An invalid diagonal fails before a refreshed hierarchy is
+        // committed. Its temporary attempt must not change the active
+        // hierarchy's diagnostic counters.
+        SparseMatrix invalid = clean;
+        auto* values = invalid.values_data();
+        for (std::size_t i = 0; i < invalid.nnz(); ++i) values[i] = 0.0;
+        EXPECT_TRUE(!amg.update_values(invalid));
+        expect_footprint(amg, before.singleton_aggregates,
+                         before.fallback_interpolation_rows,
+                         before.galerkin_dropped_entries);
+        EXPECT_TRUE(amg.coarse_size() > 0);
+    });
+
     run_case("b5_native_amg_last_error_contract_and_forwarding", [] {
         // last_error() is the status of the most recent lifecycle
         // operation: empty after construction, set by a failed
@@ -181,9 +209,18 @@ int main() {
         EXPECT_TRUE(!p.setup(empty));
         EXPECT_TRUE(!p.last_error().empty());
 
-        Vector r(1, 1.0), z(1, 0.0);
+        Vector r(32, 1.0), z(32, 0.0);
         EXPECT_TRUE(!p.apply(r, z));
         EXPECT_TRUE(!p.last_error().empty());
+
+        // A successful lifecycle operation clears the previous diagnostic.
+        const SparseMatrix valid = make_1d_laplacian(32);
+        EXPECT_TRUE(p.setup(valid));
+        EXPECT_TRUE(p.last_error().empty());
+        EXPECT_TRUE(p.update_values(valid));
+        EXPECT_TRUE(p.last_error().empty());
+        EXPECT_TRUE(p.apply(r, z));
+        EXPECT_TRUE(p.last_error().empty());
 
         // Type forwarding: the footprint is reachable from the linalg
         // namespace used by the solver-facing headers.
