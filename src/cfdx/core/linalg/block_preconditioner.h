@@ -40,6 +40,11 @@ public:
                 for (std::size_t k = row[global_row]; k < row[global_row + 1]; ++k) {
                     for (std::size_t j = 0; j < m; ++j) {
                         if (col[k] == block[j]) {
+                            // B1 (#480, fix): fail closed on non-finite
+                            // in-block coefficients; the scale scan below
+                            // would silently ignore a NaN and assemble a
+                            // non-finite inverse.
+                            if (!std::isfinite(val[k])) return false;
                             at(i, j) += val[k];
                             break;
                         }
@@ -48,6 +53,14 @@ public:
                 at(i, m + i) = 1.0;
             }
 
+            // B1 (#480): scale-relative pivot floor matching invert_dense.
+            double block_scale = 0.0;
+            for (std::size_t i = 0; i < m; ++i)
+                for (std::size_t j = 0; j < m; ++j)
+                    block_scale = std::max(block_scale, std::abs(at(i, j)));
+            if (!std::isfinite(block_scale) || block_scale == 0.0) return false;
+            const double pivot_floor = 1e-14 * block_scale;
+
             for (std::size_t pivot = 0; pivot < m; ++pivot) {
                 std::size_t best = pivot;
                 double best_abs = std::abs(at(pivot, pivot));
@@ -55,7 +68,7 @@ public:
                     const double a = std::abs(at(i, pivot));
                     if (a > best_abs) { best_abs = a; best = i; }
                 }
-                if (best_abs <= 1e-30) return false;
+                if (!std::isfinite(best_abs) || best_abs <= pivot_floor) return false;
 
                 if (best != pivot) {
                     for (std::size_t j = 0; j < 2 * m; ++j)
@@ -78,6 +91,10 @@ public:
             for (std::size_t i = 0; i < m; ++i)
                 for (std::size_t j = 0; j < m; ++j)
                     inv[i * m + j] = at(i, m + j);
+            // B1 (#480, fix): reject a non-finite assembled inverse.
+            for (const double v : inv) {
+                if (!std::isfinite(v)) return false;
+            }
             inverse_blocks_.push_back(std::move(inv));
         }
         return true;
@@ -266,6 +283,12 @@ public:
 private:
     bool validate() const {
         if (n_ == 0 || first_.empty() || second_.empty()) return false;
+        // B2 (#480): the Diagonal factorization scales solve_second output
+        // by diagonal_schur_scale_; a zero or non-finite scale would
+        // silently produce a degenerate action. Fail closed here.
+        if (factorization_ == SchurFactorization::Diagonal &&
+            (!std::isfinite(diagonal_schur_scale_) || diagonal_schur_scale_ == 0.0))
+            return false;
         std::vector<bool> covered(n_, false);
         for (const auto i : first_) {
             if (i >= n_ || covered[i]) return false;
