@@ -93,25 +93,32 @@ int main() {
     });
 
     run_case("b1_block_jacobi_rejects_nonfinite_block_coefficient", [] {
-        // A NaN in the assembled block must fail closed: std::max ignores
-        // it during the scale scan, so a per-coefficient finiteness check
-        // plus an inverse finiteness gate are required. An infinite
-        // coefficient is rejected for the same reason.
+        // SparseMatrix::push_back already rejects non-finite values at
+        // assembly time, so the fail-closed B1 guards are exercised the
+        // way an external numeric update would produce them: a finite
+        // matrix is finalized, then one raw CSR coefficient is mutated
+        // through values_data(). std::max then ignores the NaN during
+        // the scale scan, so the per-coefficient finiteness check plus
+        // the inverse finiteness gate are required to fail closed.
         SparseMatrix nan_block(2, 2);
         nan_block.push_back(0, 0, 1.0);
-        nan_block.push_back(0, 1, std::numeric_limits<double>::quiet_NaN());
+        nan_block.push_back(0, 1, 0.5);
         nan_block.push_back(1, 0, 0.0);
         nan_block.push_back(1, 1, 1.0);
         nan_block.finalize();
+        nan_block.values_data()[1] =
+            std::numeric_limits<double>::quiet_NaN();
         BlockDiagonalPreconditioner p({{0, 1}});
         EXPECT_TRUE(!p.setup(nan_block));
 
         SparseMatrix inf_block(2, 2);
         inf_block.push_back(0, 0, 1.0);
-        inf_block.push_back(0, 1, std::numeric_limits<double>::infinity());
+        inf_block.push_back(0, 1, 0.5);
         inf_block.push_back(1, 0, 0.0);
         inf_block.push_back(1, 1, 1.0);
         inf_block.finalize();
+        inf_block.values_data()[1] =
+            std::numeric_limits<double>::infinity();
         BlockDiagonalPreconditioner q({{0, 1}});
         EXPECT_TRUE(!q.setup(inf_block));
 
