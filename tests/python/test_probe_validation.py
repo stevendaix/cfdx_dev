@@ -2,7 +2,6 @@ import math
 import textwrap
 
 import pytest
-
 from cfdx.probe_validation import (
     PROBE_CSV_MAGIC,
     PROBE_CSV_VERSION,
@@ -168,13 +167,15 @@ def test_read_probe_csv_parses_native_c_format(tmp_path):
     # Hand-written bytes in the exact format cfdx::io::write_probe_csv produces:
     # shortest round-trip floats with a decimal point, max_iterations ordering.
     csv = tmp_path / "from_cpp.csv"
-    csv.write_text(textwrap.dedent("""\
+    csv.write_text(
+        textwrap.dedent("""\
         # cfdx-probe-csv v1
         # columns: probe,iteration,time,value
         pressure,1,0.5,0.3333333333333333
         pressure,2,0.5,0.3333333333333333
         u_mag,1,0.5,0.0
-    """))
+    """)
+    )
     loaded = read_probe_csv(csv)
     assert len(loaded) == 2
     pressure, u_mag = loaded
@@ -344,11 +345,13 @@ def test_read_probe_csv_round_trips_metadata(tmp_path) -> None:
 
 def test_read_probe_csv_ignores_metadata_when_unavailable(tmp_path) -> None:
     csv = tmp_path / "legacy.csv"
-    csv.write_text(textwrap.dedent("""\
+    csv.write_text(
+        textwrap.dedent("""\
         # cfdx-probe-csv v1
         # columns: probe,iteration,time,value
         pressure,1,0.5,0.3333333333333333
-    """))
+    """)
+    )
     loaded = read_probe_csv(csv)
     assert loaded[0].point == ()
     assert loaded[0].field is None
