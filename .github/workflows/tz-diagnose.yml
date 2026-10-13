@@ -1,0 +1,77 @@
+name: TZ diagnose
+
+# Temporary diagnostics workflow for PR #887: re-runs the fast CTest suite
+# (Release, same configure as cfdx-ci) and surfaces the failing tests and
+# their assertion output as job annotations, which are readable without
+# authenticated log access. To be removed before merge.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fast-ctest-diagnose:
+    name: Fast CTest diagnose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=OFF
+
+      - name: Build
+        id: build
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 2>&1 | tee build.log
+
+      - name: Run fast CTest
+        id: ctest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+
+      - name: Emit failure annotations
+        if: always()
+        run: |
+          LOG="build/Testing/Temporary/LastTest.log"
+          if [ -f "$LOG" ]; then
+            {
+              sed -n '/The following tests FAILED/,$p' "$LOG" | head -14
+              grep -nE 'FAIL:|FAILED:|diff=|AddressSanitizer|runtime error:|Assertion' "$LOG" | head -14
+              grep -nE 'THERMAL_ZONES_VV' "$LOG" | head -6
+            } > annotations.txt 2>/dev/null || true
+          fi
+          if [ ! -s annotations.txt ] && [ -f build.log ]; then
+            grep -nE 'error:|FAILED:' build.log | head -14 > annotations.txt || true
+          fi
+          n=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '::error::%s\n' "${line:0:480}"
+            n=$((n+1))
+            [ "$n" -ge 9 ] && break
+          done < annotations.txt
+          if [ "$n" -eq 0 ]; then
+            echo '::notice::no failure lines extracted'
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          if [ "${{ steps.build.outcome }}" != "success" ] || [ "${{ steps.ctest.outcome }}" != "success" ]; then
+            echo "CFDX TZ diagnose: FAIL"
+            exit 1
+          fi
+          echo "CFDX TZ diagnose: PASS"
