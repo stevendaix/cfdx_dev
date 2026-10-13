@@ -1043,7 +1043,8 @@ private:
         return std::equal(a.row_offsets_data(),
                           a.row_offsets_data() + a.n_rows() + 1,
                           b.row_offsets_data()) &&
-               std::equal(a.columns_data(), a.columns_data() + a.nnz(),
+               std::equal(a.columns_data(),
+                          a.columns_data() + a.nnz(),
                           b.columns_data());
     }
 
