@@ -240,13 +240,15 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
 int main()
 {
     try {
-        const auto m16 = run_case(16);
+        // Run the alpha=1 diagnostic before the default case so that a
+        // default-case convergence failure cannot suppress this comparison.
         try {
             (void)run_case(16, 1.0, 1.0);
             std::cout << "N12_COUPLED_AB alpha=1 probe completed\n";
         } catch (const std::exception& e) {
             std::cout << "N12_COUPLED_AB alpha=1 probe failed: " << e.what() << "\n";
         }
+        const auto m16 = run_case(16);
         const auto m32 = run_case(32);
         const auto m64 = run_case(64);
 
