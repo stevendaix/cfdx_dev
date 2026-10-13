@@ -1,3 +1,4 @@
+
 {
   "schema_version": "1.0",
   "campaign": "CFDX Engineering Qualification Campaign",
@@ -397,9 +398,9 @@
       "mesh": "Structured orthogonal 1-D chains (columns of 4 points, 4 wall faces per cell); n=16 (dx=0.25 m)",
       "boundary_conditions": "Dirichlet inlet temperature; zero-gradient outlet; lateral walls adiabatic, Dirichlet wall temperature, or fixed heat flux (positive into the domain)",
       "numerical_schemes": "Upwind convection on the frozen authoritative face mass flux; two-point diffusion; half-cell Dirichlet; fixed wall flux as a boundary gradient q''/k; one-way fluid-to-energy coupling without outer iteration",
-      "solver_settings": "Carrier flow via solve_steady_incompressible (SIMPLE, upwind) then solve_energy with dt=0 (steady), relaxation 1.0, tolerance 1e-12, linear_tolerance 1e-14, temperature_tolerance 1e-12, energy_balance_tolerance 1e-12",
-      "convergence_criteria": "Carrier flow converged with uniform plug velocity and mass flux; energy stage converged status with finite independent normalized conservation residual",
-      "conservation_criteria": "Independent energy-balance reconstruction (reconstruct_energy_balance): normalized |source - net boundary flux| < 1e-12; outlet flux equals total source power for adiabatic walls; per-patch boundary flux audit",
+      "solver_settings": "Carrier flow via solve_steady_incompressible (SIMPLE, upwind) initialized from rest (U=0) with default under-relaxation alpha_u=0.7 / alpha_p=0.3 (initializing at the exact plug solution freezes the relative-residual gates at ~1, monitor STAGNATED, issue #663); then solve_energy with dt=0 (steady), relaxation 1.0, tolerance 1e-12, linear_tolerance 1e-14, temperature_tolerance 1e-12, energy_balance_tolerance 1e-12",
+      "convergence_criteria": "Carrier flow converged with uniform plug velocity and mass flux; energy stage verdict is blocking: linear_solver_converged AND global_energy_balance_passed AND local_energy_balance_passed AND all results finite (the independent audit is a verdict, not a diagnostic)",
+      "conservation_criteria": "Independent energy-balance reconstruction (reconstruct_energy_balance) normalized by the gross audit power scale (total boundary throughput |q_f| + source power, floor 1 W): blocking gates, global and local (max cell residual, strictly stronger, immune to residual compensation), both < 1e-12 (energy_balance_tolerance); outlet flux equals total source power for adiabatic walls; per-patch boundary flux audit",
       "qoi": "Cell-centre temperatures, min/max temperature, total source power, per-patch boundary flux out, outlet temperature",
       "reference_value": "Exact discrete oracle at machine precision; plug-flow outlet temperature T_in + q'''L/(rho cp u); boundary_flux_out = q'''L (adiabatic walls) or 4 q''L (imposed wall flux)",
       "error": "Oracle agreement below 1e-9 K; normalized conservation below 1e-12; maximum principle respected",
@@ -409,3 +410,4 @@
     }
   ]
 }
+

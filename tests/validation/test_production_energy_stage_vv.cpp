@@ -1,3 +1,4 @@
+
 // T2 qualification: frozen-flow fluid energy transport through the
 // production solver's authoritative conservative face mass flux
 // (issues #880, #885 stage 2).
@@ -14,16 +15,21 @@
 //     fiche-14 formulas (never through assemble_scalar_equation) and solved
 //     with the Thomas algorithm; agreement is < 1e-9 per cell.
 //   * Independent energy conservation (reconstruct_energy_balance, not the
-//     assembled matrix) closes at < 1e-12 normalized; the net boundary flux
-//     equals the source power; per-patch identities hold (adiabatic walls
-//     exactly zero, imposed wall flux = q'' * area).
+//     assembled matrix) is a BLOCKING verdict normalized by the gross audit
+//     power scale (boundary throughput + source, floor 1 W): both the
+//     global closure (< 1e-12) and the strictly stronger local per-cell
+//     balance (< 1e-12) must pass for the stage to be converged; the net
+//     boundary flux equals the source power; per-patch identities hold
+//     (adiabatic walls exactly zero, imposed wall flux = q'' * area).
 //   * Discrete maximum principle with Dirichlet walls; bulk temperature
 //     rise q'''*V/(mdot*cp) as a physical sanity gate.
 //   * Fail-closed: unsupported energy models (including "buoyant"), wrong
-//     material counts, invalid properties, non-numeric or non-finite
-//     volumetric power / heat flux, Dirichlet-free (singular) systems,
-//     non-finite mass flux, non-finite initial temperature and mismatched
-//     field sizes are all rejected.
+//     material counts, invalid properties, non-numeric / partially numeric
+//     ("500abc") / empty / non-finite volumetric power and heat flux,
+//     quotient overflow of heat_flux / conductivity, non-positive declared
+//     or initial temperatures, Dirichlet-free (singular) systems,
+//     non-finite mass flux, mismatched field sizes and a geometry not
+//     matching the mesh are all rejected.
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "common/test_harness.h"
@@ -115,8 +121,9 @@ static Mesh chain_mesh(std::size_t n, double dx)
 
 // ---------------------------------------------------------------------------
 // Plug-flow carrier: slip walls (zero-gradient velocity), uniform inlet,
-// zero-gradient outlet. The uniform state is the exact discrete solution,
-// so the converged carrier is a uniform plug to machine precision.
+// zero-gradient outlet. Initialized from rest (U = 0) with the default
+// SIMPLE under-relaxation, the carrier converges geometrically onto the
+// uniform plug, which is the exact discrete solution of this configuration.
 // ---------------------------------------------------------------------------
 struct PlugFlow {
     Mesh mesh;
@@ -149,8 +156,19 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     pbc["walls"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
     IncompressibleSolverControls controls;
+    // Carrier initialization: from REST (U = 0), never at the exact plug
+    // solution. Seeding the fixed point makes the first momentum residual
+    // vanish, so the relative residual used by the convergence gates stays
+    // at ~1 forever and the monitor reports STAGNATED after 10 iterations
+    // (the documented failure mode of issue #663). The green pattern from
+    // test_channel_qualification is rest + default under-relaxation
+    // (alpha_u = 0.7, alpha_p = 0.3): the predictor is exact for a plug, so
+    // U_k = u_in * (1 - 0.7^k) and the run converges in ~63 iterations,
+    // well inside the 200-iteration budget. No tolerance is changed.
     controls.initialization.mode = InitializationMode::Uniform;
-    controls.initialization.uniform_velocity = {u_in, 0.0, 0.0};
+    controls.initialization.uniform_velocity = {0.0, 0.0, 0.0};
+    controls.coupling.alpha_u = 0.7;
+    controls.coupling.alpha_p = 0.3;
     controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
     controls.convection_scheme = ConvectionScheme::UPWIND;
     controls.use_bounded_convection = true;
@@ -385,8 +403,19 @@ int main()
         EXPECT_TRUE(oracle_error < 1e-9);
 
         EXPECT_TRUE(stage.nonfinite_temperature == 0);
-        EXPECT_TRUE(stage.independent_conservation_normalized < 1e-12);
-        EXPECT_NEAR(stage.independent_conservation_residual, 0.0, 1e-9);
+        EXPECT_TRUE(stage.linear_solver_converged);
+        EXPECT_TRUE(stage.global_energy_balance_passed);
+        EXPECT_TRUE(stage.local_energy_balance_passed);
+        EXPECT_TRUE(stage.nonfinite_faces == 0);
+        EXPECT_TRUE(stage.nonfinite_cells == 0);
+        // Blocking gates, normalized by the gross audit power scale
+        // (boundary throughput + source, floor 1 W): the global closure
+        // and the strictly stronger local one.
+        EXPECT_TRUE(stage.audit_power_scale >= 1.0);
+        EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
+        EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
+        EXPECT_TRUE(std::abs(stage.independent_conservation_residual) <
+                    1e-9 * stage.audit_power_scale);
         const double total_power = q * length;  // 20000 W
         EXPECT_NEAR(stage.total_source_power, total_power, 1e-9);
         EXPECT_NEAR(stage.boundary_flux_out, total_power, 1e-6);
@@ -438,7 +467,11 @@ int main()
                                     std::abs(temperature(c) - oracle[c]));
         EXPECT_TRUE(oracle_error < 1e-9);
 
-        EXPECT_TRUE(stage.independent_conservation_normalized < 1e-12);
+        EXPECT_TRUE(stage.linear_solver_converged);
+        EXPECT_TRUE(stage.global_energy_balance_passed);
+        EXPECT_TRUE(stage.local_energy_balance_passed);
+        EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
+        EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
         // No source: the net boundary flux must close at zero.
         EXPECT_NEAR(stage.boundary_flux_out, 0.0, 1e-6);
         // Discrete maximum principle: bounded by the Dirichlet values.
@@ -489,7 +522,11 @@ int main()
                                     std::abs(temperature(c) - oracle[c]));
         EXPECT_TRUE(oracle_error < 1e-9);
 
-        EXPECT_TRUE(stage.independent_conservation_normalized < 1e-12);
+        EXPECT_TRUE(stage.linear_solver_converged);
+        EXPECT_TRUE(stage.global_energy_balance_passed);
+        EXPECT_TRUE(stage.local_energy_balance_passed);
+        EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
+        EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
         // Wall power = q'' * (4 lateral faces * L * unit depth) = 8000 W in.
         const double wall_power = wall_flux * 4.0 * length;
         EXPECT_NEAR(stage.patch_flux_out.at("walls"), -wall_power, 1e-6);
@@ -599,11 +636,66 @@ int main()
             EXPECT_THROW(build_production_energy_case(s),
                          std::invalid_argument);
         }
+        // Strict numeric parsing: std::stod alone accepts a numeric prefix
+        // ("500abc" silently becomes 500); the whole text must parse as one
+        // finite number, and an explicitly declared empty value is a
+        // malformed declaration, not a silent default.
+        {
+            auto s = base;
+            s.materials[0].extra_properties["volumetric_power"] = "500abc";
+            EXPECT_THROW(build_production_energy_case(s),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.materials[0].extra_properties["volumetric_power"] = "";
+            EXPECT_THROW(build_production_energy_case(s),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.materials[0].extra_properties["volumetric_power"] = "inf";
+            EXPECT_THROW(build_production_energy_case(s),
+                         std::invalid_argument);
+        }
 
         // Wall heat flux must be numeric and finite.
         {
             auto s = base;
             s.boundary_conditions[2].raw_params["heat_flux"] = "abc";
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.boundary_conditions[2].raw_params["heat_flux"] = "500abc";
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.boundary_conditions[2].raw_params["heat_flux"] =
+                "1e308";  // /k overflows despite both operands being finite
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+
+        // Declared temperatures are absolute (kelvin): finite and > 0.
+        {
+            auto s = base;
+            s.boundary_conditions[2].value_type =
+                cfdx::io::BCValueType::WALL_THERMAL;
+            s.boundary_conditions[2].wall_temperature = -5.0;
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.boundary_conditions[0].temperature = -1.0;
             const auto energy_case = build_production_energy_case(s);
             EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
                          std::invalid_argument);
@@ -663,7 +755,28 @@ int main()
                                                      mass_flux, t),
                          std::invalid_argument);
         }
+        {
+            // Absolute temperature contract at the kernel entry point too.
+            Field<double, Location::CELL> t(m, "temperature", "K", 1);
+            t.fill(t_in);
+            t(0) = -1.0;
+            EXPECT_THROW(run_production_energy_stage(mesh, geometry, base,
+                                                     mass_flux, t),
+                         std::invalid_argument);
+        }
+        {
+            // Entry-point geometry contract: the kernel is a public header
+            // API and must not trust the caller to hand over a geometry
+            // matching the mesh.
+            FvGeometry foreign_geometry;
+            Field<double, Location::CELL> t(m, "temperature", "K", 1);
+            t.fill(t_in);
+            EXPECT_THROW(run_production_energy_stage(mesh, foreign_geometry,
+                                                     base, mass_flux, t),
+                         std::invalid_argument);
+        }
     });
 
     return run_all();
 }
+

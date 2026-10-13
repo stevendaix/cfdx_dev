@@ -1,3 +1,4 @@
+
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
@@ -262,30 +263,98 @@ void write_text_file_atomic(
     std::filesystem::rename(temporary, path);
 }
 
+// JSON string escaping: patch names come from the case/mesh and are not
+// guaranteed to be JSON-safe. Quotes, backslashes and control characters
+// are escaped; everything else passes through as UTF-8. Without this, a
+// patch name like a"b would produce an artifact no parser can read.
+std::string json_escape(const std::string& text)
+{
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(text.size() + 2);
+    for (const char c : text) {
+        switch (c) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default: {
+            const auto uc = static_cast<unsigned char>(c);
+            if (uc < 0x20) {
+                out += "\\u00";
+                out += hex[(uc >> 4) & 0xF];
+                out += hex[uc & 0xF];
+            } else {
+                out += c;
+            }
+            break;
+        }
+        }
+    }
+    return out;
+}
+
+// JSON number: a non-finite double must never serialize as NaN/Infinity,
+// which are not valid JSON numbers. It becomes null so the artifact stays
+// machine-readable in every failure mode while the explicit convergence
+// gates carry the actual failure.
+std::string json_number(double value)
+{
+    if (!std::isfinite(value))
+        return "null";
+    std::ostringstream out;
+    out << std::setprecision(17) << value;
+    return out.str();
+}
+
 // Machine-readable convergence history of the T2 energy stage. The
 // independent conservation residual is reported per iteration so the
-// artifact carries the audit, not only the assembled residual.
+// artifact carries the audit, not only the assembled residual. The
+// blocking gates (linear, global balance, local balance) and their
+// normalization scale are explicit: a reader can reconstruct why a run
+// was declared converged or not without re-running the audit.
 std::string energy_convergence_json(
     const ProductionEnergyStageResult& energy)
 {
     std::ostringstream out;
-    out << std::setprecision(17);
     out << "{\n";
     out << "  \"converged\": " << (energy.converged ? "true" : "false")
         << ",\n";
+    out << "  \"linear_solver_converged\": "
+        << (energy.linear_solver_converged ? "true" : "false") << ",\n";
+    out << "  \"global_energy_balance_passed\": "
+        << (energy.global_energy_balance_passed ? "true" : "false") << ",\n";
+    out << "  \"local_energy_balance_passed\": "
+        << (energy.local_energy_balance_passed ? "true" : "false") << ",\n";
     out << "  \"iterations\": " << energy.iterations << ",\n";
     out << "  \"independent_conservation_residual\": "
-        << energy.independent_conservation_residual << ",\n";
+        << json_number(energy.independent_conservation_residual) << ",\n";
     out << "  \"independent_conservation_normalized\": "
-        << energy.independent_conservation_normalized << ",\n";
+        << json_number(energy.independent_conservation_normalized) << ",\n";
+    out << "  \"audit_power_scale\": "
+        << json_number(energy.audit_power_scale) << ",\n";
+    out << "  \"global_balance_normalized\": "
+        << json_number(energy.global_balance_normalized) << ",\n";
+    out << "  \"max_cell_residual\": "
+        << json_number(energy.max_cell_residual) << ",\n";
+    out << "  \"worst_cell\": " << energy.worst_cell << ",\n";
+    out << "  \"local_balance_normalized\": "
+        << json_number(energy.local_balance_normalized) << ",\n";
+    out << "  \"nonfinite_faces\": " << energy.nonfinite_faces << ",\n";
+    out << "  \"nonfinite_cells\": " << energy.nonfinite_cells << ",\n";
     out << "  \"history\": [\n";
     for (std::size_t i = 0; i < energy.history.size(); ++i) {
         const auto& entry = energy.history[i];
         out << "    {\"iteration\": " << entry.iteration
-            << ", \"residual\": " << entry.residual
-            << ", \"backward_error\": " << entry.backward_error
+            << ", \"residual\": " << json_number(entry.residual)
+            << ", \"backward_error\": "
+            << json_number(entry.backward_error)
             << ", \"independent_conservation_normalized\": "
-            << entry.independent_conservation_normalized << "}";
+            << json_number(entry.independent_conservation_normalized)
+            << "}";
         out << (i + 1 == energy.history.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
@@ -299,22 +368,24 @@ std::string energy_convergence_json(
 std::string energy_summary_json(const ProductionEnergyStageResult& energy)
 {
     std::ostringstream out;
-    out << std::setprecision(17);
     out << "{\n";
-    out << "  \"min_temperature\": " << energy.min_temperature << ",\n";
-    out << "  \"max_temperature\": " << energy.max_temperature << ",\n";
-    out << "  \"total_source_power\": " << energy.total_source_power
-        << ",\n";
-    out << "  \"boundary_flux_out\": " << energy.boundary_flux_out
-        << ",\n";
+    out << "  \"min_temperature\": "
+        << json_number(energy.min_temperature) << ",\n";
+    out << "  \"max_temperature\": "
+        << json_number(energy.max_temperature) << ",\n";
+    out << "  \"total_source_power\": "
+        << json_number(energy.total_source_power) << ",\n";
+    out << "  \"boundary_flux_out\": "
+        << json_number(energy.boundary_flux_out) << ",\n";
     out << "  \"nonfinite_temperature\": " << energy.nonfinite_temperature
         << ",\n";
-    out << "  \"volumetric_power\": " << energy.volumetric_power << ",\n";
+    out << "  \"volumetric_power\": "
+        << json_number(energy.volumetric_power) << ",\n";
     out << "  \"patches\": [\n";
     std::size_t index = 0;
     for (const auto& entry : energy.patch_flux_out) {
-        out << "    {\"name\": \"" << entry.first
-            << "\", \"flux_out\": " << entry.second << "}";
+        out << "    {\"name\": \"" << json_escape(entry.first)
+            << "\", \"flux_out\": " << json_number(entry.second) << "}";
         out << (++index == energy.patch_flux_out.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
@@ -398,6 +469,14 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+
+        // The declared energy model is validated fail-closed as soon as the
+        // case is loaded, before any expensive flow computation: an unknown
+        // declaration (e.g. "buoyant") must fail the run up front instead of
+        // being discovered after the carrier solve, even when the energy
+        // stage itself would not run.
+        if (is_case_hdf5)
+            validate_production_energy_model(case_setup);
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
@@ -596,17 +675,13 @@ int main(int argc, char** argv)
         // authoritative conservative face mass flux. The stage runs only
         // for a converged carrier flow: an energy field carried by a
         // diverged flow is not evidence, and the global exit code below
-        // is flow AND energy. The energy model is validated fail-closed
-        // whenever a case is loaded, so an unknown declaration (e.g.
-        // "buoyant") is rejected instead of silently degrading to an
-        // isothermal run, even when the stage does not run.
+        // is flow AND energy. The energy model was already validated
+        // fail-closed right after case load.
         bool energy_requested = false;
         bool energy_ran = false;
         ProductionEnergyStageResult energy_result;
-        if (is_case_hdf5) {
-            validate_production_energy_model(case_setup);
+        if (is_case_hdf5)
             energy_requested = production_energy_requested(case_setup);
-        }
         if (energy_requested && result.converged) {
             const auto energy_geometry = build_fv_geometry(mesh);
             // Initial temperature: the declared initial condition, else
@@ -617,9 +692,14 @@ int main(int argc, char** argv)
                 case_setup.initial_condition.temperature != 0.0)
                 initial_temperature =
                     case_setup.initial_condition.temperature;
-            if (!std::isfinite(initial_temperature))
+            // Absolute temperature contract: a non-finite or non-positive
+            // value cannot seed the energy stage (whose kernel also rejects
+            // it), so fail the run here with the solver-level message.
+            if (!std::isfinite(initial_temperature) ||
+                !(initial_temperature > 0.0))
                 throw std::invalid_argument(
-                    "production solver: initial temperature must be finite");
+                    "production solver: initial temperature must be finite "
+                    "and positive (kelvin)");
             Field<double, Location::CELL> temperature(
                 mesh.n_cells(), "temperature", "K", 1);
             for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
@@ -637,17 +717,31 @@ int main(int argc, char** argv)
             VtuWriter energy_writer;
             const auto energy_vtu =
                 options.output_dir / "energy_result_0.vtu";
-            if (!energy_writer.write(energy_vtu.string(), mesh,
+            // The VTU is written through a temporary sibling and renamed,
+            // matching the JSON artifacts: a reader never observes a
+            // half-written energy result, whatever the interruption.
+            const auto energy_vtu_tmp =
+                options.output_dir / "energy_result_0.vtu.tmp";
+            if (!energy_writer.write(energy_vtu_tmp.string(), mesh,
                                      {{"temperature", temperature}},
                                      {}, {}, 0.0, 0, true))
                 throw std::runtime_error(
                     "production solver: energy result VTU write failed");
+            std::filesystem::rename(energy_vtu_tmp, energy_vtu);
             std::cout << "Energy stage "
                       << (energy_result.converged ? "converged"
                                                    : "NOT converged")
                       << " iterations " << energy_result.iterations
                       << " conservation "
                       << energy_result.independent_conservation_normalized
+                      << "\n";
+            std::cout << "Energy gates linear="
+                      << (energy_result.linear_solver_converged ? 1 : 0)
+                      << " global_balance="
+                      << (energy_result.global_energy_balance_passed ? 1 : 0)
+                      << " local_balance="
+                      << (energy_result.local_energy_balance_passed ? 1 : 0)
+                      << " audit_scale=" << energy_result.audit_power_scale
                       << "\n";
             std::cout << "Energy temperatures ["
                       << energy_result.min_temperature << ", "
@@ -725,3 +819,4 @@ int main(int argc, char** argv)
         return kExecutionExitError;
     }
 }
+
