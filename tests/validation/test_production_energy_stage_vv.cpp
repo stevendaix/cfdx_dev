@@ -213,6 +213,37 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
         plug.velocity_error = std::max(plug.velocity_error, std::abs(U(c, 2)));
     }
     plug.geometry = build_fv_geometry(plug.mesh);
+    // TEMPORARY P0 diagnostic dump (diagnostic branch only, never merged):
+    // prints the final cell state, the authoritative face fluxes and the
+    // per-cell divergence of the plug carrier solve so the stalled
+    // continuity defect can be localized face by face in CI.
+    {
+        const auto& g = plug.geometry;
+        std::cerr << "P0DUMP header n=" << n << " dx=" << dx
+                  << " rho=" << rho << " mu=" << mu << " u_in=" << u_in
+                  << " converged=" << plug.converged
+                  << " velocity_error=" << plug.velocity_error << "\n";
+        for (std::size_t c = 0; c < n; ++c)
+            std::cerr << "P0DUMP cell=" << c
+                      << " Ux=" << U(c, 0) << " Uy=" << U(c, 1)
+                      << " Uz=" << U(c, 2) << " p=" << p(c)
+                      << " volume=" << g.cell_volumes[c] << "\n";
+        for (std::size_t f = 0; f < plug.mesh.n_faces(); ++f)
+            std::cerr << "P0DUMP face=" << f
+                      << " patch=" << g.face_patch[f]
+                      << " flux=" << plug.mass_flux(f) << "\n";
+        const auto* cell_faces = plug.mesh.cells().faces_data();
+        const auto* cell_offsets = plug.mesh.cells().offsets_data();
+        for (std::size_t c = 0; c < n; ++c) {
+            double div = 0.0;
+            for (auto k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                const std::size_t f = cell_faces[k];
+                div += plug.mesh.ownership().owner(f) == c
+                    ? plug.mass_flux(f) : -plug.mass_flux(f);
+            }
+            std::cerr << "P0DUMP divcell=" << c << " div=" << div << "\n";
+        }
+    }
     return plug;
 }
 

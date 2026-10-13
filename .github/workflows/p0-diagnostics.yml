@@ -1,4 +1,4 @@
-name: P0 diagnostics v3
+name: P0 diagnostics v4
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   fix-branch:
-    name: Diagnose fix branch (focused T2 + n10)
+    name: Diagnose fix branch (T2 state dump)
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -31,7 +31,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-diag3-fixbranch-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
+          key: ccache-diag4-fixbranch-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
           restore-keys: |
             ccache-${{ runner.os }}-Release-
       - name: Configure compiler cache
@@ -64,47 +64,28 @@ jobs:
         continue-on-error: true
         run: |
           ctest --test-dir build -R "^test_production_energy_stage_vv$" --output-on-failure -V 2>&1 | tee focused_t2.log || true
-      - name: Focused n10
-        if: steps.build.outcome == 'success'
-        continue-on-error: true
-        run: |
-          ctest --test-dir build -R "^test_n10_qualification$" --output-on-failure -V 2>&1 | tee focused_n10.log || true
-      - name: Post T2 comment
+      - name: Post state dump comment
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## P0 diagnostics v3 - fixbranch - test_production_energy_stage_vv"
-            echo ""
+            echo '## P0 diagnostics v4 - fixbranch - T2 final state dump'
+            echo ''
             ls -la focused_t2.log 2>/dev/null || true
-            echo "### key lines"
-            echo "~~~"
-            grep -nE "INCOMPRESSIBLE_ITER iter=(1|2|3|4|5|100|150|190|195|196|197|198|199|200)$|converged|Failed|failed|Error|error|terminate|what\(\)|oracle_error|bulk_rise|max_T|wall_power|unexpected|Assert" focused_t2.log 2>/dev/null | head -80 || true
-            echo "~~~"
-            echo "### tail 120"
-            echo "~~~"
-            tail -n 120 focused_t2.log 2>/dev/null || true
-            echo "~~~"
-          } > body.md
-          gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
-      - name: Post n10 comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "## P0 diagnostics v3 - fixbranch - test_n10_qualification"
-            echo ""
-            ls -la focused_n10.log 2>/dev/null || true
-            echo "### key lines"
-            echo "~~~"
-            grep -nE "FAIL|PASS|Error|error|Traceback|yaml|manifest|fixture|missing|No such|import" focused_n10.log 2>/dev/null | head -60 || true
-            echo "~~~"
-            echo "### tail 100"
-            echo "~~~"
-            tail -n 100 focused_n10.log 2>/dev/null || true
-            echo "~~~"
+            echo '### P0DUMP (first solve)'
+            echo '~~~'
+            awk '/P0DUMP header/{n++} n==1' focused_t2.log 2>/dev/null | head -140 || true
+            echo '~~~'
+            echo '### iteration trace key lines'
+            echo '~~~'
+            grep -nE 'INCOMPRESSIBLE_ITER iter=(1|2|5|10|20|40|60|100|140|180|199|200)( |$)' focused_t2.log 2>/dev/null | head -40 || true
+            grep -nE 'converged|Convergence|STAGNATED|Results:' focused_t2.log 2>/dev/null | head -20 || true
+            echo '~~~'
+            echo '### tail 15'
+            echo '~~~'
+            tail -n 15 focused_t2.log 2>/dev/null || true
+            echo '~~~'
           } > body.md
           gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
       - name: Post build errors comment (if any)
@@ -112,119 +93,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ -f build.log ]] && grep -qE "error:|FAILED:" build.log; then
+          if [[ -f build.log ]] && grep -qE 'error:|FAILED:' build.log; then
             {
-              echo "## P0 diagnostics v3 - fixbranch - BUILD ERRORS"
-              echo "~~~"
-              grep -E -B1 -A3 "error:|FAILED:" build.log | head -80
-              echo "~~~"
-            } > body.md
-            gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
-          fi
-  master-control:
-    name: Diagnose master control (focused T2 + n10)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: master
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
-      - name: Restore compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-diag3-masterctrl-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
-          restore-keys: |
-            ccache-${{ runner.os }}-Release-
-      - name: Configure compiler cache
-        run: |
-          ccache --zero-stats
-          ccache --max-size=1G
-      - name: Install Python stack (same as cfdx-ci)
-        run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
-            -DPython3_EXECUTABLE=$PWD/.venv/bin/python \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache
-      - name: Build
-        id: build
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cmake --build build --parallel 8 2>&1 | tee build.log
-      - name: Focused T2
-        if: steps.build.outcome == 'success'
-        continue-on-error: true
-        run: |
-          ctest --test-dir build -R "^test_production_energy_stage_vv$" --output-on-failure -V 2>&1 | tee focused_t2.log || true
-      - name: Focused n10
-        if: steps.build.outcome == 'success'
-        continue-on-error: true
-        run: |
-          ctest --test-dir build -R "^test_n10_qualification$" --output-on-failure -V 2>&1 | tee focused_n10.log || true
-      - name: Post T2 comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "## P0 diagnostics v3 - masterctrl - test_production_energy_stage_vv"
-            echo ""
-            ls -la focused_t2.log 2>/dev/null || true
-            echo "### key lines"
-            echo "~~~"
-            grep -nE "INCOMPRESSIBLE_ITER iter=(1|2|3|4|5|100|150|190|195|196|197|198|199|200)$|converged|Failed|failed|Error|error|terminate|what\(\)|oracle_error|bulk_rise|max_T|wall_power|unexpected|Assert" focused_t2.log 2>/dev/null | head -80 || true
-            echo "~~~"
-            echo "### tail 120"
-            echo "~~~"
-            tail -n 120 focused_t2.log 2>/dev/null || true
-            echo "~~~"
-          } > body.md
-          gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
-      - name: Post n10 comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "## P0 diagnostics v3 - masterctrl - test_n10_qualification"
-            echo ""
-            ls -la focused_n10.log 2>/dev/null || true
-            echo "### key lines"
-            echo "~~~"
-            grep -nE "FAIL|PASS|Error|error|Traceback|yaml|manifest|fixture|missing|No such|import" focused_n10.log 2>/dev/null | head -60 || true
-            echo "~~~"
-            echo "### tail 100"
-            echo "~~~"
-            tail -n 100 focused_n10.log 2>/dev/null || true
-            echo "~~~"
-          } > body.md
-          gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
-      - name: Post build errors comment (if any)
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ -f build.log ]] && grep -qE "error:|FAILED:" build.log; then
-            {
-              echo "## P0 diagnostics v3 - masterctrl - BUILD ERRORS"
-              echo "~~~"
-              grep -E -B1 -A3 "error:|FAILED:" build.log | head -80
-              echo "~~~"
+              echo '## P0 diagnostics v4 - BUILD ERRORS'
+              echo '~~~'
+              grep -E -B1 -A3 'error:|FAILED:' build.log | head -80
+              echo '~~~'
             } > body.md
             gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
           fi
