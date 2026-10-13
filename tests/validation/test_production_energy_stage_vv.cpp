@@ -431,7 +431,7 @@ int main()
                   << " worst_cell_normalized=" << stage.worst_cell_normalized
                   << " nonfinite_temperature=" << stage.nonfinite_temperature
                   << " nonfinite_faces=" << stage.nonfinite_faces
-                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -517,7 +517,7 @@ int main()
                   << " worst_cell_normalized=" << stage.worst_cell_normalized
                   << " nonfinite_temperature=" << stage.nonfinite_temperature
                   << " nonfinite_faces=" << stage.nonfinite_faces
-                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -590,7 +590,7 @@ int main()
                   << " worst_cell_normalized=" << stage.worst_cell_normalized
                   << " nonfinite_temperature=" << stage.nonfinite_temperature
                   << " nonfinite_faces=" << stage.nonfinite_faces
-                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
