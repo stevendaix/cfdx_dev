@@ -47,6 +47,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <string>
 #include <vector>
@@ -414,6 +415,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -483,6 +501,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -539,6 +574,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
