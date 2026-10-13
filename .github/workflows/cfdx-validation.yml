@@ -200,10 +200,16 @@ jobs:
         run: tar -xzf cfdx-validation-build.tar.gz
       - name: Generate long-validation mesh fixtures
         run: |
-          \"$VENV_DIR/bin/python\" scripts/generate_2d_validation_meshes.py all --output-dir \"$BUILD_DIR/validation_meshes\"
-          test -s \"$BUILD_DIR/validation_meshes/channel_n16.h5\"
-          test -s \"$BUILD_DIR/validation_meshes/bfs_re200_n16.h5\"
-          test -s \"$BUILD_DIR/validation_meshes/naca0012_laminar_n64.h5\"
+          "$VENV_DIR/bin/python" scripts/generate_2d_validation_meshes.py all --output-dir "$BUILD_DIR/validation_meshes"
+          for mesh in \
+            channel_n16.h5 channel_n32.h5 channel_n64.h5 \
+            bfs_re200_n16.h5 bfs_re200_n32.h5 bfs_re200_n64.h5 \
+            naca0012_laminar_n64.h5 naca0012_laminar_n128.h5 naca0012_laminar_n256.h5; do
+            test -s "$BUILD_DIR/validation_meshes/$mesh" || {
+              echo "::error::required validation mesh missing after generation: $mesh"
+              exit 1
+            }
+          done
       - name: Run long validation campaigns
         id: long_tests
         continue-on-error: true
