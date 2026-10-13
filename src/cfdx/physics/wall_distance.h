@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -62,6 +63,17 @@ struct WallDistanceResult {
     double poisson_grad_max{0.0};
     double poisson_distance_l2_error{0.0};
     double poisson_distance_linf_error{0.0};
+    // F-W1 (N11 backlog, #480): number of nearest_normal() calls that hit a
+    // degenerate (zero-area) nearest triangle and returned the {1,0,0}
+    // fallback instead of a real surface normal. Filled by the methods that
+    // query the wall normal (directional mesh wave, Poisson cut-face audit);
+    // zero means every queried normal was a genuine geometric normal.
+    std::size_t nearest_normal_fallbacks{0};
+    // F-W2 (N11 backlog, #480): number of pseudo-time updates in the explicit
+    // transport steppers (Hamilton-Jacobi, hybrid Poisson+HJ) whose candidate
+    // distance was negative and was clamped to zero. The clamp itself is
+    // unchanged; this counter only makes it attributable in the result.
+    std::size_t positivity_clamp_activations{0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -287,6 +299,27 @@ public:
     std::size_t triangle_count() const { return surface_.triangles.size(); }
     std::size_t node_count() const { return nodes_.size(); }
 
+    // F-W1 (N11 backlog, #480): count of nearest_normal() calls whose nearest
+    // triangle has a degenerate (zero-area) normal, so the {1,0,0} fallback
+    // was returned instead of a real surface normal. The fallback value and
+    // direction are unchanged; this counter only makes the silent fallback
+    // attributable by the caller. Per BVH instance, monotonic, not reset.
+    //
+    // Concurrency contract (audit of #865): all queries of a constructed
+    // BVH are read-only, and this counter is the only mutable state. It is
+    // a std::atomic incremented with relaxed ordering, so concurrent
+    // const nearest_normal() calls on the same instance are well defined:
+    // the counter equals the exact number of fallbacks after any storm of
+    // calls, and the returned fallback normal is unaffected. Relaxed
+    // ordering is sufficient because the counter is a diagnostic tally,
+    // never a synchronization point. Note: making the counter atomic
+    // deletes the implicit copy constructor/assignment of WallDistanceBvh;
+    // no current caller copies an instance (construction from a
+    // WallSurface plus const-reference use only).
+    std::size_t degenerate_normal_fallbacks() const {
+        return degenerate_normal_fallbacks_.load(std::memory_order_relaxed);
+    }
+
     WallDistanceVec3 nearest_normal(const WallDistanceVec3& p) const {
         double best2=std::numeric_limits<double>::infinity();
         std::size_t best=0;
@@ -298,7 +331,15 @@ public:
                                  ab.z*ac.x-ab.x*ac.z,
                                  ab.x*ac.y-ab.y*ac.x};
         const double nn=wd_norm(n);
-        return nn>1e-30 ? n*(1.0/nn) : WallDistanceVec3{1.0,0.0,0.0};
+        if(nn>1e-30) return n*(1.0/nn);
+        // Degenerate triangle (collinear vertices): the cross product is the
+        // zero vector and no geometric normal exists. The historical
+        // behaviour is preserved exactly (unit +x fallback); the counter
+        // above is what makes the fallback observable (F-W1). Relaxed
+        // fetch_add keeps the tally exact under concurrent const calls
+        // (see the concurrency contract on degenerate_normal_fallbacks()).
+        degenerate_normal_fallbacks_.fetch_add(1,std::memory_order_relaxed);
+        return WallDistanceVec3{1.0,0.0,0.0};
     }
 
 private:
@@ -313,6 +354,12 @@ private:
     const WallSurface& surface_;
     std::vector<std::size_t> indices_;
     std::vector<Node> nodes_;
+    // F-W1: mutated through const nearest_normal() so the degenerate-normal
+    // fallback stays observable without changing the const query contract.
+    // Atomic (relaxed) so the const-query API is also well defined under
+    // concurrent calls on one instance; see the contract note on
+    // degenerate_normal_fallbacks().
+    mutable std::atomic<std::size_t> degenerate_normal_fallbacks_{0};
     static constexpr std::size_t leaf_size_=4;
 
     WallDistanceAabb triangle_box(std::size_t ti) const {
@@ -547,8 +594,15 @@ inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid
             if(du+w<d[v]) { d[v]=du+w; q.push({d[v],v}); }
         }
     }
-    return {std::move(d),std::vector<unsigned char>(g.points.size(),1),
-            directional?"directional_mesh_wave":"mesh_wave",0};
+    WallDistanceResult r;
+    r.distance=std::move(d);
+    r.valid.assign(g.points.size(),1);
+    r.method=directional?"directional_mesh_wave":"mesh_wave";
+    r.iterations=0;
+    // F-W1: attribute the degenerate-normal fallbacks of the directional
+    // metric (the plain mesh wave never queries the surface normal).
+    r.nearest_normal_fallbacks=bvh.degenerate_normal_fallbacks();
+    return r;
 }
 
 inline double poisson_wall_offset(const WallDistanceBvh& bvh,
@@ -891,7 +945,8 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                                                      std::size_t max_iter,double epsilon=0.25,
                                                      double relaxation=0.25,
                                                      std::size_t* used_iter=nullptr,
-                                                     double* residual_out=nullptr) {
+                                                     double* residual_out=nullptr,
+                                                     std::size_t* clamp_activations=nullptr) {
     // Modified Hamilton-Jacobi equation:
     //   |grad d| = 1 + Gamma(d) laplacian(d), Gamma(d)=epsilon*d.
     // Solve it by pseudo-time relaxation with an upwind/Godunov gradient
@@ -906,6 +961,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
 
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps;
+    std::size_t clamps=0;
     double final_residual=std::numeric_limits<double>::infinity();
     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
                       +1.0/(g.spacing.y*g.spacing.y)
@@ -929,7 +985,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
-            const double nd=std::max(0.0,d[id]-dt*residual);
+            const double candidate=d[id]-dt*residual;
+            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
+            const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id]));
             d[id]=nd;
         }
@@ -947,6 +1005,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
+    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -1660,7 +1719,8 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     double epsilon=0.25,double relaxation=0.9,
     std::size_t* used_iter=nullptr,double* residual_out=nullptr,
     double poisson_weight=1.0,
-    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr) {
+    std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr,
+    std::size_t* clamp_activations=nullptr) {
     // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
     // (effectively a wall normal); H-J then propagates distance with that
     // direction, optionally blended with the evolving Eikonal direction.
@@ -1714,6 +1774,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     const double alpha=std::clamp(poisson_weight,0.0,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
+    std::size_t clamps=0;
 
     auto velocity=[&](std::size_t id,double& ux,double& uy,double& uz) {
         const double px=grad_comp(phi,id,0),py=grad_comp(phi,id,1),pz=grad_comp(phi,id,2);
@@ -1794,7 +1855,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                                                 std::numeric_limits<double>::infinity();
             const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
             const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
-            const double nd=std::max(0.0,d[id]-dt*residual);
+            const double candidate=d[id]-dt*residual;
+            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
+            const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
         }
         for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
@@ -1832,6 +1895,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     }
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=final_residual;
+    if(clamp_activations) *clamp_activations=clamps;
     return d;
 }
 
@@ -1947,6 +2011,11 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.poisson_wall_ray_misses=wa.ray_miss_count;
             r.poisson_wall_fallbacks=wa.fallback_count;
             r.poisson_wall_bad_alignment=wa.bad_alignment_count;
+            // F-W1: degenerate-normal fallbacks observed on the audited cut
+            // faces. nearest_normal() is only reached on the ray-miss
+            // fallback path of poisson_wall_offset_diagnostic(), so this
+            // counts the audited offsets whose fallback normal was degenerate.
+            r.nearest_normal_fallbacks=pbvh.degenerate_normal_fallbacks();
             r.poisson_wall_min_alignment=wa.min_alignment;
             r.poisson_phi_min=pa.phi_min;
             r.poisson_phi_max=pa.phi_max;
@@ -1975,7 +2044,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::HAMILTON_JACOBI: {
-            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf);
+            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf,
+                &r.positivity_clamp_activations);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
@@ -1995,7 +2065,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL: {
             std::size_t poisson_iter=0; double poisson_residual=0.0;
             r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,
-                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual);
+                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual,
+                &r.positivity_clamp_activations);
             r.auxiliary_iterations=poisson_iter;
             r.auxiliary_residual_inf=poisson_residual;
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
@@ -2048,3 +2119,5 @@ inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid
 }
 
 } // namespace cfdx::physics
+
+

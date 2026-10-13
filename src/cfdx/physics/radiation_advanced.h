@@ -738,7 +738,56 @@ struct RosselandSolveResult {
     std::size_t iterations = 0;
     std::vector<double> temperature_residuals;
     std::vector<double> energy_balance_residuals;
+    // N11 F-R2 (#480): the minimum-temperature floor is part of the P1
+    // floor-reporting contract. Count its activations and corrections
+    // instead of applying them silently.
+    std::size_t minimum_temperature_floor_activations = 0;
+    double minimum_temperature_total_correction = 0.0;
+    double minimum_temperature_max_correction = 0.0;
+    // N11 F-R2 follow-up (audit of #864): the historical clamp
+    // std::max(minimum_temperature, candidate) also converts a NaN (or
+    // -inf) linear-solve candidate into the finite floor, because
+    // std::max(a, b) returns a whenever a < b is false and every
+    // comparison with NaN is false. Such a conversion is not a
+    // measurable floor correction, so it is counted here separately
+    // instead of being confused with (or hidden from)
+    // minimum_temperature_floor_activations, following the same
+    // fail-visible contract as the non-finite counters of
+    // TurbulenceBoundDiagnostics.
+    std::size_t nonfinite_candidates = 0;
 };
+
+// N11 F-R2 follow-up (audit of #864): single implementation point of the
+// Rosseland minimum-temperature floor, extracted from
+// solve_rosseland_energy() so the exact clamp contract -- including the
+// non-finite candidate case -- is unit-testable without driving the
+// nonlinear solve into a pathological candidate.
+struct RosselandFloorApplication {
+    double bounded = 0.0;
+    // Finite candidate strictly below the floor: a measurable correction.
+    bool floored = false;
+    // Candidate is not finite (NaN or +/-inf).
+    bool nonfinite = false;
+    // Non-finite candidate that the clamp converted into the finite
+    // floor (NaN and -inf). +inf is non-finite but propagates unclamped.
+    bool nonfinite_floored = false;
+};
+
+inline RosselandFloorApplication rosseland_apply_minimum_temperature_floor(
+    double candidate, double minimum_temperature)
+{
+    RosselandFloorApplication out;
+    out.nonfinite = !std::isfinite(candidate);
+    out.floored = !out.nonfinite && candidate < minimum_temperature;
+    // Historical clamp preserved exactly: std::max(a, b) returns b only
+    // when a < b holds; every comparison with NaN is false, so a NaN
+    // candidate yields the floor. A non-finite candidate therefore can
+    // become a finite temperature -- the counters are what make that
+    // conversion attributable instead of silent.
+    out.bounded = std::max(minimum_temperature, candidate);
+    out.nonfinite_floored = out.nonfinite && out.bounded == minimum_temperature;
+    return out;
+}
 
 inline RosselandSolveResult solve_rosseland_energy(
     const cfdx::core::Mesh& mesh,
@@ -817,7 +866,21 @@ inline RosselandSolveResult solve_rosseland_energy(
 
         double max_delta=0.0;
         for(std::size_t c=0;c<mesh.n_cells();++c) {
-            const double bounded=std::max(controls.minimum_temperature,candidate(c));
+            // N11 F-R2 (#480): count minimum-temperature floor activations
+            // instead of applying the floor silently (P1 floor reporting).
+            const auto floor=rosseland_apply_minimum_temperature_floor(
+                candidate(c),controls.minimum_temperature);
+            if(floor.nonfinite) {
+                ++result.nonfinite_candidates;
+            } else if(floor.floored) {
+                ++result.minimum_temperature_floor_activations;
+                const double correction=
+                    controls.minimum_temperature-candidate(c);
+                result.minimum_temperature_total_correction+=correction;
+                result.minimum_temperature_max_correction=std::max(
+                    result.minimum_temperature_max_correction,correction);
+            }
+            const double bounded=floor.bounded;
             max_delta=std::max(max_delta,std::abs(bounded-temperature(c)));
             temperature(c)=bounded;
         }

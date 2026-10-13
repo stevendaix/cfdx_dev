@@ -366,6 +366,26 @@
       "observed_order": "Computed only where mathematically meaningful from the declared refinement series",
       "runtime": "Retain wall time, iterations and hardware/parallelism for each N9 method",
       "regression_status": "Contract test in validation/Total Validation; physical qualification pending actual CFDX execution on imported TMR meshes"
+    },
+    {
+      "id": "T1-SOLID-COND",
+      "domain": "Thermal",
+      "case": "Solid conduction, multi-material zones, volumetric power, contact resistance",
+      "status": "READY",
+      "reference": "Exact resistance-network solution for composite walls (Patankar 1980, DOI 10.1201/9781482234213); analytic parabola for uniform volumetric power between an adiabatic wall and a fixed-temperature wall",
+      "parameters": "Chain of unit-cross-section cells, L=2 m; per-zone k in {1,2,4} W/(m.K); volumetric power up to 1e3 W/m^3; contact resistance 0.05 m^2.K/W at zone interfaces",
+      "mesh": "Structured orthogonal 1-D chains (columns of 4 points, 4 wall faces per cell); refinement series n = 8, 16, 32",
+      "boundary_conditions": "Dirichlet wall temperature on end patches; fixed heat flux (positive into the domain, mono-zone patch); adiabatic elsewhere",
+      "numerical_schemes": "Two-point finite volumes; series-resistance face conductance G = A/(d/(2k_o)+R_c+d/(2k_n)); half-cell Dirichlet; source added per cell volume",
+      "solver_settings": "Steady linear solve via the scalar solver chain (CG/GMRES/Gauss-Seidel/dense-LU fallback); tolerance 1e-14 relative; relaxation 1.0",
+      "convergence_criteria": "Linear solver CONVERGED status and finite residual_inf; observed refinement order gated to (1.5, 2.5) on the 8/16/32 series",
+      "conservation_criteria": "Independent boundary-flux reconstruction (audit_thermal_boundary_flux); energy closure |source - net boundary flux| / gross throughput < 1e-12; exact mid-plane cumulative-power identity with adiabatic upstream wall",
+      "qoi": "Cell-centre temperatures, per-patch heat flux, total source power, relative energy imbalance",
+      "reference_value": "Resistance-network temperatures exact at cell centres; parabola T(x)=T_R+q'''(L^2-x^2)/(2k) second order; mid-plane flux = q'''L/2",
+      "error": "Machine precision for network and flux identities (<1e-9); discretization error ~ dx^2 with observed order 2",
+      "observed_order": "Measured in test_thermal_zones_vv on three levels (8/16/32): log2 slope gated to (1.5, 2.5)",
+      "runtime": "Milliseconds per chain (unit tests run in fast CTest, labels qualification;validation;phase13)",
+      "regression_status": "test_thermal_zones_vv in CI; READY is not PASS: physical promotion requires the real-solver campaign (cfdx_thermal_solver on a .cfdx.h5 case) executed on an exact merged HEAD with retained evidence (governance #118)"
     }
   ]
 }

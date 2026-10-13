@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : contrat de reproductibilité CPU séquentiel vs MPI (décomposition de domaine, échange de halos) vs GPU (CUDA), redémarrage N->M, et mode Out-of-Core (OOC) au-delà de la VRAM. C'est la traduction exécutable de la **Règle d'Or 4** : zéro divergence parallèle, aucun fallback silencieux.
-- Statut : DRAFT (2026-10-12) — contrat à faire approuver dans la PR ; le code N13/Phase 6-7 existant doit être audité contre cette fiche avant toute promotion.
+- Statut : APPROUVÉE (2026-10-12, PR #861) — contrat approuvé ; le code N13/Phase 6-7 existant doit être audité contre cette fiche avant toute promotion.
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json ; politique : docs/validation/N13_EQUIVALENCE_POLICY.json ; preuves : docs/validation/N13_CROSS_BACKEND_EQUIVALENCE.md
 - Issues liées : #34 (roadmap, Phases 6-7)
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -53,3 +53,4 @@ Contraintes sur l'implémentation (pas de reformulation, mais des exigences) :
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
+- 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
