@@ -426,8 +426,10 @@ private:
                 } else if(f.outer && f.cx >= 0.0){
                     const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
                     const double a=rho_*f.area*(m_.cells[cell].volume/apx_[cell])/d;
+                    // Fixed physical pressure at the outlet implies a
+                    // homogeneous pressure-correction boundary condition:
+                    // p'_b = 0. Do not inject -p_P into the correction RHS.
                     diag[cell]+=a;
-                    rhs[cell] += a*(-p_[cell]);
                 }
             }
         }
@@ -462,7 +464,7 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1))
                     qf=0.5*(pc_[cell]+pc_[f.neighbour]);
                 else if(f.outer && f.cx >= 0.0)
-                    qf=-p_[cell]; // physical outlet pressure is fixed to zero
+                    qf=0.0; // pressure correction is zero on a fixed-pressure outlet
                 gx+=qf*f.nx*f.area; gr+=qf*f.nr*f.area;
             }
             gx/=m_.cells[cell].volume; gr/=m_.cells[cell].volume;
