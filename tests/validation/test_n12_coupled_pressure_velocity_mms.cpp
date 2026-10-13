@@ -154,8 +154,30 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
     c.diagnostics.iteration_trace_frequency = 1;
 
     const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
-    if (!result.converged)
+    if (!result.converged) {
+        std::cerr << std::setprecision(12)
+                  << "N12_COUPLED_FAILURE n=" << n
+                  << " reason=" << result.convergence_reason
+                  << " iterations=" << result.iterations
+                  << " history_size=" << result.history.size() << "\\n";
+        const std::size_t first = result.history.size() > 12
+            ? result.history.size() - 12 : 0;
+        for (std::size_t i = first; i < result.history.size(); ++i) {
+            const auto& h = result.history[i];
+            std::cerr << "N12_COUPLED_FAILURE_TRACE n=" << n
+                      << " iter=" << (i + 1)
+                      << " continuity=" << h.corrected_flux_continuity_linf
+                      << " momentum_rel=" << h.momentum_equation_residual_relative
+                      << " mass=" << h.mass_normalized_imbalance
+                      << " du=" << h.velocity_change_inf
+                      << " dp=" << h.pressure_change_inf
+                      << " alpha_u=" << h.effective_alpha_u
+                      << " alpha_p=" << h.effective_alpha_p
+                      << " nonlinear=" << h.nonlinear_convergence_metric
+                      << "\\n";
+        }
         throw std::runtime_error("coupled pressure-velocity MMS did not converge: " + result.convergence_reason);
+    }
     if (!result.coupled_linear_plan_resolved)
         throw std::runtime_error("coupled pressure-velocity MMS did not resolve a coupled linear plan");
     if (result.resolved_coupled_schur_model != CoupledSchurModel::BlockLocal)
