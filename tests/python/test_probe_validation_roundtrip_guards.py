@@ -61,7 +61,6 @@ def test_write_probe_csv_creates_parent_directory(tmp_path):
     assert destination.is_file()
 
 
-
 def test_write_probe_csv_rejects_decreasing_time_in_iteration_order(tmp_path):
     series = ProbeSeries(
         "pressure",
