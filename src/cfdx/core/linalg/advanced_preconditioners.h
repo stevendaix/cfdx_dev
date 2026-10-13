@@ -27,6 +27,7 @@ public:
         for (std::size_t i = 0; i < n_; ++i) {
             bool found = false;
             std::uint32_t previous = 0;
+            double row_scale = 0.0;
             for (std::size_t k = ro[i]; k < ro[i + 1]; ++k) {
                 const std::uint32_t j = ci[k];
                 if (!std::isfinite(av[k])) {
@@ -38,6 +39,7 @@ public:
                     return false;
                 }
                 previous = j;
+                row_scale = std::max(row_scale, std::abs(av[k]));
                 if (j == i) {
                     if (found) {
                         clear();
@@ -49,7 +51,13 @@ public:
                     lower_rows_[i].push_back({j, av[k]});
                 }
             }
-            if (!found || std::abs(diag_[i]) <= std::numeric_limits<double>::epsilon()) {
+            // B3 (#480): diagonal floor relative to the row scale instead
+            // of an absolute epsilon cut, so rescaled rows stay usable.
+            const double diag_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(row_scale, 1e-300);
+            if (!found || !std::isfinite(diag_[i]) ||
+                std::abs(diag_[i]) <= diag_floor) {
                 clear();
                 return false;
             }
@@ -129,13 +137,20 @@ public:
         }
 
         for (std::size_t i = 0; i < n_; ++i) {
+            double pivot_row_scale = 0.0;
+            for (std::size_t k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k)
+                pivot_row_scale = std::max(pivot_row_scale, std::abs(lu_[k]));
             for (std::size_t kk = row_offsets_[i]; kk < row_offsets_[i + 1]; ++kk) {
                 const std::size_t kcol = columns_[kk];
                 if (kcol >= i) break;
 
                 const std::size_t dk = diag_pos_[kcol];
+                // B3 (#480): pivot floor relative to the current row scale.
+                const double pivot_floor =
+                    128.0 * std::numeric_limits<double>::epsilon() *
+                    std::max(pivot_row_scale, std::abs(lu_[dk]));
                 if (!std::isfinite(lu_[dk]) ||
-                    std::abs(lu_[dk]) <= std::numeric_limits<double>::epsilon()) {
+                    std::abs(lu_[dk]) <= pivot_floor) {
                     clear();
                     return false;
                 }
@@ -161,9 +176,17 @@ public:
                 }
             }
 
+            double row_scale = 0.0;
+            for (std::size_t k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k)
+                row_scale = std::max(row_scale, std::abs(lu_[k]));
             const double diag = lu_[diag_pos_[i]];
+            // B3 (#480): diagonal floor relative to the factorized row
+            // scale instead of an absolute epsilon cut.
+            const double diag_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(row_scale, 1e-300);
             if (!std::isfinite(diag) ||
-                std::abs(diag) <= std::numeric_limits<double>::epsilon()) {
+                std::abs(diag) <= diag_floor) {
                 clear();
                 return false;
             }

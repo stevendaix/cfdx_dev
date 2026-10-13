@@ -51,3 +51,4 @@ Les seuils sont définis à partir des propriétés mathématiques et des cas de
 
 ## 8. Journal
 - 2026-10-12 — création ; intègre #804, #813, #853, #851 et la revue projet (qualification N9 à renforcer).
+- 2026-10-13 — durcissement N11 B1/B2/B3 (#480) : pivot relatif à l'échelle du bloc (BlockJacobi), garde d'entrée fail-closed sur `diagonal_schur_scale_` (Schur Diagonal), gardes GS/ILU(0) relatives à la rangée (pattern `factor_schur_ilu0`). Rejets fermés uniquement — aucune tolérance, gate ou politique d'acceptation modifiée.
