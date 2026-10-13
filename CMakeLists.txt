@@ -663,7 +663,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_vmfl036_axisymmetric_quick PROPERTIES LABELS "phase14;validation;axisymmetric")
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_vmfl036_axisymmetric COMMAND test_vmfl036_axisymmetric)
-        set_tests_properties(test_vmfl036_axisymmetric PROPERTIES LABELS "phase14;validation;axisymmetric;long" SKIP_RETURN_CODE 1)
+        set_tests_properties(test_vmfl036_axisymmetric PROPERTIES LABELS "phase14;validation;axisymmetric;long")
     endif()
     set_tests_properties(test_axisymmetric_vmfl036_kernel PROPERTIES LABELS "phase14;validation;axisymmetric")
     target_compile_definitions(test_vmfl036_reference_case PRIVATE
