@@ -34,7 +34,7 @@ $$a_P T_P = \sum_{nb} a_{nb} T_{nb} + b,\qquad F_{h,f} = \dot m_f c_p \ \text{(f
 - **Null-space (jauge de température)** : un système tout-Neumann a un null-space constant → rejet fail-closed (≥ 1 patch Dirichlet exigé), jamais résolu silencieusement.
 
 ## 5. Pièges connus
-- `energy_model = "buoyant"` (ou toute valeur inconnue) est **rejeté** : l'étage ne doit jamais dégrader silencieusement en isotherme — le refus porte la sémantique, pas un avertissement.
+- `energy_model = "buoyant"` (ou toute valeur inconnue) est **rejeté** : l'étage ne doit jamais dégrader silencieusement en isotherme — le refus porte la sémantique, pas un avertissement. Exception : `energy_model = "compressible"` (produit par la conversion SU2 des cas Euler / Navier-Stokes compressibles, cf. `case_schema.h` / `adapters/su2.py`) est accepté comme déclaration valide mais ne déclenche **jamais** l'étage (seul `conjugate` le fait) — le solveur de production exécute alors l'écoulement seul.
 - Le flux consommé doit être le flux de masse **autoritaire conservatif** (`IncompressibleSolveResult.authoritative_mass_flux`), jamais un flux reconstruit depuis la vitesse cellulaire : la conservativité discrète du porteur est ce qui rend le bilan d'énergie indépendant exact à la machine ; un flux reconstruit la casse.
 - Flux non fini, température initiale non finie, champ de mauvaise taille → rejet fail-closed avant l'assemblage.
 - Tout-Neumann → singulier → rejet (miroir fiche 13) ; 0 = « non déclaré » pour `wall_temperature`/`temperature`.

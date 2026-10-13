@@ -524,7 +524,7 @@ int main()
             auto s = base;
             EXPECT_TRUE(production_energy_requested(s));
             for (const char* model : {"", "none", "isothermal",
-                                      "solid_conduction"}) {
+                                      "solid_conduction", "compressible"}) {
                 s.energy_model = model;
                 EXPECT_TRUE(!production_energy_requested(s));
                 validate_production_energy_model(s);

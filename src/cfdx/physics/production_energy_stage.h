@@ -6,10 +6,13 @@
 //
 // Contract:
 //   * energy_model gate: {"", "none", "isothermal", "solid_conduction",
-//     "conjugate"} are accepted declarations; anything else - including
-//     "buoyant" - is rejected fail-closed instead of silently degrading to
-//     an isothermal run. The stage itself only runs for "conjugate":
-//     calling it under any other declared model throws.
+//     "conjugate", "compressible"} are accepted declarations; anything
+//     else - including "buoyant" - is rejected fail-closed instead of
+//     silently degrading to an isothermal run. "compressible" is the
+//     declaration emitted by the SU2 adapter for compressible Euler /
+//     Navier-Stokes cases: valid, but it never triggers the stage. The
+//     stage itself only runs for "conjugate": calling it under any other
+//     declared model throws.
 //   * Exactly one fluid material with finite positive density, conductivity
 //     and specific heat. Volumetric power (W/m^3) comes from the material's
 //     extra_properties ("volumetric_power", default 0).
@@ -59,11 +62,13 @@ inline void validate_production_energy_model(const cfdx::io::CaseSetup& setup)
 {
     const std::string& model = setup.energy_model;
     if (model.empty() || model == "none" || model == "isothermal" ||
-        model == "solid_conduction" || model == "conjugate")
+        model == "solid_conduction" || model == "conjugate" ||
+        model == "compressible")
         return;
     throw std::invalid_argument(
         "production energy stage: unsupported energy_model '" + model +
-        "' (accepted: none, isothermal, solid_conduction, conjugate; "
+        "' (accepted: none, isothermal, solid_conduction, conjugate, "
+        "compressible - a declaration that never triggers this stage; "
         "buoyant coupling is not implemented and is rejected instead of "
         "silently running an isothermal solve)");
 }
