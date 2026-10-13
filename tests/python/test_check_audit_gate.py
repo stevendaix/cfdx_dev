@@ -109,7 +109,11 @@ class ValidateFichesContractTests(unittest.TestCase):
     def test_non_method_fiche_is_exempt_from_math_titles_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             title = GATE.MATH_SECTION_TITLES[1]
-            text = valid_fiche_text().replace(title + "\n", "")
+            # A non-method fiche is exempt from the mandatory math
+            # titles, but not from the numbered structure: swap the math
+            # title for a plain "## 3." section instead of deleting
+            # the line, otherwise the structural check rejects the fixture.
+            text = valid_fiche_text().replace(title, "## 3. Benchmarks and references")
             write_fiche(Path(tmp), name="07-benchmarks-references.md", text=text)
             self.assertEqual(GATE.validate_fiches(Path(tmp)), [])
 
