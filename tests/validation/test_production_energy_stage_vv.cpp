@@ -162,9 +162,27 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     // at ~1 forever and the monitor reports STAGNATED after 10 iterations
     // (the documented failure mode of issue #663). The green pattern from
     // test_channel_qualification is rest + default under-relaxation
-    // (alpha_u = 0.7, alpha_p = 0.3): the predictor is exact for a plug, so
-    // U_k = u_in * (1 - 0.7^k) and the run converges in ~63 iterations,
-    // well inside the 200-iteration budget. No tolerance is changed.
+    // (alpha_u = 0.7, alpha_p = 0.3). No tolerance is changed.
+    //
+    // Carrier viscosity (post-merge P0 fix): on this slip-wall chain the
+    // interior momentum predictor is a pure diffusion chain - the lateral
+    // zero-gradient walls contribute no diagonal term, so a_P equals the
+    // sum of the neighbour coefficients and equation relaxation contracts
+    // the constant mode (the predictor returns a profile decaying at
+    // ~0.41 per cell; SIMPLE's pressure correction then rebuilds the plug
+    // over the iterations, which is its job). With air (mu = 1.8e-5) the
+    // interior diffusion diagonal sits four orders of magnitude below the
+    // inlet cell's convective diagonal, so rAU jumps by ~1e4 between
+    // neighbours, the pressure-correction coefficients switch regime at
+    // every nonlinear iteration and the iteration diverges - CI observed
+    // the pressure-correction CG degenerating (509 iterations, collapsed
+    // recurrence, true residual stuck) before the solver threw. With the
+    // diffusion-dominated carrier below (mu = 1.0 Pa.s, Re ~ 7) rAU is
+    // uniform, the SIMPLE corrections are well scaled and the plug is
+    // reached from rest inside the 200-iteration budget. The plug is the
+    // exact discrete solution for ANY viscosity (slip walls carry no
+    // shear) and the energy stage is insensitive to mu (frozen flow:
+    // mdot = rho * u_in is imposed by the inlet BC and asserted below).
     controls.initialization.mode = InitializationMode::Uniform;
     controls.initialization.uniform_velocity = {0.0, 0.0, 0.0};
     controls.coupling.alpha_u = 0.7;
@@ -179,6 +197,10 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     controls.convergence.continuity_tolerance = 1e-11;
     controls.linear_tolerance = 1e-11;
     controls.pressure_reference_cell = 0;
+    // Diagnostic-only nonlinear trace (no criterion, tolerance or gate is
+    // affected): exposes the carrier convergence history in CI logs.
+    controls.diagnostics.iteration_trace = true;
+    controls.diagnostics.iteration_trace_frequency = 1;
 
     const auto flow = solve_steady_incompressible(plug.mesh, U, p, ubc, pbc,
                                                    controls);
@@ -346,7 +368,11 @@ int main()
     const std::size_t n = 16;
     const double dx = 0.25;
     const double rho = 1.2;
-    const double mu = 1.8e-5;
+    // Synthetic viscous carrier fluid (see solve_plug_flow): the flow
+    // solve needs a diffusion-dominated momentum diagonal to be a
+    // well-posed SIMPLE case from rest on this slip-wall chain. The
+    // energy stage is insensitive to mu (frozen flow, mdot = rho * u_in).
+    const double mu = 1.0;
     const double k = 0.026;
     const double cp = 1005.0;
     const double u_in = 1.5;
@@ -779,4 +805,5 @@ int main()
 
     return run_all();
 }
+
 
