@@ -272,6 +272,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/turbulence_solver.h
     src/cfdx/physics/sst_solver.h
     src/cfdx/physics/energy_solver.h
+    src/cfdx/physics/thermal_zones.h
     src/cfdx/physics/cht_solver.h
     src/cfdx/physics/radiation_solver.h
     src/cfdx/physics/radiation_s2s.h
@@ -291,6 +292,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/linear_solver_dispatch.h
     src/cfdx/core/linalg/null_space.h
     src/cfdx/core/linalg/matrix_free_fv_operator.h
+    src/cfdx/core/linalg/amg_setup_footprint.h
     src/cfdx/core/linalg/amg_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
     src/cfdx/core/linalg/coupled_amg_schur.h
@@ -324,6 +326,9 @@ set(CFDX_CORE_HEADERS
 
 add_executable(cfdx_production_solver apps/production_solver/main.cpp)
 target_link_libraries(cfdx_production_solver PRIVATE cfdx_core)
+
+add_executable(cfdx_thermal_solver apps/thermal_solver/main.cpp)
+target_link_libraries(cfdx_thermal_solver PRIVATE cfdx_core)
 
 add_executable(cfdx_convert
     apps/cfdx_convert/main.cpp
@@ -637,6 +642,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
     add_cfdx_test(test_n11_fw1_nearest_normal_fallback tests/unit/test_n11_fw1_nearest_normal_fallback.cpp)
 add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_positivity_clamp_counter.cpp)
+    add_cfdx_test(test_n11_b1_b2_b3_linalg_guards tests/unit/test_n11_b1_b2_b3_linalg_guards.cpp)
+    add_cfdx_test(test_n11_b4_b5_amg_footprint tests/unit/test_n11_b4_b5_amg_footprint.cpp)
     add_test(NAME benchmark_wall_distance_complex
              COMMAND cfdx_wall_distance_complex_benchmark ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv)
     set_tests_properties(benchmark_wall_distance_complex PROPERTIES LABELS "phase13;validation;benchmark")
@@ -810,6 +817,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     # qualification subset independently selectable from ordinary unit tests.
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
+    add_cfdx_test(test_thermal_zones_vv tests/validation/test_thermal_zones_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
@@ -1106,6 +1114,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     # I/O adapter tests (M0.10-T03)
     # C++ solver adapters are now thin stubs (format parsing moved to Python).
     add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
+
+    # Thermal production-path qualification label (T1 / issue #880).
+    set_tests_properties(test_thermal_zones_vv PROPERTIES LABELS "qualification;validation;phase13")
 
 endif()
 

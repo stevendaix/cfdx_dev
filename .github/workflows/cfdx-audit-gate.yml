@@ -46,6 +46,14 @@ jobs:
             --changed-files changed_files.txt \
             --pr-body pr_body.txt
 
+      - name: Self-test the gate against negative cases (Rules of Gold 1-2)
+        # Audit of the 10 last merged PRs (2026-10-12): a gate is only
+        # credible if it is regularly proven to block. The contract suite
+        # exercises missing/malformed fiches, absent fiche references and
+        # invalid PR bodies. unittest-based, stdlib-only: no dependency
+        # install is needed here.
+        run: python3 tests/python/test_check_audit_gate.py
+
       - name: Gate summary
         if: always()
         run: |

@@ -5,7 +5,7 @@
 - Statut : APPROVED (2026-10-12)
 - Issues liées : #481 (N8), #601 (N9), #663 ; PRs #804, #813, #853 ; `docs/validation/PCD_SCHUR_QUALIFICATION.md’, `N8_QUALIFICATION_TASKS.md’, `N8_MPI_QUALIFICATION_BOUNDARY.md’
 - Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
-- Limitations : politique d'acceptation quantitative (section 6) à définitivement figer en Phase 1 (N8).
+- Limites qualifiées : N8 accepté et issue #481 fermée le 2026-10-12 (décision consignée dans le suivi de #481). Les méthodes AMG/SA/Coupled Block Schur/PCD/MGR restent qualifiées en série uniquement ; aucune qualification MPI/GPU n'est revendiquée. Les métriques quantitatives de la section 6 restent des preuves et critères applicables, sans seuil universel ni sélection automatique.
 
 ## 1. Références sources
 - D. Kay, D. Loghin, A. Wathen, « A preconditioner for the steady-state Navier–Stokes equations », *SIAM J. Sci. Comput.* 24(1):239–253, 2002. (PCD)
@@ -32,7 +32,7 @@ Null-space : le préconditionneur doit préserver l'espace nul de pression (con
 - MPI : AMG/Schur/PCD/MGR **non qualifiés** en décomposition de domaine (limite #481) ; aucune promotion MPI sans campagne halos/rangs.
 - Restart FGMRES : jamais écrêté ; tolérances validées par modèle et par échelle (leçon #419 C4/C5).
 
-## 6. Politique d'acceptation quantitative (exigée pour fermer #481)
+## 6. Politique d'acceptation quantitative (référence de qualification N8 — #481 fermée)
 Chaque modèle Schur doit fournir, sur des systèmes représentatifs (maillage réel, Re varié, n64/n128) :
 1. erreur d'action vs complément de Schur exact quand la comparaison est pertinente ;
 2. vrai résidu après application (recalculé indépendamment) ;
@@ -45,9 +45,14 @@ Les seuils sont définis à partir des propriétés mathématiques et des cas de
 
 ## 7. Statut d'implémentation CFDX
 - Sources : `src/cfdx/core/numerics/…schur…’, `assemble_pcd_pressure_operators’ (#853) ; `src/cfdx/core/linalg/…’ (AMG, FGMRES).
-- Tests : `test_n9_common_schur_qualification.cpp’ (à renforcer selon §6), `docs/validation/AMG_PRECONDITIONER_QUALIFICATION.md’, `MGR_PRECONDITIONER_QUALIFICATION.md’, matrice #481.
-- Écarts code ↔ fiche : à auditer en Phase 1 (N8/N9) ; notamment qualification sur population CFD réelle.
-- Gaps : matrice de qualification #481 incomplète ; MPI non qualifié.
+- Preuves N8 : la décision d'acceptation DoD 1–9 est enregistrée dans #481 (2026-10-12) ; les campagnes et mesures associées constituent l'évidence de qualification, pas un seuil universel ni une promotion automatique de sélection.
+- Tests : `test_n9_common_schur_qualification.cpp’, `docs/validation/AMG_PRECONDITIONER_QUALIFICATION.md’, `MGR_PRECONDITIONER_QUALIFICATION.md’, matrice #481.
+- Limites restantes : aucune qualification MPI/GPU n'est revendiquée pour AMG/SA/Coupled Block Schur/PCD/MGR. Les campagnes de production N9 et les preuves N11 restent distinctes de la décision N8.
 
 ## 8. Journal
 - 2026-10-12 — création ; intègre #804, #813, #853, #851 et la revue projet (qualification N9 à renforcer).
+- 2026-10-13 — durcissement N11 B1/B2/B3 (#480) : pivot relatif à l'échelle du bloc (BlockJacobi), garde d'entrée fail-closed sur `diagonal_schur_scale_` (Schur Diagonal), gardes GS/ILU(0) relatives à la rangée (pattern `factor_schur_ilu0`). Rejets fermés uniquement — aucune tolérance, gate ou politique d'acceptation modifiée.
+- 2026-10-13 — correctif B3 (#480) : l'échelle de référence des gardes ILU(0) provient de la partie U de la rangée du pivot, jamais des multiplicateurs L (sans dimension), et chaque pivot est jugé dans sa propre rangée factorisée. Tests ajoutés : rescaling uniforme multi-échelles, rangées d'échelles contrastées, coefficients non finis (BlockJacobi fail-closed), état sûr après échec de setup. Rejets fermés uniquement — aucune tolérance, gate ou politique modifiée.
+- 2026-10-13 — durcissement N11 B4/B5 (#480) : compteurs reporting-only du setup AMG (agrégats SA singletons, rangées d'interpolation de repli, entrées Galerkin éliminées par la coupe 1e-30 inchangée) via AMGSetupFootprint et setup_footprint() ; contrat last_error() documenté sur l'AMG natif. Aucun seuil modifié — aucun critère d'acceptation ne lit les compteurs.
+
+- 2026-10-13 — audit documentaire post-N8 : #481 est fermé et N8 accepté ; les critères quantitatifs de §6 sont conservés comme référence de preuve, sans présenter la fermeture de #481 comme encore en attente. Les limites serial-only et l'absence de qualification MPI/GPU restent explicites.
