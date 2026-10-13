@@ -443,9 +443,16 @@ inline ThermalConductionResult solve_thermal_conduction(
     result.patch_flux_out = audit.patch_flux_out;
 
     const double imbalance = result.total_source_power - result.boundary_flux_out;
-    const double scale = std::max(std::abs(result.total_source_power),
-                                  std::abs(result.boundary_flux_out));
-    result.energy_imbalance_relative = scale > 0.0 ? std::abs(imbalance) / scale : 0.0;
+    // Normalize by the gross energy throughput (sources plus per-patch flux
+    // magnitudes), never by the net boundary flux: balanced cases (flux in ==
+    // flux out, no source) have a net flux that is zero up to the linear
+    // solver residual, and a net-flux normalization would turn that rounding
+    // noise into an O(1) "imbalance".
+    double gross_throughput = std::abs(result.total_source_power);
+    for (const auto& entry : result.patch_flux_out)
+        gross_throughput += std::abs(entry.second);
+    result.energy_imbalance_relative =
+        gross_throughput > 0.0 ? std::abs(imbalance) / gross_throughput : 0.0;
     return result;
 }
 

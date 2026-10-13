@@ -4,15 +4,18 @@
 // Verified properties:
 //   * Composite wall, no source: the two-point series-resistance
 //     discretization reproduces the exact resistance-network solution at
-//     cell centres (machine precision gate).
+//     cell centres (machine precision gate) and respects the discrete
+//     maximum principle on the orthogonal chain (T bounded by the Dirichlet
+//     ends).
 //   * Contact resistance: still exact, R_c simply adds in series at
 //     cross-zone interfaces.
-//   * Volumetric power: second-order convergence towards the analytic
-//     parabola under mesh refinement, exact cumulative-power identity
-//     through an internal plane, and energy closure
-//     |produced - net boundary flux| / scale < 1e-12.
+//   * Volumetric power (adiabatic upstream wall, fixed temperature
+//     downstream): second-order convergence towards the analytic parabola
+//     over a three-level refinement series with a gated observed order,
+//     exact cumulative-power identity through the mid plane (machine
+//     precision), and energy closure < 1e-12.
 //   * Fixed-gradient (heat flux) boundary: exact linear solution and closed
-//     energy balance.
+//     energy balance normalized by the gross throughput.
 //   * Fail-closed: invalid conductivity, undeclared zone id, inconsistent
 //     double-sided contact resistance, non-finite power, duplicate zone id
 //     and a Dirichlet-free (singular) system are all rejected.
@@ -183,7 +186,7 @@ int main()
         Vector temperature(n, 293.15);
         const auto result =
             solve_thermal_conduction(m, g, zones, bc, temperature,
-                                     ScalarSolveControls{5000, 1e-12, 1.0});
+                                     ScalarSolveControls{5000, 1e-14, 1.0});
 
         const std::vector<double> k = {1, 1, 2, 2, 4, 4};
         const auto expected = exact_chain_temperatures(k, dx, 400.0, 300.0, {});
@@ -193,6 +196,10 @@ int main()
         // Closed balance: everything entering on the left leaves on the right.
         EXPECT_NEAR(result.patch_flux_out.at("left"),
                     -result.patch_flux_out.at("right"), 1e-9);
+        // Discrete maximum principle on the orthogonal chain: without a
+        // volumetric source the solution is bounded by the Dirichlet ends.
+        EXPECT_TRUE(result.min_temperature >= 300.0 - 1e-9);
+        EXPECT_TRUE(result.max_temperature <= 400.0 + 1e-9);
         std::cout << "THERMAL_ZONES_VV: composite_wall"
                   << " max_error=" << max_abs_error(temperature, expected)
                   << " flux_left=" << result.patch_flux_out.at("left")
@@ -219,7 +226,7 @@ int main()
         Vector temperature(n, 293.15);
         const auto result =
             solve_thermal_conduction(m, g, zones, bc, temperature,
-                                     ScalarSolveControls{5000, 1e-12, 1.0});
+                                     ScalarSolveControls{5000, 1e-14, 1.0});
 
         const std::vector<double> k = {1, 1, 2, 2, 4, 4};
         // Internal faces 1|2 and 3|4 both carry the contact resistance.
@@ -228,10 +235,25 @@ int main()
         EXPECT_TRUE(result.converged);
         EXPECT_TRUE(max_abs_error(temperature, expected) < 1e-9);
         EXPECT_TRUE(result.energy_imbalance_relative < 1e-12);
+        EXPECT_TRUE(result.min_temperature >= 300.0 - 1e-9);
+        EXPECT_TRUE(result.max_temperature <= 400.0 + 1e-9);
     });
 
     run_case("thermal_zones_volumetric_power_balance_and_convergence", [] {
         const double power = 1.0e3;  // W/m^3, uniform, k = 1, L = 2 m
+        // Adiabatic left wall, fixed temperature on the right. The exact
+        // profile is the parabola T(x) = T_R + q'''(L^2 - x^2)/(2k), and the
+        // mid plane carries exactly the power generated upstream of it: no
+        // wall flux competes on the adiabatic side. (With a Dirichlet left
+        // wall the mid-plane flux would be the generated share minus the
+        // wall flux -- 25 W here instead of the full 1000 W -- which is why
+        // the cumulative-power identity requires the adiabatic upstream
+        // boundary.)
+        struct RefinementResult {
+            double error;
+            double mid_flux_error;
+            bool converged;
+        };
         const auto solve_chain = [power](std::size_t n) {
             const double dx = 2.0 / static_cast<double>(n);
             Mesh m = chain_mesh(n, dx);
@@ -239,45 +261,65 @@ int main()
             std::vector<ThermalZoneSpec> specs = {{"mat", 1, 1.0, power, 0.0, true}};
             const std::vector<int> zone(n, 1);
             const auto zones = build_thermal_zones(m, zone, specs);
-            const auto bc = chain_bcs(350.0, 300.0);
+            ScalarBoundaryConditions bc;
+            bc["left"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            bc["right"] = {ScalarBoundaryType::FIXED_VALUE, 300.0, 0.0};
+            bc["walls"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
             Vector temperature(n, 300.0);
             const auto result =
                 solve_thermal_conduction(m, g, zones, bc, temperature,
-                                         ScalarSolveControls{5000, 1e-12, 1.0});
-            // Analytic cell-centre values: T(x) = T_L - (T_L-T_R) x/L +
-            // q''' x (L-x) / (2k). The two-point discretization is second
-            // order, so this error must shrink ~4x per refinement.
+                                         ScalarSolveControls{5000, 1e-14, 1.0});
+            // Analytic cell-centre values: T(x) = T_R + q'''(L^2-x^2)/(2k).
+            // The two-point discretization is second order: the cell-centre
+            // error comes from the half-cell Dirichlet treatment at the
+            // right wall and scales as dx^2.
             double error = 0.0;
             for (std::size_t i = 0; i < n; ++i) {
                 const double x = (static_cast<double>(i) + 0.5) * dx;
-                const double expected = 350.0 - 25.0 * x + 500.0 * x * (2.0 - x);
+                const double expected = 300.0 + 500.0 * (4.0 - x * x);
                 error = std::max(error, std::abs(temperature(i) - expected));
             }
-            // Power audit: the conductive flux through the internal face at
-            // x = 1 m must carry exactly half the generated power. This is an
-            // exact discrete identity, checked at machine precision.
+            // Power audit: with an adiabatic left wall the conductive flux
+            // through the mid plane carries exactly the power generated in
+            // the left half (telescoping sum of the cell equations). This
+            // is an exact discrete identity, checked at machine precision.
             double mid_flux_error = -1.0;
             if (n % 2 == 0) {
                 const std::size_t mid = n / 2;  // face between cells mid-1, mid
                 const double conductance = 1.0 / dx;  // k=1, A=1, uniform cells
-                const double flux = conductance * (temperature(mid - 1) - temperature(mid));
+                const double flux =
+                    conductance * (temperature(mid - 1) - temperature(mid));
                 mid_flux_error = std::abs(flux - power * 1.0) / (power * 1.0);
             }
-            return std::pair<double, double>(error, mid_flux_error);
+            return RefinementResult{error, mid_flux_error, result.converged};
         };
 
         const auto coarse = solve_chain(8);
+        const auto medium = solve_chain(16);
         const auto fine = solve_chain(32);
-        // Discretization error is real and shrinks at second order.
-        EXPECT_TRUE(coarse.first > 1.0);
-        EXPECT_TRUE(fine.first < 0.25 * coarse.first);
+        EXPECT_TRUE(coarse.converged);
+        EXPECT_TRUE(medium.converged);
+        EXPECT_TRUE(fine.converged);
+        // Discretization error is real and shrinks at second order over the
+        // three-level series.
+        EXPECT_TRUE(coarse.error > 1.0);
+        EXPECT_TRUE(fine.error < 0.25 * coarse.error);
+        const double order_coarse =
+            std::log(coarse.error / medium.error) / std::log(2.0);
+        const double order_fine =
+            std::log(medium.error / fine.error) / std::log(2.0);
+        EXPECT_TRUE(order_coarse > 1.5 && order_coarse < 2.5);
+        EXPECT_TRUE(order_fine > 1.5 && order_fine < 2.5);
         // Cumulative-power identity through the mid plane: machine precision.
-        EXPECT_TRUE(coarse.second >= 0.0 && coarse.second < 1e-9);
-        EXPECT_TRUE(fine.second >= 0.0 && fine.second < 1e-9);
+        EXPECT_TRUE(coarse.mid_flux_error >= 0.0 && coarse.mid_flux_error < 1e-9);
+        EXPECT_TRUE(medium.mid_flux_error >= 0.0 && medium.mid_flux_error < 1e-9);
+        EXPECT_TRUE(fine.mid_flux_error >= 0.0 && fine.mid_flux_error < 1e-9);
         std::cout << "THERMAL_ZONES_VV: volumetric_power"
-                  << " error_coarse=" << coarse.first
-                  << " error_fine=" << fine.first
-                  << " mid_flux_rel_error=" << fine.second << '\n';
+                  << " error_coarse=" << coarse.error
+                  << " error_medium=" << medium.error
+                  << " error_fine=" << fine.error
+                  << " observed_order=" << order_fine
+                  << " mid_flux_rel_error=" << fine.mid_flux_error << '\n';
     });
 
     run_case("thermal_zones_energy_closure_with_source", [] {
@@ -293,7 +335,7 @@ int main()
         Vector temperature(n, 300.0);
         const auto result =
             solve_thermal_conduction(m, g, zones, bc, temperature,
-                                     ScalarSolveControls{5000, 1e-12, 1.0});
+                                     ScalarSolveControls{5000, 1e-14, 1.0});
         EXPECT_TRUE(result.converged);
         EXPECT_NEAR(result.total_source_power, power * 2.0, 1e-9);
         EXPECT_TRUE(result.energy_imbalance_relative < 1e-12);
@@ -320,7 +362,7 @@ int main()
         Vector temperature(n, 300.0);
         const auto result =
             solve_thermal_conduction(m, g, zones, bc, temperature,
-                                     ScalarSolveControls{5000, 1e-12, 1.0});
+                                     ScalarSolveControls{5000, 1e-14, 1.0});
         // T(x) = T_R + q'' (L - x) / k, exact at cell centres.
         double error = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
@@ -334,6 +376,8 @@ int main()
         // right patch (audit signs: left negative = entering).
         EXPECT_NEAR(result.patch_flux_out.at("left"), -heat_flux, 1e-9);
         EXPECT_NEAR(result.boundary_flux_out, 0.0, 1e-9);
+        // The gross-throughput normalization keeps this balanced case
+        // meaningful: scale = |left| + |right| fluxes, not the ~zero net.
         EXPECT_TRUE(result.energy_imbalance_relative < 1e-12);
     });
 
