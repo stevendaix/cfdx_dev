@@ -86,11 +86,14 @@ def test_write_probe_csv_value_encoding_is_canonical(tmp_path):
 
 
 def test_write_probe_csv_byte_stable(tmp_path):
+    # #828 history contract: strictly increasing iterations and non-decreasing
+    # time, so the canonical float tokens are ordered as an increasing time
+    # sequence instead of the previously arbitrary decreasing one.
     path = write_probe_csv(tmp_path / "probes.csv", [
         ProbeSeries("u_mag", (), (
-            ProbeSample(1, 1.0, 0.0),
+            ProbeSample(1, 1e-9, 0.0),
             ProbeSample(2, 1.0 / 3.0, 1.0 / 3.0),
-            ProbeSample(3, 1e-9, 123.45678901234568),
+            ProbeSample(3, 1.0, 123.45678901234568),
         )),
     ])
     expected = (
@@ -99,7 +102,7 @@ def test_write_probe_csv_byte_stable(tmp_path):
         + "".join(
             f"u_mag,{i},{_format_probe_csv_value(t)},{_format_probe_csv_value(v)}\n"
             for i, (t, v)
-            in zip((1, 2, 3), ((1.0, 0.0), (1.0 / 3.0, 1.0 / 3.0), (1e-9, 123.45678901234568)))
+            in zip((1, 2, 3), ((1e-9, 0.0), (1.0 / 3.0, 1.0 / 3.0), (1.0, 123.45678901234568)))
         )
     )
     assert path.read_text() == expected
