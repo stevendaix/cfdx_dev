@@ -2,7 +2,7 @@
 
 **En-tête d'évidence (gouvernance §16.5)**
 - Scope : transport d'énergie stationnaire `div(ṁ cp T) − div(k grad T) = q'''` sur le flux de masse **autoritaire** du solveur incompressible convergé (couplage unidirectionnel « frozen flow », `energy_model = "conjugate"` dans `cfdx_production_solver`). Couvert : puissance volumique (W/m^3), Dirichlet entrée/paroi, flux de paroi imposé (`heat_flux`), adiabatique, audit de conservation indépendant. Non couvert : flottabilité (`buoyant` rejeté fail-closed), couplage inverse énergie→fluide, CHT multi-régions fluide/solide (fiche 10), transitoire, itération externe (déléguée aux étages turbulence/S2S de #885), correction non orthogonale (fiche 06).
-- Statut : APPROUVÉE (2026-10-13, PR de livraison) — contrat rédigé sur l'implémentation du driver T2 ; l'exécution réelle de la campagne T2 sur un HEAD exact mergé reste à la charge du propriétaire avant toute promotion (gouvernance #118).
+- Statut : APPROUVÉE (2026-10-13, PR #888) — contrat rédigé sur l'implémentation du driver T2 ; l'exécution réelle de la campagne T2 sur un HEAD exact mergé reste à la charge du propriétaire avant toute promotion (gouvernance #118).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json (cas `T2-FLUID-ENERGY`) + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues / PR liées : #880 (T1), #885 (étage 2), #118
 - Limitations connues : couplage unidirectionnel gelé (exact sans flottabilité, voir §2) ; stationnaire ; une seule propriété fluide par cas (exactement 1 matériau) ; `0` = « non déclaré » pour `temperature`/`wall_temperature` ; ≥ 1 patch Dirichlet requis (sinon rejet fail-closed) ; ordre 1 en convection (l'oracle est discret, pas continu).
@@ -54,8 +54,8 @@ $$a_P T_P = \sum_{nb} a_{nb} T_{nb} + b,\qquad F_{h,f} = \dot m_f c_p \ \text{(f
 - Fichiers source concernés : src/cfdx/physics/production_energy_stage.h (étage), apps/production_solver/main.cpp (app de production `cfdx_production_solver` : validation fail-closed du modèle, étage après un écoulement convergé, artéfacts `energy_convergence.json` / `energy_summary.json` / `energy_result_0.vtu`, exit code global = fluide ∧ énergie).
 - Tests exécutables : tests/validation/test_production_energy_stage_vv.cpp (`test_production_energy_stage_vv`).
 - Conventions utilisateur : `energy_model = "conjugate"` déclenche l'étage ; exactement 1 matériau fluide (`density`, `thermal_conductivity`, `specific_heat` > 0 finis) ; `extra_properties["volumetric_power"]` (W/m^3, défaut 0) ; BC température : `wall_temperature` (WALL_THERMAL) ou `temperature` (INLET/FIXED) ≠ 0 → Dirichlet, sinon `raw_params["heat_flux"]` (W/m^2, positif entrant) → gradient fixé, sinon adiabatique ; 0 = « non déclaré » ; ≥ 1 Dirichlet requis ; température initiale = `initial_condition.temperature` sinon `ref_temperature`.
-- Écarts connus code ↔ fiche : aucun identifié à la rédaction (la fiche décrit l'implémentation de la PR de livraison) ; audit ligne à ligne à refaire à chaque évolution (Règle d'Or 1).
+- Écarts connus code ↔ fiche : aucun identifié à la rédaction (la fiche décrit l'implémentation de la PR #888) ; audit ligne à ligne à refaire à chaque évolution (Règle d'Or 1).
 - Gaps et prochaines actions : campagne T2 sur HEAD exact (MMS 3 niveaux + GCI + exécution réelle archivée) ; itération externe et couplage inverse différés aux étages turbulence/S2S de #885 ; CHT fluide/solide multi-régions (fiche 10) ; transitoire et non orthogonale hors scope présent.
 
 ## 8. Journal des modifications de la fiche
-- 2026-10-13 — création (PR de livraison, T2 #885 étage 2) : contrat rédigé sur l'implémentation, approbation par fusion de la PR par le propriétaire ; campagne d'exécution T2 reste à produire avant toute promotion.
+- 2026-10-13 — création (PR #888, T2 #885 étage 2) : contrat rédigé sur l'implémentation, approbation par fusion de la PR par le propriétaire ; campagne d'exécution T2 reste à produire avant toute promotion.
