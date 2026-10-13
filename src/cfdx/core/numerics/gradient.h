@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -531,6 +532,9 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
 // forming the normal equations, avoiding the h/h^2 conditioning problem of the
 // raw polynomial basis. Three face-neighbour rings provide redundancy on
 // directional tetrahedral stencils.
+// Degenerate (1-D/2-D embedded) stencils cannot carry the quadratic basis:
+// they use the documented linear least-squares fallback on the same stencil
+// (counted and reported on stderr — never silent; see the policy note below).
 inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh)
@@ -568,6 +572,7 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
     std::vector<unsigned char> seen(n_cells, 0);
     std::vector<std::size_t> touched;
     touched.reserve(128);
+    std::size_t n_linear_fallback = 0;
 
     for (std::size_t c = 0; c < n_cells; ++c) {
         const Vec3 P = geometry.cell_centres[c];
@@ -593,21 +598,21 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
         double h = 0.0;
         for (const std::size_t nb : stencil) h += (geometry.cell_centres[nb] - P).mag();
         h /= static_cast<double>(stencil.size());
-        if (!(h > 0.0) || !std::isfinite(h))
-            throw std::runtime_error("compute_gradient_least_squares_quadratic: invalid stencil scale");
 
         double A[9][9] = {};
         double b[9] = {};
-        for (const std::size_t nb : stencil) {
-            const Vec3 q = (geometry.cell_centres[nb] - P) * (1.0 / h);
-            const double r2 = q.mag2();
-            if (!(r2 > 0.0) || !std::isfinite(r2)) continue;
-            const double w = 1.0 / r2;
-            const double basis[9] = {q.x,q.y,q.z,q.x*q.x,q.y*q.y,q.z*q.z,q.x*q.y,q.x*q.z,q.y*q.z};
-            const double dv = values[nb] - phi_c;
-            for (int i = 0; i < 9; ++i) {
-                b[i] += w*basis[i]*dv;
-                for (int j = 0; j < 9; ++j) A[i][j] += w*basis[i]*basis[j];
+        if (stencil.size() > 0 && h > 0.0 && std::isfinite(h)) {
+            for (const std::size_t nb : stencil) {
+                const Vec3 q = (geometry.cell_centres[nb] - P) * (1.0 / h);
+                const double r2 = q.mag2();
+                if (!(r2 > 0.0) || !std::isfinite(r2)) continue;
+                const double w = 1.0 / r2;
+                const double basis[9] = {q.x,q.y,q.z,q.x*q.x,q.y*q.y,q.z*q.z,q.x*q.y,q.x*q.z,q.y*q.z};
+                const double dv = values[nb] - phi_c;
+                for (int i = 0; i < 9; ++i) {
+                    b[i] += w*basis[i]*dv;
+                    for (int j = 0; j < 9; ++j) A[i][j] += w*basis[i]*basis[j];
+                }
             }
         }
 
@@ -617,23 +622,87 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
             for (int j = 0; j < 9; ++j) { M[i][j]=A[i][j]; scale=std::max(scale,std::abs(A[i][j])); }
             M[i][9]=b[i];
         }
-        if (!(scale > 0.0) || !std::isfinite(scale))
-            throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
-        const double tol=4096.0*std::numeric_limits<double>::epsilon()*scale;
-        for (int col=0; col<9; ++col) {
-            int pivot=col; double best=std::abs(M[col][col]);
-            for (int row=col+1; row<9; ++row) if (std::abs(M[row][col])>best) { best=std::abs(M[row][col]); pivot=row; }
-            if (!(best>tol)) throw std::runtime_error("compute_gradient_least_squares_quadratic: rank-deficient stencil");
-            if (pivot!=col) for (int j=col;j<10;++j) std::swap(M[col][j],M[pivot][j]);
-            for (int row=col+1;row<9;++row) { const double factor=M[row][col]/M[col][col]; for(int j=col;j<10;++j) M[row][j]-=factor*M[col][j]; }
+        // Degenerate-stencil policy (counted and reported, never silent —
+        // same rule as the documented rank-deficiency policy of the linear
+        // least-squares operators). A 1-D/2-D stencil embedded in 3-D (e.g.
+        // an axial frustum chain with only two axial face-neighbours per
+        // cell) cannot carry the full quadratic basis, so the scaled 9x9
+        // normal matrix is rank deficient. Throwing here would reject valid
+        // embedded meshes that the linear operators explicitly support
+        // (rank-deficient components are left at zero — required for valid
+        // 2-D/1-D meshes embedded in 3-D). Instead we degrade EXPLICITLY to
+        // the linear least-squares fit on the SAME 3-ring stencil:
+        // first-order exact, the best consistency achievable on a
+        // degenerate stencil. Nothing else is relaxed — no tolerance is
+        // widened, no gate is disabled; the N2 order-2 qualification gates
+        // run on well-posed stencils only. Every fallback is counted and
+        // reported once per call on stderr so the degradation stays
+        // observable in CI (Golden Rule 4: no silent fallback).
+        bool quadratic_ok = false;
+        Vec3 g{0.0, 0.0, 0.0};
+        if (scale > 0.0 && std::isfinite(scale)) {
+            const double tol=4096.0*std::numeric_limits<double>::epsilon()*scale;
+            quadratic_ok = true;
+            for (int col=0; col<9; ++col) {
+                int pivot=col; double best=std::abs(M[col][col]);
+                for (int row=col+1;row<9;++row) if (std::abs(M[row][col])>best) { best=std::abs(M[row][col]); pivot=row; }
+                if (!(best>tol)) { quadratic_ok = false; break; }
+                if (pivot!=col) for (int j=col;j<10;++j) std::swap(M[col][j],M[pivot][j]);
+                for (int row=col+1;row<9;++row) { const double factor=M[row][col]/M[col][col]; for(int j=col;j<10;++j) M[row][j]-=factor*M[col][j]; }
+            }
+            if (quadratic_ok) {
+                double x[9]={};
+                for (int i=8;i>=0;--i) { double rhs=M[i][9]; for(int j=i+1;j<9;++j) rhs-=M[i][j]*x[j]; x[i]=rhs/M[i][i]; }
+                g=Vec3{x[0]/h,x[1]/h,x[2]/h};
+            }
         }
-        double x[9]={};
-        for (int i=8;i>=0;--i) { double rhs=M[i][9]; for(int j=i+1;j<9;++j) rhs-=M[i][j]*x[j]; x[i]=rhs/M[i][i]; }
-        const Vec3 g{x[0]/h,x[1]/h,x[2]/h};
+        if (!quadratic_ok) {
+            // Documented linear fallback on the same 3-ring stencil: 3x3
+            // normal equations of the first-order fit, partial pivoting,
+            // rank-deficient components left at zero (same policy as
+            // compute_quadratic_fit_least_squares for npts < 9 and as the
+            // linear least-squares gradient for embedded 2-D/1-D meshes).
+            double N[3][3] = {};
+            double lin_rhs[3] = {};
+            for (const std::size_t nb : stencil) {
+                const Vec3 d = geometry.cell_centres[nb] - P;
+                const double dv = values[nb] - phi_c;
+                N[0][0]+=d.x*d.x; N[0][1]+=d.x*d.y; N[0][2]+=d.x*d.z;
+                N[1][0]+=d.x*d.y; N[1][1]+=d.y*d.y; N[1][2]+=d.y*d.z;
+                N[2][0]+=d.x*d.z; N[2][1]+=d.y*d.z; N[2][2]+=d.z*d.z;
+                lin_rhs[0]+=d.x*dv; lin_rhs[1]+=d.y*dv; lin_rhs[2]+=d.z*dv;
+            }
+            const double ltol = 128.0*std::numeric_limits<double>::epsilon()*
+                std::max(std::abs(N[0][0]),std::max(std::abs(N[1][1]),std::abs(N[2][2])));
+            double aug[3][4] = {};
+            for (int i = 0; i < 3; ++i) { for (int j = 0; j < 3; ++j) aug[i][j]=N[i][j]; aug[i][3]=lin_rhs[i]; }
+            for (int col = 0; col < 3; ++col) {
+                int pivot=col; double best=std::abs(aug[col][col]);
+                for (int row=col+1;row<3;++row) if (std::abs(aug[row][col])>best) { best=std::abs(aug[row][col]); pivot=row; }
+                if (!(best>ltol)) continue;
+                if (pivot!=col) for (int j=col;j<4;++j) std::swap(aug[col][j],aug[pivot][j]);
+                for (int row=col+1;row<3;++row) { const double factor=aug[row][col]/aug[col][col]; for (int j=col;j<4;++j) aug[row][j]-=factor*aug[col][j]; }
+            }
+            double glin[3] = {0.0, 0.0, 0.0};
+            for (int i = 2; i >= 0; --i) {
+                if (std::abs(aug[i][i]) <= ltol) continue;
+                double sum = aug[i][3];
+                for (int j = i+1; j < 3; ++j) sum -= aug[i][j]*glin[j];
+                glin[i] = sum/aug[i][i];
+            }
+            g = Vec3{glin[0], glin[1], glin[2]};
+            ++n_linear_fallback;
+        }
         if (!std::isfinite(g.x)||!std::isfinite(g.y)||!std::isfinite(g.z))
             throw std::runtime_error("compute_gradient_least_squares_quadratic: non-finite gradient");
         grad(c,0)=g.x; grad(c,1)=g.y; grad(c,2)=g.z;
         for (const std::size_t nb:touched) seen[nb]=0;
+    }
+    if (n_linear_fallback > 0) {
+        std::cerr << "compute_gradient_least_squares_quadratic: "
+                  << n_linear_fallback << "/" << n_cells
+                  << " cell(s) used the documented degenerate-stencil linear "
+                     "least-squares fallback (1-D/2-D embedded stencil)\n";
     }
     return grad;
 }
