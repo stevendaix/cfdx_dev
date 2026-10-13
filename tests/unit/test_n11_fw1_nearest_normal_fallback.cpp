@@ -1,8 +1,10 @@
 #include "cfdx/physics/wall_distance.h"
 
+#include <atomic>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 using namespace cfdx::physics;
 
@@ -86,6 +88,34 @@ int main() {
     for(std::size_t i=0;i<dir_deg.distance.size();++i) if(!dg.solid[i])
         require(dir_deg.valid[i] && std::isfinite(dir_deg.distance[i]) && dir_deg.distance[i]>=0.0,
                 "directional mesh wave produced an invalid distance on the degenerate surface");
+
+    // Contract 3 (audit of #865): nearest_normal() is documented as valid
+    // under concurrent const calls on one BVH instance. The fallback
+    // counter is an atomic tally, so after a concurrent storm the count
+    // must be exact and the returned fallback value unchanged. Against the
+    // pre-#865-audit std::size_t member this test would be a data race
+    // (TSan) with an unsynchronized tally.
+    {
+        const WallDistanceBvh bvh(deg);
+        constexpr std::size_t kThreads=4;
+        constexpr std::size_t kCallsPerThread=128;
+        std::atomic<int> wrong_fallback{0};
+        std::array<std::thread,kThreads> threads;
+        for(std::size_t t=0;t<kThreads;++t) {
+            threads[t]=std::thread([&bvh,&wrong_fallback]{
+                for(std::size_t i=0;i<kCallsPerThread;++i) {
+                    const auto n=bvh.nearest_normal({0.5,0.25,0.0});
+                    if(!(n.x==1.0 && n.y==0.0 && n.z==0.0))
+                        wrong_fallback.fetch_add(1,std::memory_order_relaxed);
+                }
+            });
+        }
+        for(std::size_t t=0;t<kThreads;++t) threads[t].join();
+        require(wrong_fallback.load()==0,
+                "concurrent nearest_normal changed the historical fallback value");
+        require(bvh.degenerate_normal_fallbacks()==kThreads*kCallsPerThread,
+                "concurrent fallback counter is not the exact tally");
+    }
 
     std::cout<<"N11 F-W1 nearest-normal fallback reporting: PASS\n"
                  <<std::endl;
