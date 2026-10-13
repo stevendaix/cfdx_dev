@@ -123,10 +123,14 @@ jobs:
         id: fast_tests
         continue-on-error: true
         run: |
+          # ctest resolves a relative JUnit output path against --test-dir,
+          # not against the launch directory, so a relative path here would
+          # land in build-validation/build-validation/ and never be found.
+          # Pass an absolute path so the annotate/evidence steps see the file.
           ctest --test-dir "$BUILD_DIR" \
             -LE long \
             --output-on-failure \
-            --output-junit "$BUILD_DIR/ctest-fast-results.xml"
+            --output-junit "$PWD/$BUILD_DIR/ctest-fast-results.xml"
       - name: Annotate failing tests
         if: always()
         shell: bash
