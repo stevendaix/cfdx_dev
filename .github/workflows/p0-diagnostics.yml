@@ -1,0 +1,143 @@
+name: P0 diagnostics
+
+on:
+  push:
+    branches: [ci/p0-diagnostic]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: p0-diagnostics
+  cancel-in-progress: true
+
+jobs:
+  fast-ctest:
+    name: Fast CTest diagnostics (Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-diag-Release-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-Release-
+      - name: Configure compiler cache
+        run: |
+          ccache --zero-stats
+          ccache --max-size=1G
+      - name: Restore Python package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cfdx-pip-diag-${{ hashFiles('tests/python/**', 'scripts/**') }}
+          restore-keys: |
+            cfdx-pip-${{ runner.os }}-
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 2>&1 | tee build.log
+      - name: Run fast CTest
+        id: ctest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 2>&1 | tee ctest.log
+      - name: Run T2 test focused
+        id: t2
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          ctest --test-dir build -R '^test_production_energy_stage_vv$' --output-on-failure -V 2>&1 | tee t2.log
+      - name: Build comment body
+        if: always()
+        run: |
+          python3 - <<'PY' > body.md
+          import os, re, sys
+          def read(p):
+              try:
+                  with open(p, 'r', errors='replace') as f:
+                      return f.read()
+              except OSError:
+                  return ''
+          out = []
+          out.append('## P0 diagnostics - fast CTest (Release)')
+          out.append('')
+          out.append('Branch `ci/p0-diagnostic` (temporary), head of fix/t2-plug-carrier-viscosity @ ' + os.environ.get('GITHUB_SHA', '')[:12] + '.')
+          out.append('Same Release configuration as cfdx-ci.yml; results posted here because job logs require sign-in.')
+          out.append('')
+          build = read('build.log')
+          ctest = read('ctest.log')
+          t2 = read('t2.log')
+          if build:
+              errs = [l for l in build.splitlines() if re.search(r'error:|fatal error:|FAILED:', l)]
+              if errs:
+                  out.append('### Build errors')
+                  out.append('```')
+                  out.extend(errs[:60])
+                  out.append('```')
+                  out.append('')
+          if ctest:
+              out.append('### ctest summary (tail 100)')
+              out.append('```')
+              out.extend(ctest.splitlines()[-100:])
+              out.append('```')
+              out.append('')
+              secs = re.split(r'(?m)(?=^\s*\d+/\d+\s+Test #\d+:)', ctest)
+              for s in secs:
+                  m = re.match(r'\s*\d+/\d+\s+Test #\d+:\s*(\S+)', s)
+                  if not m:
+                      continue
+                  if re.search(r'\*\*\*Failed', s):
+                      name = m.group(1)
+                      out.append('### Failing test: `' + name + '`')
+                      out.append('```')
+                      out.extend(s.splitlines()[:300])
+                      out.append('```')
+                      out.append('')
+          else:
+              out.append('ctest did not run (build failed or skipped).')
+              out.append('')
+          if t2:
+              out.append('### Focused rerun: `test_production_energy_stage_vv` (tail 400)')
+              out.append('```')
+              out.extend(t2.splitlines()[-400:])
+              out.append('```')
+          text = '\n'.join(out)
+          if len(text) > 60000:
+              text = text[:60000] + '\n(truncated)'
+          sys.stdout.write(text)
+          PY
+      - name: Post diagnostics to PR 892
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s body.md && gh pr comment 892 --repo stevendaix/cfdx_dev --body-file body.md
