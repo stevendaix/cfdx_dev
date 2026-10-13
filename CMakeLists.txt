@@ -273,6 +273,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/physics/sst_solver.h
     src/cfdx/physics/energy_solver.h
     src/cfdx/physics/thermal_zones.h
+    src/cfdx/physics/production_energy_stage.h
     src/cfdx/physics/cht_solver.h
     src/cfdx/physics/radiation_solver.h
     src/cfdx/physics/radiation_s2s.h
@@ -818,6 +819,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
     add_cfdx_test(test_thermal_zones_vv tests/validation/test_thermal_zones_vv.cpp)
+    add_cfdx_test(test_production_energy_stage_vv tests/validation/test_production_energy_stage_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
@@ -1117,6 +1119,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
 
     # Thermal production-path qualification label (T1 / issue #880).
     set_tests_properties(test_thermal_zones_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
 
 endif()
 
