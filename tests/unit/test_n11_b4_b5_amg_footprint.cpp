@@ -209,7 +209,7 @@ int main() {
         EXPECT_TRUE(!p.setup(empty));
         EXPECT_TRUE(!p.last_error().empty());
 
-        Vector r(1, 1.0), z(1, 0.0);
+        Vector r(32, 1.0), z(32, 0.0);
         EXPECT_TRUE(!p.apply(r, z));
         EXPECT_TRUE(!p.last_error().empty());
 
@@ -219,7 +219,7 @@ int main() {
         EXPECT_TRUE(p.last_error().empty());
         EXPECT_TRUE(p.update_values(valid));
         EXPECT_TRUE(p.last_error().empty());
-        EXPECT_TRUE(p.apply(r = Vector(32, 1.0), z = Vector(32, 0.0)));
+        EXPECT_TRUE(p.apply(r, z));
         EXPECT_TRUE(p.last_error().empty());
 
         // Type forwarding: the footprint is reachable from the linalg
