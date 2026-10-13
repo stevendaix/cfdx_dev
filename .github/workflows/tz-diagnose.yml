@@ -12,7 +12,7 @@ jobs:
   fast-ctest-diagnose:
     name: Fast CTest diagnose
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,6 +21,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure
         run: |
@@ -40,18 +47,13 @@ jobs:
           set -o pipefail
           ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 2>&1 | tee ctest_stdout.log
 
-      - name: Diag A ctest list and failures
+      - name: Diag A ctest failures
         if: always()
         run: |
-          LOG="build/Testing/Temporary/LastTest.log"
           {
-            ctest --test-dir build -N -LE long 2>/dev/null | grep -iE 'Total Tests|thermal_zones' | head -5
-            echo "---FAILED-LIST---"
             sed -n '/The following tests FAILED/,/^$/p' ctest_stdout.log | head -10
-            echo "---TZ-IN-LOG---"
-            grep -nE 'THERMAL_ZONES_VV|thermal_zones' "$LOG" 2>/dev/null | head -4
-            echo "---LOG-INFO---"
-            wc -l "$LOG" 2>/dev/null || echo "no LastTest.log"
+            echo "---TZGREP---"
+            grep -nE 'THERMAL_ZONES_VV' build/Testing/Temporary/LastTest.log 2>/dev/null | head -4
           } > ann_a.txt 2>/dev/null || true
           n=0
           while IFS= read -r line; do
@@ -62,31 +64,53 @@ jobs:
           done < ann_a.txt
           [ "${n:-0}" -gt 0 ] || echo '::notice::A nothing'
 
-      - name: Diag B run TZ binary directly
+      - name: Extract TZ section
         if: always()
         run: |
-          ulimit -c 0
-          BIN=$(find build -type f -name 'test_thermal_zones_vv*' | head -1)
-          {
-            echo "BIN=$BIN"
-            if [ -n "$BIN" ]; then
-              timeout 120 "$BIN" > tz_out.txt 2>&1
-              code=$?
-              echo "EXIT_CODE=$code"
-              echo "OUTPUT_LINES=$(wc -l < tz_out.txt)"
-              tail -12 tz_out.txt
-            else
-              echo "BIN NOT FOUND"
-            fi
-          } > ann_b.txt 2>/dev/null || true
+          LOG="build/Testing/Temporary/LastTest.log"
+          if [ -f "$LOG" ]; then
+            sed -n '/Start [0-9]*: test_thermal_zones_vv/,/End [0-9]*: test_thermal_zones_vv/p' "$LOG" > tz_section.txt || true
+          fi
+          if [ ! -s tz_section.txt ]; then
+            { echo "SECTION-NOT-IN-LOG"; ctest --test-dir build -R '^test_thermal_zones_vv$' --output-on-failure -V; } > tz_section.txt 2>&1 || true
+          fi
+          wc -l tz_section.txt
+
+      - name: Diag B1 TZ section 1-9
+        if: always()
+        run: |
           n=0
           while IFS= read -r line; do
             [ -n "$line" ] || continue
-            printf '::error::B %s\n' "${line:0:480}"
+            printf '::error::B1 %s\n' "${line:0:460}"
             n=$((n+1))
             [ "$n" -ge 9 ] && break
-          done < ann_b.txt
-          [ "${n:-0}" -gt 0 ] || echo '::notice::B nothing'
+          done < <(sed -n '1,9p' tz_section.txt)
+          [ "${n:-0}" -gt 0 ] || echo '::notice::B1 empty'
+
+      - name: Diag B2 TZ section 10-18
+        if: always()
+        run: |
+          n=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '::error::B2 %s\n' "${line:0:460}"
+            n=$((n+1))
+            [ "$n" -ge 9 ] && break
+          done < <(sed -n '10,18p' tz_section.txt)
+          [ "${n:-0}" -gt 0 ] || echo '::notice::B2 empty'
+
+      - name: Diag B3 TZ section 19-27
+        if: always()
+        run: |
+          n=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '::error::B3 %s\n' "${line:0:460}"
+            n=$((n+1))
+            [ "$n" -ge 9 ] && break
+          done < <(sed -n '19,27p' tz_section.txt)
+          [ "${n:-0}" -gt 0 ] || echo '::notice::B3 empty'
 
       - name: Final gate
         if: always()
