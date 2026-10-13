@@ -166,8 +166,13 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
             const auto& h = result.history[i];
             std::cerr << "N12_COUPLED_FAILURE_TRACE n=" << n
                       << " iter=" << (i + 1)
-                      << " continuity=" << h.corrected_flux_continuity_linf
-                      << " momentum_rel=" << h.momentum_equation_residual_relative
+                      << " momentum_residual=" << h.momentum_residual
+                      << " momentum_equation_rel=" << h.momentum_equation_residual_relative
+                      << " pressure_residual=" << h.pressure_residual
+                      << " continuity_normalized=" << h.continuity_normalized
+                      << " corrected_flux_continuity=" << h.corrected_flux_continuity_linf
+                      << " reconstructed_velocity_continuity=" << h.reconstructed_velocity_continuity_linf
+                      << " flux_velocity_mismatch=" << h.flux_velocity_mismatch_linf
                       << " mass=" << h.mass_normalized_imbalance
                       << " du=" << h.velocity_change_inf
                       << " dp=" << h.pressure_change_inf
