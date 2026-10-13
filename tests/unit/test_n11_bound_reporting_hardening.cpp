@@ -165,6 +165,63 @@ int main() {
         EXPECT_TRUE(r.minimum_temperature_total_correction>0.0);
         EXPECT_TRUE(r.minimum_temperature_max_correction>0.0);
         EXPECT_NEAR(temperature(0),controls.minimum_temperature,1e-12);
+        // Healthy nonlinear solve: no non-finite candidate was seen by the
+        // acceptance clamp, so the dedicated counter must stay at zero.
+        EXPECT_TRUE(r.nonfinite_candidates==0);
+    });
+
+    // --- N11 F-R2 follow-up (audit of #864): the Rosseland floor must pin
+    // the exact clamp contract for non-finite candidates. The historical
+    // std::max(minimum_temperature, candidate) converts NaN (and -inf)
+    // into the finite floor -- that conversion must be observable through
+    // the helper flags instead of remaining indistinguishable from a
+    // healthy iteration. ---
+    run_case("rosseland_floor_helper_pins_nonfinite_contract", [] {
+        const double minimum=1.0;
+        // Finite candidate below the floor: measurable correction.
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(0.5,minimum);
+            EXPECT_TRUE(f.floored && !f.nonfinite && !f.nonfinite_floored);
+            EXPECT_TRUE(f.bounded==minimum);
+        }
+        // Finite candidate exactly at the floor: untouched, not an
+        // activation (strictly-below contract, as in #864).
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(minimum,minimum);
+            EXPECT_TRUE(!f.floored && !f.nonfinite);
+            EXPECT_TRUE(f.bounded==minimum);
+        }
+        // Finite candidate above the floor: untouched.
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(350.0,minimum);
+            EXPECT_TRUE(!f.floored && !f.nonfinite);
+            EXPECT_TRUE(f.bounded==350.0);
+        }
+        // NaN candidate: std::max(minimum, NaN) returns the floor, so the
+        // non-finite candidate silently became a finite temperature. The
+        // helper must expose that conversion without counting it as a
+        // measurable floor activation.
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(
+                std::numeric_limits<double>::quiet_NaN(),minimum);
+            EXPECT_TRUE(f.nonfinite && f.nonfinite_floored && !f.floored);
+            EXPECT_TRUE(f.bounded==minimum);
+        }
+        // -inf candidate: also converted into the finite floor.
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(
+                -std::numeric_limits<double>::infinity(),minimum);
+            EXPECT_TRUE(f.nonfinite && f.nonfinite_floored && !f.floored);
+            EXPECT_TRUE(f.bounded==minimum);
+        }
+        // +inf candidate: propagates unclamped (documented historical
+        // behaviour) -- non-finite but NOT converted to the floor.
+        {
+            const auto f=rosseland_apply_minimum_temperature_floor(
+                std::numeric_limits<double>::infinity(),minimum);
+            EXPECT_TRUE(f.nonfinite && !f.nonfinite_floored && !f.floored);
+            EXPECT_TRUE(std::isinf(f.bounded) && f.bounded>0.0);
+        }
     });
 
     return run_all();
