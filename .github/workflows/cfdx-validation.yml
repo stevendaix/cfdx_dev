@@ -318,7 +318,14 @@ jobs:
 
   validation-report:
     name: Validation report and metadata
-    if: always()
+    # Only build a report when the validation campaign was actually
+    # prepared. `prepare` is skipped on pull_request events without the
+    # `validation-total` label; `always()` alone made this job download a
+    # build artifact that was never uploaded, turning every non-campaign
+    # run of this workflow into a red download-artifact failure (audit of
+    # the 10 last merged PRs, 2026-10-12). A skipped campaign must leave
+    # this job skipped, not failed.
+    if: always() && needs.prepare.result == 'success'
     needs:
       - prepare
       - long-tests
@@ -380,7 +387,12 @@ jobs:
 
   final-gate:
     name: Total validation gate
-    if: always()
+    # A skipped campaign must stay skipped (neutral) -- never red, never
+    # green. The gate only evaluates partitions when `prepare` actually
+    # ran. When the campaign did run, the loop below still fails on any
+    # partition whose result is not 'success', so an ignored or failed
+    # partition can never be turned into a pass.
+    if: always() && needs.prepare.result == 'success'
     needs:
       - prepare
       - fast-tests
