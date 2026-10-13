@@ -1,9 +1,6 @@
 name: TZ diagnose
 
-# Temporary diagnostics workflow for PR #887: re-runs the fast CTest suite
-# (Release, same configure as cfdx-ci) and surfaces the failing tests and
-# their assertion output as job annotations, which are readable without
-# authenticated log access. To be removed before merge.
+# Temporary diagnostics workflow for PR #887. To be removed before merge.
 
 on:
   pull_request:
@@ -40,37 +37,61 @@ jobs:
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
-          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+          set -o pipefail
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 2>&1 | tee ctest_stdout.log
 
-      - name: Emit failure annotations
+      - name: Diag A ctest list and failures
         if: always()
         run: |
           LOG="build/Testing/Temporary/LastTest.log"
-          if [ -f "$LOG" ]; then
-            {
-              sed -n '/The following tests FAILED/,$p' "$LOG" | head -14
-              grep -nE 'FAIL:|FAILED:|diff=|AddressSanitizer|runtime error:|Assertion' "$LOG" | head -14
-              grep -nE 'THERMAL_ZONES_VV' "$LOG" | head -6
-            } > annotations.txt 2>/dev/null || true
-          fi
-          if [ ! -s annotations.txt ] && [ -f build.log ]; then
-            grep -nE 'error:|FAILED:' build.log | head -14 > annotations.txt || true
-          fi
+          {
+            ctest --test-dir build -N -LE long 2>/dev/null | grep -iE 'Total Tests|thermal_zones' | head -5
+            echo "---FAILED-LIST---"
+            sed -n '/The following tests FAILED/,/^$/p' ctest_stdout.log | head -10
+            echo "---TZ-IN-LOG---"
+            grep -nE 'THERMAL_ZONES_VV|thermal_zones' "$LOG" 2>/dev/null | head -4
+            echo "---LOG-INFO---"
+            wc -l "$LOG" 2>/dev/null || echo "no LastTest.log"
+          } > ann_a.txt 2>/dev/null || true
           n=0
           while IFS= read -r line; do
             [ -n "$line" ] || continue
-            printf '::error::%s\n' "${line:0:480}"
+            printf '::error::A %s\n' "${line:0:480}"
             n=$((n+1))
             [ "$n" -ge 9 ] && break
-          done < annotations.txt
-          if [ "$n" -eq 0 ]; then
-            echo '::notice::no failure lines extracted'
-          fi
+          done < ann_a.txt
+          [ "${n:-0}" -gt 0 ] || echo '::notice::A nothing'
+
+      - name: Diag B run TZ binary directly
+        if: always()
+        run: |
+          ulimit -c 0
+          BIN=$(find build -type f -name 'test_thermal_zones_vv*' | head -1)
+          {
+            echo "BIN=$BIN"
+            if [ -n "$BIN" ]; then
+              timeout 120 "$BIN" > tz_out.txt 2>&1
+              code=$?
+              echo "EXIT_CODE=$code"
+              echo "OUTPUT_LINES=$(wc -l < tz_out.txt)"
+              tail -12 tz_out.txt
+            else
+              echo "BIN NOT FOUND"
+            fi
+          } > ann_b.txt 2>/dev/null || true
+          n=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '::error::B %s\n' "${line:0:480}"
+            n=$((n+1))
+            [ "$n" -ge 9 ] && break
+          done < ann_b.txt
+          [ "${n:-0}" -gt 0 ] || echo '::notice::B nothing'
 
       - name: Final gate
         if: always()
         run: |
-          if [ "${{ steps.build.outcome }}" != "success" ] || [ "${{ steps.ctest.outcome }}" != "success" ]; then
+          if [ "${{ steps.ctest.outcome }}" != "success" ]; then
             echo "CFDX TZ diagnose: FAIL"
             exit 1
           fi
