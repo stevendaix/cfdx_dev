@@ -106,6 +106,7 @@ public:
         columns_.assign(A.columns_data(), A.columns_data() + A.nnz());
         lu_.assign(A.values_data(), A.values_data() + A.nnz());
         diag_pos_.assign(n_, invalid_);
+        pivot_scale_.assign(n_, 0.0);
 
         for (std::size_t i = 0; i < n_; ++i) {
             std::uint32_t previous = 0;
@@ -137,18 +138,18 @@ public:
         }
 
         for (std::size_t i = 0; i < n_; ++i) {
-            double pivot_row_scale = 0.0;
-            for (std::size_t k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k)
-                pivot_row_scale = std::max(pivot_row_scale, std::abs(lu_[k]));
             for (std::size_t kk = row_offsets_[i]; kk < row_offsets_[i + 1]; ++kk) {
                 const std::size_t kcol = columns_[kk];
                 if (kcol >= i) break;
 
                 const std::size_t dk = diag_pos_[kcol];
-                // B3 (#480): pivot floor relative to the current row scale.
+                // B3 (#480, fix): pivot floor relative to the factorized U
+                // scale of the pivot's own row. The current row mixes
+                // dimensionless L multipliers with matrix-scaled U entries,
+                // so it must not provide the reference scale.
                 const double pivot_floor =
                     128.0 * std::numeric_limits<double>::epsilon() *
-                    std::max(pivot_row_scale, std::abs(lu_[dk]));
+                    std::max(pivot_scale_[kcol], std::abs(lu_[dk]));
                 if (!std::isfinite(lu_[dk]) ||
                     std::abs(lu_[dk]) <= pivot_floor) {
                     clear();
@@ -176,15 +177,23 @@ public:
                 }
             }
 
-            double row_scale = 0.0;
-            for (std::size_t k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k)
-                row_scale = std::max(row_scale, std::abs(lu_[k]));
+            // B3 (#480, fix): reference scale from the U part of the fully
+            // factorized row. L multipliers are dimensionless ratios;
+            // mixing them in (as the previous revision did) makes the
+            // floor scale-dependent and rejects uniformly rescaled
+            // matrices such as a Laplacian times 1e-18.
+            double u_scale = 0.0;
+            for (std::size_t k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k) {
+                if (columns_[k] >= i)
+                    u_scale = std::max(u_scale, std::abs(lu_[k]));
+            }
+            pivot_scale_[i] = u_scale;
             const double diag = lu_[diag_pos_[i]];
             // B3 (#480): diagonal floor relative to the factorized row
             // scale instead of an absolute epsilon cut.
             const double diag_floor =
                 128.0 * std::numeric_limits<double>::epsilon() *
-                std::max(row_scale, 1e-300);
+                std::max(u_scale, 1e-300);
             if (!std::isfinite(diag) ||
                 std::abs(diag) <= diag_floor) {
                 clear();
@@ -243,6 +252,7 @@ private:
         columns_.clear();
         lu_.clear();
         diag_pos_.clear();
+        pivot_scale_.clear();
     }
 
     std::size_t n_ = 0;
@@ -250,6 +260,7 @@ private:
     std::vector<std::uint32_t> columns_;
     std::vector<double> lu_;
     std::vector<std::size_t> diag_pos_;
+    std::vector<double> pivot_scale_;
 };
 
 } // namespace cfdx::core

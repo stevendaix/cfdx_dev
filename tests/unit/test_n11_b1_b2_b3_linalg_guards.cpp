@@ -15,9 +15,10 @@ using namespace cfdx::testing;
 //   blocks stay invertible.
 // - B2: the Schur preconditioner fails closed on a zero or non-finite
 //   diagonal_schur_scale_ when the Diagonal factorization is requested.
-// - B3: Gauss-Seidel and ILU(0) diagonal/pivot guards are relative to the
-//   row scale (128 * eps * max(row_scale, |pivot|), floor 1e-300) instead
-//   of an absolute epsilon cut.
+// - B3: Gauss-Seidel diagonal and ILU(0) pivot/diagonal guards are relative
+//   to the appropriate scale (GS: raw row scale; ILU(0): the factorized U
+//   scale of the pivot's own row, never the dimensionless L multipliers)
+//   instead of an absolute epsilon cut.
 
 static SparseMatrix make_1d_laplacian(std::size_t n, double scale) {
     SparseMatrix A(n, n);
@@ -91,6 +92,35 @@ int main() {
         EXPECT_NEAR(z(3), 5.0, 1e-12);
     });
 
+    run_case("b1_block_jacobi_rejects_nonfinite_block_coefficient", [] {
+        // A NaN in the assembled block must fail closed: std::max ignores
+        // it during the scale scan, so a per-coefficient finiteness check
+        // plus an inverse finiteness gate are required. An infinite
+        // coefficient is rejected for the same reason.
+        SparseMatrix nan_block(2, 2);
+        nan_block.push_back(0, 0, 1.0);
+        nan_block.push_back(0, 1, std::numeric_limits<double>::quiet_NaN());
+        nan_block.push_back(1, 0, 0.0);
+        nan_block.push_back(1, 1, 1.0);
+        nan_block.finalize();
+        BlockDiagonalPreconditioner p({{0, 1}});
+        EXPECT_TRUE(!p.setup(nan_block));
+
+        SparseMatrix inf_block(2, 2);
+        inf_block.push_back(0, 0, 1.0);
+        inf_block.push_back(0, 1, std::numeric_limits<double>::infinity());
+        inf_block.push_back(1, 0, 0.0);
+        inf_block.push_back(1, 1, 1.0);
+        inf_block.finalize();
+        BlockDiagonalPreconditioner q({{0, 1}});
+        EXPECT_TRUE(!q.setup(inf_block));
+
+        // A failed setup must leave the preconditioner unusable rather
+        // than applying a stale or partially built inverse.
+        Vector r(2, 1.0), z(2, 0.0);
+        EXPECT_TRUE(!p.apply(r, z));
+    });
+
     run_case("b2_schur_diagonal_scale_fails_closed", [] {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 4.0); A.push_back(0, 1, 1.0);
@@ -139,6 +169,50 @@ int main() {
         EXPECT_TRUE(gs.apply(r, z));
         EXPECT_TRUE(z.is_valid());
         EXPECT_TRUE(ilu0.apply(r, z));
+        EXPECT_TRUE(z.is_valid());
+    });
+
+    run_case("b3_ilu0_accepts_multiple_uniform_rescalings", [] {
+        // The ILU(0) guards must be invariant to a uniform rescaling of a
+        // regular matrix: the L multipliers stay O(1) while the U pivots
+        // follow the matrix scale, so the reference scale must come from
+        // the U part only.
+        for (const double scale : {1.0, 1.0e-8, 1.0e-16, 1.0e-18}) {
+            const auto A = make_1d_laplacian(8, scale);
+            ILU0Preconditioner ilu0;
+            EXPECT_TRUE(ilu0.setup(A));
+
+            Vector r(8, 0.0), z(8, 0.0);
+            for (std::size_t i = 0; i < r.size(); ++i)
+                r(i) = scale * (1.0 + static_cast<double>(i));
+            EXPECT_TRUE(ilu0.apply(r, z));
+            EXPECT_TRUE(z.is_valid());
+            // Zero fill on a tridiagonal pattern: ILU(0) is an exact LU
+            // factorization, so the solve must satisfy A z = r at the
+            // matrix scale.
+            EXPECT_TRUE(residual_inf(A, z, r) <= 1.0e-12 * scale);
+        }
+    });
+
+    run_case("b3_ilu0_accepts_contrasting_row_scales", [] {
+        // Row 0 lives at 1e-18 while rows 1-2 live at O(1): the pivot of
+        // row 0 must be judged against row 0's own factorized U scale, not
+        // against the much larger scale of the row being eliminated.
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 2.0e-18); A.push_back(0, 1, -1.0e-18);
+        A.push_back(1, 0, -1.0e-18); A.push_back(1, 1, 2.0); A.push_back(1, 2, -1.0);
+        A.push_back(2, 1, -1.0); A.push_back(2, 2, 2.0);
+        A.finalize();
+
+        ILU0Preconditioner ilu0;
+        EXPECT_TRUE(ilu0.setup(A));
+        Vector r(3, 1.0), z(3, 0.0);
+        EXPECT_TRUE(ilu0.apply(r, z));
+        EXPECT_TRUE(z.is_valid());
+
+        GaussSeidelPreconditioner gs;
+        EXPECT_TRUE(gs.setup(A));
+        EXPECT_TRUE(gs.apply(r, z));
         EXPECT_TRUE(z.is_valid());
     });
 
@@ -213,6 +287,33 @@ int main() {
         EXPECT_TRUE(!gs.setup(missing));
         ILU0Preconditioner ilu0;
         EXPECT_TRUE(!ilu0.setup(missing));
+    });
+
+    run_case("b3_failed_setup_clears_stale_factorization", [] {
+        // A successful setup followed by a failing one must not leave the
+        // previous factorization usable: apply() has to fail on the
+        // cleared state instead of silently reusing stale factors.
+        const auto good = make_1d_laplacian(8, 1.0);
+        ILU0Preconditioner ilu0;
+        EXPECT_TRUE(ilu0.setup(good));
+        Vector r(8, 1.0), z(8, 0.0);
+        EXPECT_TRUE(ilu0.apply(r, z));
+
+        SparseMatrix singular(2, 2);
+        singular.push_back(0, 0, 1.0); singular.push_back(0, 1, 1.0);
+        singular.push_back(1, 0, 1.0); singular.push_back(1, 1, 1.0);
+        singular.finalize();
+        EXPECT_TRUE(!ilu0.setup(singular));
+        EXPECT_TRUE(!ilu0.apply(r, z));
+
+        GaussSeidelPreconditioner gs;
+        EXPECT_TRUE(gs.setup(good));
+        SparseMatrix no_diagonal(2, 2);
+        no_diagonal.push_back(0, 1, 1.0);
+        no_diagonal.push_back(1, 0, 1.0);
+        no_diagonal.finalize();
+        EXPECT_TRUE(!gs.setup(no_diagonal));
+        EXPECT_TRUE(!gs.apply(r, z));
     });
 
     return run_all();

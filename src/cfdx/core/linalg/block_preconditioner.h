@@ -40,6 +40,11 @@ public:
                 for (std::size_t k = row[global_row]; k < row[global_row + 1]; ++k) {
                     for (std::size_t j = 0; j < m; ++j) {
                         if (col[k] == block[j]) {
+                            // B1 (#480, fix): fail closed on non-finite
+                            // in-block coefficients; the scale scan below
+                            // would silently ignore a NaN and assemble a
+                            // non-finite inverse.
+                            if (!std::isfinite(val[k])) return false;
                             at(i, j) += val[k];
                             break;
                         }
@@ -86,6 +91,10 @@ public:
             for (std::size_t i = 0; i < m; ++i)
                 for (std::size_t j = 0; j < m; ++j)
                     inv[i * m + j] = at(i, m + j);
+            // B1 (#480, fix): reject a non-finite assembled inverse.
+            for (const double v : inv) {
+                if (!std::isfinite(v)) return false;
+            }
             inverse_blocks_.push_back(std::move(inv));
         }
         return true;
