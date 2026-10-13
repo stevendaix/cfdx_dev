@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : modèles de rayonnement gris couplés à l'énergie : Rosseland (diffusion), P1 (approximation différentielle), surfaces-to-surfaces (S2S par facteurs de forme), méthode des ordonnées discrètes (DOM). Non couvert : gaz non gris (WSGG), rayonnement particulaire (MC), semi-transparents.
-- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code Phase 12 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : APPROUVÉE (2026-10-12, PR #861) — contrat mathématique approuvé ; le code Phase 12 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 12) ; docs/validation/THERMAL_RADIATION_REGRESSION_MATRIX.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -75,3 +75,4 @@ le terme $-16\kappa\sigma T^3$ entre au coefficient diagonal $a_P$ (stabilise), 
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
+- 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).

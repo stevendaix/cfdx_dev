@@ -738,6 +738,12 @@ struct RosselandSolveResult {
     std::size_t iterations = 0;
     std::vector<double> temperature_residuals;
     std::vector<double> energy_balance_residuals;
+    // N11 F-R2 (#480): the minimum-temperature floor is part of the P1
+    // floor-reporting contract. Count its activations and corrections
+    // instead of applying them silently.
+    std::size_t minimum_temperature_floor_activations = 0;
+    double minimum_temperature_total_correction = 0.0;
+    double minimum_temperature_max_correction = 0.0;
 };
 
 inline RosselandSolveResult solve_rosseland_energy(
@@ -817,7 +823,19 @@ inline RosselandSolveResult solve_rosseland_energy(
 
         double max_delta=0.0;
         for(std::size_t c=0;c<mesh.n_cells();++c) {
-            const double bounded=std::max(controls.minimum_temperature,candidate(c));
+            // N11 F-R2 (#480): count minimum-temperature floor activations
+            // instead of applying the floor silently (P1 floor reporting).
+            const double candidate_c=candidate(c);
+            if(std::isfinite(candidate_c) &&
+               candidate_c<controls.minimum_temperature) {
+                ++result.minimum_temperature_floor_activations;
+                const double correction=
+                    controls.minimum_temperature-candidate_c;
+                result.minimum_temperature_total_correction+=correction;
+                result.minimum_temperature_max_correction=std::max(
+                    result.minimum_temperature_max_correction,correction);
+            }
+            const double bounded=std::max(controls.minimum_temperature,candidate_c);
             max_delta=std::max(max_delta,std::abs(bounded-temperature(c)));
             temperature(c)=bounded;
         }

@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : équation d'énergie en température pour fluide et solide, couplage conjugué fluide-solide (CHT) multi-régions, approximation de Boussinesq pour la flottabilité. Non couvert : rayonnement (fiche 11), changement de phase, milieux poreux.
-- Statut : DRAFT (2026-10-12) — contrat mathématique à faire approuver dans la PR ; le code existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : APPROUVÉE (2026-10-12, PR #861) — contrat mathématique approuvé ; le code existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 11) ; docs/validation/THERMOPHYSICAL_MODELS.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -61,3 +61,4 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
+- 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
