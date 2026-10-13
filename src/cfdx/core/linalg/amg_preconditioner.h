@@ -1,4 +1,5 @@
 #pragma once
+#include "cfdx/core/linalg/amg_setup_footprint.h"
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -48,6 +49,7 @@ public:
 
     bool setup(const SparseMatrix& A) override
     {
+        last_footprint_ = AMGSetupFootprint{};
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
@@ -82,7 +84,18 @@ public:
             if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation) {
                 build_smoothed_aggregation_interpolation(
                     levels_.back(), strength_threshold_, prolongation,
-                    aggregate, coarse_n);
+                    aggregate, coarse_n,
+                    &last_footprint_.fallback_interpolation_rows);
+                if (levels_.size() == 1) {
+                    std::vector<std::size_t> members(coarse_n, 0);
+                    for (const std::size_t id : aggregate) {
+                        if (id < coarse_n) ++members[id];
+                    }
+                    for (const std::size_t member_count : members) {
+                        if (member_count == 1)
+                            ++last_footprint_.singleton_aggregates;
+                    }
+                }
             } else {
                 if (!build_cf_interpolation(levels_.back(), strength_threshold_,
                                             prolongation, aggregate, coarse_n)) {
@@ -96,7 +109,8 @@ public:
             }
 
             SparseMatrix coarse = galerkin_coarse(
-                levels_.back().A, prolongation, coarse_n);
+                levels_.back().A, prolongation, coarse_n,
+                &last_footprint_.galerkin_dropped_entries);
             if (!matrix_is_valid(coarse)) {
                 levels_.clear();
                 first_aggregate_.clear();
@@ -142,7 +156,8 @@ public:
         for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
             const std::size_t coarse_n = refreshed[level + 1].A.n_rows();
             SparseMatrix coarse = galerkin_coarse(
-                refreshed[level].A, refreshed[level].prolongation, coarse_n);
+                refreshed[level].A, refreshed[level].prolongation, coarse_n,
+                &last_footprint_.galerkin_dropped_entries);
             if (!matrix_is_valid(coarse)) return false;
             refreshed[level + 1].A = std::move(coarse);
             if (!build_diagonal(refreshed[level + 1])) return false;
@@ -172,6 +187,19 @@ public:
         sizes.reserve(levels_.size());
         for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
         return sizes;
+    }
+
+    const AMGSetupFootprint& setup_footprint() const noexcept
+    {
+        // Reporting-only counters of the AMG setup decisions that can degrade
+        // the coarse-grid quality: singleton smoothed-aggregation aggregates,
+        // fallback interpolation rows and Galerkin entries dropped as
+        // numerically zero. The counters are reset at the start of setup()
+        // and are deliberately kept when a setup attempt fails, so the
+        // footprint of a failed attempt stays visible for diagnostics.
+        // update_values() accumulates Galerkin drops into the current
+        // footprint. No tolerance or acceptance criterion reads them.
+        return last_footprint_;
     }
 
     double prolongation_row_sum_min() const
@@ -1451,7 +1479,8 @@ private:
         double strength_threshold,
         std::vector<TransferRow>& prolongation,
         std::vector<std::size_t>& aggregate,
-        std::size_t& coarse_n)
+        std::size_t& coarse_n,
+        std::size_t* fallback_rows = nullptr)
     {
         const std::size_t n = level.A.n_rows();
         const auto strong = build_strength_graph(level, strength_threshold);
@@ -1521,6 +1550,7 @@ private:
             }
             if (!std::isfinite(sum) || std::abs(sum) <= 1e-14) {
                 prolongation[i].push_back({aggregate[i], 1.0});
+                if (fallback_rows) ++(*fallback_rows);
                 continue;
             }
             for (const auto& [coarse, weight] : weights) {
@@ -1528,14 +1558,17 @@ private:
                 if (std::isfinite(normalized) && std::abs(normalized) > 1e-14)
                     prolongation[i].push_back({coarse, normalized});
             }
-            if (prolongation[i].empty())
+            if (prolongation[i].empty()) {
                 prolongation[i].push_back({aggregate[i], 1.0});
+                if (fallback_rows) ++(*fallback_rows);
+            }
         }
     }
 
     static SparseMatrix galerkin_coarse(const SparseMatrix& A,
                                         const std::vector<TransferRow>& prolongation,
-                                        std::size_t coarse_n)
+                                        std::size_t coarse_n,
+                                        std::size_t* dropped_entries = nullptr)
     {
         std::vector<std::map<std::size_t, double>> rows(coarse_n);
         const auto* row = A.row_offsets_data();
@@ -1556,6 +1589,8 @@ private:
             for (const auto& [j, value] : rows[i]) {
                 if (std::isfinite(value) && std::abs(value) > 1e-30) {
                     coarse.push_back(i, j, value);
+                } else if (dropped_entries) {
+                    ++(*dropped_entries);
                 }
             }
         }
@@ -1842,6 +1877,7 @@ private:
     bool constant_null_space_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
+    AMGSetupFootprint last_footprint_;
 };
 
 using AgglomeratedAMGPreconditioner = MatrixFreeVcyclePreconditioner;
