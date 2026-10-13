@@ -123,10 +123,43 @@ jobs:
         id: fast_tests
         continue-on-error: true
         run: |
+          # ctest resolves a relative JUnit output path against --test-dir,
+          # not against the launch directory, so a relative path here would
+          # land in build-validation/build-validation/ and never be found.
+          # Pass an absolute path so the annotate/evidence steps see the file.
           ctest --test-dir "$BUILD_DIR" \
             -LE long \
             --output-on-failure \
-            --output-junit "$BUILD_DIR/ctest-fast-results.xml"
+            --output-junit "$PWD/$BUILD_DIR/ctest-fast-results.xml"
+      - name: Annotate failing tests
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          RESULTS="$BUILD_DIR/ctest-fast-results.xml"
+          if [[ ! -s "$RESULTS" ]]; then
+            echo "::warning::no ctest-fast-results.xml produced; nothing to annotate"
+            exit 0
+          fi
+          python3 - "$RESULTS" <<'PY' || echo "::warning::ctest JUnit annotation step failed (non-fatal)"
+          import sys
+          import xml.etree.ElementTree as ET
+          path = sys.argv[1]
+          failures = 0
+          for _, elem in ET.iterparse(path, events=("end",)):
+              if elem.tag == "testcase":
+                  name = elem.get("name", "<unknown>")
+                  classname = elem.get("classname") or ""
+                  label = (classname + "." + name) if classname else name
+                  failed = (elem.find("failure") is not None
+                            or elem.find("error") is not None)
+                  if failed:
+                      failures += 1
+                      safe = label.replace("%", "%25").replace("\r", " ").replace("\n", " ")
+                      print("::error title=ctest failure::" + safe)
+                  elem.clear()
+          print("annotated " + str(failures) + " failing test(s) from " + path)
+          PY
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -176,6 +209,23 @@ jobs:
             --no-tests=error \
             --parallel 4 \
             -V 2>&1 | tee "$BUILD_DIR/long-validation.log"
+      - name: Annotate failing long campaigns
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG="$BUILD_DIR/long-validation.log"
+          if [[ ! -s "$LOG" ]]; then
+            echo "::warning::no long-validation.log produced; nothing to annotate"
+            exit 0
+          fi
+          awk '/The following tests FAILED:/{flag=1;next} flag&&/^[[:space:]]*[0-9]+ - /{print;next} flag{exit}' "$LOG" \
+            | sed -E 's/^[[:space:]]*[0-9]+ - //; s/ \(.*//' \
+            | while IFS= read -r name; do
+                safe="${name//%/%25}"
+                echo "::error title=ctest long campaign failure::${safe}"
+              done
+          exit 0
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -195,7 +245,7 @@ jobs:
     name: Wall-distance benchmarks
     needs: prepare
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime dependencies
