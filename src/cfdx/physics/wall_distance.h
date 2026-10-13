@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -303,7 +304,21 @@ public:
     // was returned instead of a real surface normal. The fallback value and
     // direction are unchanged; this counter only makes the silent fallback
     // attributable by the caller. Per BVH instance, monotonic, not reset.
-    std::size_t degenerate_normal_fallbacks() const { return degenerate_normal_fallbacks_; }
+    //
+    // Concurrency contract (audit of #865): all queries of a constructed
+    // BVH are read-only, and this counter is the only mutable state. It is
+    // a std::atomic incremented with relaxed ordering, so concurrent
+    // const nearest_normal() calls on the same instance are well defined:
+    // the counter equals the exact number of fallbacks after any storm of
+    // calls, and the returned fallback normal is unaffected. Relaxed
+    // ordering is sufficient because the counter is a diagnostic tally,
+    // never a synchronization point. Note: making the counter atomic
+    // deletes the implicit copy constructor/assignment of WallDistanceBvh;
+    // no current caller copies an instance (construction from a
+    // WallSurface plus const-reference use only).
+    std::size_t degenerate_normal_fallbacks() const {
+        return degenerate_normal_fallbacks_.load(std::memory_order_relaxed);
+    }
 
     WallDistanceVec3 nearest_normal(const WallDistanceVec3& p) const {
         double best2=std::numeric_limits<double>::infinity();
@@ -320,8 +335,10 @@ public:
         // Degenerate triangle (collinear vertices): the cross product is the
         // zero vector and no geometric normal exists. The historical
         // behaviour is preserved exactly (unit +x fallback); the counter
-        // above is what makes the fallback observable (F-W1).
-        ++degenerate_normal_fallbacks_;
+        // above is what makes the fallback observable (F-W1). Relaxed
+        // fetch_add keeps the tally exact under concurrent const calls
+        // (see the concurrency contract on degenerate_normal_fallbacks()).
+        degenerate_normal_fallbacks_.fetch_add(1,std::memory_order_relaxed);
         return WallDistanceVec3{1.0,0.0,0.0};
     }
 
@@ -339,7 +356,10 @@ private:
     std::vector<Node> nodes_;
     // F-W1: mutated through const nearest_normal() so the degenerate-normal
     // fallback stays observable without changing the const query contract.
-    mutable std::size_t degenerate_normal_fallbacks_{0};
+    // Atomic (relaxed) so the const-query API is also well defined under
+    // concurrent calls on one instance; see the contract note on
+    // degenerate_normal_fallbacks().
+    mutable std::atomic<std::size_t> degenerate_normal_fallbacks_{0};
     static constexpr std::size_t leaf_size_=4;
 
     WallDistanceAabb triangle_box(std::size_t ti) const {

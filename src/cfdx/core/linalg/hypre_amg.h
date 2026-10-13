@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cfdx/core/linalg/amg_setup_footprint.h"
 #include "cfdx/core/linalg/preconditioner.h"
 
 #include <cstddef>
@@ -50,6 +51,14 @@ public:
     double prolongation_row_sum_max() const;
     std::size_t hierarchy_builds() const noexcept;
     std::size_t numeric_updates() const noexcept;
+
+    // Status of the most recent lifecycle operation. Every configure(),
+    // setup(), update_values() and apply() stores its failure reason here
+    // and clears the message on success: the string is empty after
+    // construction and after the latest operation succeeded. apply() is
+    // const yet still mutates this state through the pimpl, so last_error()
+    // reflects apply() outcomes as well. The message is not synchronized;
+    // concurrent use of a single instance is the caller's responsibility.
     const std::string& last_error() const noexcept;
 
 private:
@@ -79,6 +88,7 @@ public:
 
 namespace cfdx::core::linalg {
 using AMGMemoryPolicy = cfdx::core::AMGMemoryPolicy;
+using AMGSetupFootprint = cfdx::core::AMGSetupFootprint;
 using HypreAMG [[deprecated("Use NativeBoomerAMGPreconditioner; this is not HYPRE")]] =
     cfdx::core::NativeBoomerAMGPreconditioner;
 }
