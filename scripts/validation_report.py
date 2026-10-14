@@ -84,8 +84,9 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
 
 def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
     axis = re.findall(
-        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+) "
-        r"iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+)"
+        r"(?: converged=(?P<converged>true|false))?"
+        r" iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
         r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
         r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
@@ -94,7 +95,8 @@ def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
     if axis:
         x = axis[-1]
         data: dict[str, float | int | str] = {
-            "level": x["level"], "iterations": int(x["iterations"]),
+            "level": x["level"], "converged": x["converged"] or "true",
+            "iterations": int(x["iterations"]),
             "continuity": float(x["continuity"]), "momentum": float(x["momentum"]),
             "pressure_correction": float(x["pcorr"]), "cd_pressure": float(x["cdp"]),
             "cd_viscous": float(x["cdv"]), "cd_total": float(x["cd"]),

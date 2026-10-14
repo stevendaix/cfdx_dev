@@ -202,11 +202,24 @@ int main(int argc,char** argv)
         const std::vector<Level> levels{{24,36,"coarse"},{36,54,"medium"},{48,72,"fine"}};
         std::vector<AxisymResult> r;
 
-        const auto fluent_exact=run_level(Level{36,54,"medium"},0.02,1.0875,"re50");
-        const double re50_err=std::abs(fluent_exact.cd_total-1.0875)/1.0875;
-        std::cout << "VMFL036_AXISYM FLUENT_EXACT Re=50 Cd=" << fluent_exact.cd_total
-                  << " reference=1.0875 relative_error=" << re50_err << "\n";
-        if(re50_err>0.03) throw std::runtime_error("VMFL036 Fluent-exact Re50 comparison exceeds 3%");
+        // Re=50 reference drag. The Ansys VMFL036 material quotes Cd = 1.0875
+        // next to the mu = 0.02 setup (D = rho = U = 1), but that number is the
+        // misattributed Re=100 literature datum (see
+        // docs/validation/VMFL036_RE100_CASE.md and issue #440): a physically
+        // correct Re=50 solution gives Cd ~ 1.57, so the former oracle made
+        // this gate structurally unpassable. The correct reference is the
+        // precise computation of Tabata & Itakura, "Precise Computation of
+        // Drag Coefficients of the Sphere", Int. J. Computational Fluid
+        // Dynamics 9 (1998) 303-311 (RIMS kokyuroku 974, 1996), Table 2:
+        // C_D(Re=50) = 1.5785 (P2/P1 and P1/P1 extrapolation). The 3% band
+        // is unchanged; no tolerance is inflated.
+        const double re50_reference=1.5785;
+        const auto re50=run_level(Level{36,54,"medium"},0.02,re50_reference,"re50");
+        const double re50_err=std::abs(re50.cd_total-re50_reference)/re50_reference;
+        std::cout << "VMFL036_AXISYM RE50 Cd=" << re50.cd_total
+                  << " reference=" << re50_reference
+                  << " relative_error=" << re50_err << "\n";
+        if(re50_err>0.03) throw std::runtime_error("VMFL036 Re=50 Tabata-Itakura reference comparison exceeds 3%");
 
         for(const auto& l:levels) r.push_back(run_level(l,0.01,1.0895,"re100"));
 

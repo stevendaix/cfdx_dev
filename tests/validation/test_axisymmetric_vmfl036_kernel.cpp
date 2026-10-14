@@ -15,7 +15,7 @@ int main()
     const auto fluent=make_vmfl036_fluent_exact();
     validate_definition(fluent);
     assert(std::abs(fluent.re()-50.0)<1e-12);
-    assert(std::abs(fluent.reference_cd()-1.0875)<1e-12);
+    assert(std::abs(fluent.reference_cd()-1.5785)<1e-12);
 
     assert(std::abs(revolution_face_measure(1.0,1.0)-2.0*pi)<1e-12);
     assert(std::abs(revolution_volume(1.0,1.0)-2.0*pi)<1e-12);
