@@ -544,11 +544,41 @@ private:
                 // solve the sign-flipped system while still satisfying maxcorr.
                 for(std::size_t k=0;k<prow_cnt[cell];++k)
                     sum-=prow_a[cell][k]*pc_[prow_nb[cell][k]];
-                const double v=sum/diag[cell];
-                maxcorr=std::max(maxcorr,std::abs(v-pc_[cell]));
+                // Successive over-relaxation, omega=1.8: plain Gauss-Seidel
+                // contracts at q~0.998/sweep on the campaign meshes, leaving
+                // relative residual 5.8e-3 after 400 sweeps on 36x54 - the
+                // 2e-7 pcorr gate is unreachable and the momentum residual
+                // inherits the floor mom ~ pres_tol*q/(1-q). SOR measured
+                // stable on coarse/medium/fine: 36x54 relres 2.9e-5@400,
+                // 1e-8@800; 48x72 6.5e-4@400, 8.2e-6@800.
+                const double old=pc_[cell];
+                const double v=old+1.8*(sum/diag[cell]-old);
+                maxcorr=std::max(maxcorr,std::abs(v-old));
                 pc_[cell]=v;
             }
-            if(maxcorr<c.pressure_tolerance) break;
+            if(maxcorr<c.pressure_tolerance){
+                // Combined stopping criterion. A small iterate increment
+                // (maxcorr) only proves the sweep stopped moving; at a
+                // maxcorr-only stop the assembled-equation row residual is
+                // ~34*maxcorr. With the conservative flux correction above,
+                // the post-correction cell imbalance IS that row residual, so
+                // stopping on maxcorr alone would let the continuity metric of
+                // the iteration sit far above the reported pcorr. Also require
+                // the row residual at the continuity-like normalisation to be
+                // below the tolerance before breaking.
+                double res_rel=0.0;
+                for(std::size_t cell=0;cell<n_;++cell){
+                    double r=diag[cell]*pc_[cell];
+                    for(std::size_t k=0;k<prow_cnt[cell];++k)
+                        r+=prow_a[cell][k]*pc_[prow_nb[cell][k]];
+                    double scale=0.0;
+                    for(const auto fid:m_.cells[cell].faces)
+                        scale+=std::abs(phi_[fid]);
+                    r-=rhs[cell];
+                    res_rel=std::max(res_rel,std::abs(r)/(1.0+scale));
+                }
+                if(res_rel<c.pressure_tolerance) break;
+            }
         }
         // Algebraic consistency gate: a small iterate increment (maxcorr)
         // only proves the sweep stopped moving, not that it stopped on the
