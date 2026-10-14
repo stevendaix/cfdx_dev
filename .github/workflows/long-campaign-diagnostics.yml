@@ -1,0 +1,163 @@
+name: Long-campaign diagnostics
+
+# Diagnostic-only workflow (pattern #894/#901): the branch that carries this
+# file is NEVER merged. It rebuilds the validation suite exactly like the
+# `prepare` job of cfdx-validation.yml, runs every label-long test one by one
+# with its own log, and posts the failure evidence to issue #870. Actions
+# logs and artifacts are not reachable from the current tooling, so this is
+# how root causes become visible (same approach as wall-diagnostics, #901).
+
+on:
+  push:
+    branches:
+      - ci/long-campaign-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: long-campaign-diagnostics
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-diag
+  VENV_DIR: .venv-diag
+
+jobs:
+  long-diagnostics:
+    name: Rebuild and capture long-campaign failures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install -e .
+
+      - name: Configure validation build
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python"
+
+      - name: Build validation suite
+        run: cmake --build "$BUILD_DIR" --parallel 2
+
+      - name: Generate long-validation mesh fixtures
+        run: |
+          "$VENV_DIR/bin/python" scripts/generate_2d_validation_meshes.py all --output-dir "$BUILD_DIR/validation_meshes"
+          for mesh in \
+            channel_n16.h5 channel_n32.h5 channel_n64.h5 \
+            bfs_re200_n16.h5 bfs_re200_n32.h5 bfs_re200_n64.h5 \
+            naca0012_laminar_n64.h5 naca0012_laminar_n128.h5 naca0012_laminar_n256.h5; do
+            test -s "$BUILD_DIR/validation_meshes/$mesh" || {
+              echo "::error::required validation mesh missing after generation: $mesh"
+              exit 1
+            }
+          done
+
+      - name: Enumerate label-long tests (known failures first)
+        run: |
+          ctest --test-dir "$BUILD_DIR" -N -L long > /tmp/long-list.txt 2>&1 || true
+          cat /tmp/long-list.txt
+          sed -E 's/^ *Test #[0-9]+: *//' /tmp/long-list.txt \
+            | grep -vE '^$|^Total' | sort -u > /tmp/all-tests.txt
+          {
+            printf '%s\n' \
+              test_n12_coupled_pressure_velocity_mms \
+              test_channel_qualification \
+              test_naca0012_qualification \
+              test_bfs_qualification \
+              test_vmfl036_axisymmetric \
+              test_ghia_cavity_n8_pcd \
+              test_n11_conservation_boundedness
+            cat /tmp/all-tests.txt
+          } | awk '!seen[$0]++' > /tmp/long-tests.txt
+          echo "--- tests a jouer ($(wc -l < /tmp/long-tests.txt)) ---"
+          cat /tmp/long-tests.txt
+
+      - name: Run each long test individually and capture evidence
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p diag-logs
+          : > diag-summary.tsv
+          : > /tmp/failing.txt
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            safe=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_')
+            echo "=== running $name ==="
+            if ctest --test-dir "$BUILD_DIR" -L long -R "^$name$" -V > "diag-logs/$safe.log" 2>&1; then
+              status=PASS
+            else
+              status=FAIL
+              printf '%s\t%s\n' "$name" "$safe" >> /tmp/failing.txt
+            fi
+            printf '%s\t%s\n' "$name" "$status" >> diag-summary.tsv
+          done < /tmp/long-tests.txt
+          echo "--- summary ---"
+          cat diag-summary.tsv
+
+      - name: Compose and post evidence to issue #870
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Long-campaign diagnostics — preuves (pattern #894/#901, branche de diagnostic, jamais merger)"
+            echo
+            echo "Run : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "HEAD diagnostic : $GITHUB_SHA (contenu = master aa806657 + PR #902 ; memes echecs que le run 38595780004)"
+            echo
+            echo "| test | verdict |"
+            echo "|---|---|"
+            awk -F'\t' '{printf "| %s | %s |\n", $1, $2}' diag-summary.tsv
+            echo
+            while IFS=$'\t' read -r name safe; do
+              [ -n "$name" ] || continue
+              log="diag-logs/$safe.log"
+              [ -s "$log" ] || continue
+              echo "### $name"
+              echo '```'
+              grep -nE 'FAIL|Failed|failed|Error|error|Exit Code|exit code|mismatch|gate|tolerance|worst|exceed|Exceed|assert' "$log" | head -n 35
+              echo "---- (30 dernieres lignes du log) ----"
+              tail -n 30 "$log"
+              echo '```'
+              echo
+            done < /tmp/failing.txt
+          } > /tmp/comment.md
+          size=$(wc -c < /tmp/comment.md)
+          echo "comment size: $size"
+          if [ "$size" -gt 58000 ]; then
+            head -c 58000 /tmp/comment.md > /tmp/comment-final.md
+            echo '(commentaire tronque a 58000 caracteres)' >> /tmp/comment-final.md
+          else
+            cp /tmp/comment.md /tmp/comment-final.md
+          fi
+          jq -n --rawfile body /tmp/comment-final.md '{body: $body}' > /tmp/payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/870/comments" \
+            -d @/tmp/payload.json | head -c 300
