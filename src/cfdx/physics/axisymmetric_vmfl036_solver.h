@@ -211,8 +211,14 @@ public:
         double mom=std::numeric_limits<double>::infinity();
         double pcorr=std::numeric_limits<double>::infinity();
 
+        // Face fluxes are computed once here and carried across outer
+        // iterations: the pressure step below adjusts them with the exact
+        // discrete continuity statement of the pressure equation. Recomputing
+        // them from the (interpolated) corrected velocities at the top of each
+        // iteration would discard the continuity enforcement of the previous
+        // pressure step and reintroduce the interpolation imbalance.
+        compute_fluxes();
         for(std::size_t it=1;it<=c.max_outer_iterations;++it){
-            compute_fluxes();
             gradients(p_,gp_x,gp_r,false,0.0);
             assemble_momentum(ux_,ur_,gp_x,gp_r,apx_,apr_,c);
             mom=momentum_residual(ux_,ur_,gp_x,gp_r,apx_,apr_);
@@ -611,7 +617,42 @@ private:
         }
         // Do not impose inlet/outlet/wall values by overwriting cell centres.
         // The boundary-face treatment above is the actual finite-volume BC.
-        compute_fluxes();
+        // Conservative flux correction: instead of recomputing face fluxes
+        // from the corrected velocities, apply the discrete continuity
+        // statement of the assembled pressure equation directly to the
+        // carried fluxes:
+        //   internal faces: phi_f += rho*A*df/d*(p'_owner - p'_neighbour)
+        //                   (same symmetric df = (resp_o + resp_n)/2 as the
+        //                   assembled coefficients)
+        //   outlet faces   : phi_f += rho*A*resp/d*p'_owner  (p'_b = 0)
+        //   sphere/axis    : no pressure coefficient was assembled, so no
+        //                   flux correction (wall/symmetry velocities do not
+        //                   respond to p' in this operator)
+        // With these increments the post-correction face imbalance of every
+        // cell equals the row residual of the pressure solve (exact
+        // identity), so the continuity metric tracks the pressure solve
+        // instead of stalling on the face-interpolation error of a recomputed
+        // flux field (measured in the TS port: 5.5e-8..1e-12 with the
+        // conservative correction vs a 1e-4 stall without it).
+        for(std::size_t k=0;k<m_.faces.size();++k){
+            const auto& f=m_.faces[k];
+            if(!std::isfinite(phi_[k]))
+                throw std::runtime_error("VMFL036 non-finite face flux before conservative correction at face "+
+                    std::to_string(k));
+            if(f.neighbour!=static_cast<std::size_t>(-1)){
+                const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
+                const double df=0.5*(face_response(f.owner,f.nx,f.nr,c)
+                                    +face_response(f.neighbour,f.nx,f.nr,c));
+                phi_[k]+=rho_*f.area*df/d*(pc_[f.owner]-pc_[f.neighbour]);
+            } else if(f.outer && f.cx >= 0.0){
+                const std::size_t o=f.owner;
+                const double d=std::max(1e-12,std::abs((f.cx-m_.cells[o].cx)*f.nx+(f.cr-m_.cells[o].cr)*f.nr));
+                phi_[k]+=rho_*f.area*face_response(o,f.nx,f.nr,c)/d*pc_[o];
+            }
+            if(!std::isfinite(phi_[k]))
+                throw std::runtime_error("VMFL036 non-finite face flux after conservative correction at face "+
+                    std::to_string(k));
+        }
         return maxcorr;
     }
 
