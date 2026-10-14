@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate the CFDX Fluent/VMFL validation report.
 
 The report is intentionally data-driven:
@@ -211,6 +210,7 @@ def make_plot(out: Path, ghia: list[dict]) -> str | None:
     if not ghia:
         return None
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -284,13 +284,17 @@ def write_tex(
         r"\tableofcontents",
         r"\newpage",
         r"\section{Executive summary}",
-        f"The campaign contains {len(cases)} Fluent VMFL cases. Current matrix status: "
-        f"READY={counts.get('READY',0)}, PARTIAL={counts.get('PARTIAL',0)}, "
-        f"BLOCKED={counts.get('BLOCKED',0)}, PASS={counts.get('PASS',0)}.",
+        (
+            f"The campaign contains {len(cases)} Fluent VMFL cases. Current matrix status: "
+            f"READY={counts.get('READY', 0)}, PARTIAL={counts.get('PARTIAL', 0)}, "
+            f"BLOCKED={counts.get('BLOCKED', 0)}, PASS={counts.get('PASS', 0)}."
+        ),
         r"",
-        r"The report distinguishes three layers: (1) reference values and analytical oracles, "
-        r"(2) executable CFDX solver comparisons, and (3) capability gaps. This prevents a "
-        r"closed-form calculation from being presented as a complete CFD validation.",
+        (
+            r"The report distinguishes three layers: (1) reference values and analytical oracles, "
+            r"(2) executable CFDX solver comparisons, and (3) capability gaps. This prevents a "
+            r"closed-form calculation from being presented as a complete CFD validation."
+        ),
         r"\section{Reference values currently encoded}",
         r"\begin{tabular}{llll}",
         r"\toprule Case & Quantity & Reference & Basis\\",
@@ -302,12 +306,16 @@ def write_tex(
         r"\bottomrule",
         r"\end{tabular}",
         r"",
-        r"VMFL003--005 parameters and targets are taken from the Ansys verification material; "
-        r"VMFL004 and VMFL005 also have exact analytical solutions in the CFDX reference suite.",
+        (
+            r"VMFL003--005 parameters and targets are taken from the Ansys verification material; "
+            r"VMFL004 and VMFL005 also have exact analytical solutions in the CFDX reference suite."
+        ),
         r"\section{Executable CFDX results}",
-        r"\textbf{Validation gate:} the report generator fails its process status "
-        r"when a required executable is missing or returns a non-zero status. "
-        r"The generated PDF remains available as a diagnostic artifact.",
+        (
+            r"\textbf{Validation gate:} the report generator fails its process status "
+            r"when a required executable is missing or returns a non-zero status. "
+            r"The generated PDF remains available as a diagnostic artifact."
+        ),
     ]
 
     if plot_name:
@@ -334,9 +342,11 @@ def write_tex(
     if ghia:
         lines += [
             r"\subsection{Ghia lid-driven cavity}",
-            r"Reference: Ghia et al. centreline velocity tables. The table below reports the "
-            r"CFDX solver result directly; continuity and physical momentum residuals are "
-            r"reported independently from the profile error.",
+            (
+                r"Reference: Ghia et al. centreline velocity tables. The table below reports the "
+                r"CFDX solver result directly; continuity and physical momentum residuals are "
+                r"reported independently from the profile error."
+            ),
             r"\begin{longtable}{rrrrrrrr}",
             r"\toprule Re & Mesh & $U_{RMS}$ & $U_{max}$ & $V_{RMS}$ & $V_{max}$ & cont. & mom.\\",
             r"\midrule",
@@ -359,9 +369,11 @@ def write_tex(
 
     lines += [
         r"\subsection{Reference-oracle execution}",
-        r"The Fluent VMFL reference executable checks the published VMFL003--005 setup and "
-        r"analytical targets. It is deliberately labelled as an oracle until the corresponding "
-        r"CFDX geometry, boundary conditions and coupled solver are executed.",
+        (
+            r"The Fluent VMFL reference executable checks the published VMFL003--005 setup and "
+            r"analytical targets. It is deliberately labelled as an oracle until the corresponding "
+            r"CFDX geometry, boundary conditions and coupled solver are executed."
+        ),
     ]
     for ident, (rc, _) in logs.items():
         lines.append(rf"\texttt{{{latex_escape(ident)}}}: return code {rc}.")
@@ -403,16 +415,22 @@ def write_tex(
         r"\end{longtable}",
         r"\normalsize",
         r"\section{Acceptance rules}",
-        r"Every solver-level case must report geometry/mesh, physical properties, boundary "
-        r"conditions, discretisation and solver controls, residuals, conservation error, QoI, "
-        r"reference value or curve, absolute/relative error, and refinement where meaningful.",
+        (
+            r"Every solver-level case must report geometry/mesh, physical properties, boundary "
+            r"conditions, discretisation and solver controls, residuals, conservation error, QoI, "
+            r"reference value or curve, absolute/relative error, and refinement where meaningful."
+        ),
         r"",
-        r"An executable case is PASS only when CFDX actually solves the physical configuration "
-        r"and satisfies a quantitative criterion. READY/PARTIAL/BLOCKED are capability states, "
-        r"not numerical passes.",
+        (
+            r"An executable case is PASS only when CFDX actually solves the physical configuration "
+            r"and satisfies a quantitative criterion. READY/PARTIAL/BLOCKED are capability states, "
+            r"not numerical passes."
+        ),
         r"\section{Reproducibility}",
-        "The raw executable logs are stored beside this report in the report output directory. "
-        f"Report generation timestamp: {latex_escape(generated)}.",
+        (
+            "The raw executable logs are stored beside this report in the report output directory. "
+            f"Report generation timestamp: {latex_escape(generated)}."
+        ),
         r"",
         r"Source matrix: \texttt{docs/validation/FLUENT\_VMFL\_MATRIX.md}.\\",
         r"Ansys reference: \url{https://ansyshelp.ansys.com/public/Views/Secured/corp/v261/en/pdf/Ansys_Fluid_Dynamics_Verification_Manual.pdf}.",
@@ -525,16 +543,12 @@ def main() -> int:
         output = args.ghia_log.read_text(encoding="utf-8")
         ghia = parse_ghia(output)
         rc = 0 if ghia and "GHIA_CAVITY_VALIDATION: PASS" in output else 1
-        (args.output_dir / "test_ghia_cavity.log").write_text(
-            output, encoding="utf-8"
-        )
+        (args.output_dir / "test_ghia_cavity.log").write_text(output, encoding="utf-8")
         logs["test_ghia_cavity"] = (rc, output)
     elif args.ghia_log is not None:
         logs["test_ghia_cavity"] = (-1, "Ghia validation log not found")
     elif ghia_exe.exists():
-        rc, output, ghia = run_ghia(
-            ghia_exe, args.output_dir / "test_ghia_cavity.log"
-        )
+        rc, output, ghia = run_ghia(ghia_exe, args.output_dir / "test_ghia_cavity.log")
         logs["test_ghia_cavity"] = (rc, output)
     else:
         logs["test_ghia_cavity"] = (-1, "executable not found")
@@ -606,6 +620,7 @@ def main() -> int:
     write_tex(tex, cases, ghia, model_results, logs, suite_status, plot_name, generated)
 
     import shutil
+
     latexmk = shutil.which("latexmk")
     if latexmk is None:
         raise RuntimeError("latexmk is required to build the PDF")
