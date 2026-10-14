@@ -1,0 +1,173 @@
+name: Wall-distance coarse diagnostics
+
+# Diagnostic-only workflow. Never merge this branch into master.
+# Purpose: reproduce the failing "Wall-distance benchmarks" (coarse) job of
+# cfdx-validation at the current master HEAD and post per-binary evidence
+# (exit codes, FAIL lines, CSV contents) as a PR comment for root-cause
+# analysis. The coarse job exited with code 5 on run 38569829971
+# (2026-10-14 13:35Z, merge ref of #895): exit 5 exists only in the Poisson
+# manufactured qualification gates
+# (apps/verification/wall_distance_poisson_manufactured.cpp, gates introduced
+# by #485). Those gates had never executed in CI before the #891 split: the
+# coarse job was previously always killed by the 60-minute timeout during the
+# inline N=128 run, before the manufactured/decomposition binaries could run.
+# No test, tolerance, gate, budget or criterion is modified by this branch:
+# it only builds the three wall-distance binaries and runs the exact
+# coarse-job commands, capturing evidence.
+
+on:
+  push:
+    branches: [ci/wall-diagnostic]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: wall-diagnostics
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-diag
+
+jobs:
+  diagnose:
+    name: Diagnose failing wall-distance coarse benchmarks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - name: Configure (flags identical to the validation prepare job)
+        id: configure
+        continue-on-error: true
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+      - name: Build the three wall-distance binaries
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build "$BUILD_DIR" --parallel 4 \
+            --target \
+              cfdx_wall_distance_controlled_benchmark \
+              cfdx_wall_distance_poisson_manufactured \
+              cfdx_wall_distance_poisson_decomposition 2>&1 | tee build.log
+      - name: Run coarse wall-distance benchmarks (exact coarse-job commands)
+        id: benchmarks
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          # Identical commands to the cfdx-validation coarse job, run
+          # separately so each binary's exit code and output are captured
+          # even when an earlier one fails.
+          "$BUILD_DIR/cfdx_wall_distance_controlled_benchmark" \
+            "$BUILD_DIR/wall_distance_controlled_benchmark.csv" 16 32 64 \
+            > controlled.out 2> controlled.err
+          echo "exit_controlled=$?" >> exit_codes.txt
+          "$BUILD_DIR/cfdx_wall_distance_poisson_manufactured" \
+            "$BUILD_DIR/wall_distance_poisson_manufactured.csv" \
+            > manufactured.out 2> manufactured.err
+          echo "exit_manufactured=$?" >> exit_codes.txt
+          "$BUILD_DIR/cfdx_wall_distance_poisson_decomposition" \
+            "$BUILD_DIR/wall_distance_poisson_decomposition.csv" \
+            > decomposition.out 2> decomposition.err
+          echo "exit_decomposition=$?" >> exit_codes.txt
+          cat exit_codes.txt
+          exit 0
+      - name: Upload evidence
+        if: always() && steps.benchmarks.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-diagnostics-evidence
+          path: |
+            exit_codes.txt
+            controlled.out
+            controlled.err
+            manufactured.out
+            manufactured.err
+            decomposition.out
+            decomposition.err
+            build-diag/*.csv
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Post diagnostics comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh pr view --repo "$GITHUB_REPOSITORY" --head "ci/wall-diagnostic" --json number --jq .number 2>/dev/null || true)
+          TARGET="pr"
+          if [ -z "${PR:-}" ]; then
+            echo "gh pr view found no host PR; posting to issue #870 instead"
+            PR=870
+            TARGET="issue"
+          fi
+          {
+            echo "## Wall-distance coarse diagnostics - master HEAD $(git rev-parse --short HEAD)"
+            echo ""
+            echo "Diagnostic-only branch (never merge). Purpose: identify which binary"
+            echo "and which gate produce the coarse-job exit 5 observed on run"
+            echo "38569829971 (#870). Commands identical to the official coarse job;"
+            echo "no test, tolerance or gate modified by this branch."
+            echo ""
+            echo "configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} benchmarks=${{ steps.benchmarks.outcome }}"
+            echo ""
+            echo "### Exit codes (per binary)"
+            echo '~~~'
+            cat exit_codes.txt 2>/dev/null || echo "no exit codes captured"
+            echo '~~~'
+            echo ""
+            echo "### cfdx_wall_distance_controlled_benchmark (16 32 64) - stderr"
+            echo '~~~'
+            cat controlled.err 2>/dev/null || echo "(empty)"
+            echo '~~~'
+            echo ""
+            echo "### cfdx_wall_distance_poisson_manufactured - stderr"
+            echo '~~~'
+            cat manufactured.err 2>/dev/null || echo "(empty)"
+            echo '~~~'
+            echo ""
+            echo "### cfdx_wall_distance_poisson_decomposition - stderr"
+            echo '~~~'
+            cat decomposition.err 2>/dev/null || echo "(empty)"
+            echo '~~~'
+            echo ""
+            echo "### Key stdout lines"
+            echo '~~~'
+            grep -hE '^(N=|Poisson operator:|Poisson wall offsets:|boundary_flux_error_order|sphere_counterexample)' \
+              controlled.out manufactured.out decomposition.out 2>/dev/null | head -80 || true
+            grep -hE ', L1=' controlled.out 2>/dev/null | head -30 || true
+            echo '~~~'
+            echo ""
+            echo "### CSV evidence"
+            for csv in wall_distance_controlled_benchmark wall_distance_poisson_manufactured wall_distance_poisson_decomposition; do
+              echo ""
+              echo "#### ${csv}.csv"
+              echo '~~~'
+              cat "$BUILD_DIR/${csv}.csv" 2>/dev/null || echo "(not produced)"
+              echo '~~~'
+            done
+          } > body.md
+          if [ "$TARGET" = "pr" ]; then
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          fi
