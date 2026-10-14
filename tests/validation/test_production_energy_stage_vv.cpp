@@ -7,7 +7,10 @@
 //   * Plug-flow carrier (slip walls, uniform inlet) converged by
 //     solve_steady_incompressible: |u - u_in| < 1e-9 and a uniform
 //     authoritative face mass flux, signed outward (inlet negative,
-//     outlet positive, walls zero).
+//     outlet positive, walls zero). The gauge anchor is the outlet cell:
+//     the reference cell's continuity row is eliminated from the pressure
+//     system, so anchoring on the inlet cell makes the plug unreachable
+//     (see the comment in solve_plug_flow and issue #663).
 //   * The frozen-flow energy stage (energy_model="conjugate", one-way
 //     fluid -> energy coupling on the authoritative mass flux) reproduces
 //     an independent hand-assembled discrete oracle exactly: the
@@ -15,21 +18,28 @@
 //     fiche-14 formulas (never through assemble_scalar_equation) and solved
 //     with the Thomas algorithm; agreement is < 1e-9 per cell.
 //   * Independent energy conservation (reconstruct_energy_balance, not the
-//     assembled matrix) is a BLOCKING verdict normalized by the gross audit
-//     power scale (boundary throughput + source, floor 1 W): both the
-//     global closure (< 1e-12) and the strictly stronger local per-cell
-//     balance (< 1e-12) must pass for the stage to be converged; the net
+//     assembled matrix) is a BLOCKING verdict in three normalized forms:
+//     the global closure and the local per-cell balance, both normalized by
+//     the gross audit power scale (boundary throughput + source, floor
+//     1 W), plus the per-cell balance normalized by each cell's OWN gross
+//     power scale (its face throughputs + its source, floor 1 W) so a
+//     local defect cannot hide behind a large domain scale; all three
+//     (< 1e-12) must pass for the stage to be converged; the net
 //     boundary flux equals the source power; per-patch identities hold
 //     (adiabatic walls exactly zero, imposed wall flux = q'' * area).
 //   * Discrete maximum principle with Dirichlet walls; bulk temperature
 //     rise q'''*V/(mdot*cp) as a physical sanity gate.
 //   * Fail-closed: unsupported energy models (including "buoyant"), wrong
-//     material counts, invalid properties, non-numeric / partially numeric
-//     ("500abc") / empty / non-finite volumetric power and heat flux,
-//     quotient overflow of heat_flux / conductivity, non-positive declared
-//     or initial temperatures, Dirichlet-free (singular) systems,
-//     non-finite mass flux, mismatched field sizes and a geometry not
-//     matching the mesh are all rejected.
+//     material counts, invalid properties (density, dynamic viscosity,
+//     conductivity, specific heat - the carrier flow solves the same
+//     declared fluid), non-numeric / partially numeric ("500abc") / empty /
+//     non-finite volumetric power and heat flux, quotient overflow of
+//     heat_flux / conductivity, heat_flux on a non-WALL patch, a patch
+//     declaring both a Dirichlet temperature and heat_flux, non-positive
+//     declared or initial temperatures, Dirichlet-free (singular) systems,
+//     non-finite mass flux, mismatched field sizes, and a geometry that
+//     does not match the mesh (sizes, non-finite centres or area vectors,
+//     invalid patch indices on boundary faces) are all rejected.
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "common/test_harness.h"
@@ -37,6 +47,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <string>
 #include <vector>
@@ -162,9 +173,21 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     // at ~1 forever and the monitor reports STAGNATED after 10 iterations
     // (the documented failure mode of issue #663). The green pattern from
     // test_channel_qualification is rest + default under-relaxation
-    // (alpha_u = 0.7, alpha_p = 0.3): the predictor is exact for a plug, so
-    // U_k = u_in * (1 - 0.7^k) and the run converges in ~63 iterations,
-    // well inside the 200-iteration budget. No tolerance is changed.
+    // (alpha_u = 0.7, alpha_p = 0.3). No tolerance is changed.
+    //
+    // Gauge anchor: the reference cell's continuity row is ELIMINATED from
+    // the pressure system (pure-Neumann gauge handling), so that cell's mass
+    // defect can never be corrected. On this chain the inlet face is the
+    // only boundary flux not driven by an interior pressure gradient (the
+    // outlet is zero-gradient: its flux follows the interior solution), so
+    // anchoring on cell 0 removes the only row that could balance the
+    // injected inlet mass: the plug becomes an UNREACHABLE fixed point and
+    // the pressure CG fails with MAX_ITER_COLLAPSE (iterations ~509,
+    // residual ~1e-4 - the CI failure of PR #888). Anchoring on the OUTLET
+    // cell n-1 keeps every continuity row that carries an uncompensated
+    // boundary flux: the predictor balances the global mass and the run
+    // converges geometrically at the rate (1 - alpha_p) per iteration,
+    // from rest in ~90 iterations, well inside the 200-iteration budget.
     controls.initialization.mode = InitializationMode::Uniform;
     controls.initialization.uniform_velocity = {0.0, 0.0, 0.0};
     controls.coupling.alpha_u = 0.7;
@@ -176,12 +199,22 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     controls.kinematic_viscosity = mu / rho;
     controls.convergence.max_iterations = 200;
     controls.convergence.relative_tolerance = 1e-9;
-    controls.convergence.continuity_tolerance = 1e-11;
+    controls.convergence.continuity_tolerance = 1e-13;
     controls.linear_tolerance = 1e-11;
-    controls.pressure_reference_cell = 0;
+    controls.pressure_reference_cell = n - 1;
 
     const auto flow = solve_steady_incompressible(plug.mesh, U, p, ubc, pbc,
                                                    controls);
+    if (!flow.history.empty()) {
+        const auto& h = flow.history.back();
+        std::cout << "PLUG_FLOW_AUDIT n=" << n
+                  << " converged=" << flow.converged
+                  << " iterations=" << flow.iterations
+                  << " continuity=" << h.corrected_flux_continuity_linf
+                  << " mass_normalized=" << h.mass_normalized_imbalance
+                  << " momentum_rel=" << h.momentum_equation_residual_relative
+                  << "\\n";
+    }
     plug.converged = flow.converged;
     plug.mass_flux = flow.authoritative_mass_flux;
     for (std::size_t c = 0; c < n; ++c) {
@@ -392,6 +425,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -414,6 +464,10 @@ int main()
         EXPECT_TRUE(stage.audit_power_scale >= 1.0);
         EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
         EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
+        // Blocking local gate in its per-cell normalization: each cell's
+        // residual measured against its own gross power scale (its face
+        // throughputs + its source, floor 1 W).
+        EXPECT_TRUE(stage.max_cell_residual_normalized < 1e-12);
         EXPECT_TRUE(std::abs(stage.independent_conservation_residual) <
                     1e-9 * stage.audit_power_scale);
         const double total_power = q * length;  // 20000 W
@@ -457,6 +511,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -472,6 +543,7 @@ int main()
         EXPECT_TRUE(stage.local_energy_balance_passed);
         EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
         EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
+        EXPECT_TRUE(stage.max_cell_residual_normalized < 1e-12);
         // No source: the net boundary flux must close at zero.
         EXPECT_NEAR(stage.boundary_flux_out, 0.0, 1e-6);
         // Discrete maximum principle: bounded by the Dirichlet values.
@@ -512,6 +584,23 @@ int main()
         temperature.fill(t_in);
         const auto stage = run_production_energy_stage(
             plug.mesh, plug.geometry, setup, plug.mass_flux, temperature);
+        std::cerr << std::scientific << std::setprecision(17)
+                  << "ENERGY_STAGE_GATES: converged=" << stage.converged
+                  << " linear=" << stage.linear_solver_converged
+                  << " global_pass=" << stage.global_energy_balance_passed
+                  << " local_pass=" << stage.local_energy_balance_passed
+                  << " global_normalized=" << stage.global_balance_normalized
+                  << " local_normalized=" << stage.local_balance_normalized
+                  << " max_cell_normalized="
+                  << stage.max_cell_residual_normalized
+                  << " audit_power_scale=" << stage.audit_power_scale
+                  << " independent_residual="
+                  << stage.independent_conservation_residual
+                  << " worst_cell=" << stage.worst_cell
+                  << " worst_cell_normalized=" << stage.worst_cell_normalized
+                  << " nonfinite_temperature=" << stage.nonfinite_temperature
+                  << " nonfinite_faces=" << stage.nonfinite_faces
+                  << " nonfinite_cells=" << stage.nonfinite_cells << '\n';
         EXPECT_TRUE(stage.converged);
 
         const auto oracle = chain_energy_oracle(
@@ -527,6 +616,7 @@ int main()
         EXPECT_TRUE(stage.local_energy_balance_passed);
         EXPECT_TRUE(stage.global_balance_normalized < 1e-12);
         EXPECT_TRUE(stage.local_balance_normalized < 1e-12);
+        EXPECT_TRUE(stage.max_cell_residual_normalized < 1e-12);
         // Wall power = q'' * (4 lateral faces * L * unit depth) = 8000 W in.
         const double wall_power = wall_flux * 4.0 * length;
         EXPECT_NEAR(stage.patch_flux_out.at("walls"), -wall_power, 1e-6);
@@ -622,6 +712,23 @@ int main()
             EXPECT_THROW(build_production_energy_case(s),
                          std::invalid_argument);
         }
+        // The carrier flow solves the same declared fluid: an incomplete
+        // material (missing / invalid dynamic viscosity) is rejected whole
+        // instead of letting the flow run with silently substituted
+        // defaults.
+        {
+            auto s = base;
+            s.materials[0].dynamic_viscosity = 0.0;
+            EXPECT_THROW(build_production_energy_case(s),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.materials[0].dynamic_viscosity =
+                std::numeric_limits<double>::quiet_NaN();
+            EXPECT_THROW(build_production_energy_case(s),
+                         std::invalid_argument);
+        }
 
         // Volumetric power must be numeric and finite.
         {
@@ -678,6 +785,45 @@ int main()
             auto s = base;
             s.boundary_conditions[2].raw_params["heat_flux"] =
                 "1e308";  // /k overflows despite both operands being finite
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        // heat_flux is a WALL boundary condition (fiche 14): declaring it
+        // on a flow boundary patch is a case-contract violation, rejected
+        // instead of silently imposing a temperature gradient on an
+        // inlet/outlet.
+        {
+            auto s = base;
+            s.boundary_conditions[0].raw_params["heat_flux"] = "100";
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.boundary_conditions[1].raw_params["heat_flux"] = "100";
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        // A patch declaring both a retained Dirichlet temperature and a
+        // heat_flux is contradictory: exactly one thermal boundary
+        // condition per patch, no silent priority.
+        {
+            auto s = base;
+            s.boundary_conditions[2].value_type =
+                cfdx::io::BCValueType::WALL_THERMAL;
+            s.boundary_conditions[2].wall_temperature = 350.0;
+            s.boundary_conditions[2].raw_params["heat_flux"] = "100";
+            const auto energy_case = build_production_energy_case(s);
+            EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
+                         std::invalid_argument);
+        }
+        {
+            auto s = base;
+            s.boundary_conditions[0].raw_params["heat_flux"] = "100";
+            // inlet temperature t_in is already declared on patch 0
             const auto energy_case = build_production_energy_case(s);
             EXPECT_THROW(build_production_temperature_bcs(mesh, s, energy_case),
                          std::invalid_argument);
@@ -772,6 +918,45 @@ int main()
             Field<double, Location::CELL> t(m, "temperature", "K", 1);
             t.fill(t_in);
             EXPECT_THROW(run_production_energy_stage(mesh, foreign_geometry,
+                                                     base, mass_flux, t),
+                         std::invalid_argument);
+        }
+        {
+            // Non-finite cell centres are rejected, not silently
+            // assembled: a degenerate geometry can produce finite but
+            // physically wrong results.
+            auto bad_geometry = build_fv_geometry(mesh);
+            bad_geometry.cell_centres[0] = Vec3{
+                std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0};
+            Field<double, Location::CELL> t(m, "temperature", "K", 1);
+            t.fill(t_in);
+            EXPECT_THROW(run_production_energy_stage(mesh, bad_geometry,
+                                                     base, mass_flux, t),
+                         std::invalid_argument);
+        }
+        {
+            // Non-finite face area vectors are rejected for the same
+            // reason: the reconstruction and audits index them.
+            auto bad_geometry = build_fv_geometry(mesh);
+            bad_geometry.face_area_vectors[0] = Vec3{
+                std::numeric_limits<double>::infinity(), 0.0, 0.0};
+            Field<double, Location::CELL> t(m, "temperature", "K", 1);
+            t.fill(t_in);
+            EXPECT_THROW(run_production_energy_stage(mesh, bad_geometry,
+                                                     base, mass_flux, t),
+                         std::invalid_argument);
+        }
+        {
+            // A boundary face must map to a declared patch: an invalid
+            // patch index would otherwise be silently skipped by the
+            // per-patch flux audit and its flux would miss from the
+            // balance.
+            auto bad_geometry = build_fv_geometry(mesh);
+            bad_geometry.face_patch[0] =
+                mesh.boundary().n_patches() + 7;  // face 0 is the inlet
+            Field<double, Location::CELL> t(m, "temperature", "K", 1);
+            t.fill(t_in);
+            EXPECT_THROW(run_production_energy_stage(mesh, bad_geometry,
                                                      base, mass_flux, t),
                          std::invalid_argument);
         }

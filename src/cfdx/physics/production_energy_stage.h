@@ -8,40 +8,53 @@
 //   * energy_model gate: {"", "none", "isothermal", "solid_conduction",
 //     "conjugate", "compressible"} are accepted declarations; anything else -
 //     including "buoyant" - is rejected fail-closed instead of silently
-//     degrading to an isothermal run. "compressible" is the declaration
-//     produced by the SU2 conversion of Euler / Navier-Stokes compressible
-//     cases (adapters/su2.py): it is a valid declaration that never triggers
-//     this stage (only "conjugate" does) - the production solver then runs
-//     the flow alone. The stage itself only runs for "conjugate": calling it
-//     under any other declared model throws.
-//   * Exactly one fluid material with finite positive density, conductivity
-//     and specific heat. Volumetric power (W/m^3) comes from the material's
-//     extra_properties ("volumetric_power", default 0) and must be a strict
-//     finite numeric literal: a numeric prefix such as "500abc" is rejected
-//     whole, not silently truncated to 500.
+//     degrading to an isothermal run. "compressible" and "solid_conduction"
+//     are valid SCHEMA declarations (e.g. "compressible" is produced by the
+//     SU2 conversion of Euler / Navier-Stokes compressible cases,
+//     adapters/su2.py), and they never trigger this stage (only "conjugate"
+//     does) - but the production solver APPLICATION rejects them with an
+//     explicit routing error: this executable implements the incompressible
+//     carrier, and running it on a case that declares another physics would
+//     silently compute something else than the case asks for. The stage
+//     itself only runs for "conjugate": calling it under any other declared
+//     model throws.
+//   * Exactly one fluid material with finite positive density, dynamic
+//     viscosity, conductivity and specific heat. The carrier flow solves
+//     the same declared fluid, so an incomplete material is rejected whole
+//     instead of letting solver defaults silently substitute for the
+//     declared properties. Volumetric power (W/m^3) comes from the
+//     material's extra_properties ("volumetric_power", default 0) and must
+//     be a strict finite numeric literal: a numeric prefix such as
+//     "500abc" is rejected whole, not silently truncated to 500.
 //   * Temperature boundary conditions from the case: WALL_THERMAL with a
 //     non-zero wall_temperature -> Dirichlet; INLET or FIXED with a non-zero
 //     temperature -> Dirichlet; otherwise raw_params["heat_flux"]
-//     (W/m^2, positive into the domain) -> fixed gradient q''/k; otherwise
-//     adiabatic. Zero means "not declared" (stage-1 / T1 convention), so a
-//     Dirichlet at exactly 0 K is not representable in this API; any
-//     declared temperature must be finite and strictly positive (kelvin).
-//     At least one Dirichlet patch is required: an all-Neumann energy
-//     system has a constant null space and is rejected.
+//     (W/m^2, positive into the domain) on a WALL patch -> fixed gradient
+//     q''/k; otherwise adiabatic. heat_flux is rejected on non-WALL
+//     patches, and a patch declaring both a retained Dirichlet temperature
+//     and heat_flux is rejected as contradictory: exactly one thermal
+//     boundary condition per patch. Zero means "not declared" (stage-1 /
+//     T1 convention), so a Dirichlet at exactly 0 K is not representable
+//     in this API; any declared temperature must be finite and strictly
+//     positive (kelvin). At least one Dirichlet patch is required: an
+//     all-Neumann energy system has a constant null space and is rejected.
 //   * The stage consumes the flow result's authoritative conservative face
 //     mass flux, never a flux reconstructed from the cell velocity, and the
-//     finite-volume geometry must match the mesh (volumes positive and
-//     finite, face->patch mapping present).
+//     finite-volume geometry must match the mesh (sizes, positive finite
+//     volumes, finite centres and area vectors, valid patch indices).
 //   * Conservation audits are independent of the assembled matrix: the
 //     energy flux is rebuilt from the final temperature and the same mass
 //     flux (reconstruct_energy_balance), and per-patch fluxes are rebuilt
 //     the same way. These audits are BLOCKING acceptance criteria, not
 //     diagnostics: result.converged requires the linear solve to converge
 //     AND the independent global energy balance AND the independent local
-//     (per-cell) balance to close within energy_balance_tolerance of the
-//     gross physical power scale (total boundary throughput + source), AND
-//     every temperature/flux/cell residual to be finite. A solution whose
-//     independent audit fails cannot be declared converged.
+//     (per-cell) balance to close within energy_balance_tolerance, the
+//     local one in two normalizations - the gross physical power scale
+//     (total boundary throughput + source) and each cell's OWN gross
+//     power scale (its face throughputs + source + accumulation, floor
+//     1 W), so a local defect cannot hide behind a large domain scale -
+//     AND every temperature/flux/cell residual to be finite. A solution
+//     whose independent audit fails cannot be declared converged.
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
@@ -136,6 +149,18 @@ inline ProductionEnergyCase build_production_energy_case(
         throw std::invalid_argument(
             "production energy stage: material specific_heat must be finite "
             "and positive");
+    // The carrier flow is solved with the same declared material, so its
+    // dynamic viscosity is part of the physical contract too: an incomplete
+    // fluid material must be rejected here instead of letting the flow run
+    // with silently substituted default properties (a velocity field and
+    // mass flux computed with a different fluid than the one the energy
+    // balance declares).
+    if (!std::isfinite(material.dynamic_viscosity) ||
+        !(material.dynamic_viscosity > 0.0))
+        throw std::invalid_argument(
+            "production energy stage: material dynamic_viscosity must be "
+            "finite and positive (the carrier flow solves the same "
+            "declared fluid)");
 
     double volumetric_power = 0.0;
     const auto power_it = material.extra_properties.find("volumetric_power");
@@ -216,9 +241,30 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
                 fixed_value = true;
             }
         }
-        if (!fixed_value && spec != nullptr) {
+        if (spec != nullptr) {
             const auto flux_it = spec->raw_params.find("heat_flux");
             if (flux_it != spec->raw_params.end()) {
+                // heat_flux (W/m^2, positive into the domain) is a WALL
+                // boundary condition: fiche 14 defines it as an imposed
+                // wall flux. Declaring it on an inlet or outlet patch is a
+                // case-contract violation, rejected fail-closed instead of
+                // silently imposing a temperature gradient on a flow
+                // boundary.
+                if (spec->type != cfdx::io::BCType::WALL)
+                    throw std::invalid_argument(
+                        "production energy stage: heat_flux is only "
+                        "supported on WALL patches, not on patch '" +
+                        patch.name + "'");
+                // A retained Dirichlet temperature (wall_temperature or
+                // inlet temperature) contradicts a declared flux: both
+                // cannot hold on the same patch. Reject the ambiguous
+                // declaration instead of silently letting one win.
+                if (fixed_value)
+                    throw std::invalid_argument(
+                        "production energy stage: patch '" + patch.name +
+                        "' declares both a fixed temperature and "
+                        "heat_flux; exactly one thermal boundary condition "
+                        "per patch is required");
                 const double heat_flux = parse_case_double(
                     flux_it->second,
                     "heat_flux on patch '" + patch.name + "'");
@@ -275,6 +321,12 @@ struct ProductionEnergyStageResult {
     double max_cell_residual = 0.0;           // W, independent local audit
     std::size_t worst_cell = 0;
     double local_balance_normalized = 0.0;  // max_cell_residual / scale
+    // The same per-cell residual normalized by that cell's OWN gross
+    // power scale (its face throughputs + its source + its accumulation,
+    // floor 1 W): a locally significant defect cannot hide behind a
+    // large domain-wide scale. Blocking gate, see local_energy_balance.
+    double max_cell_residual_normalized = 0.0;
+    std::size_t worst_cell_normalized = 0;
     std::size_t nonfinite_temperature = 0;
     std::size_t nonfinite_faces = 0;
     std::size_t nonfinite_cells = 0;
@@ -331,6 +383,36 @@ inline ProductionEnergyStageResult run_production_energy_stage(
             throw std::invalid_argument(
                 "run_production_energy_stage: cell volumes must be finite "
                 "and positive");
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        const auto& centre = geometry.cell_centres[c];
+        if (!std::isfinite(centre.x) || !std::isfinite(centre.y) ||
+            !std::isfinite(centre.z))
+            throw std::invalid_argument(
+                "run_production_energy_stage: cell centres must be finite");
+    }
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const auto& centre = geometry.face_centres[f];
+        const auto& area = geometry.face_area_vectors[f];
+        if (!std::isfinite(centre.x) || !std::isfinite(centre.y) ||
+            !std::isfinite(centre.z) ||
+            !std::isfinite(area.x) || !std::isfinite(area.y) ||
+            !std::isfinite(area.z))
+            throw std::invalid_argument(
+                "run_production_energy_stage: face centres and area "
+                "vectors must be finite");
+    }
+    // A boundary face must map to a declared patch: a geometry built for
+    // another mesh (or a degenerate one) can carry patch indices that are
+    // silently skipped by the per-patch flux audit, hiding flux that then
+    // misses from the balance. Reject instead of skipping.
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        if (mesh.ownership().neighbour(f) >= 0)
+            continue;
+        if (geometry.face_patch[f] >= mesh.boundary().n_patches())
+            throw std::invalid_argument(
+                "run_production_energy_stage: boundary face maps to an "
+                "invalid patch index (geometry does not match the mesh)");
+    }
 
     const auto energy_case = build_production_energy_case(setup);
     const auto bcs = build_production_temperature_bcs(mesh, setup, energy_case);
@@ -374,6 +456,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     result.boundary_flux_out = audit.boundary_flux;
     result.max_cell_residual = audit.max_cell_residual;
     result.worst_cell = audit.worst_cell;
+    result.max_cell_residual_normalized = audit.max_cell_residual_normalized;
+    result.worst_cell_normalized = audit.worst_cell_normalized;
     result.nonfinite_faces = audit.nonfinite_faces;
     result.nonfinite_cells = audit.nonfinite_cells;
 
@@ -421,7 +505,13 @@ inline ProductionEnergyStageResult run_production_energy_stage(
         result.global_balance_normalized <= balance_tolerance;
     result.local_energy_balance_passed =
         std::isfinite(audit.max_cell_residual) &&
-        result.local_balance_normalized <= balance_tolerance;
+        result.local_balance_normalized <= balance_tolerance &&
+        // Locally normalized per-cell balance: each cell's residual is
+        // measured against its own gross power scale, so a locally
+        // significant defect cannot hide behind a large domain-wide
+        // scale. Both forms must pass.
+        std::isfinite(audit.max_cell_residual_normalized) &&
+        audit.max_cell_residual_normalized <= balance_tolerance;
 
     result.converged =
         result.linear_solver_converged &&
