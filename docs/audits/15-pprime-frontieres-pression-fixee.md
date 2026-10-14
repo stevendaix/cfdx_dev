@@ -48,7 +48,7 @@ Frontières WALL / EMPTY / périodiques : flux nul ou miroir, traitées dans les
 
 ## 7. Statut d'implémentation CFDX
 - Fichiers source concernés : src/cfdx/physics/steady_incompressible_solver.h (assemblage p′, boucle des faces à pression fixée).
-- Tests exécutables : test_bfs_qualification, test_naca0012_qualification, test_channel_qualification (labels long, `SKIP_RETURN_CODE 1` retiré) ; ghia76_cavity (régression).
+- Tests exécutables : test_bfs_qualification, test_naca0012_qualification, test_channel_qualification (labels qualification/validation/long ; le masquage de leur code de retour de test, retiré par la PR selon la politique #893) ; ghia76_cavity (régression).
 - Écarts connus code ↔ fiche : le terme explicite de la section 4 est ajouté par la PR liée (fix/pprime-fixed-pressure-rhs) ; à confirmer par CI verte puis run validation-total au HEAD mergé.
 - Gaps et prochaines actions : cas canal mal posé (tout-Neumann + ancre sur cellule d'entrée — audit séparé, #889) ; blocage COUPLED+PCD Ghia 32×32 (audit séparé) ; cas axisymétriques (#895).
 
