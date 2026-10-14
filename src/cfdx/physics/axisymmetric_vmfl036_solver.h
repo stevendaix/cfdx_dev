@@ -309,9 +309,28 @@ private:
                     qf=0.0; // pressure outlet
                 }
                 // All remaining pressure boundaries use zero normal gradient.
-                gx[c]+=qf*f.nx*f.area;
-                gr[c]+=qf*f.nr*f.area;
+                // Face normals are stored oriented owner->neighbour. On faces
+                // where this cell is the neighbour, the outward normal is the
+                // negation of the stored one; without the sign flip the
+                // Green-Gauss sum mixes inward-oriented contributions on half
+                // of every stencil and the reconstructed gradient is wrong in
+                // sign (every second ring/sector direction).
+                const double s=(f.owner==c)?1.0:-1.0;
+                gx[c]+=s*qf*f.nx*f.area;
+                gr[c]+=s*qf*f.nr*f.area;
             }
+            // Axisymmetric radial closure: the revolved face areas of a cell
+            // do not sum to zero radially. For straight meridional edges each
+            // face contributes n_r*2*pi*r_mid*ds = 2*pi*r_mid*dr exactly, so
+            // sum_f n_r*A_f = 2*pi*A_meridional (divergence theorem on the
+            // revolution volume: div(e_r)=1/r integrates to 2*pi*A_m). The
+            // x-component closes to zero as usual. Without the subtraction
+            // below, even a constant field produces a spurious radial
+            // gradient q*2*pi*A_m/V ~ q/r_bar, which feeds the pressure force
+            // of the momentum equation, the velocity correction and the wall
+            // viscous tractions, and was the amplification mechanism behind
+            // the divergent campaign runs.
+            gr[c]-=q[c]*2.0*AxisymMesh::pi()*m_.cells[c].area;
             gx[c]/=m_.cells[c].volume; gr[c]/=m_.cells[c].volume;
         }
     }
@@ -560,8 +579,19 @@ private:
                     qf=0.5*(pc_[cell]+pc_[f.neighbour]);
                 else if(f.outer && f.cx >= 0.0)
                     qf=0.0; // pressure correction is zero on a fixed-pressure outlet
-                gx+=qf*f.nx*f.area; gr+=qf*f.nr*f.area;
+                // Owner->neighbour stored normal: flip the orientation for
+                // faces where this cell is the neighbour, exactly like in
+                // gradients().
+                const double s=(f.owner==cell)?1.0:-1.0;
+                gx+=s*qf*f.nx*f.area; gr+=s*qf*f.nr*f.area;
             }
+            // Axisymmetric radial closure (see gradients()): subtract the exact
+            // identity sum_f n_r*A_f = 2*pi*A_meridional applied to the local
+            // p' value, so a uniform p' field produces no radial gradient of
+            // the correction. Without it the velocity correction
+            // u' = -rAU*grad p' carries a spurious p'/r_bar radial component
+            // every outer iteration.
+            gr-=pc_[cell]*2.0*AxisymMesh::pi()*m_.cells[cell].area;
             gx/=m_.cells[cell].volume; gr/=m_.cells[cell].volume;
             if(!std::isfinite(apx_[cell]) || !(apx_[cell]>0.0) ||
                !std::isfinite(apr_[cell]) || !(apr_[cell]>0.0))
