@@ -142,6 +142,33 @@ CavityResult solve_cavity(
     controls.coupling.coupled_linear_tolerance=1e-10;
     controls.coupled_linear_solver.krylov=KrylovModel::FGMRES;
     controls.coupled_linear_solver.preconditioner=preconditioner;
+    // #894 evidence: an explicit coupled request inherits the generic
+    // LinearSolverRequest default restart (40). On the 32x32 PCD
+    // qualification system (4*nx*ny = 4096 unknowns) FGMRES(40) exhausted
+    // the whole 5000-iteration budget (125 restart cycles) and stalled at
+    // a true relative residual of 4.803775e-09 against the 1e-10 coupled
+    // linear gate, with three identical relaxation retries - the same
+    // restart-truncation plateau signature documented twice in
+    // steady_incompressible_solver.h (Poiseuille 512-cap plateau near
+    // 1e-7; 16x32 cavity 512-cap stall at 3.66e-12 against a 1e-12 gate),
+    // where the fix was to stop truncating the Krylov space below the
+    // system dimension. The automatic coupled policy already implements
+    // that rule; the explicit PCD request bypassed it. Mirror the policy
+    // here so the restart is never the convergence bottleneck: full
+    // coupled space for systems of at most 4096 unknowns, 512 above
+    // (memory cap), always bounded by the system dimension. No tolerance,
+    // gate or acceptance criterion is modified.
+    const std::size_t coupled_unknowns=4*test.nx*test.ny;
+    const std::size_t coupled_budget=controls.coupling.coupled_max_iterations;
+    controls.coupled_linear_solver.gmres_restart=static_cast<int>(
+        coupled_unknowns<=4096
+            ? std::min<std::size_t>(coupled_unknowns,
+                                    std::max<std::size_t>(1024,coupled_budget))
+            : std::min<std::size_t>(coupled_unknowns,512));
+    // Trace the effective coupled preconditioner and restart in future
+    // validation-total evidence (COUPLED_PRECONDITIONER stderr line).
+    if(algorithm==PressureVelocityAlgorithm::COUPLED)
+        controls.diagnostics.coupled_matrix_summary=true;
     controls.use_bounded_convection=true;
     controls.convection_scheme=ConvectionScheme::UPWIND;
     controls.coupling.alpha_u=0.7;
