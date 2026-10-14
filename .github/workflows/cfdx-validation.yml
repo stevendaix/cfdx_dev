@@ -278,14 +278,11 @@ jobs:
           set -o pipefail
           ./build-validation/cfdx_wall_distance_controlled_benchmark \
             build-validation/wall_distance_controlled_benchmark.csv 16 32 64
-          ./build-validation/cfdx_wall_distance_controlled_benchmark \
-            build-validation/wall_distance_controlled_benchmark_fine.csv 128
           ./build-validation/cfdx_wall_distance_poisson_manufactured \
             build-validation/wall_distance_poisson_manufactured.csv
           ./build-validation/cfdx_wall_distance_poisson_decomposition \
             build-validation/wall_distance_poisson_decomposition.csv
           cat build-validation/wall_distance_controlled_benchmark.csv
-          cat build-validation/wall_distance_controlled_benchmark_fine.csv
           cat build-validation/wall_distance_poisson_manufactured.csv
           cat build-validation/wall_distance_poisson_decomposition.csv
       - name: Upload evidence
@@ -299,6 +296,51 @@ jobs:
       - name: Final wall-distance gate
         if: always()
         run: '[[ "${{ steps.wall.outcome }}" == "success" ]] || exit 1'
+
+  wall-distance-fine:
+    name: Wall-distance fine benchmark (N=128)
+    # The N=128 controlled benchmark carries the O(n^2) iteration budget
+    # documented in #870/#466: 1000*(128/16)^2 = 64000 pseudo-iterations per
+    # method, three methods, ~2M cells. It cannot share a 60-minute job with
+    # the coarse benchmarks: run 38438622597 / job 115442608769 was cancelled
+    # at the 60-minute deadline despite #871. The iteration budgets are NOT
+    # modified here -- they define the convergence verdicts; only the job
+    # partitioning and its own timeout change.
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: cfdx-total-validation-build-${{ github.sha }}
+          path: .
+      - name: Restore validation build
+        run: tar -xzf cfdx-validation-build.tar.gz
+      - name: Run fine wall-distance benchmark (N=128)
+        id: wall_fine
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./build-validation/cfdx_wall_distance_controlled_benchmark \
+            build-validation/wall_distance_controlled_benchmark_fine.csv 128
+          cat build-validation/wall_distance_controlled_benchmark_fine.csv
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-total-validation-wall-fine-evidence
+          path: ${{ env.BUILD_DIR }}/*.csv
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Final fine wall-distance gate
+        if: always()
+        run: '[[ "${{ steps.wall_fine.outcome }}" == "success" ]] || exit 1'
 
   thermal-radiation:
     name: Thermal and radiation regression
@@ -460,6 +502,7 @@ jobs:
       - fast-tests
       - long-tests
       - wall-distance
+      - wall-distance-fine
       - thermal-radiation
       - application-e2e
       - validation-report
@@ -472,6 +515,7 @@ jobs:
           echo "fast-tests=${{ needs.fast-tests.result }}"
           echo "long-tests=${{ needs.long-tests.result }}"
           echo "wall-distance=${{ needs.wall-distance.result }}"
+          echo "wall-distance-fine=${{ needs.wall-distance-fine.result }}"
           echo "thermal-radiation=${{ needs.thermal-radiation.result }}"
           echo "application-e2e=${{ needs.application-e2e.result }}"
           echo "validation-report=${{ needs.validation-report.result }}"
@@ -480,6 +524,7 @@ jobs:
             "${{ needs.fast-tests.result }}" \
             "${{ needs.long-tests.result }}" \
             "${{ needs.wall-distance.result }}" \
+            "${{ needs.wall-distance-fine.result }}" \
             "${{ needs.thermal-radiation.result }}" \
             "${{ needs.application-e2e.result }}" \
             "${{ needs.validation-report.result }}"; do
