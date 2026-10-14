@@ -385,7 +385,6 @@ def write_tex(
         r"\bottomrule",
         r"\end{longtable}",
         r"\section{Full VMFL capability matrix}",
-
         r"\small",
         r"\begin{longtable}{p{12mm}p{48mm}p{18mm}p{72mm}}",
         r"\toprule ID & Fluent case & CFDX status & Main comparison\\",
@@ -568,7 +567,8 @@ def main() -> int:
     vmfl036_status = logs["test_vmfl036_axisymmetric"][0]
     suite_status["test_vmfl036_axisymmetric"] = vmfl036_status
     gate_status = {
-        name: rc for name, rc in suite_status.items()
+        name: rc
+        for name, rc in suite_status.items()
         if name != "test_vmfl036_axisymmetric"
     }
     gate = validation_gate_status(gate_status)
