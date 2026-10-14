@@ -156,7 +156,7 @@
       "reference": "Fully developed plane-channel analytical solution for laminar baseline",
       "parameters": "Re based on bulk velocity and hydraulic/half height; fixed canonical value",
       "mesh": "3+ streamwise/cross-stream refinements; periodic/fully-developed formulation documented",
-      "boundary_conditions": "No-slip walls; periodic or pressure-gradient driving",
+      "boundary_conditions": "No-slip walls; zero-gradient inlet velocity; fixed outlet pressure p=0 determining the pressure gauge (fiche methode 15 section 4); body-force driving G=1; well-posed reformulation of the former all-Neumann setup (diagnostic #894, mirror of #889)",
       "numerical_schemes": "Finite-volume diffusion/convection schemes recorded",
       "solver_settings": "Steady SIMPLE/Coupled as applicable",
       "convergence_criteria": "Residuals + bulk flow/pressure gradient stabilization",
@@ -166,7 +166,7 @@
       "error": "Profile L2/Linf and friction-factor error",
       "observed_order": "Grid refinement",
       "runtime": "Per mesh",
-      "regression_status": "CI once executable case exists"
+      "regression_status": "Well-posed BC reformulation (fixed outlet pressure) after diagnostic #894; no tolerance change; verdict pending validation-total at merged HEAD"
     },
     {
       "id": "SEP-BFS",
