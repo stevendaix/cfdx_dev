@@ -126,8 +126,18 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     ubc["back"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
 
     ScalarBoundaryConditions pbc;
-    for(const char* s:{"inlet","outlet","bottom","top","front","back"})
+    for(const char* s:{"inlet","bottom","top","front","back"})
         pbc[s]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+    // Well-posed pressure gauge (#894, mirror of #889): the former
+    // all-Neumann pressure setup left the pressure slope undetermined, and
+    // the pure-Neumann path eliminated the continuity row of the reference
+    // (inlet) cell, so the global mass imbalance was invisible to the
+    // pressure correction. Fixing the outlet pressure removes the null
+    // mode: the pressure operator is SPD, no reference row is eliminated,
+    // and the outlet boundary flux is driven by (p_bc - p_P) per method
+    // sheet 15 section 4. The developed body-force solution
+    // (u = G/(2*nu) * y*(1-y), uniform p = 0) satisfies every BC exactly.
+    pbc["outlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
 
     IncompressibleSolverControls c;
     c.algorithm=PressureVelocityAlgorithm::SIMPLE;
@@ -162,7 +172,7 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     cfdx::validation::add_velocity_dirichlet(strict_bc, "bottom", {0.0, 0.0, 0.0});
     cfdx::validation::add_velocity_dirichlet(strict_bc, "top", {0.0, 0.0, 0.0});
     cfdx::validation::add_pressure_neumann(strict_bc, "inlet", 0.0);
-    cfdx::validation::add_pressure_neumann(strict_bc, "outlet", 0.0);
+    cfdx::validation::add_pressure_dirichlet(strict_bc, "outlet", 0.0);
     cfdx::validation::add_pressure_neumann(strict_bc, "bottom", 0.0);
     cfdx::validation::add_pressure_neumann(strict_bc, "top", 0.0);
     const auto validation_flux = cfdx::validation::make_validation_face_flux(mesh, geometry, U);

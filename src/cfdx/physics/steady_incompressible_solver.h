@@ -2860,6 +2860,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
                     pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
                 rows[o][o] += controls.density * rfn * area / distance;
+                // Explicit pressure flux at fixed-pressure boundaries (#894):
+                // the half-Dirichlet diagonal term above is only consistent
+                // when the boundary mass flux is reconstructed as
+                //   phi_b = phiHbyA_b - rho*rfn*area/d*(p_bc - p_P).
+                // Without the matching source term the discretised equation
+                // forces the boundary flux to zero and the continuity
+                // residual stalls on a nonzero floor. Inject the source into
+                // the RHS (b is assembled before this loop, so it must be
+                // updated directly), with the same directional coefficient
+                // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
+                b(o) += controls.density * rfn * area / distance *
+                    (it->second.value - p(o));
             }
 
             Vector p_corr(nc, 0.0);

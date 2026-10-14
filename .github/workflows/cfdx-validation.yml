@@ -278,14 +278,11 @@ jobs:
           set -o pipefail
           ./build-validation/cfdx_wall_distance_controlled_benchmark \
             build-validation/wall_distance_controlled_benchmark.csv 16 32 64
-          ./build-validation/cfdx_wall_distance_controlled_benchmark \
-            build-validation/wall_distance_controlled_benchmark_fine.csv 128
           ./build-validation/cfdx_wall_distance_poisson_manufactured \
             build-validation/wall_distance_poisson_manufactured.csv
           ./build-validation/cfdx_wall_distance_poisson_decomposition \
             build-validation/wall_distance_poisson_decomposition.csv
           cat build-validation/wall_distance_controlled_benchmark.csv
-          cat build-validation/wall_distance_controlled_benchmark_fine.csv
           cat build-validation/wall_distance_poisson_manufactured.csv
           cat build-validation/wall_distance_poisson_decomposition.csv
       - name: Upload evidence
@@ -300,52 +297,117 @@ jobs:
         if: always()
         run: '[[ "${{ steps.wall.outcome }}" == "success" ]] || exit 1'
 
-  thermal-radiation:
-    name: Thermal and radiation regression
+  wall-distance-fine:
+    name: Wall-distance fine benchmark (N=128, ${{ matrix.method }})
+    # The N=128 controlled benchmark carries the O(n^2) iteration budget
+    # documented in #870/#466: 1000*(128/16)^2 = 64000 pseudo-iterations per
+    # method, three methods, ~2M cells. It cannot share a 60-minute job with
+    # the coarse benchmarks: run 38438622597 / job 115442608769 was cancelled
+    # at the 60-minute deadline despite #871. It also cannot keep running the
+    # nine methods sequentially inside one job: the wall-clock is dominated
+    # by the O(n^2) budget methods and one method's failure hides the evidence
+    # of the others. Post-#898 the job is partitioned per method through the
+    # new --method= filter of the controlled benchmark; fail-fast is disabled
+    # on purpose so every method uploads its CSV even when another one fails.
+    # The iteration budgets and convergence gates are NOT modified here --
+    # they define the convergence verdicts; only the job partitioning
+    # changes.
     needs: prepare
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        method:
+          - exact_geometric
+          - search_based
+          - mesh_wave
+          - directional_mesh_wave
+          - poisson
+          - eikonal
+          - hamilton_jacobi
+          - advection_diffusion
+          - hybrid_poisson_eikonal
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
-      - name: Install Python dependencies
-        run: |
-          python3 -m venv "$VENV_DIR"
-          "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
-          "$VENV_DIR/bin/python" -m pip install -e .
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
       - uses: actions/download-artifact@v4
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
       - name: Restore validation build
         run: tar -xzf cfdx-validation-build.tar.gz
-      - name: Run thermal and radiation regression campaign
-        id: thermal_radiation
+      - name: Run fine wall-distance benchmark (N=128, ${{ matrix.method }})
+        id: wall_fine
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python3 scripts/thermal_radiation_regression.py \
-            --build-dir "$BUILD_DIR" \
-            --output-dir "$BUILD_DIR/thermal-radiation-regression" \
-            2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
+          ./build-validation/cfdx_wall_distance_controlled_benchmark \
+            build-validation/wall_distance_controlled_benchmark_fine_${{ matrix.method }}.csv 128 \
+            --method=${{ matrix.method }}
+          cat build-validation/wall_distance_controlled_benchmark_fine_${{ matrix.method }}.csv
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cfdx-total-validation-thermal-radiation
-          path: |
-            ${{ env.BUILD_DIR }}/thermal-radiation-regression/
-            ${{ env.BUILD_DIR }}/thermal-radiation-regression.log
+          name: cfdx-total-validation-wall-fine-evidence-${{ matrix.method }}
+          path: ${{ env.BUILD_DIR }}/*.csv
           if-no-files-found: warn
           retention-days: 30
-      - name: Final thermal/radiation gate
+      - name: Final fine wall-distance gate
         if: always()
-        run: '[[ "${{ steps.thermal_radiation.outcome }}" == "success" ]] || exit 1'
+        run: '[[ "${{ steps.wall_fine.outcome }}" == "success" ]] || exit 1'
+
+  thermal-radiation:
+  name: Thermal and radiation regression
+  needs: prepare
+  runs-on: ubuntu-24.04
+  timeout-minutes: 45
+  steps:
+    - uses: actions/checkout@v4
+    - name: Install runtime dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+    - name: Install Python dependencies
+      run: |
+        python3 -m venv "$VENV_DIR"
+        "$VENV_DIR/bin/python" -m pip install --upgrade pip
+        "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+        "$VENV_DIR/bin/python" -m pip install -e .
+    - uses: actions/download-artifact@v4
+      with:
+        name: cfdx-total-validation-build-${{ github.sha }}
+        path: .
+    - name: Restore validation build
+      run: tar -xzf cfdx-validation-build.tar.gz
+    - name: Run thermal and radiation regression campaign
+      id: thermal_radiation
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -o pipefail
+        python3 scripts/thermal_radiation_regression.py \
+          --build-dir "$BUILD_DIR" \
+          --output-dir "$BUILD_DIR/thermal-radiation-regression" \
+          2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
+    - name: Upload evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cfdx-total-validation-thermal-radiation
+        path: |
+          ${{ env.BUILD_DIR }}/thermal-radiation-regression/
+          ${{ env.BUILD_DIR }}/thermal-radiation-regression.log
+        if-no-files-found: warn
+        retention-days: 30
+    - name: Final thermal/radiation gate
+      if: always()
+      run: '[[ "${{ steps.thermal_radiation.outcome }}" == "success" ]] || exit 1'
 
   application-e2e:
     name: Application E2E regression
@@ -460,6 +522,7 @@ jobs:
       - fast-tests
       - long-tests
       - wall-distance
+      - wall-distance-fine
       - thermal-radiation
       - application-e2e
       - validation-report
@@ -472,6 +535,7 @@ jobs:
           echo "fast-tests=${{ needs.fast-tests.result }}"
           echo "long-tests=${{ needs.long-tests.result }}"
           echo "wall-distance=${{ needs.wall-distance.result }}"
+          echo "wall-distance-fine=${{ needs.wall-distance-fine.result }}"
           echo "thermal-radiation=${{ needs.thermal-radiation.result }}"
           echo "application-e2e=${{ needs.application-e2e.result }}"
           echo "validation-report=${{ needs.validation-report.result }}"
@@ -480,6 +544,7 @@ jobs:
             "${{ needs.fast-tests.result }}" \
             "${{ needs.long-tests.result }}" \
             "${{ needs.wall-distance.result }}" \
+            "${{ needs.wall-distance-fine.result }}" \
             "${{ needs.thermal-radiation.result }}" \
             "${{ needs.application-e2e.result }}" \
             "${{ needs.validation-report.result }}"; do

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include <limits>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -222,16 +224,67 @@ std::vector<WallDistanceMethod> methods()
     };
 }
 
-std::vector<std::size_t> parse_sizes(int argc, char** argv)
+std::vector<std::size_t> parse_sizes(const std::vector<std::string>& args)
 {
     std::vector<std::size_t> sizes;
-    for (int i = 2; i < argc; ++i)
-        sizes.push_back(static_cast<std::size_t>(std::stoul(argv[i])));
+    for (const auto& arg : args)
+        sizes.push_back(static_cast<std::size_t>(std::stoul(arg)));
 
     if (sizes.empty())
         sizes = {16, 32, 64};
 
     return sizes;
+}
+
+bool method_from_name(const std::string& name, WallDistanceMethod& out)
+{
+    for (const auto m : methods()) {
+        const std::string canonical = wall_distance_method_name(m);
+        if (name.size() != canonical.size())
+            continue;
+        bool equal = true;
+        for (std::size_t i = 0; i < name.size(); ++i) {
+            if (std::tolower(static_cast<unsigned char>(name[i])) !=
+                std::tolower(static_cast<unsigned char>(canonical[i]))) {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) {
+            out = m;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Optional per-method filter: --method=poisson or --method=poisson,eikonal.
+// Accepted names are the canonical wall_distance_method_name() labels. The
+// filter is strict on purpose: an unknown name returns an empty vector so
+// main fails with a usage error (exit 5) instead of silently running the
+// full benchmark -- a typo in the CI matrix must fail loudly, never launch
+// a 180-minute all-methods run. Iteration budgets and convergence gates are
+// unchanged: filtering partitions evidence, it does not relax any verdict.
+std::vector<WallDistanceMethod> parse_method_filter(const std::string& spec)
+{
+    std::vector<WallDistanceMethod> selected;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        WallDistanceMethod m{};
+        if (!method_from_name(token, m)) {
+            std::cerr << "unknown method '" << token << "' in '" << spec
+                      << "'; valid names: exact_geometric, search_based, mesh_wave, "
+                         "directional_mesh_wave, poisson, eikonal, hamilton_jacobi, "
+                         "advection_diffusion, hybrid_poisson_eikonal\n";
+            return {};
+        }
+        if (std::find(selected.begin(), selected.end(), m) == selected.end())
+            selected.push_back(m);
+    }
+    if (selected.empty())
+        std::cerr << "empty --method= filter\n";
+    return selected;
 }
 
 } // namespace
@@ -241,7 +294,50 @@ int main(int argc, char** argv)
     const std::string output = argc > 1
         ? argv[1]
         : "wall_distance_controlled_benchmark.csv";
-    const auto sizes = parse_sizes(argc, argv);
+
+    // Usage: <output.csv> [n ...] [--method=name[,name ...]]
+    // Without --method= the benchmark runs every method, exactly as
+    // before (the coarse CI job relies on this default). With --method=
+    // it runs only the requested method(s); an unknown name or option is
+    // a usage error (exit 5), never a silent fall-back to the full set.
+    std::vector<std::string> positional;
+    std::vector<WallDistanceMethod> selected_methods;
+    for (int i = 2; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg.rfind("--method=", 0) == 0) {
+            selected_methods = parse_method_filter(arg.substr(9));
+            if (selected_methods.empty())
+                return 5;
+        } else if (arg.rfind("--", 0) == 0) {
+            std::cerr << "unknown option '" << arg << "'; usage: " << argv[0]
+                      << " <output.csv> [n ...] [--method=name[,name ...]]\n";
+            return 5;
+        } else {
+            positional.push_back(arg);
+        }
+    }
+
+    std::vector<std::size_t> sizes;
+    try {
+        sizes = parse_sizes(positional);
+    } catch (const std::exception&) {
+        std::cerr << "invalid size argument; usage: " << argv[0]
+                  << " <output.csv> [n ...] [--method=name[,name ...]]\n";
+        return 5;
+    }
+
+    // Empty filter = every method (backwards-compatible default).
+    const std::vector<WallDistanceMethod> all_methods = methods();
+    const std::vector<WallDistanceMethod>& run_methods = selected_methods.empty()
+        ? all_methods
+        : selected_methods;
+    if (!selected_methods.empty()) {
+        std::cout << "method filter: ";
+        for (std::size_t i = 0; i < selected_methods.size(); ++i)
+            std::cout << (i > 0 ? "," : "")
+                      << wall_distance_method_name(selected_methods[i]);
+        std::cout << "\n";
+    }
 
     std::vector<Row> rows;
     bool convergence_failure = false;
@@ -308,7 +404,7 @@ int main(int argc, char** argv)
                   << ", max_wall_coefficient_h=" << offsets.max_wall_coefficient_h
                   << ", degenerate=" << offsets.degenerate_count << "\n";
 
-        for (const auto method : methods()) {
+        for (const auto method : run_methods) {
             const std::size_t budget = wall_distance_iteration_budget(method, n);
             const auto t0 = std::chrono::steady_clock::now();
             const auto result = compute_wall_distance(method, surface, grid, budget);
