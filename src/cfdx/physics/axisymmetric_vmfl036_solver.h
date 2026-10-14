@@ -81,9 +81,6 @@ struct AxisymMesh {
                 throw std::runtime_error("axisymmetric cell has non-positive revolution volume");
         }
 
-        struct Key { std::size_t a,b; bool operator==(const Key& o) const{return a==o.a&&b==o.b;} };
-        std::vector<std::pair<Key,std::size_t>> edge_map;
-        edge_map.reserve(2*m.cells.size());
         auto add_face=[&](std::size_t c,std::size_t n0,std::size_t n1,bool boundary){
             AxisymFace f;
             f.owner=c; f.n0=n0; f.n1=n1;
@@ -125,9 +122,25 @@ struct AxisymMesh {
                 }
             }
         }
+        // Every unpaired edge is a boundary face. Validate the expected polar
+        // topology (sphere=nt, outer=nt, axis=2*nr) fail-closed instead of
+        // silently discarding the leftover pairing work.
+        std::size_t bnd_sphere=0,bnd_outer=0,bnd_axis=0,bnd_other=0,other_cell=0;
         for(const auto& z:pending){
-            (void)z;
+            const auto& f=m.faces[z.second.face];
+            if(f.sphere) ++bnd_sphere;
+            else if(f.outer) ++bnd_outer;
+            else if(f.axis) ++bnd_axis;
+            else { ++bnd_other; other_cell=z.second.cell; }
         }
+        if(bnd_other!=0)
+            throw std::runtime_error("axisymmetric mesh has an unclassified boundary face at cell "+
+                std::to_string(other_cell));
+        if(bnd_sphere!=m.nt || bnd_outer!=m.nt || bnd_axis!=2*m.nr)
+            throw std::runtime_error("axisymmetric mesh boundary topology mismatch: sphere="+
+                std::to_string(bnd_sphere)+" expected "+std::to_string(m.nt)+
+                ", outer="+std::to_string(bnd_outer)+" expected "+std::to_string(m.nt)+
+                ", axis="+std::to_string(bnd_axis)+" expected "+std::to_string(2*m.nr));
         // For paired faces, ensure the face orientation points from owner to neighbour.
         for(auto& f:m.faces){
             if(f.neighbour!=static_cast<std::size_t>(-1)){
@@ -136,8 +149,10 @@ struct AxisymMesh {
                 if(f.nx*dx+f.nr*dr<0.0){f.nx=-f.nx;f.nr=-f.nr;std::swap(f.n0,f.n1);}
             }
         }
-        for(auto& c:m.cells){
-            if(c.faces.size()!=4) throw std::runtime_error("axisymmetric cell does not have four faces");
+        for(std::size_t ci=0;ci<m.cells.size();++ci){
+            const auto& cc=m.cells[ci];
+            if(cc.faces.size()!=4) throw std::runtime_error("axisymmetric cell does not have four faces");
+            m.cell_faces[ci]={cc.faces[0],cc.faces[1],cc.faces[2],cc.faces[3]};
         }
         return m;
     }
@@ -147,8 +162,10 @@ struct AxisymMesh {
 
 struct AxisymControls {
     std::size_t max_outer_iterations{1200};
-    std::size_t momentum_sweeps{80};
-    std::size_t pressure_sweeps{250};
+    // momentum_sweeps counts true Gauss-Seidel passes over the whole domain
+    // per outer iteration (not per cell).
+    std::size_t momentum_sweeps{8};
+    std::size_t pressure_sweeps{400};
     double momentum_tolerance{1e-8};
     double pressure_tolerance{1e-9};
     double continuity_tolerance{1e-7};
@@ -181,7 +198,6 @@ public:
     {
         if(!(rho_>0&&mu_>0)) throw std::invalid_argument("invalid rho/mu");
         std::vector<double> gp_x(n_),gp_r(n_);
-        std::vector<double> gux_x(n_),gux_r(n_),gur_x(n_),gur_r(n_);
         double continuity=std::numeric_limits<double>::infinity();
         double mom=std::numeric_limits<double>::infinity();
         double pcorr=std::numeric_limits<double>::infinity();
@@ -197,19 +213,22 @@ public:
             if(it%50==0 || it==1)
                 std::cout<<"VMFL036_AXISYM ITER="<<it<<" continuity="<<continuity
                          <<" momentum="<<mom<<" pcorr="<<pcorr<<"\n";
-            if(continuity<c.continuity_tolerance && mom<c.momentum_tolerance && pcorr<c.pressure_tolerance){
-                gradients(ux_,gux_x,gux_r,true,1.0); gradients(ur_,gur_x,gur_r,true,0.0);
-                require_finite_field("ux",ux_);
-                require_finite_field("ur",ur_);
-                require_finite_field("p",p_);
-                require_finite_field("grad_ux_x",gux_x);
-                require_finite_field("grad_ux_r",gux_r);
-                require_finite_field("grad_ur_x",gur_x);
-                require_finite_field("grad_ur_r",gur_r);
-                const auto d=drag(gux_x,gux_r,gur_x,gur_r);
-                return {true,it,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
-            }
+            if(continuity<c.continuity_tolerance && mom<c.momentum_tolerance && pcorr<c.pressure_tolerance)
+                return finish(true,it,continuity,mom,pcorr);
         }
+        // Report the achieved metrics against their gates so a failed
+        // campaign names the missing quantity instead of only "no convergence".
+        std::cout<<"VMFL036_AXISYM NOT_CONVERGED budget="<<c.max_outer_iterations
+                 <<" continuity="<<continuity<<" (gate "<<c.continuity_tolerance<<")"
+                 <<" momentum="<<mom<<" (gate "<<c.momentum_tolerance<<")"
+                 <<" pcorr="<<pcorr<<" (gate "<<c.pressure_tolerance<<")\n";
+        return finish(false,c.max_outer_iterations,continuity,mom,pcorr);
+    }
+
+private:
+    AxisymResult finish(bool converged,std::size_t it,double continuity,double mom,double pcorr)
+    {
+        std::vector<double> gux_x(n_),gux_r(n_),gur_x(n_),gur_r(n_);
         gradients(ux_,gux_x,gux_r,true,1.0); gradients(ur_,gur_x,gur_r,true,0.0);
         require_finite_field("ux",ux_);
         require_finite_field("ur",ur_);
@@ -219,10 +238,9 @@ public:
         require_finite_field("grad_ur_x",gur_x);
         require_finite_field("grad_ur_r",gur_r);
         const auto d=drag(gux_x,gux_r,gur_x,gur_r);
-        return {false,c.max_outer_iterations,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
+        return {converged,it,continuity,mom,pcorr,d[0],d[1],d[2],d[3],d[4],d[5]};
     }
 
-private:
     static void require_finite_field(const char* name, const std::vector<double>& a)
     {
         for(std::size_t i=0;i<a.size();++i)
@@ -293,88 +311,104 @@ private:
                            const std::vector<double>& gpx,const std::vector<double>& gpr,
                            std::vector<double>& apx,std::vector<double>& apr,
                            const AxisymControls& c){
-        std::vector<double> nxux(n_,0.0),nxur(n_,0.0);
+        // Phase 1: assemble the under-relaxed momentum rows into flat
+        // Gauss-Seidel stencils. Neighbour values are never read here, so
+        // the sweep phase below sees a frozen, consistent operator.
+        std::vector<std::array<std::size_t,4>> nb_id(n_);
+        std::vector<std::array<double,4>> nb_an(n_);
+        std::vector<std::size_t> nb_cnt(n_,0);
+        std::vector<double> rhs_x(n_,0.0),rhs_r(n_,0.0);
+
         for(std::size_t cell=0;cell<n_;++cell){
-            double ax=0.0,ar=0.0,bx=-gpx[cell]*m_.cells[cell].volume;
-            double br=-gpr[cell]*m_.cells[cell].volume;
             const auto& ce=m_.cells[cell];
+            double ax=0.0, ar=0.0;
+            double bx=-gpx[cell]*ce.volume;
+            double br=-gpr[cell]*ce.volume;
             for(const auto fid:ce.faces){
                 const auto& f=m_.faces[fid];
                 const bool internal=f.neighbour!=static_cast<std::size_t>(-1);
-                const std::size_t nb=internal?(f.owner==cell?f.neighbour:f.owner):cell;
                 const double F=(f.owner==cell?phi_[fid]:-phi_[fid]);
-                const double d=internal?dist(ce,m_.cells[nb]):std::max(1e-12, std::abs((f.cx-ce.cx)*f.nx+(f.cr-ce.cr)*f.nr));
-                const double D=mu_*f.area/d;
                 if(internal){
+                    const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
+                    const double d=dist(ce,m_.cells[nb]);
+                    const double D=mu_*f.area/d;
                     const double an=D+std::max(-F,0.0);
                     ax+=D+std::max(F,0.0);
                     ar+=D+std::max(F,0.0);
-                    nxux[cell]+=an*ux[nb]; nxur[cell]+=an*ur[nb];
+                    nb_id[cell][nb_cnt[cell]]=nb;
+                    nb_an[cell][nb_cnt[cell]]=an;
+                    ++nb_cnt[cell];
                 }else if(f.axis){
-                    // symmetry: ux has zero normal gradient, ur=0.
-                    ax+=std::max(F,0.0);
+                    // Symmetry axis: ux has zero normal gradient, ur=0. The
+                    // axis face has zero revolution area, so F and D vanish
+                    // numerically; the terms are kept for residual consistency.
+                    const double d=std::max(1e-12,std::abs((f.cx-ce.cx)*f.nx+(f.cr-ce.cr)*f.nr));
+                    const double D=mu_*f.area/d;
+                    ax+=F;
                     ar+=D+std::max(F,0.0);
                 }else if(f.outer && f.cx >= 0.0){
-                    // Pressure outlet: zero normal velocity gradient.
-                    ax+=std::max(F,0.0);
-                    ar+=std::max(F,0.0);
+                    // Pressure outlet: zero-gradient velocity, u_b = u_P. The
+                    // exact upwind row contribution is F*u_P (signed): outflow
+                    // max(F,0) and inflow max(-F,0) both cancel against u_b=u_P,
+                    // and the diffusive term vanishes because u_b = u_P.
+                    ax+=F;
+                    ar+=F;
                 }else{
+                    // Sphere wall or inlet arc: Dirichlet velocity.
                     const double ubx=boundary_ux(f,cell), ubr=boundary_ur(f,cell);
+                    const double d=std::max(1e-12,std::abs((f.cx-ce.cx)*f.nx+(f.cr-ce.cr)*f.nr));
+                    const double D=mu_*f.area/d;
                     const double ab=D+std::max(-F,0.0);
-                    ax+=D+std::max(F,0.0); ar+=D+std::max(F,0.0);
-                    bx+=ab*ubx; br+=ab*ubr;
+                    ax+=D+std::max(F,0.0);
+                    ar+=D+std::max(F,0.0);
+                    bx+=ab*ubx;
+                    br+=ab*ubr;
                 }
             }
             // Cylindrical radial viscous term -nu*u_r/r^2, implicit.
             if(!std::isfinite(ce.cr) || !(ce.cr>0.0))
                 throw std::runtime_error("VMFL036 invalid positive cell radius at cell "+std::to_string(cell));
-            const double rr=ce.cr;
-            const double hoop=mu_*m_.cells[cell].volume/(rr*rr);
+            const double hoop=mu_*ce.volume/(ce.cr*ce.cr);
             if(!std::isfinite(hoop) || !(hoop>0.0))
                 throw std::runtime_error("VMFL036 invalid radial geometric coefficient at cell "+std::to_string(cell));
             ar+=hoop;
-            const double oldx=ux[cell], oldr=ur[cell];
             if(!std::isfinite(ax) || !std::isfinite(ar) || !(ax>0.0) || !(ar>0.0))
                 throw std::runtime_error("VMFL036 invalid momentum coefficients at cell "+
                     std::to_string(cell)+" ax="+std::to_string(ax)+" ar="+std::to_string(ar));
-            apx[cell]=ax/c.alpha_u; apr[cell]=ar/c.alpha_u;
+            // Under-relaxation: relaxed diagonal a_P/alpha_u on the left,
+            // explicit source from the pre-solve values on the right.
+            const double oldx=ux[cell], oldr=ur[cell];
+            apx[cell]=ax/c.alpha_u;
+            apr[cell]=ar/c.alpha_u;
             bx+=(1.0-c.alpha_u)/c.alpha_u*ax*oldx;
             br+=(1.0-c.alpha_u)/c.alpha_u*ar*oldr;
-            // In-place Gauss-Seidel sweeps, diagonal uses relaxed aP.
-            for(std::size_t s=0;s<c.momentum_sweeps;++s){
-                const double nx=nxux[cell], nr=nxur[cell];
-                const double sx=(nx+bx)/apx[cell], sr=(nr+br)/apr[cell];
+            if(!std::isfinite(bx) || !std::isfinite(br))
+                throw std::runtime_error("VMFL036 non-finite momentum source at cell "+std::to_string(cell));
+            rhs_x[cell]=bx;
+            rhs_r[cell]=br;
+        }
+
+        // Phase 2: true Gauss-Seidel sweeps over the whole domain. Each sweep
+        // updates every cell once with the latest available neighbour values.
+        for(std::size_t s=0;s<c.momentum_sweeps;++s){
+            for(std::size_t cell=0;cell<n_;++cell){
+                double sumx=rhs_x[cell], sumr=rhs_r[cell];
+                for(std::size_t k=0;k<nb_cnt[cell];++k){
+                    const std::size_t nb=nb_id[cell][k];
+                    const double an=nb_an[cell][k];
+                    sumx+=an*ux[nb];
+                    sumr+=an*ur[nb];
+                }
+                const double sx=sumx/apx[cell];
+                const double sr=sumr/apr[cell];
                 if(!std::isfinite(sx) || !std::isfinite(sr))
                     throw std::runtime_error(
-                        "VMFL036 non-finite momentum sweep at cell "+std::to_string(cell)+
+                        "VMFL036 non-finite momentum update at cell "+std::to_string(cell)+
                         " sweep="+std::to_string(s)+
                         " ux="+std::to_string(sx)+" ur="+std::to_string(sr)+
                         " apx="+std::to_string(apx[cell])+" apr="+std::to_string(apr[cell]));
-                ux[cell]=sx; ur[cell]=sr;
-                // Remove the old neighbour contribution and refresh on the next sweep.
-                // A full neighbour refresh is inexpensive for this deterministic mesh.
-                double sumx=0.0,sumr=0.0;
-                for(const auto fid:ce.faces){
-                    const auto& ff=m_.faces[fid];
-                    if(ff.neighbour!=static_cast<std::size_t>(-1)){
-                        const auto nb2=(ff.owner==cell?ff.neighbour:ff.owner);
-                        const double FF=(ff.owner==cell?phi_[fid]:-phi_[fid]);
-                        const double dd=dist(ce,m_.cells[nb2]);
-                        const double DD=mu_*ff.area/dd;
-                        const double aa=DD+std::max(-FF,0.0);
-                        sumx+=aa*ux[nb2]; sumr+=aa*ur[nb2];
-                    }
-                }
-                const double ux_new=(sumx+bx)/apx[cell];
-                const double ur_new=(sumr+br)/apr[cell];
-                if(!std::isfinite(ux_new) || !std::isfinite(ur_new))
-                    throw std::runtime_error(
-                        "VMFL036 non-finite momentum update at cell "+std::to_string(cell)+
-                        " ux="+std::to_string(ux_new)+" ur="+std::to_string(ur_new)+
-                        " apx="+std::to_string(apx[cell])+" apr="+std::to_string(apr[cell])+
-                        " bx="+std::to_string(bx)+" br="+std::to_string(br)+
-                        " r="+std::to_string(ce.cr));
-                ux[cell]=ux_new; ur[cell]=ur_new;
+                ux[cell]=sx;
+                ur[cell]=sr;
             }
         }
         // Boundary conditions are imposed through boundary-face fluxes and
@@ -406,10 +440,22 @@ private:
         return r;
     }
 
+    // Face-normal pressure response of a cell:
+    // nx^2*V/(alpha_u*a_Px) + nr^2*V/(alpha_u*a_Pr). apx_/apr_ store the
+    // relaxed diagonals a_P/alpha_u, so dividing by alpha_u recovers the
+    // unrelaxed momentum diagonal required by fiche 04.
+    double face_response(std::size_t cell,double nx,double nr,const AxisymControls& c) const {
+        const double v=m_.cells[cell].volume;
+        return (nx*nx*v)/(c.alpha_u*apx_[cell])+(nr*nr*v)/(c.alpha_u*apr_[cell]);
+    }
+
     double pressure_correction(const AxisymControls& c){
         pc_.assign(n_,0.0);
         std::vector<double> diag(n_,0.0),rhs(n_,0.0);
-        std::vector<std::vector<std::pair<std::size_t,double>>> rows(n_);
+        // Flat off-diagonal stencils; every cell has at most four faces.
+        std::vector<std::array<std::size_t,4>> prow_nb(n_);
+        std::vector<std::array<double,4>> prow_a(n_);
+        std::vector<std::size_t> prow_cnt(n_,0);
         for(std::size_t cell=0;cell<n_;++cell){
             double imbalance=0.0;
             for(const auto fid:m_.cells[cell].faces)
@@ -420,38 +466,27 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1)){
                     const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
                     const double d=dist(m_.cells[cell],m_.cells[nb]);
-                    // apx_ stores the under-relaxed diagonal a_P/alpha_u.
-                    // The SIMPLE pressure equation uses rAU = V/a_P with
-                    // the unrelaxed momentum diagonal, as required by fiche 04.
-                    const double df=0.5*(
-                        m_.cells[cell].volume/(c.alpha_u*apx_[cell])+
-                        m_.cells[nb].volume/(c.alpha_u*apx_[nb]));
+                    // Directional face response: the face-normal velocity
+                    // correction is -(nx^2*rAU_x + nr^2*rAU_r)*dp'/dn per cell,
+                    // so faces with a radial normal use the radial diagonal
+                    // (which carries the hoop term), consistently with the
+                    // component-wise velocity correction below.
+                    const double df=0.5*(face_response(cell,f.nx,f.nr,c)
+                                         +face_response(nb,f.nx,f.nr,c));
                     const double a=rho_*f.area*df/d;
-                    diag[cell]+=a; rows[cell].push_back({nb,-a});
+                    diag[cell]+=a;
+                    prow_nb[cell][prow_cnt[cell]]=nb;
+                    prow_a[cell][prow_cnt[cell]]=-a;
+                    ++prow_cnt[cell];
                 } else if(f.outer && f.cx >= 0.0){
                     const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
-                    const double a=rho_*f.area*
-                        (m_.cells[cell].volume/(c.alpha_u*apx_[cell]))/d;
+                    const double a=rho_*f.area*face_response(cell,f.nx,f.nr,c)/d;
                     // Fixed physical pressure at the outlet implies a
                     // homogeneous pressure-correction boundary condition:
                     // p'_b = 0. Do not inject -p_P into the correction RHS.
                     diag[cell]+=a;
                 }
             }
-        }
-        // The pressure-outlet arc supplies the Dirichlet pressure-correction
-        // condition; no artificial reference cell is required.
-        double maxcorr=std::numeric_limits<double>::infinity();
-        for(std::size_t s=0;s<c.pressure_sweeps;++s){
-            maxcorr=0.0;
-            for(std::size_t cell=0;cell<n_;++cell){
-                double sum=rhs[cell];
-                for(const auto [nb,a]:rows[cell]) sum-=a*pc_[nb];
-                const double v=sum/diag[cell];
-                maxcorr=std::max(maxcorr,std::abs(v-pc_[cell]));
-                pc_[cell]=v;
-            }
-            if(maxcorr<c.pressure_tolerance) break;
         }
         for(std::size_t cell=0;cell<n_;++cell){
             if(!std::isfinite(diag[cell]) || !(diag[cell]>0.0))
@@ -460,6 +495,21 @@ private:
             if(!std::isfinite(rhs[cell]))
                 throw std::runtime_error("VMFL036 non-finite pressure-correction RHS at cell "+
                     std::to_string(cell)+" value="+std::to_string(rhs[cell]));
+        }
+        // The pressure-outlet arc supplies the Dirichlet pressure-correction
+        // condition; no artificial reference cell is required.
+        double maxcorr=std::numeric_limits<double>::infinity();
+        for(std::size_t s=0;s<c.pressure_sweeps;++s){
+            maxcorr=0.0;
+            for(std::size_t cell=0;cell<n_;++cell){
+                double sum=rhs[cell];
+                for(std::size_t k=0;k<prow_cnt[cell];++k)
+                    sum+=prow_a[cell][k]*pc_[prow_nb[cell][k]];
+                const double v=sum/diag[cell];
+                maxcorr=std::max(maxcorr,std::abs(v-pc_[cell]));
+                pc_[cell]=v;
+            }
+            if(maxcorr<c.pressure_tolerance) break;
         }
         // pressure correction gradient; boundary p'=0.
         for(std::size_t cell=0;cell<n_;++cell){
