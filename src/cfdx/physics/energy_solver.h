@@ -238,6 +238,14 @@ struct IndependentEnergyBalance {
     double normalized_residual = 0.0;
     double max_cell_residual = 0.0;
     std::size_t worst_cell = 0;
+    // Per-cell residual normalized by that cell's own gross power scale
+    // (sum of |q_f| over its faces + |source_c * V_c| + |accumulation_c|,
+    // floor 1 W). A globally normalized local criterion can hide a
+    // locally significant defect behind a large domain scale; this one
+    // measures every cell against the fluxes and sources it actually
+    // carries. The floor keeps quiescent cells well-posed.
+    double max_cell_residual_normalized = 0.0;
+    std::size_t worst_cell_normalized = 0;
     double boundary_flux = 0.0;
     double source_integral = 0.0;
     double accumulation = 0.0;
@@ -276,14 +284,20 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
     IndependentEnergyBalance r;
     const auto& own=mesh.ownership();
     std::vector<double> cell(mesh.n_cells(),0.0);
+    std::vector<double> cell_gross_flux(mesh.n_cells(),0.0);
     for(std::size_t f=0; f<mesh.n_faces(); ++f) {
         const double q=flux(f);
         if(!std::isfinite(q)) { ++r.nonfinite_faces; continue; }
         const std::size_t o=own.owner(f);
         cell[o]+=q;
+        cell_gross_flux[o]+=std::abs(q);
         const auto n=own.neighbour(f);
-        if(n>=0) cell[static_cast<std::size_t>(n)]-=q;
-        else r.boundary_flux+=q;
+        if(n>=0) {
+            cell[static_cast<std::size_t>(n)]-=q;
+            cell_gross_flux[static_cast<std::size_t>(n)]+=std::abs(q);
+        } else {
+            r.boundary_flux+=q;
+        }
     }
 
     double sum2=0.0;
@@ -301,8 +315,20 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
         // div(q) + d(rho cp T)/dt = source.
         const double rc=cell[c]+accumulation-s*geometry.cell_volumes[c];
         r.residual+=rc;
-        r.max_cell_residual=std::max(r.max_cell_residual,std::abs(rc));
-        if(std::abs(rc) >= r.max_cell_residual) r.worst_cell=c;
+        if(std::abs(rc) >= r.max_cell_residual) {
+            r.max_cell_residual=std::abs(rc);
+            r.worst_cell=c;
+        }
+        // Local gross power scale of THIS cell: its own face throughputs,
+        // its own source and its own accumulation, floored at 1 W.
+        const double cell_scale=std::max(1.0,
+            cell_gross_flux[c]+std::abs(s)*geometry.cell_volumes[c]+
+            std::abs(accumulation));
+        const double rc_normalized=std::abs(rc)/cell_scale;
+        if(rc_normalized >= r.max_cell_residual_normalized) {
+            r.max_cell_residual_normalized=rc_normalized;
+            r.worst_cell_normalized=c;
+        }
         sum2+=rc*rc;
     }
     const double scale=std::max({1.0,std::abs(r.boundary_flux),

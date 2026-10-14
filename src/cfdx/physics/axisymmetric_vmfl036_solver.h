@@ -420,14 +420,22 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1)){
                     const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
                     const double d=dist(m_.cells[cell],m_.cells[nb]);
-                    const double df=0.5*(m_.cells[cell].volume/apx_[cell]+m_.cells[nb].volume/apx_[nb]);
+                    // apx_ stores the under-relaxed diagonal a_P/alpha_u.
+                    // The SIMPLE pressure equation uses rAU = V/a_P with
+                    // the unrelaxed momentum diagonal, as required by fiche 04.
+                    const double df=0.5*(
+                        m_.cells[cell].volume/(c.alpha_u*apx_[cell])+
+                        m_.cells[nb].volume/(c.alpha_u*apx_[nb]));
                     const double a=rho_*f.area*df/d;
                     diag[cell]+=a; rows[cell].push_back({nb,-a});
                 } else if(f.outer && f.cx >= 0.0){
                     const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
-                    const double a=rho_*f.area*(m_.cells[cell].volume/apx_[cell])/d;
+                    const double a=rho_*f.area*
+                        (m_.cells[cell].volume/(c.alpha_u*apx_[cell]))/d;
+                    // Fixed physical pressure at the outlet implies a
+                    // homogeneous pressure-correction boundary condition:
+                    // p'_b = 0. Do not inject -p_P into the correction RHS.
                     diag[cell]+=a;
-                    rhs[cell] += a*(-p_[cell]);
                 }
             }
         }
@@ -462,7 +470,7 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1))
                     qf=0.5*(pc_[cell]+pc_[f.neighbour]);
                 else if(f.outer && f.cx >= 0.0)
-                    qf=-p_[cell]; // physical outlet pressure is fixed to zero
+                    qf=0.0; // pressure correction is zero on a fixed-pressure outlet
                 gx+=qf*f.nx*f.area; gr+=qf*f.nr*f.area;
             }
             gx/=m_.cells[cell].volume; gr/=m_.cells[cell].volume;
@@ -470,8 +478,10 @@ private:
                !std::isfinite(apr_[cell]) || !(apr_[cell]>0.0))
                 throw std::runtime_error("VMFL036 invalid momentum diagonal during pressure correction at cell "+
                     std::to_string(cell));
-            ux_[cell]-=c.alpha_u*m_.cells[cell].volume/apx_[cell]*gx;
-            ur_[cell]-=c.alpha_u*m_.cells[cell].volume/apr_[cell]*gr;
+            ux_[cell]-=m_.cells[cell].volume/
+                (c.alpha_u*apx_[cell])*gx;
+            ur_[cell]-=m_.cells[cell].volume/
+                (c.alpha_u*apr_[cell])*gr;
             if(!std::isfinite(ux_[cell]) || !std::isfinite(ur_[cell]))
                 throw std::runtime_error("VMFL036 non-finite corrected velocity at cell "+
                     std::to_string(cell));

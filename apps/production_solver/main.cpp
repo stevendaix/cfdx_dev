@@ -343,6 +343,10 @@ std::string energy_convergence_json(
     out << "  \"worst_cell\": " << energy.worst_cell << ",\n";
     out << "  \"local_balance_normalized\": "
         << json_number(energy.local_balance_normalized) << ",\n";
+    out << "  \"max_cell_residual_normalized\": "
+        << json_number(energy.max_cell_residual_normalized) << ",\n";
+    out << "  \"worst_cell_normalized\": "
+        << energy.worst_cell_normalized << ",\n";
     out << "  \"nonfinite_faces\": " << energy.nonfinite_faces << ",\n";
     out << "  \"nonfinite_cells\": " << energy.nonfinite_cells << ",\n";
     out << "  \"history\": [\n";
@@ -475,8 +479,27 @@ int main(int argc, char** argv)
         // declaration (e.g. "buoyant") must fail the run up front instead of
         // being discovered after the carrier solve, even when the energy
         // stage itself would not run.
-        if (is_case_hdf5)
+        if (is_case_hdf5) {
             validate_production_energy_model(case_setup);
+            // Supported-by-this-executable gate: the schema accepts more
+            // energy models than this incompressible frozen-flow solver
+            // implements. "solid_conduction" needs the dedicated thermal
+            // solver and "compressible" needs a compressible solver;
+            // running this executable on them would silently compute a
+            // different physics than the case declares (an incompressible
+            // isothermal flow), so they are rejected with an explicit
+            // routing message instead of being accepted and ignored.
+            if (case_setup.energy_model == "solid_conduction")
+                throw std::invalid_argument(
+                    "production solver: energy_model 'solid_conduction' is "
+                    "not solved by this executable; use the dedicated "
+                    "thermal solver");
+            if (case_setup.energy_model == "compressible")
+                throw std::invalid_argument(
+                    "production solver: energy_model 'compressible' is not "
+                    "solved by this executable (incompressible carrier "
+                    "only); use a compressible solver for this case");
+        }
 
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
@@ -585,15 +608,34 @@ int main(int argc, char** argv)
                     case_setup.body_force[1],
                     case_setup.body_force[2]};
             }
-            // Material properties: a single material with positive density and
-            // dynamic viscosity supplies the physical density and kinematic
-            // viscosity (nu = mu / rho). An empty or incomplete material block
-            // leaves the solver defaults untouched, and more than one declared
-            // material is rejected: the production path must not silently pick
-            // a winner.
+            // Material properties: a single material declaring ANY fluid
+            // property must declare BOTH a finite positive density and a
+            // finite positive dynamic viscosity (nu = mu / rho). A partial
+            // declaration is rejected instead of silently letting the
+            // solver defaults substitute for the declared fluid: the flow
+            // must be solved with the material the case declares, or the
+            // velocity field and mass flux are computed with a different
+            // physics than the case advertises. A material block that
+            // declares no fluid property at all (e.g. thermal-only) keeps
+            // the solver defaults, and more than one declared material is
+            // rejected: the production path must not silently pick a
+            // winner.
             if (case_setup.materials.size() == 1) {
                 const auto& material = case_setup.materials.front();
-                if (material.density > 0.0 && material.dynamic_viscosity > 0.0) {
+                const bool declares_fluid_properties =
+                    material.density != 0.0 ||
+                    material.dynamic_viscosity != 0.0;
+                if (declares_fluid_properties) {
+                    if (!std::isfinite(material.density) ||
+                        !(material.density > 0.0) ||
+                        !std::isfinite(material.dynamic_viscosity) ||
+                        !(material.dynamic_viscosity > 0.0))
+                        throw std::invalid_argument(
+                            "production solver: the case material declares "
+                            "fluid properties; density and "
+                            "dynamic_viscosity must then both be finite and "
+                            "positive instead of silently falling back to "
+                            "solver defaults");
                     controls.density = material.density;
                     controls.kinematic_viscosity =
                         material.dynamic_viscosity / material.density;
@@ -732,8 +774,16 @@ int main(int argc, char** argv)
                       << (energy_result.converged ? "converged"
                                                    : "NOT converged")
                       << " iterations " << energy_result.iterations
-                      << " conservation "
-                      << energy_result.independent_conservation_normalized
+                      // Blocking-gate diagnostics, not the legacy
+                      // normalized audit: global_balance_normalized and
+                      // local_balance_normalized (gross-scale) plus
+                      // max_cell_residual_normalized (per-cell scale) are
+                      // the criteria converged actually requires.
+                      << " conservation global="
+                      << energy_result.global_balance_normalized
+                      << " local=" << energy_result.local_balance_normalized
+                      << " local_cell="
+                      << energy_result.max_cell_residual_normalized
                       << "\n";
             std::cout << "Energy gates linear="
                       << (energy_result.linear_solver_converged ? 1 : 0)
