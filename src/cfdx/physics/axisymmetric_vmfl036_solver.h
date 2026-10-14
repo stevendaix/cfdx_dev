@@ -117,6 +117,15 @@ struct AxisymMesh {
                     const auto fid=it->second.face;
                     // Existing face belongs to the previous owner; current cell is neighbour.
                     m.faces[fid].neighbour=c;
+                    // The face is internal now: clear the speculative boundary
+                    // classification assigned when the edge was first created.
+                    // A stale sphere flag on a ring-0 internal face (a radial or
+                    // outer-arc edge first seen by the ring-0 cell) would
+                    // otherwise pollute the drag integral, which must only
+                    // sample genuine sphere boundary faces.
+                    m.faces[fid].sphere=false;
+                    m.faces[fid].outer=false;
+                    m.faces[fid].axis=false;
                     m.cells[c].faces.push_back(fid);
                     pending.erase(it);
                 }
@@ -563,7 +572,10 @@ private:
             if(m_.cells[c].i!=0) continue;
             for(const auto fid:m_.cells[c].faces){
                 const auto& f=m_.faces[fid];
-                if(!f.sphere) continue;
+                // Only genuine sphere boundary faces carry body-surface drag:
+                // internal faces must never reach the force integral even if a
+                // stale boundary classification survived the mesh reader.
+                if(f.neighbour!=static_cast<std::size_t>(-1) || !f.sphere) continue;
                 // Mesh face normal points out of the fluid domain, i.e. into the
                 // body. The force library uses the body->fluid normal.
                 const double nx=-f.nx;
