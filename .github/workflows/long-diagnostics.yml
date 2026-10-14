@@ -1,4 +1,4 @@
-name: Long validation diagnostics v1
+name: Long validation diagnostics v2
 
 # Diagnostic-only workflow. Never merge this branch into master.
 # Purpose: reproduce the failing long-validation tests at the current
@@ -6,6 +6,19 @@ name: Long validation diagnostics v1
 # evidence (iteration traces, convergence reason, failure messages)
 # as a PR comment for root-cause analysis. No test, tolerance or gate
 # is modified by this workflow.
+#
+# v2 differences (diagnostic branch only):
+#   - SKIP_RETURN_CODE 1 removed from test_channel_qualification,
+#     test_bfs_qualification and test_naca0012_qualification in this
+#     branch's CMakeLists so their exit(1) failures surface as real
+#     ctest failures with --output-on-failure output instead of the
+#     silent "Skipped" status that masked the evidence in v1.
+#   - test_channel_qualification carries a diagnostic-only failure dump
+#     (CHANNEL_DIAG / CHANNEL_HIST lines, convergence reason, final
+#     U/p state). No gate, tolerance or criterion is changed.
+#   - PR comment step falls back to the explicit diagnostic PR number
+#     because the v1 `gh pr view --head` lookup failed silently and
+#     the run completed without posting any comment.
 
 on:
   push:
@@ -119,15 +132,18 @@ jobs:
         run: |
           PR=$(gh pr view --repo "$GITHUB_REPOSITORY" --head "ci/long-diagnostic" --json number --jq .number 2>/dev/null || true)
           if [ -z "${PR:-}" ]; then
-            echo "no host PR found; skipping comment"
-            exit 0
+            echo "gh pr view found no host PR; falling back to the diagnostic PR #894"
+            PR=894
           fi
           {
-            echo '## Long validation diagnostics v1 - master HEAD post-merge (#889 + #893)'
+            echo '## Long validation diagnostics v2 - master HEAD post-merge (#889 + #893)'
             echo ''
             echo 'Focused rerun of the failing/suspect long tests at the current master HEAD.'
             echo 'Environment identical to the official long-validation job (Release, MPI,'
             echo 'parallel HDF5, LONG_VALIDATION=ON, meshes generated in-job).'
+            echo 'On this diagnostic branch SKIP_RETURN_CODE is removed so the channel,'
+            echo 'BFS and NACA0012 qualification failures appear as explicit ctest'
+            echo 'failures with their full solver output instead of "Skipped".'
             echo ''
             echo "configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} meshes=${{ steps.meshes.outcome }} tests=${{ steps.tests.outcome }}"
             echo ''
@@ -144,10 +160,12 @@ jobs:
               echo '~~~'
               if [ -f "sec_${name}.log" ]; then
                 head -n 25 "sec_${name}.log"
-                echo '... [trace excerpt] ...'
-                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | head -n 4 || true
-                echo '... [last iterations] ...'
-                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | tail -n 8 || true
+                echo '... [iteration trace head] ...'
+                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | head -n 6 || true
+                echo '... [iteration trace tail] ...'
+                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | tail -n 10 || true
+                echo '... [failure evidence] ...'
+                grep -E 'CHANNEL_DIAG|CHANNEL_HIST|CHANNEL_STATE|_QUALIFICATION:|FAIL:|did not converge|Not Run|Failed|Passed' "sec_${name}.log" | tail -n 40 || true
                 echo '... [final lines] ...'
                 tail -n 30 "sec_${name}.log"
               else
@@ -164,8 +182,10 @@ jobs:
         run: |
           if [[ -f build.log ]] && grep -qE 'error:|FAILED:' build.log; then
             PR=$(gh pr view --repo "$GITHUB_REPOSITORY" --head "ci/long-diagnostic" --json number --jq .number 2>/dev/null || true)
-            if [ -n "${PR:-}" ]; then
-              {
+            if [ -z "${PR:-}" ]; then
+              PR=894
+            fi
+            {
                 echo '## Long validation diagnostics - BUILD ERRORS'
                 echo '~~~'
                 grep -E -B1 -A3 'error:|FAILED:' build.log | head -80

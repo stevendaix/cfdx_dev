@@ -146,8 +146,57 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
 
+    // Instrumentation de diagnostic uniquement (branche ci/long-diagnostic).
+    // La trace d'iterations bornee ci-dessous ne modifie aucun critere, aucune
+    // tolerance et aucun gate : elle rend seulement visible l'historique
+    // autoritaire du solveur pendant la campagne de diagnostic.
+    c.diagnostics.iteration_trace = true;
+    c.diagnostics.iteration_trace_frequency = 25;
+
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
-    if(!solve.converged) throw std::runtime_error("channel solver did not converge");
+    if(!solve.converged) {
+        // Bloc de diagnostic uniquement (branche ci/long-diagnostic) : le
+        // gate reste inchange, le throw ci-dessous fait toujours echouer le
+        // test. Ce bloc imprime la preuve autoritaire de non-convergence
+        // (raison, 15 dernieres iterations d'historique, etat final U/p)
+        // afin que la campagne CI capture l'evidence pour l'analyse de cause
+        // racine. Aucune valeur de ce bloc n'assouplit le verdict.
+        const double* pu=U.component_data(0);
+        const double* pp=p.component_data(0);
+        double umax=0.0;
+        double pmin=pp[0], pmax=pp[0];
+        for(std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            umax=std::max(umax,pu[cell]);
+            pmin=std::min(pmin,pp[cell]);
+            pmax=std::max(pmax,pp[cell]);
+        }
+        std::cerr<<"CHANNEL_DIAG mesh="<<mesh_path
+                 <<" iterations="<<solve.iterations
+                 <<" convergence_status="<<static_cast<int>(solve.convergence_status)
+                 <<" convergence_reason="<<solve.convergence_reason
+                 <<" umax="<<umax<<" pmin="<<pmin<<" pmax="<<pmax<<"\n";
+        if(!solve.history.empty()) {
+            const std::size_t shown=std::min<std::size_t>(solve.history.size(),15);
+            const std::size_t first=solve.history.size()-shown;
+            for(std::size_t k=first;k<solve.history.size();++k) {
+                const auto& h=solve.history[k];
+                std::cerr<<"CHANNEL_HIST iter="<<h.iteration
+                         <<" mom_rel="<<h.momentum_equation_residual_relative
+                         <<" cont_norm="<<h.continuity_normalized
+                         <<" cont_linf="<<h.continuity_linf
+                         <<" vel_change="<<h.velocity_change_inf
+                         <<" p_change="<<h.pressure_change_inf
+                         <<" flux_cont="<<h.corrected_flux_continuity_linf
+                         <<" flux_mismatch="<<h.flux_velocity_mismatch_linf
+                         <<" alpha_u="<<h.effective_alpha_u
+                         <<" alpha_p="<<h.effective_alpha_p
+                         <<" mass_bflux="<<h.mass_boundary_flux
+                         <<" mass_imbalance="<<h.mass_normalized_imbalance
+                         <<" mass_worst_cell="<<h.mass_worst_cell<<"\n";
+            }
+        }
+        throw std::runtime_error("channel solver did not converge");
+    }
 
     const FvGeometry geometry = build_fv_geometry(mesh);
 
@@ -228,3 +277,4 @@ int main(int argc,char** argv)
         return 1;
     }
 }
+
