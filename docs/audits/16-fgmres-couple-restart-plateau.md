@@ -22,15 +22,21 @@ $$ \begin{pmatrix} A_{uu} & G \\ D & C \end{pmatrix} \begin{pmatrix} \mathbf{u} 
 
 avec bloc de pression Rhie–Chow implicite (anti-checkerboarding). Le cas Ghia est tout-parois : toutes les frontières de pression sont Neumann, la pression n’est définie qu’à une constante près — la jauge est imposée par élimination de la ligne ET de la colonne de la cellule de référence avec diagonale unité (assemblage couplé réduit).
 
-## 3. Discrétisation / algèbre
-Trois composantes de vitesse + une pression par cellule : le système couplé a 4·nx·ny inconnues (32×32 → 4096 ; 16×16 → 1024). FGMRES restarté construit m vecteurs de base par cycle :
+## 3. Discrétisation Volume Fini
+La discrétisation Volume Fini (trois composantes de vitesse + une pression par cellule) produit le système couplé de point de selle à 4·nx·ny inconnues (32×32 → 4096 ; 16×16 → 1024). FGMRES restarté appliqué à ce système construit m vecteurs de base par cycle :
 - espace complet (m ≥ dimension) : convergence garantie en au plus n itérations en arithmétique exacte ;
 - m < n : le taux de réduction atteignable par cycle est borné par le polynôme de degré m sur le spectre du système préconditionné ; un plateau au-dessus de la tolérance devient possible, même avec un bon préconditionneur.
 
-## 4. Sélection du restart dans CFDX
+Sélection du restart dans CFDX :
 - Chemin automatique (krylov=Auto, preconditioner=Auto) : espace complet pour n ≤ 4096 — min(n, max(1024, budget)) — et cap mémoire 512 au-delà. Politique instaurée après deux plateaux mesurés et documentés dans steady_incompressible_solver.h : Poiseuille 768 inconnues (cap 512 → plateau ~1e-7) ; cavité 16×32, 4096 inconnues (cap 512 → résidu figé à 3.66e-12 contre une gate 1e-12, trois retries identiques).
 - Chemin explicite (FGMRES et PCD demandés, cas du test N8-PCD) : restart = min(gmres_restart, dimension). La valeur par défaut de LinearSolverRequest::gmres_restart est 40 : une requête explicite qui ne fixe pas le restart hérite silencieusement d’un FGMRES(40), tronquant l’espace de Krylov très en dessous de la dimension du système — défaut observé sur la qualification 32×32 (#894 : budget de 5000 itérations épuisé en 125 cycles, résidu vrai relatif figé à 4.803775e-09 contre la gate 1e-10, trois retries identiques).
 - Correctif : le test applique au chemin explicite la même politique que le chemin automatique (espace complet ≤ 4096 inconnues, borné par la dimension). Le budget d’itérations couplées (coupled_max_iterations=5000) et les gates ne sont pas modifiés.
+
+## 4. Traitement des frontières
+Le cas Ghia est tout-parois (lid entraîné) : aucune frontière à pression imposée, toutes les frontières de pression sont Neumann (flux nul). La jauge de pression est traitée à deux niveaux, non modifiés par ce correctif :
+- Système couplé : élimination de la ligne ET de la colonne de la cellule de référence avec diagonale unité (assemblage couplé réduit) — la composante de jauge est imposée par construction.
+- Préconditionneur PCD : les opérateurs de pression internes de l’action imbriquée portent une rangée unité à la cellule de référence (impose_pcd_reference_row) ; épingler la référence à l’entrée/sortie de l’action fige le résidu de jauge à sa valeur initiale (défaut documenté et corrigé dans pcd_schur.h).
+- Conséquence pour le diagnostic : un plateau du résidu vrai relatif ne peut pas être attribué au traitement de la jauge — il relève de la troncature de l’espace de Krylov (cf. section 3) ou de la qualité de l’approximation PCD, pas des frontières.
 
 ## 5. Pièges connus (Gotchas)
 - Signature du plateau de troncature : résidu vrai relatif figé juste au-dessus de la gate après épuisement du budget, identique sur les retries de relaxation (les alpha de relaxation ne changent pas le système linéaire couplé : les trois retries reproduisent le même résidu au bit près). Ne pas conclure à un défaut du préconditionneur sans avoir d’abord éliminé le restart.
@@ -51,3 +57,4 @@ Trois composantes de vitesse + une pression par cellule : le système couplé a 
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-14 — PR fix/ghia-pcd-restart-coupled (diagnostic #894) — création.
+- 2026-10-14 — restructuration pour la gate d’audit : section 3 renommée « Discrétisation Volume Fini » (la sélection du restart y est intégrée comme algèbre du système discret) ; section 4 consacrée au « Traitement des frontières » (jauge tout-Neumann et rangée de référence PCD). Fond inchangé.
