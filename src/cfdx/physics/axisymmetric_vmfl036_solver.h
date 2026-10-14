@@ -512,13 +512,43 @@ private:
             maxcorr=0.0;
             for(std::size_t cell=0;cell<n_;++cell){
                 double sum=rhs[cell];
+                // prow_a stores the assembled off-diagonal -a_N (see the
+                // assembly above). Subtracting it adds +a_N*p'_N: the
+                // Gauss-Seidel update of the assembled equation
+                // a_P*p'_P - sum_N a_N*p'_N = b_P. Adding it instead would
+                // solve the sign-flipped system while still satisfying maxcorr.
                 for(std::size_t k=0;k<prow_cnt[cell];++k)
-                    sum+=prow_a[cell][k]*pc_[prow_nb[cell][k]];
+                    sum-=prow_a[cell][k]*pc_[prow_nb[cell][k]];
                 const double v=sum/diag[cell];
                 maxcorr=std::max(maxcorr,std::abs(v-pc_[cell]));
                 pc_[cell]=v;
             }
             if(maxcorr<c.pressure_tolerance) break;
+        }
+        // Algebraic consistency gate: a small iterate increment (maxcorr)
+        // only proves the sweep stopped moving, not that it stopped on the
+        // fixed point of the ASSEMBLED equation. When the sweep reports
+        // convergence, verify the residual of diag*p'_P + sum(prow_a*p'_N)
+        // - rhs directly: a converged solve leaves a row residual bounded
+        // by the neighbour increments (<= sum a_N*maxcorr), while an
+        // operator/sign regression converges per maxcorr onto the wrong
+        // system and leaves a solution-sized residual. Fail closed on the
+        // latter; this is the regression guard for the whole error class,
+        // independent of the stopping criterion.
+        if(maxcorr<c.pressure_tolerance){
+            double res=0.0, diag_max=0.0;
+            for(std::size_t cell=0;cell<n_;++cell){
+                double r=diag[cell]*pc_[cell];
+                for(std::size_t k=0;k<prow_cnt[cell];++k)
+                    r+=prow_a[cell][k]*pc_[prow_nb[cell][k]];
+                r-=rhs[cell];
+                res=std::max(res,std::abs(r));
+                diag_max=std::max(diag_max,diag[cell]);
+            }
+            if(res>100.0*diag_max*maxcorr)
+                throw std::runtime_error("VMFL036 pressure-correction sweep converged per maxcorr="+
+                    std::to_string(maxcorr)+" but violates the assembled pressure equation (residual "+
+                    std::to_string(res)+"): operator/sign regression in the sweep");
         }
         // pressure correction gradient; boundary p'=0.
         for(std::size_t cell=0;cell<n_;++cell){
