@@ -121,9 +121,10 @@ static Mesh chain_mesh(std::size_t n, double dx)
 
 // ---------------------------------------------------------------------------
 // Plug-flow carrier: slip walls (zero-gradient velocity), uniform inlet,
-// zero-gradient outlet. Initialized from rest (U = 0) with the default
-// SIMPLE under-relaxation, the carrier converges geometrically onto the
-// uniform plug, which is the exact discrete solution of this configuration.
+// fully developed outlet (Dirichlet plug velocity). Initialized from rest
+// (U = 0) with the default SIMPLE under-relaxation, the carrier converges
+// onto the uniform plug, which is the exact discrete solution of this
+// configuration for any carrier viscosity (slip walls carry no shear).
 // ---------------------------------------------------------------------------
 struct PlugFlow {
     Mesh mesh;
@@ -146,8 +147,8 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     VelocityBoundaryConditions ubc;
     ubc["left"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
                    {u_in, 0.0, 0.0}};
-    ubc["right"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
-                    {0.0, 0.0, 0.0}};
+    ubc["right"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
+                   {u_in, 0.0, 0.0}};
     ubc["walls"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
                     {0.0, 0.0, 0.0}};
     ScalarBoundaryConditions pbc;
@@ -164,25 +165,36 @@ static PlugFlow solve_plug_flow(std::size_t n, double dx, double rho,
     // test_channel_qualification is rest + default under-relaxation
     // (alpha_u = 0.7, alpha_p = 0.3). No tolerance is changed.
     //
-    // Carrier viscosity (post-merge P0 fix): on this slip-wall chain the
-    // interior momentum predictor is a pure diffusion chain - the lateral
-    // zero-gradient walls contribute no diagonal term, so a_P equals the
-    // sum of the neighbour coefficients and equation relaxation contracts
-    // the constant mode (the predictor returns a profile decaying at
-    // ~0.41 per cell; SIMPLE's pressure correction then rebuilds the plug
-    // over the iterations, which is its job). With air (mu = 1.8e-5) the
-    // interior diffusion diagonal sits four orders of magnitude below the
-    // inlet cell's convective diagonal, so rAU jumps by ~1e4 between
-    // neighbours, the pressure-correction coefficients switch regime at
-    // every nonlinear iteration and the iteration diverges - CI observed
-    // the pressure-correction CG degenerating (509 iterations, collapsed
-    // recurrence, true residual stuck) before the solver threw. With the
-    // diffusion-dominated carrier below (mu = 1.0 Pa.s, Re ~ 7) rAU is
-    // uniform, the SIMPLE corrections are well scaled and the plug is
-    // reached from rest inside the 200-iteration budget. The plug is the
-    // exact discrete solution for ANY viscosity (slip walls carry no
-    // shear) and the energy stage is insensitive to mu (frozen flow:
+    // Carrier outlet (post-merge P0 fix): the outlet must carry a
+    // Dirichlet plug velocity, not a zero-gradient face. With a
+    // zero-gradient velocity outlet and an all-Neumann pressure this
+    // SIMPLE case is ill-posed: make_rhie_chow_mass_flux takes the outlet
+    // boundary flux from the owner cell's HbyA velocity - a quantity the
+    // pressure correction never controls - while the p' system drops the
+    // reference cell's equation (pure Neumann pressure,
+    // pressure_reference_cell = 0). The inlet mass-flux imbalance then
+    // has no admissible correction anywhere: every late iterate passes
+    // the momentum gates while continuity_normalized stays pinned at
+    // ~1 and the solver reports converged = false after the full
+    // iteration budget. CI dump (PR #892, branch ci/p0-diagnostic): the
+    // iteration settles on a dead-water fixed point - inlet cell
+    // U_x = 0.72, interior cells at rest, outlet face flux ~6e-8, a
+    // pressure dam of ~7.6-8.3 Pa, and the whole -rho*u_in inlet
+    // imbalance sitting in the reference cell's divergence, every other
+    // cell's divergence being ~1e-8. With air (mu = 1.8e-5) the same
+    // incompatibility degenerates the pressure CG first (509 linear
+    // iterations, true residual stuck, solver throw); the synthetic
+    // mu = 1.0 carrier only unmasked the dead-water attractor by
+    // letting the linear solves converge. Prescribing the outlet
+    // velocity {u_in, 0, 0} - the standard fully developed outlet of an
+    // exact plug profile - makes the net boundary mass flux identically
+    // zero at every iteration: the pure-Neumann p' system is exactly
+    // compatible, the eliminated reference row is harmless by
+    // telescoping, and the plug is recovered from rest inside the
+    // 200-iteration budget for any carrier viscosity. The energy stage
+    // is insensitive to the carrier's dynamic viscosity (frozen flow:
     // mdot = rho * u_in is imposed by the inlet BC and asserted below).
+    // No tolerance, criterion or gate is changed.
     controls.initialization.mode = InitializationMode::Uniform;
     controls.initialization.uniform_velocity = {0.0, 0.0, 0.0};
     controls.coupling.alpha_u = 0.7;
@@ -399,11 +411,13 @@ int main()
     const std::size_t n = 16;
     const double dx = 0.25;
     const double rho = 1.2;
-    // Synthetic viscous carrier fluid (see solve_plug_flow): the flow
-    // solve needs a diffusion-dominated momentum diagonal to be a
-    // well-posed SIMPLE case from rest on this slip-wall chain. The
-    // energy stage is insensitive to mu (frozen flow, mdot = rho * u_in).
-    const double mu = 1.0;
+    // Air, restored (see solve_plug_flow): the earlier carrier-viscosity
+    // hypothesis for the post-merge P0 was wrong - CI proved the stall
+    // persisted with mu = 1.0 (converged = false after 200 iterations,
+    // continuity_normalized ~ 1) - and the Dirichlet plug outlet makes
+    // the case well posed from rest for any viscosity. The energy stage
+    // is insensitive to mu (frozen flow, mdot = rho * u_in).
+    const double mu = 1.8e-5;
     const double k = 0.026;
     const double cp = 1005.0;
     const double u_in = 1.5;
@@ -836,5 +850,6 @@ int main()
 
     return run_all();
 }
+
 
 
