@@ -362,52 +362,52 @@ jobs:
         if: always()
         run: '[[ "${{ steps.wall_fine.outcome }}" == "success" ]] || exit 1'
 
-    thermal-radiation:
-    name: Thermal and radiation regression
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install runtime dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
-      - name: Install Python dependencies
-        run: |
-          python3 -m venv "$VENV_DIR"
-          "$VENV_DIR/bin/python" -m pip install --upgrade pip
-          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
-          "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
-        with:
-          name: cfdx-total-validation-build-${{ github.sha }}
-          path: .
-      - name: Restore validation build
-        run: tar -xzf cfdx-validation-build.tar.gz
-      - name: Run thermal and radiation regression campaign
-        id: thermal_radiation
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          python3 scripts/thermal_radiation_regression.py \
-            --build-dir "$BUILD_DIR" \
-            --output-dir "$BUILD_DIR/thermal-radiation-regression" \
-            2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
-      - name: Upload evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfdx-total-validation-thermal-radiation
-          path: |
-            ${{ env.BUILD_DIR }}/thermal-radiation-regression/
-            ${{ env.BUILD_DIR }}/thermal-radiation-regression.log
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Final thermal/radiation gate
-        if: always()
-        run: '[[ "${{ steps.thermal_radiation.outcome }}" == "success" ]] || exit 1'
+  thermal-radiation:
+  name: Thermal and radiation regression
+  needs: prepare
+  runs-on: ubuntu-24.04
+  timeout-minutes: 45
+  steps:
+    - uses: actions/checkout@v4
+    - name: Install runtime dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+    - name: Install Python dependencies
+      run: |
+        python3 -m venv "$VENV_DIR"
+        "$VENV_DIR/bin/python" -m pip install --upgrade pip
+        "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+        "$VENV_DIR/bin/python" -m pip install -e .
+    - uses: actions/download-artifact@v4
+      with:
+        name: cfdx-total-validation-build-${{ github.sha }}
+        path: .
+    - name: Restore validation build
+      run: tar -xzf cfdx-validation-build.tar.gz
+    - name: Run thermal and radiation regression campaign
+      id: thermal_radiation
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -o pipefail
+        python3 scripts/thermal_radiation_regression.py \
+          --build-dir "$BUILD_DIR" \
+          --output-dir "$BUILD_DIR/thermal-radiation-regression" \
+          2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
+    - name: Upload evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cfdx-total-validation-thermal-radiation
+        path: |
+          ${{ env.BUILD_DIR }}/thermal-radiation-regression/
+          ${{ env.BUILD_DIR }}/thermal-radiation-regression.log
+        if-no-files-found: warn
+        retention-days: 30
+    - name: Final thermal/radiation gate
+      if: always()
+      run: '[[ "${{ steps.thermal_radiation.outcome }}" == "success" ]] || exit 1'
 
   application-e2e:
     name: Application E2E regression
