@@ -1,0 +1,176 @@
+name: Long validation diagnostics v1
+
+# Diagnostic-only workflow. Never merge this branch into master.
+# Purpose: reproduce the failing long-validation tests at the current
+# master HEAD (post-merge #889 + #893) and post per-test solver
+# evidence (iteration traces, convergence reason, failure messages)
+# as a PR comment for root-cause analysis. No test, tolerance or gate
+# is modified by this workflow.
+
+on:
+  push:
+    branches: [ci/long-diagnostic]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: long-diagnostics
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-diag
+
+jobs:
+  diagnose:
+    name: Diagnose failing long validation tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv
+      - name: Install Python stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          .venv/bin/python -m pip install -e .
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Configure
+        id: configure
+        continue-on-error: true
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/.venv/bin/python"
+      - name: Build
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build "$BUILD_DIR" --parallel 4 2>&1 | tee build.log
+      - name: Generate mesh fixtures
+        id: meshes
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          .venv/bin/python scripts/generate_2d_validation_meshes.py all --output-dir "$BUILD_DIR/validation_meshes"
+          ls -la "$BUILD_DIR/validation_meshes"
+      - name: Run focused long tests
+        id: tests
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$BUILD_DIR" \
+            -R '^(test_generate_2d_validation_meshes|test_channel_qualification|test_ghia_cavity_n8_pcd|test_bfs_qualification|test_naca0012_qualification|test_vmfl036_axisymmetric)$' \
+            --no-tests=error \
+            --parallel 4 \
+            --output-on-failure 2>&1 | tee diag.log
+      - name: Split per-test sections
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          for name in test_generate_2d_validation_meshes test_channel_qualification test_ghia_cavity_n8_pcd test_bfs_qualification test_naca0012_qualification test_vmfl036_axisymmetric; do
+            start=$(grep -nE "Test #[0-9]+: ${name}( |$)" diag.log | head -1 | cut -d: -f1)
+            if [ -n "$start" ]; then
+              next=$(awk -v s="$start" -v re='Test #[0-9]+: ' 'NR>s && $0 ~ re {print NR; exit}' diag.log)
+              if [ -n "$next" ]; then
+                sed -n "${start},$((next-1))p" diag.log > "sec_${name}.log"
+              else
+                sed -n "${start},\$p" diag.log > "sec_${name}.log"
+              fi
+            else
+              echo "SECTION NOT FOUND" > "sec_${name}.log"
+            fi
+          done
+          ls -la sec_*.log
+      - name: Upload full diagnostic log
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-diagnostics-evidence
+          path: |
+            diag.log
+            sec_*.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Post diagnostics comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=$(gh pr view --repo "$GITHUB_REPOSITORY" --head "ci/long-diagnostic" --json number --jq .number 2>/dev/null || true)
+          if [ -z "${PR:-}" ]; then
+            echo "no host PR found; skipping comment"
+            exit 0
+          fi
+          {
+            echo '## Long validation diagnostics v1 - master HEAD post-merge (#889 + #893)'
+            echo ''
+            echo 'Focused rerun of the failing/suspect long tests at the current master HEAD.'
+            echo 'Environment identical to the official long-validation job (Release, MPI,'
+            echo 'parallel HDF5, LONG_VALIDATION=ON, meshes generated in-job).'
+            echo ''
+            echo "configure=${{ steps.configure.outcome }} build=${{ steps.build.outcome }} meshes=${{ steps.meshes.outcome }} tests=${{ steps.tests.outcome }}"
+            echo ''
+            echo '### CTest summary'
+            echo '~~~'
+            grep -E 'tests passed|[0-9]+/[0-9]+ Test' diag.log 2>/dev/null | tail -10 || true
+            echo '~~~'
+          } > body.md
+          for name in test_channel_qualification test_ghia_cavity_n8_pcd test_bfs_qualification test_naca0012_qualification test_vmfl036_axisymmetric; do
+            {
+              echo ''
+              echo "### ${name}"
+              echo ''
+              echo '~~~'
+              if [ -f "sec_${name}.log" ]; then
+                head -n 25 "sec_${name}.log"
+                echo '... [trace excerpt] ...'
+                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | head -n 4 || true
+                echo '... [last iterations] ...'
+                grep -E 'INCOMPRESSIBLE_ITER' "sec_${name}.log" | tail -n 8 || true
+                echo '... [final lines] ...'
+                tail -n 30 "sec_${name}.log"
+              else
+                echo 'NO SECTION CAPTURED'
+              fi
+              echo '~~~'
+            } >> body.md
+          done
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file body.md
+      - name: Post build error comment (if any)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -f build.log ]] && grep -qE 'error:|FAILED:' build.log; then
+            PR=$(gh pr view --repo "$GITHUB_REPOSITORY" --head "ci/long-diagnostic" --json number --jq .number 2>/dev/null || true)
+            if [ -n "${PR:-}" ]; then
+              {
+                echo '## Long validation diagnostics - BUILD ERRORS'
+                echo '~~~'
+                grep -E -B1 -A3 'error:|FAILED:' build.log | head -80
+                echo '~~~'
+              } > build_body.md
+              gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file build_body.md
+            fi
+          fi
