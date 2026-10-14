@@ -32,9 +32,44 @@ class Case:
     comparison: str
 
 
+# Steady laminar sphere drag coefficients, Tabata & Itakura (1996),
+# "Precise Computation of Drag Coefficients of the Sphere", Table 2
+# (RIMS Kokyuroku 974, pp. 151-163; journal version: Int. J. Comput.
+# Fluid Dyn. 9 (1998) 303-311, DOI 10.1080/10618569808940861).
+# Columns per Reynolds number: Richardson-extrapolated reference,
+# P2/P1 finite elements, stabilised P1/P1 finite elements. The
+# extrapolated value at Re=50 (1.5785) is the oracle of
+# test_vmfl036_axisymmetric; at Re=100 it is 1.0895. The 1.0875 datum
+# of the Ansys material is the reported Fluent Re=100 result
+# (issue #440), not a value published in Table 2.
+TABATA_ITAKURA_SPHERE_CD = {
+    10: {"extrapolated": 4.3178, "p2_p1": 4.3159, "p1_p1_stabilised": 4.3194},
+    20: {"extrapolated": 2.7240, "p2_p1": 2.7227, "p1_p1_stabilised": 2.7250},
+    40: {"extrapolated": 1.7917, "p2_p1": 1.7908, "p1_p1_stabilised": 1.7924},
+    50: {"extrapolated": 1.5785, "p2_p1": 1.5777, "p1_p1_stabilised": 1.5791},
+    60: {"extrapolated": 1.4272, "p2_p1": 1.4264, "p1_p1_stabilised": 1.4277},
+    80: {"extrapolated": 1.2233, "p2_p1": 1.2226, "p1_p1_stabilised": 1.2238},
+    100: {"extrapolated": 1.0895, "p2_p1": 1.0889, "p1_p1_stabilised": 1.0900},
+    150: {"extrapolated": 0.88887, "p2_p1": 0.88841, "p1_p1_stabilised": 0.88933},
+    200: {"extrapolated": 0.77176, "p2_p1": 0.77136, "p1_p1_stabilised": 0.77218},
+}
+
+
+def tabata_itakura_cd(reynolds: int) -> float:
+    """Extrapolated sphere drag coefficient, Tabata & Itakura (1996), Table 2."""
+    try:
+        return TABATA_ITAKURA_SPHERE_CD[reynolds]["extrapolated"]
+    except KeyError as exc:
+        raise ValueError(
+            f"No Tabata & Itakura drag coefficient tabulated at Re={reynolds}"
+        ) from exc
+
+
 def parse_matrix(path: Path) -> list[Case]:
     cases: list[Case] = []
-    pattern = re.compile(r"^\|\s*(VMFL\d{3})\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|$")
+    pattern = re.compile(
+        r"^\|\s*(VMFL\d{3})\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|$"
+    )
     for line in path.read_text(encoding="utf-8").splitlines():
         m = pattern.match(line)
         if m:
@@ -68,7 +103,7 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
     result = []
     for m in pattern.finditer(output):
         d = m.groupdict()
-        result.append({
+        entry = {
             "re": float(d["re"]),
             "grid": f"{d['nx']}x{d['ny']}",
             "continuity": float(d["continuity"]),
@@ -78,14 +113,16 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
             "u_max": float(d["u_max"]),
             "v_rms": float(d["v_rms"]),
             "v_max": float(d["v_max"]),
-        })
+        }
+        result.append(entry)
     return result
 
 
 def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
     axis = re.findall(
-        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+) "
-        r"iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
+        r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+)"
+        r"(?: converged=(?P<converged>true|false))?"
+        r" iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
         r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
         r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
@@ -93,20 +130,33 @@ def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
     )
     if axis:
         x = axis[-1]
+        cd_total = float(x["cd"])
+        cd_reference = float(x["ref"])
         data: dict[str, float | int | str] = {
-            "level": x["level"], "iterations": int(x["iterations"]),
-            "continuity": float(x["continuity"]), "momentum": float(x["momentum"]),
-            "pressure_correction": float(x["pcorr"]), "cd_pressure": float(x["cdp"]),
-            "cd_viscous": float(x["cdv"]), "cd_total": float(x["cd"]),
-            "cd_reference": float(x["ref"]),
+            "level": x["level"],
+            "converged": x["converged"] or "true",
+            "iterations": int(x["iterations"]),
+            "continuity": float(x["continuity"]),
+            "momentum": float(x["momentum"]),
+            "pressure_correction": float(x["pcorr"]),
+            "cd_pressure": float(x["cdp"]),
+            "cd_viscous": float(x["cdv"]),
+            "cd_total": cd_total,
+            "cd_reference": cd_reference,
+            "cd_relative_error": abs(cd_total - cd_reference) / cd_reference,
         }
-        data["status"] = "PASS" if "VMFL036_AXISYMMETRIC_VALIDATION: PASS" in output else "FAIL"
+        data["status"] = (
+            "PASS" if "VMFL036_AXISYMMETRIC_VALIDATION: PASS" in output else "FAIL"
+        )
         return data
     return None
 
 
 def parse_model_results(output: str) -> list[dict[str, str]]:
-    pattern = re.compile(r"MODEL (?P<name>[A-Z0-9_]+) (?P<metric>[A-Za-z0-9_]+)=(?P<value>[-+0-9.eE]+) reference=(?P<reference>.*)")
+    pattern = re.compile(
+        r"MODEL (?P<name>[A-Z0-9_]+) (?P<metric>[A-Za-z0-9_]+)=(?P<value>[-+0-9.eE]+)"
+        r" reference=(?P<reference>.*)"
+    )
     return [m.groupdict() for m in pattern.finditer(output)]
 
 
@@ -118,14 +168,29 @@ def run_ghia(executable: Path, log_path: Path) -> tuple[int, str, list[dict]]:
 def latex_escape(value: str) -> str:
     replacements = {
         "\\": r"\textbackslash{}",
-        "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
-        "_": r"\_", "{": r"\{", "}": r"\}",
-        "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
-        "Δ": r"$\Delta$", "δ": r"$\delta$",
-        "α": r"$\alpha$", "β": r"$\beta$", "γ": r"$\gamma$",
-        "µ": r"$\mu$", "μ": r"$\mu$", "Ω": r"$\Omega$",
-        "×": r"$\times$", "≤": r"$\leq$", "≥": r"$\geq$",
-        "±": r"$\pm$", "°": r"$^\circ$", "−": r"$-$",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+        "Δ": r"$\Delta$",
+        "δ": r"$\delta$",
+        "α": r"$\alpha$",
+        "β": r"$\beta$",
+        "γ": r"$\gamma$",
+        "µ": r"$\mu$",
+        "μ": r"$\mu$",
+        "Ω": r"$\Omega$",
+        "×": r"$\times$",
+        "≤": r"$\leq$",
+        "≥": r"$\geq$",
+        "±": r"$\pm$",
+        "°": r"$^\circ$",
+        "−": r"$-$",
     }
     # Escape each source character exactly once. Repeated str.replace calls
     # would also escape braces introduced by an earlier replacement.
@@ -172,15 +237,28 @@ def make_plot(out: Path, ghia: list[dict]) -> str | None:
     return out.name
 
 
-def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: list[dict], logs: dict, suite_status: dict[str, int], plot_name: str | None, generated: str) -> None:
+def write_tex(
+    path: Path,
+    cases: list[Case],
+    ghia: list[dict],
+    model_results: list[dict],
+    logs: dict,
+    suite_status: dict[str, int],
+    plot_name: str | None,
+    generated: str,
+) -> None:
     counts: dict[str, int] = {}
     for c in cases:
         counts[c.status] = counts.get(c.status, 0) + 1
 
-    active = [c for c in cases if c.status in {"READY", "PARTIAL"}]
     reference_values = [
         ("VMFL003", "Pressure drop", "21,744 Pa", "Ansys/White Moody-chart target"),
-        ("VMFL004", "Mean velocity", "2.50 m/s", "Exact Couette + pressure-gradient solution"),
+        (
+            "VMFL004",
+            "Mean velocity",
+            "2.50 m/s",
+            "Exact Couette + pressure-gradient solution",
+        ),
         ("VMFL005", "Pressure drop", "10.24 Pa", "Hagen--Poiseuille"),
     ]
 
@@ -249,10 +327,8 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
     ]
     for name, rc in suite_status.items():
         state = "PASS" if rc == 0 else ("MISSING" if rc == -1 else "FAIL")
-        lines.append(latex_table_row([
-            f"\\texttt{{{latex_escape(name)}}}",
-            f"{rc} ({state})",
-        ]))
+        cells = [f"\\texttt{{{latex_escape(name)}}}", f"{rc} ({state})"]
+        lines.append(latex_table_row(cells))
     lines += [r"\bottomrule", r"\end{longtable}"]
 
     if ghia:
@@ -266,7 +342,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
             r"\midrule",
         ]
         for x in ghia:
-            lines.append(latex_table_row([
+            cells = [
                 fmt(x["re"], 4),
                 latex_escape(x["grid"]),
                 fmt(x["u_rms"]),
@@ -275,7 +351,8 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
                 fmt(x["v_max"]),
                 fmt(x["continuity"]),
                 fmt(x["momentum"]),
-            ]))
+            ]
+            lines.append(latex_table_row(cells))
         lines += [r"\bottomrule", r"\end{longtable}"]
     else:
         lines.append("No Ghia solver output was available in this report run.")
@@ -297,12 +374,13 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for m in model_results:
-        lines.append(latex_table_row([
+        cells = [
             f"\\texttt{{{latex_escape(m['name'])}}}",
             latex_escape(m["metric"]),
             latex_escape(m["value"]),
             latex_escape(m["reference"]),
-        ]))
+        ]
+        lines.append(latex_table_row(cells))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
@@ -314,12 +392,13 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"\midrule",
     ]
     for c in cases:
-        lines.append(latex_table_row([
+        cells = [
             f"\\texttt{{{latex_escape(c.ident)}}}",
             latex_escape(c.name),
             latex_escape(c.status),
             latex_escape(c.comparison),
-        ]))
+        ]
+        lines.append(latex_table_row(cells))
     lines += [
         r"\bottomrule",
         r"\end{longtable}",
@@ -333,7 +412,7 @@ def write_tex(path: Path, cases: list[Case], ghia: list[dict], model_results: li
         r"and satisfies a quantitative criterion. READY/PARTIAL/BLOCKED are capability states, "
         r"not numerical passes.",
         r"\section{Reproducibility}",
-        f"The raw executable logs are stored beside this report in the report output directory. "
+        "The raw executable logs are stored beside this report in the report output directory. "
         f"Report generation timestamp: {latex_escape(generated)}.",
         r"",
         r"Source matrix: \texttt{docs/validation/FLUENT\_VMFL\_MATRIX.md}.\\",
@@ -353,6 +432,7 @@ VALIDATION_EXECUTABLES = [
     "test_m2_m4_solver_validation",
     "test_steady_incompressible_solver",
 ]
+
 
 def run_validation_suite(build_dir: Path, output_dir: Path) -> dict[str, int]:
     """Run the executable validation suite and preserve failures for the report.
@@ -397,14 +477,22 @@ def validation_gate_status(status: dict[str, int]) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
-    parser.add_argument("--output-dir", type=Path, default=Path("build/validation-report"))
-    parser.add_argument("--matrix", type=Path, default=Path("docs/validation/FLUENT_VMFL_MATRIX.md"))
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("build/validation-report")
+    )
+    parser.add_argument(
+        "--matrix", type=Path, default=Path("docs/validation/FLUENT_VMFL_MATRIX.md")
+    )
     parser.add_argument(
         "--ghia-log",
         type=Path,
         help="reuse output from an already executed full Ghia campaign",
     )
-    parser.add_argument("--vmfl036-log", type=Path, help="reuse output from an already executed VMFL036 campaign")
+    parser.add_argument(
+        "--vmfl036-log",
+        type=Path,
+        help="reuse output from an already executed VMFL036 campaign",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -415,14 +503,18 @@ def main() -> int:
     suite_status = run_validation_suite(args.build_dir, args.output_dir)
     ref_exe = args.build_dir / "test_fluent_vmfl_reference"
     if ref_exe.exists():
-        logs["test_fluent_vmfl_reference"] = run_test(ref_exe, args.output_dir / "test_fluent_vmfl_reference.log")
+        logs["test_fluent_vmfl_reference"] = run_test(
+            ref_exe, args.output_dir / "test_fluent_vmfl_reference.log"
+        )
     else:
         logs["test_fluent_vmfl_reference"] = (-1, "executable not found")
 
     model_results: list[dict] = []
     model_exe = args.build_dir / "test_numerical_model_verification"
     if model_exe.exists():
-        rc, output = run_test(model_exe, args.output_dir / "test_numerical_model_verification.log")
+        rc, output = run_test(
+            model_exe, args.output_dir / "test_numerical_model_verification.log"
+        )
         model_results = parse_model_results(output)
         logs["test_numerical_model_verification"] = (rc, output)
     else:
@@ -441,7 +533,9 @@ def main() -> int:
     elif args.ghia_log is not None:
         logs["test_ghia_cavity"] = (-1, "Ghia validation log not found")
     elif ghia_exe.exists():
-        rc, output, ghia = run_ghia(ghia_exe, args.output_dir / "test_ghia_cavity.log")
+        rc, output, ghia = run_ghia(
+            ghia_exe, args.output_dir / "test_ghia_cavity.log"
+        )
         logs["test_ghia_cavity"] = (rc, output)
     else:
         logs["test_ghia_cavity"] = (-1, "executable not found")
@@ -452,7 +546,9 @@ def main() -> int:
         output = args.vmfl036_log.read_text(encoding="utf-8")
         vmfl036 = parse_vmfl036(output)
         vm_rc = 0 if vmfl036 is not None and vmfl036.get("status") == "PASS" else 1
-        (args.output_dir / "test_vmfl036_axisymmetric.log").write_text(output, encoding="utf-8")
+        (args.output_dir / "test_vmfl036_axisymmetric.log").write_text(
+            output, encoding="utf-8"
+        )
         logs["test_vmfl036_axisymmetric"] = (vm_rc, output)
     elif args.vmfl036_log is not None:
         logs["test_vmfl036_axisymmetric"] = (-1, "VMFL036 validation log not found")
@@ -477,21 +573,31 @@ def main() -> int:
     }
     gate = validation_gate_status(gate_status)
 
+    results_payload = {
+        "generated": generated,
+        "ghia": ghia,
+        "vmfl036": vmfl036,
+        # Provenance separation (issue #440): the published Tabata & Itakura
+        # targets are 1.5785 (Re=50) and 1.0895 (Re=100); the 1.0875 datum of
+        # the Ansys material is the reported Fluent Re=100 result and does
+        # not appear in Table 2 of the paper.
+        "vmfl036_reference": {
+            "source": "Tabata & Itakura (1996), Table 2 (extrapolated)",
+            "cd_re50": tabata_itakura_cd(50),
+            "cd_re100": tabata_itakura_cd(100),
+            "fluent_reported_cd_re100": 1.0875,
+        },
+        "model_results": model_results,
+        "test_status": {k: v[0] for k, v in logs.items()},
+        "validation_suite_status": suite_status,
+        "validation_gate": gate,
+        "fluent_reference_oracle": {
+            "status": "PASS" if logs["test_fluent_vmfl_reference"][0] == 0 else "FAIL",
+            "is_solver_validation": False,
+        },
+    }
     (args.output_dir / "results.json").write_text(
-        json.dumps({
-            "generated": generated,
-            "ghia": ghia,
-            "vmfl036": vmfl036,
-            "model_results": model_results,
-            "test_status": {k: v[0] for k, v in logs.items()},
-            "validation_suite_status": suite_status,
-            "validation_gate": gate,
-            "fluent_reference_oracle": {
-                "status": "PASS" if logs["test_fluent_vmfl_reference"][0] == 0 else "FAIL",
-                "is_solver_validation": False,
-            },
-        }, indent=2),
-        encoding="utf-8",
+        json.dumps(results_payload, indent=2), encoding="utf-8"
     )
 
     plot_name = make_plot(args.output_dir / "ghia_mesh_convergence.png", ghia)
