@@ -155,6 +155,11 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.convection_scheme=ConvectionScheme::UPWIND;
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
+    // Diagnostic tracing (#870): bounded per-iteration progress trace so the
+    // long-campaign diagnostics run posts ITER evidence for the channel stall
+    // analysis. Does not alter the numerical method or the gates.
+    c.diagnostics.iteration_trace=true;
+    c.diagnostics.iteration_trace_frequency=25;
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     if(!solve.converged) throw std::runtime_error("channel solver did not converge");
