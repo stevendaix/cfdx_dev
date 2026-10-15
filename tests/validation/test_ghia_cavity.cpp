@@ -48,8 +48,7 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
             mesh.ownership().set_neighbour(found->second,static_cast<int>(cell));
             return found->second;
         }
-        const std::size_t fa
-ce=mesh.faces().n_faces();
+        const std::size_t face=mesh.faces().n_faces();
         mesh.faces().push_face(vertices);
         mesh.ownership().resize(mesh.faces().n_faces());
         face_map.emplace(std::move(sorted),face);
@@ -86,8 +85,7 @@ ce=mesh.faces().n_faces();
         double x=0,y=0,z=0;
         for(auto it=begin;it!=end;++it) { x+=mesh.points().x(*it); y+=mesh.points().y(*it); z+=mesh.points().z(*it); }
         const double nverts=static_cast<double>(mesh.faces().face_size(f));
-        x/=
-nverts; y/=nverts; z/=nverts;
+        x/=nverts; y/=nverts; z/=nverts;
         constexpr double tol=1e-12;
         if(std::abs(y)<tol) bottom.face_ids.push_back(f);
         else if(std::abs(y-1)<tol) top.face_ids.push_back(f);
@@ -130,7 +128,6 @@ CavityResult solve_cavity(
     controls.density=1.0;
     controls.kinematic_viscosity=1.0/test.reynolds;
     controls.linear_max_iterations=10000;
-
     controls.linear_tolerance=1e-8;
     // Automatic pressure policy selects CG/native AMG on this mesh. The
     // incompressible solver keeps the hierarchy across SIMPLE iterations and
@@ -161,15 +158,13 @@ CavityResult solve_cavity(
     // coupled space for systems of at most 4096 unknowns, 512 above
     // (memory cap), always bounded by the system dimension. No tolerance,
     // gate or acceptance criterion is modified.
-    const std::size_t coupled_unknowns=4*tes
-t.nx*test.ny;
+    const std::size_t coupled_unknowns=4*test.nx*test.ny;
     const std::size_t coupled_budget=controls.coupling.coupled_max_iterations;
     controls.coupled_linear_solver.gmres_restart=static_cast<int>(
         coupled_unknowns<=4096
             ? std::min<std::size_t>(coupled_unknowns,
                                     std::max<std::size_t>(1024,coupled_budget))
             : std::min<std::size_t>(coupled_unknowns,512));
-
     // #870 (N8-PCD, nested counterpart of the #898/fiche-16 fix): the NESTED
     // PCD convection-diffusion solve (Fp, the -Fp^-1 action of pcd_schur.h,
     // invoked by CoupledBlockSchurAMGPreconditioner through solve_fp)
@@ -235,8 +230,7 @@ t.nx*test.ny;
                pressure_context.solves)
             throw std::runtime_error(
                 "Ghia pressure solver did not reuse its preconditioner lifecycle");
-        std::cerr<
-<"GHIA PRESSURE_CONTEXT full_setups="
+        std::cerr<<"GHIA PRESSURE_CONTEXT full_setups="
                  <<pressure_context.full_setups
                  <<" numeric_updates="<<pressure_context.numeric_updates
                  <<" unchanged_reuses="<<pressure_context.unchanged_reuses
@@ -278,8 +272,7 @@ double interpolate_line(const Field<double,Location::CELL>& U,
     const double tx=std::clamp(fx-static_cast<double>(ix0),0.0,1.0);
     const double ty=std::clamp(fy-static_cast<double>(iy0),0.0,1.0);
 
-  
-  const auto at=[&](std::size_t i,std::size_t j) {
+    const auto at=[&](std::size_t i,std::size_t j) {
         return values[j*nx+i];
     };
     const double v00=at(i0,j0);
@@ -314,8 +307,7 @@ std::vector<Sample> u_reference(double re)
 std::vector<Sample> v_reference(double re)
 {
     static const double x[]={0.0000,0.0625,0.0703,0.0781,0.0938,0.1563,0.2266,0.2344,0.5000,0.8047,0.8594,0.9063,0.9453,0.9531,0.9609,0.9688,1.0000};
-    static const double v100[]={0.0000
-0,0.09233,0.10091,0.10890,0.12317,0.16077,0.17507,0.17527,0.05454,-0.24533,-0.22445,-0.16914,-0.10313,-0.08864,-0.07391,-0.05906,0.00000};
+    static const double v100[]={0.00000,0.09233,0.10091,0.10890,0.12317,0.16077,0.17507,0.17527,0.05454,-0.24533,-0.22445,-0.16914,-0.10313,-0.08864,-0.07391,-0.05906,0.00000};
     static const double v400[]={0.00000,0.18360,0.19713,0.20920,0.22965,0.28124,0.30203,0.30174,0.05186,-0.38598,-0.44993,-0.23827,-0.22847,-0.19254,-0.15663,-0.12146,0.00000};
     static const double v1000[]={0.00000,0.27485,0.29012,0.30353,0.32627,0.37095,0.33075,0.32235,0.02526,-0.31966,-0.42665,-0.51500,-0.39188,-0.33714,-0.27669,-0.21388,0.00000};
     const double* values=re==100.0?v100:(re==400.0?v400:v1000);
@@ -342,8 +334,7 @@ ValidationResult run_case(
              <<" U_RMS="<<u.rms<<" U_max="<<u.max_abs<<" V_RMS="<<v.rms<<" V_max="<<v.max_abs<<"\n";
     // The 64x64 first-order-upwind Re=1000 case is deliberately harder than
     // the Re=100/400 references. Keep separate, measured gates rather than
-    // weakening the lo
-wer-Re acceptance criteria.
+    // weakening the lower-Re acceptance criteria.
     const bool high_re=test.reynolds>=1000.0;
     const double max_allowed=high_re?0.14:(test.nx>=64?0.10:0.15);
     const double rms_allowed=high_re?0.085:0.075;
@@ -386,8 +377,7 @@ double max_difference(const std::vector<double>& a, const std::vector<double>& b
         throw std::invalid_argument("profile comparison size mismatch");
     double max_abs = 0.0;
     for (std::size_t i = 0; i < a.size(); ++i)
-        max_abs = std::max(max_abs, std::a
-bs(a[i] - b[i]));
+        max_abs = std::max(max_abs, std::abs(a[i] - b[i]));
     return max_abs;
 }
 
@@ -428,8 +418,7 @@ int main(int argc, char** argv)
             const double u_rms_16_32 = rms_difference(profile16.u, profile32.u);
             const double u_rms_32_64 = rms_difference(profile32.u, profile64.u);
             const double v_rms_16_32 = rms_difference(profile16.v, profile32.v);
-            const double 
-v_rms_32_64 = rms_difference(profile32.v, profile64.v);
+            const double v_rms_32_64 = rms_difference(profile32.v, profile64.v);
             const double u_max_16_32 = max_difference(profile16.u, profile32.u);
             const double u_max_32_64 = max_difference(profile32.u, profile64.u);
 
@@ -466,8 +455,7 @@ v_rms_32_64 = rms_difference(profile32.v, profile64.v);
             const double elapsed = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - start).count();
             std::cout << "N8_PCD_STAGE stage="
-                      << (pcd_preflight ? "preflight-16x16" : "qualification-32x32
-")
+                      << (pcd_preflight ? "preflight-16x16" : "qualification-32x32")
                       << " elapsed_s=" << elapsed << "\\n";
             std::cout << (pcd_preflight
                 ? "GHIA_CAVITY_N8_PCD_PREFLIGHT: PASS\\n"
@@ -507,8 +495,7 @@ v_rms_32_64 = rms_difference(profile32.v, profile64.v);
                   << " U_max=" << p_u_max
                   << " V_RMS=" << p_v_rms
                   << " V_max=" << p_v_max
-                  << " dU_RM
-S(32,64)=" << u_rms_32_64
+                  << " dU_RMS(32,64)=" << u_rms_32_64
                   << " dU_RMS(64,128)=" << u_rms_64_128
                   << " dV_RMS(32,64)=" << v_rms_32_64
                   << " dV_RMS(64,128)=" << v_rms_64_128 << "\n";
