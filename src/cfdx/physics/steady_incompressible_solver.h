@@ -2200,7 +2200,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // the configured residual/conservation gates. Divergence is detected only
     // after repeated growth and never by relaxing a tolerance.
     monitor_controls.stagnation_window = 10;
-    monitor_controls.stagnation_relative_improvement = 1e-3;
+    // Delegated to the caller's convergence criteria (#906): a campaign whose
+    // measured tail-contraction rate 1 - rho = C*h^2 falls below the default
+    // threshold on fine meshes must lower it instead of letting the detector
+    // terminate a solve that is still converging on schedule. The stagnation
+    // detector stays a diagnostic abort; no convergence gate is affected.
+    monitor_controls.stagnation_relative_improvement =
+        controls.convergence.stagnation_relative_improvement;
     monitor_controls.divergence_window = 3;
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
