@@ -1,0 +1,51 @@
+# FICHE MÉTHODE — Moniteur de convergence non-linéaire : stagnation à enveloppe plate, seuil délégué et budget Picard du canal
+
+> Fiche 17. Créée à l'occasion du fix #906 — faux STAGNATED du canal n64 de la qualification INT-CHANNEL, identifié sur le run de diagnostic 38690061509 (branche ci/long-campaign-diagnostics, jamais merger).
+
+**En-tête d'évidence (gouvernance §16.5)**
+- Scope : critère de stagnation du moniteur de convergence non-linéaire (ConvergenceMonitor::count_stagnation), exposition du seuil de stagnation via ConvergenceCriteria::stagnation_relative_improvement, budget d'itérations Picard du test de qualification canal. Non couvert : gates de convergence et tolérances (inchangées), détecteur de divergence (inchangé : facteur de croissance sur sa propre fenêtre), discrétisation, chemins SIMPLEC/COUPLED, budgets des autres campagnes.
+- Statut : DRAFT (2026-10-15)
+- Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json (INT-CHANNEL) ; NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+- Issue / PR liées : #906 (cause racine, deux étages), #870 (Vague 0), PR #902 (fix), #894/#901 (branches de diagnostic — ne jamais merger)
+- Dernier commit vérifié : fe81d140 (2026-10-15, état antérieur au présent commit fix #906)
+- Limitations connues : verdict quantitatif n64 (convergence effective attendue ~16k its, L2/ordre/continuité aux gates inchangées) en attente des re-campagnes au HEAD exact.
+
+## 1. Références sources (obligatoire : DOI ou ISBN)
+- S. V. Patankar, « Numerical Heat Transfer and Fluid Flow », Hemisphere Publishing, 1980 — ISBN 0-89116-522-3 (algorithme SIMPLE, relaxation, itérations externes de couplage pression-vélocité).
+- J. H. Ferziger, M. Perić, R. L. Street, « Computational Methods for Fluid Dynamics », Springer — ISBN 978-3-319-99893-6 (critères de convergence non-linéaires, décroissance géométrique des itérations de point fixe, budget d'itérations et raffinement de maillage).
+- D. A. Knoll, D. E. Keyes, « Jacobian-free Newton–Krylov methods: a survey of approaches and applications », J. Comput. Phys. 193(2), 2004, pp. 357–397 — DOI: 10.1016/j.jcp.2003.08.003 (itération de point fixe : contraction, rayon spectral, distinction transitoire/queue).
+
+## 2. Formulation continue
+Le moniteur n'opère pas sur l'EDP mais sur la suite discrète des métriques non-linéaires du point fixe SIMPLE $u_{k+1} = \Phi(u_k)$. En queue de convergence, l'itéré se décompose sur les modes du linéarisé et le mode dominant décroît géométriquement : $r_k \approx \rho^k r_0$, $\rho$ = taux de contraction par itération. Le nombre d'itérations pour une réduction $\varepsilon$ vérifie $N \approx \ln(1/\varepsilon)/(1-\rho)$. Pour le canal plan, le taux mesuré suit $1-\rho = C h^2$ (section 6), donc $N(n) = A + B n^2$ : le budget d'itérations croît en $O(h^{-2})$ avec le raffinement. Un critère de stagnation par échantillon de seuil $\theta$ fixe est en conflit structurel avec toute campagne dont $1-\rho < \theta$ : le solveur progresse exactement au rythme prévu par sa loi, mais chaque échantillon compte comme « plat ». Le seuil doit donc être un contrôle posé par la campagne à partir de sa loi mesurée, pas une constante universelle ; un budget Picard indépendant du raffinement échoue par construction.
+
+## 3. Discrétisation Volume Fini
+Sans objet direct (aucune discrétisation modifiée). Contrat du moniteur sur la suite des échantillons synthétiques $r_k = \max$ de {momentum_residual, momentum_equation_residual_relative, pressure_residual, velocity_change_inf, pressure_change_inf} fournie par steady_incompressible_solver.h, un échantillon par itération acceptée :
+- amélioration relative : $\Delta_k = (r_{k-1} - r_k)/\max(r_{k-1}, \epsilon_{min})$ ;
+- stagnation (correctif #906) : $|\Delta_k| < \theta$ — enveloppe plate. La hausse comme la baisse inférieures au seuil comptent ; une hausse matérielle ($|\Delta_k| \ge \theta$, $\Delta_k < 0$) ne compte PAS : c'est une régression, domaine du détecteur de divergence ($r_k > g \cdot r_{k-1}$ sur sa propre fenêtre, $g$ = facteur de croissance) ;
+- STAGNATED déclaré quand stagnation_window échantillons consécutifs comptent ; le solveur abort sur STAGNATED/DIVERGED ;
+- le seuil $\theta$ est délégué à ConvergenceCriteria::stagnation_relative_improvement (défaut 1e-3 = valeur historique inchangée pour tout appelant existant).
+
+## 4. Traitement des frontières
+Sans objet pour la discrétisation. Note de diagnostic : le résidu synthétique est un max multi-métriques. Pendant le transitoire d'établissement du canal n64, momentum_equation_residual_relative (audit indépendant réassemblé avec flux corrigé) croît de 1 à 1.12277 en 25 itérations (run 38690061509) alors que velocity_change_inf (1 → 0.0399) et la continuité (1.08e-3 → 4.47e-7) décroissent géométriquement : le max masque la contraction réelle, et c'est exactement la situation où l'ancienne sémantique (hausse comptée comme absence d'amélioration) saturait la fenêtre de 10 et déclarait un faux STAGNATED à ~30 itérations — moins de 0,2 % du budget requis.
+
+## 5. Pièges connus (Gotchas)
+- Un détecteur de stagnation ne doit jamais compter une régression : stagnation = enveloppe plate (contraction $\rho \approx 1$, ni progrès ni explosion) ; divergence = croissance matérielle. Confondre les deux transforme tout transitoire croissant d'une métrique dominante en abort prématuré (#906, étage 1).
+- Un seuil de stagnation scalaire universel est incompatible avec $1-\rho = C h^2$ : à raffinement donné, il finit toujours par excéder le taux de queue légitime (canal n64 : 5.6e-4 < 1e-3, étage 2). Le seuil doit être posé par la campagne sous son plus lent taux légitime.
+- Un budget Picard indépendant du raffinement échoue par construction : $N(n) \approx B n^2$ mesuré (859 its à n16, 3850 à n32) → le budget doit suivre la loi, jamais un nombre rond.
+- Mesurer $\rho$ sur des fenêtres longues (100-200 its) en queue uniquement ; le transitoire initial ne dit rien du taux.
+- Le moniteur ne voit que le max synthétique : une métrique saine au-dessous du max lui est invisible ; ses verdicts STAGNATED/DIVERGED sont diagnostiques et l'acceptation reste per-criterion (gates inchangées).
+- La conséquence d'un seuil mal calibré est un FAIL plus tardif (STAGNATED plus loin ou MAX_ITERATIONS), jamais un faux PASS : la détectivité de la campagne n'est pas affaiblie.
+
+## 6. Ordre de précision attendu et validation exigée
+- Sans objet pour l'ordre spatial (aucune discrétisation modifiée). Loi de queue mesurée sur le run de diagnostic 38690061509 (fenêtres 100/200/400 its, cohérentes) : $1-\rho = C h^2$ avec $C = 2.342$ (n16, $\rho = 0.990853$, 859 its), $C = 2.302$ (n32, $\rho = 0.997752$, 3850 its) ; sonde FP64 indépendante (réplique matrix-free SIMPLE, pattern #872) : $C = 2.425$ (n8, $\rho = 0.9621$), mode dominant $k=0$ uniforme en x. Fit $N(n) = A + B n^2$ sur n16/n32 : $A = -139$, $B = 3.89$ → n64 ≈ 15 800-17 300 its. Décisions portées par ce correctif : budget du test canal 6000 → 24000 (marge ×1,4-1,5 sur le fit, jamais un raccourcissement) ; seuil de stagnation du test canal 1e-3 → 1e-4 (marge ×5,6 sous le taux de queue n64 attendu 5.6e-4) ; timeout du job CI « Long validation campaigns » 90 → 120 min (budget wall-clock ~50-70 min de calcul n64, mesuré 188.7 s pour ~4.3M cellules·itérations → ~5.5 µs/cellule·itération, n64 = 32768 cellules).
+- Validation exigée (toutes inchangées) : test_channel_qualification — monotonie $e_{64} < e_{32} < e_{16}$, ordre observé $p > 0.5$, continuité L∞ ≤ 1e-8 sur n32/n64, gates du solveur (relative 1e-9, continuité 1e-9), quick gate n16 (L2 ≤ 0.20, continuité ≤ 1e-8). Régressions unitaires du moniteur : (a) une hausse matérielle sur la fenêtre ne doit PAS déclarer STAGNATED ; (b) une micro-hausse $|\Delta| < \theta$ compte (enveloppe plate) ; (c) la divergence matérielle reste DIVERGED (inchangé) ; (d) le cas historique de décroissance lente reste STAGNATED — le test négatif N9.7 item 10 (amélioration ~2.5e-4/iter < 1e-3) reste donc valide.
+- Falsifiabilité : si n64 ne converge pas avant 24000 its ou abort STAGNATED en queue, la loi ou le seuil est faux — constat au registre et investigation dédiée avant tout nouvel ajustement.
+
+## 7. Statut d'implémentation CFDX
+- Fichiers source concernés : src/cfdx/cfdx/core/utils/convergence_monitor.h (count_stagnation : critère $|\Delta| < \theta$ ; libellé du motif STAGNATED reformulé « enveloppe plate ») ; src/cfdx/physics/solver_control.h (exposition de ConvergenceCriteria::stagnation_relative_improvement, défaut 1e-3, validation ≥ 0 et fini) ; src/cfdx/physics/steady_incompressible_solver.h (délégation du seuil au critère de convergence de l'appelant) ; tests/unit/test_convergence_monitor.cpp (régressions) ; tests/validation/test_channel_qualification.cpp (budget 24000 + seuil 1e-4, justifiés en commentaire par la loi mesurée) ; .github/workflows/cfdx-validation.yml (timeout long-tests 120 min).
+- Tests exécutables : test_convergence_monitor (unitaire, régressions nouvelles) ; test_channel_quick (n16) ; test_channel_qualification (n16/n32/n64, long) ; N9.7 item 10 (stagnation détectée sur décroissance pathologique — comportement inchangé).
+- Écarts connus code ↔ fiche : aucun après le correctif ; l'ancienne sémantique (hausse comptée comme stagnation) y est documentée comme le défaut #906.
+- Gaps et prochaines actions : verdict quantitatif n64 attendu des re-campagnes (diagnostic + validation-total) au HEAD exact ; confirmation de la loi $N(n)$ au registre INT-CHANNEL à la convergence ; lever DRAFT après verdict.
+
+## 8. Journal des modifications de la fiche
+- 2026-10-15 — PR #902, branche fix/870-planar-mms-flux-closure (fix #906) — création (preuves : run de diagnostic 38690061509 + sonde FP64 pattern #872).

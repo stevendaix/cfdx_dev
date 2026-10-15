@@ -17,6 +17,15 @@ struct ConvergenceCriteria {
     std::size_t max_iterations = 1000;
     bool require_turbulence = false;
     bool require_energy = false;
+    // Stagnation-detection threshold of the nonlinear convergence monitor
+    // (#906): a sample counts as a "flat envelope" only when its relative
+    // residual change is below this threshold in magnitude. The default keeps
+    // the historical value; campaigns whose measured tail-contraction rate
+    // 1 - rho = C*h^2 falls below the default on fine meshes (e.g. channel
+    // n64: ~5.6e-4 < 1e-3) must lower it accordingly. This is a diagnostic
+    // abort control, never a convergence gate: no accepted tolerance
+    // depends on it.
+    double stagnation_relative_improvement = 1e-3;
 };
 
 struct IterationMetrics {
@@ -35,7 +44,9 @@ inline void validate_convergence_criteria(const ConvergenceCriteria& c)
         !(c.relative_tolerance > 0.0) ||
         !(c.continuity_tolerance > 0.0) ||
         !(c.energy_tolerance > 0.0) ||
-        c.max_iterations == 0)
+        c.max_iterations == 0 ||
+        !(c.stagnation_relative_improvement >= 0.0) ||
+        !std::isfinite(c.stagnation_relative_improvement))
         throw std::invalid_argument("invalid convergence criteria");
 }
 

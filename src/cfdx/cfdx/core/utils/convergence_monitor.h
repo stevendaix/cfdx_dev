@@ -143,7 +143,7 @@ public:
             report.reason = "residual growth exceeded the configured divergence criterion";
         } else if (stagnation_count >= controls_.stagnation_window) {
             status_ = ConvergenceStatus::STAGNATED;
-            report.reason = "insufficient residual improvement over the configured stagnation window";
+            report.reason = "flat residual envelope over the configured stagnation window";
         } else if (sample.iteration >= controls_.max_iterations) {
             status_ = ConvergenceStatus::MAX_ITERATIONS;
             report.reason = "maximum nonlinear iteration count reached without satisfying all gates";
@@ -218,7 +218,17 @@ private:
             const double current = history_[i].residual;
             const double improvement =
                 (previous - current) / std::max(previous, std::numeric_limits<double>::min());
-            if (improvement < controls_.stagnation_relative_improvement)
+            // Stagnation is a flat-envelope criterion (#906): a sample counts
+            // only when its relative residual change is below the configured
+            // threshold IN MAGNITUDE. A materially rising residual is a
+            // regression and belongs to the divergence detector (growth factor
+            // over its own window), never to the stagnation window: counting
+            // rising samples made a healthy transient overshoot of the
+            // synthetic max-residual abort the solve as STAGNATED while the
+            // underlying metrics were still decaying geometrically (channel
+            // n64, diagnostic run 38690061509). A micro-rise below the
+            // threshold is part of a flat envelope and still counts.
+            if (std::abs(improvement) < controls_.stagnation_relative_improvement)
                 ++count;
         }
         return count;

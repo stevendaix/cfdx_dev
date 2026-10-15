@@ -146,7 +146,26 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.body_force={G,0.0,0.0};
     c.linear_max_iterations=4000;
     c.linear_tolerance=1e-10;
-    c.convergence.max_iterations=6000;
+    // Picard (SIMPLE) iteration budget (#906). The measured tail-contraction
+    // law of this campaign is 1 - rho = C*h^2 with C = 2.30..2.34 fitted on
+    // n16 (859 its, rho = 0.990853) and n32 (3850 its, rho = 0.997752)
+    // (diagnostic run 38690061509), so the iteration count follows
+    // its(n) = A + B*n^2 with A = -139 and B = 3.89 fitted on the same two
+    // points: n64 needs ~15800-17300 its. The former budget of 6000 was
+    // short by a factor of ~3 by construction. 24000 keeps a x1.4-1.5
+    // margin over the fitted estimate. This is a budget, not a gate: every
+    // convergence tolerance is unchanged (method sheet 17).
+    c.convergence.max_iterations=24000;
+    // Stagnation-detection threshold (#906): the n64 tail contraction
+    // 1 - rho = C*h^2 = 2.3/4096 ~= 5.6e-4 per iteration is a legitimate
+    // on-schedule convergence rate, but it sits below the default 1e-3
+    // threshold of the nonlinear monitor, which would terminate the solve
+    // as STAGNATED a few iterations into the asymptotic tail. The threshold
+    // is a diagnostic abort control (method sheet 17): set it below the
+    // slowest legitimate tail rate of this campaign -- 1e-4 gives a x5.6
+    // margin. A genuinely flat solve still aborts; no convergence gate is
+    // touched.
+    c.convergence.stagnation_relative_improvement=1e-4;
     c.convergence.relative_tolerance=1e-9;
     c.convergence.continuity_tolerance=1e-9;
     c.coupling.alpha_u=0.7;
