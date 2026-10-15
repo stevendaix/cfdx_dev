@@ -7817,7 +7817,7 @@ test 2
 2: 106: SIMPLE/SOU/bounded: profile L2/Linf=1.14614e-09/1.62367e-09 continuity=4.15608e-12
 2: 106: SIMPLE/upwind/unbounded: profile L2/Linf=1.10092e-09/1.57976e-09 continuity=8.00216e-12
 2: 106: PHASE9_ACCEPTANCE: PASS
-2: 1/1 Test #106: test_phase9_acceptance ...........   Passed   22.49 sec
+2: 1/1 Test #106: test_phase9_acceptance ...........   Passed   20.02 sec
 2: 
 2: The following tests passed:
 2: 	test_phase9_acceptance
@@ -7825,12 +7825,12 @@ test 2
 2: 100% tests passed, 0 tests failed out of 1
 2: 
 2: Label Time Summary:
-2: coupled-ns    =  22.49 sec*proc (1 test)
-2: long          =  22.49 sec*proc (1 test)
-2: phase9        =  22.49 sec*proc (1 test)
-2: validation    =  22.49 sec*proc (1 test)
+2: coupled-ns    =  20.02 sec*proc (1 test)
+2: long          =  20.02 sec*proc (1 test)
+2: phase9        =  20.02 sec*proc (1 test)
+2: validation    =  20.02 sec*proc (1 test)
 2: 
-2: Total Test time (real) =  22.49 sec
+2: Total Test time (real) =  20.02 sec
 2: 
 2: === N11 conservation/boundedness: test_poiseuille_diagnostics ===
 2: UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-diag/DartConfiguration.tcl
@@ -8238,7 +8238,7 @@ test 2
 2: 103: GHIA Re=1000 grid=64x64 iterations=1418 continuity=5.83425e-13 continuity_norm=1.39522e-11 momentum_eq=9.68518e-12 U_RMS=0.0666171 U_max=0.132323 V_RMS=0.0809468 V_max=0.130654
 2: 103: GHIA Re=100 observed_order U_RMS=0.960438 U_max=1.29442 V_RMS=1.02975 V_max=1.07471 dU_RMS(32,64)=0.00653407 dU_RMS(64,128)=0.00335787 dV_RMS(32,64)=0.00440837 dV_RMS(64,128)=0.00215919
 2: 103: GHIA_CAVITY_VALIDATION: PASS
-2: 1/1 Test #103: test_ghia_cavity .................   Passed  1064.93 sec
+2: 1/1 Test #103: test_ghia_cavity .................   Passed  1151.04 sec
 2: 
 2: The following tests passed:
 2: 	test_ghia_cavity
@@ -8246,11 +8246,11 @@ test 2
 2: 100% tests passed, 0 tests failed out of 1
 2: 
 2: Label Time Summary:
-2: long          = 1064.93 sec*proc (1 test)
-2: phase13       = 1064.93 sec*proc (1 test)
-2: validation    = 1064.93 sec*proc (1 test)
+2: long          = 1151.04 sec*proc (1 test)
+2: phase13       = 1151.04 sec*proc (1 test)
+2: validation    = 1151.04 sec*proc (1 test)
 2: 
-2: Total Test time (real) = 1064.94 sec
+2: Total Test time (real) = 1151.04 sec
 2: 
 2: === N11 conservation/boundedness: test_mms_scalar_diffusion ===
 2: UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-diag/DartConfiguration.tcl
@@ -8285,7 +8285,7 @@ test 2
 2: 135: Running 0 test cases...
 2: 135: 
 2: 135: Results: 0 passed, 0 failed
-2: 1/1 Test #135: test_mms_scalar_diffusion ........   Passed    0.16 sec
+2: 1/1 Test #135: test_mms_scalar_diffusion ........   Passed    0.15 sec
 2: 
 2: The following tests passed:
 2: 	test_mms_scalar_diffusion
@@ -8293,10 +8293,10 @@ test 2
 2: 100% tests passed, 0 tests failed out of 1
 2: 
 2: Label Time Summary:
-2: phase13       =   0.16 sec*proc (1 test)
-2: validation    =   0.16 sec*proc (1 test)
+2: phase13       =   0.15 sec*proc (1 test)
+2: validation    =   0.15 sec*proc (1 test)
 2: 
-2: Total Test time (real) =   0.17 sec
+2: Total Test time (real) =   0.16 sec
 2: 
 2: === N11 conservation/boundedness: test_cht_validation ===
 2: UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-diag/DartConfiguration.tcl
@@ -8449,7 +8449,7 @@ test 2
 2: 200: Test timeout computed to be: 10000000
 2: 200: N13 serial/MPI equivalence PASS L2rel=0 Linfrel=0
 2: 200: N11_MPI_RESULT converged=true global_balance_L1=0 global_balance_Linf=0 residual=0 ranks=2
-2: 1/1 Test #200: test_n13_mpi_equivalence .........   Passed    0.40 sec
+2: 1/1 Test #200: test_n13_mpi_equivalence .........   Passed    0.60 sec
 2: 
 2: The following tests passed:
 2: 	test_n13_mpi_equivalence
@@ -8457,25 +8457,25 @@ test 2
 2: 100% tests passed, 0 tests failed out of 1
 2: 
 2: Label Time Summary:
-2: n13           =   0.40 sec*proc (1 test)
-2: phase13       =   0.40 sec*proc (1 test)
-2: validation    =   0.40 sec*proc (1 test)
+2: n13           =   0.60 sec*proc (1 test)
+2: phase13       =   0.60 sec*proc (1 test)
+2: validation    =   0.60 sec*proc (1 test)
 2: 
-2: Total Test time (real) =   0.41 sec
+2: Total Test time (real) =   0.60 sec
 2: 
 2: N11 report: /home/runner/work/cfdx_dev/cfdx_dev/build-diag/n11_conservation_boundedness.json
 2: N11 campaign status: FAIL
-1/1 Test #2: test_n11_conservation_boundedness ...***Failed  1088.18 sec
+1/1 Test #2: test_n11_conservation_boundedness ...***Failed  1172.01 sec
 
 0% tests passed, 1 tests failed out of 1
 
 Label Time Summary:
-long             = 1088.18 sec*proc (1 test)
-n11              = 1088.18 sec*proc (1 test)
-qualification    = 1088.18 sec*proc (1 test)
-validation       = 1088.18 sec*proc (1 test)
+long             = 1172.01 sec*proc (1 test)
+n11              = 1172.01 sec*proc (1 test)
+qualification    = 1172.01 sec*proc (1 test)
+validation       = 1172.01 sec*proc (1 test)
 
-Total Test time (real) = 1088.19 sec
+Total Test time (real) = 1172.02 sec
 
 The following tests FAILED:
 	  2 - test_n11_conservation_boundedness (Failed)        long n11 qualification validation
