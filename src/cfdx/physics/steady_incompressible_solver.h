@@ -2849,29 +2849,51 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (it == pressure_bcs.end() ||
                     it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
                 const std::size_t o = mesh.ownership().owner(f);
-                const double distance =
-                    (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
+                const Vec3 dvec =
+                    geometry.face_centres[f] - geometry.cell_centres[o];
+                const double distance = dvec.mag();
+                if (!(distance > 0.0))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: degenerate "
+                        "fixed-pressure boundary distance");
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                const double rfn =
-                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
-                rows[o][o] += controls.density * rfn * area / distance;
-                // Explicit pressure flux at fixed-pressure boundaries (#894):
-                // the half-Dirichlet diagonal term above is only consistent
-                // when the boundary mass flux is reconstructed as
-                //   phi_b = phiHbyA_b - rho*rfn*area/d*(p_bc - p_P).
-                // Without the matching source term the discretised equation
-                // forces the boundary flux to zero and the continuity
-                // residual stalls on a nonzero floor. Inject the source into
-                // the RHS (b is assembled before this loop, so it must be
-                // updated directly), with the same directional coefficient
-                // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
-                b(o) += controls.density * rfn * area / distance *
-                    (it->second.value - p(o));
+                // Half-Dirichlet boundary coefficient (#894, #904): the
+                // pressure-correction matrix must balance the SAME
+                // dAU = V*rAU velocity-response operator that
+                // make_rhie_chow_mass_flux() uses to reconstruct the
+                // authoritative boundary flux,
+                //   phi_b = phiHbyA_b - rho*rfn*(Sf.e)/d*(p_bc - p_P),
+                // and that directional_face_coefficient() uses on the
+                // internal faces of this same matrix. The previous
+                // r_f = rAU projection omitted the cell volume V_o, so the
+                // matrix under-weighted the boundary pressure response by a
+                // factor V_o relative to the flux: the corrected flux and
+                // the p' operator disagreed, the continuity residual froze
+                // on a nonzero floor with momentum at machine zero, and the
+                // fixed-pressure campaigns could never reach their gates.
+                const Vec3 e{dvec.x/distance, dvec.y/distance,
+                             dvec.z/distance};
+                const double rfn = geometry.cell_volumes[o] * (
+                    pressure_coeff[0][o]*e.x*e.x +
+                    pressure_coeff[1][o]*e.y*e.y +
+                    pressure_coeff[2][o]*e.z*e.z);
+                const double coeff =
+                    controls.density * rfn * Sf.dot(e) / distance;
+                rows[o][o] += coeff;
+                // Explicit pressure flux source at fixed-pressure boundaries
+                // (#894): the half-Dirichlet diagonal term above is only
+                // consistent when the boundary mass flux is reconstructed
+                // as phi_b = phiHbyA_b - coeff*(p_bc - p_P) with this exact
+                // coeff. Without the matching source term the discretised
+                // equation forces the boundary flux to zero and the
+                // continuity residual stalls on a nonzero floor. Inject the
+                // source into the RHS (b is assembled before this loop, so
+                // it must be updated directly), with the same directional
+                // coefficient and the same dAU = V*rAU volume factor as the
+                // matrix (rAU: SIMPLE, rAtU: SIMPLEC).
+                b(o) += coeff * (it->second.value - p(o));
             }
 
             Vector p_corr(nc, 0.0);
@@ -3976,3 +3998,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+
