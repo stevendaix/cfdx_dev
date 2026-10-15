@@ -486,7 +486,7 @@ test 144
 144: N12_COUPLED_TRACE n=64 iter=71 continuity=5.53012496907e-14 momentum_rel=9.25420809274e-13 mass=1.23058841094e-12 du=6.17370448087e-14 dp=2.16970885702e-12 eff_alpha_u=0.7 eff_alpha_p=0.3 nonlinear=2.16970885702e-12
 144: N12_COUPLED_TRACE n=64 iter=72 continuity=3.79522802074e-14 momentum_rel=6.19690812694e-13 mass=8.58592431053e-13 du=2.0933739288e-14 dp=1.57618362806e-12 eff_alpha_u=0.7 eff_alpha_p=0.3 nonlinear=1.57618362806e-12
 144: N12_COUPLED_PV_MMS: PASS
-1/1 Test #144: test_n12_coupled_pressure_velocity_mms ...   Passed    0.21 sec
+1/1 Test #144: test_n12_coupled_pressure_velocity_mms ...   Passed    0.24 sec
 
 The following tests passed:
 	test_n12_coupled_pressure_velocity_mms
@@ -494,10 +494,10 @@ The following tests passed:
 100% tests passed, 0 tests failed out of 1
 
 Label Time Summary:
-long                =   0.21 sec*proc (1 test)
-mms                 =   0.21 sec*proc (1 test)
-n12                 =   0.21 sec*proc (1 test)
-validation          =   0.21 sec*proc (1 test)
-validation-total    =   0.21 sec*proc (1 test)
+long                =   0.24 sec*proc (1 test)
+mms                 =   0.24 sec*proc (1 test)
+n12                 =   0.24 sec*proc (1 test)
+validation          =   0.24 sec*proc (1 test)
+validation-total    =   0.24 sec*proc (1 test)
 
-Total Test time (real) =   0.25 sec
+Total Test time (real) =   0.30 sec
