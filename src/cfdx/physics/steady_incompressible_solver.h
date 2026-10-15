@@ -207,6 +207,19 @@ struct IncompressibleIteration {
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
     double continuity_normalized = std::numeric_limits<double>::infinity();
+    // Explicit normalization evidence: raw residual / max(abs(momentum RHS))
+    // and raw residual / first-iteration raw residual are different metrics.
+    double momentum_rhs_scale = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_reference = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_rhs_relative = std::numeric_limits<double>::infinity();
+    std::array<double, 3> momentum_rhs_scale_components{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<double, 3> momentum_equation_residual_rhs_relative_components{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
@@ -247,8 +260,7 @@ struct IncompressibleIteration {
     double pressure_gradient_l2 = std::numeric_limits<double>::infinity();
     std::size_t momentum_residual_cell = 0;
     double momentum_residual_no_pressure = std::numeric_limits<double>::infinity();
-    double momentum_pressure_contribution = std::numeric_limits<double>::infinity();
-    std::string momentum_residual_patch;
+    double momentum_pressure_contribution = std::numeric_limits<double>::infinity();    std::string momentum_residual_patch;
     // Independent finite-volume conservation diagnostics for the authoritative
     // pressure-corrected mass flux. These are distinct from linear residuals.
     double mass_boundary_flux = std::numeric_limits<double>::infinity();
@@ -498,7 +510,6 @@ gauss_gradient_with_boundary(
     }
     return grad;
 }
-
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -747,8 +758,7 @@ inline ScalarEquation assemble_momentum_component(
     bool bounded,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
-{
-    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+{    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "momentum_source", "N/m3", 1);
     cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
         mesh.n_cells(), "momentum_sp", "kg/m3/s", 1);
@@ -997,8 +1007,7 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const VelocityBoundaryConditions& velocity_bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     std::size_t reference_cell,
-    ConvectionScheme /*convection_scheme — unused by design, see comment above*/)
-{
+    ConvectionScheme /*convection_scheme — unused by design, see comment above*/){
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
     if (velocity.size() != nc || velocity.dimension() != 3)
@@ -1247,8 +1256,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     static_cast<std::size_t>(other_cell) >= nc ||
                     static_cast<std::size_t>(other_cell) == c)
                     throw std::runtime_error(
-                        "solve_coupled_momentum_continuity: invalid face topology on face " +
-                        std::to_string(f) + " cell " + std::to_string(c));
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +                        std::to_string(f) + " cell " + std::to_string(c));
                 const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 // Match gauss_gradient_with_boundary() exactly: the
                 // cell-centred pressure gradient uses a distance-weighted
@@ -1497,8 +1505,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
                             std::to_string(f));
                     A.push_back(row, nv + c, D);
-                    coupled_pressure_schur_diagonal[c] += D;
-                    b(row) += D * pbc->value;
+                    coupled_pressure_schur_diagonal[c] += D;                    b(row) += D * pbc->value;
                 }
             }
         }
@@ -1747,8 +1754,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         block.finalize();
         return block;
-    };
-    if (use_simple_schur) {
+    };    if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
@@ -1997,7 +2003,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::nullopt,
             has_fixed_pressure ? std::optional<std::size_t>()
                                : std::optional<std::size_t>(reference_cell));
-
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
@@ -2247,8 +2252,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         pressure_plan = select_linear_solver(
             LinearProblemKind::PressurePoisson,
             reduce_pressure_gauge ? mesh.n_cells() - 1 : mesh.n_cells(),
-            controls.pressure_linear_solver);
-        result.pressure_linear_plan = pressure_plan;
+            controls.pressure_linear_solver);        result.pressure_linear_plan = pressure_plan;
         result.pressure_linear_plan_resolved = true;
         if (pressure_plan.krylov == KrylovModel::CG) {
             pressure_preconditioner =
@@ -2497,7 +2501,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         // Momentum predictor uses the conservative corrected flux from the
         // previous outer iteration. This preserves the SIMPLE phi state.
-
         auto ex = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
@@ -2748,7 +2751,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             frozen_grad_p = grad_p;
             frozen_state_valid = true;
         }
-
         // rAU is the inverse integrated momentum diagonal (1/A_P).
         // Pressure-gradient terms in the integrated momentum equation therefore
         // carry the cell volume explicitly when reconstructing cell velocity.
@@ -2997,8 +2999,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // predictor flux phiHbyA + rho*(dAtU - dAU)*(p_N - p_P),
                 // not the bare interpolated predictor. The corrected flux
                 // must therefore carry the same consistent-response term,
-                // evaluated at the corrected pressure; otherwise it differs
-                // from the operator the pressure equation just balanced by
+                // evaluated at the corrected pressure; otherwise it differs                // from the operator the pressure equation just balanced by
                 // exactly div(rho*(dAtU - dAU)*dp) and a continuity floor of
                 // that size survives on every case with a non-constant
                 // pressure field (e.g. the lid-driven cavity) even though
@@ -3247,18 +3248,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         velocity_change_inf /= std::max(velocity_scale, tiny);
         const double pressure_range = pressure_max - pressure_min;
-        // Use a physical pressure scale when the converged solution is nearly uniform.
-        // Otherwise round-off-level pressure changes are divided by a vanishing range
+        // Use a physical pressure scale when the converged solution is nearly uniform.        // Otherwise round-off-level pressure changes are divided by a vanishing range
         // and can prevent convergence forever on constant-pressure cases.
         const double pressure_scale = std::max(
             {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
         pressure_change_inf /= pressure_scale;
 
-        double momentum_rhs_scale = 0.0;
-        for (const auto* eq : {&final_ex, &final_ey, &final_ez})
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-                momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
-        momentum_rhs_scale = std::max(momentum_rhs_scale, tiny);
+        const std::array<const ScalarEquation*, 3> momentum_equations{
+            &final_ex, &final_ey, &final_ez};
+        std::array<double, 3> momentum_rhs_scale_components{0.0, 0.0, 0.0};
+        for (std::size_t d = 0; d < momentum_equations.size(); ++d) {
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                momentum_rhs_scale_components[d] = std::max(
+                    momentum_rhs_scale_components[d],
+                    std::abs(momentum_equations[d]->rhs(c)));
+            }
+            momentum_rhs_scale_components[d] =
+                std::max(momentum_rhs_scale_components[d], tiny);
+        }
+        const double momentum_rhs_scale = std::max({
+            momentum_rhs_scale_components[0],
+            momentum_rhs_scale_components[1],
+            momentum_rhs_scale_components[2]});
 
         IncompressibleIteration h;
         h.iteration = iter;
@@ -3267,8 +3278,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
         h.momentum_equation_residual = final_momentum_residual;
-        h.momentum_equation_residual_relative =
+        h.momentum_rhs_scale = momentum_rhs_scale;
+        h.momentum_rhs_scale_components = momentum_rhs_scale_components;
+        h.momentum_equation_residual_rhs_relative =
             final_momentum_residual / momentum_rhs_scale;
+        h.momentum_equation_residual_rhs_relative_components = {
+            rx_diag.global / momentum_rhs_scale_components[0],
+            ry_diag.global / momentum_rhs_scale_components[1],
+            rz_diag.global / momentum_rhs_scale_components[2]};
         double flux_reference = 0.0;
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             flux_reference += std::abs(mass_flux(f));
@@ -3278,8 +3295,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter == 1)
             result.reference_momentum_residual =
                 std::max(final_momentum_residual, tiny);
+        h.momentum_equation_residual_reference =
+            std::max(result.reference_momentum_residual, tiny);
         h.momentum_equation_residual_relative =
-            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
+            final_momentum_residual / h.momentum_equation_residual_reference;
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.effective_alpha_u = effective_alpha_u;
@@ -3367,7 +3386,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Diagnostic-only trace: expose the authoritative nonlinear history
             // before the convergence gate. No criterion or tolerance is changed.
             std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
-                      << " momentum_residual_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
+                      << " momentum_residual_reference_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual_raw=" << h.momentum_equation_residual
+                      << " momentum_rhs_scale=" << h.momentum_rhs_scale
+                      << " momentum_residual_reference=" << h.momentum_equation_residual_reference
+                      << " momentum_rhs_scale_components=("
+                      << h.momentum_rhs_scale_components[0] << ","
+                      << h.momentum_rhs_scale_components[1] << ","
+                      << h.momentum_rhs_scale_components[2] << ")"
+                      << " momentum_rhs_relative_components=("
+                      << h.momentum_equation_residual_rhs_relative_components[0] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[1] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[2] << ")"
                       << " continuity_normalized=" << h.continuity_normalized
                       << " velocity_change_inf=" << h.velocity_change_inf
                       << " pressure_change_inf=" << h.pressure_change_inf
@@ -3497,8 +3528,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " diagonal=" << eq.diagonal[debug_cell]
                           << " nnz=" << (end - begin) << "\n";
                 for (std::uint32_t k = begin; k < end; ++k) {
-                    const auto col = eq.matrix.columns_data()[k];
-                    const auto value = eq.matrix.values_data()[k];
+                    const auto col = eq.matrix.columns_data()[k];                    const auto value = eq.matrix.values_data()[k];
                     ax += value * solution(col);
                     std::cerr << "  col=" << col << " a=" << value
                               << " x=" << solution(col)
@@ -3747,8 +3777,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             dAU_n =
                                 geometry.cell_volumes[debug_cell] * (
                                     diag_rAU[0][debug_cell]*e.x*e.x +
-                                    diag_rAU[1][debug_cell]*e.y*e.y +
-                                    diag_rAU[2][debug_cell]*e.z*e.z);
+                                    diag_rAU[1][debug_cell]*e.y*e.y +                                    diag_rAU[2][debug_cell]*e.z*e.z);
                             const double normal_dp =
                                 (pit->second.value - p(debug_cell)) / d;
                             pressure_flux_correction =
