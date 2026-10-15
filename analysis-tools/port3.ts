@@ -325,6 +325,13 @@ function makeSolver(mesh: Mesh, rho: number, mu: number) {
         const F = slotFsgn[kk] * phi[fid];
         const inb = m.fNb[fid] !== -1;
         const nb = inb ? gOther[kk] : cell;
+        // The outlet assembly uses the signed zero-gradient row term F*u_P.
+        // Keep the residual operator identical, including outlet backflow.
+        if (!inb && m.fOuter[fid] && m.fCx[fid] >= 0.0) {
+          rx += F * ux[cell];
+          rr += F * ur[cell];
+          continue;
+        }
         const D = inb ? muAd[fid] : mu * m.fArea[fid] / bD[fid];
         const an = D + Math.max(-F, 0.0);
         const ubx = inb ? ux[nb] : boundaryUx(fid, cell);
@@ -529,3 +536,10 @@ function makeSolver(mesh: Mesh, rho: number, mu: number) {
 
   return { solve, ux, ur, p, phi };
 }
+
+
+// Standalone Re=50 campaign entry point. rho=1 and U=D=1 imply mu=1/Re.
+const campaignMesh = buildMesh(44, 54);
+const campaignSolver = makeSolver(campaignMesh, 1.0, 1.0 / 50.0);
+const campaignResult = campaignSolver.solve(campaignControls(), 50);
+console.log('VMFL036_TWIN_RESULT=' + JSON.stringify(campaignResult));
