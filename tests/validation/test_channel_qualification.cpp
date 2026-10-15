@@ -157,7 +157,46 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.pressure_reference_value=0.0;
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
-    if(!solve.converged) throw std::runtime_error("channel solver did not converge");
+    if (solve.history.empty()) {
+        std::cerr << "CHANNEL_SOLVE_RESULT n=" << n
+                  << " status=NO_HISTORY"
+                  << " converged=" << (solve.converged ? "true" : "false")
+                  << " iterations=" << solve.iterations
+                  << " max_iterations=" << c.convergence.max_iterations
+                  << " reason=" << solve.convergence_reason << "\n";
+        throw std::runtime_error("channel solver returned no convergence history");
+    }
+
+    // Emit the final nonlinear and independently reassembled momentum
+    // diagnostics before any failure is thrown. This is essential for long
+    // fine-grid runs: a pressure/continuity pass must not hide a momentum
+    // residual that is still far from its declared gate.
+    const auto& final = solve.history.back();
+    std::cerr << "CHANNEL_SOLVE_RESULT n=" << n
+              << " status=" << (solve.converged ? "CONVERGED" : "NOT_CONVERGED")
+              << " iterations=" << solve.iterations
+              << " max_iterations=" << c.convergence.max_iterations
+              << " momentum_relative=" << final.momentum_equation_residual_relative
+              << " momentum_absolute=" << final.momentum_equation_residual
+              << " momentum_internal=" << final.momentum_equation_residual_internal
+              << " momentum_boundary=" << final.momentum_equation_residual_boundary
+              << " continuity_normalized=" << final.continuity_normalized
+              << " continuity_linf=" << final.continuity_linf
+              << " pressure_residual=" << final.pressure_residual
+              << " velocity_change_inf=" << final.velocity_change_inf
+              << " pressure_change_inf=" << final.pressure_change_inf
+              << " alpha_u=" << final.effective_alpha_u
+              << " alpha_p=" << final.effective_alpha_p
+              << " momentum_linear_iterations=" << final.momentum_linear_iterations
+              << " pressure_linear_iterations=" << final.pressure_linear_iterations
+              << " worst_cell=" << final.momentum_residual_cell
+              << " worst_patch=" << final.momentum_residual_patch
+              << " flux_velocity_mismatch_linf=" << final.flux_velocity_mismatch_linf
+              << " relative_tolerance=" << c.convergence.relative_tolerance
+              << " continuity_tolerance=" << c.convergence.continuity_tolerance
+              << " reason=" << solve.convergence_reason << "\n";
+    if (!solve.converged)
+        throw std::runtime_error("channel solver did not converge; see CHANNEL_SOLVE_RESULT");
 
     const FvGeometry geometry = build_fv_geometry(mesh);
 
