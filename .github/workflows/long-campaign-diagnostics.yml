@@ -3,18 +3,24 @@ name: Long-campaign diagnostics
 # Diagnostic-only workflow (pattern #894/#901): the branch that carries this
 # file is NEVER merged. It rebuilds the validation suite exactly like the
 # `prepare` job of cfdx-validation.yml, runs every label-long test one by one
-# with its own log, and posts the failure evidence to issue #870. Actions
-# logs and artifacts are not reachable from the current tooling, so this is
-# how root causes become visible (same approach as wall-diagnostics, #901).
+# with its own log, and publishes the failure evidence three ways:
+#   1. committed to the branch under diag-evidence/ (readable via the API,
+#      immune to any posting failure — paths-ignore prevents re-trigger),
+#   2. as a workflow artifact (if: always()),
+#   3. as a best-effort issue comment on #870 (never fails the job).
+# Run #1 (3b248a1) lost its evidence: the compose step failed with exit 2
+# before any channel survived. This hardening guarantees the evidence exists.
 
 on:
   push:
     branches:
       - ci/long-campaign-diagnostics
+    paths-ignore:
+      - 'diag-evidence/**'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -36,7 +42,7 @@ jobs:
       - name: Install build and runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ \
+          sudo apt-get install -y cmake ninja-build g++ jq curl \
             libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
 
       - name: Install Python dependencies
@@ -116,48 +122,115 @@ jobs:
           echo "--- summary ---"
           cat diag-summary.tsv
 
-      - name: Compose and post evidence to issue #870
+      - name: Commit evidence to the diagnostic branch (primary channel)
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/logs
+          cp diag-summary.tsv diag-evidence/ 2>/dev/null || true
+          cp diag-logs/*.log diag-evidence/logs/ 2>/dev/null || true
+          RUNID="$GITHUB_RUN_ID"
+          {
+            echo "# Long-campaign diagnostics evidence — run $RUNID"
+            echo
+            echo "- commit: $GITHUB_SHA"
+            echo "- date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "- config: MPI ON, LONG_VALIDATION ON, parallel HDF5, Release"
+            echo
+            echo "## Summary (diag-summary.tsv)"
+            echo
+            echo '| test | verdict |'
+            echo '|---|---|'
+            awk -F'\t' '{printf "| %s | %s |\n", $1, $2}' diag-summary.tsv 2>/dev/null || true
+            echo
+            while IFS=$'\t' read -r name safe; do
+              [ -n "$name" ] || continue
+              log="diag-logs/$safe.log"
+              [ -s "$log" ] || continue
+              echo "## $name"
+              echo
+              echo '~~~'
+              grep -nE 'FAIL|Failed|failed|Error|error|Exit Code|exit code|mismatch|gate|tolerance|worst|exceed|Exceed|assert' "$log" 2>/dev/null | head -n 35 || true
+              echo "---- (30 dernieres lignes du log) ----"
+              tail -n 30 "$log" 2>/dev/null || true
+              echo '~~~'
+              echo
+            done < /tmp/failing.txt 2>/dev/null || true
+          } > "diag-evidence/run-$RUNID.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diag-evidence 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence change to commit"
+          else
+            git commit -m "diag(evidence): run $RUNID [ci skip]" 2>/dev/null || true
+            git push origin "HEAD:$GITHUB_REF_NAME" 2>&1 || echo "::warning::evidence push failed (artifact/comment remain)"
+          fi
+          exit 0
+
+      - name: Upload diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-campaign-diag-logs
+          path: |
+            diag-logs/
+            diag-summary.tsv
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Compose and post evidence to issue #870 (best effort)
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -uo pipefail
+          set -u
           {
             echo "## Long-campaign diagnostics — preuves (pattern #894/#901, branche de diagnostic, jamais merger)"
             echo
             echo "Run : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            echo "HEAD diagnostic : $GITHUB_SHA (contenu = master aa806657 + PR #902 ; memes echecs que le run 38595780004)"
+            echo "HEAD diagnostic : $GITHUB_SHA (contenu = master aa806657 + PR #902)"
+            echo "Preuve complete : diag-evidence/run-$GITHUB_RUN_ID.md sur la branche ci/long-campaign-diagnostics + artefact long-campaign-diag-logs"
             echo
             echo "| test | verdict |"
             echo "|---|---|"
-            awk -F'\t' '{printf "| %s | %s |\n", $1, $2}' diag-summary.tsv
+            awk -F'\t' '{printf "| %s | %s |\n", $1, $2}' diag-summary.tsv 2>/dev/null || true
             echo
             while IFS=$'\t' read -r name safe; do
               [ -n "$name" ] || continue
               log="diag-logs/$safe.log"
               [ -s "$log" ] || continue
               echo "### $name"
-              echo '```'
-              grep -nE 'FAIL|Failed|failed|Error|error|Exit Code|exit code|mismatch|gate|tolerance|worst|exceed|Exceed|assert' "$log" | head -n 35
+              echo '~~~'
+              grep -nE 'FAIL|Failed|failed|Error|error|Exit Code|exit code|mismatch|gate|tolerance|worst|exceed|Exceed|assert' "$log" 2>/dev/null | head -n 35 || true
               echo "---- (30 dernieres lignes du log) ----"
-              tail -n 30 "$log"
-              echo '```'
+              tail -n 30 "$log" 2>/dev/null || true
+              echo '~~~'
               echo
-            done < /tmp/failing.txt
-          } > /tmp/comment.md
-          size=$(wc -c < /tmp/comment.md)
-          echo "comment size: $size"
+            done < /tmp/failing.txt 2>/dev/null || true
+          } > /tmp/comment.md 2>/dev/null || true
+          cp /tmp/comment.md /tmp/comment-final.md 2>/dev/null || echo "(no evidence composed)" > /tmp/comment-final.md
+          size=$(wc -c < /tmp/comment.md 2>/dev/null || echo 58000)
           if [ "$size" -gt 58000 ]; then
-            head -c 58000 /tmp/comment.md > /tmp/comment-final.md
+            head -c 58000 /tmp/comment.md > /tmp/comment-final.md 2>/dev/null || true
             echo '(commentaire tronque a 58000 caracteres)' >> /tmp/comment-final.md
-          else
-            cp /tmp/comment.md /tmp/comment-final.md
           fi
-          jq -n --rawfile body /tmp/comment-final.md '{body: $body}' > /tmp/payload.json
-          curl -sS -X POST \
+          jq -n --rawfile body /tmp/comment-final.md '{body: $body}' > /tmp/payload.json 2>/dev/null || true
+          http=$(curl -sS --fail-with-body -o /tmp/curl-out.txt -w '%{http_code}' \
+            -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/870/comments" \
-            -d @/tmp/payload.json | head -c 300
+            -d @/tmp/payload.json) 2>/tmp/curl-err.txt
+          if [ "$http" = "201" ]; then
+            echo "POST to #870: 201 created"
+          else
+            echo "::warning::POST to #870 returned '$http' — falling back to gh api"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/870/comments" \
+              -F body="$(cat /tmp/comment-final.md)" 2>&1 | head -c 300 || true
+          fi
+          head -c 300 /tmp/curl-err.txt 2>/dev/null || true
+          exit 0
