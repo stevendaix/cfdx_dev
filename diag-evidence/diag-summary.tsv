@@ -1,0 +1,7 @@
+test_n12_coupled_pressure_velocity_mms	FAIL
+test_channel_qualification	FAIL
+test_naca0012_qualification	FAIL
+test_bfs_qualification	FAIL
+test_vmfl036_axisymmetric	FAIL
+test_ghia_cavity_n8_pcd	FAIL
+test_n11_conservation_boundedness	FAIL

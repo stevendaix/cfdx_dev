@@ -1,0 +1,36 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build-diag
+UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-diag/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-diag/DartConfiguration.tcl
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build-diag
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 124
+    Start 124: test_vmfl036_axisymmetric
+
+124: Test command: /home/runner/work/cfdx_dev/cfdx_dev/build-diag/test_vmfl036_axisymmetric
+124: Working Directory: /home/runner/work/cfdx_dev/cfdx_dev/build-diag
+124: Test timeout computed to be: 10000000
+124: VMFL036_AXISYMESH: PASS nr=36 nt=54 cells=1944 nodes=2035
+124: VMFL036_AXISYM ITER=1 continuity=0.198092 momentum=0.0305269 pcorr=0.0123499
+124: VMFL036_AXISYMMETRIC_VALIDATION: FAIL: VMFL036 non-finite momentum sweep at cell 877 sweep=0 ux=-inf ur=inf apx=375032488679165976291167254403752647885514770750631960835784359495820726894869981350472405100517808087844458446855575690496700302831730516693297955392231971206725632.000000 apr=375032488679165976291167254403752647885514770750631960835784359495820726894869981350472405100517808087844458446855575690496700302831730516693297955392231971206725632.000000
+1/1 Test #124: test_vmfl036_axisymmetric ........***Failed    0.10 sec
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+axisymmetric    =   0.10 sec*proc (1 test)
+long            =   0.10 sec*proc (1 test)
+phase14         =   0.10 sec*proc (1 test)
+validation      =   0.10 sec*proc (1 test)
+
+Total Test time (real) =   0.11 sec
+
+The following tests FAILED:
+	124 - test_vmfl036_axisymmetric (Failed)                axisymmetric long phase14 validation
+Errors while running CTest
+Output from these tests are in: /home/runner/work/cfdx_dev/cfdx_dev/build-diag/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.
