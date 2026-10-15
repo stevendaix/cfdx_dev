@@ -247,7 +247,8 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
           const an = D + Math.max(-F, 0.0);
           ax += D + Math.max(F, 0.0);
           ar += D + Math.max(F, 0.0);
-          nbId[kk] = o; nbAn[kk] = an; nbCnt[cell]++;
+          const cnb = cell * 4 + nbCnt[cell];
+          nbId[cnb] = o; nbAn[cnb] = an; nbCnt[cell]++;
         } else if (m.fAxis[fid]) {
           const D = mu * m.fArea[fid] / bD[fid];
           ax += F;
@@ -325,7 +326,7 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
       cellScale[cell] = s;
     }
   }
-  function pressureCorrection(c: any): number {
+  function pressureCorrection(c: any, sweepsLog?: any[]): number {
     pc.fill(0.0);
     pDiag.fill(0.0);
     pCnt.fill(0);
@@ -344,7 +345,8 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
           const df = 0.5 * (faceResponse(cell, m.fNx[fid], m.fNr[fid], c) + faceResponse(nb, m.fNx[fid], m.fNr[fid], c));
           const a = rhoAd[fid] * df;
           pDiag[cell] += a;
-          pNbId[kk] = nb; pNbA[kk] = -a; pCnt[cell]++;
+          const cp = cell * 4 + pCnt[cell];
+          pNbId[cp] = nb; pNbA[cp] = -a; pCnt[cell]++;
         } else if (m.fOuter[fid] && m.fCx[fid] >= 0.0) {
           const a = rho * m.fArea[fid] * faceResponse(cell, m.fNx[fid], m.fNr[fid], c) / bD[fid];
           pDiag[cell] += a;
@@ -366,6 +368,20 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
         const d = Math.abs(v - old);
         if (d > maxcorr) maxcorr = d;
         pc[cell] = v;
+      }
+      if (sweepsLog) {
+        let lr = 0.0;
+        for (let cell = 0; cell < n; cell++) {
+          let r = pDiag[cell] * pc[cell];
+          for (let k = 0; k < pCnt[cell]; k++) {
+            const kk = cell * 4 + k;
+            r += pNbA[kk] * pc[pNbId[kk]];
+          }
+          r -= pRhs[cell];
+          const sabs = Math.abs(r) / (1.0 + cellScale[cell]);
+          if (sabs > lr) lr = sabs;
+        }
+        sweepsLog.push({ sweep: s + 1, maxcorr: maxcorr, resRel: lr });
       }
       if (maxcorr < c.presTol) {
         let resRel = 0.0;
@@ -482,6 +498,7 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
     if (!st) computeFluxes();
     const t0 = Date.now();
     let continuity = Infinity, mom = Infinity, pcorr = Infinity;
+    let lastSweepsLog: any[] = [];
     let it = startIt;
     let converged = false;
     let timedOut = false;
@@ -493,7 +510,9 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
       mom = momentumResidual();
       computeFluxes();
       refreshCellScale();
-      pcorr = pressureCorrection(c);
+      const sweepsLog: any[] = [];
+      pcorr = pressureCorrection(c, c.logSOR ? sweepsLog : undefined);
+      lastSweepsLog = sweepsLog;
       continuity = maxContinuity();
       if (it % logEvery === 0 || it === startIt + 1 || it === 1) {
         const d = drag();
@@ -511,7 +530,7 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
     const state = exportState();
     state.it = lastCompleted;
     const d = drag();
-    return { state, it: state.it, continuity, mom, pcorr, converged, timedOut, done: converged || state.it >= c.maxIt, cd: d[2], cd_p: d[0], cd_v: d[1], traj };
+    return { state, it: state.it, continuity, mom, pcorr, converged, timedOut, done: converged || state.it >= c.maxIt, cd: d[2], cd_p: d[0], cd_v: d[1], traj, sweepsLog: lastSweepsLog };
   }
-  return { solveChunk, mesh: m, n, drag };
+  return { solveChunk, mesh: m, n, drag, gradients, pressureCorrection, momentumResidual, maxContinuity, computeFluxes, refreshCellScale, internals: function() { return { ux: ux, ur: ur, p: p, phi: phi, apx: apx, apr: apr, gpX: gpX, gpR: gpR, muAd: muAd, rhoAd: rhoAd, bD: bD }; } };
 }

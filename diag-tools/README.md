@@ -65,3 +65,30 @@ sous diag-evidence/).
 - Les extensions de budget (pressure_sweeps, max_outer_iterations) sont
   legitimes si justifiees mathematiquement (contraction SOR mesuree).
 - Campagnes lancees par chunks avec checkpoints (budget temps sandbox ~35 s).
+
+## Correctif n.3 : listes de voisins compactees (15/10/2026)
+
+3. Le port remplissait nbId/nbAn/pNbId/pNbA aux SLOTS des faces puis iterait
+   k<nbCnt / k<pCnt, alors que le C++ compacte au front
+   (nb_id[cell][nb_cnt[cell]]=nb ; prow_nb[cell][prow_cnt[cell]]=nb).
+   Pour toute cellule dont la face de bord n occupe pas les derniers slots
+   (anneau externe : slot 1 ; rangees de symetrie : slots 0 et 2), un voisin
+   interne (slot 3) etait silencieusement omis des systemes momentum ET
+   pression. Symptomes a it=1 : mom ~ 1.5e+2 (au lieu de ~3e-2) et un SOR
+   auto-coherent convergant (maxcorr < 2e-7) laissant cont ~ 0.24, en
+   violation de l identite flux conservatifs (l imbalance post-correction
+   DOIT etre le residu de ligne du systeme de pression, cf. commentaire du
+   C++). Corrige : ecriture compactee identique au C++.
+
+Verifications apres correctif 3 (it=1, mu=0.02, logSOR) :
+- 24x36 : SOR 155 sweeps, resRel final 1.10e-7, cont=1.1039e-7 (identite
+  retablie), mom=3.52e-2 ;
+- 36x54 : SOR 316 sweeps, resRel 7.29e-8, cont=7.30e-8, mom=2.87e-2 ;
+- 44x54 : SOR 339 sweeps, resRel 5.92e-8, cont=5.93e-8, mom=3.12e-2 ;
+- Croisement : l evidence C++ 38743667702 (code anterieur au correctif de
+  gradients, 36x54) donnait mom=0.0305 a it=1 : ordre de grandeur confirme.
+
+CONSEQUENCE MAJEURE : les Cd du port precedent (Re=50 medium 1.5992,
+Re=100 medium/fine 1.1869/1.1918) ont ete calcules avec ce bug et NE SONT
+PAS des oracles. Tous les niveaux de campagne doivent etre rejoues avec le
+port corrige avant toute projection CI.
