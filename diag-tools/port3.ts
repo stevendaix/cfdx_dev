@@ -486,6 +486,7 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
     let converged = false;
     let timedOut = false;
     const traj: string[] = [];
+    let lastCompleted = startIt;
     for (it = startIt + 1; it <= c.maxIt; it++) {
       gradients(p, gpX, gpR, false, 0.0);
       assembleMomentum(c);
@@ -502,13 +503,13 @@ function makeSolver(mesh: any, rho: number, mu: number): any {
       }
       if (continuity < c.contTol && mom < c.momTol && pcorr < c.presTol) {
         converged = true;
-        it = it;
         break;
       }
+      lastCompleted = it;
       if (Date.now() - t0 > budgetMs) { timedOut = true; break; }
     }
     const state = exportState();
-    state.it = converged || it > c.maxIt ? it : it - 1;
+    state.it = lastCompleted;
     const d = drag();
     return { state, it: state.it, continuity, mom, pcorr, converged, timedOut, done: converged || state.it >= c.maxIt, cd: d[2], cd_p: d[0], cd_v: d[1], traj };
   }
