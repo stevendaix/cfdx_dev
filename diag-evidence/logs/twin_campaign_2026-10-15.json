@@ -1,0 +1,251 @@
+{
+  "meta": {
+    "date": "2026-10-15",
+    "repo": "stevendaix/cfdx_dev",
+    "pr": 895,
+    "pr_branch": "fix/axisymmetric-vmfl036-bringup",
+    "pr_head": "347582663a69009dbb252ceaf7057eac5a5a286d",
+    "cpp_solver": "src/cfdx/physics/axisymmetric_vmfl036_solver.h",
+    "tool": "diag-tools/port3.ts (twin TS corrigé des 3 bugs de transcription, commit 1189e05a)",
+    "gates": {
+      "mom": 0.000002,
+      "pcorr": 2e-7,
+      "cont": 0.000002,
+      "maxIt": 1500,
+      "momSweeps": 8,
+      "presSweeps": 400,
+      "alphaU": 0.65,
+      "alphaP": 0.25,
+      "omega": 1.8
+    },
+    "sandbox_note": "Champs ux/ur/p/phi, solveur VMFL036AxisymmetricSolver(rho=1.0, mu); Re=rho*U*D/mu avec D=U=1; Re=50 => mu=0.02, Re=100 => mu=0.01 (vérifié dans tests/validation/test_vmfl036_axisymmetric.cpp head 3475826, SHA aa806657 pour master qui est une version antérieure: 36x54, maxIt 700, momSweeps 25, ref Re=50 1.0875)."
+  },
+  "runs": [
+    {
+      "id": "fixD_re100_coarse_24x36",
+      "variant": "fix D: suppression du computeFluxes() in-loop (flux portés uniquement)",
+      "mesh": [
+        24,
+        36
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 73,
+      "residuals": {
+        "cont": 4.2542e-9,
+        "mom": 0.0000019721,
+        "pcorr": 6.3257e-9
+      },
+      "cd": {
+        "total": 1.82271,
+        "pressure": 1.63024,
+        "viscous": 0.19247
+      },
+      "audit_true_flux": {
+        "mom": 0.05521,
+        "cont": 0.05126,
+        "passes": false
+      },
+      "verdict": "FAIL: Cd faux (attendu ~0.81), audit vrais flux échoue de 4 ordres de grandeur"
+    },
+    {
+      "id": "fixD_re100_medium_44x54",
+      "variant": "fix D",
+      "mesh": [
+        44,
+        54
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 116,
+      "residuals": {
+        "cont": 9.9898e-9,
+        "mom": 0.0000019707,
+        "pcorr": 2.7961e-8
+      },
+      "cd": {
+        "total": 4.3345,
+        "pressure": 4.38893,
+        "viscous": -0.05443
+      },
+      "audit_true_flux": {
+        "mom": 0.07411,
+        "cont": 0.0875,
+        "passes": false
+      },
+      "verdict": "FAIL: cd_v negatif (impossible physiquement), audit échoue"
+    },
+    {
+      "id": "fixD_re100_fine_48x72",
+      "variant": "fix D (run du tour précédent, repris du handoff)",
+      "mesh": [
+        48,
+        72
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 154,
+      "residuals": {
+        "cont": 1.1e-8,
+        "mom": 0.00000175,
+        "pcorr": 3.6e-8
+      },
+      "cd": {
+        "total": 6.09843,
+        "pressure": 6.67,
+        "viscous": -0.57
+      },
+      "verdict": "FAIL: +460% vs 1.0895; anomalie expliquée = point fixe parasite du fix D"
+    },
+    {
+      "id": "cppFaithful_re100_coarse_24x36",
+      "variant": "jumeau fidèle C++ (computeFluxes() in-loop conservé)",
+      "mesh": [
+        24,
+        36
+      ],
+      "mu": 0.01,
+      "converged": false,
+      "it": 1500,
+      "residuals_at_1500": {
+        "cont": 1.7819e-7,
+        "mom": 0.000052794,
+        "pcorr": 1.4214e-7
+      },
+      "cd": {
+        "total": 0.8075,
+        "pressure": 0.63985,
+        "viscous": 0.16764
+      },
+      "cd_stabilized_avg_last_200": 0.8075,
+      "audit_true_flux": {
+        "mom": 0.00259,
+        "cont": 0.0000025883
+      },
+      "traj": [
+        "it=1 cont=1.30e-7 mom=3.08e-2 pcorr=1.94e-7 Cd=1.8112",
+        "it=100 cont=1.56e-7 mom=3.15e-4 pcorr=1.78e-7 Cd=0.8111",
+        "it=200 cont=1.50e-7 mom=1.02e-3 pcorr=1.39e-7 Cd=0.8089",
+        "it=300 cont=1.82e-7 mom=1.18e-3 pcorr=1.62e-7 Cd=0.8083",
+        "it=400 cont=1.65e-7 mom=9.62e-4 pcorr=1.48e-7 Cd=0.8080",
+        "it=500 cont=1.37e-7 mom=7.16e-4 pcorr=1.23e-7 Cd=0.8078",
+        "it=600 cont=1.62e-7 mom=5.21e-4 pcorr=1.51e-7 Cd=0.8077",
+        "it=700 cont=1.29e-7 mom=3.78e-4 pcorr=1.17e-7 Cd=0.8077",
+        "it=800 cont=1.60e-7 mom=2.76e-4 pcorr=1.36e-7 Cd=0.8076",
+        "it=900 cont=1.96e-7 mom=2.03e-4 pcorr=1.44e-7 Cd=0.8076",
+        "it=1000 cont=1.65e-7 mom=1.55e-4 pcorr=1.76e-7 Cd=0.8076",
+        "it=1100 cont=1.36e-7 mom=1.23e-4 pcorr=1.36e-7 Cd=0.8075",
+        "it=1200 cont=1.85e-7 mom=9.83e-5 pcorr=1.92e-7 Cd=0.8075",
+        "it=1300 cont=1.78e-7 mom=7.93e-5 pcorr=1.73e-7 Cd=0.8075",
+        "it=1400 cont=1.80e-7 mom=6.45e-5 pcorr=1.57e-7 Cd=0.8075",
+        "it=1500 cont=1.78e-7 mom=5.28e-5 pcorr=1.42e-7 Cd=0.8075"
+      ],
+      "verdict": "Cd correct (0.8075 vs ~0.81 attendu), mais gate mom échoue x26; décroissance ~it^-0.66 => ~200k its nécessaires pour 2e-6"
+    },
+    {
+      "id": "cppFaithful_re100_medium_44x54",
+      "variant": "jumeau fidèle C++",
+      "mesh": [
+        44,
+        54
+      ],
+      "mu": 0.01,
+      "converged": false,
+      "it": 501,
+      "residuals_at_501": {
+        "cont": 1.5363e-7,
+        "mom": 0.000021956,
+        "pcorr": 1.9896e-7
+      },
+      "cd": {
+        "total": 1.18668,
+        "pressure": 0.81471,
+        "viscous": 0.37197
+      },
+      "mom_min_observed": {
+        "value": 0.00000796,
+        "it": 350
+      },
+      "traj": [
+        "it=1 cont=7.02e-8 mom=2.45e-2 pcorr=1.99e-7 Cd=5.0579",
+        "it=50 cont=1.16e-8 mom=1.00e-3 pcorr=1.56e-7 Cd=1.1880",
+        "it=100 cont=3.97e-8 mom=4.87e-5 pcorr=1.57e-7 Cd=1.1870",
+        "it=150 cont=5.39e-8 mom=2.61e-5 pcorr=1.77e-7 Cd=1.1869",
+        "it=200 cont=6.38e-8 mom=1.65e-5 pcorr=1.72e-7 Cd=1.1868",
+        "it=250 cont=1.81e-7 mom=1.19e-5 pcorr=1.94e-7 Cd=1.1868",
+        "it=300 cont=1.54e-7 mom=9.41e-6 pcorr=1.97e-7 Cd=1.1867",
+        "it=350 cont=1.45e-7 mom=7.96e-6 pcorr=1.89e-7 Cd=1.1867",
+        "it=400 cont=1.41e-7 mom=1.27e-5 pcorr=1.77e-7 Cd=1.1867",
+        "it=450 cont=1.45e-7 mom=1.76e-5 pcorr=1.91e-7 Cd=1.1867",
+        "it=500 cont=1.54e-7 mom=2.20e-5 pcorr=1.99e-7 Cd=1.1867"
+      ],
+      "verdict": "Cd correct (1.1867 vs ~1.187), cycle mom non-monotone 8e-6..2.2e-5 > gate 2e-6"
+    },
+    {
+      "id": "cppFaithful_re100_fine_48x72",
+      "variant": "jumeau fidèle C++",
+      "mesh": [
+        48,
+        72
+      ],
+      "mu": 0.01,
+      "converged": false,
+      "it": 401,
+      "residuals_at_401": {
+        "cont": 1.3932e-7,
+        "mom": 0.000016461,
+        "pcorr": 1.9494e-7
+      },
+      "cd": {
+        "total": 1.19142,
+        "pressure": 0.79455,
+        "viscous": 0.39687
+      },
+      "mom_min_observed": {
+        "value": 0.00000729,
+        "it": 300
+      },
+      "traj": [
+        "it=1 cont=2.65e-7 mom=1.98e-2 pcorr=9.85e-7 Cd=7.4546",
+        "it=50 cont=2.91e-8 mom=1.12e-3 pcorr=1.94e-7 Cd=1.1960",
+        "it=100 cont=1.20e-7 mom=1.24e-4 pcorr=1.96e-7 Cd=1.1920",
+        "it=150 cont=1.20e-7 mom=2.06e-5 pcorr=1.94e-7 Cd=1.1916",
+        "it=200 cont=1.35e-7 mom=1.37e-5 pcorr=1.95e-7 Cd=1.1915",
+        "it=250 cont=1.35e-7 mom=9.90e-6 pcorr=1.95e-7 Cd=1.1915",
+        "it=300 cont=1.40e-7 mom=7.29e-6 pcorr=1.87e-7 Cd=1.1915",
+        "it=350 cont=1.41e-7 mom=1.09e-5 pcorr=1.81e-7 Cd=1.1914",
+        "it=400 cont=1.39e-7 mom=1.65e-5 pcorr=1.95e-7 Cd=1.1914"
+      ],
+      "verdict": "Cd correct (1.1914, +9.35% vs 1.0895, dans la bande ±10%; cohérence fine/medium +0.40% ≤ 2%)"
+    },
+    {
+      "id": "blend_beta0.2_re100_coarse_24x36",
+      "variant": "blending des flux phi <- (1-beta)*phi + beta*F(u), beta=0.2 (remplace le recompute in-loop)",
+      "mesh": [
+        24,
+        36
+      ],
+      "mu": 0.01,
+      "converged": false,
+      "it": 1500,
+      "residuals_at_1500": {
+        "cont": 1.9624e-7,
+        "mom": 0.0002336,
+        "pcorr": 1.4154e-7
+      },
+      "cd": {
+        "total": 0.80828,
+        "pressure": 0.64067,
+        "viscous": 0.16761
+      },
+      "verdict": "FAIL: mom dégradé vs beta=1 (2.3e-4 vs 5.3e-5), Cd dérive lentement; piste blending abandonnée"
+    }
+  ],
+  "conclusions": [
+    "1. Le solveur C++ (telle quelle, recalcul in-loop) produit la BONNE physique à tous les niveaux: Re=50 medium Cd=1.5988 (+1.3% vs 1.5785), Re=100 coarse 0.8075 / medium 1.1867 / fine 1.1914; toutes les bandes Cd du test passent sur le Cd stabilisé.",
+    "2. Le fix D (suppression du computeFluxes in-loop) est INVALIDE: convergence vers des points fixes parasites (Cd 1.82/4.33/6.10, cd_v<0), audit vrais-flux échoue (mom_true ~5e-2). Ne pas merger.",
+    "3. Le recalcul in-loop est l'ordre SIMPLE standard et son point fixe est le bon; le vrai problème est le gate mom 2e-6 = changement de vitesse par itération: inatteignable en 1500 its (décroissance ~it^-0.66, ~200k its extrapolées).",
+    "4. Blending beta=0.2 des flux: échoue (mom dégradé).",
+    "5. Cause structurelle: interpolation directe des vitesses aux faces (pas de couplage pression-vitesse type Rhie-Chow) => ré-injection permanente de l'imbalance d'interpolation. Décision Steven 2026-10-15: prototyper Rhie-Chow dans le twin, puis fix dans #895 si validé."
+  ]
+}
