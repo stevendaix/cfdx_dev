@@ -253,8 +253,7 @@ public:
             continuity=max_continuity();
             if(it%50==0 || it==1)
                 std::cout<<"VMFL036_AXISYM ITER="<<it<<" continuity="<<continuity
-                         <<" momentum="<<mom<<" pcorr="<<pcorr<<"
-";
+                         <<" momentum="<<mom<<" pcorr="<<pcorr<<"\n";
             if(continuity<c.continuity_tolerance && mom<c.momentum_tolerance && pcorr<c.pressure_tolerance)
                 return finish(true,it,continuity,mom,pcorr);
         }
@@ -263,8 +262,7 @@ public:
         std::cout<<"VMFL036_AXISYM NOT_CONVERGED budget="<<c.max_outer_iterations
                  <<" continuity="<<continuity<<" (gate "<<c.continuity_tolerance<<")"
                  <<" momentum="<<mom<<" (gate "<<c.momentum_tolerance<<")"
-                 <<" pcorr="<<pcorr<<" (gate "<<c.pressure_tolerance<<")
-";
+                 <<" pcorr="<<pcorr<<" (gate "<<c.pressure_tolerance<<")\n";
         return finish(false,c.max_outer_iterations,continuity,mom,pcorr);
     }
 
@@ -782,7 +780,7 @@ private:
                 const double nx=-f.nx;
                 const double nr=-f.nr;
                 const double tau_xx=2.0*mu_*gx[c];
-                const tau_xr=mu_*(gr[c]+rx[c]);
+                const double tau_xr=mu_*(gr[c]+rx[c]);
                 const double tau_rr=2.0*mu_*(rr[c]);
                 samples.push_back({f.cx,f.cr,nx,nr,f.ds,p_[c],tau_xx,tau_xr,tau_rr});
             }
@@ -795,3 +793,4 @@ private:
 };
 
 } // namespace cfdx::physics::axisymmetric
+
