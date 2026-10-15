@@ -1754,7 +1754,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         block.finalize();
         return block;
-    };    if (use_simple_schur) {
+    };
+    if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
@@ -3248,7 +3249,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         velocity_change_inf /= std::max(velocity_scale, tiny);
         const double pressure_range = pressure_max - pressure_min;
-        // Use a physical pressure scale when the converged solution is nearly uniform.        // Otherwise round-off-level pressure changes are divided by a vanishing range
+        // Use a physical pressure scale when the converged solution is nearly uniform.
+        // Otherwise round-off-level pressure changes are divided by a vanishing range
         // and can prevent convergence forever on constant-pressure cases.
         const double pressure_scale = std::max(
             {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
