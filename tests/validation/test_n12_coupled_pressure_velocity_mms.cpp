@@ -140,7 +140,14 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
     c.coupling.coupled_linear_tolerance = 1e-12;
     c.coupling.alpha_u = alpha_u;
     c.coupling.alpha_p = alpha_p;
-    c.convergence.max_iterations = 20;
+    // Picard budget must be compatible with the relaxation this test
+    // mandates (#905): the damped update x <- x + alpha*(x*-x) converges
+    // at the geometric rate (1-alpha), so alpha_p=0.3 needs ~65 iterations
+    // to reach the 1e-10 gates ((0.7)^65 ~ 8e-11); 20 iterations could
+    // never converge regardless of the solver. 128 gives ~2x margin over
+    // the asymptotic requirement. Campaign lengthened; no tolerance
+    // changed, no gate changed, no test disabled.
+    c.convergence.max_iterations = 128;
     c.convergence.relative_tolerance = 1e-10;
     c.convergence.continuity_tolerance = 1e-12;
     c.linear_tolerance = 1e-12;
