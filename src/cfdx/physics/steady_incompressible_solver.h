@@ -3300,8 +3300,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter == 1)
             result.reference_momentum_residual =
                 std::max(final_momentum_residual, tiny);
-        h.momentum_equation_residual_relative =
-            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
+        // Guard (#905): the reference-relative overwrite below is only
+        // meaningful when the iteration-1 audit residual is itself physical.
+        // When the first Picard iterate already satisfies the momentum
+        // equation to round-off (the coupled solver on a linear
+        // manufactured case), the ratio divides two round-off values: an
+        // O(1) noise quotient that no configured tolerance can ever
+        // satisfy while the equation IS solved. In that regime keep the
+        // rhs-normalized absolute residual assigned above: the
+        // well-defined convergence measure of the same audit, checked
+        // against the same tolerance. Every solve whose iteration-1
+        // reference is physical keeps the exact previous metric, bit for
+        // bit (the guard floor is 64*eps of the rhs scale, unreachable by
+        // any cold-started nonlinear flow, where the iteration-1 residual
+        // is O(1) of that scale).
+        const double reference_roundoff_floor =
+            64.0 * std::numeric_limits<double>::epsilon() * momentum_rhs_scale;
+        if (result.reference_momentum_residual > reference_roundoff_floor) {
+            h.momentum_equation_residual_relative =
+                final_momentum_residual /
+                std::max(result.reference_momentum_residual, tiny);
+        }
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.effective_alpha_u = effective_alpha_u;
