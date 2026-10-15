@@ -153,11 +153,18 @@ inline VMFL036Definition make_vmfl036_re100()
     return {};
 }
 
+// Fluent-documented VMFL036 setup: mu = 0.02 gives Re = 50 for D = rho = U = 1.
+// The Cd = 1.0875 quoted next to this setup in the Ansys material is the
+// misattributed Re=100 datum (see docs/validation/VMFL036_RE100_CASE.md and
+// issue #440). The Re=50 reference is the precise value of Tabata & Itakura,
+// "Precise Computation of Drag Coefficients of the Sphere",
+// Int. J. Computational Fluid Dynamics 9 (1998) 303-311 (RIMS kokyuroku 974,
+// 1996), Table 2: C_D(Re=50) = 1.5785 (P2/P1 and P1/P1 extrapolation).
 inline VMFL036Definition make_vmfl036_fluent_exact()
 {
     VMFL036Definition c;
     c.viscosity=0.02;
-    c.reference_cd_value=1.0875;
+    c.reference_cd_value=1.5785;
     return c;
 }
 
