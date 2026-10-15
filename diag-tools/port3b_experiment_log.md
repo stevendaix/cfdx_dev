@@ -25,3 +25,17 @@ Résultats bruts: diag-evidence/logs/twin_campaign_2026-10-15.json (même commit
 
 Prototyper Rhie-Chow dans le twin (flux de face avec couplage pression-vitesse),
 valider Cd sur les 4 cas, puis proposer le fix dans la PR #895.
+
+## 4. Rhie-Chow (port4) - VALIDE (2026-10-15)
+
+computeFluxes() porte un terme additif sur les faces internes, par composante, avec la
+diagonale relaxee V/apx (x) et V/apr (r): force de pression interpolee des deux cellules
+soustraite, difference compacte (p_nb-p_o)/d ajoutee (reponse identique a l'operateur
+momentum inverse). Resultats (runs rc_* du JSON d'evidence):
+- Re=50 medium 44x54: it=167, Cd=1.60630 (+1.76% vs 1.5785) - bande 3% PASS
+- Re=100 quick 24x36 (sweeps 4/100, maxIt 500): it=78, Cd=0.87165 - Cd fini PASS
+- Re=100 coarse: it=75, Cd=0.87165 ; medium: it=136, Cd=1.19166 ; fine: it=180, Cd=1.19764
+- fine_err 9.93% <= 10% (marge 0.07 pt) ; fine/medium 0.50% <= 2% ; mom/pcorr/cont PASS partout.
+Variante ecartee: reponse non relaxee V/(alpha*ap) -> fine 1.19909 (10.06% FAIL), Re=50 1.60823.
+=> Fix C++ #895: meme terme RC dans compute_fluxes() du header solveur (gp_x,gp_r passes
+   en argument; apx_/apr_ = diagonales relaxees), commentaires de design reecrits.

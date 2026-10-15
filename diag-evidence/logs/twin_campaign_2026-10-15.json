@@ -6,7 +6,7 @@
     "pr_branch": "fix/axisymmetric-vmfl036-bringup",
     "pr_head": "347582663a69009dbb252ceaf7057eac5a5a286d",
     "cpp_solver": "src/cfdx/physics/axisymmetric_vmfl036_solver.h",
-    "tool": "diag-tools/port3.ts (twin TS corrigé des 3 bugs de transcription, commit 1189e05a)",
+    "tool": "diag-tools/port4_rhie_chow.ts (port3 + Rhie-Chow par composante, diagonale relaxee V/apx,V/apr)",
     "gates": {
       "mom": 0.000002,
       "pcorr": 2e-7,
@@ -239,6 +239,126 @@
         "viscous": 0.16761
       },
       "verdict": "FAIL: mom dégradé vs beta=1 (2.3e-4 vs 5.3e-5), Cd dérive lentement; piste blending abandonnée"
+    },
+    {
+      "id": "rc_re100_quick_24x36",
+      "variant": "Rhie-Chow (port4 compR) - controls quick du test: maxIt 500, sweeps 4/100",
+      "mesh": [
+        24,
+        36
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 78,
+      "residuals": {
+        "cont": 7.34179e-8,
+        "mom": 0.0000017915,
+        "pcorr": 1.8878e-7
+      },
+      "cd": {
+        "total": 0.87165,
+        "pressure": 0.700162,
+        "viscous": 0.171489
+      },
+      "verdict": "PASS: le smoke test quick converge meme avec les sweeps reduits; Cd fini dans ]0,100["
+    },
+    {
+      "id": "rc_re50_medium_44x54",
+      "variant": "Rhie-Chow (port4 compR), campaign controls",
+      "mesh": [
+        44,
+        54
+      ],
+      "mu": 0.02,
+      "converged": true,
+      "it": 167,
+      "residuals": {
+        "cont": 1.69784e-8,
+        "mom": 0.00000195662,
+        "pcorr": 1.81795e-7
+      },
+      "cd": {
+        "total": 1.6063,
+        "pressure": 0.983588,
+        "viscous": 0.622708
+      },
+      "gates": {
+        "re50_band_3pct_vs_1p5785": "PASS (+1.76%)",
+        "mom_2e6": "PASS",
+        "cont_2e6": "PASS",
+        "pcorr_2e7": "PASS"
+      },
+      "verdict": "PASS: convergence geometrique it=167 (vs jamais en 1500 sans RC), Cd +1.76% <= 3%"
+    },
+    {
+      "id": "rc_re100_coarse_24x36",
+      "variant": "Rhie-Chow (port4 compR), campaign controls",
+      "mesh": [
+        24,
+        36
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 75,
+      "residuals": {
+        "cont": 6.99486e-8,
+        "mom": 0.00000197441,
+        "pcorr": 1.74799e-7
+      },
+      "cd": {
+        "total": 0.871651,
+        "pressure": 0.700162,
+        "viscous": 0.171489
+      },
+      "verdict": "PASS: convergence it=75 (vs 1500 sans RC avec mom 5.3e-5)"
+    },
+    {
+      "id": "rc_re100_medium_44x54",
+      "variant": "Rhie-Chow (port4 compR), campaign controls",
+      "mesh": [
+        44,
+        54
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 136,
+      "residuals": {
+        "cont": 1.66666e-8,
+        "mom": 0.00000193159,
+        "pcorr": 1.38187e-7
+      },
+      "cd": {
+        "total": 1.19166,
+        "pressure": 0.816593,
+        "viscous": 0.375066
+      },
+      "verdict": "PASS: convergence it=136; Cd quasi identique au jumeau fidele (1.18668) - la solution discrte RC est proche"
+    },
+    {
+      "id": "rc_re100_fine_48x72",
+      "variant": "Rhie-Chow (port4 compR), campaign controls",
+      "mesh": [
+        48,
+        72
+      ],
+      "mu": 0.01,
+      "converged": true,
+      "it": 180,
+      "residuals": {
+        "cont": 1.38276e-8,
+        "mom": 0.00000194949,
+        "pcorr": 1.93834e-7
+      },
+      "cd": {
+        "total": 1.19764,
+        "pressure": 0.798473,
+        "viscous": 0.399168
+      },
+      "gates": {
+        "fine_err_vs_1p0895": "PASS: 9.93% <= 10% (marge 0.07 pt; limite Cd 1.19845, obtenu 1.19764)",
+        "fine_medium_change": "PASS: 0.50% <= 2%"
+      },
+      "verdict": "PASS mais marge fine: 0.07 pt. Le TODO(order-2) du test (bande 3% + maillage raffine near-wall) reste la sortie structuelle."
     }
   ],
   "conclusions": [
@@ -246,6 +366,9 @@
     "2. Le fix D (suppression du computeFluxes in-loop) est INVALIDE: convergence vers des points fixes parasites (Cd 1.82/4.33/6.10, cd_v<0), audit vrais-flux échoue (mom_true ~5e-2). Ne pas merger.",
     "3. Le recalcul in-loop est l'ordre SIMPLE standard et son point fixe est le bon; le vrai problème est le gate mom 2e-6 = changement de vitesse par itération: inatteignable en 1500 its (décroissance ~it^-0.66, ~200k its extrapolées).",
     "4. Blending beta=0.2 des flux: échoue (mom dégradé).",
-    "5. Cause structurelle: interpolation directe des vitesses aux faces (pas de couplage pression-vitesse type Rhie-Chow) => ré-injection permanente de l'imbalance d'interpolation. Décision Steven 2026-10-15: prototyper Rhie-Chow dans le twin, puis fix dans #895 si validé."
+    "5. Cause structurelle: interpolation directe des vitesses aux faces (pas de couplage pression-vitesse type Rhie-Chow) => ré-injection permanente de l'imbalance d'interpolation. Décision Steven 2026-10-15: prototyper Rhie-Chow dans le twin, puis fix dans #895 si validé.",
+    "6. Prototype Rhie-Chow VALIDE (port4, reponse par composante avec la diagonale relaxee V/apx,V/apr): convergence geometrique 75-180 its sur quick + les 4 cas campaign; TOUS les gates passent (mom 2e-6, pcorr 2e-7, cont 2e-6, Re=50 +/-3%, fine +/-10% avec 0.07 pt de marge, fine/medium 0.50% <= 2%).",
+    "7. Variante RC ecartee (reponse NON relaxee V/(alpha*ap)): fine Cd=1.19909 => fine_err 10.06% > bande 10% (FAIL), Re=50 Cd=1.60823. Le fix C++ #895 doit utiliser exactement la forme relaxee V/apx_, V/apr_.",
+    "8. Fix C++ #895 (decision Steven 2026-10-15): transcrire le terme RC dans compute_fluxes() (signature etendue gp_x,gp_r), commentaires de design mis a jour. Aucune tolerance/bande/controle modifie."
   ]
 }
