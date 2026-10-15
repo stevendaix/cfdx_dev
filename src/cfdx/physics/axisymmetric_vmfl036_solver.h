@@ -237,18 +237,25 @@ public:
         double mom=std::numeric_limits<double>::infinity();
         double pcorr=std::numeric_limits<double>::infinity();
 
-        // Face fluxes are computed once here and carried across outer
-        // iterations: the pressure step below adjusts them with the exact
-        // discrete continuity statement of the pressure equation. Recomputing
-        // them from the (interpolated) corrected velocities at the top of each
-        // iteration would discard the continuity enforcement of the previous
-        // pressure step and reintroduce the interpolation imbalance.
-        compute_fluxes();
+        // Face fluxes are recomputed at the top of each outer iteration from
+        // the freshly solved velocities plus the Rhie-Chow pressure-velocity
+        // coupling term (see compute_fluxes). Carrying plain interpolated
+        // face velocities re-injected the interpolation imbalance every
+        // iteration and left the momentum residual (the per-iteration
+        // velocity change) in a limit cycle ~1e-5 above the 2e-6 gate: the
+        // campaign budget was exhausted at mom=2.1e-5 while continuity and
+        // pcorr passed. The Rhie-Chow term restores the pressure-velocity
+        // coupling at the face so the recomputed flux field is consistent
+        // with the discrete momentum operator; the TS twin campaign
+        // (diag-tools/port4_rhie_chow.ts, branch ci/long-campaign-diagnostics)
+        // then converges in 75-180 outer iterations on coarse/medium/fine
+        // with drag unchanged.
+        compute_fluxes(gp_x,gp_r);
         for(std::size_t it=1;it<=c.max_outer_iterations;++it){
             gradients(p_,gp_x,gp_r,false,0.0);
             assemble_momentum(ux_,ur_,gp_x,gp_r,apx_,apr_,c);
             mom=momentum_residual(ux_,ur_,gp_x,gp_r,apx_,apr_);
-            compute_fluxes();
+            compute_fluxes(gp_x,gp_r);
             pcorr=pressure_correction(c);
             continuity=max_continuity();
             if(it%50==0 || it==1)
@@ -309,19 +316,38 @@ private:
         return ur_[o]; // pressure outlet: zero-gradient velocity
     }
 
-    void compute_fluxes(){
+    void compute_fluxes(const std::vector<double>& gp_x,const std::vector<double>& gp_r){
         for(std::size_t k=0;k<m_.faces.size();++k){
             const auto& f=m_.faces[k];
-            double u=0.0,v=0.0;
+            double u=0.0,v=0.0,rc=0.0;
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 u=0.5*(ux_[f.owner]+ux_[f.neighbour]);
                 v=0.5*(ur_[f.owner]+ur_[f.neighbour]);
+                // Rhie-Chow pressure-velocity coupling: a plain interpolated
+                // face velocity re-injects the interpolation imbalance every
+                // outer iteration and the momentum residual stalls in a limit
+                // cycle ~1e-5 (gate 2e-6). Add the pressure-gradient
+                // transport of the two adjacent cells, minus the compact
+                // face-normal pressure gradient, weighted by the RELAXED
+                // component-wise momentum diagonals apx_/apr_ (V/(a_P/alpha_u),
+                // no extra alpha_u factor - validated component-wise in the
+                // TS twin; the unrelaxed V/(alpha_u*a_P) variant misses the
+                // fine-mesh drag band by 0.06pt).
+                const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
+                const double Dox=m_.cells[f.owner].volume/apx_[f.owner];
+                const double Dor=m_.cells[f.owner].volume/apr_[f.owner];
+                const double Dnx=m_.cells[f.neighbour].volume/apx_[f.neighbour];
+                const double Dnr=m_.cells[f.neighbour].volume/apr_[f.neighbour];
+                rc=0.5*(Dox*gp_x[f.owner]+Dnx*gp_x[f.neighbour])*f.nx
+                  +0.5*(Dor*gp_r[f.owner]+Dnr*gp_r[f.neighbour])*f.nr
+                  -0.5*((Dox+Dnx)*f.nx*f.nx+(Dor+Dnr)*f.nr*f.nr)
+                       *(p_[f.neighbour]-p_[f.owner])/d;
             }else{
                 u=boundary_ux(f,f.owner); v=boundary_ur(f,f.owner);
             }
             if(!std::isfinite(f.area) || f.area<0.0 || !std::isfinite(u) || !std::isfinite(v))
                 throw std::runtime_error("VMFL036 non-finite face flux input at face "+std::to_string(k));
-            phi_[k]=rho_*f.area*(u*f.nx+v*f.nr);
+            phi_[k]=rho_*f.area*(u*f.nx+v*f.nr+rc);
             if(!std::isfinite(phi_[k]))
                 throw std::runtime_error("VMFL036 non-finite face flux at face "+std::to_string(k));
         }
