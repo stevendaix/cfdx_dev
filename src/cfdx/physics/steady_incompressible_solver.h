@@ -2533,7 +2533,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         const auto U_old = U;
         const auto p_old = p;
-        const auto mass_flux_old = mass_flux;
 
         // Exact conservative flux consumed by the momentum assembly.
         if (freeze_state)
@@ -3071,7 +3070,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, rAU,
                 controls.density, velocity_bcs, pressure_bcs,
-                &mass_flux_old, &U_old, effective_alpha_u);
+                &mass_flux, &U_old, effective_alpha_u);
 
             // The authoritative flux is reconstructed from the corrected
             // cell velocity and the physical momentum response rAU. SIMPLEC's
@@ -3745,19 +3744,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         mesh, geometry, face, p, final_grad_p,
                         diag_rAU, controls.density, false);
                     const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
-                    double majumdar_flux_correction = 0.0;
-                    if (controls.algorithm != PressureVelocityAlgorithm::COUPLED &&
-                        effective_alpha_u < 1.0) {
-                        const auto previous_velocity_flux = make_mass_flux(
-                            mesh, geometry, U_old, controls.density, velocity_bcs);
-                        majumdar_flux_correction = (1.0 - effective_alpha_u) *
-                            (mass_flux_old(face) - previous_velocity_flux(face));
-                    }
-                    // Compare like with like: the actual flux includes the
-                    // Majumdar correction, so add it back before comparing the
-                    // measured pressure correction with the operator-only term.
-                    rhie_chow_actual =
-                        hbyA_flux - phi_auth + majumdar_flux_correction;
+                    // This diagnostic isolates the pressure operator. The
+                    // authoritative flux may also include the separate
+                    // Majumdar relaxation correction when alpha_u < 1.
+                    rhie_chow_actual = hbyA_flux - phi_auth;
                     max_rhie_chow_actual = std::max(
                         max_rhie_chow_actual, std::abs(rhie_chow_actual));
                     max_rhie_chow_expected = std::max(
