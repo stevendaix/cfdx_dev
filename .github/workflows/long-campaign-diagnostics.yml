@@ -15,8 +15,12 @@ on:
   push:
     branches:
       - ci/long-campaign-diagnostics
+    # diag-evidence/** : the bot's evidence commits never re-trigger. Workflow-only
+    # pushes (e.g. the n9-negative-trace measurement workflow, #913) must not
+    # launch the full multi-hour campaign.
     paths-ignore:
       - 'diag-evidence/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
