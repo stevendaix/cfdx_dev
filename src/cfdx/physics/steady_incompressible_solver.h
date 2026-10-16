@@ -2823,8 +2823,37 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                 const auto nr = mesh.ownership().neighbour(f);
-                if (nr < 0) continue;
                 const std::size_t o = mesh.ownership().owner(f);
+                if (nr < 0) {
+                    const std::size_t patch = geometry.face_patch[f];
+                    if (patch >= mesh.boundary().n_patches() ||
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    const auto pbc = pressure_bcs.find(
+                        mesh.boundary().patch(patch).name);
+                    if (pbc == pressure_bcs.end() ||
+                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        continue;
+                    const Vec3 Sf = geometry.face_area_vectors[f];
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[o];
+                    const Vec3 delta_dAU{
+                        geometry.cell_volumes[o] * (rAtU[0][o] - rAU[0][o]),
+                        geometry.cell_volumes[o] * (rAtU[1][o] - rAU[1][o]),
+                        geometry.cell_volumes[o] * (rAtU[2][o] - rAU[2][o])};
+                    const Vec3 grad_p_cell{
+                        grad_p.component_data(0)[o],
+                        grad_p.component_data(1)[o],
+                        grad_p.component_data(2)[o]};
+                    const double correction_coeff = pressure_face_orthogonal_coefficient(
+                        Sf, dvec, delta_dAU);
+                    const double correction_deferred = pressure_face_nonorthogonal_flux(
+                        Sf, dvec, delta_dAU, grad_p_cell);
+                    phiHbyA(f) += controls.density * (
+                        correction_coeff * (pbc->second.value - p(o)) +
+                        correction_deferred);
+                    continue;
+                }
                 const std::size_t n = static_cast<std::size_t>(nr);
                 const auto Sf = geometry.face_area_vectors[f];
                 const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
