@@ -504,7 +504,7 @@ int main()
         const auto geometry = build_fv_geometry(mesh);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
         Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
-        constexpr Vec3 exact_gradient{2.0, -1.25, 0.75};
+        const Vec3 exact_gradient{2.0, -1.25, 0.75};
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             const Vec3 centre = geometry.cell_centres[c];
             p(c) = exact_gradient.dot(centre);
