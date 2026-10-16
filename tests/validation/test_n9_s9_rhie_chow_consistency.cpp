@@ -176,6 +176,36 @@ int main()
                     tensor_gradient_flux, 1e-12);
     });
 
+    run_case("n9_s9_tensor_operator_split_skewed_anisotropic", [] {
+        using cfdx::core::Vec3;
+        const double dx=2.0, dy=5.0, dz=1.0;
+        const Vec3 e{0.8,0.6,0.0};
+        const Vec3 Sf{1.2,0.8,0.4};
+        const Vec3 grad_p{3.0,4.0,1.0};
+        const double pressure_jump_gradient=6.5;
+        const double response =
+            rhie_chow_orthogonal_response(dx,dy,dz,e,Sf);
+        const double deferred = rhie_chow_deferred_response(
+            dx,dy,dz,grad_p,e,Sf,pressure_jump_gradient);
+        const double split_flux=response*pressure_jump_gradient+deferred;
+        const double tensor_flux=
+            dx*grad_p.x*Sf.x+dy*grad_p.y*Sf.y+dz*grad_p.z*Sf.z;
+        EXPECT_NEAR(split_flux,tensor_flux,1e-12);
+
+        // On an orthogonal face with a linear pressure field, the deferred
+        // term vanishes exactly.
+        const Vec3 e_orth{1.0,0.0,0.0};
+        const Vec3 Sf_orth{2.0,0.0,0.0};
+        const Vec3 grad_linear{3.0,0.0,0.0};
+        const double response_orth =
+            rhie_chow_orthogonal_response(dx,dy,dz,e_orth,Sf_orth);
+        const double deferred_orth = rhie_chow_deferred_response(
+            dx,dy,dz,grad_linear,e_orth,Sf_orth,3.0);
+        EXPECT_NEAR(response_orth*3.0+deferred_orth,
+                    dx*grad_linear.x*Sf_orth.x,1e-12);
+        EXPECT_NEAR(deferred_orth,0.0,1e-12);
+    });
+
     run_case("n9_s9_rhie_chow_majumdar_flux_correction", [] {
         const Mesh mesh = make_two_cell_channel();
         const auto geometry = build_fv_geometry(mesh);
