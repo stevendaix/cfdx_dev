@@ -157,10 +157,10 @@ int main()
 
         // The authoritative flux is antisymmetric across the internal face:
         // owner cell sees phi, neighbour cell sees -phi.
-        double corrected_div0 = phi1(1);
-        double corrected_div1 = -phi1(1);
-        EXPECT_NEAR(corrected_div0 + corrected_div1, 0.0, 1e-14);
-        EXPECT_NEAR(std::abs(corrected_div0), 0.0, 1e-12);
+        const double corrected_div0 = phi1(0) + phi1(1);
+        const double corrected_div1 = -phi1(1) + phi1(2);
+        EXPECT_NEAR(corrected_div0, 0.0, 1e-12);
+        EXPECT_NEAR(corrected_div1, 0.0, 1e-12);
 
         const auto contract = PressureVelocitySystemContract{
             6, 2,
