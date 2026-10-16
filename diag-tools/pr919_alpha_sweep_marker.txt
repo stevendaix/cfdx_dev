@@ -1,0 +1,7 @@
+# PR #919 audit marker — triggers .github/workflows/pr919_alpha_sweep_diag.yml
+# Purpose: run the VMFL036 Re=50/Re=100 campaign (drag gates) and the
+# alpha_u sensitivity sweep (0.3, 0.5, 0.65, 0.7, 1.0 — fine 48x72) on the
+# exact head of PR #919 (refs/pull/919/head), isolated from the pre-existing
+# master long-campaign failures (#870/#903) and the missing #916 artifact-path
+# fixes on the stacked base. Evidence committed by the bot to diag-evidence/logs.
+trigger: 2026-10-16 audit of PR #919 (fix/vmfl036-relaxed-pressure-response-audit)

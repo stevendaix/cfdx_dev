@@ -1,0 +1,87 @@
+name: PR919 alpha-sweep audit (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr919_alpha_sweep_marker.txt'
+      - '.github/workflows/pr919_alpha_sweep_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch PR 919 head into a worktree
+        run: |
+          git fetch origin refs/pull/919/head
+          git worktree add "$RUNNER_TEMP/pr919" FETCH_HEAD
+          echo "PR919_SHA=$(git -C "$RUNNER_TEMP/pr919" rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - name: Configure (Release, faithful to the validation campaign)
+        run: |
+          cmake -S "$RUNNER_TEMP/pr919" -B "$RUNNER_TEMP/pr919/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+      - name: Build only the test_vmfl036_axisymmetric target
+        run: cmake --build "$RUNNER_TEMP/pr919/build" --target test_vmfl036_axisymmetric --parallel 2
+      - name: Run VMFL036 Re=50/Re=100 campaign (drag gates) on PR 919 head
+        id: campaign
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          GITHUB_SHA="$PR919_SHA" ctest --test-dir "$RUNNER_TEMP/pr919/build" \
+            -R '^test_vmfl036_axisymmetric$' --output-on-failure -V \
+            2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_campaign_2026-10-16.log
+      - name: Run alpha sensitivity sweep on PR 919 head
+        id: sweep
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          GITHUB_SHA="$PR919_SHA" ctest --test-dir "$RUNNER_TEMP/pr919/build" \
+            -R '^test_vmfl036_alpha_sensitivity$' --output-on-failure -V \
+            2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_alpha_sweep_2026-10-16.log"
+      - name: Collect evidence
+        if: always()
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/diag-evidence/logs"
+          if [ -s "$RUNNER_TEMP/pr919/build/validation-report/vmfl036-alpha-sweep.json" ]; then
+            cp "$RUNNER_TEMP/pr919/build/validation-report/vmfl036-alpha-sweep.json" \
+               "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_vmfl036_alpha_sweep_2026-10-16.json"
+          else
+            echo "alpha sweep JSON missing (sweep did not reach the write step)" \
+              > "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_alpha_sweep_MISSING.txt"
+          fi
+          {
+            echo "pr919_head=$PR919_SHA"
+            echo "campaign_outcome=${{ steps.campaign.outcome }}"
+            echo "sweep_outcome=${{ steps.sweep.outcome }}"
+            echo "baseline_pre_919: Cd_total fine 48x72 alpha_u=0.65 = 1.19764 (campaign v4, twin TS)"
+            echo "baseline_pre_919: relative_spread Cd_total fine = 0.19% (alpha 0.5-0.95, twin TS)"
+            echo "reference: Tabata-Itakura Cd(Re=100) = 1.0895; nominal CI Cd fine alpha_u=0.65 = +9.93% vs ref"
+          } > "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_meta_2026-10-16.txt"
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR #919 relaxed-pressure-response audit — VMFL036 campaign gates + alpha sweep on the exact PR head (2026-10-16)"
+            git push
+          fi
