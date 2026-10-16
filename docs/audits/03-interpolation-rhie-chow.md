@@ -20,7 +20,7 @@ $$ \dot m_f = \rho_f\left[\mathbf{S}_f\cdot\overline{\mathbf{u}}_f + (\mathbf D\
 Contrats :
 1. La réponse tensorielle et son interpolation utilisent les diagonales **au moment de l'assemblage**. La décomposition implicite + différée doit reconstruire le flux tensoriel interpolé, avec un coefficient implicite $((\\mathbf D_f\\mathbf e)\\cdot\\mathbf S_f)/d_{PN}$ identique dans la matrice et le flux.
 2. Sur une face orthogonale et un champ de pression linéaire exact, le résidu RC s'annule. Sur une face oblique, le reste différé n'est pas forcé à zéro : il doit fermer exactement la différence entre le flux tensoriel interpolé et la contribution implicite.
-3. La correction de Majumdar reste un helper testable, mais **n'est pas activée en production** par cette PR tant que son interaction avec ce split RC et l'indépendance à $\\alpha_u$ ne sont pas démontrées.
+3. La correction de Majumdar est appliquée en production sous la forme $\\phi_f \\mathrel{+}= (1-\\alpha_u)(\\phi_f^{old}-\\phi_{U,old})$. Son test unitaire fixe le contrat de la formule ; l'acceptation physique de son interaction avec le split RC reste conditionnée au balayage $\\alpha_u$ et aux campagnes N9.
 4. Corps force (gravité/Boussinesq) : traiter les termes de force exactement comme la pression dans la reconstruction, sinon artefacts de colonne hydrostatique.
 
 ## 4. Traitement des frontières
@@ -43,7 +43,7 @@ Contrats :
 - L'opérateur interne utilise le même coefficient tensoriel `(dAU e)·Sf / d` dans le flux, la matrice de pression ségrégée et l'approximation de Schur couplée. La réponse différée est `(D ∇p)_f·Sf - ((D e)·Sf)(p_N-p_P)/d`; elle est appariée au même saut de pression que le coefficient implicite.
 - Le flux conservatif reconstruit depuis la vitesse cellulaire utilise l'interpolation produit `(D∇p)_f`, puis retranche la réponse implicite `((D e)·Sf)(p_N-p_P)/d`. Cela évite le remplacement incohérent `interp(D∇p) -> interp(D) interp(∇p)` lorsque la réponse varie entre cellules.
 - Les coefficients aux frontières à pression fixée sont alignés sur la réponse centre-face et incluent `dAU = V/A_P`.
-- La correction de Majumdar reste disponible dans le helper testé, mais n'est pas appliquée par la boucle de production : son interaction avec le split tensoriel doit d'abord être qualifiée par un balayage `alpha_u`.
+- La correction de Majumdar est appliquée par la boucle de production à partir du flux conservatif précédent et du flux de vitesse interpolée précédente. Le balayage `alpha_u` reste bloquant pour qualifier son interaction avec le split tensoriel.
 - Le helper PISO rejette désormais un dénominateur effectif non positif au lieu de le remplacer silencieusement par une petite valeur.
 - Le helper historique `assemble_pressure_correction` utilise désormais la convention `dAU = V/A_P` et la projection centre-centre, au lieu d'une formule supposant implicitement volume unitaire et face orthogonale.
 
