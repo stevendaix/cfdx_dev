@@ -1,0 +1,7 @@
+# PR 923 campaign comparison marker - triggers .github/workflows/pr923_campaign_comparison_diag.yml
+# Runs the targeted pressure-velocity qualification campaigns (BFS Re=200, channel,
+# NACA0012 laminar, Ghia PCD, N12 coupled MMS, N9-S9 RC consistency) on the merge-base
+# and on the PR 923 head (refs/pull/923/head), then compares the ctest failure lists.
+# Goal: prove the face-projection alignment introduces no regression beyond the
+# pre-existing master long-campaign failures (#870/#903).
+trigger: 2026-10-16 audit - PR 923 regression isolation

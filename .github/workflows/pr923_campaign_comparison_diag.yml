@@ -1,0 +1,115 @@
+name: PR923 targeted campaign comparison (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr923_campaign_marker.txt'
+      - '.github/workflows/pr923_campaign_comparison_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    env:
+      TARGETED: '^test_(bfs_qualification|channel_qualification|naca0012_qualification|ghia_cavity_n8_pcd|n12_coupled_pressure_velocity_mms|n9_s9_rhie_chow_consistency)$'
+      EVID: diag-evidence/logs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch refs and create worktrees
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          git fetch origin refs/pull/923/head
+          PR923_SHA="$(git rev-parse FETCH_HEAD)"
+          BASE_SHA="$(git merge-base origin/master "$PR923_SHA")"
+          git worktree add "$RUNNER_TEMP/base" "$BASE_SHA"
+          git worktree add "$RUNNER_TEMP/pr923" "$PR923_SHA"
+          echo "PR923_SHA=$PR923_SHA" >> "$GITHUB_ENV"
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+      - name: Install Python tooling and package
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -e "$RUNNER_TEMP/base"
+      - name: Generate validation meshes (shared by both refs)
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" "$RUNNER_TEMP/base/scripts/generate_2d_validation_meshes.py" all --output-dir "$RUNNER_TEMP/validation_meshes"
+          for mesh in channel_n16.h5 channel_n32.h5 channel_n64.h5 bfs_re200_n16.h5 bfs_re200_n32.h5 bfs_re200_n64.h5 naca0012_laminar_n64.h5 naca0012_laminar_n128.h5 naca0012_laminar_n256.h5; do
+            test -s "$RUNNER_TEMP/validation_meshes/$mesh" || { echo "::error::missing mesh: $mesh"; exit 1; }
+          done
+      - name: Configure and build (merge-base)
+        run: |
+          cmake -S "$RUNNER_TEMP/base" -B "$RUNNER_TEMP/base/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/base/build/validation_meshes"
+          cmake --build "$RUNNER_TEMP/base/build" --target test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity_n8_pcd test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency --parallel 2
+      - name: Configure and build (PR 923 head)
+        run: |
+          cmake -S "$RUNNER_TEMP/pr923" -B "$RUNNER_TEMP/pr923/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/pr923/build/validation_meshes"
+          cmake --build "$RUNNER_TEMP/pr923/build" --target test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity_n8_pcd test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency --parallel 2
+      - name: Run targeted campaigns (merge-base)
+        id: base
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$RUNNER_TEMP/base/build" -R "$TARGETED" -N 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_testlist_2026-10-16.log"
+          ctest --test-dir "$RUNNER_TEMP/base/build" -R "$TARGETED" --parallel 4 --output-on-failure \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_campaign_2026-10-16.log"
+      - name: Run targeted campaigns (PR 923 head)
+        id: pr923
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$RUNNER_TEMP/pr923/build" -R "$TARGETED" -N 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_testlist_2026-10-16.log"
+          ctest --test-dir "$RUNNER_TEMP/pr923/build" -R "$TARGETED" --parallel 4 --output-on-failure \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_campaign_2026-10-16.log"
+      - name: Compare failure lists
+        if: always()
+        run: |
+          extract() {
+            awk '/The following tests FAILED:/{flag=1;next} flag&&/^[[:space:]]*[0-9]+ - /{print;next} flag{exit}' "$1" \
+              | sed -E 's/^[[:space:]]*[0-9]+ - //; s/ \(.*//' | sort -u
+          }
+          extract "$GITHUB_WORKSPACE/$EVID/pr923_base_campaign_2026-10-16.log" > "$RUNNER_TEMP/failed_base.txt"
+          extract "$GITHUB_WORKSPACE/$EVID/pr923_head_campaign_2026-10-16.log" > "$RUNNER_TEMP/failed_head.txt"
+          cp "$RUNNER_TEMP/failed_base.txt" "$GITHUB_WORKSPACE/$EVID/pr923_failed_base_2026-10-16.txt"
+          cp "$RUNNER_TEMP/failed_head.txt" "$GITHUB_WORKSPACE/$EVID/pr923_failed_head_2026-10-16.txt"
+          if diff -u "$RUNNER_TEMP/failed_base.txt" "$RUNNER_TEMP/failed_head.txt" > "$GITHUB_WORKSPACE/$EVID/pr923_comparison_2026-10-16.txt"; then
+            echo "VERDICT: IDENTICAL_FAILURE_SETS (no regression beyond pre-existing failures)" >> "$GITHUB_WORKSPACE/$EVID/pr923_comparison_2026-10-16.txt"
+          else
+            echo "VERDICT: FAILURE_SETS_DIFFER (see diff above)" >> "$GITHUB_WORKSPACE/$EVID/pr923_comparison_2026-10-16.txt"
+          fi
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "pr923_head_sha=$PR923_SHA"
+            echo "base_cmake_outcome=${{ steps.base.outcome }}"
+            echo "pr923_cmake_outcome=${{ steps.pr923.outcome }}"
+            echo "targeted_tests: BFS Re=200, channel, NACA0012 laminar, Ghia PCD, N12 coupled MMS, N9-S9 RC consistency"
+          } > "$GITHUB_WORKSPACE/$EVID/pr923_meta_2026-10-16.txt"
+          head -50 "$GITHUB_WORKSPACE/$EVID/pr923_comparison_2026-10-16.txt"
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 923 targeted campaign comparison base vs head (2026-10-16)"
+            git push
+          fi
