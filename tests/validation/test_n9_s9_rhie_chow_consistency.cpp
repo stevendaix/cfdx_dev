@@ -482,5 +482,37 @@ int main()
         EXPECT_NEAR(orthogonal, 1.0, 1e-12);
     });
 
+
+    run_case("n9_s9_rhie_chow_skewed_face_uses_shared_implicit_coefficient", [] {
+        const Mesh mesh = make_two_cell_channel();
+        auto geometry = build_fv_geometry(mesh);
+        geometry.face_area_vectors[1].y = 0.4;
+
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
+        p(0) = 1.0;
+        p(1) = -1.0;
+        grad_p.fill(0.0);
+
+        std::array<std::vector<double>, 3> rAU{
+            std::vector<double>(mesh.n_cells(), 1.0),
+            std::vector<double>(mesh.n_cells(), 4.0),
+            std::vector<double>(mesh.n_cells(), 9.0)};
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const Vec3 Sf = geometry.face_area_vectors[1];
+        const Vec3 dAU_face{
+            0.5 * (geometry.cell_volumes[0] * rAU[0][0] +
+                   geometry.cell_volumes[1] * rAU[0][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[1][0] +
+                   geometry.cell_volumes[1] * rAU[1][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
+                   geometry.cell_volumes[1] * rAU[2][1])};
+        const double expected = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU_face) * (p(1) - p(0));
+        const double actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, 1.0);
+        EXPECT_NEAR(actual, expected, 1e-12);
+    });
+
     return 0;
 }
