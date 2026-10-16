@@ -548,6 +548,31 @@ make_mass_flux(
     return flux;
 }
 
+// Orthogonal coefficient and deferred remainder for a diagonal cell
+// momentum response D = diag(dAUx, dAUy, dAUz). These helpers define one
+// operator contract for the segregated flux, pressure matrix, and coupled
+// Schur approximation.
+inline double rhie_chow_orthogonal_response(
+    double dAUx, double dAUy, double dAUz,
+    const cfdx::core::Vec3& e,
+    const cfdx::core::Vec3& Sf)
+{
+    return dAUx*e.x*Sf.x + dAUy*e.y*Sf.y + dAUz*e.z*Sf.z;
+}
+
+inline double rhie_chow_deferred_response(
+    double dAUx, double dAUy, double dAUz,
+    const cfdx::core::Vec3& grad_p,
+    const cfdx::core::Vec3& e,
+    const cfdx::core::Vec3& Sf)
+{
+    const double orthogonal_response =
+        rhie_chow_orthogonal_response(dAUx, dAUy, dAUz, e, Sf);
+    const double tensor_gradient_flux =
+        dAUx*grad_p.x*Sf.x + dAUy*grad_p.y*Sf.y + dAUz*grad_p.z*Sf.z;
+    return tensor_gradient_flux - orthogonal_response * grad_p.dot(e);
+}
+
 inline double rhie_chow_pressure_flux_internal(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -586,7 +611,7 @@ inline double rhie_chow_pressure_flux_internal(
     // (D e)·Sf / d. Projecting D on e and then multiplying by Sf·e is only
     // equivalent for isotropic D; it is wrong for anisotropic momentum
     // diagonals on skewed faces.
-    const double response_s = cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z;
+    const double response_s = rhie_chow_orthogonal_response(cx, cy, cz, e, Sf);
     const Vec3 gp{
         0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
         0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
@@ -596,11 +621,9 @@ inline double rhie_chow_pressure_flux_internal(
     // full tensor gradient flux minus the part represented by the implicit
     // coefficient. This reduces to the usual scalar non-orthogonal split
     // when dAUx == dAUy == dAUz.
-    const double tensor_gradient_flux =
-        cx*gp.x*Sf.x + cy*gp.y*Sf.y + cz*gp.z*Sf.z;
     const double pressure_gradient_flux =
         response_s * (p(n) - p(o)) / d +
-        tensor_gradient_flux - response_s * gp.dot(e);
+        rhie_chow_deferred_response(cx, cy, cz, gp, e, Sf);
     return rho * pressure_gradient_flux;
 }
 
@@ -1380,10 +1403,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // of the centre-to-centre pressure difference, (dAU e)·Sf/d.
                 // A normal projection dAU_n |Sf|/d is only equivalent on
                 // orthogonal faces with isotropic response.
-                const double response_s =
-                    rAUx_f*e.x*rawSf.x +
-                    rAUy_f*e.y*rawSf.y +
-                    rAUz_f*e.z*rawSf.z;
+                const double response_s = rhie_chow_orthogonal_response(
+                    rAUx_f, rAUy_f, rAUz_f, e, rawSf);
                 const double D = rho * response_s / d;
                 if (!(response_s > 0.0) || !std::isfinite(response_s) ||
                     !(D > 0.0) || !std::isfinite(D)) {
@@ -1420,12 +1441,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
-                const double tensor_gradient_flux =
-                    rAUx_f*gp.x*rawSf.x +
-                    rAUy_f*gp.y*rawSf.y +
-                    rAUz_f*gp.z*rawSf.z;
-                const double nonorth_flux = rho *
-                    (tensor_gradient_flux - response_s * gp.dot(e));
+                const double nonorth_flux = rho * rhie_chow_deferred_response(
+                    rAUx_f, rAUy_f, rAUz_f, gp, e, rawSf);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
@@ -2343,7 +2360,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 geometry.cell_volumes[n] * coeff[2][n]);
             // Return (D e)·Sf / |Sf|. The caller multiplies by |Sf|/d,
             // yielding the exact coefficient used by the face-flux split.
-            return (cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z) / area;
+            return rhie_chow_orthogonal_response(cx, cy, cz, e, Sf) / area;
         };
 
     Field<double, Location::FACE> mass_flux =
