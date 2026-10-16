@@ -1,0 +1,8 @@
+ref_tag=pr925_head_failed
+pinned_sha=98e8905bf635064257c068399019d09164ae376b
+pip_outcome=success
+configure_outcome=success
+build_outcome=success
+ctest_outcome=failure
+n12_quick_outcome=success
+pytest_outcome=failure

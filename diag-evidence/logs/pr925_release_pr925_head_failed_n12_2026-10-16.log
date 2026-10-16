@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "campaign": "N12-MMS-QUICK",
+  "tests": [
+    "test_mms_scalar_diffusion",
+    "test_transient_mms"
+  ],
+  "timeout_seconds": 600,
+  "results": [
+    {
+      "name": "test_mms_scalar_diffusion",
+      "status": "PASS",
+      "return_code": 0,
+      "elapsed_seconds": 0.173,
+      "log": "test_mms_scalar_diffusion.log"
+    },
+    {
+      "name": "test_transient_mms",
+      "status": "PASS",
+      "return_code": 0,
+      "elapsed_seconds": 0.067,
+      "log": "test_transient_mms.log"
+    }
+  ]
+}
