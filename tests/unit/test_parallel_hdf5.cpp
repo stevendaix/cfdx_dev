@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <vector>
+#include "common/live_assert.hpp"
 
 int main(int argc, char** argv)
 {

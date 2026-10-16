@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include "common/live_assert.hpp"
 
 int main()
 {

@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cmath>
+#include "common/live_assert.hpp"
 
 int main(int argc, char** argv) {
     cfdx::core::parallel::mpi_init(&argc, &argv);

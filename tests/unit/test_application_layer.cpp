@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cmath>
 #include <string>
+#include "common/live_assert.hpp"
 
 using namespace cfdx::application;
 
