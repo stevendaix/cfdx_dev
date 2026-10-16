@@ -1,0 +1,6 @@
+pr919_head=7c0fe4f73d3cd36e1ca4c21e996bd00515de8e73
+campaign_outcome=success
+sweep_outcome=failure
+baseline_pre_919: Cd_total fine 48x72 alpha_u=0.65 = 1.19764 (campaign v4, twin TS)
+baseline_pre_919: relative_spread Cd_total fine = 0.19% (alpha 0.5-0.95, twin TS)
+reference: Tabata-Itakura Cd(Re=100) = 1.0895; nominal CI Cd fine alpha_u=0.65 = +9.93% vs ref

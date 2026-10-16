@@ -1,0 +1,54 @@
+Internal ctest changing into directory: /home/runner/work/_temp/pr919/build
+UpdateCTestConfiguration  from :/home/runner/work/_temp/pr919/build/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/home/runner/work/_temp/pr919/build/DartConfiguration.tcl
+Test project /home/runner/work/_temp/pr919/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 124
+    Start 124: test_vmfl036_axisymmetric
+
+124: Test command: /home/runner/work/_temp/pr919/build/test_vmfl036_axisymmetric
+124: Working Directory: /home/runner/work/_temp/pr919/build
+124: Test timeout computed to be: 10000000
+124: VMFL036_AXISYMESH: PASS nr=44 nt=54 cells=2376 nodes=2475
+124: VMFL036_AXISYMESH: PASS nr=24 nt=36 cells=864 nodes=925
+124: VMFL036_AXISYMESH: PASS nr=44 nt=54 cells=2376 nodes=2475
+124: VMFL036_AXISYMESH: PASS nr=48 nt=72 cells=3456 nodes=3577
+124: VMFL036_AXISYM ITER=1 continuity=3.86362e-08 momentum=0.0312267 pcorr=1.98098e-07
+124: VMFL036_AXISYM ITER=50 continuity=1.17013e-08 momentum=0.00135412 pcorr=1.92875e-07
+124: VMFL036_AXISYM ITER=100 continuity=1.85497e-08 momentum=0.000112148 pcorr=1.77074e-07
+124: VMFL036_AXISYM ITER=150 continuity=1.31535e-08 momentum=5.53198e-06 pcorr=1.9186e-07
+124: VMFL036_AXISYM RESULT level=medium converged=true iterations=167 continuity=1.16782e-08 momentum=1.91707e-06 pcorr=1.93955e-07 Cd_pressure=0.983588 Cd_viscous=0.622709 Cd_total=1.6063 Cd_reference=1.5785 Cd_relative_error=0.0176092
+124: VMFL036_AXISYM RE50 Cd=1.6063 reference=1.5785 relative_error=0.0176092
+124: VMFL036_AXISYM ITER=1 continuity=8.46123e-08 momentum=0.0307853 pcorr=1.94194e-07
+124: VMFL036_AXISYM ITER=50 continuity=6.6776e-08 momentum=5.18707e-05 pcorr=1.84163e-07
+124: VMFL036_AXISYM RESULT level=coarse converged=true iterations=72 continuity=5.4425e-08 momentum=1.80374e-06 pcorr=1.4507e-07 Cd_pressure=0.700162 Cd_viscous=0.171489 Cd_total=0.871651 Cd_reference=1.0895 Cd_relative_error=0.199954
+124: VMFL036_AXISYM ITER=1 continuity=4.58073e-08 momentum=0.0245146 pcorr=1.98812e-07
+124: VMFL036_AXISYM ITER=50 continuity=1.92987e-08 momentum=0.000952725 pcorr=1.94423e-07
+124: VMFL036_AXISYM ITER=100 continuity=1.85029e-08 momentum=2.8124e-05 pcorr=1.89055e-07
+124: VMFL036_AXISYM RESULT level=medium converged=true iterations=136 continuity=1.45521e-08 momentum=1.87636e-06 pcorr=1.76219e-07 Cd_pressure=0.816593 Cd_viscous=0.375066 Cd_total=1.19166 Cd_reference=1.0895 Cd_relative_error=0.0937675
+124: VMFL036_AXISYM ITER=1 continuity=2.64692e-07 momentum=0.0198252 pcorr=1.51472e-06
+124: VMFL036_AXISYM ITER=50 continuity=1.9136e-08 momentum=0.00107005 pcorr=1.93739e-07
+124: VMFL036_AXISYM ITER=100 continuity=1.88221e-08 momentum=0.000106855 pcorr=1.98134e-07
+124: VMFL036_AXISYM ITER=150 continuity=1.33229e-08 momentum=9.45466e-06 pcorr=1.78284e-07
+124: VMFL036_AXISYM RESULT level=fine converged=true iterations=180 continuity=9.12449e-09 momentum=1.9243e-06 pcorr=1.97914e-07 Cd_pressure=0.798473 Cd_viscous=0.399168 Cd_total=1.19764 Cd_reference=1.0895 Cd_relative_error=0.0992575
+124: VMFL036_AXISYM REFINEMENT fine_relative_error=0.0992575 fine_to_medium_change=0.00499424
+124: VMFL036_AXISYMMETRIC_VALIDATION: PASS
+1/1 Test #124: test_vmfl036_axisymmetric ........   Passed    1.97 sec
+
+The following tests passed:
+	test_vmfl036_axisymmetric
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+axisymmetric    =   1.97 sec*proc (1 test)
+long            =   1.97 sec*proc (1 test)
+phase14         =   1.97 sec*proc (1 test)
+validation      =   1.97 sec*proc (1 test)
+
+Total Test time (real) =   2.07 sec
