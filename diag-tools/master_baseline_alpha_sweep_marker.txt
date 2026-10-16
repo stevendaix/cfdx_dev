@@ -1,0 +1,6 @@
+# Master baseline sweep marker — triggers .github/workflows/master_baseline_alpha_sweep_diag.yml
+# Runs the PR #919 alpha-sweep harness (test file from refs/pull/919/head) against the MASTER
+# solver (pre-#919 operator), to attribute the alpha_u=1.0 fail-closed failure: at alpha_u=1.0
+# the relaxed/unrelaxed conventions coincide, so a master failure proves the limit is pre-existing
+# solver robustness, not a #919 regression. Also gives the pre-919 alpha-spread for comparison.
+trigger: 2026-10-16 VMFL036 audit — baseline pre-919 alpha sweep

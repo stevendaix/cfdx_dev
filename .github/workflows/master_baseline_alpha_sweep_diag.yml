@@ -1,0 +1,90 @@
+name: Master baseline alpha-sweep (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/master_baseline_alpha_sweep_marker.txt'
+      - '.github/workflows/master_baseline_alpha_sweep_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch master and PR 919 test harness
+        run: |
+          git fetch origin master
+          git fetch origin refs/pull/919/head
+          PR919_SHA="$(git rev-parse FETCH_HEAD)"
+          MASTER_SHA="$(git rev-parse origin/master)"
+          git worktree add "$RUNNER_TEMP/master" origin/master
+          git -C "$RUNNER_TEMP/master" checkout "$PR919_SHA" -- tests/validation/test_vmfl036_axisymmetric.cpp
+          echo "MASTER_SHA=$MASTER_SHA" >> "$GITHUB_ENV"
+          echo "PR919_SHA=$PR919_SHA" >> "$GITHUB_ENV"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - name: Configure (Release, faithful to the validation campaign)
+        run: |
+          cmake -S "$RUNNER_TEMP/master" -B "$RUNNER_TEMP/master/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+      - name: Build only the test_vmfl036_axisymmetric target
+        run: cmake --build "$RUNNER_TEMP/master/build" --target test_vmfl036_axisymmetric --parallel 2
+      - name: Locate the test binary
+        id: bin
+        run: |
+          BIN="$RUNNER_TEMP/master/build/test_vmfl036_axisymmetric"
+          if [ ! -x "$BIN" ]; then BIN="$RUNNER_TEMP/master/build/tests/test_vmfl036_axisymmetric"; fi
+          test -x "$BIN"
+          echo "bin=$BIN" >> "$GITHUB_OUTPUT"
+      - name: Run baseline campaign (drag gates) on the master solver
+        id: campaign
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          "${{ steps.bin.outputs.bin }}" 2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/master_baseline_campaign_2026-10-16.log"
+      - name: Run baseline alpha sweep on the master solver (same harness as PR 919)
+        id: sweep
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          GITHUB_SHA="$MASTER_SHA" "${{ steps.bin.outputs.bin }}" --alpha-sweep \
+            "$GITHUB_WORKSPACE/diag-evidence/logs/master_baseline_vmfl036_alpha_sweep_2026-10-16.json" \
+            2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/master_baseline_alpha_sweep_2026-10-16.log"
+      - name: Collect evidence
+        if: always()
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/diag-evidence/logs"
+          {
+            echo "master_sha=$MASTER_SHA"
+            echo "pr919_test_harness_sha=$PR919_SHA"
+            echo "campaign_outcome=${{ steps.campaign.outcome }}"
+            echo "sweep_outcome=${{ steps.sweep.outcome }}"
+            echo "purpose: attribute the alpha_u=1.0 sweep failure — master solver (pre-919) vs PR 919 head (operators coincide at alpha_u=1.0)"
+            echo "pr919_reference_sweep: spread Cd_total 0.193% over alpha 0.3-0.7, alpha=1.0 fail-closed (negative momentum diagonal, iter 1)"
+          } > "$GITHUB_WORKSPACE/diag-evidence/logs/master_baseline_meta_2026-10-16.txt"
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master baseline alpha sweep — pre-919 operator, same harness as PR 919 (2026-10-16)"
+            git push
+          fi
