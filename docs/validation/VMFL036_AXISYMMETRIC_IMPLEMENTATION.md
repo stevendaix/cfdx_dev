@@ -13,7 +13,7 @@ The VMFL036 implementation contains a dedicated native meridional solver backend
 7. **Boundary conditions** — no-slip sphere, velocity inlet on the upstream outer arc, pressure outlet on the downstream outer arc, and explicit axis symmetry; together these form the documented circular 50D domain.
 8. **Independent drag** — sphere traction is integrated separately into pressure and viscous components and converted with the projected area pi*D^2/4.
 9. **Operator verification** — test_axisymmetric_vmfl036_kernel checks revolution metrics, cylindrical divergence/Laplacian, viscous terms, axis guards and drag metrics.
-10. **Physical VMFL036 campaign** — test_vmfl036_axisymmetric executes both Fluent-exact mu=0.02 (Re=50) and literature-aligned mu=0.01 (Re=100), with coarse/medium/fine Re=100 refinement. The campaign is not considered validated until all levels remain finite, converge, and satisfy the refinement/reference gates.
+10. **Physical VMFL036 campaign** — test_vmfl036_axisymmetric executes both the Fluent-documented mu=0.02 (Re=50) case against the precise Tabata & Itakura reference Cd = 1.5785, and the literature-aligned mu=0.01 (Re=100) case, with coarse/medium/fine Re=100 refinement. The Cd = 1.0875 quoted against the mu = 0.02 setup in the Ansys material is the misattributed Re=100 datum (see VMFL036_RE100_CASE.md and issue #440) and is not a valid Re=50 oracle. The campaign is not considered validated until all levels remain finite, converge, and satisfy the refinement/reference gates.
 11. **CI/V&V traceability** — the physical executable is registered as fast and long validation, and validation_report.py consumes its solver output. A failed executable or missing log is a validation failure, not a skip.
 
 ## Canonical cases
@@ -24,7 +24,8 @@ The VMFL036 implementation contains a dedicated native meridional solver backend
 - U_inf = 1 m/s
 - mu = 0.02 Pa.s
 - Re = 50
-- documented Fluent Cd = 1.0875
+- reference Cd = 1.5785 (Tabata & Itakura, "Precise Computation of Drag Coefficients of the Sphere", Int. J. Computational Fluid Dynamics 9 (1998) 303-311; RIMS kokyuroku 974, 1996; P2/P1 and P1/P1 finite-element extrapolation)
+- the Fluent-documented Cd = 1.0875 attached to this setup in the Ansys material is the misattributed Re=100 datum and is rejected as a Re=50 oracle
 
 ### VMFL036-Re100
 - D = 1 m
@@ -35,7 +36,7 @@ The VMFL036 implementation contains a dedicated native meridional solver backend
 - literature Cd = 1.0895
 - reference drag = 0.4278456495 N
 
-The Ansys documentation is internally inconsistent: its displayed mu=0.02 implies Re=50 for the displayed D, rho and U, while its quoted Cd=1.0895 is the Re=100 literature datum. CFDX therefore keeps the two variants explicit.
+The Ansys documentation is internally inconsistent: its displayed mu=0.02 implies Re=50 for the displayed D, rho and U, while its quoted Cd values (1.0875 and 1.0895) are Re=100 literature data. CFDX therefore keeps the two variants explicit and takes the Re=50 oracle from the precise sphere-drag computation of Tabata & Itakura (1998): C_D(Re=50) = 1.5785.
 
 ## Verification gates
 
