@@ -19,7 +19,7 @@ int main()
     std::cout << "VMFL036_REFERENCE: PASS Re100_Re=" << re100.re()
               << " Re100_Cd=1.0895 Re100_F=" << force
               << " FluentExact_Re=" << fluent.re()
-              << " FluentExact_Cd=1.0875\n";
+              << " FluentExact_Cd=" << fluent.reference_cd() << "\n";
     std::cout << "VMFL036_REFERENCE: oracle-only; physical validation is test_vmfl036_axisymmetric\n";
     return 0;
 }
