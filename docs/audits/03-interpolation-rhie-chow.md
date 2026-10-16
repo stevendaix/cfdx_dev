@@ -2,10 +2,10 @@
 
 **En-tête d'évidence**
 - Scope : calcul du flux de masse aux faces pour un arrangement colocalisé (vitesse et pression aux centres de cellules). Couvre le terme de stabilisation, la sensibilité à la relaxation (Majumdar) et aux forces volumiques.
-- Statut : APPROVED (2026-10-12)
+- Statut : AUDIT EN COURS — PR `fix/rhie-chow-operator-consistency-audit`; merge interdit avant validation numérique complète
 - Issues liées : #601 (N9, S9 — `docs/validation/N9_S9_RHIE_CHOW_CONSISTENCY.md’), #34 ; PRs #821, #851
 - Dernier commit vérifié : 00f5ff8aedeafa9ab802ee302496f3eae217937b (master, 2026-10-12)
-- Limitations : audit code ↔ fiche (section 7) à exécuter en Phase 1 (N9).
+- Limitations : les modifications d'opérateur sont en revue; les campagnes physiques et le balayage d'indépendance à α doivent être exécutés sur le SHA final de la PR.
 
 ## 1. Références sources
 - C. M. Rhie, W. L. Chow, « Numerical study of the turbulent flow past an airfoil with trailing-edge separation », *AIAA Journal* 21(11):1525–1532, 1983. (interpolation de quantité de mouvement)
@@ -37,10 +37,20 @@ Contrats :
 - Validation exigée : Poiseuille (solution exacte + antisymétrie des flux) ; indépendance à α ; indépendance au pas de temps (transitoire) ; N9.7 négatifs : rejet d'une épingle de pression, détection de null-space faux, etc. (PR #851) ; bilan de masse $< 10^{-10}$.
 
 ## 7. Statut d'implémentation CFDX
-- Sources : `src/cfdx/physics/steady_incompressible_solver.h’, `finite_volume_transport.h’ (HbyA, rAU/rAtU), `src/cfdx/core/numerics/…’.
-- Tests : N9 S9 (`docs/validation/N9_S9_RHIE_CHOW_CONSISTENCY.md’), `test_n9_negative_diagnostics’ (#851) ; campagne fix4b/fix4c.
-- Écarts code ↔ fiche : **à auditer en Phase 1** (N9) : reconstruction HbyA, gradient de pression aux faces, correction Majumdar, cohérence flux continuité/conservation.
-- Gaps : campagne physique complète (Couette, Poiseuille, Ghia Re=100, skewed) sur le HEAD exact avec vrais résidus et chemin `.cfdx.h5’ — critère de fermeture #601.
+
+### Correctifs proposés dans la PR d'audit Rhie–Chow
+- L'opérateur interne utilise le même coefficient tensoriel `(dAU e)·Sf / d` dans le flux, la matrice de pression ségrégée et l'approximation de Schur couplée. La réponse différée est `(D ∇p)·Sf - ((D e)·Sf)(∇p·e)`, et non une projection scalaire qui n'est équivalente que pour une réponse isotrope.
+- Le flux conservatif reconstruit depuis la vitesse cellulaire utilise le résidu Rhie–Chow `((p_N-p_P)/d - ∇p_f·e)`; ce terme s'annule pour un champ de pression linéaire exact.
+- Les coefficients aux frontières à pression fixée sont alignés sur la réponse centre-face et incluent `dAU = V/A_P`.
+- La correction de Majumdar est réintroduite via le flux conservatif précédent, l'interpolation de la vitesse précédente et `alpha_u`; elle est nulle lorsque `alpha_u = 1`.
+- Le helper PISO rejette désormais un dénominateur effectif non positif au lieu de le remplacer silencieusement par une petite valeur.
+- Le helper historique `assemble_pressure_correction` utilise désormais la convention `dAU = V/A_P` et la projection centre-centre, au lieu d'une formule supposant implicitement volume unitaire et face orthogonale.
+
+### Statut de validation — non clos
+- Tests ajoutés : découpage tensoriel sur face oblique/réponse anisotrope, correction de Majumdar, dénominateur PISO invalide, coefficient du helper historique.
+- À exécuter sur le SHA final : build C++/tests unitaires, test N9 S9, Poiseuille piloté en pression, Couette, Ghia Re=100, cavité, cas skewed, ainsi que `validation-total`.
+- À mesurer impérativement : balayage `alpha_u = 0.3, 0.5, 0.7, 1.0` avec comparaison des champs pression/vitesse (pression alignée à la jauge), flux massiques de face et résidus de quantité de mouvement/continuité recalculés indépendamment.
+- Le merge reste bloqué tant que les contrôles ci-dessus ne sont pas verts sur le HEAD exact et que l'indépendance à `alpha_u` n'est pas démontrée numériquement.
 
 ## 8. Journal
 - 2026-10-12 — création ; intègre les leçons #419 (A-B2/A-B4), #821, #851.
