@@ -487,13 +487,16 @@ int main()
         const Mesh mesh = make_two_cell_channel();
         auto geometry = build_fv_geometry(mesh);
         geometry.face_area_vectors[1].y = 0.4;
+        // Rotate the centre-line as well: anisotropic response then couples
+        // the centre-line and tangential components in global coordinates.
+        geometry.cell_centres[1].y += 0.3;
 
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
         Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
-        p(0) = 1.0;
-        p(1) = -1.0;
-        // A tangential gradient with anisotropic dAU exposes whether the
-        // deferred term uses the full diagonal response or an invalid scalar.
+        p(0) = 0.0;
+        p(1) = 0.6;
+        // A linear tangential pressure gradient with anisotropic dAU exposes
+        // whether the deferred term preserves the full face flux.
         grad_p.set(0, 0.0, 2.0, 0.0);
         grad_p.set(1, 0.0, 2.0, 0.0);
 
@@ -513,14 +516,19 @@ int main()
         const double d = dvec.mag();
         const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
         const double orthogonal_area = Sf.dot(e);
-        const Vec3 Snon = Sf - e * orthogonal_area;
         const Vec3 gp{0.0, 2.0, 0.0};
+        const double rfn = dAU_face.x * e.x * e.x +
+                           dAU_face.y * e.y * e.y +
+                           dAU_face.z * e.z * e.z;
         const double implicit = pressure_face_orthogonal_coefficient(
             Sf, dvec, dAU_face) * (p(1) - p(0));
-        const double deferred = dAU_face.x * gp.x * Snon.x +
-                                dAU_face.y * gp.y * Snon.y +
-                                dAU_face.z * gp.z * Snon.z;
+        const double full_face_flux = dAU_face.x * gp.x * Sf.x +
+                                      dAU_face.y * gp.y * Sf.y +
+                                      dAU_face.z * gp.z * Sf.z;
+        const double deferred = full_face_flux -
+                               rfn * gp.dot(e) * orthogonal_area;
         const double expected = implicit + deferred;
+        EXPECT_NEAR(expected, full_face_flux, 1e-12);
         const double actual = rhie_chow_pressure_flux_internal(
             mesh, geometry, 1, p, grad_p, rAU, 1.0);
         EXPECT_NEAR(actual, expected, 1e-12);
