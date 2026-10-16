@@ -564,13 +564,18 @@ inline double rhie_chow_deferred_response(
     double dAUx, double dAUy, double dAUz,
     const cfdx::core::Vec3& grad_p,
     const cfdx::core::Vec3& e,
-    const cfdx::core::Vec3& Sf)
+    const cfdx::core::Vec3& Sf,
+    double pressure_jump_gradient)
 {
     const double orthogonal_response =
         rhie_chow_orthogonal_response(dAUx, dAUy, dAUz, e, Sf);
     const double tensor_gradient_flux =
         dAUx*grad_p.x*Sf.x + dAUy*grad_p.y*Sf.y + dAUz*grad_p.z*Sf.z;
-    return tensor_gradient_flux - orthogonal_response * grad_p.dot(e);
+    // The deferred remainder must be measured against the same pressure
+    // jump used by the implicit matrix, not against grad(p) dot e. Otherwise
+    // the RHS and matrix represent different face operators away from a
+    // locally linear pressure field.
+    return tensor_gradient_flux - orthogonal_response * pressure_jump_gradient;
 }
 
 inline double rhie_chow_pressure_flux_internal(
@@ -631,17 +636,16 @@ inline double rhie_chow_pressure_flux_internal(
     // coefficient. This reduces to the usual scalar non-orthogonal split
     // when dAUx == dAUy == dAUz.
     const double pressure_jump_gradient = (p(n) - p(o)) / d;
+    const double deferred_flux = rhie_chow_deferred_response(
+        cx, cy, cz, gp, e, Sf, pressure_jump_gradient);
     if (stabilization_only) {
-        // When the argument is the cell-centred velocity predictor U, use
-        // the Rhie-Chow stabilization residual. It vanishes for a linear
-        // pressure field and is algebraically equivalent to HbyA·Sf minus
-        // the full pressure operator.
-        return rho * response_s * (pressure_jump_gradient - gp.dot(e));
+        // Flux is U_f minus this correction. Using the interpolated D grad(p)
+        // flux (rather than interp(D)*interp(grad(p))) makes it algebraically
+        // equivalent to HbyA_f minus the same implicit+deferred pressure
+        // operator assembled by the pressure equation.
+        return -rho * deferred_flux;
     }
-    const double pressure_gradient_flux =
-        response_s * pressure_jump_gradient +
-        rhie_chow_deferred_response(cx, cy, cz, gp, e, Sf);
-    return rho * pressure_gradient_flux;
+    return rho * (response_s * pressure_jump_gradient + deferred_flux);
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -777,16 +781,19 @@ make_rhie_chow_mass_flux(
                     const double cx = geometry.cell_volumes[o] * rAU[0][o];
                     const double cy = geometry.cell_volumes[o] * rAU[1][o];
                     const double cz = geometry.cell_volumes[o] * rAU[2][o];
-                    // Use the same tensor response as the internal-face
-                    // operator. No non-orthogonal boundary correction is
-                    // invented because no boundary gradient model is supplied.
+                    // Pair the implicit centre-to-face pressure jump with
+                    // the owner-cell tensor gradient flux. The difference is
+                    // the deferred boundary remainder for this same operator.
                     const double response_s =
                         cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z;
-                    correction = rho * response_s *
-                        ((pbc->second.value - p(o)) / d -
-                         grad_p.component_data(0)[o]*e.x -
-                         grad_p.component_data(1)[o]*e.y -
-                         grad_p.component_data(2)[o]*e.z);
+                    const double pressure_jump_gradient =
+                        (pbc->second.value - p(o)) / d;
+                    const double tensor_gradient_flux =
+                        cx*grad_p.component_data(0)[o]*Sf.x +
+                        cy*grad_p.component_data(1)[o]*Sf.y +
+                        cz*grad_p.component_data(2)[o]*Sf.z;
+                    correction = rho *
+                        (response_s*pressure_jump_gradient - tensor_gradient_flux);
                 }
             }
         }
@@ -1515,8 +1522,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         weight_n*grad_p_old.component_data(1)[neighbour_cell],
                     weight_o*grad_p_old.component_data(2)[owner_cell] +
                         weight_n*grad_p_old.component_data(2)[neighbour_cell]};
+                const double normal_dp =
+                    (p_old(neighbour_cell) - p_old(owner_cell)) / d;
                 const double nonorth_flux = rho * rhie_chow_deferred_response(
-                    rAUx_f, rAUy_f, rAUz_f, gp, e, rawSf);
+                    rAUx_f, rAUy_f, rAUz_f, gp, e, rawSf, normal_dp);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
@@ -3799,7 +3808,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         rhie_chow_orthogonal_response(cx, cy, cz, e, localSf);
                     pressure_flux_correction = controls.density *
                         (response_s * normal_dp +
-                         rhie_chow_deferred_response(cx, cy, cz, gp, e, localSf));
+                         rhie_chow_deferred_response(
+                             cx, cy, cz, gp, e, localSf, normal_dp));
                     u_face_reconstructed = hbyA_face -
                         Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
                 } else {
