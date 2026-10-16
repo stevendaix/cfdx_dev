@@ -44,3 +44,5 @@ Contrats :
 
 ## 8. Journal
 - 2026-10-12 — création ; intègre les leçons #419 (A-B2/A-B4), #821, #851.
+
+- 2026-10-16 — audit 3D du couplage pression–vitesse : le coefficient implicite doit être identique dans le flux Rhie–Chow et la matrice de correction. Avec e = d/|d| et dAU_f le tenseur diagonal de réponse volumique interpolé, D_f = rho * (dAU_f : (e⊗e)) * (Sf·e)/|d|. L'utilisation de |Sf|/|d| et d'une projection sur la normale de face n'est équivalente que sur une face orthogonale. L'écart a été trouvé dans les chemins SIMPLE/SIMPLEC, COUPLED, et aux frontières à pression fixée, y compris dans le terme de flux SIMPLEC. PR #923 mutualise ce coefficient et ajoute un test analytique de face skewée ; validation CI et campagnes physiques encore en attente. Cette correction aligne l'opérateur implicite mais ne qualifie pas, à elle seule, la précision globale sur maillages fortement non orthogonaux.
