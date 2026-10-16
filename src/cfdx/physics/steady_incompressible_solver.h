@@ -1344,9 +1344,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double area = rawSf.mag();
                 const double d = (geometry.cell_centres[ncell] -
                                   geometry.cell_centres[c]).mag();
-                const double nx = rawSf.x / area;
-                const double ny = rawSf.y / area;
-                const double nz = rawSf.z / area;
+                const Vec3 dvec = geometry.cell_centres[ncell] -
+                                  geometry.cell_centres[c];
+                if (!(d > 0.0) || !(area > 0.0) ||
+                    !std::isfinite(d) || !std::isfinite(area))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: degenerate internal face " +
+                        std::to_string(f));
+                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                 const double aox = ex.diagonal[c], anx = ex.diagonal[ncell];
                 const double aoy = ey.diagonal[c], any = ey.diagonal[ncell];
                 const double aoz = ez.diagonal[c], anz = ez.diagonal[ncell];
@@ -1371,14 +1376,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double rAUz_f = 0.5 * (
                     geometry.cell_volumes[c] / aoz +
                     geometry.cell_volumes[ncell] / anz);
-                const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
-                if (!(rfn > 0.0) || !std::isfinite(rfn))
-                    throw std::runtime_error(
-                        "solve_coupled_momentum_continuity: invalid face rAU on face " +
-                        std::to_string(f));
-                const double D = rho * rfn * area / d;
-                if (!(d > 0.0) || !(area > 0.0) ||
-                    !std::isfinite(d) || !std::isfinite(area) ||
+                // Match the segregated Rhie-Chow split: D is the coefficient
+                // of the centre-to-centre pressure difference, (dAU e)·Sf/d.
+                // A normal projection dAU_n |Sf|/d is only equivalent on
+                // orthogonal faces with isotropic response.
+                const double response_s =
+                    rAUx_f*e.x*rawSf.x +
+                    rAUy_f*e.y*rawSf.y +
+                    rAUz_f*e.z*rawSf.z;
+                const double D = rho * response_s / d;
+                if (!(response_s > 0.0) || !std::isfinite(response_s) ||
                     !(D > 0.0) || !std::isfinite(D)) {
                     if (diagnostics.coupled_matrix_summary) {
                         std::cerr << "COUPLED_FACE_DEBUG face=" << f
@@ -1390,7 +1397,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                                   << ";" << aoz << "," << anz << ")"
                                   << " rAU=(" << rAUx_f << "," << rAUy_f
                                   << "," << rAUz_f << ")"
-                                  << " rfn=" << rfn
+                                  << " response_s=" << response_s
                                   << " D=" << D << "\n";
                     }
                     throw std::runtime_error(
@@ -1406,14 +1413,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(row, nv + ncell, -D);
                 coupled_pressure_schur_diagonal[c] += D;
 
-                const Vec3 dvec = geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c];
-                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                const double orthogonal_area = rawSf.dot(e);
-                const Vec3 Snon{
-                    rawSf.x - orthogonal_area*e.x,
-                    rawSf.y - orthogonal_area*e.y,
-                    rawSf.z - orthogonal_area*e.z};
                 const Vec3 gp{
                     0.5*(grad_p_old.component_data(0)[c] +
                          grad_p_old.component_data(0)[ncell]),
@@ -1421,7 +1420,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
-                const double nonorth_flux = rho * rfn * gp.dot(Snon);
+                const double tensor_gradient_flux =
+                    rAUx_f*gp.x*rawSf.x +
+                    rAUy_f*gp.y*rawSf.y +
+                    rAUz_f*gp.z*rawSf.z;
+                const double nonorth_flux = rho *
+                    (tensor_gradient_flux - response_s * gp.dot(e));
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
