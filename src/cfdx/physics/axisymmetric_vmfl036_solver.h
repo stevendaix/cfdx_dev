@@ -323,16 +323,12 @@ private:
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 u=0.5*(ux_[f.owner]+ux_[f.neighbour]);
                 v=0.5*(ur_[f.owner]+ur_[f.neighbour]);
-                // Rhie-Chow pressure-velocity coupling: a plain interpolated
-                // face velocity re-injects the interpolation imbalance every
-                // outer iteration and the momentum residual stalls in a limit
-                // cycle ~1e-5 (gate 2e-6). Add the pressure-gradient
-                // transport of the two adjacent cells, minus the compact
-                // face-normal pressure gradient, weighted by the RELAXED
-                // component-wise momentum diagonals apx_/apr_ (V/(a_P/alpha_u),
-                // no extra alpha_u factor - validated component-wise in the
-                // TS twin; the unrelaxed V/(alpha_u*a_P) variant misses the
-                // fine-mesh drag band by 0.06pt).
+                // Rhie-Chow and pressure correction use the same response
+                // derived from the relaxed momentum equation:
+                //   a_P^r = a_P / alpha_u,  U' = -(V/a_P^r) grad(p').
+                // apx_/apr_ store a_P^r, so the response is V/apx_ or V/apr_.
+                // Dividing by alpha_u again would undo relaxation a second time
+                // and make the pressure matrix differ from the face-flux operator.
                 const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
                 const double Dox=m_.cells[f.owner].volume/apx_[f.owner];
                 const double Dor=m_.cells[f.owner].volume/apr_[f.owner];
@@ -556,13 +552,14 @@ private:
         return r;
     }
 
-    // Face-normal pressure response of a cell:
-    // nx^2*V/(alpha_u*a_Px) + nr^2*V/(alpha_u*a_Pr). apx_/apr_ store the
-    // relaxed diagonals a_P/alpha_u, so dividing by alpha_u recovers the
-    // unrelaxed momentum diagonal required by fiche 04.
-    double face_response(std::size_t cell,double nx,double nr,const AxisymControls& c) const {
+    // Face-normal response of the relaxed momentum equation:
+    //   d_f = n_x^2 V/a_Px^r + n_r^2 V/a_Pr^r,
+    // where a_P^r = a_P/alpha_u is exactly what apx_/apr_ store.
+    // This same response is used by the Rhie-Chow flux, pressure-correction
+    // matrix, conservative flux correction, and cell-velocity correction.
+    double face_response(std::size_t cell,double nx,double nr) const {
         const double v=m_.cells[cell].volume;
-        return (nx*nx*v)/(c.alpha_u*apx_[cell])+(nr*nr*v)/(c.alpha_u*apr_[cell]);
+        return (nx*nx*v)/apx_[cell]+(nr*nr*v)/apr_[cell];
     }
 
     double pressure_correction(const AxisymControls& c){
@@ -587,8 +584,8 @@ private:
                     // so faces with a radial normal use the radial diagonal
                     // (which carries the hoop term), consistently with the
                     // component-wise velocity correction below.
-                    const double df=0.5*(face_response(cell,f.nx,f.nr,c)
-                                         +face_response(nb,f.nx,f.nr,c));
+                    const double df=0.5*(face_response(cell,f.nx,f.nr)
+                                         +face_response(nb,f.nx,f.nr));
                     const double a=rho_*f.area*df/d;
                     diag[cell]+=a;
                     prow_nb[cell][prow_cnt[cell]]=nb;
@@ -727,10 +724,8 @@ private:
                !std::isfinite(apr_[cell]) || !(apr_[cell]>0.0))
                 throw std::runtime_error("VMFL036 invalid momentum diagonal during pressure correction at cell "+
                     std::to_string(cell));
-            ux_[cell]-=m_.cells[cell].volume/
-                (c.alpha_u*apx_[cell])*gx;
-            ur_[cell]-=m_.cells[cell].volume/
-                (c.alpha_u*apr_[cell])*gr;
+            ux_[cell]-=m_.cells[cell].volume/apx_[cell]*gx;
+            ur_[cell]-=m_.cells[cell].volume/apr_[cell]*gr;
             if(!std::isfinite(ux_[cell]) || !std::isfinite(ur_[cell]))
                 throw std::runtime_error("VMFL036 non-finite corrected velocity at cell "+
                     std::to_string(cell));
@@ -765,13 +760,13 @@ private:
                     std::to_string(k));
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
-                const double df=0.5*(face_response(f.owner,f.nx,f.nr,c)
-                                    +face_response(f.neighbour,f.nx,f.nr,c));
+                const double df=0.5*(face_response(f.owner,f.nx,f.nr)
+                                    +face_response(f.neighbour,f.nx,f.nr));
                 phi_[k]+=rho_*f.area*df/d*(pc_[f.owner]-pc_[f.neighbour]);
             } else if(f.outer && f.cx >= 0.0){
                 const std::size_t o=f.owner;
                 const double d=std::max(1e-12,std::abs((f.cx-m_.cells[o].cx)*f.nx+(f.cr-m_.cells[o].cr)*f.nr));
-                phi_[k]+=rho_*f.area*face_response(o,f.nx,f.nr,c)/d*pc_[o];
+                phi_[k]+=rho_*f.area*face_response(o,f.nx,f.nr)/d*pc_[o];
             }
             if(!std::isfinite(phi_[k]))
                 throw std::runtime_error("VMFL036 non-finite face flux after conservative correction at face "+
