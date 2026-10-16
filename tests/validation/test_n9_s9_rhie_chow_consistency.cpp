@@ -87,13 +87,12 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
-        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
-
-        // The Rhie-Chow pressure correction must vanish for a pressure field
-        // whose cell gradient is exactly the same as its face pressure jump.
-        EXPECT_NEAR(phi(1), phi_linear(1), 1e-12);
+        // Test the stabilization residual with an explicitly supplied exact
+        // gradient. The fixture has a single all-wall patch, so its computed
+        // boundary gradient is not an exact linear-field gradient.
+        const double stabilization = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, 1.0, true);
+        EXPECT_NEAR(stabilization, 0.0, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_pressure_offset_invariance", [] {
