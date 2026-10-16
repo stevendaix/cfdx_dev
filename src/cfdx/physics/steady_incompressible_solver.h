@@ -561,20 +561,13 @@ inline double rhie_chow_orthogonal_response(
 }
 
 inline double rhie_chow_deferred_response(
-    double dAUx, double dAUy, double dAUz,
-    const cfdx::core::Vec3& grad_p,
-    const cfdx::core::Vec3& e,
-    const cfdx::core::Vec3& Sf,
+    double orthogonal_response,
+    double tensor_gradient_flux,
     double pressure_jump_gradient)
 {
-    const double orthogonal_response =
-        rhie_chow_orthogonal_response(dAUx, dAUy, dAUz, e, Sf);
-    const double tensor_gradient_flux =
-        dAUx*grad_p.x*Sf.x + dAUy*grad_p.y*Sf.y + dAUz*grad_p.z*Sf.z;
-    // The deferred remainder must be measured against the same pressure
-    // jump used by the implicit matrix, not against grad(p) dot e. Otherwise
-    // the RHS and matrix represent different face operators away from a
-    // locally linear pressure field.
+    // The deferred remainder is measured against the same pressure jump
+    // used by the implicit matrix. This keeps the sum of implicit and deferred
+    // flux equal to the interpolated tensor-gradient flux.
     return tensor_gradient_flux - orthogonal_response * pressure_jump_gradient;
 }
 
@@ -606,12 +599,15 @@ inline double rhie_chow_pressure_flux_internal(
     // factor is introduced here, at the velocity/pressure projection stage,
     // because the pressure gradient is a volumetric momentum source. Thus
     // cx/cy/cz are dAU = V*rAU, not a redefinition of rAU itself.
-    const double cx = 0.5*(geometry.cell_volumes[o] * rAU[0][o] +
-                           geometry.cell_volumes[n] * rAU[0][n]);
-    const double cy = 0.5*(geometry.cell_volumes[o] * rAU[1][o] +
-                           geometry.cell_volumes[n] * rAU[1][n]);
-    const double cz = 0.5*(geometry.cell_volumes[o] * rAU[2][o] +
-                           geometry.cell_volumes[n] * rAU[2][n]);
+    const double cxo = geometry.cell_volumes[o] * rAU[0][o];
+    const double cyo = geometry.cell_volumes[o] * rAU[1][o];
+    const double czo = geometry.cell_volumes[o] * rAU[2][o];
+    const double cxn = geometry.cell_volumes[n] * rAU[0][n];
+    const double cyn = geometry.cell_volumes[n] * rAU[1][n];
+    const double czn = geometry.cell_volumes[n] * rAU[2][n];
+    const double cx = 0.5*(cxo+cxn);
+    const double cy = 0.5*(cyo+cyn);
+    const double cz = 0.5*(czo+czn);
     // For diagonal momentum response D = diag(dAUx,dAUy,dAUz), the
     // coefficient of the centre-to-centre pressure difference is
     // (D e)·Sf / d. Projecting D on e and then multiplying by Sf·e is only
@@ -626,18 +622,18 @@ inline double rhie_chow_pressure_flux_internal(
             "rhie_chow_pressure_flux_internal: degenerate face-centre distance");
     const double weight_o = dn / (dc + dn);
     const double weight_n = dc / (dc + dn);
-    const Vec3 gp{
-        weight_o*grad_p.component_data(0)[o] + weight_n*grad_p.component_data(0)[n],
-        weight_o*grad_p.component_data(1)[o] + weight_n*grad_p.component_data(1)[n],
-        weight_o*grad_p.component_data(2)[o] + weight_n*grad_p.component_data(2)[n]};
-    // Split the tensor response consistently into an implicit centre-line
-    // pressure difference and a deferred remainder. The remainder is the
-    // full tensor gradient flux minus the part represented by the implicit
-    // coefficient. This reduces to the usual scalar non-orthogonal split
-    // when dAUx == dAUy == dAUz.
     const double pressure_jump_gradient = (p(n) - p(o)) / d;
+    const double tensor_gradient_flux =
+        weight_o*(cxo*grad_p.component_data(0)[o]*Sf.x +
+                  cyo*grad_p.component_data(1)[o]*Sf.y +
+                  czo*grad_p.component_data(2)[o]*Sf.z) +
+        weight_n*(cxn*grad_p.component_data(0)[n]*Sf.x +
+                  cyn*grad_p.component_data(1)[n]*Sf.y +
+                  czn*grad_p.component_data(2)[n]*Sf.z);
+    // The implicit pressure jump and deferred tensor-gradient remainder are
+    // evaluated from the same cell responses and face interpolation weights.
     const double deferred_flux = rhie_chow_deferred_response(
-        cx, cy, cz, gp, e, Sf, pressure_jump_gradient);
+        response_s, tensor_gradient_flux, pressure_jump_gradient);
     if (stabilization_only) {
         // Flux is U_f minus this correction. Using the interpolated D grad(p)
         // flux (rather than interp(D)*interp(grad(p))) makes it algebraically
