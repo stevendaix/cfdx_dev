@@ -581,29 +581,27 @@ inline double rhie_chow_pressure_flux_internal(
                            geometry.cell_volumes[n] * rAU[1][n]);
     const double cz = 0.5*(geometry.cell_volumes[o] * rAU[2][o] +
                            geometry.cell_volumes[n] * rAU[2][n]);
-    const double rfn = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
-    const double orthogonal_area = Sf.dot(e);
-    const Vec3 Snon{
-        Sf.x - orthogonal_area*e.x,
-        Sf.y - orthogonal_area*e.y,
-        Sf.z - orthogonal_area*e.z};
+    // For diagonal momentum response D = diag(dAUx,dAUy,dAUz), the
+    // coefficient of the centre-to-centre pressure difference is
+    // (D e)·Sf / d. Projecting D on e and then multiplying by Sf·e is only
+    // equivalent for isotropic D; it is wrong for anisotropic momentum
+    // diagonals on skewed faces.
+    const double response_s = cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z;
     const Vec3 gp{
         0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
         0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
         0.5*(grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
-    // The face response uses the same dAU = V/A_P operator as the cell
-    // velocity reconstruction. Keeping the orthogonal pressure difference
-    // implicit and the non-orthogonal remainder deferred is important: the
-    // continuity matrix and the conservative Rhie-Chow flux must represent
-    // the same discrete operator, otherwise a residual floor can survive
-    // even when the momentum equations appear converged.
-    // Orthogonal pressure difference is implicit in the pressure matrix.
-    // The non-orthogonal remainder is deferred explicitly using the same
-    // Gauss gradient. This keeps the face flux and pressure equation on the
-    // same discrete operator on arbitrary meshes.
+    // Split the tensor response consistently into an implicit centre-line
+    // pressure difference and a deferred remainder. The remainder is the
+    // full tensor gradient flux minus the part represented by the implicit
+    // coefficient. This reduces to the usual scalar non-orthogonal split
+    // when dAUx == dAUy == dAUz.
+    const double tensor_gradient_flux =
+        cx*gp.x*Sf.x + cy*gp.y*Sf.y + cz*gp.z*Sf.z;
     const double pressure_gradient_flux =
-        (p(n) - p(o))/d * orthogonal_area + gp.dot(Snon);
-    return rho * rfn * pressure_gradient_flux;
+        response_s * (p(n) - p(o)) / d +
+        tensor_gradient_flux - response_s * gp.dot(e);
+    return rho * pressure_gradient_flux;
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -716,17 +714,16 @@ make_rhie_chow_mass_flux(
                     if (!(d > 0.0))
                         throw std::runtime_error("make_rhie_chow_mass_flux: degenerate boundary distance");
                     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                    const double rfn =
-                        geometry.cell_volumes[o] * (
-                            rAU[0][o]*e.x*e.x +
-                            rAU[1][o]*e.y*e.y +
-                            rAU[2][o]*e.z*e.z);
-                    // For a prescribed boundary pressure the normal pressure
-                    // difference is implicit. The non-orthogonal remainder
-                    // requires a boundary gradient model and is therefore not
-                    // fabricated here.
-                    correction = rho * rfn * (pbc->second.value - p(o)) *
-                        Sf.dot(e) / d;
+                    const double cx = geometry.cell_volumes[o] * rAU[0][o];
+                    const double cy = geometry.cell_volumes[o] * rAU[1][o];
+                    const double cz = geometry.cell_volumes[o] * rAU[2][o];
+                    // Use the same tensor response as the internal-face
+                    // operator. No non-orthogonal boundary correction is
+                    // invented because no boundary gradient model is supplied.
+                    const double response_s =
+                        cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z;
+                    correction = rho * response_s *
+                        (pbc->second.value - p(o)) / d;
                 }
             }
         }
@@ -2326,7 +2323,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const double area = Sf.mag();
             if (!(area > 0.0))
                 throw std::runtime_error("solve_steady_incompressible: degenerate face area");
-            const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+            const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+            const double distance = dvec.mag();
+            if (!(distance > 0.0) || !std::isfinite(distance))
+                throw std::runtime_error("solve_steady_incompressible: degenerate centre distance");
+            const Vec3 e{dvec.x/distance, dvec.y/distance, dvec.z/distance};
             const double cx = 0.5 * (
                 geometry.cell_volumes[o] * coeff[0][o] +
                 geometry.cell_volumes[n] * coeff[0][n]);
@@ -2336,7 +2337,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const double cz = 0.5 * (
                 geometry.cell_volumes[o] * coeff[2][o] +
                 geometry.cell_volumes[n] * coeff[2][n]);
-            return cx*nf.x*nf.x + cy*nf.y*nf.y + cz*nf.z*nf.z;
+            // Return (D e)·Sf / |Sf|. The caller multiplies by |Sf|/d,
+            // yielding the exact coefficient used by the face-flux split.
+            return (cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z) / area;
         };
 
     Field<double, Location::FACE> mass_flux =
