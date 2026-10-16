@@ -151,5 +151,28 @@ int main()
         EXPECT_NEAR(phi(1), 2.0, 1e-12);
     });
 
+    run_case("n9_s9_rhie_chow_anisotropic_skewed_operator_split", [] {
+        // A skewed face and anisotropic response must use the same
+        // (D e)·Sf coefficient in both the implicit and deferred parts.
+        const Vec3 e{0.8, 0.6, 0.0};
+        const Vec3 Sf{1.0, 0.5, 0.0};
+        const Vec3 grad_p{3.0, -2.0, 0.5};
+        const double dAUx = 2.0;
+        const double dAUy = 5.0;
+        const double dAUz = 1.0;
+        const double response = rhie_chow_orthogonal_response(
+            dAUx, dAUy, dAUz, e, Sf);
+        const double deferred = rhie_chow_deferred_response(
+            dAUx, dAUy, dAUz, grad_p, e, Sf);
+        const double tensor_gradient_flux =
+            dAUx*grad_p.x*Sf.x +
+            dAUy*grad_p.y*Sf.y +
+            dAUz*grad_p.z*Sf.z;
+        EXPECT_NEAR(response, 3.1, 1e-12);
+        EXPECT_NEAR(deferred, -2.72, 1e-12);
+        EXPECT_NEAR(response*grad_p.dot(e) + deferred,
+                    tensor_gradient_flux, 1e-12);
+    });
+
     return 0;
 }
