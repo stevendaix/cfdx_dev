@@ -282,7 +282,7 @@ inline double piso_correction_gain(double diagonal, double neighbor_sum)
     if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) ||
         diagonal <= 0.0)
         throw std::invalid_argument(
-            "piso_correction_gain: diagonal must be finite and positive");
+            "piso_correction_gain: diagonal must be positive");
     const double denominator = diagonal - neighbor_sum;
     // A non-positive effective diagonal is an invalid algebraic operator, not
     // a small denominator to be silently regularized. Clamping it here can
