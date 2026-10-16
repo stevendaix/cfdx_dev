@@ -77,9 +77,24 @@ inline PressureCorrectionSystem assemble_pressure_correction(
             throw std::runtime_error("assemble_pressure_correction: degenerate cell-centre distance");
         }
         const double face_area = sf[f].mag();
-        const double face_area_sq = face_area * face_area;
-        const double coefficient =
-            0.5 * (1.0 / ao + 1.0 / an) * face_area_sq / distance;
+        if (!(face_area > 0.0) || !std::isfinite(face_area))
+            throw std::runtime_error(
+                "assemble_pressure_correction: degenerate face area");
+        const Vec3 e{d.x / distance, d.y / distance, d.z / distance};
+        const double orthogonal_area = sf[f].x * e.x +
+                                       sf[f].y * e.y +
+                                       sf[f].z * e.z;
+        // This legacy scalar helper follows the production convention
+        // dAU = V/A_P. The pressure-flux derivative is dAU_f*(Sf·e)/d;
+        // using (1/A_P)_f*|Sf|^2/d omits the cell volume and assumes
+        // orthogonality, so it disagrees with the production operator on
+        // non-unit or skewed cells.
+        const double dAU_face = 0.5 * (
+            volume[o] / ao + volume[nb] / an);
+        const double coefficient = dAU_face * orthogonal_area / distance;
+        if (!(coefficient > 0.0) || !std::isfinite(coefficient))
+            throw std::runtime_error(
+                "assemble_pressure_correction: invalid face pressure coefficient");
         diagonal[o] += coefficient;
         diagonal[nb] += coefficient;
         rows[o].push_back({nb, -coefficient});
