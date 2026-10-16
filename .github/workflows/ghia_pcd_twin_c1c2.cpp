@@ -98,9 +98,17 @@ bool parse_vec_file(const std::string& path, Vector& out, std::uint64_t& fnv)
     while (std::getline(in, line)) {
         if (line.find_first_not_of(" \t\r\n") == std::string::npos)
             continue;
-        std::istringstream ls(line);
-        double v = 0.0;
-        if (!(ls >> v) || !ls.eof())
+        // The dump writer uses printf("%a"), e.g. 0x1.8p-4.  The
+        // standard iostream num_get implementation on the Actions runner
+        // does not reliably parse C99 hexadecimal floating-point tokens;
+        // strtod does, and lets us reject trailing junk explicitly.
+        char* end = nullptr;
+        const double v = std::strtod(line.c_str(), &end);
+        if (end == line.c_str() || !std::isfinite(v))
+            return false;
+        while (*end == ' ' || *end == '\\t' || *end == '\\r' || *end == '\\n')
+            ++end;
+        if (*end != '\\0')
             return false;
         vals.push_back(v);
     }
