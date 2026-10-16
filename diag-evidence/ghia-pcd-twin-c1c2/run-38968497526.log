@@ -1,0 +1,8 @@
+TWIN_CHECKSUM name=A_iter2 got=d7d68b2454e3bda3 expected=f1c712aa91af8a05 ok=0
+TWIN_CHECKSUM name=Mp got=1d00c08067be8383 expected=8e8450068b1f4383 ok=0
+TWIN_CHECKSUM name=Kp got=af58f21e1faef203 expected=a55ea9de9852207a ok=0
+TWIN_CHECKSUM name=Fp got=af58f21e1faef203 expected=482578abba20a0ba ok=0
+TWIN_CHECKSUM name=b_iter2 got=ba89d2d797327475 expected=ba89d2d797327475 ok=1
+TWIN_CHECKSUM name=x0_iter2 got=62e4545f548ca62c expected=62e4545f548ca62c ok=1
+TWIN_EXIT_CODE=3 checksum mismatch — abort
+TWIN_RUN_EXIT_CODE=3
