@@ -1532,9 +1532,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double area = rawSf.mag();
                     const double d = (geometry.face_centres[f] -
                                       geometry.cell_centres[c]).mag();
-                    const double nx = rawSf.x / area;
-                    const double ny = rawSf.y / area;
-                    const double nz = rawSf.z / area;
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[c];
+                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double a_x = ex.diagonal[c];
                     const double a_y = ey.diagonal[c];
                     const double a_z = ez.diagonal[c];
@@ -1546,12 +1546,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double rAUx = geometry.cell_volumes[c] / a_x;
                     const double rAUy = geometry.cell_volumes[c] / a_y;
                     const double rAUz = geometry.cell_volumes[c] / a_z;
-                    const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
-                    if (!(rfn > 0.0) || !std::isfinite(rfn))
-                        throw std::runtime_error(
-                            "solve_coupled_momentum_continuity: invalid boundary face rAU on face " +
-                            std::to_string(f));
-                    const double D = rho * rfn * area / d;
+                    const double response_s =
+                        rhie_chow_orthogonal_response(rAUx, rAUy, rAUz, e, rawSf);
+                    const double D = rho * response_s / d;
                     if (!(D > 0.0) || !std::isfinite(D))
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
@@ -2920,26 +2917,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const double distance =
                     (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                const double rfn =
-                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
-                rows[o][o] += controls.density * rfn * area / distance;
-                // Explicit pressure flux at fixed-pressure boundaries (#894):
-                // the half-Dirichlet diagonal term above is only consistent
-                // when the boundary mass flux is reconstructed as
-                //   phi_b = phiHbyA_b - rho*rfn*area/d*(p_bc - p_P).
-                // Without the matching source term the discretised equation
-                // forces the boundary flux to zero and the continuity
-                // residual stalls on a nonzero floor. Inject the source into
-                // the RHS (b is assembled before this loop, so it must be
-                // updated directly), with the same directional coefficient
-                // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
-                b(o) += controls.density * rfn * area / distance *
-                    (it->second.value - p(o));
+                const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
+                const Vec3 e{dvec.x/distance, dvec.y/distance, dvec.z/distance};
+                const double cx = geometry.cell_volumes[o] * pressure_coeff[0][o];
+                const double cy = geometry.cell_volumes[o] * pressure_coeff[1][o];
+                const double cz = geometry.cell_volumes[o] * pressure_coeff[2][o];
+                const double response_s =
+                    rhie_chow_orthogonal_response(cx, cy, cz, e, Sf);
+                const double boundary_coeff =
+                    controls.density * response_s / distance;
+                if (!(boundary_coeff > 0.0) || !std::isfinite(boundary_coeff))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: invalid fixed-pressure boundary coefficient");
+                rows[o][o] += boundary_coeff;
+                // Keep the Dirichlet source exactly paired with the same
+                // tensor-projected boundary coefficient used by the flux. The
+                // coefficient includes dAU = V/A_P and the centre-to-face
+                // direction, not a normal-only projection. 
+                b(o) += boundary_coeff * (it->second.value - p(o));
             }
 
             Vector p_corr(nc, 0.0);
