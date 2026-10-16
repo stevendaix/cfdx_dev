@@ -225,12 +225,23 @@ bool parse_csr_chunks(const std::string& prefix, SparseMatrix& M,
             ls >> tag >> count;
             if (count != chunk_nnz)
                 return false;
+            // Same %a hexfloat pitfall as parse_vec_file: istream extraction
+            // on the Actions runner stops after the leading "0" of C99
+            // hexfloat tokens (0x1.8p-4 -> 0.0 with "x1.8p-4" left unread),
+            // silently zeroing every CSR value (run 38968497526: Kp and Fp
+            // hashed identically). strtod parses them bit-exactly and
+            // rejects trailing junk explicitly.
             for (std::size_t k = 0; k < count; ++k) {
                 if (!std::getline(in, line))
                     return false;
-                std::istringstream vs(line);
-                double x = 0.0;
-                if (!(vs >> x))
+                char* end = nullptr;
+                const double x = std::strtod(line.c_str(), &end);
+                if (end == line.c_str() || !std::isfinite(x))
+                    return false;
+                while (*end != '\0' &&
+                       std::isspace(static_cast<unsigned char>(*end)))
+                    ++end;
+                if (*end != '\0')
                     return false;
                 vals.push_back(x);
             }
