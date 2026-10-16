@@ -97,13 +97,18 @@ dérivation du schéma. Tests analytiques prévus (cf.
 4. limite maillage régulier uniforme ;
 5. maillage étiré (distances centre-face très différentes).
 
-## 5. Protocole d'étude wall-refinement (à exécuter au jumeau port4)
+## 5. Protocole d'étude wall-refinement (exécuté le 2026-10-16 — résultats au §8)
 
 Matrice (contrôles campagne : maxIt 1500, sweeps 8/400, α_u 0.65, α_p 0.25,
 gates inchangés) :
 
 - Re=100, nt=72 : nr = 72 (8,5 %), 96 (5,3 %), 128 (3,3 %) ;
 - Re=50, nt=54 : nr = 88 (6,1 %).
+
+Exécution : la matrice a été étendue de deux cas (Re=100 nt=144 à nr=48, et
+Re=100 nr=96 × nt=144) afin de séparer raffinement radial et azimutal. La
+campagne a tourné dans GitHub Actions sur le jumeau TS byte-exact (branche
+`ci/long-campaign-diagnostics`, driver v3) ; voir §8.
 
 Mesures : cd, cd_p, cd_v et ordre de convergence des trois coefficients.
 Critère de décision :
@@ -125,12 +130,23 @@ Critère de décision :
 3. Valider indépendamment le calcul de la traînée : convergence de la force
    pariétale sur champ analytique, puis référence indépendante pour cd_p/cd_v ;
    ajouter des critères d'évolution de cd_p et cd_v (en plus du total).
+   **Exécuté le 2026-10-16** : trois estimateurs indépendants (pariétal,
+   budget champ lointain, fermetures équations télscopées) sont d'accord
+   sous raffinement (§8) — le calcul de traînée n'est pas en cause ; les
+   critères d'évolution cd_p/cd_v restent suspendus au pivot de l'item 4.
 4. Exécuter le protocole wall-refinement (§5) et dériver la famille de maillages
-   adaptée à la paroi.
+   adaptée à la paroi. **Exécuté le 2026-10-16 — item pivoté** : l'hypothèse
+   d'échantillonnage pariétal est réfutée (§8), le biais est un défaut de
+   schéma (~+19 % asymptotique) ; pas de famille de maillages ni de gates
+   tant que ce défaut n'est pas corrigé. TODO(order-2) renforcé.
 5. Corriger la collecte d'evidence CI : le job « Validation report » cherche
    `long-evidence/build-validation/long-validation.log` alors que le journal
    CTest de l'artefact est stocké sous une autre structure de répertoires —
    correctif d'infrastructure séparé, sans lien avec le schéma numérique.
+   **PR #916 ouverte** : upload-artifact@v4 enracine l'artefact au plus
+   proche ancêtre commun des chemins (`build-validation`), donc le log
+   réel est `long-evidence/long-validation.log` ; 3 chemins corrigés +
+   étape de vérification défensive.
 
 ## 7. Références
 
@@ -143,3 +159,74 @@ Critère de décision :
 - `docs/validation/N9_S9_RHIE_CHOW_CONSISTENCY.md`,
   `VMFL036_RE100_CASE.md`, `VMFL036_AXISYMMETRIC_IMPLEMENTATION.md`.
 - Issue #440 (référence Re=50 mal attribuée dans la matière Ansys VMFL036).
+
+## 8. Résultats empiriques (campagne CI du 2026-10-16)
+
+> Statut : EVIDENCE — campagne exécutée par GitHub Actions sur le jumeau TS
+> byte-exact (`diag-tools/port4_rhie_chow.ts` + driver v3, branche
+> `ci/long-campaign-diagnostics`). Preuve :
+> `diag-evidence/logs/wall_refinement_2026-10-16.json` (commit du bot CI,
+> version 3). Contrôles inchangés (maxIt 1500, sweeps 8/400, α_u 0.65,
+> α_p 0.25, ω 1.8, gates 2e-6/2e-7/2e-6) ; self-check pré-campagne : le cas
+> re100 coarse 24x36 reproduit Cd=0.8716507056286522 bit-exact (campagne du
+> 2026-10-15).
+> Correction transparente : le driver v2 avait une erreur de signe dans le
+> cd_budget assemblé (D = convTotal − presTotal + viscTotal) ; v3 :
+> D = −(convTotal + presTotal − viscTotal). Les composantes enregistrées
+> par v2 étaient correctes ; seul le total assemblé était affecté
+> (re50_nr88 : budget v2 0.783 → v3 1.876).
+
+Trois estimateurs indépendants du Cd sont mesurés par cas :
+
+- **pariétal** : `drag()` du jumeau (pression au centre de cellule +
+  gradients Gauss) — c'est la valeur CI ;
+- **budget champ lointain** : identité QDM discrète sur les frontières du
+  domaine (convection + pression + visqueux), D = −(conv+pres−visc)/qA ;
+- **fermetures équations (télscopé)** : force pariétale avec les fermetures
+  des équations elles-mêmes (pression extrapolée à la paroi + cisaillement
+  deux-points mu·A/bD·ux).
+
+| Cas | dr1/R | Cd pariétal | cd_p / cd_v | Cd budget | Cd éq. télscopé | Écart pariétal vs réf |
+|---|---|---|---|---|---|---|
+| Re=100 nr72 nt72 | 8,5 % | 1.23602 | 0.700 / 0.536 | 1.37867 | 1.37884 | +13,45 % |
+| Re=100 nr96 nt72 | 5,3 % | 1.25883 | 0.663 / 0.596 | 1.33996 | 1.34033 | +15,54 % |
+| Re=100 nr128 nt72 | 3,3 % | 1.25593 | 0.639 / 0.617 | 1.30285 | 1.30350 | +15,28 % |
+| Re=100 nr48 nt144 | 16,7 % | 1.16492 | 0.768 / 0.397 | 1.48508 | 1.48656 | +6,92 % |
+| Re=100 nr96 nt144 | 5,3 % | 1.22179 | 0.632 / 0.590 | 1.29974 | 1.30167 | +12,14 % |
+| Re=50 nr88 nt54 | 6,1 % | 1.74866 | 0.843 / 0.906 | 1.87628 | 1.87574 | +10,78 % |
+
+Conclusions :
+
+1. **Hypothèse échantillonnage pariétal RÉFUTÉE.** Le raffinement radial
+   nr72 → nr96 → nr128 (dr1/R 8,5 % → 3,3 %) sature : Cd pariétal
+   1.23602 → 1.25883 → 1.25593, sans tendance vers 1.0895. La bande de 3 %
+   n'est pas restaurable par raffinement ; le critère de décision du §5
+   tranche donc pour « biais de schéma dominant ».
+2. **Les trois estimateurs convergent l'un vers l'autre sous raffinement**
+   (écart budget/pariétal : 11,5 % à nr72, 6,4 % à nr96, 3,7 % à nr128) vers
+   ~1.30, soit ~+19 % vs la référence. Le biais est donc dans la solution
+   elle-même (schéma), pas dans le post-traitement de la traînée : l'item 3
+   du plan est clos, le calcul de traînée n'est pas le coupable.
+3. **Identité télscopée vérifiée** : cd_budget ≈ cd_eq_total à ~5e-4 près sur
+   tous les cas, massImbalance ≤ 6e-5 (absolu, sur des flux de ~7854 kg/s).
+   Les fermetures des équations et le budget champ lointain sont cohérents.
+4. **Le niveau fine CI 48x72 (+9,93 %, PASS bande 10 %) passe « pour la
+   mauvaise raison »** : il se situe dans le transitoire non monotone
+   (nr48 nt144 : 1.16492, +6,92 %) et le biais asymptotique du schéma est
+   ~+19 %.
+5. **Hypothèse dominante : viscosité numérique de l'upwind ordre 1**
+   (mu_num ~ rho·U·dr1/2, comparable à mu aux nr testés → Re effectif plus
+   faible → Cd trop élevé, cohérent avec la hausse de cd_v sous raffinement
+   0.536 → 0.617 pendant que cd_p baisse 0.700 → 0.639). Nuance : les essais
+   d'ordre 2 du §3 (CDS/SOU) éloignaient AUSSI les gates de leurs
+   références — l'interaction schéma/RC reste donc à élucider lors du
+   TODO(order-2), avec l'écart budget/pariétal comme outil de diagnostic
+   (il mesure la convergence interne de la solution).
+6. **Conséquence (pivot de l'item 4)** : pas de famille de maillages ni de
+   gates d'évolution cd_p/cd_v tant que le défaut de schéma n'est pas
+   corrigé. TODO(order-2) renforcé.
+
+Campagne complémentaire v4 lancée sur la branche diag (driver v4, mêmes
+contrôles sauf α_u ∈ {0.5, 0.65, 0.8, 0.95}) : indépendance de la solution
+convergée vis-à-vis de α_u — cohérence Majumdar, item 2 du plan (diagnostic,
+pas un gate).
