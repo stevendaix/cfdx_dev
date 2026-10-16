@@ -478,7 +478,21 @@ jobs:
           name: cfdx-total-validation-long-evidence
           path: long-evidence
       - name: Verify long-validation evidence is present
-        run: test -s long-evidence/build-validation/long-validation.log
+        # upload-artifact@v4 roots the artifact at the least common
+        # ancestor of the matched upload paths. Every long-evidence path
+        # lives under build-validation/, so that directory IS the root of
+        # the archive: after download-artifact to long-evidence/, the log
+        # sits at long-evidence/long-validation.log, NOT under
+        # long-evidence/build-validation/. The previous check tested the
+        # latter and failed every campaign (audit 2026-10-16, plan item 5).
+        # The defensive find pinpoints the actual location if the artifact
+        # structure changes again.
+        run: |
+          test -s long-evidence/long-validation.log || {
+            echo "::error::long-validation.log not found at the artifact root"
+            find long-evidence -name long-validation.log || true
+            exit 1
+          }
 
       - name: Build numerical validation report
         id: validation_report
@@ -487,8 +501,8 @@ jobs:
           python3 scripts/validation_report.py \
             --build-dir "$BUILD_DIR" \
             --output-dir "$BUILD_DIR/validation-report" \
-            --ghia-log long-evidence/build-validation/long-validation.log \
-            --vmfl036-log long-evidence/build-validation/long-validation.log
+            --ghia-log long-evidence/long-validation.log \
+            --vmfl036-log long-evidence/long-validation.log
       - name: Capture validation metadata
         if: always()
         run: |
