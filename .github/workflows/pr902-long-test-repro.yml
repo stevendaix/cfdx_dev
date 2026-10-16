@@ -1,0 +1,197 @@
+name: PR 902 long-test reproduction (ghia PCD + n9 physical matrix)
+
+# Diagnostic-only workflow (PR #902 verdict): runs on the never-merged branch
+# ci/long-campaign-diagnostics. The long campaign of PR #902 (run 38858424218,
+# head 6370759e = #902 + master with #895 merged) failed on exactly two tests:
+#   - test_ghia_cavity_n8_pcd     (was PASS on master-Oct14 + #902 without #895,
+#                                  campaign 38860982015; fixed by #908; the
+#                                  iteration-1 coupled acceptance is marginal:
+#                                  9.75738e-11 vs the 1e-10 gate)
+#   - test_n9_physical_matrix     (green on all Oct 15 campaigns, incl. the
+#                                  #895 head campaign 38809508473; the first
+#                                  campaign to include 86a7749a — the #913
+#                                  calibrated item-10 stagnation threshold —
+#                                  is the failing one)
+#
+# This workflow builds the PR content (checkout refs/pull/902/merge, exact
+# validation-build flags of the campaign) and runs BOTH failing tests with
+# their full logs, giving a deterministic reproduction attempt plus the
+# evidence channel the campaign only keeps in its auth-gated artifact:
+#   - both tests PASS  -> campaign failures were flakes / environment
+#   - both tests FAIL  -> deterministic regressions, logs committed for
+#                        cause-racine analysis
+# Nothing is merged, no tolerance is modified, no test is disabled.
+# Evidence commits carry [ci skip].
+
+on:
+  push:
+    branches:
+      - ci/long-campaign-diagnostics
+    paths:
+      - '.github/workflows/pr902-long-test-repro.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr902-long-test-repro
+  cancel-in-progress: true
+
+jobs:
+  repro:
+    name: Rebuild and rerun the two failing long tests on PR 902 content
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout diagnostic branch (evidence root)
+        uses: actions/checkout@v4
+
+      - name: Checkout PR 902 merge content
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/902/merge
+          path: pr
+
+      - name: Record PR content head
+        shell: bash
+        run: |
+          echo "PR merge ref HEAD: $(git -C pr rev-parse HEAD)"
+          git -C pr log -1 --format='%H %s' > /tmp/pr-head.txt
+          cat /tmp/pr-head.txt
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure validation build (campaign flags)
+        run: |
+          cmake -S pr -B build-pr -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build the two failing test targets
+        run: |
+          set -euo pipefail
+          if ! cmake --build build-pr --target test_ghia_cavity_n8_pcd test_n9_physical_matrix --parallel 3; then
+            echo "::warning::named targets failed — building the full test suite instead"
+            cmake --build build-pr --parallel 3
+          fi
+
+      - name: Run test_ghia_cavity_n8_pcd (full log)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          ctest --test-dir build-pr -R 'ghia_cavity_n8_pcd' -V --timeout 3600 \
+            > /tmp/test-ghia-cavity-n8-pcd.log 2>&1 || true
+          grep -E 'GHIA_CAVITY|Passed|Failed|tests passed' /tmp/test-ghia-cavity-n8-pcd.log | tail -n 25 || true
+          exit 0
+
+      - name: Run test_n9_physical_matrix (full log)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          ctest --test-dir build-pr -R 'n9_physical_matrix' -V --timeout 3600 \
+            > /tmp/test-n9-physical-matrix.log 2>&1 || true
+          grep -E 'N9_|Passed|Failed|tests passed' /tmp/test-n9-physical-matrix.log | tail -n 40 || true
+          exit 0
+
+      - name: Verdict summary
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          {
+            echo "### Reproduction on PR 902 content ($(cat /tmp/pr-head.txt 2>/dev/null))"
+            echo
+            for spec in "ghia test-ghia-cavity-n8-pcd.log" "n9matrix test-n9-physical-matrix.log"; do
+              set -- $spec
+              label=$1; log=/tmp/$2
+              if grep -q "100% tests passed" "$log" 2>/dev/null; then verdict="PASS (deterministic reproduction contradicts the campaign failure -> flake/environment)"
+              elif grep -q "tests passed" "$log" 2>/dev/null; then verdict="FAIL (deterministic reproduction confirms the regression)"
+              else verdict="NO VERDICT (log incomplete)"; fi
+              echo "- $label: $verdict"
+            done
+          } | tee /tmp/repro-verdict.txt
+          exit 0
+
+      - name: Commit evidence to the diagnostic branch
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/pr902-long-repro
+          cp /tmp/test-ghia-cavity-n8-pcd.log "diag-evidence/pr902-long-repro/test_ghia_cavity_n8_pcd-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          cp /tmp/test-n9-physical-matrix.log "diag-evidence/pr902-long-repro/test_n9_physical_matrix-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          cp /tmp/repro-verdict.txt "diag-evidence/pr902-long-repro/verdict-$GITHUB_RUN_ID.txt" 2>/dev/null || true
+          cp /tmp/pr-head.txt "diag-evidence/pr902-long-repro/pr-head-$GITHUB_RUN_ID.txt" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diag-evidence 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence change to commit"
+          else
+            git commit -m "diag(evidence): PR 902 long-test reproduction run $GITHUB_RUN_ID (#902) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              echo "::warning::push failed — pulling and retrying"
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+          exit 0
+
+      - name: Upload reproduction artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr902-long-repro-${{ github.run_id }}
+          path: |
+            /tmp/test-ghia-cavity-n8-pcd.log
+            /tmp/test-n9-physical-matrix.log
+            /tmp/repro-verdict.txt
+            /tmp/pr-head.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post reproduction summary to PR #902 (best effort)
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          {
+            echo "## Reproduction des deux tests rouges sur contenu PR #902 — run $GITHUB_RUN_ID"
+            echo
+            echo "Contenu : $(cat /tmp/pr-head.txt 2>/dev/null || echo 'refs/pull/902/merge')"
+            echo "Preuve complete : diag-evidence/pr902-long-repro/ sur ci/long-campaign-diagnostics + artefact"
+            echo
+            cat /tmp/repro-verdict.txt 2>/dev/null || true
+            echo
+            echo '~~~ ghia (30 dernieres lignes utiles) ~~~'
+            grep -E 'GHIA_CAVITY|COUPLED|Passed|Failed|tests passed' /tmp/test-ghia-cavity-n8-pcd.log 2>/dev/null | tail -n 30 || true
+            echo '~~~ n9 physical matrix (40 dernieres lignes utiles) ~~~'
+            grep -E 'N9_|Passed|Failed|tests passed' /tmp/test-n9-physical-matrix.log 2>/dev/null | tail -n 40 || true
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(log vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json 2>/dev/null || true
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/902/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #902: $http"
+          exit 0

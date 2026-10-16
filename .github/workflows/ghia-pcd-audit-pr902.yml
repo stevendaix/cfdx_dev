@@ -1,0 +1,199 @@
+name: Ghia PCD audit on PR 902 content
+
+# Diagnostic-only workflow (#914 / PR #902 verdict): runs on the never-merged
+# branch ci/long-campaign-diagnostics. The long campaign of PR #902
+# (run 38858424218, head 6370759e = #902 + master with #895 merged) failed on
+# test_ghia_cavity_n8_pcd and test_n9_physical_matrix, while the same ghia test
+# PASSES on the diag-branch content (master aa806657 of Oct 14 + #902, WITHOUT
+# #895, campaign 38860982015). The only master delta between the two contents
+# is #895 (86ef9f2a, Rhie-Chow pressure-velocity coupling in VMFL036 face
+# fluxes, merged 04:24Z).
+#
+# This workflow replays the EXACT production ghia 32x32 --pcd trajectory of the
+# PR content: checkout refs/pull/902/merge, compile the #914 audit tool
+# (.github/workflows/ghia_pcd_audit_dump.cpp, already on this branch) against
+# the PR sources with the production flags, and dump the coupled systems of
+# iterations 1 and 2 + the PCD operators Mp/Kp/Fp bit-exactly. The tool
+# validates against the reference production log (run 38809298638) and prints
+# COUPLED_LINEAR_TRUE_RESIDUAL: on the reference content the iteration-1
+# coupled solve is accepted at relative 9.75738e-11 against the 1e-10 gate.
+# Bit-identical checksums + the same marginal acceptance => the PR content is
+# bit-identical on the coupled path => the campaign failure is a flake or a
+# later-iteration effect (see the companion ctest reproduction workflow).
+# Different checksums => deterministic #895 x #902 interaction, quantified.
+#
+# The MISMATCH verdict of the tool is DIAGNOSTIC DATA here, not a failure:
+# this workflow never fails on validation mismatch (it still captures the
+# evidence). Evidence commits carry [ci skip].
+
+on:
+  push:
+    branches:
+      - ci/long-campaign-diagnostics
+    paths:
+      - '.github/workflows/ghia-pcd-audit-pr902.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: ghia-pcd-audit-pr902
+  cancel-in-progress: true
+
+jobs:
+  ghia-pcd-audit-pr902:
+    name: Dump ghia PCD audit on PR 902 content (iter 1+2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout diagnostic branch (audit tool + evidence root)
+        uses: actions/checkout@v4
+
+      - name: Checkout PR 902 merge content
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/902/merge
+          path: pr
+
+      - name: Record PR content head
+        shell: bash
+        run: |
+          echo "PR merge ref HEAD: $(git -C pr rev-parse HEAD)"
+          echo "PR merge ref HEAD subject: $(git -C pr log -1 --format=%s)"
+          git -C pr log -1 --format='%H %s' > /tmp/pr-head.txt
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Compile the audit tool against PR sources (production flags)
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ --version
+          SRCS="pr/src/cfdx/core/mesh/point.cpp pr/src/cfdx/core/mesh/face.cpp pr/src/cfdx/core/mesh/ownership.cpp pr/src/cfdx/core/mesh/cell.cpp pr/src/cfdx/core/mesh/mesh.cpp pr/src/cfdx/core/mesh/boundary.cpp pr/src/cfdx/core/geometry/face_geometry.cpp pr/src/cfdx/core/geometry/cell_geometry.cpp pr/src/cfdx/core/field/field.cpp pr/src/cfdx/core/field/storage.cpp pr/src/cfdx/core/linalg/hypre_amg.cpp"
+          if ! g++ -std=c++17 -O2 -DNDEBUG -I pr/src .github/workflows/ghia_pcd_audit_dump.cpp $SRCS -o /tmp/ghia_audit_pr902 2> /tmp/ghia-audit-build.log; then
+            echo "::group::first build attempt log"
+            cat /tmp/ghia-audit-build.log
+            echo "::endgroup::"
+            EXTRA=""
+            for f in memory_planner gpu_kernels; do
+              found=$(find pr/src -name "${f}.cpp" 2>/dev/null | head -n 1 || true)
+              [ -n "$found" ] && EXTRA="$EXTRA $found"
+            done
+            echo "retry with extra sources:${EXTRA:-none}"
+            g++ -std=c++17 -O2 -DNDEBUG -I pr/src .github/workflows/ghia_pcd_audit_dump.cpp $SRCS $EXTRA -o /tmp/ghia_audit_pr902 2>> /tmp/ghia-audit-build.log
+          fi
+          echo "build ok"
+
+      - name: Run the audit dump on PR content
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/ghia-pcd-audit-pr902
+          set +e
+          /tmp/ghia_audit_pr902 diag-evidence/ghia-pcd-audit-pr902 2>&1 | tee /tmp/ghia-audit-pr902.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "AUDIT_EXIT_CODE=$code"
+          echo "AUDIT_EXIT_CODE=$code" >> /tmp/ghia-audit-pr902.log
+          cat /tmp/ghia-audit-build.log 2>/dev/null || true
+          exit 0
+
+      - name: Compare against the reference-content checksums (diagnostic)
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          {
+            echo "### Comparison against reference content (master aa806657 + #902, run 38865832905)"
+            echo
+            for spec in "A_iter1_values 0a2ebb5380c9074e" "A_iter2_values f1c712aa91af8a05" "Mp_values 8e8450068b1f4383" "Kp_values a55ea9de9852207a" "Fp_values 482578abba20a0ba" "b_iter2 ba89d2d797327475" "x0_iter2 62e4545f548ca62c"; do
+              set -- $spec
+              name=$1; ref=$2
+              got=$(grep "AUDIT_CHECKSUM name=$name " /tmp/ghia-audit-pr902.log 2>/dev/null | sed 's/.*fnv1a=//' || true)
+              if [ -z "$got" ]; then verdict="MISSING"
+              elif [ "$got" = "$ref" ]; then verdict="IDENTICAL"
+              else verdict="DIFFERENT"; fi
+              echo "- fnv1a $name: PR-content=$got reference=$ref -> $verdict"
+            done
+            echo
+            echo "### Iteration-1 coupled acceptance (reference: relative=9.75738e-11 vs gate 1e-10)"
+            grep "COUPLED_LINEAR_TRUE_RESIDUAL" /tmp/ghia-audit-pr902.log 2>/dev/null || echo "(line absent)"
+          } | tee /tmp/ghia-comparison.txt
+          exit 0
+
+      - name: Commit evidence to the diagnostic branch
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/ghia-pcd-audit-pr902
+          cp /tmp/ghia-audit-pr902.log "diag-evidence/ghia-pcd-audit-pr902/run-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          cp /tmp/ghia-audit-build.log "diag-evidence/ghia-pcd-audit-pr902/build-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          cp /tmp/ghia-comparison.txt "diag-evidence/ghia-pcd-audit-pr902/comparison-$GITHUB_RUN_ID.txt" 2>/dev/null || true
+          cp /tmp/pr-head.txt "diag-evidence/ghia-pcd-audit-pr902/pr-head-$GITHUB_RUN_ID.txt" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diag-evidence 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence change to commit"
+          else
+            git commit -m "diag(evidence): ghia PCD audit on PR 902 content run $GITHUB_RUN_ID (#902) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              echo "::warning::push failed — pulling and retrying"
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+          exit 0
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghia-pcd-audit-pr902-${{ github.run_id }}
+          path: |
+            /tmp/ghia-audit-pr902.log
+            /tmp/ghia-comparison.txt
+            /tmp/pr-head.txt
+            /tmp/ghia-audit-build.log
+            diag-evidence/ghia-pcd-audit-pr902/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post audit summary to PR #902 (best effort)
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          {
+            echo "## Audit dump ghia 32x32 PCD sur contenu PR #902 — run $GITHUB_RUN_ID"
+            echo
+            echo "Contenu : $(cat /tmp/pr-head.txt 2>/dev/null || echo 'refs/pull/902/merge')"
+            echo "Outil : .github/workflows/ghia_pcd_audit_dump.cpp compile contre les sources PR (flags production)"
+            echo "Preuve complete : diag-evidence/ghia-pcd-audit-pr902/ sur ci/long-campaign-diagnostics + artefact"
+            echo
+            echo '~~~'
+            cat /tmp/ghia-comparison.txt 2>/dev/null || true
+            echo
+            grep -E 'AUDIT_ITER|AUDIT_PHASE|AUDIT_CALLBACK|AUDIT_DONE|AUDIT_EXIT_CODE|COUPLED_MATRIX_SUMMARY|COUPLED_PRECONDITIONER|INCOMPRESSIBLE_ITER' /tmp/ghia-audit-pr902.log 2>/dev/null | head -n 150 || true
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(log vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json 2>/dev/null || true
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/902/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #902: $http"
+          exit 0
