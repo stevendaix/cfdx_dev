@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#include "common/live_assert.hpp"
 
 int main()
 {

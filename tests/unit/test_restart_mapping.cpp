@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
+#include "common/live_assert.hpp"
 
 int main() {
     using cfdx::core::parallel::build_restart_permutation;

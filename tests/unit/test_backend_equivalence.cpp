@@ -4,6 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <vector>
+#include "common/live_assert.hpp"
 
 int main()
 {

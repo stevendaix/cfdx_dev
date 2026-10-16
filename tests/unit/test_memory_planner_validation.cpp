@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#include "common/live_assert.hpp"
 
 using namespace cfdx::core::memory;
 

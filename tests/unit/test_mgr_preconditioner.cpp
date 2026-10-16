@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include "common/live_assert.hpp"
 
 using namespace cfdx::core;
 

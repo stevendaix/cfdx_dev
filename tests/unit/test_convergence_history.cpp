@@ -7,6 +7,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include "common/live_assert.hpp"
 
 int main()
 {

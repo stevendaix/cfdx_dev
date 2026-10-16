@@ -4,6 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include "common/live_assert.hpp"
 
 int main() {
     using namespace cfdx::core;

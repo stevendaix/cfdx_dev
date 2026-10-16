@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <string>
+#include "common/live_assert.hpp"
 
 int main()
 {
