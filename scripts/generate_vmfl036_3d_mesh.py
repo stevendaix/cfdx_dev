@@ -54,8 +54,8 @@ def generate(output: Path, lc_wall: float, lc_far: float, order: int = 1) -> Non
         for dim, tag in surface_entities:
             if dim != 2:
                 continue
-            cx, cy, cz = gmsh.model.occ.getCenterOfMass(2, tag)
-            radius = math.sqrt(cx * cx + cy * cy + cz * cz)
+            xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, tag)
+            radius = max(abs(xmin), abs(ymin), abs(zmin), abs(xmax), abs(ymax), abs(zmax))
             if abs(radius - sphere_radius) < 1.0e-6 * diameter:
                 wall_surfaces.append(tag)
             elif abs(radius - farfield_radius) < 1.0e-6 * diameter:
