@@ -176,5 +176,39 @@ int main()
                     tensor_gradient_flux, 1e-12);
     });
 
+    run_case("n9_s9_rhie_chow_majumdar_flux_correction", [] {
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> previous_U(mesh.n_cells(), "U_old", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        Field<double, Location::FACE> previous_flux(
+            mesh.n_faces(), "phi_old", "kg/s", 1);
+        U.fill(0.25);
+        previous_U.fill(0.0);
+        p.fill(0.0);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            previous_flux(f) = 0.1 * static_cast<double>(f + 1);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto uncorrected = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto corrected = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc,
+            &previous_flux, &previous_U, 0.5);
+        const auto previous_velocity_flux =
+            make_mass_flux(mesh, geometry, previous_U, 1.0, ubc);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            EXPECT_NEAR(
+                corrected(f) - uncorrected(f),
+                0.5 * (previous_flux(f) - previous_velocity_flux(f)),
+                1e-12);
+        }
+    });
+
     return 0;
 }
