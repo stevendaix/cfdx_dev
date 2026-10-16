@@ -2,7 +2,7 @@
 #include "cfdx/physics/incompressible.h"
 #include "cfdx/physics/pressure_velocity.h"
 #include "common/test_harness.h"
-#include <cmath>
+#include <cmath>\n#include <stdexcept>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -74,6 +74,18 @@ int main(){
         EXPECT_NEAR(pc.matrix(1,0)+pc.matrix(1,1),0.0,1e-12);
         EXPECT_NEAR(pc.rhs(0)+pc.rhs(1),0.0,1e-12);
         EXPECT_TRUE(pc.matrix.n_rows()==2);
+    });
+    run_case("piso_gain_uses_exact_positive_denominator", []() {
+        EXPECT_NEAR(piso_correction_gain(4.0, 1.0), 1.0 / 3.0, 1e-12);
+    });
+    run_case("piso_gain_rejects_nonpositive_effective_diagonal", []() {
+        bool rejected = false;
+        try {
+            (void)piso_correction_gain(1.0, 1.0);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        EXPECT_TRUE(rejected);
     });
     return run_all();
 }
