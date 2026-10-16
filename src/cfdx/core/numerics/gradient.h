@@ -194,13 +194,12 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
     return grad;
 }
 
-// Point-reconstructed Green-Gauss gradient.
+// Vertex-based (secondary) Green-Gauss gradient.
 //
-// Internal face values are reconstructed independently from both adjacent
-// cell centres and averaged at the geometric face centre. A linear-consistent
-// least-squares cell gradient makes this reconstruction exact for linear fields
-// on skewed planar faces. Boundary faces retain the zero-gradient value policy,
-// so boundary-adjacent cells are exact only when that policy matches the field.
+// Cell values are interpolated to mesh vertices with inverse-distance weighting,
+// vertex values are averaged onto each face, and the gradient is assembled with
+// Green-Gauss. This legacy variant is not guaranteed to be linear-exact on
+// general unstructured meshes and must be qualified separately.
 inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
@@ -718,8 +717,7 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
 //   - a signed-area-weighted average over the triangles (v_j, v_{j+1}, fp).
 // For a linear field every ingredient is exact, so the triangle-average equals
 // phi at the face centroid and the gradient is linear-exact on any
-// planar-faced mesh; on smooth fields the error is second order.
-// Point-linear Green-Gauss gradient using least-squares reconstruction at faces.
+// Point-reconstructed Green-Gauss gradient using least-squares reconstruction at faces.
 //
 // Internal face values are reconstructed independently from both adjacent cell
 // centres and averaged at the geometric face centre. For a linear field, a
