@@ -613,10 +613,6 @@ inline double rhie_chow_pressure_flux_internal(
                            geometry.cell_volumes[n] * rAU[2][n]);
     const double rfn = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
     const double orthogonal_area = Sf.dot(e);
-    const Vec3 Snon{
-        Sf.x - orthogonal_area*e.x,
-        Sf.y - orthogonal_area*e.y,
-        Sf.z - orthogonal_area*e.z};
     const Vec3 gp{
         0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
         0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
@@ -1463,10 +1459,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 coupled_pressure_schur_diagonal[c] += D;
 
                 const double orthogonal_area = rawSf.dot(e);
-                const Vec3 Snon{
-                    rawSf.x - orthogonal_area*e.x,
-                    rawSf.y - orthogonal_area*e.y,
-                    rawSf.z - orthogonal_area*e.z};
                 const Vec3 gp{
                     0.5*(grad_p_old.component_data(0)[c] +
                          grad_p_old.component_data(0)[ncell]),
