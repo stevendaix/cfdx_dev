@@ -633,9 +633,14 @@ inline double rhie_chow_pressure_flux_internal(
     // same discrete operator on arbitrary meshes.
     const double implicit_coefficient = pressure_face_orthogonal_coefficient(
         Sf, dvec, {cx, cy, cz});
+    // Apply the full diagonal momentum response to the deferred gradient.
+    // A scalar rfn is only equivalent for isotropic response or when Snon has
+    // no component in directions with different momentum response.
+    const double non_orthogonal_flux =
+        cx * gp.x * Snon.x + cy * gp.y * Snon.y + cz * gp.z * Snon.z;
     return rho * (
         implicit_coefficient * (p(n) - p(o)) +
-        rfn * gp.dot(Snon));
+        non_orthogonal_flux);
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -1464,7 +1469,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
-                const double nonorth_flux = rho * rfn * gp.dot(Snon);
+                // Match the coupled deferred flux to the diagonal momentum
+                // response component by component, as in the segregated path.
+                const double nonorth_flux = rho * (
+                    rAUx_f * gp.x * Snon.x +
+                    rAUy_f * gp.y * Snon.y +
+                    rAUz_f * gp.z * Snon.z);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
