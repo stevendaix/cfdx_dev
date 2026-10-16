@@ -78,24 +78,56 @@ centre de cellule. La dérive +6,43 % de cd_v (gradient pariétal sous-estimé,
 qui se corrige en raffinant) et la dérive opposée de cd_p sont cohérentes avec
 ce diagnostic d'échantillonnage near-wall dominant.
 
-## 4. Question ouverte Rhie-Chow (cohérence algébrique)
+## 4. Rhie–Chow axisymétrique : dérivation et qualification
 
-Le terme RC du commit `86ef9f2a` pondère par les diagonales relaxées
-`apx_`/`apr_` : D^RC = V/a_P^r, tandis que la correction de vitesse de
-l'équation de pression utilise D^pc = V/(α_u·a_P^r), soit
-**D^RC = α_u·D^pc** (α_u = 0.65 : les coefficients RC sont ~35 % plus faibles).
-La campagne CI valide empiriquement le schéma convergé (4 cas, jumeau TS
-identique), mais la cohérence algébrique avec l'opérateur de pression
-(traitement de la relaxation façon Majumdar) reste à démontrer par la
-dérivation du schéma. Tests analytiques prévus (cf.
-`docs/validation/N9_S9_RHIE_CHOW_CONSISTENCY.md` et fiches
-`docs/audits/03-interpolation-rhie-chow.md` / `04-couplage-pression-vitesse.md`) :
+### Dérivation de l'opérateur
 
-1. annulation du terme RC sur un champ de pression linéaire (gradient exact) ;
-2. indépendance de la solution convergée vis-à-vis de α_u ;
-3. conservativité du flux RC face à l'équation de p' ;
-4. limite maillage régulier uniforme ;
-5. maillage étiré (distances centre-face très différentes).
+L'équation de quantité de mouvement résolue par le solveur contient la
+diagonale relaxée
+`aP_relaxed = aP / alpha_u` et le terme source explicite associé à l'ancien
+champ. Pour une correction de pression (p'), en gelant les termes hors
+diagonale et la source, la réponse de vitesse de cette équation est
+
+[
+  mathbf{u}' = -rac{V}{a_{P,\mathrm{relaxed}}}\nabla p'.
+]
+
+La même réponse doit être utilisée dans la dérivée du flux de face qui forme
+l'équation de continuité, dans la correction conservative du flux et dans la
+correction de vitesse. Or, avant cette branche, `compute_fluxes()` utilisait
+`V/apx_`/`V/apr_`, tandis que `face_response()` et la correction de vitesse
+utilisaient `V/(alpha_u*apx_)`/`V/(alpha_u*apr_)`. Comme `apx_`/`apr_`
+stockent déjà (a_P/\alpha_u), cette seconde forme annulait la relaxation une
+deuxième fois et donnait un écart de facteur `alpha_u` entre les opérateurs.
+Aucun terme de Majumdar explicitement dérivé ne justifiait cette différence.
+
+La branche `fix/vmfl036-relaxed-pressure-response-audit` aligne désormais
+les quatre usages sur `V/apx_` et `V/apr_`. C'est une correction algébrique
+à qualifier, pas une preuve de correction physique : la campagne de sensibilité
+doit confirmer la convergence et mesurer séparément (C_d), (C_{d,p}) et
+(C_{d,v}).
+
+### Preuve requise
+
+Le test long `test_vmfl036_alpha_sensitivity` exécute le même cas Re=100,
+maillage fine 48×72, mêmes budgets et mêmes gates pour
+`alpha_u = 0.3, 0.5, 0.65, 0.7, 1.0`. Il conserve les résidus, le nombre
+d'itérations et les trois coefficients de traînée dans
+`validation-report/vmfl036-alpha-sweep.json`. Il échoue si un point ne
+converge pas ou produit une traînée non finie. La dispersion est mesurée mais
+ne reçoit pas de seuil arbitraire avant examen de la première preuve.
+
+Les propriétés à qualifier restent distinctes :
+
+1. annulation de la correction RC pour un champ de pression linéaire exact ;
+2. indépendance de la solution convergée vis-à-vis de `alpha_u` ;
+3. fermeture de continuité avec le flux de face autoritaire ;
+4. limite de maillage régulier uniforme ;
+5. maillage étiré avec distances centre-face très différentes.
+
+**Statut :** formulation modifiée par dérivation ; résultats de la campagne
+d'impact encore attendus. La référence (C_d=1.0895), les tolérances de
+convergence et la bande actuelle de 10 % ne sont pas modifiées.
 
 ## 5. Protocole d'étude wall-refinement (à exécuter au jumeau port4)
 
