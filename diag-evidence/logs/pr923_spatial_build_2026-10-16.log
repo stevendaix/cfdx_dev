@@ -1,0 +1,190 @@
+[1/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[2/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o
+[3/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o
+[4/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[5/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[6/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[7/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[8/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[9/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[10/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[11/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[12/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[13/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[14/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:85:49: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   85 |         const std::uint32_t off = cell_offsets[c];
+      |                                   ~~~~~~~~~~~~~~^
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:86:59: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   86 |         const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+      |                                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:91:58: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   91 |             const std::uint32_t face = cell_faces[off + k];
+      |                                        ~~~~~~~~~~~~~~~~~~^
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:92:61: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   92 |             const std::uint32_t fv_begin = face_offsets[face];
+      |                                            ~~~~~~~~~~~~~~~~~^
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:93:63: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   93 |             const std::uint32_t fv_end = face_offsets[face + 1];
+      |                                          ~~~~~~~~~~~~~~~~~~~~~^
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:118:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  118 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_cells(std::ofstream&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, const std::vector<unsigned int>&, const std::vector<long unsigned int>&, const cfdx::core::Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/io/vtu/vtu_writer.cpp:204:40: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+  204 |                 for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+      |                                        ^~~~~~~~
+[15/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[16/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[17/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[18/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[19/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+[20/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
+[21/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o
+[22/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/linalg/hypre_amg.cpp.o
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/hypre_amg.h:4,
+                 from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/hypre_amg.cpp:1:
+/home/runner/work/_temp/pr923/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+[23/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/case_hdf5_io.cpp.o
+[24/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/runtime/gpu/gpu_kernels.cpp.o
+/home/runner/work/_temp/pr923/src/cfdx/runtime/gpu/gpu_kernels.cpp: In function ‘void cfdx::runtime::gpu::divergence_reference(const double*, const double*, const double*, const double*, const std::size_t*, const int64_t*, std::size_t, std::size_t, double*)’:
+/home/runner/work/_temp/pr923/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:19: warning: unused parameter ‘sx’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |     ~~~~~~~~~~~~~~^~
+/home/runner/work/_temp/pr923/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:37: warning: unused parameter ‘sy’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                       ~~~~~~~~~~~~~~^~
+/home/runner/work/_temp/pr923/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:55: warning: unused parameter ‘sz’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                                         ~~~~~~~~~~~~~~^~
+[25/36] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
+[26/36] Building CXX object CMakeFiles/test_nonorthogonal_laplacian_campaign.dir/tests/validation/test_nonorthogonal_laplacian_campaign.cpp.o
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/numerics/laplacian.h:32,
+                 from /home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:15:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:520:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  520 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:522:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  522 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp: In function ‘{anonymous}::Grid {anonymous}::make_affine_cube(std::size_t, double)’:
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:65:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   65 |                 const double x0 = i * h, x1 = (i + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:65:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   65 |                 const double x0 = i * h, x1 = (i + 1) * h;
+      |                                               ~~~^~~~
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:66:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   66 |                 const double y0 = j * h, y1 = (j + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:66:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   66 |                 const double y0 = j * h, y1 = (j + 1) * h;
+      |                                               ~~~^~~~
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:67:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   67 |                 const double z0 = k * h, z1 = (k + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_nonorthogonal_laplacian_campaign.cpp:67:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   67 |                 const double z0 = k * h, z1 = (k + 1) * h;
+      |                                               ~~~^~~~
+[27/36] Building CXX object CMakeFiles/test_polyhedral_laplacian_campaign.dir/tests/validation/test_polyhedral_laplacian_campaign.cpp.o
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/numerics/laplacian.h:32,
+                 from /home/runner/work/_temp/pr923/tests/validation/test_polyhedral_laplacian_campaign.cpp:17:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:520:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  520 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:522:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  522 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_laplacian_campaign.cpp: In function ‘{anonymous}::Grid {anonymous}::make_tet_grid(std::size_t)’:
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_laplacian_campaign.cpp:76:46: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   76 |                     static_cast<double>(x) / n, static_cast<double>(y) / n,
+      |                                              ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_laplacian_campaign.cpp:76:74: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   76 |                     static_cast<double>(x) / n, static_cast<double>(y) / n,
+      |                                                                          ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_laplacian_campaign.cpp:77:46: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   77 |                     static_cast<double>(z) / n);
+      |                                              ^
+[28/36] Building CXX object CMakeFiles/test_polyhedral_poisson_convergence.dir/tests/validation/test_polyhedral_poisson_convergence.cpp.o
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/cg_solver.h:15,
+                 from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/pr923/tests/validation/test_polyhedral_poisson_convergence.cpp:46:
+/home/runner/work/_temp/pr923/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/linalg/cg_solver.h:17:
+/home/runner/work/_temp/pr923/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/pr923/src/cfdx/core/numerics/laplacian.h:32,
+                 from /home/runner/work/_temp/pr923/tests/validation/test_polyhedral_poisson_convergence.cpp:50:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:520:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  520 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:522:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  522 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_poisson_convergence.cpp: In function ‘void {anonymous}::add_boundary_patches(cfdx::core::Mesh&, const std::string&)’:
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_poisson_convergence.cpp:99:42: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   99 |     Patch patch{name, PatchType::WALL, {}};
+      |                                          ^
+[29/36] Building CXX object CMakeFiles/test_gradient_verification.dir/tests/validation/test_gradient_verification.cpp.o
+In file included from /home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:17:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:520:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  520 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:522:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  522 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp: In function ‘{anonymous}::Grid {anonymous}::make_affine_cube(std::size_t, double, double)’:
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:72:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   72 |                 const double x0 = i * h, x1 = (i + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:72:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   72 |                 const double x0 = i * h, x1 = (i + 1) * h;
+      |                                               ~~~^~~~
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:73:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   73 |                 const double y0 = j * h, y1 = (j + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:73:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   73 |                 const double y0 = j * h, y1 = (j + 1) * h;
+      |                                               ~~~^~~~
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:74:35: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   74 |                 const double z0 = k * h, z1 = (k + 1) * h;
+      |                                   ^
+/home/runner/work/_temp/pr923/tests/validation/test_gradient_verification.cpp:74:50: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+   74 |                 const double z0 = k * h, z1 = (k + 1) * h;
+      |                                               ~~~^~~~
+[30/36] Linking CXX static library libcfdx_core.a
+[31/36] Building CXX object CMakeFiles/test_polyhedral_gradient_campaign.dir/tests/validation/test_polyhedral_gradient_campaign.cpp.o
+In file included from /home/runner/work/_temp/pr923/tests/validation/test_polyhedral_gradient_campaign.cpp:14:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:520:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  520 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/pr923/src/cfdx/core/numerics/gradient.h:522:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  522 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_gradient_campaign.cpp: In function ‘{anonymous}::StencilDiagnostics {anonymous}::quadratic_stencil_diagnostics(const Grid&, std::size_t)’:
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_gradient_campaign.cpp:1055:40: warning: conversion to ‘std::array<double, 9>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+ 1055 |     for (int i = 0; i < 9; ++i) lambda[i] = std::max(0.0, D[i][i]);
+      |                                        ^
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_gradient_campaign.cpp: At global scope:
+/home/runner/work/_temp/pr923/tests/validation/test_polyhedral_gradient_campaign.cpp:739:6: warning: ‘void {anonymous}::check_non_affine_polyhedral_convergence()’ defined but not used [-Wunused-function]
+  739 | void check_non_affine_polyhedral_convergence()
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[32/36] Linking CXX executable test_nonorthogonal_laplacian_campaign
+[33/36] Linking CXX executable test_polyhedral_laplacian_campaign
+[34/36] Linking CXX executable test_gradient_verification
+[35/36] Linking CXX executable test_polyhedral_poisson_convergence
+[36/36] Linking CXX executable test_polyhedral_gradient_campaign

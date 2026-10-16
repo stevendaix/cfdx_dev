@@ -1,0 +1,5 @@
+pr923_head_sha=b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+build_outcome=success
+campaigns_outcome=success
+purpose: plan 2026-10-16 step 3 — reproduce gradient/Laplacian spatial defects on the exact PR 923 HEAD
+campaigns: polyhedral_gradient, gradient_verification, polyhedral_laplacian, nonorthogonal_laplacian, polyhedral_poisson_convergence

@@ -1,0 +1,9 @@
+Internal ctest changing into directory: /home/runner/work/_temp/pr923/build
+Test project /home/runner/work/_temp/pr923/build
+  Test #138: test_nonorthogonal_laplacian_campaign
+  Test #145: test_polyhedral_laplacian_campaign
+  Test #146: test_polyhedral_poisson_convergence
+  Test #152: test_gradient_verification
+  Test #153: test_polyhedral_gradient_campaign
+
+Total Tests: 5

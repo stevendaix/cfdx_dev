@@ -1,0 +1,399 @@
+Internal ctest changing into directory: /home/runner/work/_temp/pr923/build
+UpdateCTestConfiguration  from :/home/runner/work/_temp/pr923/build/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/home/runner/work/_temp/pr923/build/DartConfiguration.tcl
+Test project /home/runner/work/_temp/pr923/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 138
+    Start 138: test_nonorthogonal_laplacian_campaign
+
+138: Test command: /home/runner/work/_temp/pr923/build/test_nonorthogonal_laplacian_campaign
+138: Working Directory: /home/runner/work/_temp/pr923/build
+138: Test timeout computed to be: 10000000
+138: N3_LINEAR shear=0 uncorrected_linf=0 corrected_linf=0 limited_linf=0 over_relaxed_linf=0
+138: N3_LINEAR shear=0.25 uncorrected_linf=1.75415237891e-14 corrected_linf=1.55431223448e-15 limited_linf=1.7763568394e-15 over_relaxed_linf=1.7763568394e-15
+138: N3_LINEAR shear=0.5 uncorrected_linf=6.2172489379e-15 corrected_linf=0 limited_linf=0 over_relaxed_linf=0
+138: N3_LINEAR shear=1 uncorrected_linf=0 corrected_linf=0 limited_linf=0 over_relaxed_linf=0
+138: N3_LINEAR shear=2 uncorrected_linf=1.02140518266e-14 corrected_linf=0 limited_linf=0 over_relaxed_linf=0
+138: N3_SMOOTH level=orthogonal shear=0 n=8 uncorrected_L2=0.13029201711 corrected_L2=0.13029201711 over_relaxed_L2=0.13029201711
+138: N3_SMOOTH level=orthogonal shear=0 n=16 uncorrected_L2=0.0365372705837 corrected_L2=0.0365372705837 over_relaxed_L2=0.0365372705837 corrected_order=1.83430792328 over_relaxed_order=1.83430792328
+138: N3_SMOOTH level=orthogonal shear=0 n=32 uncorrected_L2=0.00888457668187 corrected_L2=0.00888457668187 over_relaxed_L2=0.00888457668187 corrected_order=2.03999392165 over_relaxed_order=2.03999392165
+138: N3_SMOOTH level=moderate shear=0.5 n=8 uncorrected_L2=4.47073843792 corrected_L2=0.144836432058 over_relaxed_L2=0.213806727303
+138: N3_SMOOTH level=moderate shear=0.5 n=16 uncorrected_L2=3.60586133361 corrected_L2=0.0374144284985 over_relaxed_L2=0.0437563437363 corrected_order=1.95275789922 over_relaxed_order=2.28874315011
+138: N3_SMOOTH level=moderate shear=0.5 n=32 uncorrected_L2=3.17442943377 corrected_L2=0.00924238922957 over_relaxed_L2=0.00968329131831 corrected_order=2.0172569854 over_relaxed_order=2.17592278892
+138: N3_SMOOTH level=strong shear=1 n=8 uncorrected_L2=6.68344170979 corrected_L2=0.176588368877 over_relaxed_L2=0.930969138392
+138: N3_SMOOTH level=strong shear=1 n=16 uncorrected_L2=4.84433740387 corrected_L2=0.0641975263291 over_relaxed_L2=0.193484265921 corrected_order=1.4598007086 over_relaxed_order=2.26651709163
+138: N3_SMOOTH level=strong shear=1 n=32 uncorrected_L2=4.10154544278 corrected_L2=0.0169554546555 over_relaxed_L2=0.0453364343014 corrected_order=1.9207682379 over_relaxed_order=2.09347341857
+138: NONORTHOGONAL_LAPLACIAN_CAMPAIGN: PASS
+1/5 Test #138: test_nonorthogonal_laplacian_campaign ...   Passed    0.18 sec
+test 145
+    Start 145: test_polyhedral_laplacian_campaign
+
+145: Test command: /home/runner/work/_temp/pr923/build/test_polyhedral_laplacian_campaign
+145: Working Directory: /home/runner/work/_temp/pr923/build
+145: Test timeout computed to be: 10000000
+145: POLY_LAP_CONSISTENT gradient=least_squares corrected linear Linf=1.172395514e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares_quadratic corrected linear Linf=1.27897692437e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares corrected linear Linf=4.33902913599e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares_quadratic corrected linear Linf=5.01348962345e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares corrected linear Linf=9.00612917576e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares_quadratic corrected linear Linf=9.88542581126e-13
+145: POLY_LAP_CONSISTENT gradient=least_squares corrected linear Linf=4.51372272892e-12
+145: POLY_LAP_CONSISTENT gradient=least_squares_quadratic corrected linear Linf=5.07860420385e-12
+145: POLY_LAP n=4 scheme=uncorrected field=constant L2=0 Linf=0
+145: POLY_LAP n=4 scheme=uncorrected field=linear L2=26.2805748469 Linf=36.2132034356
+145: POLY_LAP n=4 scheme=corrected field=constant L2=0 Linf=0
+145: POLY_LAP n=4 scheme=corrected field=linear L2=4.37639069475 Linf=7.78583843912
+145: POLY_LAP n=4 scheme=limited field=constant L2=0 Linf=0
+145: POLY_LAP n=4 scheme=limited field=linear L2=9.20515036794 Linf=12.8999482277
+145: POLY_LAP n=4 scheme=over_relaxed field=constant L2=0 Linf=0
+145: POLY_LAP n=4 scheme=over_relaxed field=linear L2=5.08435968651 Linf=8.54935900665
+145: POLY_LAP_ORDER scheme=uncorrected n=4 L2=13.6445477971 Linf=20.7980290229
+145: POLY_LAP_ORDER scheme=uncorrected n=8 L2=24.4873499961 Linf=49.2051131677
+145: POLY_LAP_ORDER scheme=uncorrected n=16 L2=46.804286729 Linf=95.4162935628
+145: POLY_LAP_ORDER scheme=corrected n=4 L2=3.25285256954 Linf=7.25128075056
+145: POLY_LAP_ORDER scheme=corrected n=8 L2=4.98055127615 Linf=15.1421805609
+145: POLY_LAP_ORDER scheme=corrected n=16 L2=8.14142916976 Linf=24.8352708671
+145: POLY_LAP_ORDER scheme=over_relaxed n=4 L2=3.56998477407 Linf=7.37454677265
+145: POLY_LAP_ORDER scheme=over_relaxed n=8 L2=5.69779121088 Linf=16.3307905933
+145: POLY_LAP_ORDER scheme=over_relaxed n=16 L2=9.55718634559 Linf=26.7623734433
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares n=4 L2=1.92388214728 Linf=3.19038646755
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares n=8 L2=2.34181632042 Linf=5.15862918534
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares n=16 L2=2.41319895293 Linf=5.57402824594
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares from_n=4 to_n=8 observed_order=-0.283607497431
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares from_n=8 to_n=16 observed_order=-0.0433189385296
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares_quadratic n=4 L2=2.41068741416 Linf=4.06448118488
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares_quadratic n=8 L2=2.89735192402 Linf=6.4319365759
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares_quadratic n=16 L2=2.96384673536 Linf=6.86172689497
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares_quadratic from_n=4 to_n=8 observed_order=-0.265290337207
+145: POLY_LAP_ORDER scheme=corrected gradient=least_squares_quadratic from_n=8 to_n=16 observed_order=-0.0327359150086
+145: POLYHEDRAL_LAPLACIAN_CAMPAIGN: PASS
+2/5 Test #145: test_polyhedral_laplacian_campaign ......   Passed    0.35 sec
+test 146
+    Start 146: test_polyhedral_poisson_convergence
+
+146: Test command: /home/runner/work/_temp/pr923/build/test_polyhedral_poisson_convergence
+146: Working Directory: /home/runner/work/_temp/pr923/build
+146: Test timeout computed to be: 1800
+146: N10_POISSON n=4 cells=1296 unknowns=384 iterations=21 l2=0.00170992334537 linf=0.00358996103364 assembly_max_rel_diff=3.75258742593e-16 true_relative_residual=1.23553894312e-11
+146: N10_POISSON n=8 cells=6000 unknowns=3072 iterations=44 l2=0.000787622417658 linf=0.00173519171958 assembly_max_rel_diff=3.62019909971e-16 true_relative_residual=6.55808424679e-11
+146: N10_POISSON n=16 cells=34992 unknowns=24576 iterations=79 l2=0.00027397792476 linf=0.000633547547402 assembly_max_rel_diff=5.10582546901e-16 true_relative_residual=9.47643717083e-11
+146: N10_POISSON_ORDER from_n=4 to_n=8 observed_order=1.11835557202
+146: N10_POISSON_ORDER from_n=8 to_n=16 observed_order=1.52344451894
+146: POLYHEDRAL_POISSON_CONVERGENCE: PASS
+3/5 Test #146: test_polyhedral_poisson_convergence .....   Passed   14.70 sec
+test 152
+    Start 152: test_gradient_verification
+
+152: Test command: /home/runner/work/_temp/pr923/build/test_gradient_verification
+152: Working Directory: /home/runner/work/_temp/pr923/build
+152: Test timeout computed to be: 10000000
+152: GRADIENT_VV family=orthogonal scheme=green_gauss field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=green_gauss field=linear L1=1.58206781009e-15 L2=1.76766194216e-15 Linf=3.99680288865e-15
+152: GRADIENT_VV family=orthogonal scheme=green_gauss_vertex field=constant L1=4.13952582278e-16 L2=1.13560675005e-15 Linf=4.23924963845e-15
+152: GRADIENT_VV family=orthogonal scheme=green_gauss_vertex field=linear L1=1.63757896132e-15 L2=1.78845868044e-15 Linf=4.4408920985e-15
+152: GRADIENT_VV family=orthogonal scheme=green_gauss_point field=constant L1=2.60636266263e-15 L2=3.18597256405e-15 Linf=7.34259575976e-15
+152: GRADIENT_VV family=orthogonal scheme=green_gauss_point field=linear L1=1.53349555276e-15 L2=1.75629422334e-15 Linf=3.5527136788e-15
+152: GRADIENT_VV family=orthogonal scheme=least_squares field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=least_squares field=linear L1=6.59194920871e-16 L2=7.75171040899e-16 Linf=1.7763568394e-15
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r2 field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r2 field=linear L1=5.55111512313e-16 L2=6.37774571659e-16 Linf=1.33226762955e-15
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r field=linear L1=5.89805981832e-16 L2=6.59158399365e-16 Linf=1.33226762955e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss field=constant L1=1.05471187339e-15 L2=1.89145644007e-15 Linf=5.99520433298e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss field=linear L1=2.17881268583e-15 L2=2.50969346537e-15 Linf=6.2172489379e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss_vertex field=constant L1=1.56644400827e-15 L2=2.37857348102e-15 Linf=5.99520433298e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss_vertex field=linear L1=1.74166236988e-15 L2=1.93175615962e-15 Linf=4.4408920985e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss_point field=constant L1=3.75243681977e-15 L2=4.37922824414e-15 Linf=1.12160002888e-14
+152: GRADIENT_VV family=sheared scheme=green_gauss_point field=linear L1=1.70002900646e-15 L2=1.917345842e-15 Linf=3.99680288865e-15
+152: GRADIENT_VV family=sheared scheme=least_squares field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=sheared scheme=least_squares field=linear L1=7.84095011142e-16 L2=9.10450574202e-16 Linf=2.6645352591e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r2 field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r2 field=linear L1=7.84095011142e-16 L2=9.00239590664e-16 Linf=1.7763568394e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r field=linear L1=7.6327832943e-16 L2=8.881784197e-16 Linf=2.22044604925e-15
+152: GRADIENT_VV family=stretched scheme=green_gauss field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=green_gauss field=linear L1=5.72458747072e-15 L2=6.94777001103e-15 Linf=2.17603712827e-14
+152: GRADIENT_VV family=stretched scheme=green_gauss_vertex field=constant L1=3.89432275494e-16 L2=1.0524268673e-15 Linf=3.089857589e-15
+152: GRADIENT_VV family=stretched scheme=green_gauss_vertex field=linear L1=6.30051566475e-15 L2=7.95108835207e-15 Linf=2.22044604925e-14
+152: GRADIENT_VV family=stretched scheme=green_gauss_point field=constant L1=1.56887258667e-15 L2=2.32998097143e-15 Linf=6.86836941565e-15
+152: GRADIENT_VV family=stretched scheme=green_gauss_point field=linear L1=7.05685510027e-15 L2=8.4979214632e-15 Linf=2.22044604925e-14
+152: GRADIENT_VV family=stretched scheme=least_squares field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=least_squares field=linear L1=2.35228503342e-15 L2=2.82016316874e-15 Linf=8.881784197e-15
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r2 field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r2 field=linear L1=1.40165656859e-15 L2=1.67640000443e-15 Linf=4.88498130835e-15
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r field=linear L1=1.22124532709e-15 L2=1.43687052318e-15 Linf=3.99680288865e-15
+152: GRADIENT_BOUNDARY family=orthogonal scheme=green_gauss boundary_cell_err=1.82002747232
+152: GRADIENT_BOUNDARY family=sheared scheme=green_gauss boundary_cell_err=1.82002747232
+152: GRADIENT_BOUNDARY family=stretched scheme=green_gauss boundary_cell_err=1.82002747232
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_boundary field=linear L1=8.84066482572e-16 L2=1.05281651512e-15 Linf=3.5527136788e-15
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_boundary field=linear L1=7.25756903135e-16 L2=8.44440127212e-16 Linf=2.22044604925e-15
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_boundary field=linear L1=8.55282922674e-16 L2=1.02111909479e-15 Linf=3.5527136788e-15
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_zero_gradient field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_boundary field=linear L1=8.59394859802e-16 L2=9.9668470399e-16 Linf=2.6645352591e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_boundary field=linear L1=7.89491928622e-16 L2=9.01443162409e-16 Linf=2.6645352591e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_boundary field=linear L1=8.32667268469e-16 L2=9.73982422771e-16 Linf=2.6645352591e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_zero_gradient field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_boundary field=linear L1=2.34997206879e-15 L2=3.08696131674e-15 Linf=1.06581410364e-14
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_boundary field=linear L1=2.40342725146e-15 L2=3.04017066398e-15 Linf=8.881784197e-15
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_boundary field=linear L1=2.372587723e-15 L2=2.99371615145e-15 Linf=8.881784197e-15
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_zero_gradient field=constant L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=green_gauss field=quadratic L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=green_gauss_vertex field=quadratic L1=0.0631476856926 L2=0.0631476856926 Linf=0.0631476856926
+152: GRADIENT_VV family=orthogonal scheme=least_squares field=quadratic L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r2 field=quadratic L1=0.0293880055315 L2=0.0357142857143 Linf=0.0618589574132
+152: GRADIENT_VV family=orthogonal scheme=weighted_least_squares_1_over_r field=quadratic L1=0.0426051866178 L2=0.0517766952966 Linf=0.0896798669018
+152: GRADIENT_VV family=sheared scheme=green_gauss field=quadratic L1=1.37749893796e-16 L2=3.83998571614e-16 Linf=1.7763568394e-15
+152: GRADIENT_VV family=sheared scheme=green_gauss_vertex field=quadratic L1=0.0452650016398 L2=0.0452650016398 Linf=0.0452650016398
+152: GRADIENT_VV family=sheared scheme=least_squares field=quadratic L1=4.91376486825e-16 L2=6.55163989461e-16 Linf=2.22044604925e-15
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r2 field=quadratic L1=0.0307360328173 L2=0.0373749441433 Linf=0.0685831672679
+152: GRADIENT_VV family=sheared scheme=weighted_least_squares_1_over_r field=quadratic L1=0.0461690561622 L2=0.0562726284244 Linf=0.107840405359
+152: GRADIENT_VV family=stretched scheme=green_gauss field=quadratic L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=green_gauss_vertex field=quadratic L1=0.154679608385 L2=0.154679608385 Linf=0.154679608385
+152: GRADIENT_VV family=stretched scheme=least_squares field=quadratic L1=0 L2=0 Linf=0
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r2 field=quadratic L1=0.0532858203749 L2=0.0672813868523 Linf=0.116534780432
+152: GRADIENT_VV family=stretched scheme=weighted_least_squares_1_over_r field=quadratic L1=0.0849675545412 L2=0.111263680177 Linf=0.192714347104
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss field=smooth n=4 L2=0.25412198265
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss field=smooth n=8 L2=0.0529252473671 order=2.26349316778
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss field=smooth n=16 L2=0.0126785174177 order=2.06157005572
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_vertex field=smooth n=4 L2=0.526707601291
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_vertex field=smooth n=8 L2=0.205500087233 order=1.35786327388
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_vertex field=smooth n=16 L2=0.0975949255253 order=1.07426096479
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_point field=smooth n=4 L2=0.425816272537
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_point field=smooth n=8 L2=0.14622325721 order=1.54205828918
+152: GRADIENT_VV_ORDER family=orthogonal scheme=green_gauss_point field=smooth n=16 L2=0.0662160456111 order=1.14292003275
+152: GRADIENT_VV_ORDER family=orthogonal scheme=least_squares field=smooth n=4 L2=0.25412198265
+152: GRADIENT_VV_ORDER family=orthogonal scheme=least_squares field=smooth n=8 L2=0.0529252473671 order=2.26349316778
+152: GRADIENT_VV_ORDER family=orthogonal scheme=least_squares field=smooth n=16 L2=0.0126785174177 order=2.06157005572
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r2 field=smooth n=4 L2=0.691249111749
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r2 field=smooth n=8 L2=0.179198501593 order=1.94764714745
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r2 field=smooth n=16 L2=0.0458193094487 order=1.96753095325
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r field=smooth n=4 L2=0.733849522151
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r field=smooth n=8 L2=0.202327952692 order=1.85878861511
+152: GRADIENT_VV_ORDER family=orthogonal scheme=weighted_least_squares_1_over_r field=smooth n=16 L2=0.0528519843468 order=1.93666610548
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss field=smooth n=4 L2=0.340289469513
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss field=smooth n=8 L2=0.0783068644179 order=2.1195518213
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss field=smooth n=16 L2=0.0187303686181 order=2.06375948797
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_vertex field=smooth n=4 L2=0.456360116896
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_vertex field=smooth n=8 L2=0.190704915648 order=1.25883068302
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_vertex field=smooth n=16 L2=0.0905292887195 order=1.0748855069
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_point field=smooth n=4 L2=0.402481308967
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_point field=smooth n=8 L2=0.142388964509 order=1.49908444848
+152: GRADIENT_VV_ORDER family=sheared scheme=green_gauss_point field=smooth n=16 L2=0.0623599105726 order=1.19114657401
+152: GRADIENT_VV_ORDER family=sheared scheme=least_squares field=smooth n=4 L2=0.340289469513
+152: GRADIENT_VV_ORDER family=sheared scheme=least_squares field=smooth n=8 L2=0.0783068644179 order=2.1195518213
+152: GRADIENT_VV_ORDER family=sheared scheme=least_squares field=smooth n=16 L2=0.0187303686181 order=2.06375948797
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r2 field=smooth n=4 L2=0.648416076978
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r2 field=smooth n=8 L2=0.192435654185 order=1.7525437376
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r2 field=smooth n=16 L2=0.0516217192546 order=1.8983260281
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r field=smooth n=4 L2=0.720775640607
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r field=smooth n=8 L2=0.223686193052 order=1.68807404521
+152: GRADIENT_VV_ORDER family=sheared scheme=weighted_least_squares_1_over_r field=smooth n=16 L2=0.0620980222772 order=1.84885698257
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss field=smooth n=8 L2=0.529285038796 order=2.34093265337
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss field=smooth n=16 L2=0.132793666152 order=1.99485853792
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_vertex field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_vertex field=smooth n=8 L2=0.703395495798 order=1.93064143085
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_vertex field=smooth n=16 L2=0.273645232472 order=1.36202937497
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_point field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_point field=smooth n=8 L2=0.619854748762 order=2.11304734072
+152: GRADIENT_VV_ORDER family=stretched scheme=green_gauss_point field=smooth n=16 L2=0.209171018314 order=1.56724721396
+152: GRADIENT_VV_ORDER family=stretched scheme=least_squares field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=least_squares field=smooth n=8 L2=0.529285038796 order=2.34093265337
+152: GRADIENT_VV_ORDER family=stretched scheme=least_squares field=smooth n=16 L2=0.132793666152 order=1.99485853792
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r2 field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r2 field=smooth n=8 L2=0.771851911625 order=1.79665345057
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r2 field=smooth n=16 L2=0.202856379301 order=1.92786540472
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r field=smooth n=4 L2=2.68151706133
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r field=smooth n=8 L2=0.922083193913 order=1.54008060547
+152: GRADIENT_VV_ORDER family=stretched scheme=weighted_least_squares_1_over_r field=smooth n=16 L2=0.243285015634 order=1.92224945725
+152: GRADIENT_VERIFICATION: PASS
+4/5 Test #152: test_gradient_verification ..............   Passed    0.12 sec
+test 153
+    Start 153: test_polyhedral_gradient_campaign
+
+153: Test command: /home/runner/work/_temp/pr923/build/test_polyhedral_gradient_campaign
+153: Working Directory: /home/runner/work/_temp/pr923/build
+153: Test timeout computed to be: 10000000
+153: POLY_GRAD n=3 scheme=green_gauss field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=green_gauss field=linear L2=1.04417436933 Linf=1.33223182469
+153: POLY_GRAD n=3 scheme=green_gauss_vertex field=constant L2=7.72363414912e-15 Linf=1.9076623373e-14
+153: POLY_GRAD n=3 scheme=green_gauss_vertex field=linear L2=1.50597978157e-15 Linf=2.22044604925e-15
+153: POLY_GRAD n=3 scheme=green_gauss_point field=constant L2=8.95107631374e-15 Linf=2.01085266413e-14
+153: POLY_GRAD n=3 scheme=green_gauss_point field=linear L2=1.28197512426e-15 Linf=1.7763568394e-15
+153: POLY_GRAD n=3 scheme=least_squares field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=least_squares field=linear L2=1.05714376934e-15 Linf=1.33226762955e-15
+153: POLY_GRAD n=3 scheme=least_squares_2ring field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=least_squares_2ring field=linear L2=6.28036983474e-16 Linf=8.881784197e-16
+153: POLY_GRAD n=3 scheme=weighted_least_squares_1_over_r2 field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=weighted_least_squares_1_over_r2 field=linear L2=6.28036983474e-16 Linf=8.881784197e-16
+153: POLY_GRAD n=3 scheme=weighted_least_squares_1_over_r field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=weighted_least_squares_1_over_r field=linear L2=1.55959005012e-15 Linf=2.22044604925e-15
+153: POLY_GRAD n=3 scheme=least_squares_quadratic field=constant L2=0 Linf=0
+153: POLY_GRAD n=3 scheme=least_squares_quadratic field=linear L2=6.28036983474e-16 Linf=8.881784197e-16
+153: POLY_GRAD scheme=least_squares_quadratic field=quadratic n=4 L2=9.88867448362e-16 Linf=1.7763568394e-15
+153: POLY_GRAD scheme=least_squares_quadratic field=quadratic n=6 L2=1.17440309555e-15 Linf=3.10862446895e-15
+153: POLY_GRAD scheme=least_squares_quadratic field=quadratic n=8 L2=1.26311118936e-15 Linf=4.4408920985e-15
+153: POLY_GRAD_DIAG n=4 stencil_size=[34,34] rank=[9,9] sigma_min=0.81038072625 sigma_max=4.2590308411 cond_max=5.25559246801 radius=[0.0833333333333,0.433012701892]
+153: POLY_GRAD_DIAG n=6 stencil_size=[34,34] rank=[9,9] sigma_min=0.81038072625 sigma_max=4.2590308411 cond_max=5.25559246801 radius=[0.0555555555556,0.288675134595]
+153: POLY_GRAD_DIAG n=8 stencil_size=[34,34] rank=[9,9] sigma_min=0.81038072625 sigma_max=4.2590308411 cond_max=5.25559246801 radius=[0.0416666666667,0.216506350946]
+153: POLY_GRAD_CUBIC field=x3 n=4 L2=0.0369334980619 Linf=0.0412153355775
+153: POLY_GRAD_CUBIC field=x3 n=6 L2=0.0164148880275 Linf=0.0183179269233 order=2
+153: POLY_GRAD_CUBIC field=x3 n=8 L2=0.00923337451546 Linf=0.0103038338944 order=2
+153: POLY_GRAD_CUBIC field=y3 n=4 L2=0.0369334980619 Linf=0.0412153355775
+153: POLY_GRAD_CUBIC field=y3 n=6 L2=0.0164148880275 Linf=0.0183179269233 order=2
+153: POLY_GRAD_CUBIC field=y3 n=8 L2=0.00923337451546 Linf=0.0103038338944 order=2
+153: POLY_GRAD_CUBIC field=z3 n=4 L2=0.0369334980619 Linf=0.0412153355775
+153: POLY_GRAD_CUBIC field=z3 n=6 L2=0.0164148880275 Linf=0.0183179269233 order=2
+153: POLY_GRAD_CUBIC field=z3 n=8 L2=0.00923337451546 Linf=0.0103038338944 order=2
+153: POLY_GRAD_CUBIC field=x2y n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=x2y n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=x2y n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=x2z n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=x2z n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=x2z n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=y2x n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=y2x n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=y2x n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=y2z n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=y2z n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=y2z n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=z2x n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=z2x n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=z2x n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=z2y n=4 L2=0.014379514299 Linf=0.0152060033056
+153: POLY_GRAD_CUBIC field=z2y n=6 L2=0.00639089524401 Linf=0.0067582236914 order=2
+153: POLY_GRAD_CUBIC field=z2y n=8 L2=0.00359487857475 Linf=0.00380150082641 order=2
+153: POLY_GRAD_CUBIC field=xyz n=4 L2=0.00966949940766 Linf=0.00966949940766
+153: POLY_GRAD_CUBIC field=xyz n=6 L2=0.00429755529229 Linf=0.00429755529229 order=2
+153: POLY_GRAD_CUBIC field=xyz n=8 L2=0.00241737485191 Linf=0.00241737485191 order=2
+153: POLY_GRAD_ORDER scheme=green_gauss n=4 L2=1.17326336329 Linf=1.62994572041
+153: POLY_GRAD_ORDER scheme=green_gauss n=8 L2=0.983732464399 Linf=1.77645153532 order=0.254188973444
+153: POLY_GRAD_ORDER scheme=green_gauss n=16 L2=0.927717160539 Linf=1.81042844579 order=0.084580985868
+153: POLY_GRAD_ORDER scheme=green_gauss_vertex n=4 L2=0.838281269352 Linf=1.12139943653
+153: POLY_GRAD_ORDER scheme=green_gauss_vertex n=8 L2=0.401388122614 Linf=0.660088817447 order=1.06243646719
+153: POLY_GRAD_ORDER scheme=green_gauss_vertex n=16 L2=0.203444615865 Linf=0.343999966132 order=0.980361826686
+153: POLY_GRAD_ORDER scheme=green_gauss_point n=4 L2=0.539370307697 Linf=0.642821391369
+153: POLY_GRAD_ORDER scheme=green_gauss_point n=8 L2=0.196917820191 Linf=0.30347302008 order=1.45368242883
+153: POLY_GRAD_ORDER scheme=green_gauss_point n=16 L2=0.0933990922059 Linf=0.153852226261 order=1.07611324184
+153: POLY_GRAD_ORDER scheme=least_squares n=4 L2=0.302702483135 Linf=0.414429477445
+153: POLY_GRAD_ORDER scheme=least_squares n=8 L2=0.177422420708 Linf=0.319843350402 order=0.770712176757
+153: POLY_GRAD_ORDER scheme=least_squares n=16 L2=0.0912010166778 Linf=0.164237450011 order=0.960066520937
+153: POLY_GRAD_ORDER scheme=least_squares_2ring n=4 L2=0.319209570519 Linf=0.440666841003
+153: POLY_GRAD_ORDER scheme=least_squares_2ring n=8 L2=0.150169450781 Linf=0.247092365633 order=1.08791255412
+153: POLY_GRAD_ORDER scheme=least_squares_2ring n=16 L2=0.0744706872039 Linf=0.123898961712 order=1.01184677718
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r2 n=4 L2=0.319209570519 Linf=0.440666841003
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r2 n=8 L2=0.150169450781 Linf=0.247092365633 order=1.08791255412
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r2 n=16 L2=0.0744706872039 Linf=0.123898961712 order=1.01184677718
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r n=4 L2=0.383941201906 Linf=0.556015288546
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r n=8 L2=0.187259080896 Linf=0.288264146837 order=1.03584970644
+153: POLY_GRAD_ORDER scheme=weighted_least_squares_1_over_r n=16 L2=0.0931392219904 Linf=0.143972265022 order=1.00757494586
+153: POLY_GRAD_ORDER scheme=least_squares_quadratic n=4 L2=0.412619327516 Linf=0.493996384724
+153: POLY_GRAD_ORDER scheme=least_squares_quadratic n=8 L2=0.0946762255082 Linf=0.145229184403 order=2.12373730426
+153: POLY_GRAD_ORDER scheme=least_squares_quadratic n=16 L2=0.0233633020275 Linf=0.0378410064845 order=2.01875800037
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r2 n=4 L2=1.40141714888 Linf=3.59725444893
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r2 n=8 L2=0.583612313716 Linf=2.06218949422 order=1.26380422713
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r2 n=16 L2=0.291555137339 Linf=1.03916571969 order=1.00124157924
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r n=4 L2=2.01039307518 Linf=4.6763652738
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r n=8 L2=0.986477573585 Linf=2.75769429952 order=1.02711944851
+153: POLY_GRAD_DISTORTED scheme=weighted_least_squares_1_over_r n=16 L2=0.500016815367 Linf=1.41362956084 order=0.980309640371
+153: POLY_GRAD_DISTORTED scheme=least_squares_quadratic n=4 L2=0.709939100215 Linf=1.01558848985
+153: POLY_GRAD_DISTORTED scheme=least_squares_quadratic n=8 L2=0.188160399181 Linf=0.322328527505 order=1.91573224713
+153: POLY_GRAD_DISTORTED scheme=least_squares_quadratic n=16 L2=0.0486297417674 Linf=0.0837488359248 order=1.95205219022
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=regular n=4 L2=0.838281269352 Linf=1.12139943653
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=regular n=8 L2=0.401388122614 Linf=0.660088817447 order=1.06243646719
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=regular n=16 L2=0.203444615865 Linf=0.343999966132 order=0.980361826686
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=distorted n=4 L2=3.58795000804 Linf=8.40582292604
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=distorted n=8 L2=2.40431154981 Linf=6.8478883413 order=0.577535936851
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_vertex mesh=distorted n=16 L2=1.3199244571 Linf=3.76513281751 order=0.865168489503
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=regular n=4 L2=0.539370307697 Linf=0.642821391369
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=regular n=8 L2=0.196917820191 Linf=0.30347302008 order=1.45368242883
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=regular n=16 L2=0.0933990922059 Linf=0.153852226261 order=1.07611324184
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=distorted n=4 L2=1.66241444804 Linf=3.22816482593
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=distorted n=8 L2=1.20725314449 Linf=3.26256214098 order=0.461551876608
+153: POLY_GRAD_GG_CONVERGENCE scheme=green_gauss_point mesh=distorted n=16 L2=0.681741213937 Linf=1.86130293158 order=0.824432113878
+153: POLY_GRAD_BOUNDARY case=dirichlet cells=168 L1=2.17550845063e-15 L2=2.45567202703e-15 Linf=7.1054273576e-15
+153: POLY_GRAD_BOUNDARY_CORNER case=dirichlet cells=24 L1=2.49800180541e-15 L2=2.70280977399e-15 Linf=4.4408920985e-15
+153: POLY_GRAD_BOUNDARY case=neumann cells=168 L1=1.93760351679e-15 L2=2.20372978102e-15 Linf=5.3290705182e-15
+153: POLY_GRAD_BOUNDARY_CORNER case=neumann cells=24 L1=2.59052039079e-15 L2=2.90077857176e-15 Linf=5.3290705182e-15
+153: POLY_GRAD_BOUNDARY case=mixed cells=168 L1=2.14114440463e-15 L2=2.4051985306e-15 Linf=7.1054273576e-15
+153: POLY_GRAD_BOUNDARY_CORNER case=mixed cells=24 L1=2.46099437125e-15 L2=2.58787565259e-15 Linf=3.99680288865e-15
+153: POLY_GRAD_BOUNDARY case=zero_gradient_default Linf=0
+153: WLS_MESH_STENCIL case=regular weighting=1/r2 n=4 cells=48 min_condition=1.28275091096 max_condition=1.28385372934 smooth_L2=0.302702483135 smooth_Linf=0.414429477445 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=regular weighting=1/r2 n=8 cells=1296 min_condition=1.28275091096 max_condition=1.28385372934 smooth_L2=0.177422420708 smooth_Linf=0.319843350402 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=regular weighting=1/r2 n=16 cells=16464 min_condition=1.28275091096 max_condition=1.28385372934 smooth_L2=0.0912010166778 smooth_Linf=0.164237450011 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=regular weighting=1/r n=4 cells=48 min_condition=1.43117108812 max_condition=1.49262643119 smooth_L2=0.39488932627 smooth_Linf=0.627948727987 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=regular weighting=1/r n=8 cells=1296 min_condition=1.43117108812 max_condition=1.49262643119 smooth_L2=0.239488585149 smooth_Linf=0.360763254695 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=regular weighting=1/r n=16 cells=16464 min_condition=1.43117108812 max_condition=1.49262643119 smooth_L2=0.122407924222 smooth_Linf=0.186620538197 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r2 n=4 cells=48 min_condition=1.88330005595 max_condition=32.605220291 smooth_L2=2.2093091082 smooth_Linf=5.9414249546 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r2 n=8 cells=1296 min_condition=1.88330005595 max_condition=32.605220291 smooth_L2=0.908450752322 smooth_Linf=3.3485735825 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r2 n=16 cells=16464 min_condition=1.88330005595 max_condition=32.605220291 smooth_L2=0.453790445183 smooth_Linf=1.67503729294 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r n=4 cells=48 min_condition=31.9204547302 max_condition=150.849573521 smooth_L2=2.75457055532 smooth_Linf=6.72793934794 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r n=8 cells=1296 min_condition=31.9204547302 max_condition=150.849573521 smooth_L2=1.27476007027 smooth_Linf=3.7306986822 rank=3 rejected=false
+153: WLS_MESH_STENCIL case=distorted weighting=1/r n=16 cells=16464 min_condition=31.9204547302 max_condition=150.849573521 smooth_L2=0.637629478082 smooth_Linf=1.86818763378 rank=3 rejected=false
+153: WLS_REFERENCE family weighting scale rank pivot_ratio spectral_condition rejected
+153: WLS_REFERENCE family=isotropic weighting=uniform scale=1 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=uniform scale=0.0001 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=uniform scale=10000 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r scale=1 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r scale=0.0001 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r scale=10000 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r2 scale=1 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r2 scale=0.0001 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=isotropic weighting=1/r2 scale=10000 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=uniform scale=1 rank=3 pivot_ratio=289 spectral_condition=289 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=uniform scale=0.0001 rank=3 pivot_ratio=289 spectral_condition=289 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=uniform scale=10000 rank=3 pivot_ratio=289 spectral_condition=289 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r scale=1 rank=3 pivot_ratio=17 spectral_condition=17 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r scale=0.0001 rank=3 pivot_ratio=17 spectral_condition=17 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r scale=10000 rank=3 pivot_ratio=17 spectral_condition=17 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r2 scale=1 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r2 scale=0.0001 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=anisotropic weighting=1/r2 scale=10000 rank=3 pivot_ratio=1 spectral_condition=1 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=uniform scale=1 rank=3 pivot_ratio=2.29027522936e+12 spectral_condition=2.4964e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=uniform scale=0.0001 rank=3 pivot_ratio=2.29027522936e+12 spectral_condition=2.4964e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=uniform scale=10000 rank=3 pivot_ratio=2.29027522936e+12 spectral_condition=2.4964e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r scale=1 rank=3 pivot_ratio=2.11352470047e+12 spectral_condition=2.36329215073e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r scale=0.0001 rank=3 pivot_ratio=2.11352470047e+12 spectral_condition=2.36329215073e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r scale=10000 rank=3 pivot_ratio=2.11352470047e+12 spectral_condition=2.36329215073e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r2 scale=1 rank=3 pivot_ratio=2.00835820896e+12 spectral_condition=2.32e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r2 scale=0.0001 rank=3 pivot_ratio=2.00835820896e+12 spectral_condition=2.32e+12 rejected=false
+153: WLS_REFERENCE family=quasi_coplanar weighting=1/r2 scale=10000 rank=3 pivot_ratio=2.00835820896e+12 spectral_condition=2.32e+12 rejected=false
+153: WLS_REFERENCE family=quasi_collinear weighting=uniform scale=1 rank=2 pivot_ratio=inf spectral_condition=1.96e+14 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=uniform scale=0.0001 rank=2 pivot_ratio=inf spectral_condition=1.96e+14 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=uniform scale=10000 rank=2 pivot_ratio=inf spectral_condition=1.96e+14 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r scale=1 rank=2 pivot_ratio=inf spectral_condition=9.4249223595e+13 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r scale=0.0001 rank=2 pivot_ratio=inf spectral_condition=9.4249223595e+13 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r scale=10000 rank=2 pivot_ratio=inf spectral_condition=9.4249223595e+13 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r2 scale=1 rank=2 pivot_ratio=inf spectral_condition=6.24307490277e+13 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r2 scale=0.0001 rank=2 pivot_ratio=inf spectral_condition=6.24307490277e+13 rejected=true
+153: WLS_REFERENCE family=quasi_collinear weighting=1/r2 scale=10000 rank=2 pivot_ratio=inf spectral_condition=6.24307490277e+13 rejected=true
+153: WLS_CONDITIONING eps=1 pivot=1 spectral_condition=1 class=FULL_RANK rank=3
+153: WLS_CONDITIONING eps=0.01 pivot=10000 spectral_condition=10000 class=FULL_RANK rank=3
+153: WLS_CONDITIONING eps=0.0001 pivot=100000000 spectral_condition=100000000 class=FULL_RANK rank=3
+153: WLS_CONDITIONING eps=1e-06 pivot=1e+12 spectral_condition=1e+12 class=FULL_RANK rank=3
+153: WLS_CONDITIONING eps=1e-08 pivot=inf spectral_condition=1e+16 class=REJECT_RANK rank=2
+153: POLYHEDRAL_GRADIENT_CAMPAIGN: PASS
+5/5 Test #153: test_polyhedral_gradient_campaign .......   Passed    1.51 sec
+
+The following tests passed:
+	test_nonorthogonal_laplacian_campaign
+	test_polyhedral_laplacian_campaign
+	test_polyhedral_poisson_convergence
+	test_gradient_verification
+	test_polyhedral_gradient_campaign
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+n10               =  16.87 sec*proc (5 tests)
+qualification     =  16.87 sec*proc (5 tests)
+sanitizer-slow    =  14.70 sec*proc (1 test)
+validation        =  16.87 sec*proc (5 tests)
+
+Total Test time (real) =  17.03 sec
