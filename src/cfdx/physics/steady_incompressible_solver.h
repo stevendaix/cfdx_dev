@@ -769,18 +769,11 @@ make_rhie_chow_mass_flux(
                     pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
                     const std::size_t o = own.owner(f);
                     const Vec3 Sf = geometry.face_area_vectors[f];
-                    const double area = Sf.mag();
                     const Vec3 dvec =
                         geometry.face_centres[f] - geometry.cell_centres[o];
                     const double d = dvec.mag();
-                    if (!(d > 0.0))
+                    if (!(d > 0.0) || !std::isfinite(d))
                         throw std::runtime_error("make_rhie_chow_mass_flux: degenerate boundary distance");
-                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                    const double rfn =
-                        geometry.cell_volumes[o] * (
-                            rAU[0][o]*e.x*e.x +
-                            rAU[1][o]*e.y*e.y +
-                            rAU[2][o]*e.z*e.z);
                     const Vec3 gp{
                         grad_p.component_data(0)[o],
                         grad_p.component_data(1)[o],
