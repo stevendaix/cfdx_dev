@@ -89,7 +89,7 @@ void audit_mesh(const AxisymMesh& mesh, const Level& l)
         throw std::runtime_error("VMFL036 face accounting mismatch");
 }
 
-AxisymControls campaign_controls()
+AxisymControls campaign_controls(double alpha_u=0.65)
 {
     // Contract budgets. The solver now performs true Gauss-Seidel passes over
     // the whole domain, so momentum_sweeps counts real sweeps and the pressure
@@ -103,7 +103,7 @@ AxisymControls campaign_controls()
     c.momentum_tolerance=2e-6;
     c.pressure_tolerance=2e-7;
     c.continuity_tolerance=2e-6;
-    c.alpha_u=0.65;
+    c.alpha_u=alpha_u;
     c.alpha_p=0.25;
     return c;
 }
@@ -158,11 +158,132 @@ AxisymResult run_level(const Level& l, double mu, double cd_ref, const char* tag
         throw std::runtime_error("VMFL036 drag is non-finite");
     return result;
 }
+
+void run_alpha_sweep(const std::filesystem::path& output)
+{
+    const Level level{48,72,"fine"};
+    const auto mesh_path=std::filesystem::temp_directory_path() /
+        "cfdx_vmfl036_alpha_sweep_fine.axmesh";
+    generate(mesh_path,level);
+    const auto mesh=AxisymMesh::read(mesh_path.string());
+    std::error_code ec;
+    std::filesystem::remove(mesh_path,ec);
+    audit_mesh(mesh,level);
+
+    const std::vector<double> alphas{0.3,0.5,0.65,0.7,1.0};
+    struct SweepRow {
+        double alpha_u;
+        AxisymResult result;
+    };
+    std::vector<SweepRow> rows;
+    rows.reserve(alphas.size());
+    for (const double alpha_u : alphas) {
+        const AxisymControls controls=campaign_controls(alpha_u);
+        VMFL036AxisymmetricSolver solver(mesh,1.0,0.01);
+        const AxisymResult result=solver.solve(controls);
+        std::cout << "VMFL036_ALPHA_SWEEP alpha_u=" << alpha_u
+                  << " converged=" << (result.converged?"true":"false")
+                  << " iterations=" << result.iterations
+                  << " continuity=" << std::scientific << result.continuity
+                  << " momentum=" << result.momentum_residual
+                  << " pcorr=" << result.pressure_correction
+                  << " Cd_pressure=" << result.cd_pressure
+                  << " Cd_viscous=" << result.cd_viscous
+                  << " Cd_total=" << result.cd_total << "\n";
+        if (!result.converged)
+            throw std::runtime_error(
+                "VMFL036 alpha sweep did not converge at alpha_u=" +
+                std::to_string(alpha_u));
+        if (!std::isfinite(result.cd_pressure) ||
+            !std::isfinite(result.cd_viscous) ||
+            !std::isfinite(result.cd_total))
+            throw std::runtime_error(
+                "VMFL036 alpha sweep produced non-finite drag at alpha_u=" +
+                std::to_string(alpha_u));
+        rows.push_back({alpha_u,result});
+    }
+
+    auto relative_spread=[&](auto getter) {
+        double lo=std::numeric_limits<double>::infinity();
+        double hi=-std::numeric_limits<double>::infinity();
+        double mean=0.0;
+        for (const auto& row : rows) {
+            const double value=getter(row.result);
+            lo=std::min(lo,value);
+            hi=std::max(hi,value);
+            mean+=value;
+        }
+        mean/=static_cast<double>(rows.size());
+        return (hi-lo)/std::max(1e-12,std::abs(mean));
+    };
+    const double cd_total_spread=relative_spread([](const AxisymResult& r){return r.cd_total;});
+    const double cd_pressure_spread=relative_spread([](const AxisymResult& r){return r.cd_pressure;});
+    const double cd_viscous_spread=relative_spread([](const AxisymResult& r){return r.cd_viscous;});
+
+    std::filesystem::create_directories(output.parent_path());
+    std::ofstream json(output);
+    if (!json) throw std::runtime_error("cannot write VMFL036 alpha-sweep evidence: "+output.string());
+    const char* sha=std::getenv("GITHUB_SHA");
+    json << std::setprecision(17)
+         << "{\n  \"schema_version\": 1,\n"
+         << "  \"case\": \"VMFL036\",\n"
+         << "  \"reynolds\": 100,\n"
+         << "  \"git_sha\": \"" << (sha?sha:"unknown") << "\",\n"
+         << "  \"mesh\": {\"nr\": 48, \"nt\": 72, \"outer_radius\": 50},\n"
+         << "  \"controls\": {\"max_outer_iterations\": 1500, \"momentum_sweeps\": 8, "
+         << "\"pressure_sweeps\": 400, \"momentum_tolerance\": 2e-6, "
+         << "\"pressure_tolerance\": 2e-7, \"continuity_tolerance\": 2e-6, "
+         << "\"alpha_p\": 0.25},\n"
+         << "  \"operator_convention\": {"
+         << "\"relaxed_diagonal\": \"aP_relaxed = aP/alpha_u\", "
+         << "\"rhie_chow_response\": \"V/aP_relaxed\", "
+         << "\"pressure_correction_response\": \"V/aP_relaxed\"},\n"
+         << "  \"relative_spread\": {\"Cd_total\": " << cd_total_spread
+         << ", \"Cd_pressure\": " << cd_pressure_spread
+         << ", \"Cd_viscous\": " << cd_viscous_spread << "},\n"
+         << "  \"runs\": [\n";
+    for (std::size_t i=0;i<rows.size();++i) {
+        const auto& row=rows[i];
+        const auto& result=row.result;
+        json << "    {\"alpha_u\": " << row.alpha_u
+             << ", \"converged\": true, \"iterations\": " << result.iterations
+             << ", \"continuity\": " << result.continuity
+             << ", \"momentum_residual\": " << result.momentum_residual
+             << ", \"pressure_correction\": " << result.pressure_correction
+             << ", \"Cd_pressure\": " << result.cd_pressure
+             << ", \"Cd_viscous\": " << result.cd_viscous
+             << ", \"Cd_total\": " << result.cd_total << "}"
+             << (i+1<rows.size()?",":"") << "\n";
+    }
+    json << "  ]\n}\n";
+    json.close();
+    if (!json) throw std::runtime_error("failed writing VMFL036 alpha-sweep evidence: "+output.string());
+    std::cout << "VMFL036_ALPHA_SWEEP_EVIDENCE path=" << output.string()
+              << " relative_spread_Cd_total=" << cd_total_spread
+              << " relative_spread_Cd_pressure=" << cd_pressure_spread
+              << " relative_spread_Cd_viscous=" << cd_viscous_spread << "\n";
+    // The long-validation log is the guaranteed CI evidence artifact. Echo
+    // the exact JSON there as well as writing the standalone file so evidence
+    // survives independently of artifact root-layout changes.
+    std::ifstream evidence(output);
+    if (!evidence)
+        throw std::runtime_error("cannot reopen VMFL036 alpha-sweep evidence: "+output.string());
+    std::cout << "VMFL036_ALPHA_SWEEP_JSON_BEGIN\n"
+              << evidence.rdbuf()
+              << "VMFL036_ALPHA_SWEEP_JSON_END\n";
+}
 }
 
 int main(int argc,char** argv)
 {
     try {
+        if (argc > 1 && std::string(argv[1]) == "--alpha-sweep") {
+            const std::filesystem::path output = argc > 2
+                ? std::filesystem::path(argv[2])
+                : std::filesystem::temp_directory_path()/"vmfl036-alpha-sweep.json";
+            run_alpha_sweep(output);
+            return 0;
+        }
         const bool quick=argc>1 && std::string(argv[1])=="--quick";
         if(quick){
             // True smoke test: generate the coarse mesh, audit it, run the
