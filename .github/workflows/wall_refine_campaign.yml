@@ -28,7 +28,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add diag-evidence/logs/wall_refinement_2026-10-16.json
+          git add diag-evidence/logs/*.json
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
