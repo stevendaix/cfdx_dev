@@ -1565,6 +1565,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     A.push_back(row, nv + c, D);
                     coupled_pressure_schur_diagonal[c] += D;
                     b(row) += D * pbc->value;
+                    const Vec3 gp_boundary{
+                        grad_p_old.component_data(0)[c],
+                        grad_p_old.component_data(1)[c],
+                        grad_p_old.component_data(2)[c]};
+                    const double deferred_boundary = pressure_face_nonorthogonal_flux(
+                        rawSf, dvec, {rAUx, rAUy, rAUz}, gp_boundary);
+                    // Match the boundary's deferred pressure response to the
+                    // internal-face treatment; otherwise COUPLED drops the
+                    // tangential pressure flux at fixed-pressure boundaries.
+                    b(row) += rho * deferred_boundary;
                 }
             }
         }
