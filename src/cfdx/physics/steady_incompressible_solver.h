@@ -719,19 +719,18 @@ make_rhie_chow_mass_flux(
         }
     }
 
-    // Conservative Rhie-Chow face flux reconstructed from the cell-centred
-    // velocity predictor:
+    // Conservative Rhie-Chow face flux reconstructed from cell-centred U:
     //
-    //   phi_f = rho [ U_f·Sf - ((dAU e)·Sf)
-    //                    * ((p_N-p_P)/d - grad(p)_f·e) ]
+    //   phi_f = rho [ U_f·Sf + (D grad(p))_f·Sf
+    //                    - ((D e)·Sf) (p_N-p_P)/d ]
     //
-    // The residual form is algebraically equivalent to interpolating HbyA and
-    // subtracting the full pressure operator, but it makes the linear-pressure
-    // cancellation explicit. The coefficient is tensor-consistent for
-    // anisotropic momentum diagonals and oblique faces.
-    //
-    // For a fixed-pressure boundary the same centre-to-face response is used;
-    // zero-gradient pressure boundaries have no pressure-jump correction.
+    // The gradient flux interpolates the cell products D_c grad(p)_c. The
+    // implicit pressure-jump coefficient uses the same centre-line response
+    // as the pressure matrix; their difference is the deferred remainder.
+    // This avoids replacing interp(D grad(p)) with interp(D)*interp(grad(p)),
+    // which creates a continuity floor when the momentum response varies
+    // between cells. Fixed-pressure boundaries use the matching centre-to-face
+    // response; zero-gradient pressure boundaries have no pressure jump.
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         const std::size_t o = own.owner(f);
