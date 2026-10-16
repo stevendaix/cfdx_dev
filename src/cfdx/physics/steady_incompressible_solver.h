@@ -601,9 +601,11 @@ inline double rhie_chow_pressure_flux_internal(
     // The non-orthogonal remainder is deferred explicitly using the same
     // Gauss gradient. This keeps the face flux and pressure equation on the
     // same discrete operator on arbitrary meshes.
-    const double pressure_gradient_flux =
-        (p(n) - p(o))/d * orthogonal_area + gp.dot(Snon);
-    return rho * rfn * pressure_gradient_flux;
+    const double implicit_coefficient = pressure_face_orthogonal_coefficient(
+        Sf, dvec, {cx, cy, cz});
+    return rho * (
+        implicit_coefficient * (p(n) - p(o)) +
+        rfn * gp.dot(Snon));
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
