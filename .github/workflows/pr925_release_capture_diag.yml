@@ -1,0 +1,123 @@
+name: PR925 standard-Release failure capture (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr925_release_marker.txt'
+      - '.github/workflows/pr925_release_capture_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: pr925_head_failed
+            sha: 98e8905bf635064257c068399019d09164ae376b
+          - tag: pr923_base
+            sha: b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+    env:
+      EVID: diag-evidence/logs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin refs/pull/923/head refs/pull/925/head || true
+          git fetch origin "${{ matrix.sha }}"
+          git worktree add "$RUNNER_TEMP/ref" "${{ matrix.sha }}"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+      - name: Install Python mesh I/O stack
+        id: pip
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core > "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_pip_2026-10-16.log" 2>&1
+      - name: Configure (Release, standard CI flags)
+        id: configure
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/ref" -B "$RUNNER_TEMP/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_configure_2026-10-16.log"
+      - name: Build
+        id: build
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build "$RUNNER_TEMP/build" --parallel 8 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_build_2026-10-16.log"
+      - name: Run fast CTest
+        id: ctest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export PATH="$RUNNER_TEMP/venv/bin:$PATH"
+          ctest --test-dir "$RUNNER_TEMP/build" -LE long --output-on-failure --no-tests=error --parallel 4 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_ctest_2026-10-16.log"
+      - name: Run N12 MMS quick gate
+        id: n12_quick
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP/ref"
+          "$RUNNER_TEMP/venv/bin/python" scripts/n12_mms_quick.py --build-dir "$RUNNER_TEMP/build" --output-dir "$RUNNER_TEMP/build/n12-mms-quick" --timeout 600 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_n12_2026-10-16.log"
+      - name: Run Python regression
+        id: pytest
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP/ref"
+          PYTHONPATH="$RUNNER_TEMP/ref/src/cfdx/python" "$RUNNER_TEMP/venv/bin/python" -m pytest -q tests/python \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr925_release_${{ matrix.tag }}_pytest_2026-10-16.log"
+      - name: Write meta and capture diagnostics
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "ref_tag=${{ matrix.tag }}"
+            echo "pinned_sha=${{ matrix.sha }}"
+            echo "pip_outcome=${{ steps.pip.outcome }}"
+            echo "configure_outcome=${{ steps.configure.outcome }}"
+            echo "build_outcome=${{ steps.build.outcome }}"
+            echo "ctest_outcome=${{ steps.ctest.outcome }}"
+            echo "n12_quick_outcome=${{ steps.n12_quick.outcome }}"
+            echo "pytest_outcome=${{ steps.pytest.outcome }}"
+          } > "$E/pr925_release_${{ matrix.tag }}_meta_2026-10-16.txt"
+          if [ -f "$RUNNER_TEMP/build/Testing/Temporary/LastTest.log" ]; then
+            tail -n 400 "$RUNNER_TEMP/build/Testing/Temporary/LastTest.log" > "$E/pr925_release_${{ matrix.tag }}_lasttest_2026-10-16.log" || true
+          fi
+          if [ -f "$E/pr925_release_${{ matrix.tag }}_build_2026-10-16.log" ]; then
+            grep -E -B2 -A6 "error:|fatal error:|undefined reference|collect2: error|FAILED:" "$E/pr925_release_${{ matrix.tag }}_build_2026-10-16.log" | tail -n 200 > "$E/pr925_release_${{ matrix.tag }}_builderrors_2026-10-16.txt" || true
+          fi
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 925 standard-Release failure capture (${{ matrix.tag }}) (2026-10-16)"
+            (git push || (git pull --rebase && git push))
+          fi
