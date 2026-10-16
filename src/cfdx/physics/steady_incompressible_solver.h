@@ -613,10 +613,18 @@ inline double rhie_chow_pressure_flux_internal(
     // equivalent for isotropic D; it is wrong for anisotropic momentum
     // diagonals on skewed faces.
     const double response_s = rhie_chow_orthogonal_response(cx, cy, cz, e, Sf);
+    const Vec3 face_centre = geometry.face_centres[face];
+    const double dc = (face_centre - geometry.cell_centres[o]).mag();
+    const double dn = (geometry.cell_centres[n] - face_centre).mag();
+    if (!(dc > 0.0) || !(dn > 0.0) || !std::isfinite(dc) || !std::isfinite(dn))
+        throw std::runtime_error(
+            "rhie_chow_pressure_flux_internal: degenerate face-centre distance");
+    const double weight_o = dn / (dc + dn);
+    const double weight_n = dc / (dc + dn);
     const Vec3 gp{
-        0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
-        0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
-        0.5*(grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+        weight_o*grad_p.component_data(0)[o] + weight_n*grad_p.component_data(0)[n],
+        weight_o*grad_p.component_data(1)[o] + weight_n*grad_p.component_data(1)[n],
+        weight_o*grad_p.component_data(2)[o] + weight_n*grad_p.component_data(2)[n]};
     // Split the tensor response consistently into an implicit centre-line
     // pressure difference and a deferred remainder. The remainder is the
     // full tensor gradient flux minus the part represented by the implicit
@@ -1417,8 +1425,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double area = rawSf.mag();
                 const double d = (geometry.cell_centres[ncell] -
                                   geometry.cell_centres[c]).mag();
-                const Vec3 dvec = geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c];
+                // The face operator is oriented owner -> neighbour for
+                // both visits of the cell loop. The row sign is applied only
+                // when adding the deferred flux to continuity below.
+                const std::size_t owner_cell = mesh.ownership().owner(f);
+                const std::size_t neighbour_cell =
+                    static_cast<std::size_t>(mesh.ownership().neighbour(f));
+                const Vec3 dvec = geometry.cell_centres[neighbour_cell] -
+                                  geometry.cell_centres[owner_cell];
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area))
                     throw std::runtime_error(
@@ -1484,13 +1498,23 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(row, nv + ncell, -D);
                 coupled_pressure_schur_diagonal[c] += D;
 
+                const double dc =
+                    (geometry.face_centres[f] - geometry.cell_centres[owner_cell]).mag();
+                const double dn =
+                    (geometry.cell_centres[neighbour_cell] - geometry.face_centres[f]).mag();
+                if (!(dc > 0.0) || !(dn > 0.0) ||
+                    !std::isfinite(dc) || !std::isfinite(dn))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face-centre distances");
+                const double weight_o = dn / (dc + dn);
+                const double weight_n = dc / (dc + dn);
                 const Vec3 gp{
-                    0.5*(grad_p_old.component_data(0)[c] +
-                         grad_p_old.component_data(0)[ncell]),
-                    0.5*(grad_p_old.component_data(1)[c] +
-                         grad_p_old.component_data(1)[ncell]),
-                    0.5*(grad_p_old.component_data(2)[c] +
-                         grad_p_old.component_data(2)[ncell])};
+                    weight_o*grad_p_old.component_data(0)[owner_cell] +
+                        weight_n*grad_p_old.component_data(0)[neighbour_cell],
+                    weight_o*grad_p_old.component_data(1)[owner_cell] +
+                        weight_n*grad_p_old.component_data(1)[neighbour_cell],
+                    weight_o*grad_p_old.component_data(2)[owner_cell] +
+                        weight_n*grad_p_old.component_data(2)[neighbour_cell]};
                 const double nonorth_flux = rho * rhie_chow_deferred_response(
                     rAUx_f, rAUy_f, rAUz_f, gp, e, rawSf);
                 // The continuity equation is div(phi)=0 and the pressure
