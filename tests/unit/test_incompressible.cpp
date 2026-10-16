@@ -4,7 +4,8 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "common/test_harness.h"
-#include <cmath>\n#include <stdexcept>
+#include <cmath>
+#include <stdexcept>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
