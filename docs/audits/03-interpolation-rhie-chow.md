@@ -18,9 +18,10 @@ Le flux de masse aux faces découle de l'équation de quantité de mouvement ; 
 ## 3. Discrétisation Volume Fini (forme exacte attendue dans le code)
 $$ \\dot m_f = \\rho_f\\,\\mathbf{S}_f\\cdot\\overline{\\mathbf{u}}_f \\;-\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,(\\nabla p)_f\\cdot\\mathbf{S}_f \\;+\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,\\overline{(\\nabla p)}_f\\cdot\\mathbf{S}_f \\;+\\; \\\\text{(termes de correction Majumdar)} $$
 Contrats :
-1. La moyenne $\\overline{(V/a_P)}_f$ est pondérée par les coefficients **au moment de l'assemblage**. Avec la relaxation implicite de la quantité de mouvement, le flux de face reçoit la correction de Majumdar $\\phi_f \\mathrel{+}= (1-\\alpha_u)(\\phi_f^{old}-\\rho\\,\\overline{\\mathbf{u}}_f^{old}\\cdot\\mathbf{S}_f)$, calculée à partir du flux conservatif et de la vitesse précédents. Elle est nulle pour $\\alpha_u=1$. L'indépendance de la solution convergée vis-à-vis de $\\alpha_u$ doit être démontrée sur les cas physiques, pas déduite de la formule seule.
-2. La différence $(\\nabla p)_f - \\\\overline{(\\nabla p)}_f$ s'annule pour une pression linéaire : **la stabilisation ne doit pas ajouter d'erreur sur les champs exactement linéaires** (test obligatoire : Rhie–Chow nul sur $p$ linéaire).
-3. Corps force (gravité/Boussinesq) : traiter les termes de force exactement comme la pression dans la reconstruction, sinon artefacts de colonne hydrostatique.
+1. La réponse tensorielle et son interpolation utilisent les diagonales **au moment de l'assemblage**. La décomposition implicite + différée doit reconstruire le flux tensoriel interpolé, avec un coefficient implicite $((\\mathbf D_f\\mathbf e)\\cdot\\mathbf S_f)/d_{PN}$ identique dans la matrice et le flux.
+2. Sur une face orthogonale et un champ de pression linéaire exact, le résidu RC s'annule. Sur une face oblique, le reste différé n'est pas forcé à zéro : il doit fermer exactement la différence entre le flux tensoriel interpolé et la contribution implicite.
+3. La correction de Majumdar reste un helper testable, mais **n'est pas activée en production** par cette PR tant que son interaction avec ce split RC et l'indépendance à $\\alpha_u$ ne sont pas démontrées.
+4. Corps force (gravité/Boussinesq) : traiter les termes de force exactement comme la pression dans la reconstruction, sinon artefacts de colonne hydrostatique.
 
 ## 4. Traitement des frontières
 - WALL : $\\dot m_f = 0$ exact (aucune reconstruction).
@@ -28,8 +29,8 @@ Contrats :
 - EMPTY/périodique : reconstruction au niveau de la face virtuelle avec même formule.
 
 ## 5. Pièges connus
-- **Checkerboarding** si le terme de stabilisation est omis ; **sur/sous-correction** si $a_P$ relaxé est utilisé à la place du $a_P$ non relaxé dans le $rAU$ (leçon A-B2 de l'audit #419 : facteur de sur-amplification $a_P/(a_P-\\Sigma|a_{nb}|)$).
-- Dépendance à la relaxation sans correction Majumdar.
+- **Checkerboarding** si le terme de stabilisation est omis ; incohérence si la diagonale relaxée/non relaxée est mélangée sans dérivation.
+- Correction de Majumdar ajoutée sans preuve : elle peut déplacer le point fixe si le split RC inclut déjà un résidu explicite. La dérivation et le balayage `alpha_u` sont bloquants avant activation en production.
 - Flux de continuité ≠ flux de conservation : N9.0 exige que le même flux serve aux deux, ou que l'écart soit documenté (PR #851, test d'antisymétrie des flux Poiseuille).
 
 ## 6. Ordre de précision attendu et validation exigée
@@ -39,10 +40,10 @@ Contrats :
 ## 7. Statut d'implémentation CFDX
 
 ### Correctifs proposés dans la PR d'audit Rhie–Chow
-- L'opérateur interne utilise le même coefficient tensoriel `(dAU e)·Sf / d` dans le flux, la matrice de pression ségrégée et l'approximation de Schur couplée. La réponse différée est `(D ∇p)·Sf - ((D e)·Sf)(∇p·e)`, et non une projection scalaire qui n'est équivalente que pour une réponse isotrope.
-- Le flux conservatif reconstruit depuis la vitesse cellulaire utilise le résidu Rhie–Chow `((p_N-p_P)/d - ∇p_f·e)`; ce terme s'annule pour un champ de pression linéaire exact.
+- L'opérateur interne utilise le même coefficient tensoriel `(dAU e)·Sf / d` dans le flux, la matrice de pression ségrégée et l'approximation de Schur couplée. La réponse différée est `(D ∇p)_f·Sf - ((D e)·Sf)(p_N-p_P)/d`; elle est appariée au même saut de pression que le coefficient implicite.
+- Le flux conservatif reconstruit depuis la vitesse cellulaire utilise l'interpolation produit `(D∇p)_f`, puis retranche la réponse implicite `((D e)·Sf)(p_N-p_P)/d`. Cela évite le remplacement incohérent `interp(D∇p) -> interp(D) interp(∇p)` lorsque la réponse varie entre cellules.
 - Les coefficients aux frontières à pression fixée sont alignés sur la réponse centre-face et incluent `dAU = V/A_P`.
-- La correction de Majumdar est réintroduite via le flux conservatif précédent, l'interpolation de la vitesse précédente et `alpha_u`; elle est nulle lorsque `alpha_u = 1`.
+- La correction de Majumdar reste disponible dans le helper testé, mais n'est pas appliquée par la boucle de production : son interaction avec le split tensoriel doit d'abord être qualifiée par un balayage `alpha_u`.
 - Le helper PISO rejette désormais un dénominateur effectif non positif au lieu de le remplacer silencieusement par une petite valeur.
 - Le helper historique `assemble_pressure_correction` utilise désormais la convention `dAU = V/A_P` et la projection centre-centre, au lieu d'une formule supposant implicitement volume unitaire et face orthogonale.
 
