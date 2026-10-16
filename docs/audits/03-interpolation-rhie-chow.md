@@ -18,7 +18,7 @@ Le flux de masse aux faces découle de l'équation de quantité de mouvement ; 
 ## 3. Discrétisation Volume Fini (forme exacte attendue dans le code)
 $$ \\dot m_f = \\rho_f\\,\\mathbf{S}_f\\cdot\\overline{\\mathbf{u}}_f \\;-\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,(\\nabla p)_f\\cdot\\mathbf{S}_f \\;+\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,\\overline{(\\nabla p)}_f\\cdot\\mathbf{S}_f \\;+\\; \\\\text{(termes de correction Majumdar)} $$
 Contrats :
-1. La moyenne $\\overline{(V/a_P)}_f$ est pondérée par les coefficients **au moment de l'assemblage**, et les écarts de relaxation sont corrigés par le facteur de Majumdar $\\alpha/(1+(1-\\alpha)(V/a_P))$ — sans lui, la solution dépend de $\\alpha$ (leçon #419 : indépendance à α vérifiée à 3,95e–9).
+1. La moyenne $\\overline{(V/a_P)}_f$ est pondérée par les coefficients **au moment de l'assemblage**. Avec la relaxation implicite de la quantité de mouvement, le flux de face reçoit la correction de Majumdar $\\phi_f \\mathrel{+}= (1-\\alpha_u)(\\phi_f^{old}-\\rho\\,\\overline{\\mathbf{u}}_f^{old}\\cdot\\mathbf{S}_f)$, calculée à partir du flux conservatif et de la vitesse précédents. Elle est nulle pour $\\alpha_u=1$. L'indépendance de la solution convergée vis-à-vis de $\\alpha_u$ doit être démontrée sur les cas physiques, pas déduite de la formule seule.
 2. La différence $(\\nabla p)_f - \\\\overline{(\\nabla p)}_f$ s'annule pour une pression linéaire : **la stabilisation ne doit pas ajouter d'erreur sur les champs exactement linéaires** (test obligatoire : Rhie–Chow nul sur $p$ linéaire).
 3. Corps force (gravité/Boussinesq) : traiter les termes de force exactement comme la pression dans la reconstruction, sinon artefacts de colonne hydrostatique.
 
