@@ -1,0 +1,41 @@
+Start testing: Oct 16 21:20 UTC
+----------------------------------------------------------
+129/227 Testing: test_transient_mms
+129/227 Test: test_transient_mms
+Command: "/home/runner/work/_temp/build/test_transient_mms"
+Directory: /home/runner/work/_temp/build
+"test_transient_mms" start time: Oct 16 21:20 UTC
+Output:
+----------------------------------------------------------
+N5_SPATIAL_EIG n=16 err=0.0316679675433 mu_disc=9.83793643355
+N5_SPATIAL_EIG n=32 err=0.00792462574867 mu_disc=9.86167977534 order=1.99860956915
+N5_SPATIAL_EIG n=64 err=0.0019816338617 mu_disc=9.86762276723 order=1.99965237726
+N5_SPATIAL_EIG n=128 err=0.000495438310221 mu_disc=9.86910896278 order=1.99991309062
+N5_RICHARDSON scheme=crank_nicolson dt=0.002 e=0.000252246858307
+N5_RICHARDSON scheme=crank_nicolson dt=0.001 e=0.00023032936188 diff=2.1917496427e-05
+N5_RICHARDSON scheme=crank_nicolson dt=0.0005 e=0.000224849866075 diff=5.47949580552e-06
+N5_RICHARDSON scheme=crank_nicolson dt=0.00025 e=0.000223479985365 diff=1.36988071013e-06
+N5_RICHARDSON scheme=crank_nicolson temporal order=1.99996795761 1.99999288198
+N5_RICHARDSON scheme=bdf2 dt=0.002 e=0.000339217276649
+N5_RICHARDSON scheme=bdf2 dt=0.001 e=0.000251993790924 diff=8.72234857244e-05
+N5_RICHARDSON scheme=bdf2 dt=0.0005 e=0.000230214144527 diff=2.17796463969e-05
+N5_RICHARDSON scheme=bdf2 dt=0.00025 e=0.000224793650342 diff=5.42049418497e-06
+N5_RICHARDSON scheme=bdf2 temporal order=2.00173611481 2.00648423859
+N5_RESTART (upwind advection) continuous=0.00348599792712 restart=0.00349120598235 diff=5.2080552296e-06
+TRANSIENT_MMS: PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"test_transient_mms" end time: Oct 16 21:20 UTC
+"test_transient_mms" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 16 21:20 UTC
+
+mms =   0.04 sec*proc
+
+n12 =   0.04 sec*proc
+
+validation =   0.04 sec*proc
+

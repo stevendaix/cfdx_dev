@@ -1,0 +1,8 @@
+ref_tag=pr923_base
+pinned_sha=b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+pip_outcome=success
+configure_outcome=success
+build_outcome=success
+ctest_outcome=failure
+n12_quick_outcome=success
+pytest_outcome=success
