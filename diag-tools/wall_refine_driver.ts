@@ -1,5 +1,5 @@
 // ============================================================
-// Wall-refinement campaign driver v2 (VMFL036, audit plan items 3+4).
+// Wall-refinement campaign driver v3 (VMFL036, audit plan items 3+4).
 // Executed by GitHub Actions ONLY (never in the Vibe sandbox):
 //   cat diag-tools/port4_rhie_chow.ts diag-tools/wall_refine_driver.ts > campaign_wall.ts
 //   npx -y tsx campaign_wall.ts
@@ -7,18 +7,18 @@
 // scope. Controls UNCHANGED (maxIt 1500, sweeps 8/400, gates 2e-6/2e-7/2e-6,
 // alphaU 0.65, alphaP 0.25, omega 1.8) - no gate or tolerance modified.
 //
-// v2 additions (after v1 refuted the near-wall sampling hypothesis):
-//  - Independent drag estimator: far-field momentum budget over the outer
-//    boundary (Rout=50). D = sum_outer [ rho*u_x*(u.n)*A - p*nx*A + (tau.n)_x*A ]
-//    with central/BC face values - it never touches the wall stresses, so it
-//    discriminates "wall drag integration overestimates" (budget ~ 1.09)
-//    from "the solution itself carries the bias" (budget ~ 1.26).
-//  - Tangential refinement cases (nt=144) to probe scheme bias vs theta.
-//
-// v1 results (2026-10-16, committed by the previous run): Cd saturates at
-// ~1.256 (+15%) at Re=100 as the first ring shrinks 8.5% -> 3.3% R;
-// cd_p -> 0.64 (plausible), cd_v ~ 0.62 (lit ~0.45) carries the bias;
-// Re=50 nr=88: 1.7487 (+10.8%). Near-wall sampling REFUTED as dominant.
+// v3: fixes the momentum-budget sign of v2. The correct steady identity over
+// the fluid domain is   sum_boundary[ rho*u_x*(u.n) + p*nx - (tau.n)_x ]*A = 0
+// (n out of the fluid domain), hence
+//   D = -(convTotal + presTotal - viscTotal) / qA.
+// v2 had D = convTotal - presTotal + viscTotal (sign error in the assembled
+// cd_budget only; all recorded components were correct). v3 also adds the
+// telescoped wall-force decomposition with the EQUATION closures:
+//   wall_eq_pressure = sum_sphere p_face*nx*A  (extrapolated wall pressure,
+//                      nx = stored normal pointing INTO the sphere)
+//   wall_eq_visc     = sum_sphere (mu*A/bD)*ux_owner (two-point wall shear)
+//   wall_eq_total    = wall_eq_pressure + wall_eq_visc  (= D by telescoping)
+// compared against the drag() sampling (cell-center p, Gauss gradients).
 // ============================================================
 
 const fsmod = require('fs');
@@ -40,10 +40,7 @@ function firstRingFrac(nr: number): number {
   return (ROUT - R) * Math.pow(1.0 / nr, 1.65) / R;
 }
 
-// Independent far-field momentum-budget drag estimator. Uses only the
-// converged interior fields (solver internals) and the OUTER boundary:
-//   D = sum_outer [ mdot*ux_f - p_f*nx*A + (tau.n)_x*A ]
-// where n points outward from the domain. Sphere and axis never appear.
+// Far-field momentum-budget drag (correct sign, v3).
 function budgetDrag(solver: any, rho: number, mu: number): any {
   const m = solver.mesh;
   const itn = solver.internals();
@@ -76,14 +73,11 @@ function budgetDrag(solver: any, rho: number, mu: number): any {
     if (inflow) { convIn += conv; presIn += pres; viscIn += visc; massIn += mdot; nIn++; }
     else { convOut += conv; presOut += pres; viscOut += visc; massOut += mdot; nOut++; }
   }
-  // Steady x-momentum balance over the whole fluid domain:
-  //   sum_outer[ rho*u_x*(u.n) - p*nx + (tau.n)_x ] + (force on fluid at sphere) = 0
-  // force on fluid at sphere = -D  =>  D = convTotal - presTotal + viscTotal.
   const convTotal = convIn + convOut;
   const presTotal = presIn + presOut;
   const viscTotal = viscIn + viscOut;
   const qA = 0.5 * rho * 1.0 * (Math.PI * 0.25);
-  const D = convTotal - presTotal + viscTotal;
+  const D = -(convTotal + presTotal - viscTotal);
   return {
     qA: qA,
     cd_budget: D / qA,
@@ -95,14 +89,54 @@ function budgetDrag(solver: any, rho: number, mu: number): any {
   };
 }
 
+// Telescoped wall force with the EQUATION closures: extrapolated wall
+// pressure (sphereW linear extrapolation, identical formula to the twin
+// gradients() sphere branch) and two-point wall shear mu*A/bD*ux_owner.
+// By the telescoped discrete momentum identity this must equal the budget D.
+function wallEquationDrag(solver: any, mu: number): any {
+  const m = solver.mesh;
+  const itn = solver.internals();
+  const ux = itn.ux, p = itn.p, bD = itn.bD;
+  let pressure = 0.0, visc = 0.0, nFaces = 0, nExtrap = 0;
+  for (let fid = 0; fid < m.nf; fid++) {
+    if (m.fNb[fid] !== -1 || !m.fSphere[fid]) continue;
+    const o = m.fOwner[fid];
+    const A = m.fArea[fid];
+    const nx = m.fNx[fid], nr = m.fNr[fid];
+    // extrapolated wall pressure: find ring-1 same-theta neighbour of o
+    let pf = p[o];
+    let nb = -1;
+    for (let k = 0; k < 4; k++) {
+      const f2 = m.cellFaces[o * 4 + k];
+      if (m.fNb[f2] === -1) continue;
+      const other = (m.fOwner[f2] === o) ? m.fNb[f2] : m.fOwner[f2];
+      if (m.ci[other] === 1 && m.cj[other] === m.cj[o]) { nb = other; break; }
+    }
+    if (nb !== -1) {
+      const w = Math.hypot(m.fCx[fid] - m.cx[o], m.fCr[fid] - m.cr[o])
+        / Math.max(1e-12, Math.hypot(m.cx[o] - m.cx[nb], m.cr[o] - m.cr[nb]));
+      pf = p[o] + (p[o] - p[nb]) * w;
+      nExtrap++;
+    }
+    pressure += pf * nx * A;
+    visc += (mu * A / bD[fid]) * ux[o];
+    nFaces++;
+  }
+  const total = pressure + visc;
+  return {
+    sphereFaces: nFaces, extrapolated: nExtrap,
+    wall_eq_pressure: pressure, wall_eq_visc: visc, wall_eq_total: total
+  };
+}
+
 async function main(): Promise<void> {
   const out: any = {
     campaign: 'vmfl036_wall_refinement',
-    version: 2,
+    version: 3,
     date: '2026-10-16',
     twin: 'diag-tools/port4_rhie_chow.ts @ ci/long-campaign-diagnostics',
     controls: campaignControls(),
-    question: 'v1: near-wall sampling (REFUTED - Cd saturates ~1.256). v2: far-field momentum budget vs wall integration (post-processing vs solution bias) + tangential refinement nt=144.',
+    question: 'v3: corrected momentum budget sign + telescoped wall-force decomposition (equation closures) vs drag() sampling vs reference.',
     selfcheck: 're100 coarse 24x36 pre-campaign run: converged it=75, Cd=0.8716507056286522 (bit-exact vs 2026-10-15 campaign)',
     cases: {}
   };
@@ -145,8 +179,21 @@ async function main(): Promise<void> {
       try {
         const b = budgetDrag(solver, cs.rho, cs.mu);
         caseEntry.budget = b;
+        const qA = b.qA;
+        const w = wallEquationDrag(solver, cs.mu);
+        caseEntry.wallEq = w;
+        caseEntry.wallEqCd = {
+          cd_eq_p: -w.wall_eq_pressure / qA,
+          cd_eq_v: w.wall_eq_visc / qA,
+          cd_eq_total: w.wall_eq_total / qA
+        };
         console.log('[' + cs.tag + '] BUDGET cd_budget=' + b.cd_budget.toFixed(5)
-          + ' (wall Cd=' + res.cd.toFixed(5) + ', massImbalance=' + b.massImbalance.toExponential(2) + ')');
+          + ' wallEq_total=' + (w.wall_eq_total / qA).toFixed(5)
+          + ' (cdp_eq=' + (-w.wall_eq_pressure / qA).toFixed(4)
+          + ' cdv_eq=' + (w.wall_eq_visc / qA).toFixed(4) + ')'
+          + ' wall Cd=' + res.cd.toFixed(5)
+          + ' (cdp=' + res.cd_p.toFixed(4) + ' cdv=' + res.cd_v.toFixed(4) + ')'
+          + ' massImb=' + b.massImbalance.toExponential(2));
       } catch (berr: any) {
         caseEntry.budgetError = String(berr);
         console.log('[' + cs.tag + '] BUDGET ERROR: ' + berr);
