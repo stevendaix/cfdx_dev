@@ -3118,8 +3118,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // This is the single authoritative phi state for continuity.
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, rAU,
-                controls.density, velocity_bcs, pressure_bcs,
-                &mass_flux, &U_old, effective_alpha_u);
+                controls.density, velocity_bcs, pressure_bcs);
 
             // The authoritative flux is reconstructed from the corrected
             // cell velocity and the physical momentum response rAU. SIMPLEC's
