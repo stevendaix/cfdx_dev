@@ -3748,13 +3748,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell] +
                         geometry.cell_volumes[other_cell] * diag_rAU[2][other_cell]);
                     dAU_n = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
+                    const double dc =
+                        (geometry.face_centres[face] -
+                         geometry.cell_centres[debug_cell]).mag();
+                    const double dn =
+                        (geometry.cell_centres[other_cell] -
+                         geometry.face_centres[face]).mag();
+                    const double weight_debug = dn / (dc + dn);
+                    const double weight_other = dc / (dc + dn);
                     const Vec3 gp{
-                        0.5 * (final_grad_p.component_data(0)[debug_cell] +
-                               final_grad_p.component_data(0)[other_cell]),
-                        0.5 * (final_grad_p.component_data(1)[debug_cell] +
-                               final_grad_p.component_data(1)[other_cell]),
-                        0.5 * (final_grad_p.component_data(2)[debug_cell] +
-                               final_grad_p.component_data(2)[other_cell])};
+                        weight_debug*final_grad_p.component_data(0)[debug_cell] +
+                            weight_other*final_grad_p.component_data(0)[other_cell],
+                        weight_debug*final_grad_p.component_data(1)[debug_cell] +
+                            weight_other*final_grad_p.component_data(1)[other_cell],
+                        weight_debug*final_grad_p.component_data(2)[debug_cell] +
+                            weight_other*final_grad_p.component_data(2)[other_cell]};
                     // Compare the authoritative face-flux correction against
                     // the exact Rhie-Chow operator used by the pressure equation.
                     // This is deliberately evaluated from HbyA, not the final
@@ -3764,7 +3772,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     // above from the final momentum rows.  The microscope is
                     // diagnostic only and must not introduce a separate
                     // SIMPLEC/SIMPLE coefficient path.
-                    rhie_chow_expected = rhie_chow_pressure_flux_internal(
+                    rhie_chow_expected = sign * rhie_chow_pressure_flux_internal(
                         mesh, geometry, face, p, final_grad_p,
                         diag_rAU, controls.density, false);
                     const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
@@ -3789,14 +3797,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     grad_face_correction =
                         e * normal_dp + gp - e * gp.dot(e);
                     grad_face_momentum = gp;
-                    pressure_flux_correction =
-                        controls.density * dAU_n *
-                        (normal_dp * orthogonal_area + gp.dot(Snon));
+                    const double response_s =
+                        rhie_chow_orthogonal_response(cx, cy, cz, e, localSf);
+                    pressure_flux_correction = controls.density *
+                        (response_s * normal_dp +
+                         rhie_chow_deferred_response(cx, cy, cz, gp, e, localSf));
                     u_face_reconstructed = hbyA_face -
-                        Vec3{
-                            dAU_n * gp.x,
-                            dAU_n * gp.y,
-                            dAU_n * gp.z};
+                        Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
                 } else {
                     if (patch < mesh.boundary().n_patches()) {
                         const auto& name = mesh.boundary().patch(patch).name;
@@ -3815,15 +3822,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                               geometry.cell_centres[debug_cell];
                             const double d = dvec.mag();
                             const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                            dAU_n =
-                                geometry.cell_volumes[debug_cell] * (
-                                    diag_rAU[0][debug_cell]*e.x*e.x +
-                                    diag_rAU[1][debug_cell]*e.y*e.y +
-                                    diag_rAU[2][debug_cell]*e.z*e.z);
+                            const double cx =
+                                geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell];
+                            const double cy =
+                                geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell];
+                            const double cz =
+                                geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell];
+                            dAU_n = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
                             const double normal_dp =
                                 (pit->second.value - p(debug_cell)) / d;
+                            const double response_s =
+                                rhie_chow_orthogonal_response(cx, cy, cz, e, Sf_raw);
                             pressure_flux_correction =
-                                controls.density * dAU_n * normal_dp * Sf_raw.dot(e);
+                                controls.density * response_s * normal_dp;
                             grad_face_correction = e * normal_dp;
                         } else {
                             grad_face_correction = Vec3{
@@ -3840,8 +3851,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             hbyA[1][debug_cell],
                             hbyA[2][debug_cell]};
                         const Vec3 gp = grad_face_momentum;
+                        const double cx =
+                            geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell];
+                        const double cy =
+                            geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell];
+                        const double cz =
+                            geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell];
                         u_face_reconstructed = hbyA_face -
-                            Vec3{dAU_n*gp.x, dAU_n*gp.y, dAU_n*gp.z};
+                            Vec3{cx*gp.x, cy*gp.y, cz*gp.z};
                     }
                 }
 
