@@ -3754,6 +3754,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const double dn =
                         (geometry.cell_centres[other_cell] -
                          geometry.face_centres[face]).mag();
+                    if (!(dc > 0.0) || !(dn > 0.0) ||
+                        !std::isfinite(dc) || !std::isfinite(dn))
+                        throw std::runtime_error(
+                            "CFDX momentum microscope: degenerate face-centre distance");
                     const double weight_debug = dn / (dc + dn);
                     const double weight_other = dc / (dc + dn);
                     const Vec3 gp{
@@ -3788,11 +3792,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         max_rhie_chow_mismatch,
                         std::abs(rhie_chow_actual - rhie_chow_expected));
                     const Vec3 localSf = Sf;
-                    const double orthogonal_area = localSf.dot(e);
-                    const Vec3 Snon{
-                        localSf.x - orthogonal_area*e.x,
-                        localSf.y - orthogonal_area*e.y,
-                        localSf.z - orthogonal_area*e.z};
                     const double normal_dp = (p(other_cell) - p(debug_cell)) / d;
                     grad_face_correction =
                         e * normal_dp + gp - e * gp.dot(e);
