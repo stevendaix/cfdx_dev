@@ -262,6 +262,15 @@ void run_alpha_sweep(const std::filesystem::path& output)
               << " relative_spread_Cd_total=" << cd_total_spread
               << " relative_spread_Cd_pressure=" << cd_pressure_spread
               << " relative_spread_Cd_viscous=" << cd_viscous_spread << "\n";
+    // The long-validation log is the guaranteed CI evidence artifact. Echo
+    // the exact JSON there as well as writing the standalone file so evidence
+    // survives independently of artifact root-layout changes.
+    std::ifstream evidence(output);
+    if (!evidence)
+        throw std::runtime_error("cannot reopen VMFL036 alpha-sweep evidence: "+output.string());
+    std::cout << "VMFL036_ALPHA_SWEEP_JSON_BEGIN\n"
+              << evidence.rdbuf()
+              << "VMFL036_ALPHA_SWEEP_JSON_END\n";
 }
 }
 
