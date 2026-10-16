@@ -606,11 +606,10 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1)){
                     const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
                     const double d=dist(m_.cells[cell],m_.cells[nb]);
-                    // Directional face response: the face-normal velocity
-                    // correction is -(nx^2*rAU_x + nr^2*rAU_r)*dp'/dn per cell,
-                    // so faces with a radial normal use the radial diagonal
-                    // (which carries the hoop term), consistently with the
-                    // component-wise velocity correction below.
+                    // Use the same owner-to-neighbour centre-line response
+                    // as compute_fluxes() and the conservative flux update.
+                    // This keeps the implicit pressure coefficient identical
+                    // to the pressure-jump part of the face-flux operator.
                     const double df=internal_face_response(
                         f.owner,f.neighbour,f.nx,f.nr);
                     const double a=rho_*f.area*df/d;
@@ -773,10 +772,11 @@ private:
         // from the corrected velocities, apply the discrete continuity
         // statement of the assembled pressure equation directly to the
         // carried fluxes:
-        //   internal faces: phi_f += rho*A*df/d*(p'_owner - p'_neighbour)
-        //                   (same symmetric df = (resp_o + resp_n)/2 as the
-        //                   assembled coefficients)
-        //   outlet faces   : phi_f += rho*A*resp/d*p'_owner  (p'_b = 0)
+        //   internal faces: phi_f += rho*A*((D_f e) dot n)/d
+        //                                  *(p'_owner - p'_neighbour)
+        //   outlet faces   : phi_f += rho*A*((D_o e_b) dot n)/d*p'_owner
+        //                   (p'_b = 0). These are the same coefficients used
+        //                   in pressure_correction() above.
         //   sphere/axis    : no pressure coefficient was assembled, so no
         //                   flux correction (wall/symmetry velocities do not
         //                   respond to p' in this operator)
