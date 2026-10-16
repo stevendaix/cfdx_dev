@@ -1,0 +1,4 @@
+### Reproduction on PR 902 content (12659830e23793e278a45d2ef070d23d1a0e094c Merge 6370759e0884916b1d0be9dcad4d8eb29f39de11 into 86ef9f2a88c50d2abde1d1d9f2ef34165b366d73)
+
+- ghia: FAIL (deterministic reproduction confirms the regression)
+- n9matrix: PASS (deterministic reproduction contradicts the campaign failure -> flake/environment)
