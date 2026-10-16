@@ -1,0 +1,37 @@
+name: VMFL036 wall-refinement twin campaign
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/wall_refine_driver.ts'
+      - '.github/workflows/wall_refine_campaign.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  campaign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Assemble campaign script (twin + driver, byte-exact concatenation)
+        run: cat diag-tools/port4_rhie_chow.ts diag-tools/wall_refine_driver.ts > campaign_wall.ts
+      - name: Run wall-refinement campaign (twin, controls unchanged)
+        run: npx -y tsx campaign_wall.ts
+      - name: Commit evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diag-evidence/logs/wall_refinement_2026-10-16.json
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: VMFL036 wall-refinement twin campaign results (2026-10-16)"
+            git push
+          fi
