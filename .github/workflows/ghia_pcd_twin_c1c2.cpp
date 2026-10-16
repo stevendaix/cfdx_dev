@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -106,9 +107,9 @@ bool parse_vec_file(const std::string& path, Vector& out, std::uint64_t& fnv)
         const double v = std::strtod(line.c_str(), &end);
         if (end == line.c_str() || !std::isfinite(v))
             return false;
-        while (*end == ' ' || *end == '\\t' || *end == '\\r' || *end == '\\n')
+        while (*end != '\0' && std::isspace(static_cast<unsigned char>(*end)))
             ++end;
-        if (*end != '\\0')
+        if (*end != '\0')
             return false;
         vals.push_back(v);
     }
