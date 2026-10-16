@@ -40,6 +40,17 @@ The unrelaxed variant (D^RC = D^pc) was tested empirically on 2026-10-15 and
 rejected: fine_err 10.06 % FAIL vs 9.93 % PASS for the relaxed form
 (cf. VMFL036_FINE_GAP_STUDY.md).
 
+Empirical campaign v4 (2026-10-16, twin `port4_rhie_chow.ts`, diag branch,
+evidence `diag-evidence/logs/alpha_sensitivity_2026-10-16.json`): the
+alpha_u-spread of the converged Cd is 1.44 % on the coarse 24x36 mesh and
+0.19 % on the fine 48x72 mesh, with the alpha_u = 0.65 coarse run
+reproducing the reference Cd bit-exact (selfCheckDelta = 0) and distinct
+iteration counts per alpha_u (plumbing verified: 4/4). The residual
+alpha_u-sensitivity decays with refinement, consistent with the O(h^2)
+iteration-path effect predicted by the derivation: the fixed point is
+alpha_u-independent up to discretisation, and the fine-level spread
+(0.19 %) is two orders of magnitude below the drag band (10 %).
+
 ## Analytical tests (operator level, production path)
 
 Five additional operator-level tests, all through the production
