@@ -166,8 +166,10 @@ int main(int argc,char** argv)
         const bool quick=argc>1 && std::string(argv[1])=="--quick";
         if(quick){
             // True smoke test: generate the coarse mesh, audit it, run the
-            // solver fail-closed on the Re=100 case and verify the drag is
-            // finite and physical. Convergence and the Cd oracles remain the
+            // solver fail-closed on the Re=100 case, REQUIRE convergence
+            // within the reduced budget, then verify the drag is finite and
+            // physical (audit 2026-10-16: a smoke test must not report PASS
+            // on an unconverged solve). The Cd oracles remain the
             // responsibility of the long campaign.
             const auto path=std::filesystem::temp_directory_path() /
                 "cfdx_vmfl036_quick_contract.axmesh";
@@ -188,6 +190,19 @@ int main(int argc,char** argv)
                 std::ostringstream os;
                 os<<"VMFL036 quick smoke Cd is outside the physical range: "
                   <<std::scientific<<smoke.cd_total;
+                throw std::runtime_error(os.str());
+            }
+            if(!smoke.converged){
+                std::ostringstream os;
+                os<<"VMFL036 quick smoke did not converge within the reduced budget"
+                  <<" ("<<c.max_outer_iterations<<" outer iterations, sweeps "
+                  <<c.momentum_sweeps<<"/"<<c.pressure_sweeps<<")"
+                  <<": continuity="<<std::scientific<<smoke.continuity
+                  <<" (gate "<<c.continuity_tolerance<<")"
+                  <<", momentum="<<smoke.momentum_residual
+                  <<" (gate "<<c.momentum_tolerance<<")"
+                  <<", pcorr="<<smoke.pressure_correction
+                  <<" (gate "<<c.pressure_tolerance<<")";
                 throw std::runtime_error(os.str());
             }
             std::cout << "VMFL036_QUICK_CONTRACT: PASS nr=" << mesh.nr
