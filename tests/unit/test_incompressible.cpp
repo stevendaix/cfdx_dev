@@ -2,6 +2,7 @@
 #include "cfdx/physics/incompressible.h"
 #include "cfdx/physics/pressure_velocity.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "common/test_harness.h"
 #include <cmath>\n#include <stdexcept>
 
