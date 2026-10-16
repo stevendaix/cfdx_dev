@@ -1520,8 +1520,29 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         weight_n*grad_p_old.component_data(2)[neighbour_cell]};
                 const double normal_dp =
                     (p_old(neighbour_cell) - p_old(owner_cell)) / d;
+                const double dAUx_o =
+                    geometry.cell_volumes[owner_cell] / aox;
+                const double dAUy_o =
+                    geometry.cell_volumes[owner_cell] / aoy;
+                const double dAUz_o =
+                    geometry.cell_volumes[owner_cell] / aoz;
+                const double dAUx_n =
+                    geometry.cell_volumes[neighbour_cell] / anx;
+                const double dAUy_n =
+                    geometry.cell_volumes[neighbour_cell] / any;
+                const double dAUz_n =
+                    geometry.cell_volumes[neighbour_cell] / anz;
+                const double tensor_gradient_flux =
+                    weight_o*(
+                        dAUx_o*grad_p_old.component_data(0)[owner_cell]*rawSf.x +
+                        dAUy_o*grad_p_old.component_data(1)[owner_cell]*rawSf.y +
+                        dAUz_o*grad_p_old.component_data(2)[owner_cell]*rawSf.z) +
+                    weight_n*(
+                        dAUx_n*grad_p_old.component_data(0)[neighbour_cell]*rawSf.x +
+                        dAUy_n*grad_p_old.component_data(1)[neighbour_cell]*rawSf.y +
+                        dAUz_n*grad_p_old.component_data(2)[neighbour_cell]*rawSf.z);
                 const double nonorth_flux = rho * rhie_chow_deferred_response(
-                    rAUx_f, rAUy_f, rAUz_f, gp, e, rawSf, normal_dp);
+                    response_s, tensor_gradient_flux, normal_dp);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
@@ -3802,10 +3823,39 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     grad_face_momentum = gp;
                     const double response_s =
                         rhie_chow_orthogonal_response(cx, cy, cz, e, localSf);
+                    const double dc =
+                        (geometry.face_centres[face] -
+                         geometry.cell_centres[debug_cell]).mag();
+                    const double dn =
+                        (geometry.cell_centres[other_cell] -
+                         geometry.face_centres[face]).mag();
+                    const double weight_debug = dn / (dc + dn);
+                    const double weight_other = dc / (dc + dn);
+                    const double cx_debug =
+                        geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell];
+                    const double cy_debug =
+                        geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell];
+                    const double cz_debug =
+                        geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell];
+                    const double cx_other =
+                        geometry.cell_volumes[other_cell] * diag_rAU[0][other_cell];
+                    const double cy_other =
+                        geometry.cell_volumes[other_cell] * diag_rAU[1][other_cell];
+                    const double cz_other =
+                        geometry.cell_volumes[other_cell] * diag_rAU[2][other_cell];
+                    const double tensor_gradient_flux =
+                        weight_debug*(
+                            cx_debug*final_grad_p.component_data(0)[debug_cell]*localSf.x +
+                            cy_debug*final_grad_p.component_data(1)[debug_cell]*localSf.y +
+                            cz_debug*final_grad_p.component_data(2)[debug_cell]*localSf.z) +
+                        weight_other*(
+                            cx_other*final_grad_p.component_data(0)[other_cell]*localSf.x +
+                            cy_other*final_grad_p.component_data(1)[other_cell]*localSf.y +
+                            cz_other*final_grad_p.component_data(2)[other_cell]*localSf.z);
                     pressure_flux_correction = controls.density *
                         (response_s * normal_dp +
                          rhie_chow_deferred_response(
-                             cx, cy, cz, gp, e, localSf, normal_dp));
+                             response_s, tensor_gradient_flux, normal_dp));
                     u_face_reconstructed = hbyA_face -
                         Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
                 } else {
