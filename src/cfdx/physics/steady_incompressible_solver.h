@@ -580,7 +580,8 @@ inline double rhie_chow_pressure_flux_internal(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& grad_p,
     const std::array<std::vector<double>, 3>& rAU,
-    double rho)
+    double rho,
+    bool stabilization_only = false)
 {
     using namespace cfdx::core;
     const auto nr = mesh.ownership().neighbour(face);
@@ -621,8 +622,16 @@ inline double rhie_chow_pressure_flux_internal(
     // full tensor gradient flux minus the part represented by the implicit
     // coefficient. This reduces to the usual scalar non-orthogonal split
     // when dAUx == dAUy == dAUz.
+    const double pressure_jump_gradient = (p(n) - p(o)) / d;
+    if (stabilization_only) {
+        // When the argument is the cell-centred velocity predictor U, use
+        // the Rhie-Chow stabilization residual. It vanishes for a linear
+        // pressure field and is algebraically equivalent to HbyA·Sf minus
+        // the full pressure operator.
+        return rho * response_s * (pressure_jump_gradient - gp.dot(e));
+    }
     const double pressure_gradient_flux =
-        response_s * (p(n) - p(o)) / d +
+        response_s * pressure_jump_gradient +
         rhie_chow_deferred_response(cx, cy, cz, gp, e, Sf);
     return rho * pressure_gradient_flux;
 }
@@ -710,7 +719,7 @@ make_rhie_chow_mass_flux(
             U.get(n, Hn.x, Hn.y, Hn.z);
             Hf = (Hf + Hn) * 0.5;
             correction = rhie_chow_pressure_flux_internal(
-                mesh, geometry, f, p, grad_p, rAU, rho);
+                mesh, geometry, f, p, grad_p, rAU, rho, true);
         } else {
             const std::size_t patch = geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
@@ -746,7 +755,10 @@ make_rhie_chow_mass_flux(
                     const double response_s =
                         cx*e.x*Sf.x + cy*e.y*Sf.y + cz*e.z*Sf.z;
                     correction = rho * response_s *
-                        (pbc->second.value - p(o)) / d;
+                        ((pbc->second.value - p(o)) / d -
+                         grad_p.component_data(0)[o]*e.x -
+                         grad_p.component_data(1)[o]*e.y -
+                         grad_p.component_data(2)[o]*e.z);
                 }
             }
         }
@@ -2835,7 +2847,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double phi_nonorth = rhie_chow_pressure_flux_internal(
                             mesh, geometry, f, p, current_grad_p,
                             controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                            controls.density);
+                            controls.density, false);
                         continuity[c] += mesh.ownership().owner(f) == c
                             ? -phi_nonorth : phi_nonorth;
                     }
@@ -3014,7 +3026,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // momentum-weighted interpolation used by the pressure equation.
             // This is the single authoritative phi state for continuity.
             mass_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, HbyA, p,
+                mesh, geometry, U, p,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
@@ -3726,7 +3738,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     // SIMPLEC/SIMPLE coefficient path.
                     rhie_chow_expected = rhie_chow_pressure_flux_internal(
                         mesh, geometry, face, p, final_grad_p,
-                        diag_rAU, controls.density);
+                        diag_rAU, controls.density, false);
                     const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
                     rhie_chow_actual = hbyA_flux - phi_auth;
                     max_rhie_chow_actual = std::max(
