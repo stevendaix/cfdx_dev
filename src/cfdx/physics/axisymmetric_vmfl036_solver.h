@@ -593,7 +593,7 @@ private:
                     ++prow_cnt[cell];
                 } else if(f.outer && f.cx >= 0.0){
                     const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
-                    const double a=rho_*f.area*face_response(cell,f.nx,f.nr,c)/d;
+                    const double a=rho_*f.area*face_response(cell,f.nx,f.nr)/d;
                     // Fixed physical pressure at the outlet implies a
                     // homogeneous pressure-correction boundary condition:
                     // p'_b = 0. Do not inject -p_P into the correction RHS.
