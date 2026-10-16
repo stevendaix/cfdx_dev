@@ -3026,52 +3026,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // momentum-weighted interpolation used by the pressure equation.
             // This is the single authoritative phi state for continuity.
             mass_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, U, p,
-                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                mesh, geometry, U, p, rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                // The SIMPLEC pressure equation balances the over-relaxed
-                // predictor flux phiHbyA + rho*(dAtU - dAU)*(p_N - p_P),
-                // not the bare interpolated predictor. The corrected flux
-                // must therefore carry the same consistent-response term,
-                // evaluated at the corrected pressure; otherwise it differs
-                // from the operator the pressure equation just balanced by
-                // exactly div(rho*(dAtU - dAU)*dp) and a continuity floor of
-                // that size survives on every case with a non-constant
-                // pressure field (e.g. the lid-driven cavity) even though
-                // the momentum residual is zero. With the term included the
-                // face operator collapses to the plain Rhie-Chow flux built
-                // with rAU: (dAtU - dAU) cancels the rAtU response, leaving
-                // the conservative flux of the reconstructed cell velocity.
-                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                    const auto nr = mesh.ownership().neighbour(f);
-                    if (nr < 0) continue;
-                    const std::size_t o = mesh.ownership().owner(f);
-                    const std::size_t n = static_cast<std::size_t>(nr);
-                    const auto Sf = geometry.face_area_vectors[f];
-                    const double area = Sf.mag();
-                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
-                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
-                                           geometry.cell_volumes[n]*rAtU[0][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
-                                           geometry.cell_volumes[n]*rAU[0][n]);
-                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
-                                           geometry.cell_volumes[n]*rAtU[1][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
-                                           geometry.cell_volumes[n]*rAU[1][n]);
-                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
-                                           geometry.cell_volumes[n]*rAtU[2][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
-                                           geometry.cell_volumes[n]*rAU[2][n]);
-                    const double delta_response_s =
-                        dx*e.x*Sf.x + dy*e.y*Sf.y + dz*e.z*Sf.z;
-                    mass_flux(f) += controls.density * delta_response_s *
-                        (p(n)-p(o))/d;
-                }
-            }
+            // The authoritative flux is reconstructed from the corrected
+            // cell velocity and the physical momentum response rAU. SIMPLEC's
+            // rAtU belongs to its pressure-correction operator; adding a second
+            // face correction here would double-count the SIMPLEC response.
 
             // Issa corrector form: every pressure corrector is driven by the
             // ORIGINAL predictor flux together with the current pressure,
