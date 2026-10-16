@@ -447,5 +447,40 @@ int main()
         EXPECT_NEAR(corr, expected, 1e-12);
     });
 
+
+    run_case("n9_s9_pressure_matrix_coefficient_matches_rhie_chow_on_skew_face", [] {
+        // The implicit pressure matrix must use the same centre-line
+        // projection as rhie_chow_pressure_flux_internal(). On this skew face
+        // d points along x while Sf has a tangential y component. The
+        // directional inverse diagonal is intentionally anisotropic so that
+        // projecting it on Sf (rather than d) is also detected.
+        const Vec3 dvec{1.0, 0.0, 0.0};
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dAU_diagonal{1.0, 4.0, 9.0};
+
+        const double coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_diagonal);
+        EXPECT_NEAR(coefficient, 1.0, 1e-12);
+
+        const double area = Sf.mag();
+        const Vec3 face_normal{Sf.x / area, Sf.y / area, Sf.z / area};
+        const double old_face_normal_rfn =
+            dAU_diagonal.x * face_normal.x * face_normal.x +
+            dAU_diagonal.y * face_normal.y * face_normal.y +
+            dAU_diagonal.z * face_normal.z * face_normal.z;
+        const double old_area_over_distance = old_face_normal_rfn * area / dvec.mag();
+
+        // This is deliberately not a loose numerical tolerance: the old
+        // area/d plus face-normal projection differs by more than 0.5 on this
+        // analytic geometry, while the corrected coefficient is exactly 1.
+        EXPECT_TRUE(std::abs(old_area_over_distance - coefficient) > 0.5);
+
+        // Orthogonal limit: retain the previous coefficient exactly even for
+        // anisotropic momentum response.
+        const double orthogonal = pressure_face_orthogonal_coefficient(
+            Vec3{1.0, 0.0, 0.0}, dvec, dAU_diagonal);
+        EXPECT_NEAR(orthogonal, 1.0, 1e-12);
+    });
+
     return 0;
 }
