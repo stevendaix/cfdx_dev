@@ -1480,7 +1480,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(row, nv + ncell, -D);
                 coupled_pressure_schur_diagonal[c] += D;
 
-                const double orthogonal_area = rawSf.dot(e);
                 const Vec3 gp{
                     0.5*(grad_p_old.component_data(0)[c] +
                          grad_p_old.component_data(0)[ncell]),
@@ -1488,17 +1487,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
-                // Keep the coupled deferred term identical to the segregated
-                // tensor-response split: full face flux minus the implicit
-                // centre-line component.
-                const double response_gradient_dot_Sf =
-                    rAUx_f * gp.x * rawSf.x +
-                    rAUy_f * gp.y * rawSf.y +
-                    rAUz_f * gp.z * rawSf.z;
-                const double implicit_gradient_flux =
-                    rfn * gp.dot(e) * orthogonal_area;
-                const double nonorth_flux = rho *
-                    (response_gradient_dot_Sf - implicit_gradient_flux);
+                // Reuse the same deferred tensor-response operator as SIMPLE
+                // and the pressure-flux reconstruction.
+                const double nonorth_flux = rho * pressure_face_nonorthogonal_flux(
+                    rawSf, dvec, {rAUx_f, rAUy_f, rAUz_f}, gp);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
