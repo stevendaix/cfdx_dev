@@ -1,0 +1,20 @@
+TWIN_CHECKSUM name=A_iter2 got=f1c712aa91af8a05 expected=f1c712aa91af8a05 ok=1
+TWIN_CHECKSUM name=Mp got=8e8450068b1f4383 expected=8e8450068b1f4383 ok=1
+TWIN_CHECKSUM name=Kp got=a55ea9de9852207a expected=a55ea9de9852207a ok=1
+TWIN_CHECKSUM name=Fp got=482578abba20a0ba expected=482578abba20a0ba ok=1
+TWIN_CHECKSUM name=b_iter2 got=ba89d2d797327475 expected=ba89d2d797327475 ok=1
+TWIN_CHECKSUM name=x0_iter2 got=62e4545f548ca62c expected=62e4545f548ca62c ok=1
+TWIN_DIMS n=4096 nnz_A=76991 gauge_row=3600
+TWIN_GAUGE row_identity=1 x0_gauge=0
+TWIN_MP_DIAG min=0.0009765625 max=0.0009765625 uniform=1
+TWIN_VARIANT name=Fp status=CONVERGED status_int=0 iterations=631 residual=1.0564283478574159e-11 relative=9.337595607595998e-11 x_gauge=0 elapsed_s=19.238
+TWIN_INNER name=Fp applies=631 total_iters=36183 avg=57.34 max=60 converged=631 best_effort=0 fail=0
+TWIN_VARIANT name=C1 status=CONVERGED status_int=0 iterations=1106 residual=1.0041002889258713e-11 relative=8.8750765411356918e-11 x_gauge=0 elapsed_s=41.698
+TWIN_INNER name=C1 applies=1106 total_iters=61590 avg=55.69 max=60 converged=1106 best_effort=0 fail=0
+TWIN_VARIANT name=C2 status=CONVERGED status_int=0 iterations=1009 residual=1.0125331007739768e-11 relative=8.9496127716640132e-11 x_gauge=0 elapsed_s=36.315
+TWIN_INNER name=C2 applies=1009 total_iters=55985 avg=55.49 max=56 converged=1009 best_effort=0 fail=0
+TWIN_VARIANT name=KP1 status=CONVERGED status_int=0 iterations=612 residual=1.036988155072887e-11 relative=9.1657669557770719e-11 x_gauge=0 elapsed_s=18.194
+TWIN_INNER name=KP1 applies=612 total_iters=34471 avg=56.33 max=57 converged=612 best_effort=0 fail=0
+TWIN_SUMMARY variants=4 all_completed=1
+TWIN_EXIT_CODE=0
+TWIN_RUN_EXIT_CODE=0
