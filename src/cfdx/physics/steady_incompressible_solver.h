@@ -633,11 +633,16 @@ inline double rhie_chow_pressure_flux_internal(
     // same discrete operator on arbitrary meshes.
     const double implicit_coefficient = pressure_face_orthogonal_coefficient(
         Sf, dvec, {cx, cy, cz});
-    // Apply the full diagonal momentum response to the deferred gradient.
-    // A scalar rfn is only equivalent for isotropic response or when Snon has
-    // no component in directions with different momentum response.
+    // The deferred term is the full tensor-response flux minus the part
+    // represented by the implicit centre-line pressure jump. For anisotropic
+    // dAU, projecting only onto Snon omits cross-direction coupling between
+    // the centre-line and global coordinate axes.
+    const double response_gradient_dot_Sf =
+        cx * gp.x * Sf.x + cy * gp.y * Sf.y + cz * gp.z * Sf.z;
+    const double implicit_gradient_flux =
+        rfn * gp.dot(e) * orthogonal_area;
     const double non_orthogonal_flux =
-        cx * gp.x * Snon.x + cy * gp.y * Snon.y + cz * gp.z * Snon.z;
+        response_gradient_dot_Sf - implicit_gradient_flux;
     return rho * (
         implicit_coefficient * (p(n) - p(o)) +
         non_orthogonal_flux);
@@ -1469,12 +1474,17 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                          grad_p_old.component_data(1)[ncell]),
                     0.5*(grad_p_old.component_data(2)[c] +
                          grad_p_old.component_data(2)[ncell])};
-                // Match the coupled deferred flux to the diagonal momentum
-                // response component by component, as in the segregated path.
-                const double nonorth_flux = rho * (
-                    rAUx_f * gp.x * Snon.x +
-                    rAUy_f * gp.y * Snon.y +
-                    rAUz_f * gp.z * Snon.z);
+                // Keep the coupled deferred term identical to the segregated
+                // tensor-response split: full face flux minus the implicit
+                // centre-line component.
+                const double response_gradient_dot_Sf =
+                    rAUx_f * gp.x * rawSf.x +
+                    rAUy_f * gp.y * rawSf.y +
+                    rAUz_f * gp.z * rawSf.z;
+                const double implicit_gradient_flux =
+                    rfn * gp.dot(e) * orthogonal_area;
+                const double nonorth_flux = rho *
+                    (response_gradient_dot_Sf - implicit_gradient_flux);
                 // The continuity equation is div(phi)=0 and the pressure
                 // correction is written as phi = phi_U - D grad(p).
                 // Therefore the explicit non-orthogonal pressure flux is
