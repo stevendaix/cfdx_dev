@@ -3822,14 +3822,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     grad_face_momentum = gp;
                     const double response_s =
                         rhie_chow_orthogonal_response(cx, cy, cz, e, localSf);
-                    const double dc =
-                        (geometry.face_centres[face] -
-                         geometry.cell_centres[debug_cell]).mag();
-                    const double dn =
-                        (geometry.cell_centres[other_cell] -
-                         geometry.face_centres[face]).mag();
-                    const double weight_debug = dn / (dc + dn);
-                    const double weight_other = dc / (dc + dn);
                     const double cx_debug =
                         geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell];
                     const double cy_debug =
@@ -3855,8 +3847,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         (response_s * normal_dp +
                          rhie_chow_deferred_response(
                              response_s, tensor_gradient_flux, normal_dp));
-                    u_face_reconstructed = hbyA_face -
-                        Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
+                    const Vec3 interpolated_dAU_grad_p{
+                        weight_debug*cx_debug*final_grad_p.component_data(0)[debug_cell] +
+                            weight_other*cx_other*final_grad_p.component_data(0)[other_cell],
+                        weight_debug*cy_debug*final_grad_p.component_data(1)[debug_cell] +
+                            weight_other*cy_other*final_grad_p.component_data(1)[other_cell],
+                        weight_debug*cz_debug*final_grad_p.component_data(2)[debug_cell] +
+                            weight_other*cz_other*final_grad_p.component_data(2)[other_cell]};
+                    u_face_reconstructed = hbyA_face - interpolated_dAU_grad_p;
                 } else {
                     if (patch < mesh.boundary().n_patches()) {
                         const auto& name = mesh.boundary().patch(patch).name;
