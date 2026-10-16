@@ -1,0 +1,12 @@
+.github/workflows/ghia_pcd_twin_c1c2.cpp:109:39: warning: multi-character character constant [-Wmultichar]
+  109 |         while (*end == ' ' || *end == '\\t' || *end == '\\r' || *end == '\\n')
+      |                                       ^~~~~
+.github/workflows/ghia_pcd_twin_c1c2.cpp:109:56: warning: multi-character character constant [-Wmultichar]
+  109 |         while (*end == ' ' || *end == '\\t' || *end == '\\r' || *end == '\\n')
+      |                                                        ^~~~~
+.github/workflows/ghia_pcd_twin_c1c2.cpp:109:73: warning: multi-character character constant [-Wmultichar]
+  109 |         while (*end == ' ' || *end == '\\t' || *end == '\\r' || *end == '\\n')
+      |                                                                         ^~~~~
+.github/workflows/ghia_pcd_twin_c1c2.cpp:111:21: warning: multi-character character constant [-Wmultichar]
+  111 |         if (*end != '\\0')
+      |                     ^~~~~

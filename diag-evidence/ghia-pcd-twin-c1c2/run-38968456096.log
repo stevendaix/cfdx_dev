@@ -1,0 +1,2 @@
+TWIN_PARSE_FAIL file=b_iter2.vec
+TWIN_RUN_EXIT_CODE=3
