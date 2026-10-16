@@ -3811,23 +3811,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         max_rhie_chow_mismatch,
                         std::abs(rhie_chow_actual - rhie_chow_expected));
                     const Vec3 localSf = Sf;
-                    const double orthogonal_area = localSf.dot(e);
-                    const Vec3 Snon{
-                        localSf.x - orthogonal_area*e.x,
-                        localSf.y - orthogonal_area*e.y,
-                        localSf.z - orthogonal_area*e.z};
                     const double normal_dp = (p(other_cell) - p(debug_cell)) / d;
+                    const Vec3 dAU_face{cx, cy, cz};
                     grad_face_correction =
                         e * normal_dp + gp - e * gp.dot(e);
                     grad_face_momentum = gp;
-                    pressure_flux_correction =
-                        controls.density * dAU_n *
-                        (normal_dp * orthogonal_area + gp.dot(Snon));
+                    pressure_flux_correction = controls.density * (
+                        pressure_face_orthogonal_coefficient(
+                            localSf, dvec, dAU_face) *
+                            (p(other_cell) - p(debug_cell)) +
+                        pressure_face_nonorthogonal_flux(
+                            localSf, dvec, dAU_face, gp));
                     u_face_reconstructed = hbyA_face -
-                        Vec3{
-                            dAU_n * gp.x,
-                            dAU_n * gp.y,
-                            dAU_n * gp.z};
+                        Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
                 } else {
                     if (patch < mesh.boundary().n_patches()) {
                         const auto& name = mesh.boundary().patch(patch).name;
@@ -3845,17 +3841,30 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             const Vec3 dvec = geometry.face_centres[face] -
                                               geometry.cell_centres[debug_cell];
                             const double d = dvec.mag();
+                            if (!(d > 0.0) || !std::isfinite(d))
+                                throw std::runtime_error(
+                                    "CFDX momentum microscope: degenerate boundary face distance");
                             const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
-                            dAU_n =
-                                geometry.cell_volumes[debug_cell] * (
-                                    diag_rAU[0][debug_cell]*e.x*e.x +
-                                    diag_rAU[1][debug_cell]*e.y*e.y +
-                                    diag_rAU[2][debug_cell]*e.z*e.z);
+                            const Vec3 dAU_boundary{
+                                geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell],
+                                geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell],
+                                geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell]};
+                            dAU_n = dAU_boundary.x*e.x*e.x +
+                                    dAU_boundary.y*e.y*e.y +
+                                    dAU_boundary.z*e.z*e.z;
                             const double normal_dp =
                                 (pit->second.value - p(debug_cell)) / d;
-                            pressure_flux_correction =
-                                controls.density * dAU_n * normal_dp * Sf_raw.dot(e);
-                            grad_face_correction = e * normal_dp;
+                            const Vec3 gp{
+                                final_grad_p.component_data(0)[debug_cell],
+                                final_grad_p.component_data(1)[debug_cell],
+                                final_grad_p.component_data(2)[debug_cell]};
+                            pressure_flux_correction = controls.density * (
+                                pressure_face_orthogonal_coefficient(
+                                    Sf_raw, dvec, dAU_boundary) *
+                                    (pit->second.value - p(debug_cell)) +
+                                pressure_face_nonorthogonal_flux(
+                                    Sf_raw, dvec, dAU_boundary, gp));
+                            grad_face_correction = e * normal_dp + gp - e * gp.dot(e);
                         } else {
                             grad_face_correction = Vec3{
                                 final_grad_p.component_data(0)[debug_cell],
