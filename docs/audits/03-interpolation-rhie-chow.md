@@ -16,7 +16,7 @@
 Le flux de masse aux faces découle de l'équation de quantité de mouvement ; en colocalisé, interpoler simplement $\\mathbf{u}_f = \\overline{\\mathbf{u}}$ (moyenne des centres) produit un champ de pression découplé (checkerboarding).
 
 ## 3. Discrétisation Volume Fini (forme exacte attendue dans le code)
-$$ \\dot m_f = \\rho_f\\,\\mathbf{S}_f\\cdot\\overline{\\mathbf{u}}_f \\;-\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,(\\nabla p)_f\\cdot\\mathbf{S}_f \\;+\\; \\\\overline{\\left(\\frac{V}{a_P}\\right)}_f\\,\\overline{(\\nabla p)}_f\\cdot\\mathbf{S}_f \\;+\\; \\\\text{(termes de correction Majumdar)} $$
+$$ \dot m_f = \rho_f\left[\mathbf{S}_f\cdot\overline{\mathbf{u}}_f + (\mathbf D\nabla p)_f\cdot\mathbf{S}_f - ((\mathbf D_f\mathbf e)\cdot\mathbf{S}_f)\frac{p_N-p_P}{d_{PN}}\right] $$
 Contrats :
 1. La réponse tensorielle et son interpolation utilisent les diagonales **au moment de l'assemblage**. La décomposition implicite + différée doit reconstruire le flux tensoriel interpolé, avec un coefficient implicite $((\\mathbf D_f\\mathbf e)\\cdot\\mathbf S_f)/d_{PN}$ identique dans la matrice et le flux.
 2. Sur une face orthogonale et un champ de pression linéaire exact, le résidu RC s'annule. Sur une face oblique, le reste différé n'est pas forcé à zéro : il doit fermer exactement la différence entre le flux tensoriel interpolé et la contribution implicite.
